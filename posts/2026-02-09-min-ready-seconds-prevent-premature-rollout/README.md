@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Deployment, Reliability
 
-Description: Discover how minReadySeconds in Kubernetes deployments prevents pods from being marked ready too quickly, ensuring stable rollouts and preventing crashes from reaching production.
+Description: Discover how minReadySeconds in Kubernetes deployments prevents pods from being counted as available too quickly, ensuring stable rollouts and reducing the chance that crashing pods replace healthy ones.
 
 ---
 
 Your pods pass their readiness probes, get marked as ready, and immediately start receiving traffic. Then they crash 30 seconds later due to a slow-starting background process you forgot about. By the time you notice, half your fleet is down.
 
-The minReadySeconds setting prevents this exact scenario by forcing Kubernetes to wait before considering pods truly ready.
+The minReadySeconds setting helps prevent this rollout scenario by forcing Kubernetes to wait before considering pods available.
 
 ## The Problem with Instant Readiness
 
@@ -23,7 +23,7 @@ But passing a basic HTTP health check doesn't mean your application is fully ini
 - Database connection pools that need establishing
 - Scheduled tasks that initialize on startup
 
-If any of these fail after the pod is marked ready, you've already added unstable pods to your production rotation.
+If any of these fail after the pod is marked ready, you've already added unstable pods to your production rotation. minReadySeconds does not delay Service traffic after readiness succeeds; it delays when the Deployment controller counts the pod as available for rollout decisions.
 
 ## What minReadySeconds Does
 
@@ -31,7 +31,7 @@ The minReadySeconds field tells Kubernetes to wait a specified number of seconds
 
 - The pod is considered ready by the kubelet
 - The pod is NOT considered available by the deployment controller
-- The rollout doesn't progress to the next pod
+- The rollout only progresses as far as the rolling update strategy's availability limits allow
 - The pod counts toward replica count but not toward available replicas
 
 This creates a buffer period where your pod runs and handles traffic, but Kubernetes watches carefully before committing to the rollout.
@@ -74,7 +74,7 @@ spec:
           periodSeconds: 5
 ```
 
-With this configuration, each pod must stay ready for 30 seconds before the rollout continues to the next pod.
+With this configuration, each new pod must stay ready for 30 seconds before it counts as available. Because this example allows one unavailable replica, Kubernetes may still make limited progress while a new pod is in the minReadySeconds window.
 
 ## How It Affects Rollouts
 
@@ -98,25 +98,18 @@ Waiting for deployment "api-server" rollout to finish: 1 out of 5 new replicas a
 Waiting for deployment "api-server" rollout to finish: 2 out of 5 new replicas have been updated...
 ```
 
-Notice the pauses between updates. Kubernetes creates a new pod, waits for it to pass readiness checks, then waits the minReadySeconds duration before creating the next pod.
+Notice the pauses before replicas become available. Kubernetes creates new pods within the `maxSurge` and `maxUnavailable` limits, waits for them to pass readiness checks, then waits the minReadySeconds duration before counting them as available.
 
 ## Choosing the Right Value
 
 Set minReadySeconds based on your application's actual initialization time. Monitor your pods to see how long they need:
 
 ```bash
-# Watch a pod's events
-kubectl describe pod api-server-abc123
+# Watch readiness transitions
+kubectl get pod api-server-abc123 --watch
 
-# Look for the timing between Ready and actually stable
-Events:
-  Type    Reason     Age   From               Message
-  ----    ------     ----  ----               -------
-  Normal  Scheduled  2m    default-scheduler  Successfully assigned...
-  Normal  Pulled     2m    kubelet            Container image pulled
-  Normal  Created    2m    kubelet            Created container api
-  Normal  Started    2m    kubelet            Started container api
-  Normal  Ready      90s   kubelet            Container passed readiness probe
+# Or inspect the current Pod conditions
+kubectl get pod api-server-abc123 -o yaml
 ```
 
 If your application typically crashes or misbehaves in the first minute after passing readiness checks, set minReadySeconds to 60 or higher.
@@ -170,13 +163,13 @@ Without minReadySeconds, the rollout might look like this:
 6. Second pod crashes after 40 seconds
 7. By the time you notice, you have mostly crashed pods
 
-With minReadySeconds set to 60:
+With minReadySeconds set to 60 and a strategy that requires the new pod to become available before more old pods are removed:
 
 1. New pod starts, passes readiness, gets traffic
 2. Memory leak begins
-3. Kubernetes waits 60 seconds before creating next pod
+3. Kubernetes waits for the pod to be available before removing more old pods
 4. First pod crashes after 40 seconds
-5. Readiness probe fails, pod marked unready
+5. The pod exits or its readiness probe fails, so it stops being Ready
 6. Deployment rollout is blocked due to insufficient available replicas
 7. Old pods keep running, serving traffic
 8. You have time to investigate and roll back
@@ -227,24 +220,20 @@ spec:
           periodSeconds: 30
 ```
 
-The 90-second minReadySeconds ensures that the background worker has fully started and processed at least a few jobs before the deployment considers the pod stable.
+The 90-second minReadySeconds gives the background worker time to start and fail fast if initialization is broken before the deployment considers the pod available.
 
 ## Monitoring minReadySeconds Behavior
 
 Track how minReadySeconds affects your deployments with metrics:
 
-```yaml
-# Prometheus query to see time pods spend in ready-but-not-available state
-kube_pod_status_ready{condition="true"} == 1
-unless
-kube_pod_status_condition{condition="Ready", status="true"}
-  and on(pod)
-  kube_pod_status_phase{phase="Running"}
-  and on(pod)
-  (time() - kube_pod_created) > 120
+```promql
+# Deployment-level gap between updated replicas and available replicas
+kube_deployment_status_replicas_updated{deployment="api-server"}
+-
+kube_deployment_status_replicas_available{deployment="api-server"}
 ```
 
-This helps you tune minReadySeconds based on actual behavior.
+This shows when updated replicas exist but are not yet available, which can include pods still waiting out minReadySeconds, failing readiness, or restarting.
 
 ## Using with Progressive Delivery
 
@@ -280,7 +269,7 @@ spec:
         image: myregistry.io/api-server:v2.0.0
 ```
 
-Each canary step waits for pods to be ready for 60 seconds before considering them healthy, adding an extra layer of safety to your progressive rollout.
+The Rollout controller waits for newly created pods to stay ready for 60 seconds before counting them as available, adding an extra layer of safety to your progressive rollout.
 
 ## Impact on Rollout Speed
 
@@ -293,12 +282,12 @@ For a deployment with:
 - Pod startup time: 30 seconds
 
 The rollout takes approximately:
-- (10 replicas) × (60 seconds minReady + 30 seconds startup) / (2 pods at once) = 450 seconds = 7.5 minutes
+- roughly (10 replicas) x (60 seconds minReady + 30 seconds startup) / (1 to 2 pods at once) = 7.5 to 15 minutes
 
 Compare to without minReadySeconds:
-- (10 replicas) × (30 seconds startup) / (2 pods at once) = 150 seconds = 2.5 minutes
+- roughly (10 replicas) x (30 seconds startup) / (1 to 2 pods at once) = 2.5 to 5 minutes
 
-The extra 5 minutes provides confidence that your rollout is stable. For critical services, this tradeoff is worth it.
+The extra rollout time provides confidence that your rollout is stable. For critical services, this tradeoff is worth it.
 
 ## Common Mistakes
 
@@ -308,7 +297,7 @@ The extra 5 minutes provides confidence that your rollout is stable. For critica
 
 **Using minReadySeconds instead of fixing initialization**. If your app crashes during startup, fix the initialization code. Don't just mask the problem with minReadySeconds.
 
-**Not adjusting liveness probe delays**. Your livenessProbe initialDelaySeconds should be longer than minReadySeconds to avoid killing pods that are legitimately initializing.
+**Not adjusting liveness probe delays**. Your livenessProbe initialDelaySeconds should be long enough for startup, or you should use a startupProbe, to avoid killing pods that are legitimately initializing.
 
 ## Best Practices
 
