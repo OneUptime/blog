@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Crossplane, Configuration
 
-Description: Learn how to use Crossplane patches to create dynamic, flexible Compositions that map user inputs to cloud resources with transforms, conditionals, and advanced field manipulation.
+Description: Learn how to use Crossplane patches to create dynamic, flexible Compositions that map user inputs to cloud resources with transforms, value-based configuration, and advanced field manipulation.
 
 ---
 
-Patches are the glue between Compositions and user input. They map fields from Claims or Composite Resources to managed resources, transforming simple user requests into detailed cloud configurations. Without patches, Compositions are static templates. With patches, they become dynamic engines that adjust resource configuration based on user parameters, environment labels, and complex transformation logic.
+Patches are the glue between Compositions and user input. They map fields from Composite Resources, and in Crossplane v1 from Claims, to managed resources, transforming simple user requests into detailed cloud configurations. Without patches, Compositions are static templates. With patches, they become dynamic engines that adjust resource configuration based on user parameters, environment labels, and value mapping logic.
 
-Crossplane supports multiple patch types for different scenarios - field path mapping, mathematical transformations, string manipulation, and conditional logic. Understanding patch capabilities determines how flexible and user-friendly your platform APIs become.
+Crossplane supports multiple patch types for different scenarios - field path mapping, mathematical transformations, string manipulation, and value-based configuration. Understanding patch capabilities determines how flexible and user-friendly your platform APIs become.
 
 ## Understanding Patch Types
 
@@ -19,7 +19,7 @@ Crossplane offers several patch types:
 **FromCompositeFieldPath**: Copy fields from the Composite Resource to managed resources
 **ToCompositeFieldPath**: Copy fields from managed resources back to the Composite Resource
 **CombineFromComposite**: Combine multiple fields into one
-**CombineToComposite**: Split a field into multiple fields
+**CombineToComposite**: Combine fields from a managed resource and write the result to the Composite Resource
 **PatchSet**: Reusable patch collections
 
 Each patch type serves specific use cases in building flexible Compositions.
@@ -34,28 +34,39 @@ kind: Composition
 metadata:
   name: database-basic
 spec:
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.storageGB
-      toFieldPath: spec.forProvider.allocatedStorage
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.version
-      toFieldPath: spec.forProvider.engineVersion
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.labels.environment
-      toFieldPath: spec.forProvider.tags.Environment
+  compositeTypeRef:
+    apiVersion: platform.example.org/v1alpha1
+    kind: XPostgreSQLInstance
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.version
+          toFieldPath: spec.forProvider.engineVersion
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels.environment
+          toFieldPath: spec.forProvider.tags.Environment
 ```
 
-Users specify storage and version in their Claim, and patches copy those values to the RDS instance.
+Users specify storage and version in their Composite Resource, and patches copy those values to the RDS instance.
 
 ## Using Map Transforms
 
@@ -65,7 +76,7 @@ Transform values using lookup maps:
 patches:
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.size
-  toFieldPath: spec.forProvider.dbInstanceClass
+  toFieldPath: spec.forProvider.instanceClass
   transforms:
   - type: map
     map:
@@ -79,9 +90,9 @@ patches:
   transforms:
   - type: map
     map:
-      development: "1"
-      staging: "7"
-      production: "30"
+      development: 1
+      staging: 7
+      production: 30
 ```
 
 This abstracts cloud-specific instance types behind user-friendly size names and sets backup retention based on environment.
@@ -124,15 +135,15 @@ patches:
   transforms:
   - type: math
     math:
-      type: Multiply
+      type: multiply
       multiply: 1
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.maxConnections
-  toFieldPath: spec.forProvider.dbParameterGroupParameters[0].value
+  toFieldPath: metadata.annotations["example.com/max-connections"]
   transforms:
   - type: math
     math:
-      type: Multiply
+      type: multiply
       multiply: 2
   - type: string
     string:
@@ -171,32 +182,32 @@ patches:
 
 CombineFromComposite creates consistent resource names and combines region/zone into availability zone.
 
-## Implementing Conditional Patches
+## Implementing Value-Based Patches
 
-Apply patches conditionally:
+Apply patches based on input values:
 
 ```yaml
 patches:
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.highAvailability
-  toFieldPath: spec.forProvider.multiAZ
+  toFieldPath: spec.forProvider.multiAz
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.highAvailability
   toFieldPath: spec.forProvider.backupRetentionPeriod
   transforms:
   - type: map
     map:
-      "true": "30"
-      "false": "7"
+      "true": 30
+      "false": 7
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.environment
   toFieldPath: spec.forProvider.publiclyAccessible
   transforms:
   - type: map
     map:
-      development: "true"
-      staging: "false"
-      production: "false"
+      development: true
+      staging: false
+      production: false
 ```
 
 Patches adjust configuration based on boolean flags and environment values.
@@ -211,45 +222,56 @@ kind: Composition
 metadata:
   name: database-with-patchsets
 spec:
-  patchSets:
-  - name: common-labels
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.labels.environment
-      toFieldPath: spec.forProvider.tags.Environment
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.labels.team
-      toFieldPath: spec.forProvider.tags.Team
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.labels.cost-center
-      toFieldPath: spec.forProvider.tags.CostCenter
-  - name: standard-networking
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.vpcId
-      toFieldPath: spec.forProvider.vpcId
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.subnetIds
-      toFieldPath: spec.forProvider.dbSubnetGroupName
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-    patches:
-    - type: PatchSet
-      patchSetName: common-labels
-    - type: PatchSet
-      patchSetName: standard-networking
-  - name: read-replica
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-    patches:
-    - type: PatchSet
-      patchSetName: common-labels
-    - type: PatchSet
-      patchSetName: standard-networking
+  compositeTypeRef:
+    apiVersion: platform.example.org/v1alpha1
+    kind: XPostgreSQLInstance
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      patchSets:
+      - name: common-labels
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels.environment
+          toFieldPath: spec.forProvider.tags.Environment
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels.team
+          toFieldPath: spec.forProvider.tags.Team
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels.cost-center
+          toFieldPath: spec.forProvider.tags.CostCenter
+      - name: standard-networking
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.securityGroupIds
+          toFieldPath: spec.forProvider.vpcSecurityGroupIds
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.subnetGroupName
+          toFieldPath: spec.forProvider.dbSubnetGroupName
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+        patches:
+        - type: PatchSet
+          patchSetName: common-labels
+        - type: PatchSet
+          patchSetName: standard-networking
+      - name: read-replica
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+        patches:
+        - type: PatchSet
+          patchSetName: common-labels
+        - type: PatchSet
+          patchSetName: standard-networking
 ```
 
 PatchSets eliminate duplication when multiple resources need the same patches.
@@ -259,33 +281,40 @@ PatchSets eliminate duplication when multiple resources need the same patches.
 Control connection secret generation:
 
 ```yaml
-patches:
-- type: FromCompositeFieldPath
-  fromFieldPath: spec.writeConnectionSecretToRef.name
-  toFieldPath: spec.writeConnectionSecretToRef.name
-- type: FromCompositeFieldPath
-  fromFieldPath: spec.writeConnectionSecretToRef.namespace
-  toFieldPath: spec.writeConnectionSecretToRef.namespace
-- type: FromCompositeFieldPath
-  fromFieldPath: metadata.labels
-  toFieldPath: spec.writeConnectionSecretToRef.labels
-connectionDetails:
-- name: username
-  fromConnectionSecretKey: username
-- name: password
-  fromConnectionSecretKey: password
-- name: endpoint
-  fromConnectionSecretKey: endpoint
-- name: port
-  fromConnectionSecretKey: port
-- name: database
-  fromConnectionSecretKey: database
-- name: connection-string
-  type: FromValue
-  value: "postgres://$(username):$(password)@$(endpoint):$(port)/$(database)"
+writeConnectionSecretToRef:
+  patches:
+  - type: FromCompositeFieldPath
+    fromFieldPath: spec.writeConnectionSecretToRef.name
+    toFieldPath: name
+  - type: FromCompositeFieldPath
+    fromFieldPath: spec.writeConnectionSecretToRef.namespace
+    toFieldPath: namespace
+resources:
+- name: rds-instance
+  base:
+    apiVersion: rds.aws.m.upbound.io/v1beta1
+    kind: Instance
+    spec:
+      writeConnectionSecretToRef:
+        name: rds-instance-connection
+        namespace: crossplane-system
+  connectionDetails:
+  - name: username
+    fromConnectionSecretKey: username
+  - name: password
+    fromConnectionSecretKey: password
+  - name: endpoint
+    fromConnectionSecretKey: endpoint
+  - name: port
+    fromConnectionSecretKey: port
+  - name: database
+    fromConnectionSecretKey: database
+  - name: engine
+    type: FromValue
+    value: "postgres"
 ```
 
-This gives users control over secret location and formats connection strings.
+This gives users control over the aggregated secret location and controls which connection secret keys are exposed.
 
 ## Implementing Policy-Based Patches
 
@@ -299,18 +328,18 @@ patches:
   transforms:
   - type: map
     map:
-      development: "false"
-      staging: "true"
-      production: "true"
+      development: false
+      staging: true
+      production: true
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.environment
   toFieldPath: spec.forProvider.deletionProtection
   transforms:
   - type: map
     map:
-      development: "false"
-      staging: "false"
-      production: "true"
+      development: false
+      staging: false
+      production: true
 - type: FromCompositeFieldPath
   fromFieldPath: metadata.labels.data-classification
   toFieldPath: spec.forProvider.kmsKeyId
@@ -339,16 +368,11 @@ patches:
   fromFieldPath: status.atProvider.port
   toFieldPath: status.databasePort
 - type: ToCompositeFieldPath
-  fromFieldPath: status.conditions[?(@.type=='Ready')].status
-  toFieldPath: status.ready
-  transforms:
-  - type: map
-    map:
-      "True": "true"
-      "False": "false"
+  fromFieldPath: status.atProvider.address
+  toFieldPath: status.databaseAddress
 ```
 
-This surfaces important status information to users checking their Claims.
+This surfaces important status information to users checking their Composite Resources.
 
 ## Implementing Array Patches
 
@@ -358,13 +382,13 @@ Patch array elements:
 patches:
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.allowedCidrs
-  toFieldPath: spec.forProvider.ipConfiguration.authorizedNetworks
+  toFieldPath: spec.forProvider.authorizedNetworks
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.subnetIds[0]
-  toFieldPath: spec.forProvider.dbSubnetGroupSubnetIds[0]
+  toFieldPath: spec.forProvider.subnetIds[0]
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.subnetIds[1]
-  toFieldPath: spec.forProvider.dbSubnetGroupSubnetIds[1]
+  toFieldPath: spec.forProvider.subnetIds[1]
 ```
 
 Array patches enable dynamic configuration of network settings and subnet assignments.
@@ -379,29 +403,23 @@ Troubleshoot patch issues:
 kubectl describe xpostgresqlinstance my-db
 
 # Check if patches are being applied
-kubectl get rdsinstance -o yaml | grep -A 10 "forProvider"
+kubectl get instance.rds.aws.m.upbound.io -o yaml | grep -A 10 "forProvider"
 
 # View composition events
 kubectl get events --field-selector involvedObject.kind=XPostgreSQLInstance
 
-# Enable debug logging
-kubectl logs -n crossplane-system deployment/crossplane --tail=100 | grep -i patch
+# View Crossplane logs
+kubectl logs -n crossplane-system -l app=crossplane --tail=100
 ```
 
-Add debug annotations to track patch execution:
+Crossplane emits minimal logs by default, so events are usually the best place to start. If you need more detail, restart Crossplane or the provider with the `--debug` flag.
+
+## Patch Maintenance
+
+Keep patch behavior predictable:
 
 ```yaml
-metadata:
-  annotations:
-    crossplane.io/debug: "true"
-```
-
-## Performance Optimization
-
-Optimize patch performance:
-
-```yaml
-# Use patch policies to avoid unnecessary updates
+# Use patch policies to surface missing required inputs
 patches:
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.storageGB
@@ -409,12 +427,12 @@ patches:
   policy:
     fromFieldPath: Required
 
-# Avoid deep field paths when possible
+# Avoid unnecessary deep field paths when possible
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.tags
   toFieldPath: spec.forProvider.tags
 
-# Use PatchSets to reduce duplicate patch processing
+# Use PatchSets to reduce duplicate patch definitions
 patchSets:
 - name: common
   patches:
@@ -425,4 +443,4 @@ patchSets:
 
 ## Conclusion
 
-Patches transform static Compositions into dynamic, user-friendly platform APIs. By mastering field path mapping, transforms, combine operations, and conditional logic, you create Compositions that adapt to user needs while enforcing organizational policies. The right patches make the difference between a rigid infrastructure template and a flexible self-service platform that developers love to use.
+Patches transform static Compositions into dynamic, user-friendly platform APIs. By mastering field path mapping, transforms, combine operations, and value-based configuration, you create Compositions that adapt to user needs while enforcing organizational policies. The right patches make the difference between a rigid infrastructure template and a flexible self-service platform that developers love to use.
