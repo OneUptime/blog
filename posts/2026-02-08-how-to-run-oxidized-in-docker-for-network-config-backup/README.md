@@ -36,8 +36,9 @@ Get Oxidized running with a minimal setup.
 # Create directories for Oxidized configuration and data
 
 mkdir -p /opt/oxidized/{config,output}
+sudo chown -R 30000:30000 /opt/oxidized
 
-# Start Oxidized with default settings
+# Start Oxidized after creating /opt/oxidized/config/config and router.db
 docker run -d \
   --name oxidized \
   -p 8888:8888 \
@@ -49,6 +50,11 @@ docker run -d \
 ## Docker Compose Setup
 
 A production deployment benefits from Docker Compose with proper configuration management.
+
+```bash
+mkdir -p ./config ./ssh
+sudo chown -R 30000:30000 ./config ./ssh
+```
 
 ```yaml
 # docker-compose.yml - Oxidized network config backup
@@ -65,6 +71,7 @@ services:
     volumes:
       - ./config:/home/oxidized/.config/oxidized
       - oxidized-output:/home/oxidized/.config/oxidized/output
+      - ./ssh:/home/oxidized/.ssh
     environment:
       - CONFIG_RELOAD_INTERVAL=600
     networks:
@@ -90,9 +97,12 @@ Oxidized uses a YAML configuration file. Create this as `config/config` (no exte
 # 3600 = every hour
 interval: 3600
 
-# Use syslog for logging
-use_syslog: false
-log: /home/oxidized/.config/oxidized/oxidized.log
+# Configure logging
+logger:
+  appenders:
+    - type: stdout
+    - type: file
+      file: /home/oxidized/.config/oxidized/oxidized.log
 
 # Debug mode (set to false in production)
 debug: false
@@ -118,7 +128,7 @@ source:
   default: csv
   csv:
     file: /home/oxidized/.config/oxidized/router.db
-    delimiter: ":"
+    delimiter: !ruby/regexp /:/
     map:
       name: 0
       model: 1
@@ -135,7 +145,11 @@ output:
     repo: /home/oxidized/.config/oxidized/output/configs.git
 
 # REST API and web interface
-rest: 0.0.0.0:8888
+extensions:
+  oxidized-web:
+    load: true
+    listen: 0.0.0.0
+    port: 8888
 
 # Optional: push configs to a remote Git repository
 # hooks:
@@ -189,26 +203,26 @@ fortigate-01.example.com:fortios:admin:forti123
 branch-router.example.com:routeros:admin:mikrotik123
 ```
 
-## Using a Database Source
+## Using an HTTP Inventory Source
 
-For larger environments, pull the device inventory from a database or NetBox.
+For larger environments, pull the device inventory from an HTTP inventory API.
 
 ```yaml
-# config - Using HTTP source (works with NetBox, phpIPAM, etc.)
+# config - Using HTTP source (works with APIs that return JSON node objects)
 source:
   default: http
   http:
-    url: http://netbox.example.com/api/dcim/devices/?status=active&has_primary_ip=true
+    url: https://inventory.example.com/api/oxidized/devices
     scheme: https
-    secure: false
+    secure: true
     map:
-      name: name
-      model: platform.slug
-      group: site.slug
+      name: hostname
+      model: os
+      username: username
+      password: password
     headers:
-      Authorization: "Token YOUR_NETBOX_API_TOKEN"
+      X-Auth-Token: "YOUR_API_TOKEN"
     read_timeout: 120
-    pagination: true
 ```
 
 ## Starting and Verifying Backups
@@ -221,7 +235,7 @@ docker compose up -d
 docker compose logs -f oxidized
 
 # Trigger an immediate backup of all devices via the API
-curl -X PUT http://localhost:8888/reload
+curl http://localhost:8888/reload
 
 # Trigger a backup of a specific device
 curl -X PUT http://localhost:8888/node/next/core-router.example.com
@@ -242,13 +256,13 @@ Since Oxidized stores configurations in Git, you can use standard Git commands t
 docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && git log --oneline -20"
 
 # View the configuration diff for a specific device
-docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && git log --oneline core-router.example.com"
+docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && git log --oneline -- core-router.example.com"
 
 # See what changed in the last commit for a device
 docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && git diff HEAD~1 HEAD -- core-router.example.com"
 
 # Show the full configuration from a specific date
-docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && git show 'HEAD@{2026-02-01}:core-router.example.com'"
+docker exec -it oxidized bash -c "cd /home/oxidized/.config/oxidized/output/configs.git && commit=\$(git rev-list -n 1 --before='2026-02-01 23:59' HEAD -- core-router.example.com) && git show \"\$commit:core-router.example.com\""
 ```
 
 ## Pushing to a Remote Repository
@@ -268,10 +282,14 @@ hooks:
 
 ```bash
 # Generate SSH keys for Git authentication
-docker exec -it oxidized ssh-keygen -t ed25519 -N "" -f /home/oxidized/.ssh/id_rsa
+ssh-keygen -q -t rsa -b 4096 -N "" -m PEM -f ./ssh/id_rsa
 
 # Display the public key to add to your Git server
-docker exec -it oxidized cat /home/oxidized/.ssh/id_rsa.pub
+cat ./ssh/id_rsa.pub
+
+# Store the remote Git server host key
+ssh-keyscan gitlab.example.com >> ./ssh/known_hosts
+sudo chown -R 30000:30000 ./ssh
 ```
 
 ## Setting Up Alerts
@@ -284,7 +302,7 @@ hooks:
   config_changed:
     type: exec
     events: [post_store]
-    cmd: "/home/oxidized/.config/oxidized/notify.sh"
+    cmd: "bash /home/oxidized/.config/oxidized/notify.sh"
     async: true
     timeout: 30
 ```
@@ -320,14 +338,14 @@ Avoid storing plaintext passwords in the inventory file. Use SSH keys or a crede
 
 ```bash
 # Generate an SSH key pair for device authentication
-ssh-keygen -t ed25519 -N "" -f ./config/device_key
+ssh-keygen -t ed25519 -N "" -f ./ssh/device_key
+sudo chown 30000:30000 ./ssh/device_key ./ssh/device_key.pub
 
-# Mount the key into the container
-# Add to docker-compose.yml volumes:
-# - ./config/device_key:/home/oxidized/.ssh/device_key:ro
+# With the Compose volume above, the key is available at:
+# /home/oxidized/.ssh/device_key
 ```
 
-Update the device inventory to reference SSH keys instead of passwords.
+Update the Oxidized configuration to use SSH keys instead of passwords.
 
 ```yaml
 # In the Oxidized config, set SSH key authentication
