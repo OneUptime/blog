@@ -58,14 +58,18 @@ RecordSets:
     Type: A
     SetIdentifier: old-cluster
     Weight: 90
-    ResourceRecords:
-      - old-cluster-lb.us-east-1.elb.amazonaws.com
+    AliasTarget:
+      DNSName: old-cluster-lb.us-east-1.elb.amazonaws.com
+      HostedZoneId: Z35SXDOTRQ7X7K
+      EvaluateTargetHealth: true
   - Name: app.example.com
     Type: A
     SetIdentifier: new-cluster
     Weight: 10
-    ResourceRecords:
-      - new-cluster-lb.us-west-2.elb.amazonaws.com
+    AliasTarget:
+      DNSName: new-cluster-lb.us-west-2.elb.amazonaws.com
+      HostedZoneId: Z1H1FL5HABSF5
+      EvaluateTargetHealth: true
 ```
 
 Using Terraform to manage this configuration:
@@ -271,8 +275,9 @@ For cloud-native databases, use provider-specific replication:
 # AWS RDS cross-region read replica
 aws rds create-db-instance-read-replica \
   --db-instance-identifier myapp-new-cluster-replica \
-  --source-db-instance-identifier myapp-old-cluster \
+  --source-db-instance-identifier arn:aws:rds:us-east-1:123456789012:db:myapp-old-cluster \
   --db-instance-class db.r5.xlarge \
+  --source-region us-east-1 \
   --region us-west-2
 ```
 
@@ -330,11 +335,18 @@ import time
 
 route53 = boto3.client('route53')
 HOSTED_ZONE_ID = 'Z1234567890ABC'
+OLD_CLUSTER_LB_ZONE_ID = 'Z35SXDOTRQ7X7K'
+NEW_CLUSTER_LB_ZONE_ID = 'Z1H1FL5HABSF5'
 
 def get_error_rate(cluster):
     """Query Prometheus for error rate"""
     query = f'sum(rate(http_requests_total{{cluster="{cluster}",status=~"5.."}}[5m])) / sum(rate(http_requests_total{{cluster="{cluster}"}}[5m]))'
-    response = requests.get(f'http://prometheus.example.com/api/v1/query?query={query}')
+    response = requests.get(
+        'http://prometheus.example.com/api/v1/query',
+        params={'query': query},
+        timeout=10
+    )
+    response.raise_for_status()
     result = response.json()['data']['result']
     return float(result[0]['value'][1]) if result else 0
 
@@ -353,7 +365,11 @@ def rollback_traffic():
                         'Type': 'A',
                         'SetIdentifier': 'old-cluster',
                         'Weight': 100,
-                        # ... additional config
+                        'AliasTarget': {
+                            'DNSName': 'old-cluster-lb.us-east-1.elb.amazonaws.com',
+                            'HostedZoneId': OLD_CLUSTER_LB_ZONE_ID,
+                            'EvaluateTargetHealth': True
+                        }
                     }
                 },
                 {
@@ -363,7 +379,11 @@ def rollback_traffic():
                         'Type': 'A',
                         'SetIdentifier': 'new-cluster',
                         'Weight': 0,
-                        # ... additional config
+                        'AliasTarget': {
+                            'DNSName': 'new-cluster-lb.us-west-2.elb.amazonaws.com',
+                            'HostedZoneId': NEW_CLUSTER_LB_ZONE_ID,
+                            'EvaluateTargetHealth': True
+                        }
                     }
                 }
             ]
@@ -396,7 +416,7 @@ Run this monitoring script during the migration to automatically detect and resp
 
 ## Session Affinity Considerations
 
-For stateful applications, ensure users stick to one cluster:
+For stateful applications, configure session affinity at the global load balancer where supported so users stick to one cluster. Within each cluster, you can also use ingress-nginx cookie affinity so requests stay on the same backend service endpoints:
 
 ```yaml
 # ingress-session-affinity.yaml
@@ -422,7 +442,7 @@ spec:
               number: 80
 ```
 
-This ensures that once a user lands on a cluster, they continue using that cluster for the session duration.
+This keeps a user's requests pinned to the same service endpoints within the cluster that received the request. It does not replace cluster-level stickiness at the global load balancer.
 
 ## Final Cutover and Decommissioning
 
