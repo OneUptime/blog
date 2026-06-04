@@ -14,19 +14,19 @@ Metrics alone do not provide complete observability. Distributed tracing shows h
 
 Tempo is a distributed tracing backend that:
 - Stores traces in object storage (S3, GCS, Azure)
-- Requires only trace ID for queries (no indexing)
+- Can retrieve traces directly by trace ID without full trace indexing
 - Integrates with Grafana for visualization
 - Supports OpenTelemetry, Jaeger, and Zipkin formats
 - Links to metrics via exemplars
-- Scales horizontally for high trace volumes
+- Can be deployed in microservices mode for high trace volumes
 
-Unlike traditional tracing systems, Tempo does not index trace data, reducing costs significantly.
+Unlike traditional tracing systems, Tempo does not rely on full trace indexing, reducing costs significantly.
 
 ## Prerequisites
 
 You need:
 - kube-prometheus-stack installed
-- Kubernetes cluster (1.20+)
+- Kubernetes cluster supported by your kube-prometheus-stack chart version
 - Object storage for trace data
 - Applications instrumented with OpenTelemetry or Jaeger
 
@@ -44,6 +44,7 @@ metadata:
   namespace: monitoring
 data:
   tempo.yaml: |
+    target: all
     multitenancy_enabled: false
 
     server:
@@ -63,13 +64,20 @@ data:
               endpoint: 0.0.0.0:4317
             http:
               endpoint: 0.0.0.0:4318
+        zipkin:
+          endpoint: 0.0.0.0:9411
 
-    ingester:
-      trace_idle_period: 30s
-      max_block_bytes: 1048576
+    live_store:
+      max_trace_idle: 30s
       max_block_duration: 10m
 
-    compactor:
+    backend_scheduler:
+      provider:
+        compaction:
+          compaction:
+            block_retention: 720h  # 30 days
+
+    backend_worker:
       compaction:
         block_retention: 720h  # 30 days
 
@@ -85,14 +93,6 @@ data:
         pool:
           max_workers: 100
           queue_depth: 10000
-
-    querier:
-      frontend_worker:
-        frontend_address: tempo-query-frontend:9095
-
-    query_frontend:
-      search:
-        max_duration: 24h
 ```
 
 Deploy Tempo components:
@@ -102,30 +102,37 @@ Deploy Tempo components:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: tempo-ingester
+  name: tempo
   namespace: monitoring
 spec:
-  serviceName: tempo-ingester
-  replicas: 3
+  serviceName: tempo
+  replicas: 1
   selector:
     matchLabels:
-      app: tempo-ingester
+      app: tempo
   template:
     metadata:
       labels:
-        app: tempo-ingester
+        app: tempo
     spec:
       containers:
         - name: tempo
-          image: grafana/tempo:latest
+          image: grafana/tempo:3.0.0
           args:
             - -config.file=/etc/tempo/tempo.yaml
-            - -target=ingester
           ports:
             - containerPort: 3200
               name: http
-            - containerPort: 7946
-              name: memberlist
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 14268
+              name: jaeger-http
+            - containerPort: 14250
+              name: jaeger-grpc
+            - containerPort: 9411
+              name: zipkin
           volumeMounts:
             - name: config
               mountPath: /etc/tempo
@@ -136,7 +143,7 @@ spec:
               cpu: 500m
               memory: 2Gi
             limits:
-              cpu: 2000m
+              cpu: 2
               memory: 4Gi
       volumes:
         - name: config
@@ -150,164 +157,6 @@ spec:
         resources:
           requests:
             storage: 50Gi
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo-distributor
-  namespace: monitoring
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: tempo-distributor
-  template:
-    metadata:
-      labels:
-        app: tempo-distributor
-    spec:
-      containers:
-        - name: tempo
-          image: grafana/tempo:latest
-          args:
-            - -config.file=/etc/tempo/tempo.yaml
-            - -target=distributor
-          ports:
-            - containerPort: 3200
-              name: http
-            - containerPort: 14268
-              name: jaeger-http
-            - containerPort: 14250
-              name: jaeger-grpc
-            - containerPort: 4317
-              name: otlp-grpc
-            - containerPort: 4318
-              name: otlp-http
-          volumeMounts:
-            - name: config
-              mountPath: /etc/tempo
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-      volumes:
-        - name: config
-          configMap:
-            name: tempo-config
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo-querier
-  namespace: monitoring
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: tempo-querier
-  template:
-    metadata:
-      labels:
-        app: tempo-querier
-    spec:
-      containers:
-        - name: tempo
-          image: grafana/tempo:latest
-          args:
-            - -config.file=/etc/tempo/tempo.yaml
-            - -target=querier
-          ports:
-            - containerPort: 3200
-              name: http
-          volumeMounts:
-            - name: config
-              mountPath: /etc/tempo
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-      volumes:
-        - name: config
-          configMap:
-            name: tempo-config
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo-query-frontend
-  namespace: monitoring
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tempo-query-frontend
-  template:
-    metadata:
-      labels:
-        app: tempo-query-frontend
-    spec:
-      containers:
-        - name: tempo
-          image: grafana/tempo:latest
-          args:
-            - -config.file=/etc/tempo/tempo.yaml
-            - -target=query-frontend
-          ports:
-            - containerPort: 3200
-              name: http
-            - containerPort: 9095
-              name: grpc
-          volumeMounts:
-            - name: config
-              mountPath: /etc/tempo
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-      volumes:
-        - name: config
-          configMap:
-            name: tempo-config
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo-compactor
-  namespace: monitoring
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tempo-compactor
-  template:
-    metadata:
-      labels:
-        app: tempo-compactor
-    spec:
-      containers:
-        - name: tempo
-          image: grafana/tempo:latest
-          args:
-            - -config.file=/etc/tempo/tempo.yaml
-            - -target=compactor
-          ports:
-            - containerPort: 3200
-              name: http
-          volumeMounts:
-            - name: config
-              mountPath: /etc/tempo
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-      volumes:
-        - name: config
-          configMap:
-            name: tempo-config
 ```
 
 Create services:
@@ -317,11 +166,13 @@ Create services:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tempo-distributor
+  name: tempo
   namespace: monitoring
+  labels:
+    app: tempo
 spec:
   selector:
-    app: tempo-distributor
+    app: tempo
   ports:
     - name: http
       port: 3200
@@ -338,57 +189,9 @@ spec:
     - name: otlp-http
       port: 4318
       targetPort: 4318
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo-query-frontend
-  namespace: monitoring
-spec:
-  selector:
-    app: tempo-query-frontend
-  ports:
-    - name: http
-      port: 3200
-      targetPort: 3200
-    - name: grpc
-      port: 9095
-      targetPort: 9095
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo-querier
-  namespace: monitoring
-spec:
-  selector:
-    app: tempo-querier
-  ports:
-    - name: http
-      port: 3200
-      targetPort: 3200
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo-ingester
-  namespace: monitoring
-  labels:
-    app: tempo-ingester
-spec:
-  clusterIP: None
-  selector:
-    app: tempo-ingester
-  ports:
-    - name: http
-      port: 3200
-      targetPort: 3200
-    - name: memberlist
-      port: 7946
-      targetPort: 7946
+    - name: zipkin
+      port: 9411
+      targetPort: 9411
 ```
 
 Deploy Tempo:
@@ -410,23 +213,24 @@ grafana:
     - name: Tempo
       type: tempo
       access: proxy
-      url: http://tempo-query-frontend.monitoring.svc.cluster.local:3200
+      url: http://tempo.monitoring.svc.cluster.local:3200
       jsonData:
         httpMethod: GET
-        tracesToLogs:
+        tracesToLogsV2:
           datasourceUid: 'loki'
-          tags: ['job', 'instance', 'pod', 'namespace']
-          mappedTags: [{ key: 'service.name', value: 'service' }]
-          mapTagNamesEnabled: true
-          spanStartTimeShift: '1m'
+          tags: [{ key: 'job' }, { key: 'instance' }, { key: 'pod' }, { key: 'namespace' }]
+          spanStartTimeShift: '-1m'
           spanEndTimeShift: '1m'
           filterByTraceID: true
           filterBySpanID: true
         tracesToMetrics:
           datasourceUid: 'prometheus'
           tags: [{ key: 'service.name', value: 'service' }]
-          spanStartTimeShift: '1m'
+          spanStartTimeShift: '-1m'
           spanEndTimeShift: '1m'
+          queries:
+            - name: 'Request rate'
+              query: 'sum(rate(http_requests_total{$$__tags}[5m]))'
         serviceMap:
           datasourceUid: 'prometheus'
         search:
@@ -470,11 +274,11 @@ data:
     exporters:
       # Send to Tempo
       otlp:
-        endpoint: tempo-distributor.monitoring.svc.cluster.local:4317
+        endpoint: tempo.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
 
-      # Send metrics to Prometheus
+      # Expose metrics for Prometheus to scrape
       prometheus:
         endpoint: "0.0.0.0:8889"
 
@@ -512,7 +316,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:latest
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args:
             - --config=/etc/otel-collector-config.yaml
           ports:
@@ -579,13 +383,26 @@ Application code example (Go):
 
 ```go
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
-    "go.opentelemetry.io/otel/trace"
 )
 
-// Record metric with exemplar
-counter.Add(ctx, 1)  // Automatically includes trace ID as exemplar
+func recordRequest(ctx context.Context) error {
+    meter := otel.Meter("checkout-service")
+    counter, err := meter.Int64Counter(
+        "http_requests_total",
+        metric.WithDescription("Total HTTP requests"),
+    )
+    if err != nil {
+        return err
+    }
+
+    // If ctx contains a sampled span and exemplars are enabled, the SDK can attach trace/span IDs.
+    counter.Add(ctx, 1)
+    return nil
+}
 ```
 
 ## Creating Grafana Dashboards with Traces
@@ -608,7 +425,13 @@ Create a dashboard that links metrics to traces:
     {
       "title": "Trace View",
       "datasource": "Tempo",
-      "type": "tempo-panel"
+      "type": "traces",
+      "targets": [
+        {
+          "query": "${traceId}",
+          "queryType": "traceql"
+        }
+      ]
     }
   ]
 }
@@ -625,9 +448,10 @@ metadata:
   name: tempo
   namespace: monitoring
 spec:
+  jobLabel: app
   selector:
     matchLabels:
-      app: tempo-distributor
+      app: tempo
   endpoints:
     - port: http
       interval: 30s
@@ -646,8 +470,8 @@ spec:
     - name: tempo
       interval: 30s
       rules:
-        - alert: TempoIngesterUnhealthy
-          expr: up{job="tempo-ingester"} == 0
+        - alert: TempoDown
+          expr: up{job="tempo"} == 0
           for: 5m
           labels:
             severity: critical
