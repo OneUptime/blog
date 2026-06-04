@@ -18,9 +18,9 @@ When you stop an AKS cluster, Azure:
 
 **Deallocates all agent nodes**, stopping compute charges.
 
-**Preserves the control plane** at no cost for 90 days.
+**Stops the control plane** and preserves cluster state for up to 12 months.
 
-**Maintains cluster configuration**, including deployments, services, and persistent volumes.
+**Maintains cluster configuration**, including deployments, services, and persistent volumes, except for standalone pods that are deleted during node drain.
 
 **Keeps persistent disks**, which continue to incur storage costs.
 
@@ -72,10 +72,12 @@ az automation account create \
   --location eastus
 
 # Create managed identity for automation
-az automation account update \
-  --name aks-automation \
-  --resource-group myResourceGroup \
-  --assign-identity
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+az rest \
+  --method patch \
+  --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Automation/automationAccounts/aks-automation?api-version=2024-10-23" \
+  --body '{"identity":{"type":"SystemAssigned"}}'
 ```
 
 Grant permissions:
@@ -138,10 +140,34 @@ az automation runbook create \
   --type PowerShell \
   --location eastus
 
+az automation runbook replace-content \
+  --automation-account-name aks-automation \
+  --resource-group myResourceGroup \
+  --name stop-aks-cluster \
+  --content @./stop-aks-cluster.ps1
+
 az automation runbook publish \
   --automation-account-name aks-automation \
   --resource-group myResourceGroup \
   --name stop-aks-cluster
+
+az automation runbook create \
+  --automation-account-name aks-automation \
+  --resource-group myResourceGroup \
+  --name start-aks-cluster \
+  --type PowerShell \
+  --location eastus
+
+az automation runbook replace-content \
+  --automation-account-name aks-automation \
+  --resource-group myResourceGroup \
+  --name start-aks-cluster \
+  --content @./start-aks-cluster.ps1
+
+az automation runbook publish \
+  --automation-account-name aks-automation \
+  --resource-group myResourceGroup \
+  --name start-aks-cluster
 ```
 
 ## Scheduling with Azure Automation
@@ -176,20 +202,25 @@ az automation schedule create \
 
 Link schedules to runbooks:
 
-```bash
-az automation job-schedule create \
-  --automation-account-name aks-automation \
-  --resource-group myResourceGroup \
-  --runbook-name stop-aks-cluster \
-  --schedule-name stop-at-7pm \
-  --parameters ResourceGroupName=myResourceGroup ClusterName=myAKSCluster
+```powershell
+$Parameters = @{
+    ResourceGroupName = "myResourceGroup"
+    ClusterName = "myAKSCluster"
+}
 
-az automation job-schedule create \
-  --automation-account-name aks-automation \
-  --resource-group myResourceGroup \
-  --runbook-name start-aks-cluster \
-  --schedule-name start-at-8am \
-  --parameters ResourceGroupName=myResourceGroup ClusterName=myAKSCluster
+Register-AzAutomationScheduledRunbook `
+    -AutomationAccountName "aks-automation" `
+    -ResourceGroupName "myResourceGroup" `
+    -RunbookName "stop-aks-cluster" `
+    -ScheduleName "stop-at-7pm" `
+    -Parameters $Parameters
+
+Register-AzAutomationScheduledRunbook `
+    -AutomationAccountName "aks-automation" `
+    -ResourceGroupName "myResourceGroup" `
+    -RunbookName "start-aks-cluster" `
+    -ScheduleName "start-at-8am" `
+    -Parameters $Parameters
 ```
 
 ## Using Terraform
@@ -242,26 +273,24 @@ resource "azurerm_automation_schedule" "stop_evening" {
 
 Stop clusters on Friday evening, start Monday morning:
 
-```bash
+```powershell
 # Stop Friday at 6 PM
-az automation schedule create \
-  --automation-account-name aks-automation \
-  --resource-group myResourceGroup \
-  --name stop-friday \
-  --start-time "2026-02-14T18:00:00-05:00" \
-  --frequency Week \
-  --interval 1 \
-  --week-days Friday
+New-AzAutomationSchedule `
+    -AutomationAccountName "aks-automation" `
+    -ResourceGroupName "myResourceGroup" `
+    -Name "stop-friday" `
+    -StartTime "2026-02-13T18:00:00-05:00" `
+    -WeekInterval 1 `
+    -DaysOfWeek Friday
 
 # Start Monday at 7 AM
-az automation schedule create \
-  --automation-account-name aks-automation \
-  --resource-group myResourceGroup \
-  --name start-monday \
-  --start-time "2026-02-10T07:00:00-05:00" \
-  --frequency Week \
-  --interval 1 \
-  --week-days Monday
+New-AzAutomationSchedule `
+    -AutomationAccountName "aks-automation" `
+    -ResourceGroupName "myResourceGroup" `
+    -Name "start-monday" `
+    -StartTime "2026-02-10T07:00:00-05:00" `
+    -WeekInterval 1 `
+    -DaysOfWeek Monday
 ```
 
 ## Using Logic Apps
@@ -291,7 +320,7 @@ Alternative scheduling with Logic Apps:
         "type": "Http",
         "inputs": {
           "method": "POST",
-          "uri": "https://management.azure.com/subscriptions/SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myAKSCluster/stop?api-version=2023-01-01",
+          "uri": "https://management.azure.com/subscriptions/SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myAKSCluster/stop?api-version=2025-10-01",
           "authentication": {
             "type": "ManagedServiceIdentity"
           }
@@ -324,7 +353,7 @@ JOB_ID=$(az automation job list \
 az automation job show \
   --automation-account-name aks-automation \
   --resource-group myResourceGroup \
-  --job-id $JOB_ID
+  --ids "$JOB_ID"
 ```
 
 ## Cost Analysis
@@ -349,14 +378,14 @@ For a 3-node cluster with Standard_D4s_v3 VMs at $0.192/hour:
 Before stopping, ensure stateful workloads are backed up:
 
 ```bash
-# Create snapshot before stop
+# Create backup before stop
 kubectl exec deployment/database -- pg_dump > backup.sql
 
 # Stop cluster
 az aks stop --name myAKSCluster --resource-group myResourceGroup
 
 # After restart, restore if needed
-kubectl exec deployment/database -- psql < backup.sql
+kubectl exec -i deployment/database -- psql < backup.sql
 ```
 
 ## Troubleshooting
