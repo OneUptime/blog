@@ -157,24 +157,24 @@ Install SOPS and encrypt secrets:
 # Install SOPS
 brew install sops
 
-# Create secrets file
-cat > secrets.yaml <<EOF
-DATABASE_PASSWORD: production-password
-API_KEY: sk-prod-key-123
+# Create secrets env file
+cat > secrets.env <<EOF
+DATABASE_PASSWORD=production-password
+API_KEY=sk-prod-key-123
 EOF
 
 # Encrypt with age
-sops --encrypt --age <public-key> secrets.yaml > secrets.enc.yaml
+sops --encrypt --age <public-key> secrets.env > secrets.enc.env
 
 # Commit encrypted file
-git add secrets.enc.yaml
+git add secrets.enc.env
 ```
 
 Decrypt during build:
 
 ```bash
 # Decrypt secrets
-sops --decrypt secrets.enc.yaml > secrets.env
+sops --decrypt secrets.enc.env > secrets.env
 
 # Build
 kustomize build overlays/production/
@@ -183,16 +183,12 @@ kustomize build overlays/production/
 rm secrets.env
 ```
 
-Integrate with Kustomize using exec plugin:
+Use the decrypted env file in Kustomize:
 
 ```yaml
 # kustomization.yaml
-generators:
-- |-
-  apiVersion: builtin
-  kind: SecretGenerator
-  metadata:
-    name: app-secrets
+secretGenerator:
+- name: app-secrets
   envs:
   - secrets.env
 ```
@@ -205,8 +201,11 @@ Fetch secrets from HashiCorp Vault:
 #!/bin/bash
 # vault-secrets.sh
 
-# Login to Vault
-vault login -method=kubernetes role=myapp
+# Login to Vault with the pod service account token
+SERVICE_ACCOUNT_JWT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+export VAULT_TOKEN="$(vault write -field=token auth/kubernetes/login \
+  role=myapp \
+  jwt="${SERVICE_ACCOUNT_JWT}")"
 
 # Fetch secrets
 vault kv get -format=json secret/myapp/prod | \
@@ -294,10 +293,12 @@ Generate secrets for SSH keys:
 ```yaml
 secretGenerator:
 - name: ssh-keys
+  type: kubernetes.io/ssh-auth
   files:
-  - id_rsa=~/.ssh/id_rsa
-  - id_rsa.pub=~/.ssh/id_rsa.pub
+  - ssh-privatekey=id_rsa
 ```
+
+Copy `id_rsa` into the kustomization directory before building, and keep it out of version control.
 
 ## TLS certificates from cert-manager
 
@@ -326,7 +327,7 @@ secretGenerator:
   - secrets-v2.env  # Updated secrets
 ```
 
-The hash suffix changes, triggering pod restarts.
+The hash suffix changes. If workloads reference the generated Secret in the same kustomization, Kustomize updates those references and changes the pod template, triggering a rollout.
 
 ## External Secrets Operator integration
 
@@ -367,20 +368,25 @@ resources:
 
 ## Templating secrets with variable substitution
 
-Use vars for secret references:
+Create the secret values from environment variables before Kustomize generates the Secret:
+
+```bash
+export DB_PASSWORD="secure-password"
+
+cat > secrets.env.template <<'EOF'
+connection_string=postgresql://user:${DB_PASSWORD}@postgres:5432/mydb
+EOF
+
+envsubst < secrets.env.template > secrets.env
+```
+
+Generate the Secret from the substituted env file:
 
 ```yaml
 secretGenerator:
 - name: db-connection
-  literals:
-  - connection_string=postgresql://user:$(DB_PASSWORD)@postgres:5432/mydb
-```
-
-Substitute during build:
-
-```bash
-export DB_PASSWORD="secure-password"
-kustomize build base/ | envsubst
+  envs:
+  - secrets.env
 ```
 
 ## Merging secrets across layers
