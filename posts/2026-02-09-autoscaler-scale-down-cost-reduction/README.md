@@ -12,7 +12,7 @@ The Kubernetes Cluster Autoscaler scales nodes up when pods are pending, but sca
 
 ## Understanding Scale-Down Mechanics
 
-Cluster Autoscaler considers a node for removal when total CPU and memory requests are below 50% of capacity, the node has been underutilized for the configured duration, and all pods can be moved to other nodes without violating PodDisruptionBudgets or affinity rules.
+Cluster Autoscaler considers a node for removal when the maximum of CPU-request utilization and memory-request utilization is below the configured threshold, the node has been unneeded for the configured duration, and all pods can be moved to other nodes without violating PodDisruptionBudgets or scheduling rules.
 
 ## Configuring Aggressive Scale-Down
 
@@ -38,15 +38,15 @@ spec:
     spec:
       serviceAccountName: cluster-autoscaler
       containers:
-      - image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+      - image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         name: cluster-autoscaler
         command:
         - ./cluster-autoscaler
         - --v=4
         - --cloud-provider=aws
+        - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
         - --skip-nodes-with-local-storage=false
         - --expander=least-waste
-        - --scale-down-enabled=true
         - --scale-down-delay-after-add=5m
         - --scale-down-delay-after-delete=10s
         - --scale-down-delay-after-failure=3m
@@ -58,13 +58,16 @@ spec:
 
 Key parameters:
 
+- `node-group-auto-discovery`: Finds AWS Auto Scaling Groups tagged for Cluster Autoscaler management
 - `scale-down-unneeded-time`: How long a node must be unneeded before removal (default 10m, set to 5m for aggressive scaling)
 - `scale-down-utilization-threshold`: Node utilization below which it's considered for removal (default 0.5)
 - `scale-down-delay-after-add`: Wait time after scale-up before allowing scale-down
 
+Use a Cluster Autoscaler image version that matches your Kubernetes cluster's minor version.
+
 ## Protecting Critical Workloads
 
-Use annotations to prevent node scale-down:
+Use annotations to prevent pod eviction during node scale-down:
 
 ```yaml
 # critical-deployment.yaml
@@ -73,8 +76,13 @@ kind: Deployment
 metadata:
   name: database
 spec:
+  selector:
+    matchLabels:
+      app: database
   template:
     metadata:
+      labels:
+        app: database
       annotations:
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
@@ -100,10 +108,10 @@ spec:
 
 ## Time-Based Scaling Policies
 
-Scale down aggressively during off-hours using node pool scheduling:
+Scale down aggressively during off-hours by reducing workload replicas:
 
 ```bash
-# Scale down non-production node pools at night
+# Scale down the batch workload at night
 # cron job at 8 PM
 0 20 * * * kubectl scale deployment batch-processor --replicas=1 -n production
 
@@ -129,8 +137,8 @@ increase(cluster_autoscaler_scaled_down_nodes_total[1h])
 # Unneeded nodes
 cluster_autoscaler_unneeded_nodes_count
 
-# Cost savings estimate
-cluster_autoscaler_nodes_count{state="scaleDown"} * avg_node_hourly_cost * 730
+# Approximate cost savings estimate with a custom avg_node_hourly_cost metric
+(max_over_time(cluster_autoscaler_nodes_count{state="ready"}[1h]) - cluster_autoscaler_nodes_count{state="ready"}) * scalar(avg(avg_node_hourly_cost)) * 730
 ```
 
 ## Conclusion
