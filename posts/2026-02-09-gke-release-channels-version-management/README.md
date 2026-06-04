@@ -14,15 +14,15 @@ This guide explains how to configure and use GKE release channels for automated 
 
 ## Understanding Release Channels
 
-GKE offers three release channels:
+GKE offers several release channels. This guide focuses on the three commonly used channels:
 
-**Rapid** - Newest Kubernetes versions first, typically 4-8 weeks after release. For early adopters and testing.
+**Rapid** - Newest GKE versions first. For early adopters and testing.
 
-**Regular** - Balanced approach, typically 8-12 weeks after release. Recommended for most production workloads.
+**Regular** - Balanced approach. Recommended for most production workloads.
 
-**Stable** - Most conservative, typically 12-16 weeks after release. For risk-averse environments.
+**Stable** - Most conservative. For risk-averse environments.
 
-Clusters enrolled in channels receive automatic upgrades during maintenance windows. You can temporarily pause upgrades if needed.
+Clusters enrolled in channels receive automatic upgrades during maintenance windows. You can temporarily pause upgrades with maintenance exclusions if needed.
 
 ## Creating Cluster with Release Channel
 
@@ -134,7 +134,7 @@ Set maintenance window for upgrades:
 gcloud container clusters update production-cluster \
   --zone=us-central1-a \
   --maintenance-window-start=2026-02-10T03:00:00Z \
-  --maintenance-window-duration=4h \
+  --maintenance-window-end=2026-02-10T07:00:00Z \
   --maintenance-window-recurrence='FREQ=WEEKLY;BYDAY=SU'
 ```
 
@@ -187,7 +187,8 @@ gcloud container clusters update production-cluster \
   --zone=us-central1-a \
   --add-maintenance-exclusion-name=holiday-freeze \
   --add-maintenance-exclusion-start=2026-12-20T00:00:00Z \
-  --add-maintenance-exclusion-end=2027-01-05T00:00:00Z
+  --add-maintenance-exclusion-end=2027-01-05T00:00:00Z \
+  --add-maintenance-exclusion-scope=no_upgrades
 ```
 
 Remove exclusion:
@@ -224,12 +225,15 @@ gcloud logging read \
 
 ## Pausing Automatic Upgrades
 
-Temporarily pause upgrades (up to 90 days):
+Temporarily pause all automatic upgrades (up to 90 days):
 
 ```bash
 gcloud container clusters update production-cluster \
   --zone=us-central1-a \
-  --no-enable-autoupgrade
+  --add-maintenance-exclusion-name=upgrade-pause \
+  --add-maintenance-exclusion-start=2026-02-10T00:00:00Z \
+  --add-maintenance-exclusion-end=2026-05-10T00:00:00Z \
+  --add-maintenance-exclusion-scope=no_upgrades
 ```
 
 Resume upgrades:
@@ -237,7 +241,7 @@ Resume upgrades:
 ```bash
 gcloud container clusters update production-cluster \
   --zone=us-central1-a \
-  --enable-autoupgrade
+  --remove-maintenance-exclusion=upgrade-pause
 ```
 
 Note: Pausing doesn't unenroll from the release channel.
@@ -251,7 +255,7 @@ Node pools automatically upgrade with the cluster, but you can configure separat
 gcloud container node-pools create custom-pool \
   --cluster=production-cluster \
   --zone=us-central1-a \
-  --node-version=1.28.5-gke.1217000 \
+  --node-version=VERSION_FROM_GET_SERVER_CONFIG \
   --num-nodes=3
 ```
 
@@ -275,7 +279,9 @@ gcloud container clusters create test-cluster \
   --release-channel=rapid
 
 # 2. Deploy applications to test cluster
-kubectl --context=test-cluster apply -f app.yaml
+gcloud container clusters get-credentials test-cluster \
+  --zone=us-central1-a
+kubectl apply -f app.yaml
 
 # 3. Run integration tests
 ./run-tests.sh
@@ -296,12 +302,9 @@ gcloud container clusters update production-cluster \
 Create alert for cluster upgrades:
 
 ```bash
-gcloud alpha monitoring policies create \
-  --notification-channels=CHANNEL_ID \
-  --display-name="GKE Cluster Upgrade Alert" \
-  --condition-display-name="Cluster upgrade started" \
-  --condition-filter='resource.type="k8s_cluster"
-    protoPayload.methodName="UpdateCluster"'
+gcloud container clusters update production-cluster \
+  --zone=us-central1-a \
+  --notification-config=pubsub=ENABLED,pubsub-topic=projects/PROJECT_ID/topics/TOPIC_NAME,filter=UpgradeEvent
 ```
 
 ## Rollback Strategy
