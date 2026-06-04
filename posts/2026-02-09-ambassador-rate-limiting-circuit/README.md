@@ -32,9 +32,10 @@ helm repo update
 kubectl create namespace ambassador
 kubectl apply -f https://app.getambassador.io/yaml/edge-stack/3.9.0/aes-crds.yaml
 
+# Set LICENSE_KEY to your Ambassador Edge Stack license key
 helm install ambassador datawire/edge-stack \
   --namespace ambassador \
-  --set enableAES=true
+  --set licenseKey.value=$LICENSE_KEY
 ```
 
 Verify installation:
@@ -130,6 +131,8 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_APPDIRECTORY
+          value: config
         - name: RUNTIME_WATCH_ROOT
           value: "false"
         volumeMounts:
@@ -199,6 +202,7 @@ metadata:
   namespace: ambassador
 spec:
   service: rate-limit.ambassador:8081
+  domain: ambassador
   protocol_version: v3
 ---
 apiVersion: getambassador.io/v3alpha1
@@ -237,8 +241,9 @@ spec:
   labels:
     ambassador:
       - request_label:
-        - user_id:
-            header: X-User-ID
+        - request_headers:
+            header_name: X-User-ID
+            key: user_id
       - request_label:
         - generic_key:
             value: protected
@@ -261,7 +266,7 @@ descriptors:
 
 ## Implementing Circuit Breaking
 
-Circuit breaking in Ambassador is configured per service using the `CircuitBreaker` resource:
+Circuit breaking in Ambassador is configured globally in the `ambassador` `Module`, or per service with the `circuit_breakers` attribute on a `Mapping`:
 
 ```yaml
 # circuit-breaker.yaml
@@ -303,11 +308,12 @@ spec:
     max_pending_requests: 100
     max_requests: 100
     max_retries: 3
-  # Outlier detection for circuit breaking
-  outlier_detection:
-    consecutive_5xx: 5  # Open circuit after 5 consecutive errors
+  # Outlier detection for ejecting unhealthy endpoints.
+  # In Ambassador's v3alpha1 CRD this field is a string containing Envoy config.
+  outlier_detection: |
+    consecutive_5xx: 5  # Eject endpoint after 5 consecutive errors
     interval: 10s  # Check every 10 seconds
-    base_ejection_time: 30s  # Keep circuit open for 30 seconds
+    base_ejection_time: 30s  # Keep endpoint ejected for at least 30 seconds
     max_ejection_percent: 50  # Max 50% of endpoints can be ejected
     enforcing_consecutive_5xx: 100  # Enforce 100% of the time
 ```
@@ -325,7 +331,7 @@ metadata:
 spec:
   prefix: /critical-api/
   service: critical-backend:8080
-  outlier_detection:
+  outlier_detection: |
     # Consecutive errors
     consecutive_5xx: 3
     consecutive_gateway_failure: 3
@@ -382,7 +388,7 @@ spec:
     max_retries: 3
 
   # Outlier detection
-  outlier_detection:
+  outlier_detection: |
     consecutive_5xx: 5
     interval: 10s
     base_ejection_time: 30s
@@ -426,14 +432,14 @@ Query important metrics:
 # Rate limit exceeded count
 sum(rate(envoy_cluster_ratelimit_over_limit[5m])) by (cluster_name)
 
-# Circuit breaker trips
-sum(rate(envoy_cluster_circuit_breakers_default_rq_open[5m])) by (cluster_name)
+# Circuit breaker open state
+max_over_time(envoy_cluster_circuit_breakers_default_rq_open[5m])
 
-# Rejected requests due to circuit breaker
-sum(rate(envoy_cluster_circuit_breakers_default_rq_pending_open[5m])) by (cluster_name)
+# Pending request circuit breaker open state
+max_over_time(envoy_cluster_circuit_breakers_default_rq_pending_open[5m])
 
-# Outlier detection ejections
-sum(rate(envoy_cluster_outlier_detection_ejections_active[5m])) by (cluster_name)
+# Active outlier detection ejections
+max_over_time(envoy_cluster_outlier_detection_ejections_active[5m])
 ```
 
 Create Grafana dashboards to visualize:
@@ -447,8 +453,8 @@ Create Grafana dashboards to visualize:
 Generate load to trigger rate limits:
 
 ```bash
-# Get Ambassador service IP
-AMBASSADOR_IP=$(kubectl get svc ambassador -n ambassador -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get Ambassador service IP or hostname
+AMBASSADOR_IP=$(kubectl get svc ambassador -n ambassador -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Generate requests to trigger rate limit
 for i in {1..200}; do
@@ -469,7 +475,7 @@ kubectl run error-backend --image=nginx --port=80
 kubectl expose pod error-backend --port=80
 
 # Configure it to return 500 errors
-kubectl exec error-backend -- sh -c 'echo "error_page 404 =500 /50x.html;" > /etc/nginx/conf.d/errors.conf'
+kubectl exec error-backend -- sh -c 'printf "server { listen 80; location / { return 500; } }\n" > /etc/nginx/conf.d/default.conf'
 kubectl exec error-backend -- nginx -s reload
 
 # Create mapping with circuit breaker
@@ -481,13 +487,13 @@ metadata:
 spec:
   prefix: /test/
   service: error-backend:80
-  outlier_detection:
+  outlier_detection: |
     consecutive_5xx: 3
     interval: 5s
     base_ejection_time: 30s
 EOF
 
-# Generate requests - circuit should open after 3 failures
+# Generate requests - outlier detection can eject the failing endpoint after 3 failures
 for i in {1..10}; do
   curl -i http://${AMBASSADOR_IP}/test/
   sleep 1
