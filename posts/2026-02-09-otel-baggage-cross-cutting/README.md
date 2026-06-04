@@ -8,13 +8,13 @@ Description: Learn how to use OpenTelemetry baggage to propagate cross-cutting c
 
 ---
 
-OpenTelemetry baggage provides a mechanism to propagate arbitrary key-value pairs across service boundaries alongside trace context. Unlike span attributes which stay within a single service, baggage travels with requests through your entire distributed system, making it perfect for cross-cutting concerns.
+OpenTelemetry baggage provides a mechanism to propagate arbitrary key-value pairs across service boundaries alongside trace context. Unlike span attributes, which are not propagated automatically, baggage travels with requests through your distributed system, making it useful for cross-cutting concerns.
 
 ## Understanding Baggage
 
 Baggage consists of name-value pairs that propagate through distributed systems. Services can read baggage to make decisions or add it as span attributes. Common use cases include user identification, tenant routing, feature flags, and A/B testing configuration.
 
-Baggage differs from trace context in important ways. While trace context contains only trace and span IDs for linking spans, baggage can contain any data. However, baggage adds overhead to requests, so use it judiciously.
+Baggage differs from trace context in important ways. While W3C Trace Context carries identifiers and trace metadata for linking spans, baggage can contain application-defined key-value data. However, baggage adds overhead to requests and may be sent to unintended downstream services, so use it judiciously and avoid storing sensitive values.
 
 ## Setting and Reading Baggage
 
@@ -122,10 +122,14 @@ Use baggage to propagate tenant information for multi-tenant applications.
 ```python
 # multi_tenant_baggage.py
 from opentelemetry import baggage, trace
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from flask import Flask, request, g
 import requests
 
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
+RequestsInstrumentor().instrument()
 
 @app.before_request
 def extract_tenant_context():
@@ -140,7 +144,7 @@ def extract_tenant_context():
         # Set baggage for downstream propagation
         ctx = baggage.set_baggage("tenant.id", tenant_id)
         from opentelemetry import context as ctx_api
-        ctx_api.attach(ctx)
+        g._otel_baggage_token = ctx_api.attach(ctx)
 
     # Get tenant configuration
     tenant_config = get_tenant_config(tenant_id)
@@ -153,6 +157,14 @@ def extract_tenant_context():
     span = trace.get_current_span()
     span.set_attribute("tenant.id", tenant_id)
     span.set_attribute("tenant.tier", tenant_config['tier'])
+
+@app.teardown_request
+def detach_tenant_context(error=None):
+    """Detach baggage context attached during this request"""
+    token = getattr(g, "_otel_baggage_token", None)
+    if token:
+        from opentelemetry import context as ctx_api
+        ctx_api.detach(token)
 
 def get_tenant_config(tenant_id):
     """Get tenant-specific configuration"""
@@ -182,10 +194,14 @@ Propagate feature flag state through your system using baggage.
 ```python
 # feature_flags_baggage.py
 from opentelemetry import baggage, trace
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from flask import Flask, request
 import requests
 
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
+RequestsInstrumentor().instrument()
 
 class FeatureFlagService:
     """Manage feature flags"""
@@ -242,6 +258,7 @@ def dashboard():
 from flask import Flask as DownstreamFlask
 
 downstream_app = DownstreamFlask(__name__)
+FlaskInstrumentor().instrument_app(downstream_app)
 
 @downstream_app.route('/api/data')
 def get_analytics_data():
@@ -269,11 +286,15 @@ Use baggage to propagate A/B test assignments across services.
 ```python
 # ab_testing_baggage.py
 from opentelemetry import baggage, trace
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from flask import Flask, request
 import hashlib
 import requests
 
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
+RequestsInstrumentor().instrument()
 
 class ABTestService:
     """Manage A/B test assignments"""
@@ -328,6 +349,7 @@ def get_product(product_id):
 
 # Pricing service using A/B test variant
 pricing_app = Flask(__name__)
+FlaskInstrumentor().instrument_app(pricing_app)
 
 @pricing_app.route('/api/price/<product_id>')
 def get_price(product_id):
@@ -367,18 +389,18 @@ Follow these best practices when using baggage to avoid common pitfalls.
 ```python
 # baggage_best_practices.py
 from opentelemetry import baggage, trace
-import json
 
 def set_baggage_safely(key, value, max_length=4096):
     """Set baggage with size limits"""
     # Convert value to string
     str_value = str(value)
+    encoded_value = str_value.encode("utf-8")
 
     # Check size
-    if len(str_value) > max_length:
+    if len(encoded_value) > max_length:
         # Truncate or skip
         print(f"Warning: Baggage value for '{key}' exceeds {max_length} bytes")
-        str_value = str_value[:max_length]
+        str_value = encoded_value[:max_length].decode("utf-8", errors="ignore")
 
     # Set baggage
     ctx = baggage.set_baggage(key, str_value)
@@ -386,19 +408,7 @@ def set_baggage_safely(key, value, max_length=4096):
 
 def get_all_baggage():
     """Get all baggage entries"""
-    # Get all baggage as dictionary
-    all_baggage = {}
-
-    # Note: OpenTelemetry Python doesn't have get_all method
-    # You need to track keys you set
-    known_keys = ['user.id', 'tenant.id', 'session.id']
-
-    for key in known_keys:
-        value = baggage.get_baggage(key)
-        if value:
-            all_baggage[key] = value
-
-    return all_baggage
+    return dict(baggage.get_all())
 
 def add_baggage_to_span():
     """Add all baggage to current span as attributes"""
