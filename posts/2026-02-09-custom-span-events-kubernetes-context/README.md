@@ -10,7 +10,7 @@ Description: Learn how to add custom span events and attributes that capture Kub
 
 Default OpenTelemetry instrumentation captures HTTP requests, database queries, and messaging operations. However, Kubernetes environments introduce additional context that can be crucial for debugging: pod lifecycle events, resource constraints, service mesh routing decisions, and configuration changes. Adding custom span events and attributes captures this Kubernetes-specific context directly in your traces.
 
-Custom span attributes enrich spans with metadata like namespace, deployment name, replica count, and resource limits. Span events record point-in-time occurrences like container restarts, configuration reloads, or circuit breaker activations. Together, they provide the contextual information needed to understand distributed system behavior in Kubernetes.
+Custom span attributes enrich spans with metadata like namespace, deployment name, pod template hash, and resource limits. Span events record point-in-time occurrences like container restarts, configuration reloads, or circuit breaker activations. Together, they provide the contextual information needed to understand distributed system behavior in Kubernetes.
 
 ## Understanding Span Attributes vs Span Events
 
@@ -36,25 +36,25 @@ import (
 
 // KubernetesAttributes holds Kubernetes-specific metadata
 type KubernetesAttributes struct {
-    Namespace      string
-    PodName        string
-    PodUID         string
-    NodeName       string
-    DeploymentName string
-    ReplicaSet     string
-    ContainerName  string
+    Namespace       string
+    PodName         string
+    PodUID          string
+    NodeName        string
+    DeploymentName  string
+    PodTemplateHash string
+    ContainerName   string
 }
 
 // LoadFromEnvironment reads Kubernetes metadata from environment variables
 func LoadFromEnvironment() *KubernetesAttributes {
     return &KubernetesAttributes{
-        Namespace:      os.Getenv("K8S_NAMESPACE"),
-        PodName:        os.Getenv("K8S_POD_NAME"),
-        PodUID:         os.Getenv("K8S_POD_UID"),
-        NodeName:       os.Getenv("K8S_NODE_NAME"),
-        DeploymentName: os.Getenv("K8S_DEPLOYMENT_NAME"),
-        ReplicaSet:     os.Getenv("K8S_REPLICASET"),
-        ContainerName:  os.Getenv("K8S_CONTAINER_NAME"),
+        Namespace:       os.Getenv("K8S_NAMESPACE"),
+        PodName:         os.Getenv("K8S_POD_NAME"),
+        PodUID:          os.Getenv("K8S_POD_UID"),
+        NodeName:        os.Getenv("K8S_NODE_NAME"),
+        DeploymentName:  os.Getenv("K8S_DEPLOYMENT_NAME"),
+        PodTemplateHash: os.Getenv("K8S_POD_TEMPLATE_HASH"),
+        ContainerName:   os.Getenv("K8S_CONTAINER_NAME"),
     }
 }
 
@@ -63,7 +63,7 @@ func (k *KubernetesAttributes) ToAttributes() []attribute.KeyValue {
     attrs := []attribute.KeyValue{}
 
     if k.Namespace != "" {
-        attrs = append(attrs, attribute.String("k8s.namespace", k.Namespace))
+        attrs = append(attrs, attribute.String("k8s.namespace.name", k.Namespace))
     }
     if k.PodName != "" {
         attrs = append(attrs, attribute.String("k8s.pod.name", k.PodName))
@@ -77,8 +77,8 @@ func (k *KubernetesAttributes) ToAttributes() []attribute.KeyValue {
     if k.DeploymentName != "" {
         attrs = append(attrs, attribute.String("k8s.deployment.name", k.DeploymentName))
     }
-    if k.ReplicaSet != "" {
-        attrs = append(attrs, attribute.String("k8s.replicaset.name", k.ReplicaSet))
+    if k.PodTemplateHash != "" {
+        attrs = append(attrs, attribute.String("k8s.pod.label.pod-template-hash", k.PodTemplateHash))
     }
     if k.ContainerName != "" {
         attrs = append(attrs, attribute.String("k8s.container.name", k.ContainerName))
@@ -108,15 +108,17 @@ Use these attributes when creating spans:
 package main
 
 import (
-    "context"
     "net/http"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
+
+    "your/module/observability"
 )
 
 var (
-    tracer = otel.Tracer("payment-service")
+    tracer   = otel.Tracer("payment-service")
     k8sAttrs = observability.LoadFromEnvironment()
 )
 
@@ -127,8 +129,8 @@ func handlePayment(w http.ResponseWriter, r *http.Request) {
         "process_payment",
         k8sAttrs.AddToNewSpan(),
         trace.WithAttributes(
-            attribute.String("http.method", r.Method),
-            attribute.String("http.target", r.URL.Path),
+            attribute.String("http.request.method", r.Method),
+            attribute.String("url.path", r.URL.Path),
         ),
     )
     defer span.End()
@@ -156,7 +158,7 @@ package observability
 
 import (
     "context"
-    "io/ioutil"
+    "os"
     "strconv"
     "strings"
 
@@ -168,7 +170,7 @@ import (
 type ResourceMetrics struct {
     MemoryUsageBytes    int64
     MemoryLimitBytes    int64
-    CPUUsageMillicores  int64
+    CPUUsageNanoseconds int64
     CPULimitMillicores  int64
 }
 
@@ -176,35 +178,100 @@ type ResourceMetrics struct {
 func ReadContainerResources() (*ResourceMetrics, error) {
     metrics := &ResourceMetrics{}
 
-    // Read memory usage
-    memUsage, err := ioutil.ReadFile("/sys/fs/cgroup/memory/memory.usage_in_bytes")
-    if err == nil {
-        metrics.MemoryUsageBytes, _ = strconv.ParseInt(strings.TrimSpace(string(memUsage)), 10, 64)
+    // Read memory usage from cgroup v2, then fall back to cgroup v1.
+    if usage, err := readInt64File("/sys/fs/cgroup/memory.current"); err == nil {
+        metrics.MemoryUsageBytes = usage
+    } else if usage, err := readInt64File("/sys/fs/cgroup/memory/memory.usage_in_bytes"); err == nil {
+        metrics.MemoryUsageBytes = usage
     }
 
-    // Read memory limit
-    memLimit, err := ioutil.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes")
-    if err == nil {
-        metrics.MemoryLimitBytes, _ = strconv.ParseInt(strings.TrimSpace(string(memLimit)), 10, 64)
+    // Read memory limit from cgroup v2, then fall back to cgroup v1.
+    if limit, err := readLimitFile("/sys/fs/cgroup/memory.max"); err == nil {
+        metrics.MemoryLimitBytes = limit
+    } else if limit, err := readLimitFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
+        metrics.MemoryLimitBytes = limit
     }
 
-    // Read CPU usage (in microseconds)
-    cpuUsage, err := ioutil.ReadFile("/sys/fs/cgroup/cpu/cpuacct.usage")
-    if err == nil {
-        usageNs, _ := strconv.ParseInt(strings.TrimSpace(string(cpuUsage)), 10, 64)
-        metrics.CPUUsageMillicores = usageNs / 1000000  // Convert to millicores
+    // Read cumulative CPU usage from cgroup v2, then fall back to cgroup v1.
+    cpuUsageFound := false
+    if stat, err := os.ReadFile("/sys/fs/cgroup/cpu.stat"); err == nil {
+        for _, line := range strings.Split(string(stat), "\n") {
+            fields := strings.Fields(line)
+            if len(fields) == 2 && fields[0] == "usage_usec" {
+                usageUs, _ := strconv.ParseInt(fields[1], 10, 64)
+                metrics.CPUUsageNanoseconds = usageUs * 1000
+                cpuUsageFound = true
+                break
+            }
+        }
+    }
+    if !cpuUsageFound {
+        usage, err := readFirstInt64File(
+            "/sys/fs/cgroup/cpuacct/cpuacct.usage",
+            "/sys/fs/cgroup/cpu,cpuacct/cpuacct.usage",
+            "/sys/fs/cgroup/cpu/cpuacct.usage",
+        )
+        if err == nil {
+            metrics.CPUUsageNanoseconds = usage
+        }
     }
 
-    // Read CPU quota
-    cpuQuota, err := ioutil.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
-    if err == nil {
-        quotaUs, _ := strconv.ParseInt(strings.TrimSpace(string(cpuQuota)), 10, 64)
-        if quotaUs > 0 {
-            metrics.CPULimitMillicores = quotaUs / 100  // Convert to millicores
+    quotaPath := "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    periodPath := "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+    if _, err := os.Stat(quotaPath); err != nil {
+        quotaPath = "/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us"
+        periodPath = "/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us"
+    }
+
+    // Read CPU quota from cgroup v2, then fall back to cgroup v1.
+    if cpuMax, err := os.ReadFile("/sys/fs/cgroup/cpu.max"); err == nil {
+        fields := strings.Fields(string(cpuMax))
+        if len(fields) >= 2 && fields[0] != "max" {
+            quotaUs, _ := strconv.ParseInt(fields[0], 10, 64)
+            periodUs, _ := strconv.ParseInt(fields[1], 10, 64)
+            if quotaUs > 0 && periodUs > 0 {
+                metrics.CPULimitMillicores = quotaUs * 1000 / periodUs
+            }
+        }
+    } else if quotaUs, err := readInt64File(quotaPath); err == nil && quotaUs > 0 {
+        if periodUs, err := readInt64File(periodPath); err == nil && periodUs > 0 {
+            metrics.CPULimitMillicores = quotaUs * 1000 / periodUs
         }
     }
 
     return metrics, nil
+}
+
+func readFirstInt64File(paths ...string) (int64, error) {
+    var lastErr error
+    for _, path := range paths {
+        value, err := readInt64File(path)
+        if err == nil {
+            return value, nil
+        }
+        lastErr = err
+    }
+    return 0, lastErr
+}
+
+func readInt64File(path string) (int64, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return 0, err
+    }
+    return strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+}
+
+func readLimitFile(path string) (int64, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return 0, err
+    }
+    value := strings.TrimSpace(string(data))
+    if value == "max" {
+        return 0, nil
+    }
+    return strconv.ParseInt(value, 10, 64)
 }
 
 // AddResourceAttributesToSpan adds resource metrics to the current span
@@ -222,7 +289,7 @@ func AddResourceAttributesToSpan(ctx context.Context) {
     span.SetAttributes(
         attribute.Int64("k8s.container.memory.usage_bytes", metrics.MemoryUsageBytes),
         attribute.Int64("k8s.container.memory.limit_bytes", metrics.MemoryLimitBytes),
-        attribute.Int64("k8s.container.cpu.usage_millicores", metrics.CPUUsageMillicores),
+        attribute.Int64("k8s.container.cpu.usage_nanoseconds", metrics.CPUUsageNanoseconds),
         attribute.Int64("k8s.container.cpu.limit_millicores", metrics.CPULimitMillicores),
     )
 
@@ -346,11 +413,14 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
+
+    "your/module/observability"
 )
 
 var (
-    tracer = otel.Tracer("http-middleware")
+    tracer   = otel.Tracer("http-middleware")
     k8sAttrs = observability.LoadFromEnvironment()
 )
 
@@ -363,11 +433,11 @@ func KubernetesContextMiddleware(next http.Handler) http.Handler {
             k8sAttrs.AddToNewSpan(),
             trace.WithSpanKind(trace.SpanKindServer),
             trace.WithAttributes(
-                attribute.String("http.method", r.Method),
-                attribute.String("http.target", r.URL.Path),
-                attribute.String("http.host", r.Host),
-                attribute.String("http.scheme", r.URL.Scheme),
-                attribute.String("http.user_agent", r.UserAgent()),
+                attribute.String("http.request.method", r.Method),
+                attribute.String("url.path", r.URL.Path),
+                attribute.String("url.scheme", requestScheme(r)),
+                attribute.String("server.address", r.Host),
+                attribute.String("user_agent.original", r.UserAgent()),
             ),
         )
         defer span.End()
@@ -389,8 +459,8 @@ func KubernetesContextMiddleware(next http.Handler) http.Handler {
         // Add response attributes
         duration := time.Since(startTime)
         span.SetAttributes(
-            attribute.Int("http.status_code", wrapped.statusCode),
-            attribute.Int64("http.response_size", wrapped.bytesWritten),
+            attribute.Int("http.response.status_code", wrapped.statusCode),
+            attribute.Int64("http.response.body.size", wrapped.bytesWritten),
             attribute.Int64("http.duration_ms", duration.Milliseconds()),
         )
 
@@ -425,6 +495,16 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
     rw.bytesWritten += int64(n)
     return n, err
 }
+
+func requestScheme(r *http.Request) string {
+    if scheme := r.Header.Get("X-Forwarded-Proto"); scheme != "" {
+        return scheme
+    }
+    if r.TLS != nil {
+        return "https"
+    }
+    return "http"
+}
 ```
 
 ## Adding Database Query Context
@@ -442,11 +522,14 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
+
+    "your/module/observability"
 )
 
 var (
-    tracer = otel.Tracer("database")
+    tracer   = otel.Tracer("database")
     k8sAttrs = observability.LoadFromEnvironment()
 )
 
@@ -461,8 +544,8 @@ func (db *TracedDB) QueryContext(ctx context.Context, query string, args ...inte
         k8sAttrs.AddToNewSpan(),
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("db.system", "postgresql"),
-            attribute.String("db.statement", query),
+            attribute.String("db.system.name", "postgresql"),
+            attribute.String("db.query.text", query),
         ),
     )
     defer span.End()
@@ -477,6 +560,7 @@ func (db *TracedDB) QueryContext(ctx context.Context, query string, args ...inte
 
     if err != nil {
         span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         span.AddEvent("db_query_error", trace.WithAttributes(
             attribute.String("error.message", err.Error()),
             attribute.String("event.type", "database.error"),
@@ -548,8 +632,8 @@ spec:
         - name: K8S_CONTAINER_NAME
           value: "payment-service"
 
-        # Extract ReplicaSet from pod name
-        - name: K8S_REPLICASET
+        # Capture the Deployment's pod-template-hash label
+        - name: K8S_POD_TEMPLATE_HASH
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['pod-template-hash']
@@ -569,32 +653,16 @@ Query traces using the custom attributes you added:
 
 ```bash
 # Find traces for a specific pod
-curl "http://tempo-query:3100/api/search" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tags": {
-      "k8s.pod.name": "payment-service-5d7c8f9b4d-x7k9m"
-    }
-  }'
+curl -G "http://tempo-query:3100/api/search" \
+  --data-urlencode 'q={ span.k8s.pod.name = "payment-service-5d7c8f9b4d-x7k9m" }'
 
 # Find slow requests on a specific node
-curl "http://tempo-query:3100/api/search" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tags": {
-      "k8s.node.name": "node-3",
-      "event.type": "performance.slow_request"
-    }
-  }'
+curl -G "http://tempo-query:3100/api/search" \
+  --data-urlencode 'q={ span.k8s.node.name = "node-3" && event:name = "slow_request" && event.event.type = "performance.slow_request" }'
 
 # Find traces with memory pressure
-curl "http://tempo-query:3100/api/search" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tags": {
-      "k8s.container.memory.near_limit": "true"
-    }
-  }'
+curl -G "http://tempo-query:3100/api/search" \
+  --data-urlencode 'q={ span.k8s.container.memory.near_limit = true }'
 ```
 
 Custom span events and attributes transform generic traces into rich, contextual records of your Kubernetes application behavior. By capturing environment-specific details, you build traces that accelerate debugging and provide deeper insights into distributed system operations.
