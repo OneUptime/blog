@@ -105,11 +105,11 @@ spec:
     type: Container
 ```
 
-Containers requesting less than 50m CPU or more than 4 CPU are rejected:
+Containers requesting less than 50m CPU or setting limits above 4 CPU are rejected:
 
 ```bash
 kubectl apply -f pod-with-10-cpu.yaml
-# Error: containers "app" is invalid: spec.containers[0].resources.requests: Invalid value: "10": must be less than or equal to cpu limit
+# Error from server (Forbidden): pods "app" is forbidden: maximum cpu usage per Container is 4, but limit is 10.
 
 ```
 
@@ -160,7 +160,7 @@ spec:
     type: Pod
 ```
 
-This prevents pods with total requests exceeding 8 CPU or 16Gi memory. Useful for preventing resource hogs.
+This prevents pods whose total CPU or memory usage exceeds 8 CPU or 16Gi memory. Useful for preventing resource hogs.
 
 ## Request-to-Limit Ratio
 
@@ -240,7 +240,7 @@ spec:
     type: Container
 ```
 
-Both constraints apply. Useful for separating concerns.
+Both constraints apply. Useful for separating concerns. Avoid defining conflicting defaults in multiple LimitRanges, because Kubernetes does not guarantee which default value will be applied.
 
 ## Viewing LimitRange
 
@@ -368,9 +368,9 @@ Production enforces minimums and ratio constraints.
 Check if defaults are being applied:
 
 ```bash
-# Find pods with no explicit resource requests
+# Find admitted pods where any container still has no resource requests
 kubectl get pods -n production -o json | \
-  jq '.items[] | select(.spec.containers[0].resources.requests == null) | .metadata.name'
+  jq -r '.items[] | select(any(.spec.containers[]; ((.resources.requests // {}) | length) == 0)) | .metadata.name'
 ```
 
 If this returns nothing, all pods have requests (either explicit or from LimitRange).
@@ -432,13 +432,14 @@ Team A gets smaller defaults for web apps, Team B gets larger defaults for batch
 Use a GitOps tool to deploy LimitRange to all namespaces:
 
 ```yaml
-# Kustomization for all team namespaces
+# team-a/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
 - limitrange-defaults.yaml
 namespace: team-a
 ---
+# team-b/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
