@@ -17,7 +17,7 @@ This guide provides practical techniques for debugging DNS resolution issues usi
 Before debugging, understand how DNS works in Kubernetes:
 
 1. Pods get DNS configuration from kubelet
-2. DNS queries go to CoreDNS service (usually at 10.96.0.10)
+2. DNS queries go to the cluster DNS service, commonly named kube-dns in the kube-system namespace
 3. CoreDNS resolves cluster-local names via kubernetes plugin
 4. External names forward to upstream resolvers
 5. Responses cache based on TTL
@@ -29,6 +29,9 @@ Check basic DNS setup:
 
 kubectl get svc -n kube-system kube-dns
 
+# Get the cluster DNS service IP
+kubectl get svc -n kube-system kube-dns -o jsonpath='{.spec.clusterIP}{"\n"}'
+
 # Check CoreDNS pods
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
@@ -38,7 +41,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 ## Deploying dnsutils Pod for Testing
 
-The dnsutils image contains essential DNS debugging tools:
+The Kubernetes dnsutils example pod contains essential DNS debugging tools:
 
 ```bash
 # Deploy dnsutils pod
@@ -51,10 +54,7 @@ metadata:
 spec:
   containers:
   - name: dnsutils
-    image: registry.k8s.io/e2e-test-images/jessie-dnsutils:1.3
-    command:
-      - sleep
-      - "infinity"
+    image: registry.k8s.io/e2e-test-images/agnhost:2.39
     imagePullPolicy: IfNotPresent
   restartPolicy: Always
 EOF
@@ -62,15 +62,15 @@ EOF
 # Wait for pod to be ready
 kubectl wait --for=condition=ready pod/dnsutils --timeout=60s
 
-# Exec into the pod
-kubectl exec -it dnsutils -- bash
+# Run a test lookup from the pod
+kubectl exec -it dnsutils -- nslookup kubernetes.default
 ```
 
 Alternatively, use a more feature-rich image:
 
 ```bash
 # Deploy with nicolaka/netshoot (includes more tools)
-kubectl run netshoot --image=nicolaka/netshoot --rm -it -- bash
+kubectl run netshoot --image=nicolaka/netshoot --restart=Never --rm -it -- bash
 ```
 
 ## Basic DNS Resolution Testing with nslookup
@@ -78,7 +78,7 @@ kubectl run netshoot --image=nicolaka/netshoot --rm -it -- bash
 Start with simple nslookup queries:
 
 ```bash
-# Inside dnsutils pod
+# Inside an interactive troubleshooting pod
 
 # Test cluster DNS server
 nslookup kubernetes.default
@@ -96,17 +96,18 @@ nslookup my-service.production.svc.cluster.local
 nslookup google.com
 
 # Specify DNS server explicitly
-nslookup kubernetes.default 10.96.0.10
+DNS_IP=$(cat /etc/resolv.conf | awk '/^nameserver/ {print $2; exit}')
+nslookup kubernetes.default "$DNS_IP"
 ```
 
 Expected output for successful resolution:
 
 ```text
-Server:         10.96.0.10
-Address:        10.96.0.10#53
+Server:         10.0.0.10
+Address:        10.0.0.10#53
 
 Name:   kubernetes.default.svc.cluster.local
-Address: 10.96.0.1
+Address: 10.0.0.1
 ```
 
 ## Advanced Debugging with dig
@@ -121,14 +122,15 @@ dig kubernetes.default.svc.cluster.local
 dig kubernetes.default.svc.cluster.local A
 dig kubernetes.default.svc.cluster.local AAAA
 
-# Trace query path
-dig +trace kubernetes.default.svc.cluster.local
+# Trace query path for an external domain
+dig +trace google.com
 
 # Short output (just the IP)
 dig +short kubernetes.default.svc.cluster.local
 
 # Query specific DNS server
-dig @10.96.0.10 kubernetes.default.svc.cluster.local
+DNS_IP=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)
+dig @"$DNS_IP" kubernetes.default.svc.cluster.local
 
 # Show query statistics
 dig +stats kubernetes.default.svc.cluster.local
@@ -145,17 +147,17 @@ Analyze dig output:
 ;kubernetes.default.svc.cluster.local. IN A
 
 ;; ANSWER SECTION:
-kubernetes.default.svc.cluster.local. 30 IN A 10.96.0.1
+kubernetes.default.svc.cluster.local. 30 IN A 10.0.0.1
 
 ;; Query time: 2 msec
-;; SERVER: 10.96.0.10#53(10.96.0.10)
-;; WHEN: Sun Feb 09 10:00:00 UTC 2026
+;; SERVER: 10.0.0.10#53(10.0.0.10)
+;; WHEN: Mon Feb 09 10:00:00 UTC 2026
 ;; MSG SIZE  rcvd: 82
 ```
 
 Key information:
-- Query time: Should be under 10ms for cached queries
-- SERVER: Should point to CoreDNS service IP
+- Query time: Should usually be low for cached queries, but varies by cluster and network
+- SERVER: Should point to the cluster DNS service IP
 - ANSWER SECTION: Contains resolved IP address
 - Status: Should be NOERROR for successful queries
 
@@ -168,16 +170,16 @@ Verify pod DNS settings:
 kubectl exec dnsutils -- cat /etc/resolv.conf
 ```
 
-Expected output:
+Example output:
 
 ```text
-nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.0.0.10
 options ndots:5
 ```
 
 Key elements:
-- **nameserver**: Should point to CoreDNS service IP
+- **nameserver**: Should point to the cluster DNS service IP
 - **search**: Defines search domains for short names
 - **ndots**: Affects when search domains are tried
 
@@ -202,13 +204,15 @@ data:
     nslookup google.com
 
     echo -e "\n=== Testing CoreDNS Directly ==="
-    nslookup kubernetes.default 10.96.0.10
+    DNS_IP=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)
+    nslookup kubernetes.default "$DNS_IP"
 
     echo -e "\n=== Checking Search Path ==="
     nslookup kubernetes
 
     echo -e "\n=== Network Connectivity to CoreDNS ==="
-    nc -zv 10.96.0.10 53
+    nc -zv "$DNS_IP" 53
+    nc -zvu "$DNS_IP" 53
 
     echo -e "\n=== DNS Query Time ==="
     time nslookup kubernetes.default >/dev/null 2>&1
@@ -222,7 +226,7 @@ spec:
   - name: diagnostic
     image: nicolaka/netshoot
     command:
-    - sh
+    - bash
     - /scripts/diagnose.sh
     volumeMounts:
     - name: scripts
@@ -253,10 +257,10 @@ DNS behavior can vary by namespace:
 
 ```bash
 # Test from default namespace
-kubectl run test-default --image=nicolaka/netshoot --rm -it -- nslookup my-service.production
+kubectl run test-default --image=nicolaka/netshoot --restart=Never --rm -it -- nslookup my-service.production
 
 # Test from production namespace
-kubectl run test-prod -n production --image=nicolaka/netshoot --rm -it -- nslookup my-service
+kubectl run test-prod -n production --image=nicolaka/netshoot --restart=Never --rm -it -- nslookup my-service
 ```
 
 ## Debugging Search Path Issues
@@ -281,7 +285,7 @@ Visualize search path behavior:
 # 1. api.default.svc.cluster.local
 # 2. api.svc.cluster.local
 # 3. api.cluster.local
-# 4. api (as-is if it has enough dots based on ndots)
+# 4. api. (absolute lookup if no search-domain answer is found)
 
 kubectl exec dnsutils -- dig +search api
 ```
@@ -333,26 +337,26 @@ data:
     }
 ```
 
-## Testing Service Endpoints
+## Testing Service EndpointSlices
 
-Verify service has endpoints:
+Verify service has EndpointSlices:
 
 ```bash
 # Check service exists
 kubectl get svc my-service -n production
 
-# Check endpoints
-kubectl get endpoints my-service -n production
+# Check EndpointSlices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 
-# Detailed endpoint information
+# Detailed service information
 kubectl describe svc my-service -n production
 ```
 
 Test direct endpoint connectivity:
 
 ```bash
-# Get pod IP from endpoint
-POD_IP=$(kubectl get endpoints my-service -n production -o jsonpath='{.subsets[0].addresses[0].ip}')
+# Get pod IP from EndpointSlice
+POD_IP=$(kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service -o jsonpath='{.items[0].endpoints[0].addresses[0]}')
 
 # Test connectivity to pod IP directly
 kubectl exec dnsutils -- curl -v http://$POD_IP:8080
@@ -387,13 +391,16 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
     ports:
     - protocol: UDP
       port: 53
     - protocol: TCP
       port: 53
-  # Allow other traffic
+  # Allow traffic to other pods in the same namespace
   - to:
     - podSelector: {}
 ```
@@ -460,7 +467,7 @@ spec:
   - name: test
     image: nicolaka/netshoot
     command:
-    - sh
+    - bash
     - /scripts/test.sh
     volumeMounts:
     - name: scripts
@@ -485,11 +492,11 @@ kubectl logs -n kube-system -l k8s-app=kube-dns
 
 **Issue: Service not resolving**
 
-Verify service and endpoints:
+Verify service and EndpointSlices:
 
 ```bash
 kubectl get svc my-service -n production
-kubectl get endpoints my-service -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 ```
 
 **Issue: External DNS not working**
@@ -516,7 +523,7 @@ Follow these practices when debugging DNS:
 
 1. Start with basic nslookup tests before advanced tools
 2. Test from the affected pod's namespace
-3. Verify service and endpoints exist
+3. Verify service and EndpointSlices exist
 4. Check CoreDNS health and logs
 5. Test external DNS separately from cluster DNS
 6. Consider network policies that might block DNS
