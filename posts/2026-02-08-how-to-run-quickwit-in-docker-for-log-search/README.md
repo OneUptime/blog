@@ -10,7 +10,7 @@ Description: Deploy Quickwit in Docker for cost-effective log and trace search w
 
 Quickwit is a cloud-native search engine designed for log and trace data. It was built in Rust and takes a fundamentally different approach to search storage. Instead of keeping indexes on local SSDs like Elasticsearch, Quickwit stores its indexes on object storage (S3, MinIO, GCS) and uses local storage only as a cache. This architecture makes it dramatically cheaper to store and search large volumes of observability data.
 
-Quickwit is Elasticsearch-compatible for both indexing and searching, so existing tools and pipelines work with minimal changes. It also natively supports OpenTelemetry for logs and traces, making it a natural fit for modern observability stacks.
+Quickwit provides Elasticsearch-compatible APIs for indexing and searching, so many existing tools and pipelines work with minimal changes. It also natively supports OpenTelemetry for logs and traces, making it a natural fit for modern observability stacks.
 
 ## Quick Start
 
@@ -45,8 +45,8 @@ services:
       # gRPC port for OpenTelemetry
       - "7281:7281"
     environment:
-      QW_ENABLE_OPENTELEMETRY_OTLP_EXPORTER: "true"
-      QW_ENABLE_JAEGER_EXPORTER: "true"
+      QW_ENABLE_OTLP_ENDPOINT: "true"
+      QW_ENABLE_JAEGER_ENDPOINT: "true"
     volumes:
       # Persist index data and configuration
       - quickwit_data:/quickwit/qwdata
@@ -187,12 +187,12 @@ curl -X POST http://localhost:7280/api/v1/app-logs/search \
   }'
 
 # Find slow requests
-curl "http://localhost:7280/api/v1/app-logs/search?query=duration_ms:>1000&sort_by=-duration_ms"
+curl "http://localhost:7280/api/v1/app-logs/search?query=duration_ms:%3E1000&sort_by=-duration_ms"
 ```
 
 ## Elasticsearch-Compatible API
 
-Quickwit implements the Elasticsearch search API, so tools like Kibana and Grafana work:
+Quickwit implements Elasticsearch-compatible search endpoints that can be used by compatible clients and integrations:
 
 ```bash
 # Use the Elasticsearch-compatible endpoint
@@ -232,7 +232,7 @@ services:
       - "7280:7280"
       - "7281:7281"
     environment:
-      QW_ENABLE_OPENTELEMETRY_OTLP_EXPORTER: "true"
+      QW_ENABLE_OTLP_ENDPOINT: "true"
     volumes:
       - quickwit_data:/quickwit/qwdata
 
@@ -306,7 +306,8 @@ services:
       AWS_REGION: us-east-1
       QW_DEFAULT_INDEX_ROOT_URI: s3://quickwit/indexes
       QW_METASTORE_URI: s3://quickwit/indexes
-      AWS_ENDPOINT: http://minio:9000
+      QW_S3_ENDPOINT: http://minio:9000
+      QW_S3_FORCE_PATH_STYLE_ACCESS: "true"
     volumes:
       - quickwit_data:/quickwit/qwdata
     depends_on:
@@ -351,7 +352,7 @@ Connect Grafana to Quickwit for log visualization:
     ports:
       - "3000:3000"
     environment:
-      GF_INSTALL_PLUGINS: https://github.com/quickwit-oss/quickwit-datasource/releases/download/v0.4.1/quickwit-quickwit-datasource-0.4.1.zip;quickwit-quickwit-datasource
+      GF_INSTALL_PLUGINS: https://github.com/quickwit-oss/quickwit-datasource/releases/download/v0.6.0/quickwit-quickwit-datasource-0.6.0.zip;quickwit-quickwit-datasource
     depends_on:
       - quickwit
 ```
@@ -370,9 +371,6 @@ curl http://localhost:7280/api/v1/indexes/app-logs/describe
 
 # Delete an index and all its data
 curl -X DELETE http://localhost:7280/api/v1/indexes/app-logs
-
-# Force a merge of index splits for better query performance
-curl -X PUT http://localhost:7280/api/v1/indexes/app-logs/merge
 ```
 
 ## Summary
