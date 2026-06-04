@@ -105,7 +105,7 @@ Database migrations should generally succeed on the first try. If they fail, it'
 
 Pod failure policies let you define sophisticated rules for how different types of failures should be handled. You can distinguish between retriable errors (network timeouts, resource constraints) and non-retriable errors (configuration issues, invalid input).
 
-This feature requires Kubernetes 1.25 or later with the JobPodFailurePolicy feature gate enabled.
+This feature is stable and enabled by default in Kubernetes 1.31 and later. When you use podFailurePolicy, the Job's pod template must use `restartPolicy: Never`.
 
 ```yaml
 apiVersion: batch/v1
@@ -121,21 +121,21 @@ spec:
       onExitCodes:
         operator: In
         values: [2]
-    # Don't count out-of-memory kills against backoff limit
+    # Don't count pod disruptions against backoff limit
     - action: Ignore
       onPodConditions:
       - type: DisruptionTarget
         status: "True"
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
         command: ["./process.sh"]
 ```
 
-This policy does two important things. First, if the container exits with code 2 (our convention for config errors), the job fails immediately without retries. Second, if the pod gets evicted due to node pressure or preemption, this doesn't count against the backoff limit.
+This policy does two important things. First, if the container exits with code 2 (our convention for config errors), the job fails immediately without retries. Second, if the pod is terminated by a Kubernetes disruption such as preemption, API-initiated eviction, or taint-based eviction, this doesn't count against the backoff limit.
 
 ## Handling Different Exit Codes
 
@@ -172,7 +172,7 @@ spec:
         values: [42]
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -184,6 +184,7 @@ Your application needs to use these exit codes consistently:
 #!/usr/bin/env python3
 import sys
 import os
+import json
 
 # Exit code definitions
 
@@ -192,6 +193,13 @@ EXIT_RETRIABLE_ERROR = 1
 EXIT_INVALID_INPUT = 2
 EXIT_MISSING_DEPENDENCY = 3
 EXIT_TRANSIENT_ISSUE = 42
+
+class TemporaryResourceUnavailable(Exception):
+    pass
+
+def perform_processing(data):
+    """Replace this with your processing logic"""
+    return data
 
 def check_dependencies():
     """Verify all dependencies are available"""
@@ -245,7 +253,7 @@ if __name__ == "__main__":
 
 ## Handling Pod Disruptions
 
-Pod disruptions happen for reasons outside your application's control. Node maintenance, resource pressure, or preemption can kill pods that were working fine.
+Pod disruptions happen for reasons outside your application's control. Node maintenance, API-initiated eviction, taint-based eviction, or preemption can terminate pods that were working fine.
 
 You don't want these disruptions counting against your backoff limit:
 
@@ -263,16 +271,9 @@ spec:
       onPodConditions:
       - type: DisruptionTarget
         status: "True"
-    # Ignore failures from resource pressure
-    - action: Ignore
-      onPodConditions:
-      - type: MemoryPressure
-        status: "True"
-      - type: DiskPressure
-        status: "True"
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: worker
         image: worker:latest
@@ -285,7 +286,7 @@ spec:
             cpu: "2000m"
 ```
 
-When a pod gets killed due to node pressure or preemption, Kubernetes reschedules it elsewhere without counting the failure. Your actual application errors still count against the limit.
+When a pod gets terminated by a disruption that sets the `DisruptionTarget` pod condition, Kubernetes creates a replacement pod without counting the failure. Your actual application errors still count against the limit.
 
 ## Combining Backoff Limits with Failure Policies
 
@@ -325,7 +326,7 @@ spec:
         values: [0]  # Any non-zero exit code
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
