@@ -46,13 +46,12 @@ metadata:
   name: require-run-as-nonroot
   annotations:
     policies.kyverno.io/title: Require runAsNonRoot
-    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/description: >-
       Containers must run as non-root users to reduce the impact of
       container compromises.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-runAsNonRoot
@@ -62,25 +61,39 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
-          Running as root is not allowed. Set runAsNonRoot to true
-          in securityContext.
-        pattern:
-          spec:
-            =(ephemeralContainers):
-              - =(securityContext):
-                  =(runAsNonRoot): true
-            =(initContainers):
-              - =(securityContext):
-                  =(runAsNonRoot): true
-            containers:
-              - =(securityContext):
-                  =(runAsNonRoot): true
+          Running as root is not allowed. Either set
+          spec.securityContext.runAsNonRoot to true, or set
+          runAsNonRoot to true for every container.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
 ```
 
-The `validationFailureAction: Enforce` setting blocks non-compliant pods. Set it to `Audit` during testing to log violations without blocking. The `background: true` setting enables scanning of existing resources.
+The `failureAction: Enforce` setting blocks non-compliant pods. Set it to `Audit` during testing to report violations without blocking. The `background: true` setting enables scanning of existing resources.
 
-The pattern uses wildcards with `=()` to make fields optional. This accounts for pods that might not define init containers or ephemeral containers.
+The pattern uses equality anchors with `=()` to make fields optional. This accounts for pods that might not define init containers or ephemeral containers.
 
 ## Enforcing Capability Restrictions
 
@@ -95,7 +108,6 @@ metadata:
     policies.kyverno.io/title: Restrict Capabilities
     policies.kyverno.io/category: Pod Security Standards (Baseline)
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-capabilities
@@ -105,9 +117,11 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
-          Only the capabilities NET_BIND_SERVICE, CHOWN, DAC_OVERRIDE,
-          SETGID, SETUID, and FOWNER may be added.
+          Only the capabilities AUDIT_WRITE, CHOWN, DAC_OVERRIDE,
+          FOWNER, FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP,
+          SETGID, SETPCAP, SETUID, and SYS_CHROOT may be added.
         foreach:
           - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
             deny:
@@ -116,12 +130,19 @@ spec:
                   - key: "{{ element.securityContext.capabilities.add[] || '' }}"
                     operator: AnyNotIn
                     value:
-                      - NET_BIND_SERVICE
+                      - AUDIT_WRITE
                       - CHOWN
                       - DAC_OVERRIDE
-                      - SETGID
-                      - SETUID
                       - FOWNER
+                      - FSETID
+                      - KILL
+                      - MKNOD
+                      - NET_BIND_SERVICE
+                      - SETFCAP
+                      - SETGID
+                      - SETPCAP
+                      - SETUID
+                      - SYS_CHROOT
                       - ""
 ```
 
@@ -129,7 +150,7 @@ This policy uses `foreach` to iterate over all container types. The `deny.condit
 
 ## Validating Host Path Restrictions
 
-Baseline policies prevent mounting sensitive host paths. Create a policy that blocks dangerous volume mounts:
+Baseline policies prevent mounting host paths. Create a policy that blocks hostPath volumes:
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -140,7 +161,6 @@ metadata:
     policies.kyverno.io/title: Restrict HostPath Volumes
     policies.kyverno.io/category: Pod Security Standards (Baseline)
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-hostpath
@@ -150,6 +170,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
           HostPath volumes are forbidden. Use PersistentVolumes instead.
         pattern:
@@ -162,7 +183,7 @@ The `X(hostPath)` syntax with "null" means the hostPath field must not exist. Th
 
 ## Implementing Restricted Profile Requirements
 
-The restricted profile adds more stringent requirements. Write a policy that enforces all seccomp, AppArmor, and SELinux settings:
+The restricted profile adds more stringent requirements. Write a policy that enforces seccomp settings:
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -173,7 +194,6 @@ metadata:
     policies.kyverno.io/title: Restrict Seccomp (Strict)
     policies.kyverno.io/category: Pod Security Standards (Restricted)
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-seccomp
@@ -183,28 +203,42 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
           Seccomp profile must be RuntimeDefault or Localhost.
         anyPattern:
           - spec:
               securityContext:
                 seccompProfile:
-                  type: RuntimeDefault
+                  type: RuntimeDefault | Localhost
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): RuntimeDefault | Localhost
+              =(initContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): RuntimeDefault | Localhost
               containers:
                 - =(securityContext):
                     =(seccompProfile):
                       =(type): RuntimeDefault | Localhost
           - spec:
-              securityContext:
-                seccompProfile:
-                  type: Localhost
+              =(ephemeralContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: RuntimeDefault | Localhost
+              =(initContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: RuntimeDefault | Localhost
               containers:
-                - =(securityContext):
-                    =(seccompProfile):
-                      =(type): RuntimeDefault | Localhost
+                - securityContext:
+                    seccompProfile:
+                      type: RuntimeDefault | Localhost
 ```
 
-The `anyPattern` block allows either RuntimeDefault or Localhost at the pod level, while containers can override with either type.
+The `anyPattern` block allows either RuntimeDefault or Localhost at the pod level, or requires every container to set one of those seccomp profile types.
 
 ## Combining Multiple Rules in One Policy
 
@@ -219,7 +253,6 @@ metadata:
     policies.kyverno.io/title: Pod Security Standards (Baseline)
     policies.kyverno.io/category: Pod Security Standards (Baseline)
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: host-namespaces
@@ -229,6 +262,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Sharing host namespaces is not allowed."
         pattern:
           spec:
@@ -243,6 +277,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed."
         pattern:
           spec:
@@ -263,18 +298,19 @@ spec:
               kinds:
                 - Pod
       validate:
-        message: "Using host ports is not allowed."
+        failureAction: Enforce
+        message: "Host ports must be unset or set to 0."
         pattern:
           spec:
             =(ephemeralContainers):
               - =(ports):
-                  - X(hostPort): 0
+                  - =(hostPort): 0
             =(initContainers):
               - =(ports):
-                  - X(hostPort): 0
+                  - =(hostPort): 0
             containers:
               - =(ports):
-                  - X(hostPort): 0
+                  - =(hostPort): 0
 ```
 
 This bundle policy includes three related checks in one resource, making it easier to apply and manage Pod Security Standards.
@@ -311,7 +347,11 @@ Install the Policy Reporter to get a dashboard of policy violations:
 
 ```bash
 helm repo add policy-reporter https://kyverno.github.io/policy-reporter
-helm install policy-reporter policy-reporter/policy-reporter -n policy-reporter --create-namespace
+helm repo update
+helm upgrade --install policy-reporter policy-reporter/policy-reporter \
+  -n policy-reporter --create-namespace --set ui.enabled=true
+
+kubectl port-forward service/policy-reporter-ui 8081:8080 -n policy-reporter
 ```
 
 Access the dashboard to see which resources are violating policies and track compliance over time.
