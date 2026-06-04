@@ -45,7 +45,7 @@ sudo cp keadm-v1.16.0-linux-amd64/keadm/keadm /usr/local/bin/
 sudo chmod +x /usr/local/bin/keadm
 
 # Install CloudCore
-keadm init --advertise-address=<your-k8s-api-ip> --kubeedge-version=1.16.0
+keadm init --advertise-address=<your-k8s-api-ip> --kubeedge-version=v1.16.0
 ```
 
 This creates the CloudCore deployment and required CRDs. Verify installation:
@@ -69,8 +69,8 @@ Save this token for edge node registration.
 KubeEdge manages IoT devices through custom resources. Install the device model CRDs:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/master/build/crds/devices/devices_v1beta1_device.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/master/build/crds/devices/devices_v1beta1_devicemodel.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/v1.16.0/build/crds/devices/devices_v1beta1_device.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/v1.16.0/build/crds/devices/devices_v1beta1_devicemodel.yaml
 ```
 
 These CRDs allow you to define device types and instances in Kubernetes.
@@ -94,7 +94,7 @@ sudo keadm join \
   --cloudcore-ipport=<cloudcore-ip>:10000 \
   --edgenode-name=edge-node-01 \
   --token=<token-from-gettoken> \
-  --kubeedge-version=1.16.0
+  --kubeedge-version=v1.16.0
 ```
 
 The edge node registers with CloudCore and appears in your cluster:
@@ -120,22 +120,20 @@ spec:
   properties:
     - name: temperature
       description: Current temperature reading
-      type:
-        int:
-          accessMode: ReadOnly
-          unit: celsius
+      type: INT
+      accessMode: ReadOnly
+      unit: celsius
     - name: humidity
       description: Current humidity percentage
-      type:
-        int:
-          accessMode: ReadOnly
-          unit: percent
+      type: INT
+      accessMode: ReadOnly
+      unit: percent
     - name: sampling-rate
       description: Sampling interval in seconds
-      type:
-        int:
-          accessMode: ReadWrite
-          defaultValue: 60
+      type: INT
+      accessMode: ReadWrite
+      unit: seconds
+  protocol: modbus
 ```
 
 Apply the model:
@@ -159,36 +157,57 @@ spec:
   deviceModelRef:
     name: temperature-sensor-model
   nodeName: edge-node-01  # Which edge node this device is attached to
+  properties:
+    - name: temperature
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 0
+          limit: 1
+          scale: 0.1
+          isSwap: false
+          isRegisterSwap: false
+    - name: humidity
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 1
+          limit: 1
+          scale: 0.1
+          isSwap: false
+          isRegisterSwap: false
+    - name: sampling-rate
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      desired:
+        value: "60"
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 2
+          limit: 1
+          scale: 1
+          isSwap: false
+          isRegisterSwap: false
   protocol:
-    modbus:
+    protocolName: modbus
+    configData:
       slaveID: 1
-    common:
-      com:
-        serialPort: /dev/ttyUSB0
-        baudRate: 9600
-        dataBits: 8
-        parity: none
-        stopBits: 1
-  propertyVisitors:
-    - propertyName: temperature
-      modbus:
-        register: holding
-        offset: 0
-        limit: 1
-        scale: 0.1
-        isSwap: false
-    - propertyName: humidity
-      modbus:
-        register: holding
-        offset: 1
-        limit: 1
-        scale: 0.1
-        isSwap: false
-    - propertyName: sampling-rate
-      modbus:
-        register: holding
-        offset: 2
-        limit: 1
+      serialPort: /dev/ttyUSB0
+      baudRate: 9600
+      dataBits: 8
+      parity: none
+      stopBits: 1
 ```
 
 Apply the device:
@@ -201,7 +220,7 @@ KubeEdge creates a device twin that syncs state between the cloud and the physic
 
 ## Deploying a Device Mapper
 
-Device mappers translate between device protocols and KubeEdge APIs. Deploy a Modbus mapper for our sensors:
+Device mappers translate between device protocols and KubeEdge APIs. After building a Modbus mapper with the KubeEdge mapper framework, deploy it for our sensors:
 
 ```yaml
 # modbus-mapper.yaml
@@ -224,7 +243,7 @@ spec:
       hostNetwork: true
       containers:
         - name: mapper
-          image: kubeedge/modbus-mapper:latest
+          image: <your-registry>/modbus-mapper:v1.0
           env:
             - name: LOG_LEVEL
               value: "info"
@@ -270,9 +289,7 @@ The device twin shows current property values:
 status:
   twins:
     - propertyName: temperature
-      desired:
-        metadata:
-          type: int
+      observedDesired:
         value: "0"
       reported:
         metadata:
@@ -293,7 +310,7 @@ Modify device properties from the cloud:
 kubectl patch device temp-sensor-01 --type='json' -p='[
   {
     "op": "replace",
-    "path": "/spec/propertyVisitors/2/desiredValue",
+    "path": "/spec/properties/2/desired/value",
     "value": "30"
   }
 ]'
@@ -332,34 +349,21 @@ spec:
             - |
               import time
               import json
-              from kubernetes import client, config, watch
-
-              # Load in-cluster config
-              config.load_incluster_config()
-              api = client.CustomObjectsApi()
+              import urllib.request
 
               print("Monitoring temperature sensor...")
 
-              # Watch device twin updates
-              w = watch.Watch()
-              for event in w.stream(
-                api.list_namespaced_custom_object,
-                group="devices.kubeedge.io",
-                version="v1beta1",
-                namespace="default",
-                plural="devices",
-                field_selector="metadata.name=temp-sensor-01"
-              ):
-                device = event['object']
-                twins = device.get('status', {}).get('twins', [])
+              while True:
+                with urllib.request.urlopen("http://127.0.0.1:7777/api/v1/device/temp-sensor-01/temperature", timeout=5) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
 
-                for twin in twins:
-                  if twin['propertyName'] == 'temperature':
-                    temp = int(twin.get('reported', {}).get('value', 0))
-                    print(f"Temperature: {temp}C")
+                temp = int(payload.get("Data", {}).get("Value", 0))
+                print(f"Temperature: {temp}C")
 
-                    if temp > 30:
-                      print("WARNING: High temperature detected!")
+                if temp > 30:
+                  print("WARNING: High temperature detected!")
+
+                time.sleep(5)
           resources:
             requests:
               cpu: "100m"
@@ -372,7 +376,7 @@ Apply the application:
 kubectl apply -f temperature-monitor-app.yaml
 ```
 
-This app runs at the edge, reacting to device data with minimal latency.
+This app runs at the edge, reading device data from the mapper REST API with minimal latency.
 
 ## Configuring Offline Autonomy
 
@@ -387,7 +391,6 @@ modules:
   edged:
     enable: true
     podSandboxImage: kubeedge/pause:3.1
-    # Cache timeout for offline operation
     imageGCHighThreshold: 80
     imageGCLowThreshold: 40
   metaManager:
@@ -412,17 +415,34 @@ Route device data to cloud services using KubeEdge router:
 ```yaml
 # device-router-rule.yaml
 apiVersion: rules.kubeedge.io/v1
+kind: RuleEndpoint
+metadata:
+  name: eventbus-endpoint
+  namespace: default
+spec:
+  ruleEndpointType: eventbus
+---
+apiVersion: rules.kubeedge.io/v1
+kind: RuleEndpoint
+metadata:
+  name: cloud-analytics-endpoint
+  namespace: default
+spec:
+  ruleEndpointType: rest
+---
+apiVersion: rules.kubeedge.io/v1
 kind: Rule
 metadata:
   name: temp-data-to-cloud
   namespace: default
 spec:
-  source: "temp-sensor-01"
+  source: eventbus-endpoint
   sourceResource:
-    path: "status.twins"
-  target: "http://cloud-analytics.default.svc:8080/ingest"
+    topic: "$ke/events/device/+/data/update"
+    node_name: edge-node-01
+  target: cloud-analytics-endpoint
   targetResource:
-    resource: "http"
+    resource: "http://cloud-analytics.default.svc:8080/ingest"
 ```
 
 Apply the rule:
