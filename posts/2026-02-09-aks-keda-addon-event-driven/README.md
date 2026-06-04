@@ -31,7 +31,13 @@ az aks update \
   --enable-keda
 
 # Verify KEDA is installed
-kubectl get pods -n kube-system -l app=keda-operator
+kubectl get pods -n kube-system -l app.kubernetes.io/name=keda-operator
+
+# Verify the add-on is enabled
+az aks show \
+  --resource-group production-rg \
+  --name production-cluster \
+  --query "workloadAutoScalerProfile.keda.enabled"
 
 # Check KEDA version
 kubectl get deployment keda-operator -n kube-system \
@@ -50,7 +56,7 @@ az aks create \
   --generate-ssh-keys
 ```
 
-KEDA installs in the kube-system namespace with two main components: keda-operator and keda-operator-metrics-apiserver.
+KEDA installs in the kube-system namespace with the operator, metrics API server, and admission webhook components.
 
 ## Scaling Based on Azure Service Bus Queue
 
@@ -140,8 +146,8 @@ kubectl apply -f servicebus-scaler.yaml
 # Watch scaling behavior
 kubectl get hpa -n production -w
 
-# Check KEDA metrics
-kubectl get --raw /apis/external.metrics.k8s.io/v1beta1/namespaces/production/azure-servicebus-orders-queue
+# Check available external metrics
+kubectl get --raw /apis/external.metrics.k8s.io/v1beta1/namespaces/production
 ```
 
 As messages arrive in the queue, KEDA scales the deployment up. When the queue empties, it scales back to zero.
@@ -182,6 +188,7 @@ metadata:
 spec:
   podIdentity:
     provider: azure-workload
+    identityId: <identity-client-id>
 ```
 
 Enable workload identity on the cluster:
@@ -202,26 +209,53 @@ OIDC_URL=$(az aks show \
   -o tsv)
 
 # Create managed identity
-az identity create \
+MI_CLIENT_ID=$(az identity create \
   --resource-group production-rg \
-  --name keda-queue-identity
+  --name keda-queue-identity \
+  --query "clientId" \
+  -o tsv)
+
+MI_OBJECT_ID=$(az identity show \
+  --resource-group production-rg \
+  --name keda-queue-identity \
+  --query "principalId" \
+  -o tsv)
 
 # Grant Storage Queue Data Contributor role
 az role assignment create \
   --role "Storage Queue Data Contributor" \
-  --assignee <identity-client-id> \
+  --assignee-object-id $MI_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.Storage/storageAccounts/mystorageaccount
 
-# Create federated credential
+# Create federated credential for the KEDA operator
 az identity federated-credential create \
   --name keda-queue-federated \
   --identity-name keda-queue-identity \
   --resource-group production-rg \
   --issuer $OIDC_URL \
-  --subject system:serviceaccount:production:queue-worker-sa
+  --subject system:serviceaccount:kube-system:keda-operator \
+  --audience api://AzureADTokenExchange
+
+# Bind the identity to the KEDA operator and restart it
+kubectl annotate serviceaccount keda-operator \
+  azure.workload.identity/client-id=$MI_CLIENT_ID \
+  -n kube-system
+
+kubectl rollout restart deployment keda-operator -n kube-system
 ```
 
-Update the deployment to use workload identity:
+If the worker application also uses the same managed identity to process queue messages, create a second federated credential and update the deployment to use workload identity:
+
+```bash
+az identity federated-credential create \
+  --name queue-worker-federated \
+  --identity-name keda-queue-identity \
+  --resource-group production-rg \
+  --issuer $OIDC_URL \
+  --subject system:serviceaccount:production:queue-worker-sa \
+  --audience api://AzureADTokenExchange
+```
 
 ```yaml
 apiVersion: v1
@@ -259,9 +293,20 @@ spec:
           value: tasks
 ```
 
-## Scaling Based on Cosmos DB Collection Size
+## Scaling Based on Cosmos DB Change Feed Lag
 
-Scale workloads based on Cosmos DB document count or partition throughput:
+Scale Cosmos DB change feed consumers with the KEDA Azure Cosmos DB external scaler. Install the external scaler alongside KEDA:
+
+```bash
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+
+helm install external-scaler-azure-cosmos-db \
+  kedacore/external-scaler-azure-cosmos-db \
+  --namespace kube-system
+```
+
+Then create a ScaledObject that points to the external scaler and the monitored and lease containers:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
@@ -275,19 +320,19 @@ spec:
   minReplicaCount: 1
   maxReplicaCount: 15
   triggers:
-  - type: azure-cosmosdb
+  - type: external
     metadata:
-      databaseName: mydb
-      containerName: pending-items
-      query: "SELECT VALUE COUNT(1) FROM c WHERE c.status = 'pending'"
-      targetQueryValue: "100"
-      activationTargetQueryValue: "50"
-      endpoint: https://mycosmosdb.documents.azure.com:443/
-    authenticationRef:
-      name: cosmosdb-auth
+      scalerAddress: external-scaler-azure-cosmos-db.kube-system:4050
+      databaseId: mydb
+      containerId: pending-items
+      leaseDatabaseId: mydb
+      leaseContainerId: leases
+      connectionFromEnv: COSMOS_CONNECTION
+      leaseConnectionFromEnv: COSMOS_CONNECTION
+      processorName: document-processor
 ```
 
-Create authentication with connection string:
+Store the Cosmos DB connection string and expose it to the target deployment:
 
 ```yaml
 apiVersion: v1
@@ -298,20 +343,20 @@ metadata:
 type: Opaque
 data:
   connection: <base64-encoded-connection-string>
----
-apiVersion: keda.sh/v1alpha1
-kind: TriggerAuthentication
-metadata:
-  name: cosmosdb-auth
-  namespace: production
-spec:
-  secretTargetRef:
-  - parameter: connection
-    name: cosmosdb-secret
-    key: connection
 ```
 
-The query returns the number of pending documents. KEDA scales the deployment to maintain approximately 100 pending documents per replica.
+Add this environment variable to the `document-processor` container:
+
+```yaml
+env:
+- name: COSMOS_CONNECTION
+  valueFrom:
+    secretKeyRef:
+      name: cosmosdb-secret
+      key: connection
+```
+
+The external scaler estimates pending change feed work from the monitored and lease containers and scales the deployment based on the remaining partition ranges.
 
 ## Event-Driven Jobs with ScaledJob
 
@@ -371,7 +416,10 @@ spec:
   triggers:
   - type: azure-monitor
     metadata:
-      resourceURI: /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.Insights/components/myappinsights
+      resourceURI: Microsoft.Insights/components/myappinsights
+      tenantId: <tenant-id>
+      subscriptionId: <subscription-id>
+      resourceGroupName: production-rg
       metricName: requests/count
       metricAggregationType: Total
       metricFilter: cloud/roleName eq 'api-server'
@@ -392,6 +440,7 @@ metadata:
 spec:
   podIdentity:
     provider: azure-workload
+    identityId: <identity-client-id>
 ```
 
 Grant the managed identity Monitoring Reader role:
@@ -399,7 +448,8 @@ Grant the managed identity Monitoring Reader role:
 ```bash
 az role assignment create \
   --role "Monitoring Reader" \
-  --assignee <identity-client-id> \
+  --assignee-object-id <identity-principal-id> \
+  --assignee-principal-type ServicePrincipal \
   --scope /subscriptions/<subscription-id>/resourceGroups/production-rg
 ```
 
@@ -417,30 +467,49 @@ helm install http-add-on kedacore/keda-add-ons-http \
   --set interceptor.replicas=2
 ```
 
-Create HTTPScaledObject:
+Create an InterceptorRoute to route matching HTTP traffic to the service:
 
 ```yaml
-apiVersion: http.keda.sh/v1alpha1
-kind: HTTPScaledObject
+apiVersion: http.keda.sh/v1beta1
+kind: InterceptorRoute
+metadata:
+  name: web-app-route
+  namespace: production
+spec:
+  target:
+    service: web-app-service
+    port: 8080
+  rules:
+  - hosts:
+    - webapp.example.com
+    pathPrefixes:
+    - /api
+  scalingMetric:
+    concurrency:
+      targetValue: 100
+```
+
+Create the ScaledObject that uses the HTTP add-on scaler:
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
 metadata:
   name: web-app-scaler
   namespace: production
 spec:
-  hosts:
-  - webapp.example.com
-  pathPrefixes:
-  - /api
   scaleTargetRef:
     name: web-app
-    service: web-app-service
-    port: 8080
-  replicas:
-    min: 0
-    max: 30
-  targetPendingRequests: 100
+  minReplicaCount: 0
+  maxReplicaCount: 30
+  triggers:
+  - type: external-push
+    metadata:
+      scalerAddress: keda-add-ons-http-external-scaler.kube-system:9090
+      interceptorRoute: web-app-route
 ```
 
-The HTTP add-on intercepts requests and scales the application based on pending request count.
+The HTTP add-on intercepts requests and scales the application based on request concurrency or request rate metrics.
 
 ## Monitoring KEDA Performance
 
@@ -448,7 +517,7 @@ Track KEDA metrics and scaling events:
 
 ```bash
 # View KEDA operator logs
-kubectl logs -n kube-system -l app=keda-operator
+kubectl logs -n kube-system -l app.kubernetes.io/name=keda-operator
 
 # Check scaled object status
 kubectl get scaledobject -n production
@@ -489,7 +558,7 @@ Debug scaler connectivity:
 
 ```bash
 # Check scaler logs
-kubectl logs -n kube-system -l app=keda-operator --tail=100 | grep ERROR
+kubectl logs -n kube-system -l app.kubernetes.io/name=keda-operator --tail=100 | grep ERROR
 
 # Verify authentication
 kubectl get triggerauthentication -n production
@@ -519,9 +588,10 @@ kubectl run test-pod --image=mcr.microsoft.com/azure-cli --rm -it -- bash
 
 # Inside the pod
 az servicebus queue show \
+  --resource-group production-rg \
   --namespace-name myservicebus \
   --name orders-queue \
-  --query messageCount
+  --query countDetails.activeMessageCount
 ```
 
 The AKS KEDA add-on simplifies event-driven autoscaling by providing managed KEDA with seamless Azure integration. It enables cost-effective scaling based on actual workload demand rather than resource utilization alone.
