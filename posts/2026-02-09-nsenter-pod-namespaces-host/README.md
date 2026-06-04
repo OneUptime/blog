@@ -12,7 +12,7 @@ When debugging Kubernetes pods at the system level, sometimes kubectl exec isn't
 
 ## Understanding Linux Namespaces in Kubernetes
 
-Kubernetes pods leverage Linux namespaces to provide isolation between containers. Each container runs in multiple namespaces including network, process, mount, and user namespaces. While kubectl provides high-level access to containers, nsenter gives you low-level access to these namespaces from the host.
+Kubernetes pods leverage Linux namespaces to provide isolation between containers. Containers run in multiple namespaces including network, PID, and mount namespaces, and may use user namespaces when that feature is enabled. While kubectl provides high-level access to containers, nsenter gives you low-level access to these namespaces from the host.
 
 This is particularly useful when containers lack debugging tools, when you need to inspect the host's view of the container, or when troubleshooting networking issues that require seeing the actual network namespace configuration.
 
@@ -32,17 +32,17 @@ ssh user@node-hostname
 Then find the container's PID using crictl or docker:
 
 ```bash
-# Using crictl (for containerd runtime)
+# Using crictl (for CRI-compatible runtimes such as containerd or CRI-O)
 sudo crictl ps | grep nginx-app
 
 # Get the container ID
-CONTAINER_ID=$(sudo crictl ps --name nginx-app -q)
+CONTAINER_ID=$(sudo crictl ps --name nginx-app -q | head -1)
 
 # Inspect to get PID
-sudo crictl inspect $CONTAINER_ID | grep pid
+sudo crictl inspect --output go-template --template '{{.info.pid}}' $CONTAINER_ID
 
 # Alternative: Get PID directly
-PID=$(sudo crictl inspect $CONTAINER_ID | grep '"pid"' | head -1 | awk '{print $2}' | tr -d ',')
+PID=$(sudo crictl inspect --output go-template --template '{{.info.pid}}' $CONTAINER_ID)
 echo $PID
 ```
 
@@ -71,6 +71,8 @@ sudo nsenter -t $PID -n -p -m /bin/bash
 # -m: mount namespace
 ```
 
+When entering the mount namespace with `-m` or `-a`, the shell path must exist in the target container's filesystem. If you need to use host debugging tools, enter only the namespace you need, such as `-n` for networking.
+
 ### Network Namespace Debugging
 
 Enter only the network namespace to debug connectivity issues:
@@ -85,9 +87,8 @@ ip route show
 iptables -L -n -v
 netstat -tulpn
 
-# Test connectivity
-ping 10.96.0.1  # Kubernetes service IP
-curl http://kubernetes.default.svc.cluster.local
+# Test connectivity to the Kubernetes API service IP
+curl -k https://10.96.0.1:443
 
 # Capture traffic
 tcpdump -i eth0 -w /tmp/capture.pcap
@@ -114,7 +115,7 @@ cat /proc/1/cmdline
 cat /proc/1/environ
 ```
 
-This helps identify what's actually running inside the container, including any child processes that might not be visible from kubectl exec.
+This helps identify what's actually running inside the container when kubectl exec is unavailable or the image lacks process inspection tools.
 
 ### Mount Namespace Investigation
 
@@ -152,15 +153,16 @@ NODE=$(kubectl get pod $POD_NAME -o jsonpath='{.spec.nodeName}')
 # SSH to node and get PID
 ssh $NODE
 CONTAINER_ID=$(sudo crictl ps --name myapp -q | head -1)
-PID=$(sudo crictl inspect $CONTAINER_ID | grep '"pid"' | head -1 | awk '{print $2}' | tr -d ',')
+PID=$(sudo crictl inspect --output go-template --template '{{.info.pid}}' $CONTAINER_ID)
 
-# Enter network namespace and debug DNS
-sudo nsenter -t $PID -n /bin/bash -c "
-  cat /etc/resolv.conf
-  nslookup kubernetes.default.svc.cluster.local
-  dig @10.96.0.10 myservice.default.svc.cluster.local
-  cat /etc/hosts
-"
+# Read the pod's resolver files through the container process root
+sudo cat /proc/$PID/root/etc/resolv.conf
+sudo cat /proc/$PID/root/etc/hosts
+
+# Enter the network namespace and use host DNS tools
+DNS_SERVER=$(sudo awk '/^nameserver/{print $2; exit}' /proc/$PID/root/etc/resolv.conf)
+sudo nsenter -t $PID -n nslookup kubernetes.default.svc.cluster.local $DNS_SERVER
+sudo nsenter -t $PID -n dig @$DNS_SERVER myservice.default.svc.cluster.local
 ```
 
 ### Investigating High CPU Usage
@@ -235,7 +237,7 @@ echo "Container: $CONTAINER_NAME"
 # SSH to node and enter namespace
 ssh $NODE "
   CONTAINER_ID=\$(sudo crictl ps --name $CONTAINER_NAME -q | head -1)
-  PID=\$(sudo crictl inspect \$CONTAINER_ID | grep '\"pid\"' | head -1 | awk '{print \$2}' | tr -d ',')
+  PID=\$(sudo crictl inspect --output go-template --template '{{.info.pid}}' \$CONTAINER_ID)
   echo \"PID: \$PID\"
   sudo nsenter -t \$PID -a /bin/bash
 "
@@ -254,7 +256,7 @@ Use nsenter with system tracing tools:
 
 ```bash
 # Enter namespace and run perf
-PID=$(sudo crictl inspect $CONTAINER_ID | grep '"pid"' | head -1 | awk '{print $2}' | tr -d ',')
+PID=$(sudo crictl inspect --output go-template --template '{{.info.pid}}' $CONTAINER_ID)
 
 # CPU profiling
 sudo nsenter -t $PID -p perf record -F 99 -p 1 -g -- sleep 30
