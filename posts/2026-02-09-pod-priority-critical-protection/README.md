@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pod Priority, Preemption, Resource Management, High Availability
 
-Description: Implement pod priority classes to protect critical workloads from eviction and ensure essential services maintain resources during cluster pressure.
+Description: Implement pod priority classes to reduce disruption for critical workloads and ensure essential services are favored during scheduling and node pressure.
 
 ---
 
-Pod priority determines which pods get scheduled first and which can be evicted during resource pressure. Without priorities, Kubernetes treats all pods equally, potentially evicting critical services to make room for batch jobs. Priority classes solve this by establishing a hierarchy of importance.
+Pod priority determines which pods get scheduled first and influences which pods can be preempted or evicted during resource pressure. Without priorities, Kubernetes treats pods at the same priority level equally, potentially evicting critical services during node pressure. Priority classes solve this by establishing a hierarchy of importance.
 
 ## Creating Priority Classes
 
@@ -22,7 +22,7 @@ metadata:
 value: 1000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
-description: "Critical production services that must never be evicted"
+description: "Critical production services that should be protected from lower-priority workloads"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -69,7 +69,14 @@ metadata:
   name: postgres
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: postgres
+  serviceName: postgres
   template:
+    metadata:
+      labels:
+        app: postgres
     spec:
       priorityClassName: critical-priority
       containers:
@@ -87,7 +94,13 @@ metadata:
   name: api-gateway
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       priorityClassName: high-priority
       containers:
@@ -108,6 +121,7 @@ spec:
   template:
     spec:
       priorityClassName: low-priority
+      restartPolicy: OnFailure
       containers:
       - name: exporter
         image: data-exporter:v1
@@ -125,18 +139,17 @@ When a high-priority pod cannot schedule due to insufficient resources, Kubernet
 
 Preemption considers:
 - Pod priority values
-- Graceful termination periods
 - Pod disruption budgets
 - Inter-pod affinities
 
-The scheduler selects victims to minimize disruption while satisfying the pending pod's requirements.
+The scheduler selects victims to minimize disruption while satisfying the pending pod's requirements. Preempted pods receive their graceful termination period before they are killed, so there can be a delay before the pending pod starts.
 
 Example scenario:
 - Node has 4 CPU cores, all allocated
 - Low-priority job uses 2 cores
 - High-priority API pod requesting 2 cores arrives
 - Scheduler preempts the job
-- API pod schedules immediately
+- API pod schedules after the preempted job exits
 
 Without priorities, the API pod would wait until resources became available naturally.
 
@@ -144,12 +157,10 @@ Without priorities, the API pod would wait until resources became available natu
 
 Pod priority and QoS classes work together. During eviction from resource pressure:
 
-1. BestEffort pods (no requests/limits) evict first, regardless of priority
-2. Within BestEffort, lower priority pods evict first
-3. Burstable pods evict next if needed
-4. Within Burstable, lower priority evict first
-5. Guaranteed pods evict last
-6. Within Guaranteed, lower priority evict first
+1. Pods using more than their requests are eviction candidates first
+2. Among those candidates, lower-priority pods are evicted before higher-priority pods
+3. If priorities are equal, pods using the most resources relative to their requests are evicted first
+4. QoS class helps estimate eviction likelihood: BestEffort pods have no requests, Burstable pods may exceed requests, and Guaranteed pods are least likely to be candidates unless they exceed limits or no lower-priority candidates remain
 
 Protect critical services with both Guaranteed QoS and high priority:
 
@@ -159,7 +170,13 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       priorityClassName: critical-priority
       containers:
@@ -173,14 +190,14 @@ spec:
             cpu: "1000m"
 ```
 
-This service survives both scheduler preemption and kubelet eviction pressure better than any other workload.
+This service is protected from scheduler preemption by lower-priority workloads and is less likely to be selected during kubelet eviction pressure.
 
 ## System-Critical Priority Classes
 
-Kubernetes reserves priorities above 2 billion for system components. Do not create priority classes above 1 billion:
+Kubernetes reserves priority values above 1 billion for system components. User-created priority classes can use values up to 1 billion:
 
 ```yaml
-# This will fail - priority too high
+# This will fail - user-created PriorityClass values must be <= 1000000000
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -218,9 +235,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-gateway
+  namespace: production
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       priorityClassName: high-priority
       containers:
@@ -244,7 +268,14 @@ metadata:
   name: kafka
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  serviceName: kafka
   template:
+    metadata:
+      labels:
+        app: kafka
     spec:
       priorityClassName: critical-priority
       containers:
@@ -258,7 +289,7 @@ spec:
             cpu: "4000m"
 ```
 
-Kafka brokers should never be preempted. High priority prevents eviction for lower-priority workloads.
+Kafka brokers should not be displaced for lower-priority workloads. High priority prevents scheduler preemption by lower-priority pods and reduces eviction risk during node pressure.
 
 ## Monitoring Priority-Based Preemption
 
@@ -276,8 +307,8 @@ High preemption rates indicate either:
 Monitor preemption metrics:
 
 ```promql
-# Preemption events per hour
-increase(kube_pod_status_reason{reason="Preempted"}[1h])
+# Pods marked for scheduler preemption
+kube_pod_status_reason{reason="PreemptionByScheduler"} == 1
 
 # Pods by priority class
 count by (priority_class) (kube_pod_info)
@@ -296,10 +327,12 @@ spec:
     rules:
     - alert: HighPriorityPodPreempted
       expr: |
-        increase(kube_pod_status_reason{
-          reason="Preempted",
-          priority_class=~"critical-priority|high-priority"
-        }[5m]) > 0
+        max_over_time(kube_pod_status_reason{
+          reason="PreemptionByScheduler"
+        }[5m])
+        * on(namespace, pod, uid) group_left(priority_class)
+        kube_pod_info{priority_class=~"critical-priority|high-priority"}
+        > 0
       annotations:
         summary: "High priority pod was preempted"
 ```
@@ -317,7 +350,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       priorityClassName: high-priority
       initContainers:
@@ -328,7 +367,7 @@ spec:
         image: web-app:v1
 ```
 
-Both init containers and regular containers inherit the pod's priority. But if this deployment creates jobs, those jobs need their own priority class assignments.
+Both init containers and regular containers run as part of the same prioritized pod. But if this deployment creates jobs, those jobs need their own priority class assignments.
 
 ## Namespace-Level Priority Policies
 
@@ -340,28 +379,31 @@ kind: ClusterPolicy
 metadata:
   name: require-priority-class
 spec:
-  validationFailureAction: enforce
   rules:
   - name: check-priority-production
     match:
-      resources:
-        kinds:
-        - Pod
-        namespaces:
-        - production
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - production
     validate:
+      failureAction: Enforce
       message: "Production pods must have high or critical priority"
       pattern:
         spec:
           priorityClassName: "high-priority | critical-priority"
   - name: check-priority-development
     match:
-      resources:
-        kinds:
-        - Pod
-        namespaces:
-        - development
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - development
     validate:
+      failureAction: Enforce
       message: "Development pods must have normal or low priority"
       pattern:
         spec:
@@ -372,7 +414,7 @@ This prevents developers from assigning critical priority to development workloa
 
 ## Cost Implications
 
-Higher-priority pods consume guaranteed resources even when not fully utilized. This reduces cluster efficiency but improves reliability.
+Higher priority does not reserve capacity by itself. Priority protection usually comes from pairing high priority with accurate resource requests and enough cluster headroom. This can reduce cluster efficiency but improves reliability.
 
 Calculate the cost of priority protection:
 
@@ -386,7 +428,7 @@ With priorities:
 - Lower risk of service disruption
 
 Cost: 25% more infrastructure for 20% less utilization
-Benefit: Guaranteed capacity for critical services
+Benefit: Reserved headroom and preemption protection for critical services
 ```
 
 The tradeoff is often worthwhile for production systems where availability exceeds cost concerns.
@@ -397,14 +439,34 @@ Simulate resource pressure to verify priorities work correctly:
 
 ```bash
 # Create resource-hungry low-priority pods
-kubectl run stress-test --image=polinux/stress \
-  --replicas=10 \
-  --overrides='{"spec":{"priorityClassName":"low-priority"}}' \
-  -- stress --cpu 2
+kubectl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stress-test
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: stress-test
+  template:
+    metadata:
+      labels:
+        app: stress-test
+    spec:
+      priorityClassName: low-priority
+      containers:
+      - name: stress
+        image: polinux/stress
+        args: ["stress", "--cpu", "2"]
+        resources:
+          requests:
+            cpu: "2"
+EOF
 
 # Try scheduling a high-priority pod
 kubectl run important-app --image=nginx \
-  --overrides='{"spec":{"priorityClassName":"high-priority","resources":{"requests":{"cpu":"2"}}}}'
+  --overrides='{"spec":{"priorityClassName":"high-priority","containers":[{"name":"important-app","image":"nginx","resources":{"requests":{"cpu":"2"}}}]}}'
 
 # Verify preemption occurred
 kubectl get events --field-selector reason=Preempted
@@ -416,7 +478,7 @@ The high-priority pod should preempt one or more stress-test pods.
 
 Overusing high priorities defeats their purpose. If everything is critical, nothing is critical. Limit critical-priority to truly essential services - typically less than 10% of workloads.
 
-Not setting a global default priority class means pods without explicit priorities get priority 0. These pods cannot preempt anything but can be preempted by everything.
+Not setting a global default priority class means pods without explicit priorities get priority 0. These pods cannot preempt equal-priority pods, but they can preempt pods with negative priority and can be preempted by higher-priority pods.
 
 Ignoring resource requests while setting priorities provides incomplete protection. Priorities help with scheduling and preemption, but without proper requests, pods still face OOM kills.
 
