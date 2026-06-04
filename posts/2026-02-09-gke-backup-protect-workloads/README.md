@@ -14,15 +14,15 @@ This guide shows you how to enable and configure Backup for GKE, create backup p
 
 ## Understanding Backup for GKE
 
-Backup for GKE provides application-consistent backups of:
+Backup for GKE backs up:
 
-**Kubernetes resources** - Deployments, Services, ConfigMaps, Secrets, and all other resource types.
+**Kubernetes resources** - Deployments, Services, ConfigMaps, Secrets, and other namespaced or selected cluster-scoped resources.
 
-**Persistent volumes** - Backups of PersistentVolumes using volume snapshots.
+**Persistent volumes** - Volume backup data for supported PersistentVolumeClaim resources included in the backup scope.
 
-**Cluster state** - Complete cluster configuration for disaster recovery.
+**Cluster state** - Kubernetes resource manifests extracted from the cluster API server for disaster recovery.
 
-Backups are stored in Google Cloud Storage and can be restored to the same cluster or different clusters in the same project.
+Backup for GKE stores Kubernetes resource manifests and volume backup artifacts for each backup. Backups can be restored to the same cluster or different clusters, including clusters in another project when cross-project backup and restore is configured.
 
 ## Enabling Backup for GKE
 
@@ -40,12 +40,12 @@ export PROJECT_ID="your-project-id"
 gcloud config set project $PROJECT_ID
 ```
 
-Your GKE cluster must run version 1.19 or later. Enable Workload Identity if not already enabled:
+Enable the Backup for GKE agent on the cluster if it is not already enabled:
 
 ```bash
 gcloud container clusters update CLUSTER_NAME \
-  --zone=ZONE \
-  --workload-pool=$PROJECT_ID.svc.id.goog
+  --location=LOCATION \
+  --update-addons=BackupRestore=ENABLED
 ```
 
 ## Creating a Backup Plan
@@ -54,14 +54,14 @@ Create a backup plan that defines what to back up and when:
 
 ```bash
 # Create backup plan
-gcloud alpha backup-restore backup-plans create production-backup \
+gcloud beta container backup-restore backup-plans create production-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
   --all-namespaces \
   --include-secrets \
   --include-volume-data \
-  --retention-days=30
+  --backup-retain-days=30
 ```
 
 This backs up all namespaces, including secrets and volume data, with 30-day retention.
@@ -69,14 +69,14 @@ This backs up all namespaces, including secrets and volume data, with 30-day ret
 For namespace-specific backups:
 
 ```bash
-gcloud alpha backup-restore backup-plans create app-backup \
+gcloud beta container backup-restore backup-plans create app-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
   --selected-namespaces=production,staging \
   --include-secrets \
   --include-volume-data \
-  --retention-days=90
+  --backup-retain-days=90
 ```
 
 ## Creating Manual Backups
@@ -85,24 +85,24 @@ Create an on-demand backup:
 
 ```bash
 # Create backup
-gcloud alpha backup-restore backups create backup-20260209 \
+gcloud beta container backup-restore backups create backup-20260209 \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup \
-  --wait
+  --wait-for-completion
 ```
 
 Check backup status:
 
 ```bash
 # List backups
-gcloud alpha backup-restore backups list \
+gcloud beta container backup-restore backups list \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup
 
 # Describe specific backup
-gcloud alpha backup-restore backups describe backup-20260209 \
+gcloud beta container backup-restore backups describe backup-20260209 \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup
@@ -114,7 +114,7 @@ Create a backup schedule using cron syntax:
 
 ```bash
 # Create daily backup at 2 AM
-gcloud alpha backup-restore backup-plans update production-backup \
+gcloud beta container backup-restore backup-plans update production-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cron-schedule="0 2 * * *"
@@ -142,25 +142,26 @@ Restore to the same cluster:
 
 ```bash
 # Create restore operation
-gcloud alpha backup-restore restores create restore-20260209 \
+gcloud beta container backup-restore restores create restore-20260209 \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --restore-plan=production-restore-plan \
   --backup=projects/$PROJECT_ID/locations/us-central1/backupPlans/production-backup/backups/backup-20260209 \
-  --wait
+  --wait-for-completion
 ```
 
 First, create a restore plan:
 
 ```bash
-gcloud alpha backup-restore restore-plans create production-restore-plan \
+gcloud beta container backup-restore restore-plans create production-restore-plan \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
   --backup-plan=projects/$PROJECT_ID/locations/us-central1/backupPlans/production-backup \
   --all-namespaces \
   --volume-data-restore-policy=restore-volume-data-from-backup \
-  --cluster-resource-conflict-policy=use-existing-version
+  --cluster-resource-conflict-policy=use-existing-version \
+  --cluster-resource-scope-all-group-kinds
 ```
 
 ## Selective Restore
@@ -168,25 +169,57 @@ gcloud alpha backup-restore restore-plans create production-restore-plan \
 Restore specific namespaces:
 
 ```bash
-gcloud alpha backup-restore restore-plans create selective-restore \
+gcloud beta container backup-restore restore-plans create selective-restore \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
   --backup-plan=projects/$PROJECT_ID/locations/us-central1/backupPlans/production-backup \
   --selected-namespaces=production \
-  --volume-data-restore-policy=restore-volume-data-from-backup
+  --volume-data-restore-policy=restore-volume-data-from-backup \
+  --cluster-resource-scope-no-group-kinds
 ```
 
 Restore to a different namespace:
 
+```yaml
+# namespace-transform.yaml
+transformationRules:
+- description: Rename namespace from production to test-environment
+  resourceFilter:
+    namespaces: []
+    jsonPath: ".metadata[?(@.name == 'production')]"
+    groupKinds:
+    - resourceGroup: ""
+      resourceKind: Namespace
+  fieldActions:
+  - op: REPLACE
+    path: "/metadata/name"
+    value: "test-environment"
+- description: Move resources from production to test-environment
+  resourceFilter:
+    namespaces: ["production"]
+  fieldActions:
+  - op: REPLACE
+    path: "/metadata/namespace"
+    value: "test-environment"
+```
+
 ```bash
-# Create restore with namespace transformation
-gcloud alpha backup-restore restores create restore-to-test \
+# Create restore plan with namespace transformation
+gcloud beta container backup-restore restore-plans create restore-to-test-plan \
   --project=$PROJECT_ID \
   --location=us-central1 \
-  --restore-plan=selective-restore \
-  --backup=backup-20260209 \
-  --namespace-mappings=production=test-environment
+  --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
+  --backup-plan=projects/$PROJECT_ID/locations/us-central1/backupPlans/production-backup \
+  --selected-namespaces=production \
+  --cluster-resource-scope-no-group-kinds \
+  --transformation-rules-file=namespace-transform.yaml
+
+gcloud beta container backup-restore restores create restore-to-test \
+  --project=$PROJECT_ID \
+  --location=us-central1 \
+  --restore-plan=restore-to-test-plan \
+  --backup=projects/$PROJECT_ID/locations/us-central1/backupPlans/production-backup/backups/backup-20260209
 ```
 
 ## Using Terraform for Backup Configuration
@@ -250,34 +283,28 @@ resource "google_gke_backup_restore_plan" "production" {
 Include only specific resources:
 
 ```bash
-gcloud alpha backup-restore backup-plans create filtered-backup \
+gcloud beta container backup-restore backup-plans create filtered-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
-  --selected-namespaces=production \
-  --selected-applications=app1,app2
+  --selected-applications=production/app1,production/app2
 ```
 
-Exclude specific resource types:
+Include a specific ProtectedApplication:
 
 ```yaml
-# backup-filter.yaml
+# protected-application.yaml
 apiVersion: gkebackup.gke.io/v1
-kind: BackupPlan
+kind: ProtectedApplication
 metadata:
-  name: filtered-backup
+  name: critical-app
+  namespace: production
 spec:
-  cluster: projects/PROJECT_ID/locations/us-central1-a/clusters/my-cluster
-  backupConfig:
-    includeVolumeData: true
-    includeSecrets: false
-    selectedNamespaces:
-      namespaces:
-      - production
-    selectedApplications:
-      namespacedNames:
-      - namespace: production
-        name: critical-app
+  resourceSelection:
+    type: Selector
+    selector:
+      matchLabels:
+        app: critical-app
 ```
 
 ## Monitoring Backup Operations
@@ -286,14 +313,14 @@ View backup status:
 
 ```bash
 # List all backups with status
-gcloud alpha backup-restore backups list \
+gcloud beta container backup-restore backups list \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup \
   --format="table(name,state,createTime,completeTime)"
 
 # Get detailed backup information
-gcloud alpha backup-restore backups describe backup-20260209 \
+gcloud beta container backup-restore backups describe backup-20260209 \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup \
@@ -304,13 +331,13 @@ Check restore operations:
 
 ```bash
 # List restore operations
-gcloud alpha backup-restore restores list \
+gcloud beta container backup-restore restores list \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --restore-plan=production-restore-plan
 
 # Describe restore
-gcloud alpha backup-restore restores describe restore-20260209 \
+gcloud beta container backup-restore restores describe restore-20260209 \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --restore-plan=production-restore-plan
@@ -318,19 +345,15 @@ gcloud alpha backup-restore restores describe restore-20260209 \
 
 ## Setting Up Alerts
 
-Create Cloud Monitoring alerts for backup failures:
+Create Cloud Monitoring alerts for backup failures by using a log-based alert filter:
 
-```bash
-# Create alert policy
-gcloud alpha monitoring policies create \
-  --notification-channels=CHANNEL_ID \
-  --display-name="Backup Failures" \
-  --condition-display-name="Backup failed" \
-  --condition-threshold-value=1 \
-  --condition-threshold-duration=60s \
-  --condition-filter='resource.type="gkebackup.googleapis.com/BackupPlan"
-    metric.type="gkebackup.googleapis.com/backup/state"
-    metric.label.state="FAILED"'
+```text
+logName="projects/PROJECT_ID/logs/gkebackup.googleapis.com%2Fbackup_change"
+resource.type="gkebackup.googleapis.com/BackupPlan"
+resource.labels.backup_plan_id="production-backup"
+resource.labels.location="us-central1"
+jsonPayload.changeType="UPDATE"
+jsonPayload.inputBackup.state="FAILED"
 ```
 
 ## Testing Disaster Recovery
@@ -341,18 +364,20 @@ Perform regular DR tests:
 # 1. Create a test cluster
 gcloud container clusters create dr-test-cluster \
   --zone=us-central1-a \
-  --num-nodes=3
+  --num-nodes=3 \
+  --addons=BackupRestore
 
 # 2. Create restore plan for DR cluster
-gcloud alpha backup-restore restore-plans create dr-test-restore \
+gcloud beta container backup-restore restore-plans create dr-test-restore \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/dr-test-cluster \
   --backup-plan=production-backup \
-  --all-namespaces
+  --all-namespaces \
+  --cluster-resource-scope-all-group-kinds
 
 # 3. Restore latest backup
-LATEST_BACKUP=$(gcloud alpha backup-restore backups list \
+LATEST_BACKUP=$(gcloud beta container backup-restore backups list \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup \
@@ -360,7 +385,7 @@ LATEST_BACKUP=$(gcloud alpha backup-restore backups list \
   --limit=1 \
   --format="value(name)")
 
-gcloud alpha backup-restore restores create dr-test-restore-$(date +%Y%m%d) \
+gcloud beta container backup-restore restores create dr-test-restore-$(date +%Y%m%d) \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --restore-plan=dr-test-restore \
@@ -379,15 +404,15 @@ Optimize backup costs:
 
 ```bash
 # Use shorter retention for non-critical workloads
-gcloud alpha backup-restore backup-plans create dev-backup \
+gcloud beta container backup-restore backup-plans create dev-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/dev-cluster \
   --selected-namespaces=development \
-  --retention-days=7
+  --backup-retain-days=7
 
 # Exclude volume data for stateless apps
-gcloud alpha backup-restore backup-plans create stateless-backup \
+gcloud beta container backup-restore backup-plans create stateless-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --cluster=projects/$PROJECT_ID/locations/us-central1-a/clusters/my-cluster \
@@ -401,12 +426,12 @@ If backups fail:
 
 ```bash
 # Check backup plan status
-gcloud alpha backup-restore backup-plans describe production-backup \
+gcloud beta container backup-restore backup-plans describe production-backup \
   --project=$PROJECT_ID \
   --location=us-central1
 
 # View error messages
-gcloud alpha backup-restore backups describe failed-backup \
+gcloud beta container backup-restore backups describe failed-backup \
   --project=$PROJECT_ID \
   --location=us-central1 \
   --backup-plan=production-backup \
@@ -420,6 +445,6 @@ gcloud projects get-iam-policy $PROJECT_ID \
 
 ## Conclusion
 
-Backup for GKE provides enterprise-grade backup and restore capabilities for Kubernetes workloads, protecting against data loss and enabling disaster recovery. The service integrates natively with GKE and understands Kubernetes resource relationships, ensuring application-consistent backups.
+Backup for GKE provides enterprise-grade backup and restore capabilities for Kubernetes workloads, protecting against data loss and enabling disaster recovery. The service integrates natively with GKE and understands Kubernetes resource relationships. For workloads that need application-consistent backups, use `ProtectedApplication` hooks or other application-specific quiescing logic.
 
 Key features include automated scheduled backups, selective namespace and resource backups, volume snapshots, and flexible restore options. Regular testing of backup and restore procedures ensures you can recover quickly from disasters or accidental deletions.
