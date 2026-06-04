@@ -16,9 +16,8 @@ In this guide, you'll deploy Akri on an edge Kubernetes cluster, configure devic
 
 Akri (A Kubernetes Resource Interface) discovers IoT devices and represents them as custom Kubernetes resources. When devices are found, Akri creates:
 
-- Device CRs representing physical devices
 - Configuration CRs defining discovery protocols
-- Instance CRs linking devices to pods
+- Instance CRs representing discovered devices and tracking device usage
 
 Pods request devices through resource limits, and Kubernetes schedules them on nodes where devices are present.
 
@@ -36,6 +35,7 @@ helm repo update
 helm install akri akri-helm-charts/akri \
   --set agent.enabled=true \
   --set controller.enabled=true \
+  --set onvif.discovery.enabled=true \
   --set udev.discovery.enabled=true \
   --set opcua.discovery.enabled=true \
   --namespace akri --create-namespace
@@ -50,7 +50,7 @@ kubectl get crds | grep akri
 
 You should see akri-agent pods on each node and akri-controller running.
 
-## Discovering USB Cameras with ONVIF
+## Discovering IP Cameras with ONVIF
 
 Configure Akri to discover IP cameras using ONVIF protocol:
 
@@ -67,7 +67,7 @@ spec:
       ipAddresses:
         action: Include
         items:
-        - 192.168.1.0/24
+        - 192.168.1.100
       macAddresses:
         action: Exclude
         items: []
@@ -120,18 +120,11 @@ spec:
       image: your-registry/camera-broker:v1
       securityContext:
         privileged: true
-      volumeMounts:
-      - name: dev-video
-        mountPath: /dev/video0
       resources:
         requests:
           "{{PLACEHOLDER}}": "1"
         limits:
           "{{PLACEHOLDER}}": "1"
-    volumes:
-    - name: dev-video
-      hostPath:
-        path: "{{PLACEHOLDER}}"
   capacity: 2  # Two pods can share USB camera
 ```
 
@@ -167,14 +160,14 @@ spec:
     containers:
     - name: opcua-broker
       image: your-registry/opcua-broker:v1
-      env:
-      - name: OPCUA_ENDPOINT
-        value: "{{PLACEHOLDER}}"
       resources:
         requests:
           "{{PLACEHOLDER}}": "1"
         limits:
           "{{PLACEHOLDER}}": "1"
+  brokerProperties:
+    IDENTIFIER: "FastUInt1"
+    NAMESPACE_INDEX: "2"
   instanceServiceSpec:
     type: ClusterIP
     ports:
@@ -211,15 +204,9 @@ spec:
             akri.sh/usb-cameras: "1"  # Request USB camera
           limits:
             akri.sh/usb-cameras: "1"
-        env:
-        - name: CAMERA_ENDPOINT
-          valueFrom:
-            configMapKeyRef:
-              name: akri-usb-cameras-svc
-              key: CAMERA_SVC_URL
 ```
 
-Kubernetes automatically schedules pods only on nodes with available cameras.
+Kubernetes automatically schedules pods only on nodes with available cameras. Akri injects device properties, such as `UDEV_DEVNODE_<INSTANCE_HASH>`, as environment variables in pods that request the device.
 
 ## Accessing Device Services
 
@@ -230,8 +217,10 @@ Akri creates services for each discovered device:
 kubectl get services -n akri -l akri.sh/configuration=usb-cameras
 
 # Access device from application
-CAMERA_SVC=$(kubectl get svc -n akri -l akri.sh/instance=usb-camera-abc -o jsonpath='{.items[0].metadata.name}')
-curl http://$CAMERA_SVC.akri.svc:8554/stream
+INSTANCE=$(kubectl get akrii -n akri -l akri.sh/configuration=usb-cameras -o jsonpath='{.items[0].metadata.name}')
+CAMERA_SVC=$(kubectl get svc -n akri -l akri.sh/instance=$INSTANCE -o jsonpath='{.items[0].metadata.name}')
+kubectl run curl --rm -i --restart=Never --image=curlimages/curl -- \
+  curl http://$CAMERA_SVC.akri.svc.cluster.local:8554/stream
 ```
 
 ## Implementing Custom Discovery Handler
@@ -331,6 +320,9 @@ spec:
     matchLabels:
       app: camera-app
   template:
+    metadata:
+      labels:
+        app: camera-app
     spec:
       containers:
       - name: app
@@ -338,28 +330,29 @@ spec:
         resources:
           requests:
             akri.sh/usb-cameras: "1"
+          limits:
+            akri.sh/usb-cameras: "1"
 ```
 
 When a camera disconnects, affected pods terminate and Kubernetes reschedules them to nodes with working cameras.
 
-## Implementing Device Priority
+## Targeting Specific Devices
 
-Prioritize certain devices:
+Target certain devices:
 
 ```yaml
 apiVersion: akri.sh/v0
 kind: Configuration
 metadata:
-  name: priority-cameras
-  annotations:
-    priority: "high"
+  name: selected-cameras
 spec:
   discoveryHandler:
     name: onvif
     discoveryDetails: |+
       ipAddresses:
+        action: Include
         items:
-        - 192.168.1.100  # Critical camera
+        - 192.168.1.100
   capacity: 1  # Exclusive access
 ```
 
@@ -408,8 +401,11 @@ spec:
       image: device-broker:v1
       resources:
         requests:
+          "{{PLACEHOLDER}}": "1"
           cpu: "100m"
           memory: "128Mi"
+        limits:
+          "{{PLACEHOLDER}}": "1"
 ```
 
 ## Conclusion
