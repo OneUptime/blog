@@ -130,6 +130,7 @@ spec:
   template:
     spec:
       priorityClassName: critical-jobs
+      restartPolicy: Never
       containers:
       - name: calculator
         image: revenue:latest
@@ -143,6 +144,7 @@ spec:
   template:
     spec:
       priorityClassName: important-jobs
+      restartPolicy: Never
       containers:
       - name: reporter
         image: compliance:latest
@@ -156,6 +158,7 @@ spec:
   template:
     spec:
       priorityClassName: background-jobs
+      restartPolicy: Never
       containers:
       - name: analyzer
         image: analytics:latest
@@ -169,6 +172,7 @@ spec:
   template:
     spec:
       priorityClassName: experimental-jobs
+      restartPolicy: Never
       containers:
       - name: trainer
         image: ml-trainer:latest
@@ -189,6 +193,7 @@ spec:
   template:
     spec:
       priorityClassName: critical-jobs
+      restartPolicy: Never
 
       # Handle potential preemption gracefully
       containers:
@@ -215,7 +220,7 @@ spec:
       terminationGracePeriodSeconds: 60
 ```
 
-When lower-priority pods are preempted to make room for this job, they receive SIGTERM and have 60 seconds to save their state before being forcefully terminated.
+When a pod is preempted, Kubernetes gives that pod its configured graceful termination period before forcefully terminating it. Set `terminationGracePeriodSeconds` on jobs that need time to save checkpoints before they exit.
 
 ## Combining Priority with Resource Quotas
 
@@ -355,6 +360,7 @@ spec:
   template:
     spec:
       priorityClassName: critical-jobs
+      restartPolicy: Never
 
       containers:
       - name: processor
