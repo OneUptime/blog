@@ -35,13 +35,13 @@ Create the directory structure:
 ```bash
 # Create a directory for the VPN configuration
 
-mkdir -p /opt/vpn/config
+mkdir -p /opt/vpn/config/wg_confs
 ```
 
 Create the WireGuard configuration:
 
 ```ini
-# /opt/vpn/config/wg0.conf
+# /opt/vpn/config/wg_confs/wg0.conf
 # WireGuard client configuration for VPN container
 [Interface]
 PrivateKey = YOUR_PRIVATE_KEY_HERE
@@ -68,7 +68,7 @@ docker run -d \
   --sysctl net.ipv4.conf.all.src_valid_mark=1 \
   -v /opt/vpn/config:/config \
   -p 8080:8080 \
-  linuxserver/wireguard
+  lscr.io/linuxserver/wireguard:latest
 ```
 
 Key flags explained:
@@ -123,7 +123,7 @@ docker run -d \
   -v /opt/vpn/config:/config \
   -p 8080:8080 \
   -p 3000:3000 \
-  linuxserver/wireguard
+  lscr.io/linuxserver/wireguard:latest
 
 # App container's port 8080 is accessible through the VPN container's published port
 docker run -d \
@@ -166,7 +166,7 @@ For a complete setup with Docker Compose:
 # docker-compose.yml - App traffic routed through WireGuard VPN
 services:
   vpn:
-    image: linuxserver/wireguard
+    image: lscr.io/linuxserver/wireguard:latest
     container_name: vpn
     cap_add:
       - NET_ADMIN
@@ -218,13 +218,13 @@ With these rules, if the WireGuard tunnel goes down, all outbound traffic is blo
 
 ## Health Checking the VPN Connection
 
-Add a health check to the VPN container so dependent containers can wait for the VPN to be ready:
+Add a health check to the VPN container so dependent containers can wait for the WireGuard interface to be ready:
 
 ```yaml
 # docker-compose.yml with VPN health check
 services:
   vpn:
-    image: linuxserver/wireguard
+    image: lscr.io/linuxserver/wireguard:latest
     cap_add:
       - NET_ADMIN
     volumes:
@@ -232,7 +232,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      # Verify the VPN tunnel is active by checking the interface
+      # Verify the WireGuard interface exists
       test: ["CMD", "wg", "show", "wg0"]
       interval: 30s
       timeout: 10s
@@ -274,10 +274,10 @@ You can run multiple VPN containers, each connected to a different VPN server, a
 
 ```bash
 # VPN container exiting through US
-docker run -d --name vpn-us --cap-add NET_ADMIN -v ./vpn-us:/config linuxserver/wireguard
+docker run -d --name vpn-us --cap-add NET_ADMIN -v ./vpn-us:/config lscr.io/linuxserver/wireguard:latest
 
 # VPN container exiting through EU
-docker run -d --name vpn-eu --cap-add NET_ADMIN -v ./vpn-eu:/config linuxserver/wireguard
+docker run -d --name vpn-eu --cap-add NET_ADMIN -v ./vpn-eu:/config lscr.io/linuxserver/wireguard:latest
 
 # App using US exit
 docker run -d --name app-us --network container:vpn-us my-app
@@ -292,4 +292,4 @@ Routing traffic through a VPN container adds overhead. WireGuard is very efficie
 
 ## Summary
 
-Routing Docker container traffic through a VPN container is a powerful pattern for privacy, security, and network isolation. The key mechanism is Docker's `--network container:` mode, which lets containers share a network namespace. Set up a VPN container with WireGuard or OpenVPN, then point your app containers at it. Add a kill switch to prevent leaks, and use health checks to ensure the VPN is ready before apps start sending traffic.
+Routing Docker container traffic through a VPN container is a powerful pattern for privacy, security, and network isolation. The key mechanism is Docker's `--network container:` mode, which lets containers share a network namespace. Set up a VPN container with WireGuard or OpenVPN, then point your app containers at it. Add a kill switch to prevent leaks, and use health checks to ensure the tunnel interface is ready before apps start sending traffic.
