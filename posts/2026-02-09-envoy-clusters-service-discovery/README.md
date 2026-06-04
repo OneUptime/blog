@@ -15,7 +15,7 @@ Envoy clusters define logical groups of upstream hosts that receive traffic rout
 Envoy supports several cluster types for endpoint discovery:
 
 - STATIC: Manually configured endpoints that never change
-- STRICT_DNS: DNS-based discovery with strict health checking
+- STRICT_DNS: DNS-based discovery where each returned IP address becomes a cluster host
 - LOGICAL_DNS: DNS-based discovery for external services
 - EDS: Endpoint Discovery Service for dynamic xDS-based discovery
 - ORIGINAL_DST: Forward to the original destination (transparent proxy)
@@ -87,7 +87,7 @@ clusters:
         end: 299
 ```
 
-This configuration queries DNS every 30 seconds and updates the endpoint list automatically. Perfect for Kubernetes Services where DNS returns multiple pod IPs.
+This configuration queries DNS every 30 seconds and updates the endpoint list automatically. It works well for Kubernetes headless Services, where DNS can return multiple pod IPs. For normal ClusterIP Services, DNS usually returns the service virtual IP instead.
 
 ## LOGICAL_DNS for External Services
 
@@ -143,7 +143,7 @@ EDS requires a control plane (like Istio or your own xDS server) that provides e
 
 ## Multiple Priority Levels
 
-Define multiple priority levels for locality-aware load balancing:
+Define multiple priority levels for failover between localities:
 
 ```yaml
 clusters:
@@ -170,12 +170,12 @@ clusters:
       lb_endpoints:
       - endpoint:
           address:
-            socket_socket:
+            socket_address:
               address: backend-zone-b.default.svc.cluster.local
               port_value: 8080
 ```
 
-Envoy prefers endpoints with lower priority values and only uses higher-priority endpoints when lower ones are unavailable.
+Envoy prefers endpoints with lower priority values. Under usual conditions it selects priority 0, then shifts traffic to higher priority values as enough lower-priority endpoints become unavailable or unhealthy.
 
 ## Connection Pool Settings
 
@@ -203,8 +203,12 @@ clusters:
       max_pending_requests: 1024
       max_requests: 1024
       max_retries: 3
-  http2_protocol_options:
-    max_concurrent_streams: 100
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options:
+          max_concurrent_streams: 100
 ```
 
 Connection pool limits prevent resource exhaustion and control upstream load.
