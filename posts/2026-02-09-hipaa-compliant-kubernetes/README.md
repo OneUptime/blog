@@ -30,8 +30,8 @@ kind: Policy
 metadata:
   name: hipaa-audit-policy
 rules:
-  # Log all requests at RequestResponse level for PHI-containing resources
-  - level: RequestResponse
+  # Log PHI-containing resources without recording request or response bodies
+  - level: Metadata
     verbs: ["get", "list", "create", "update", "patch", "delete", "deletecollection"]
     resources:
       - group: ""
@@ -109,7 +109,7 @@ spec:
     - kube-apiserver
     - --audit-policy-file=/etc/kubernetes/audit-policy.yaml
     - --audit-log-path=/var/log/kubernetes/audit.log
-    - --audit-log-maxage=90  # HIPAA requires 90 days minimum
+    - --audit-log-maxage=90  # Short-term local retention; ship logs for long-term retention
     - --audit-log-maxbackup=10
     - --audit-log-maxsize=100
     volumeMounts:
@@ -144,29 +144,29 @@ resources:
     providers:
       # Use KMS provider for encryption
       - kms:
+          apiVersion: v2
           name: aws-kms-provider
           endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
           timeout: 3s
 
-      # Identity provider as fallback (no encryption)
-      # Remove this in production to enforce encryption
+      # Identity provider as migration fallback for existing unencrypted data
+      # Remove after rewriting existing resources with the encrypted provider
       - identity: {}
 ```
 
 For AWS KMS integration:
 
 ```bash
-# Install AWS KMS plugin
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-encryption-provider/master/deployment/aws-encryption-provider.yaml
-
 # Create KMS key with appropriate access policies
-aws kms create-key \
+export KMS_KEY_ARN=$(aws kms create-key \
   --description "Kubernetes secrets encryption key for HIPAA compliance" \
-  --tags TagKey=Purpose,TagValue=HIPAA-PHI-Encryption
+  --tags TagKey=Purpose,TagValue=HIPAA-PHI-Encryption \
+  --query 'KeyMetadata.Arn' \
+  --output text)
 
-# Get the key ID
-export KMS_KEY_ID=$(aws kms describe-key --key-id alias/kubernetes-secrets --query 'KeyMetadata.KeyId' --output text)
+# Deploy the AWS KMS plugin as a static pod on each API server node
+# and configure it with --key=$KMS_KEY_ARN, --region=us-east-1,
+# and --listen=/var/run/kmsplugin/socket.sock
 
 # Update encryption configuration with the key
 cat > /etc/kubernetes/encryption-config.yaml <<EOF
@@ -177,11 +177,10 @@ resources:
       - secrets
     providers:
       - kms:
+          apiVersion: v2
           name: aws-kms
           endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
           timeout: 3s
-          apiVersion: v2
       - identity: {}
 EOF
 ```
@@ -208,14 +207,14 @@ ETCDCTL_API=3 etcdctl get /registry/secrets/healthcare-prod/test-secret | string
 
 ## Enforcing TLS for All Communication
 
-HIPAA requires protecting PHI during transmission. Enforce TLS for all cluster communication using Network Policies and service mesh.
+HIPAA requires protecting PHI during transmission. NetworkPolicies can restrict traffic to expected TLS ports, but they cannot prove that the payload is TLS-encrypted. Use a service mesh or application-level TLS configuration to enforce encryption for service-to-service communication.
 
 ```yaml
-# networkpolicy-require-tls.yaml
+# networkpolicy-restrict-to-tls-ports.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-non-tls-traffic
+  name: restrict-to-tls-ports
   namespace: healthcare-prod
 spec:
   podSelector: {}  # Apply to all pods
@@ -224,7 +223,7 @@ spec:
     - Egress
 
   ingress:
-    # Only allow traffic on TLS ports
+    # Only allow traffic on expected TLS ports
     - from:
         - podSelector: {}
       ports:
@@ -283,14 +282,13 @@ spec:
 Install and configure a service mesh for mutual TLS:
 
 ```bash
-# Install Istio with strict mTLS
+# Install Istio with automatic mTLS
 istioctl install --set profile=default \
-  --set meshConfig.enableAutoMtls=true \
-  --set values.global.mtls.enabled=true
+  --set meshConfig.enableAutoMtls=true
 
 # Create strict PeerAuthentication policy
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -382,7 +380,7 @@ Create continuous compliance monitoring using OPA Gatekeeper to enforce HIPAA re
 
 ```yaml
 # hipaa-compliance-policies.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: hipaacompliance
@@ -391,6 +389,9 @@ spec:
     spec:
       names:
         kind: HIPAACompliance
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -446,7 +447,7 @@ kubectl apply -f hipaa-compliance-policies.yaml
 
 ## Configuring Audit Log Retention and Monitoring
 
-HIPAA requires retaining audit logs for at least 6 years. Configure log shipping to long-term storage with integrity protection.
+HIPAA requires retaining required Security Rule documentation for at least 6 years. Many organizations retain audit logs or audit summaries for the same period based on their risk analysis and policies. Configure log shipping to long-term storage with integrity protection.
 
 ```yaml
 # audit-log-shipping.yaml
@@ -494,7 +495,7 @@ data:
         auto_create_group   On
 ```
 
-Deploy Fluent Bit as a DaemonSet:
+Apply this ConfigMap and mount it into your Fluent Bit DaemonSet:
 
 ```bash
 kubectl apply -f audit-log-shipping.yaml
@@ -512,9 +513,9 @@ echo "HIPAA Compliance Report - $(date)"
 echo "=================================="
 
 echo -e "\n1. Audit Logging Status:"
-kubectl get pods -n kube-system -l app=audit-logger -o wide
+kubectl get pods -n kube-system -l app.kubernetes.io/name=fluent-bit -o wide
 
-echo -e "\n2. Encryption Status:"
+echo -e "\n2. Encryption Annotation Status:"
 kubectl get secrets -n healthcare-prod -o json | \
   jq -r '.items[] | "\(.metadata.name): \(.metadata.annotations.encrypted // "NOT ENCRYPTED")"'
 
