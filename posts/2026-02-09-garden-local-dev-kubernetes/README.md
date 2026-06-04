@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DevEx, Development
 
-Description: Learn how to use Garden to create fast, automated local development workflows for Kubernetes applications with hot-reloading, dependency management, and integrated testing.
+Description: Learn how to use Garden to create fast, automated local development workflows for Kubernetes applications with code synchronization, dependency management, and integrated testing.
 
 ---
 
 Managing local Kubernetes development workflows becomes complex as applications grow. You need to build multiple services, manage dependencies between them, sync code changes, run tests, and handle configuration across different environments. Doing this manually with scripts and tools quickly becomes unwieldy and error-prone.
 
-Garden is a development orchestration tool that automates these workflows. It provides dependency-aware builds, intelligent caching, hot-reloading, integrated testing, and a unified interface for multi-service development. In this guide, you'll learn how to set up Garden for efficient Kubernetes development.
+Garden is a development orchestration tool that automates these workflows. It provides dependency-aware builds, intelligent caching, code synchronization, integrated testing, and a unified interface for multi-service development. In this guide, you'll learn how to set up Garden for efficient Kubernetes development.
 
 ## Understanding Garden Architecture
 
-Garden works by analyzing your project's dependency graph and automatically building, deploying, and testing services in the correct order. It uses a declarative configuration where you define actions for building, deploying, running, and testing your services.
+Garden works by analyzing your project's dependency graph and automatically building, deploying, running, and testing actions in the correct order. It uses a declarative configuration where you define actions for building, deploying, running, and testing your services.
 
-Garden monitors file changes and automatically rebuilds and redeploys affected services. It caches build results and only rebuilds what's necessary, dramatically reducing iteration time. The tool works with local Kubernetes clusters like kind, minikube, or k3d, as well as remote development clusters.
+Garden can monitor file changes and sync source files into running containers when you deploy in sync mode. It caches build and test results and only rebuilds what's necessary, dramatically reducing iteration time. The tool works with local Kubernetes clusters like kind, minikube, or k3d, as well as remote development clusters.
 
 ## Installing Garden
 
@@ -24,7 +24,6 @@ Install Garden CLI:
 
 ```bash
 # macOS
-
 brew install garden-io/garden/garden-cli
 
 # Linux
@@ -41,7 +40,7 @@ Create a basic Garden configuration:
 
 ```yaml
 # project.garden.yml
-apiVersion: garden.io/v1
+apiVersion: garden.io/v2
 kind: Project
 name: my-application
 defaultEnvironment: local
@@ -49,245 +48,246 @@ defaultEnvironment: local
 environments:
   - name: local
     defaultNamespace: development-${local.username}
+    variables:
+      dbPassword: localpassword
+      grafanaPassword: admin
   - name: dev
     defaultNamespace: dev-${local.username}
 
 providers:
+  - name: local-kubernetes
+    environments: [local]
   - name: kubernetes
-    environments: [local, dev]
-    context: kind-local
-    deploymentStrategy: rolling
-
-    # Build images locally with docker
-    buildMode: local-docker
-
-    # Enable hot-reloading
-    sync:
-      defaults:
-        exclude:
-          - node_modules
-          - .git
-          - '*.log'
+    environments: [dev]
+    context: dev-cluster
 ```
 
 ## Configuring Services with Garden
 
-Create a Garden module for a Node.js API service:
+Create Garden actions for a Node.js API service:
 
 ```yaml
 # services/api/garden.yml
-apiVersion: garden.io/v1
-kind: Module
+kind: Build
 name: api-service
 type: container
+description: Build the API service image
+---
+kind: Deploy
+name: api
+type: container
 description: Main API service
-
-# Dependencies
 dependencies:
-  - database
-  - redis
-
-# Build configuration
-build:
-  dependencies:
-    - name: shared-lib
-      copy:
-        - source: ./dist
-          target: /app/lib
-
-# Service configuration
-services:
-  - name: api
-    dependencies:
-      - database
-      - redis
-    sourceModule: api-service
-
-    # Hot reload configuration
-    hotReload:
-      sync:
-        - source: /src
-          target: /app/src
-
-    # Deployment spec
-    spec:
-      image: ${modules.api-service.outputs.deployment-image-id}
-      replicas: 1
-      ports:
-        - name: http
-          containerPort: 3000
-          servicePort: 80
-      env:
-        NODE_ENV: development
-        DATABASE_URL: postgres://postgres:5432/app
-        REDIS_URL: redis://redis:6379
-
-      # Health checks
-      healthCheck:
-        httpGet:
-          path: /health
-          port: http
-
-      # Resource limits
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-
-# Test configuration
-tests:
-  - name: unit
-    command: [npm, test]
-    dependencies: []
-
-  - name: integration
-    command: [npm, run, test:integration]
-    dependencies:
-      - database
-      - redis
+  - build.api-service
+  - deploy.database
+  - deploy.redis
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  replicas: 1
+  deploymentStrategy: RollingUpdate
+  ports:
+    - name: http
+      containerPort: 3000
+      servicePort: 80
+      localPort: 3000
+  env:
+    NODE_ENV: development
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
+    REDIS_URL: redis://redis:6379
+  healthCheck:
+    httpGet:
+      path: /health
+      port: http
+  cpu:
+    min: 100
+    max: 500
+  memory:
+    min: 128
+    max: 512
+---
+kind: Test
+name: api-unit
+type: container
+dependencies:
+  - build.api-service
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, test:unit]
+  env:
+    NODE_ENV: test
+---
+kind: Test
+name: api-integration
+type: container
+dependencies:
+  - build.api-service
+  - deploy.database
+  - deploy.redis
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, test:integration]
+  env:
+    NODE_ENV: test
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
+    REDIS_URL: redis://redis:6379
 ```
 
-Create a database module:
+Create database and Redis deploy actions:
 
 ```yaml
 # services/database/garden.yml
-apiVersion: garden.io/v1
-kind: Module
+kind: Deploy
 name: database
 type: helm
 description: PostgreSQL database
-
-# Use Bitnami PostgreSQL chart
-chart: bitnami/postgresql
-version: "12.1.0"
-
-repo: https://charts.bitnami.com/bitnami
-
-values:
-  auth:
-    postgresPassword: ${var.db-password}
-    database: app
-
-  primary:
-    persistence:
-      enabled: false  # Disable for local dev
-
-    resources:
-      requests:
-        memory: 256Mi
-        cpu: 100m
-
-services:
-  - name: database
-    dependencies: []
-    ports:
-      - name: postgresql
-        containerPort: 5432
+spec:
+  chart:
+    name: postgresql
+    repo: https://charts.bitnami.com/bitnami
+    version: "12.1.0"
+  values:
+    auth:
+      postgresPassword: ${var.dbPassword}
+      database: app
+    primary:
+      persistence:
+        enabled: false  # Disable for local dev
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+---
+kind: Deploy
+name: redis
+type: container
+description: Redis cache
+spec:
+  image: redis:7-alpine
+  ports:
+    - name: redis
+      containerPort: 6379
+      servicePort: 6379
 ```
 
 ## Implementing Hot-Reloading
 
-Configure hot-reloading for fast development:
+Configure code synchronization for fast development:
 
 ```yaml
 # services/api/garden.yml
-apiVersion: garden.io/v1
-kind: Module
+kind: Build
 name: api-service
 type: container
+spec:
+  dockerfile: Dockerfile
+---
+kind: Deploy
+name: api
+type: container
+dependencies:
+  - build.api-service
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  ports:
+    - name: http
+      containerPort: 3000
+      servicePort: 80
+      localPort: 3000
+  sync:
+    command: [npm, run, dev]
+    paths:
+      - source: src
+        target: /app/src
+        mode: one-way-safe
+        exclude:
+          - '**/*.test.js'
+          - '**/node_modules/**'
+      - source: public
+        target: /app/public
+        mode: one-way-safe
+```
 
-services:
-  - name: api
-    hotReload:
-      sync:
-        - source: /src
-          target: /app/src
-          mode: two-way
-          exclude:
-            - '**/*.test.js'
-            - '**/node_modules/**'
+Your Dockerfile should support the development command used in sync mode:
 
-        - source: /public
-          target: /app/public
-          mode: one-way-replica
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
 
-      # Post-sync command to restart the process
-      postSyncCommand: [npm, run, dev]
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
 
-# Dockerfile needs to support hot-reload
-dockerfile: |
-  FROM node:18-alpine
-  WORKDIR /app
+# Copy application code
+COPY . .
 
-  # Install dependencies
-  COPY package*.json ./
-  RUN npm ci
+# Install nodemon for hot-reloading
+RUN npm install -g nodemon
 
-  # Copy application code
-  COPY . .
-
-  # Install nodemon for hot-reloading
-  RUN npm install -g nodemon
-
-  # Development command with nodemon
-  CMD ["nodemon", "--watch", "src", "src/app.js"]
+# Development command with nodemon
+CMD ["nodemon", "--watch", "src", "src/app.js"]
 ```
 
 ## Creating Development Tasks
 
-Define tasks for common operations:
+Define Run actions for common operations:
 
 ```yaml
 # services/api/garden.yml
-apiVersion: garden.io/v1
-kind: Module
-name: api-service
+kind: Run
+name: migrate
 type: container
-
-tasks:
-  - name: migrate
-    description: Run database migrations
-    command: [npm, run, migrate]
-    dependencies:
-      - database
-    env:
-      DATABASE_URL: ${services.database.outputs.connection-string}
-
-  - name: seed
-    description: Seed database with test data
-    command: [npm, run, seed]
-    dependencies:
-      - migrate
-
-  - name: shell
-    description: Open interactive shell in container
-    command: [/bin/sh]
-    dependencies:
-      - api
-    interactive: true
-
-  - name: logs
-    description: Stream application logs
-    command: [kubectl, logs, -f, -l, app=api-service]
+description: Run database migrations
+dependencies:
+  - build.api-service
+  - deploy.database
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, migrate]
+  env:
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
+---
+kind: Run
+name: seed
+type: container
+description: Seed database with test data
+dependencies:
+  - build.api-service
+  - deploy.database
+  - run.migrate
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, seed]
+  env:
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
+---
+kind: Run
+name: cleanup
+type: container
+description: Clean up test data
+dependencies:
+  - build.api-service
+  - deploy.database
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, cleanup]
+  env:
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
 ```
 
-Run tasks:
+Run tasks and inspect the service:
 
 ```bash
 # Run migrations
-garden run task migrate
+garden run migrate
 
 # Seed database
-garden run task seed
+garden run seed
 
-# Open shell
-garden run task shell
+# Open shell in the deployed API container
+garden exec api -- sh
 
 # View logs
-garden run task logs
+garden logs api --follow
 ```
 
 ## Setting Up Development Environment
@@ -295,26 +295,22 @@ garden run task logs
 Create an environment-specific configuration:
 
 ```yaml
-# garden.local.yml
-apiVersion: garden.io/v1
+# project.garden.yml
+apiVersion: garden.io/v2
 kind: Project
 name: my-application
 
 environments:
   - name: local
+    defaultNamespace: dev-${local.username}
     variables:
-      db-password: localpassword
-      api-replicas: 1
-      log-level: debug
+      dbPassword: localpassword
+      apiReplicas: 1
+      logLevel: debug
 
 providers:
-  - name: kubernetes
-    namespace: dev-${local.username}
-
-    # Use local Docker registry
-    dockerRegistry:
-      hostname: localhost:5000
-      namespace: development
+  - name: local-kubernetes
+    environments: [local]
 ```
 
 Start the full development environment:
@@ -324,13 +320,16 @@ Start the full development environment:
 garden deploy
 
 # Deploy specific services
-garden deploy api-service
+garden deploy api
 
-# Deploy with hot-reload enabled
+# Deploy with sync enabled
+garden deploy --sync=api
+
+# Open the interactive dev console
 garden dev
 
 # Deploy and follow logs
-garden logs --follow api-service
+garden deploy api --logs
 ```
 
 ## Creating Automated Workflows
@@ -339,7 +338,6 @@ Define workflows for common development scenarios:
 
 ```yaml
 # workflows.garden.yml
-apiVersion: garden.io/v1
 kind: Workflow
 name: full-test
 description: Run all tests in correct order
@@ -348,18 +346,17 @@ steps:
   - command: [deploy]
     description: Deploy all services
 
-  - command: [run, task, migrate]
+  - command: [run, migrate]
     description: Run database migrations
 
   - command: [test]
     description: Run all tests
 
-  - command: [run, task, cleanup]
+  - command: [run, cleanup]
     description: Clean up test data
     when: always
 
 ---
-apiVersion: garden.io/v1
 kind: Workflow
 name: dev-setup
 description: Set up development environment
@@ -368,28 +365,28 @@ steps:
   - command: [deploy, database, redis]
     description: Deploy infrastructure services
 
-  - command: [run, task, migrate]
+  - command: [run, migrate]
     description: Run migrations
 
-  - command: [run, task, seed]
+  - command: [run, seed]
     description: Seed test data
 
-  - command: [deploy, api-service]
+  - command: [deploy, api]
     description: Deploy API service
 
   - script: |
       echo "Development environment ready!"
-      echo "API available at http://localhost:3000"
+      echo "API available through the port forward created by Garden."
 ```
 
 Run workflows:
 
 ```bash
 # Run full test suite
-garden run workflow full-test
+garden workflow full-test
 
 # Set up development environment
-garden run workflow dev-setup
+garden workflow dev-setup
 ```
 
 ## Integrating Tests
@@ -398,33 +395,43 @@ Configure comprehensive testing:
 
 ```yaml
 # services/api/garden.yml
-apiVersion: garden.io/v1
-kind: Module
-name: api-service
+kind: Test
+name: api-unit
 type: container
-
-tests:
-  - name: unit
-    command: [npm, run, test:unit]
-    dependencies: []
-    env:
-      NODE_ENV: test
-
-  - name: integration
-    command: [npm, run, test:integration]
-    dependencies:
-      - database
-      - redis
-    env:
-      NODE_ENV: test
-      DATABASE_URL: ${services.database.outputs.connection-string}
-
-  - name: e2e
-    command: [npm, run, test:e2e]
-    dependencies:
-      - api
-    env:
-      API_URL: ${services.api.outputs.ingress-url}
+dependencies:
+  - build.api-service
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, test:unit]
+  env:
+    NODE_ENV: test
+---
+kind: Test
+name: api-integration
+type: container
+dependencies:
+  - build.api-service
+  - deploy.database
+  - deploy.redis
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, test:integration]
+  env:
+    NODE_ENV: test
+    DATABASE_URL: postgres://postgres:${var.dbPassword}@database-postgresql:5432/app
+    REDIS_URL: redis://redis:6379
+---
+kind: Test
+name: api-e2e
+type: container
+dependencies:
+  - build.api-service
+  - deploy.api
+spec:
+  image: ${actions.build.api-service.outputs.deploymentImageId}
+  command: [npm, run, test:e2e]
+  env:
+    API_URL: http://api
 ```
 
 Run tests:
@@ -434,13 +441,13 @@ Run tests:
 garden test
 
 # Run specific test
-garden test api-service unit
+garden test api-unit
 
-# Run tests in watch mode
-garden test --watch
+# Force a cached test to run again
+garden test api-integration --force
 
-# Run tests with specific tag
-garden test --tag integration
+# Run tests interactively
+garden test api-integration -i
 ```
 
 ## Creating a Complete Development Script
@@ -459,37 +466,34 @@ echo "🌱 Starting Garden development environment..."
 if ! kubectl cluster-info &> /dev/null; then
     echo "Creating local Kubernetes cluster..."
     kind create cluster --name garden-dev
+    kubectl config use-context kind-garden-dev
 fi
 
-# Start Garden in development mode
-garden dev --hot-reload --logs all &
+# Deploy with sync enabled and stream logs
+garden deploy --sync=api --logs &
 GARDEN_PID=$!
-
-# Wait for services to be ready
-echo "⏳ Waiting for services to be ready..."
-garden deploy --wait
 
 # Run initial setup tasks
 echo "🔧 Running setup tasks..."
-garden run task migrate
-garden run task seed
+garden run migrate
+garden run seed
 
 # Display access information
 echo ""
 echo "✅ Development environment ready!"
 echo ""
-echo "Services:"
-garden get services
+echo "Status:"
+garden get status
 echo ""
 echo "Available commands:"
-echo "  garden logs <service>  - View service logs"
-echo "  garden exec <service>  - Execute command in service"
+echo "  garden logs <deploy>   - View deploy logs"
+echo "  garden exec <deploy> -- sh  - Execute a shell in a deploy"
 echo "  garden test            - Run tests"
 echo ""
 echo "Press Ctrl+C to stop"
 
 # Handle cleanup
-trap "echo '🛑 Stopping Garden...' && kill $GARDEN_PID && garden delete env" EXIT
+trap "echo '🛑 Stopping Garden...' && kill $GARDEN_PID && garden cleanup env" EXIT
 
 # Wait for interrupt
 wait $GARDEN_PID
@@ -501,43 +505,39 @@ Create monitoring dashboards:
 
 ```yaml
 # monitoring.garden.yml
-apiVersion: garden.io/v1
-kind: Module
+kind: Deploy
 name: monitoring
 type: helm
-
-chart: prometheus-community/kube-prometheus-stack
-repo: https://prometheus-community.github.io/helm-charts
-
-values:
-  prometheus:
-    prometheusSpec:
-      serviceMonitorSelectorNilUsesHelmValues: false
-
-  grafana:
-    enabled: true
-    adminPassword: ${var.grafana-password}
-
-services:
-  - name: prometheus
-    ports:
-      - name: web
-        containerPort: 9090
-
-  - name: grafana
-    ports:
-      - name: web
-        containerPort: 3000
+spec:
+  chart:
+    name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+  values:
+    prometheus:
+      prometheusSpec:
+        serviceMonitorSelectorNilUsesHelmValues: false
+    grafana:
+      enabled: true
+      adminPassword: ${var.grafanaPassword}
+  portForwards:
+    - name: grafana
+      resource: Service/monitoring-grafana
+      targetPort: 80
+      localPort: 3000
+    - name: prometheus
+      resource: Service/monitoring-kube-prometheus-prometheus
+      targetPort: 9090
+      localPort: 9090
 ```
 
 Access monitoring:
 
 ```bash
-# Port forward to Grafana
-garden port-forward grafana 3000
+# Start Garden-managed port forwards for monitoring
+garden deploy monitoring --forward
 
-# View Prometheus metrics
-garden port-forward prometheus 9090
+# View logs for the monitoring deploy
+garden logs monitoring --follow
 ```
 
-Garden provides a comprehensive development orchestration platform that eliminates the complexity of managing multi-service Kubernetes applications. By automating builds, deployments, testing, and hot-reloading while intelligently managing dependencies and caching, Garden dramatically accelerates development workflows and reduces the friction of cloud-native development.
+Garden provides a comprehensive development orchestration platform that eliminates the complexity of managing multi-service Kubernetes applications. By automating builds, deployments, testing, and code synchronization while intelligently managing dependencies and caching, Garden dramatically accelerates development workflows and reduces the friction of cloud-native development.
