@@ -31,7 +31,7 @@ kubectl get namespace production -o yaml | grep pod-security
 # pod-security.kubernetes.io/warn: restricted
 ```
 
-When a pod violates the enforcement standard, admission rejects it immediately. Audit and warn modes allow the pod but generate events.
+When a pod violates the enforcement standard, admission rejects it immediately. Audit mode allows the pod but adds audit annotations to the audit log, and warn mode allows the pod but returns user-facing warnings.
 
 ## Identifying PSA Rejections
 
@@ -48,8 +48,8 @@ privileged (container "app" must not set securityContext.privileged=true)
 # Check namespace security settings
 kubectl get ns production -o jsonpath='{.metadata.labels}'
 
-# View audit events for violations
-kubectl get events -n production | grep "PodSecurity"
+# View audit annotations for violations in Kubernetes audit logs
+grep "pod-security.kubernetes.io/audit-violations" /var/log/kubernetes/audit.log
 ```
 
 The error message tells you exactly which field violates which standard, making troubleshooting straightforward.
@@ -82,7 +82,7 @@ Attempting to create this pod in a namespace with Baseline enforcement fails.
 
 ## Fixing Privileged Container Requirements
 
-Some containers legitimately need elevated privileges. Instead of making them fully privileged, grant specific capabilities.
+Some containers legitimately need elevated privileges. Instead of making them fully privileged, grant specific capabilities where the namespace policy allows them.
 
 ```yaml
 # Bad: Fully privileged container
@@ -99,7 +99,7 @@ spec:
       privileged: true  # Too permissive
 
 ---
-# Good: Specific capabilities only
+# Good: Specific allowed capabilities only
 apiVersion: v1
 kind: Pod
 metadata:
@@ -112,11 +112,10 @@ spec:
     securityContext:
       capabilities:
         add:
-        - NET_ADMIN
-        - NET_RAW
+        - NET_BIND_SERVICE
 ```
 
-Grant only the capabilities actually needed. Common capabilities include NET_ADMIN for network tools, SYS_TIME for time sync, and CHOWN for file ownership changes.
+Grant only the capabilities actually needed. Baseline allows adding only a limited set of capabilities such as NET_BIND_SERVICE and CHOWN. Capabilities such as NET_ADMIN, NET_RAW, and SYS_TIME are not allowed by Baseline; workloads that truly need them require a more permissive namespace or a carefully scoped exemption.
 
 ## Handling Host Namespace Requirements
 
@@ -233,8 +232,8 @@ metadata:
 Deploy workloads and collect violations.
 
 ```bash
-# View audit events
-kubectl get events -n production --field-selector reason=PodSecurityViolation
+# View audit annotations in Kubernetes audit logs
+grep "pod-security.kubernetes.io/audit-violations" /var/log/kubernetes/audit.log
 
 # Check warning messages during deployment
 kubectl apply -f deployment.yaml
@@ -299,7 +298,7 @@ spec:
     emptyDir: {}
 ```
 
-ConfigMap, Secret, PersistentVolumeClaim, EmptyDir, and DownwardAPI volumes are allowed. HostPath and others are forbidden.
+ConfigMap, CSI, DownwardAPI, EmptyDir, Ephemeral, PersistentVolumeClaim, Projected, and Secret volumes are allowed. HostPath and volume types outside that list are forbidden.
 
 ## Container Image Requirements
 
@@ -378,26 +377,50 @@ data:
       rules:
       - alert: PSAViolations
         expr: |
-          increase(apiserver_admission_webhook_rejection_count{
-            name="PodSecurity"
-          }[5m]) > 5
+          sum(
+            increase(pod_security_evaluations_total{
+              decision="deny",
+              mode="enforce"
+            }[5m])
+          ) > 5
         labels:
           severity: warning
         annotations:
           summary: "Multiple PSA rejections detected"
           description: "{{ $value }} pod security violations in last 5 minutes"
 
-      - record: psa_audit_violations_total
+      - alert: PSAAuditViolations
         expr: |
-          sum by (namespace, level) (
-            increase(apiserver_admission_step_admission_duration_seconds_count{
-              operation="CREATE",
-              rejected="true"
+          sum(
+            increase(pod_security_evaluations_total{
+              decision="deny",
+              mode="audit"
+            }[5m])
+          ) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple PSA audit violations detected"
+          description: "{{ $value }} pod security audit violations in last 5 minutes"
+
+      - record: psa_evaluations_total
+        expr: |
+          sum by (mode, policy_level, decision) (
+            increase(pod_security_evaluations_total{
+              request_operation="create"
+            }[1h])
+          )
+
+      - record: psa_exemptions_total
+        expr: |
+          sum(
+            increase(pod_security_exemptions_total{
+              request_operation="create"
             }[1h])
           )
 ```
 
-Audit mode violations appear in Kubernetes audit logs. Configure audit logging to capture these events.
+Audit mode violations appear as annotations in Kubernetes audit logs. Configure audit logging to capture these annotations.
 
 ## Testing PSA Compliance
 
