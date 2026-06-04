@@ -26,7 +26,7 @@ go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
 docker pull jnorwood/helm-docs:latest
 
 # Download binary directly
-curl -LSs https://github.com/norwoodj/helm-docs/releases/download/v1.11.0/helm-docs_1.11.0_Linux_x86_64.tar.gz | tar xz
+curl -LSs https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz | tar xz
 sudo mv helm-docs /usr/local/bin/
 ```
 
@@ -153,16 +153,16 @@ The `--` comment syntax tells helm-docs to include that comment in the generated
 
 Customize the generated documentation by creating a README.md.gotmpl file:
 
-```markdown
-# {{ .Project.Name }}
+````markdown
+# {{ .Name }}
 
-{{ .Project.Description }}
+{{ .Description }}
 
 {{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
 
 ## Overview
 
-{{ .Project.Description }}
+{{ .Description }}
 
 ## Prerequisites
 
@@ -176,13 +176,13 @@ Add the Helm repository:
 ```bash
 helm repo add myrepo https://charts.example.com
 helm repo update
-```bash
+```
 
 Install the chart:
 
 ```bash
-helm install my-release myrepo/{{ .Project.Name }}
-```bash
+helm install my-release myrepo/{{ .Name }}
+```
 
 ## Configuration
 
@@ -195,17 +195,17 @@ The following table lists the configurable parameters and their default values.
 ### Basic Installation
 
 ```bash
-helm install my-app myrepo/{{ .Project.Name }}
-```bash
+helm install my-app myrepo/{{ .Name }}
+```
 
 ### Custom Configuration
 
 ```bash
-helm install my-app myrepo/{{ .Project.Name }} \
+helm install my-app myrepo/{{ .Name }} \
   --set replicaCount=3 \
   --set image.tag=v1.2.3 \
   --set ingress.enabled=true
-```bash
+```
 
 ### Using a Values File
 
@@ -230,32 +230,32 @@ ingress:
     - secretName: myapp-tls
       hosts:
         - myapp.example.com
-```bash
+```
 
 Install with custom values:
 
 ```bash
-helm install my-app myrepo/{{ .Project.Name }} -f custom-values.yaml
-```bash
+helm install my-app myrepo/{{ .Name }} -f custom-values.yaml
+```
 
 ## Upgrading
 
 ```bash
-helm upgrade my-app myrepo/{{ .Project.Name }} --version {{ .Project.Version }}
-```bash
+helm upgrade my-app myrepo/{{ .Name }} --version {{ .Version }}
+```
 
 ## Uninstalling
 
 ```bash
 helm uninstall my-app
-```bash
+```
 
 {{ template "chart.maintainersSection" . }}
 
 {{ template "chart.requirementsSection" . }}
 
 {{ template "helm-docs.versionFooter" . }}
-```text
+````
 
 ## Advanced Value Documentation
 
@@ -347,10 +347,10 @@ dependencies:
 
 Add custom sections to your README template:
 
-```markdown
+````markdown
 ## Architecture
 
-{{ .Project.Name }} consists of the following components:
+{{ .Name }} consists of the following components:
 
 - **API Server**: Handles HTTP requests
 - **Worker**: Processes background jobs
@@ -375,7 +375,7 @@ metrics:
   enabled: true
   port: 9090
   path: /metrics
-```bash
+```
 
 ## Troubleshooting
 
@@ -384,23 +384,23 @@ metrics:
 Check pod events:
 
 ```bash
-kubectl describe pod -l app.kubernetes.io/name={{ .Project.Name }}
-```bash
+kubectl describe pod -l app.kubernetes.io/name={{ .Name }}
+```
 
 View logs:
 
 ```bash
-kubectl logs -l app.kubernetes.io/name={{ .Project.Name }}
-```bash
+kubectl logs -l app.kubernetes.io/name={{ .Name }}
+```
 
 ### Database Connection Issues
 
 Verify database credentials:
 
 ```bash
-kubectl get secret {{ .Project.Name }}-db-secret -o yaml
-```bash
-```text
+kubectl get secret {{ .Name }}-db-secret -o yaml
+```
+````
 
 ## Automating Documentation in CI/CD
 
@@ -424,17 +424,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Install helm-docs
       run: |
-        curl -LSs https://github.com/norwoodj/helm-docs/releases/download/v1.11.0/helm-docs_1.11.0_Linux_x86_64.tar.gz | tar xz
+        curl -LSs https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz | tar xz
         sudo mv helm-docs /usr/local/bin/
 
     - name: Generate documentation
       run: |
         for chart in charts/*/; do
-          helm-docs "$chart"
+          helm-docs --chart-search-root "$chart"
         done
 
     - name: Check for changes
@@ -468,12 +468,12 @@ Ensure documentation stays updated with a pre-commit hook:
 for chart in charts/*/; do
     if [ -f "$chart/Chart.yaml" ]; then
         echo "Generating docs for $chart"
-        helm-docs "$chart" --dry-run > /dev/null
+        helm-docs --chart-search-root "$chart" --dry-run > /dev/null
         if [ $? -ne 0 ]; then
             echo "Error generating docs for $chart"
             exit 1
         fi
-        helm-docs "$chart"
+        helm-docs --chart-search-root "$chart"
         git add "$chart/README.md"
     fi
 done
@@ -487,18 +487,17 @@ chmod +x .git/hooks/pre-commit
 
 ## Configuration Options
 
-Customize helm-docs behavior with a configuration file:
+Customize helm-docs behavior with command-line options:
 
-```yaml
-# .helm-docs.yaml
-badge-style: flat-square
-chart-search-root: charts
-ignore-file: .helmdocsignore
-output-file: README.md
-sort-values-order: file
-template-files:
-  - README.md.gotmpl
-  - _templates.gotmpl
+```bash
+helm-docs \
+  --badge-style flat-square \
+  --chart-search-root charts \
+  --ignore-file .helmdocsignore \
+  --output-file README.md \
+  --sort-values-order file \
+  --template-files README.md.gotmpl \
+  --template-files ./_templates.gotmpl
 ```
 
 Create an ignore file:
