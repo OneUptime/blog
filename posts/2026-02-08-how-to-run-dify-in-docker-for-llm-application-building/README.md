@@ -35,7 +35,8 @@ graph TD
 
 ## Prerequisites
 
-- Docker and Docker Compose (v2) installed
+- Docker and Docker Compose 2.24.0 or later installed
+- `jq` installed for the release-clone command
 - At least 4 GB of RAM available
 - 10 GB of free disk space
 - An LLM API key (OpenAI, Anthropic, etc.) or a local Ollama instance
@@ -52,8 +53,8 @@ docker compose version
 Dify provides an official Docker Compose configuration in their repository.
 
 ```bash
-# Clone the Dify repository
-git clone https://github.com/langgenius/dify.git
+# Clone the latest Dify release
+git clone --branch "$(curl -s https://api.github.com/repos/langgenius/dify/releases/latest | jq -r .tag_name)" https://github.com/langgenius/dify.git
 cd dify/docker
 
 # Copy the example environment file
@@ -66,19 +67,20 @@ Review and customize the environment file:
 # Edit the .env file to configure your deployment
 # Key settings to review:
 
-# Secret key for session encryption (change this in production)
+# Secret key for session encryption (leave empty to auto-generate, or set a strong value before first launch)
 # SECRET_KEY=your-random-secret-key-here
 
 # Database configuration
 # DB_USERNAME=postgres
 # DB_PASSWORD=difyai123456
-# DB_HOST=db
+# DB_HOST=db_postgres
 # DB_PORT=5432
 # DB_DATABASE=dify
 
 # Redis configuration
 # REDIS_HOST=redis
 # REDIS_PORT=6379
+# REDIS_PASSWORD=difyai123456
 
 # Vector database selection (weaviate, qdrant, milvus, pgvector)
 # VECTOR_STORE=weaviate
@@ -97,11 +99,14 @@ docker compose logs -f
 Dify starts several containers:
 - **api**: The backend API server
 - **worker**: Background task processor (Celery)
+- **worker_beat**: Scheduled background task processor
 - **web**: The frontend web application
-- **db**: PostgreSQL database
+- **plugin_daemon**: Plugin runtime service
+- **db_postgres**: PostgreSQL database
 - **redis**: Redis for caching and task queues
 - **weaviate**: Vector database for RAG
 - **sandbox**: Code execution sandbox
+- **ssrf_proxy**: Proxy used to isolate outbound requests
 - **nginx**: Reverse proxy
 
 ```bash
@@ -114,106 +119,18 @@ docker compose ps
 
 ## Custom Docker Compose Configuration
 
-If you want to build a minimal Dify setup or customize it, here is a simplified configuration.
+If you want to customize Dify, extend the official Compose file instead of replacing the required services. For example, this override exposes the API directly on port 5001 and the web container on port 3000 while keeping the supported service graph intact.
 
 ```yaml
-# docker-compose-custom.yml
-# Simplified Dify deployment
-version: "3.8"
-
+# docker-compose.override.yaml
 services:
   api:
-    image: langgenius/dify-api:latest
-    container_name: dify-api
     ports:
       - "5001:5001"
-    environment:
-      - MODE=api
-      - SECRET_KEY=change-this-to-a-random-string
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=securepassword
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_DATABASE=dify
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - VECTOR_STORE=weaviate
-      - WEAVIATE_ENDPOINT=http://weaviate:8080
-    depends_on:
-      - db
-      - redis
-      - weaviate
-    restart: unless-stopped
-
-  worker:
-    image: langgenius/dify-api:latest
-    container_name: dify-worker
-    environment:
-      - MODE=worker
-      - SECRET_KEY=change-this-to-a-random-string
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=securepassword
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_DATABASE=dify
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - VECTOR_STORE=weaviate
-      - WEAVIATE_ENDPOINT=http://weaviate:8080
-    depends_on:
-      - db
-      - redis
-    restart: unless-stopped
 
   web:
-    image: langgenius/dify-web:latest
-    container_name: dify-web
     ports:
       - "3000:3000"
-    environment:
-      - CONSOLE_API_URL=http://localhost:5001
-      - APP_API_URL=http://localhost:5001
-    restart: unless-stopped
-
-  db:
-    image: postgres:15-alpine
-    container_name: dify-db
-    volumes:
-      - dify_db_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=securepassword
-      - POSTGRES_DB=dify
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: dify-redis
-    volumes:
-      - dify_redis_data:/data
-    restart: unless-stopped
-
-  weaviate:
-    image: semitechnologies/weaviate:latest
-    container_name: dify-weaviate
-    volumes:
-      - dify_weaviate_data:/var/lib/weaviate
-    environment:
-      - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
-      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
-      - DEFAULT_VECTORIZER_MODULE=none
-    restart: unless-stopped
-
-volumes:
-  dify_db_data:
-  dify_redis_data:
-  dify_weaviate_data:
 ```
 
 ## Connecting LLM Providers
@@ -230,6 +147,7 @@ To use a local Ollama instance with Dify:
 
 ```yaml
 # Add Ollama to your Docker Compose file
+services:
   ollama:
     image: ollama/ollama:latest
     container_name: dify-ollama
@@ -238,13 +156,16 @@ To use a local Ollama instance with Dify:
     ports:
       - "11434:11434"
     restart: unless-stopped
+
+volumes:
+  ollama_data:
 ```
 
 Then in the Dify web UI, go to Settings > Model Provider > Ollama and set the endpoint to `http://ollama:11434`.
 
 ```bash
 # Pull a model for Ollama
-docker exec dify-ollama ollama pull llama3.1
+docker compose exec ollama ollama pull llama3.1
 ```
 
 ## Building a RAG Application
@@ -261,7 +182,7 @@ You can also interact with the RAG pipeline via the API:
 
 ```bash
 # Upload a document to a knowledge base via API
-curl -X POST http://localhost:5001/v1/datasets/<dataset-id>/document/create_by_text \
+curl -X POST http://localhost/v1/datasets/<dataset-id>/document/create-by-text \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -280,7 +201,7 @@ Every application you create in Dify gets its own API endpoint.
 
 ```bash
 # Send a message to a chatbot application
-curl -X POST http://localhost:5001/v1/chat-messages \
+curl -X POST http://localhost/v1/chat-messages \
   -H "Authorization: Bearer app-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -296,7 +217,7 @@ curl -X POST http://localhost:5001/v1/chat-messages \
 # Python client for interacting with Dify applications
 import requests
 
-DIFY_URL = "http://localhost:5001/v1"
+DIFY_URL = "http://localhost/v1"
 API_KEY = "app-your-api-key"
 
 headers = {
@@ -324,16 +245,13 @@ print(f"Answer: {data['answer']}")
 
 ```bash
 # Backup the PostgreSQL database
-docker exec dify-db pg_dump -U postgres dify > dify_backup.sql
+docker compose exec -T db_postgres pg_dump -U postgres dify > dify_backup.sql
 
-# Backup all volumes
-docker run --rm \
-  -v dify_db_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/dify-db-backup.tar.gz -C /data .
+# Backup the Docker volume bind mounts from the dify/docker directory
+tar czf dify-volumes-backup.tar.gz volumes
 
 # Restore the database
-cat dify_backup.sql | docker exec -i dify-db psql -U postgres dify
+docker compose exec -T db_postgres psql -U postgres dify < dify_backup.sql
 ```
 
 ## Monitoring
