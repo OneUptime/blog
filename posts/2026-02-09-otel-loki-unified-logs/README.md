@@ -36,10 +36,10 @@ common:
 
 schema_config:
   configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
+    - from: 2024-04-01
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -70,32 +70,19 @@ receivers:
 processors:
   batch:
     timeout: 10s
-  
-  # Extract trace context from logs
-  resource:
-    attributes:
-      - key: loki.resource.labels
-        value: service.name, service.namespace
-        action: insert
 
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
-      attributes:
-        log.level: "level"
-        trace_id: "trace_id"
-        span_id: "span_id"
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [loki]
+      processors: [batch]
+      exporters: [otlphttp/logs]
 ```
 
 ## Application Configuration
@@ -106,16 +93,31 @@ Configure applications to send logs with trace context to the collector.
 # python_loki_logs.py
 import logging
 from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+resource = Resource.create({"service.name": "my-app"})
 
 # Configure log export
-logger_provider = LoggerProvider()
+logger_provider = LoggerProvider(resource=resource)
 logger_provider.add_log_record_processor(
     BatchLogRecordProcessor(OTLPLogExporter(endpoint="http://localhost:4317"))
 )
+set_logger_provider(logger_provider)
+
+# Configure trace export
+tracer_provider = TracerProvider(resource=resource)
+tracer_provider.add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
+)
+trace.set_tracer_provider(tracer_provider)
 
 # Instrument logging
 LoggingInstrumentor().instrument(set_logging_format=True)
@@ -148,25 +150,27 @@ apiVersion: 1
 datasources:
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     url: http://loki:3100
     jsonData:
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: "trace_id=(\\w+)"
+          matcherRegex: "(?:trace_id|traceid)=(\\w+)"
           name: TraceID
           url: "$${__value.raw}"
   
   - name: Tempo
     type: tempo
+    uid: tempo
     access: proxy
     url: http://tempo:3200
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ['job', 'instance']
-        mappedTags: [{ key: 'service.name', value: 'service' }]
+        tags: [{ key: 'service.name', value: 'service_name' }]
         filterByTraceID: true
+        filterBySpanID: false
 ```
 
 ## Querying Correlated Data
@@ -175,18 +179,18 @@ Query logs with trace context in LogQL.
 
 ```logql
 # Find logs for specific trace
-{service="my-app"} | json | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
+{service_name="my-app"} | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
 
 # Find error logs with traces
-{service="my-app"} | json | level="error" | trace_id != ""
+{service_name="my-app"} | severity_text="ERROR" | trace_id != ""
 
 # Count logs by trace presence
-sum by (service) (count_over_time({job="my-app"} | json | trace_id != "" [1h]))
+sum by (service_name) (count_over_time({service_name="my-app"} | trace_id != "" [1h]))
 ```
 
 ## Best Practices
 
-First, always include trace_id and span_id as labels in Loki for efficient querying.
+First, keep trace_id and span_id as structured metadata in Loki instead of labels to avoid high-cardinality index labels.
 
 Second, configure derived fields in Grafana to enable one-click navigation from logs to traces.
 
