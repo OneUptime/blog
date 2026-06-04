@@ -25,10 +25,10 @@ Before starting the migration, inventory your existing Helm 2 releases across al
 ```bash
 # List all Helm 2 releases
 
-helm2 list --all --all-namespaces
+helm2 list --all
 
 # Export release details to CSV for tracking
-helm2 list --all --all-namespaces --output json | \
+helm2 list --all --output json | \
   jq -r '.Releases[] | [.Name, .Namespace, .Status, .Chart] | @csv' > releases.csv
 ```
 
@@ -113,17 +113,17 @@ For clusters with many releases, create a migration script:
 # migrate-all-releases.sh
 
 # Get all Helm 2 releases
-RELEASES=$(helm2 list --all --all-namespaces --output json | jq -r '.Releases[] | .Name')
+RELEASES=$(helm2 list --all --output json | jq -r '.Releases[] | .Name')
 
 for release in $RELEASES; do
   echo "Migrating release: $release"
 
   # Get namespace for the release
-  namespace=$(helm2 list --all --all-namespaces --output json | \
+  namespace=$(helm2 list --all --output json | \
     jq -r ".Releases[] | select(.Name==\"$release\") | .Namespace")
 
   # Migrate with error handling
-  if helm3 2to3 convert "$release" --namespace "$namespace"; then
+  if helm3 2to3 convert "$release"; then
     echo "Successfully migrated $release in namespace $namespace"
   else
     echo "Failed to migrate $release in namespace $namespace" >> migration-errors.log
@@ -165,9 +165,9 @@ helm3 status FAILED_RELEASE_NAME -n NAMESPACE
 helm3 rollback FAILED_RELEASE_NAME -n NAMESPACE
 ```
 
-## Step 3: Migrate Tiller Data
+## Step 3: Clean Up Helm 2 Data
 
-After converting all releases, migrate the Tiller data store itself:
+After converting all releases, clean up the remaining Helm 2 data:
 
 ```bash
 # This removes Tiller but keeps release history
@@ -178,14 +178,14 @@ helm3 2to3 cleanup
 ```
 
 This command performs several actions:
-- Removes Tiller deployment from kube-system
-- Deletes Tiller service account and RBAC resources
-- Cleans up ConfigMaps used for Helm 2 release storage
+- Removes the Tiller deployment from the Tiller namespace, kube-system by default
+- Cleans up Helm 2 configuration data
+- Cleans up ConfigMaps or Secrets used for Helm 2 release storage
 - Preserves release history already converted to Helm 3 format
 
 ## Updating Chart Repositories
 
-Helm 3 uses a different directory structure for chart repositories. Update your repository URLs if they've changed:
+Helm 3 uses the XDG directory structure for repository configuration, and the stable repository is no longer configured by default. Update your repository URLs if they've changed:
 
 ```bash
 # Remove old stable repo (deprecated)
@@ -201,7 +201,7 @@ helm3 repo update
 
 ## Handling Chart API Version Changes
 
-Helm 3 uses apiVersion v2 in Chart.yaml. If you maintain custom charts, update them:
+Helm 3 supports apiVersion v1 charts, but charts that require Helm 3 should use apiVersion v2 in Chart.yaml. If you maintain custom charts and want to use Helm 3-only features, update them:
 
 ```yaml
 # Old Chart.yaml (Helm 2)
@@ -218,7 +218,7 @@ description: My application
 type: application
 ```
 
-Helm 3 charts can still be installed by Helm 2, but Helm 2 charts should be updated to take advantage of new features.
+Helm 2 charts with apiVersion v1 can still be installed by Helm 3, but apiVersion v2 charts require Helm 3.
 
 ## Validating the Migration
 
@@ -232,7 +232,8 @@ helm3 status RELEASE_NAME -n NAMESPACE
 helm2 status RELEASE_NAME
 
 # Verify all resources exist
-kubectl get all -n NAMESPACE -l release=RELEASE_NAME
+helm3 get manifest RELEASE_NAME -n NAMESPACE
+kubectl get all -n NAMESPACE -l app.kubernetes.io/instance=RELEASE_NAME
 
 # Test application functionality
 kubectl exec -n NAMESPACE POD_NAME -- wget -O- http://localhost:8080/health
@@ -294,7 +295,7 @@ helm3 install RELEASE_NAME CHART_NAME -n NAMESPACE
 For releases with custom hooks, verify hook execution:
 
 ```bash
-# Helm 3 uses different hook annotations
+# Helm 3 removed some Helm 2 hook values, such as crd-install and test-failure
 helm3 get hooks RELEASE_NAME -n NAMESPACE
 
 # Test hooks manually
@@ -307,9 +308,9 @@ Helm 3 releases are namespace-scoped, unlike Helm 2's cluster-wide Tiller. This 
 
 ```bash
 # Deploy same app to multiple namespaces
-helm3 install myapp ./chart -n dev
-helm3 install myapp ./chart -n staging
-helm3 install myapp ./chart -n production
+helm3 install myapp ./chart -n dev --create-namespace
+helm3 install myapp ./chart -n staging --create-namespace
+helm3 install myapp ./chart -n production --create-namespace
 
 # List releases per namespace
 helm3 list -n dev
@@ -346,9 +347,9 @@ Always perform migrations during maintenance windows. Test the entire process in
 Document which releases have been migrated using labels:
 
 ```bash
-helm3 upgrade RELEASE_NAME --reuse-values \
-  --set labels.helm-version=v3 \
-  --set labels.migration-date=$(date +%Y-%m-%d)
+helm3 upgrade RELEASE_NAME CHART_NAME --reuse-values \
+  --labels helm-version=v3,migration-date="$(date +%Y-%m-%d)" \
+  -n NAMESPACE
 ```
 
 Keep Helm 2 binaries available for a transition period to handle any unexpected issues. Create comprehensive backups of all release metadata before starting.
