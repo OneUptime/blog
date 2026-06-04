@@ -36,8 +36,6 @@ Wiki.js works best with PostgreSQL as its database backend:
 
 ```yaml
 # docker-compose.yml - Wiki.js Knowledge Base
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -143,7 +141,8 @@ Configure Git storage in Administration > Storage:
 Authentication Type: SSH
 Repository URL: git@github.com:your-org/wiki-content.git
 Branch: main
-SSH Private Key: (paste your deploy key)
+SSH Private Key Mode: Contents
+SSH Private Key: (paste the private key contents)
 Sync Direction: Bi-directional
 Sync Schedule: Every 5 minutes
 ```
@@ -172,7 +171,7 @@ Here is an example of adding Google OAuth:
 2. In Wiki.js, go to Administration > Authentication
 3. Click Google and enable it
 4. Enter your Client ID and Client Secret
-5. Set the callback URL to `https://wiki.your-domain.com/login/google/callback`
+5. Add the redirect URI shown in Wiki.js's Google configuration reference to your Google OAuth client
 
 ## Page Permissions
 
@@ -217,7 +216,7 @@ Then configure the search engine in Administration > Search to use Elasticsearch
 
 ## Embedding Diagrams
 
-Wiki.js has built-in support for diagrams using several libraries. In the Markdown editor, you can embed Mermaid, PlantUML, or Draw.io diagrams directly in your pages:
+Wiki.js has built-in support for diagrams using several libraries. In the Markdown editor, you can embed Mermaid or PlantUML diagrams directly in your pages:
 
 ```markdown
 # Example Mermaid diagram in a Wiki.js page
@@ -239,6 +238,7 @@ With Git sync enabled, your content is already backed up in a repository. For th
 
 ```bash
 # Dump the PostgreSQL database
+mkdir -p ~/wikijs-backup
 docker exec wikijs-db pg_dump -U wikijs wikijs > ~/wikijs-backup/db_$(date +%Y%m%d).sql
 ```
 
