@@ -10,6 +10,8 @@ Description: Learn how to install and configure KubeFed (Kubernetes Federation v
 
 Managing applications across multiple Kubernetes clusters is complex. Each cluster needs its own deployments, services, and configurations. KubeFed (Kubernetes Federation v2) solves this by providing a single control plane that propagates resources to multiple clusters. You define resources once, and KubeFed distributes them across your cluster fleet.
 
+Note: KubeFed is archived and no longer under active development. These steps are useful for legacy KubeFed environments or labs, but evaluate current SIG Multicluster projects before choosing it for new production deployments.
+
 ## Understanding KubeFed Architecture
 
 KubeFed introduces several concepts:
@@ -37,14 +39,14 @@ kubectl create namespace kube-federation-system
 helm install kubefed kubefed-charts/kubefed \
   --namespace kube-federation-system \
   --create-namespace \
-  --set controllermanager.replicaCount=2
+  --set controllermanager.controller.replicaCount=2
 ```
 
 Verify installation:
 
 ```bash
 kubectl get pods -n kube-federation-system
-kubectl get crd | grep federation
+kubectl get crd | grep -E 'federated|kubefed'
 ```
 
 You should see CRDs like:
@@ -80,14 +82,14 @@ Join cluster-2 and cluster-3 to the federation (assuming cluster-1 is the host):
 ```bash
 # Join cluster-2
 kubefedctl join cluster-2 \
-  --cluster-context cluster-1 \
+  --cluster-context cluster-2 \
   --host-cluster-context cluster-1 \
   --kubefed-namespace kube-federation-system \
   --v=2
 
 # Join cluster-3
 kubefedctl join cluster-3 \
-  --cluster-context cluster-1 \
+  --cluster-context cluster-3 \
   --host-cluster-context cluster-1 \
   --kubefed-namespace kube-federation-system \
   --v=2
@@ -136,6 +138,7 @@ spec:
 Apply this to the host cluster:
 
 ```bash
+kubectl create namespace production --context cluster-1
 kubectl apply -f federated-namespace.yaml
 ```
 
@@ -218,9 +221,6 @@ spec:
   template:
     # ... deployment spec ...
   placement:
-    clusters:
-    - name: cluster-2
-    - name: cluster-3
     clusterSelector:
       matchLabels:
         environment: production
@@ -337,7 +337,7 @@ kubectl get service webapp-service -n production --context cluster-3
 
 ## Setting Up Multi-Cluster DNS
 
-For seamless failover, use KubeFed's multi-cluster DNS with ExternalDNS:
+For DNS records that follow each cluster's load balancer, propagate ExternalDNS annotations with KubeFed:
 
 ```yaml
 apiVersion: types.kubefed.io/v1beta1
@@ -351,7 +351,7 @@ spec:
       labels:
         app: webapp
       annotations:
-        external-dns.alpha.kubernetes.io/hostname: webapp.example.com
+        external-dns.kubernetes.io/hostname: webapp.example.com
     spec:
       selector:
         app: webapp
@@ -369,14 +369,27 @@ spec:
 Install ExternalDNS in each cluster:
 
 ```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
 helm install external-dns bitnami/external-dns \
   --namespace kube-system \
+  --kube-context cluster-2 \
   --set provider=aws \
   --set aws.region=us-east-1 \
-  --set domainFilters[0]=example.com
+  --set domainFilters[0]=example.com \
+  --set txtOwnerId=cluster-2
+
+helm install external-dns bitnami/external-dns \
+  --namespace kube-system \
+  --kube-context cluster-3 \
+  --set provider=aws \
+  --set aws.region=us-east-1 \
+  --set domainFilters[0]=example.com \
+  --set txtOwnerId=cluster-3
 ```
 
-ExternalDNS creates DNS records pointing to each cluster's LoadBalancer IP.
+ExternalDNS creates DNS records pointing to each cluster's LoadBalancer IP. DNS provider health checks or routing policies are still needed for automatic failover behavior.
 
 ## Federating ConfigMaps and Secrets
 
@@ -442,11 +455,10 @@ Status shows propagation state:
 status:
   clusters:
   - name: cluster-2
-    status: Synced
   - name: cluster-3
-    status: Synced
   conditions:
   - lastTransitionTime: "2026-02-09T10:30:00Z"
+    lastUpdateTime: "2026-02-09T10:30:00Z"
     status: "True"
     type: Propagation
 ```
