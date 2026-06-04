@@ -182,7 +182,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -223,7 +229,13 @@ metadata:
   name: photo-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: photo-app
   template:
+    metadata:
+      labels:
+        app: photo-app
     spec:
       containers:
       - name: app
@@ -255,8 +267,8 @@ kind: ConfigMap
 metadata:
   name: cli-tools
 binaryData:
-  kubectl: H4sIAAAAAAAAA...
-  helm: H4sIAAAAAAAAA...
+  kubectl: S3ViZWN0bC1iaW5hcnktY29udGVudC4uLg==
+  helm: SGVsbS1iaW5hcnktY29udGVudC4uLg==
 ```
 
 Use in init container:
@@ -267,7 +279,13 @@ kind: Deployment
 metadata:
   name: deployment-tool
 spec:
+  selector:
+    matchLabels:
+      app: deployment-tool
   template:
+    metadata:
+      labels:
+        app: deployment-tool
     spec:
       initContainers:
       - name: install-tools
@@ -301,7 +319,7 @@ spec:
 
 ## Size Limitations
 
-ConfigMaps have a size limit of 1MB total. Be mindful when storing binary data:
+ConfigMaps have a size limit of 1 MiB total. Be mindful when storing binary data:
 
 ```bash
 # Check ConfigMap size
@@ -311,7 +329,7 @@ kubectl get configmap binary-assets -o yaml | wc -c
 gzip -c large-file.bin | base64 > large-file.bin.gz.b64
 ```
 
-For files larger than 1MB, consider:
+Because base64 encoding increases the stored size, files smaller than 1 MiB can still exceed the ConfigMap limit. For large files, consider:
 
 1. Splitting into multiple ConfigMaps
 2. Using persistent volumes
