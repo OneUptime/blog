@@ -24,7 +24,7 @@ The simplest way to get started is to use the official llama.cpp server image:
 # Download a quantized model (Mistral 7B, 4-bit quantization, ~4 GB)
 
 mkdir -p ~/models
-wget -O ~/models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+wget -O ~/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf
 ```
 
@@ -34,8 +34,8 @@ docker run -d \
   --name llama-server \
   -p 8080:8080 \
   -v ~/models:/models \
-  ghcr.io/ggerganov/llama.cpp:server \
-  --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   --host 0.0.0.0 \
   --port 8080 \
   --ctx-size 4096 \
@@ -74,8 +74,8 @@ docker run -d \
   --gpus all \
   -p 8080:8080 \
   -v ~/models:/models \
-  ghcr.io/ggerganov/llama.cpp:server-cuda \
-  --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
+  --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   --host 0.0.0.0 \
   --port 8080 \
   --ctx-size 4096 \
@@ -91,11 +91,9 @@ For a more maintainable configuration, use Docker Compose:
 
 ```yaml
 # docker-compose.yml - llama.cpp with persistent model storage
-version: "3.8"
-
 services:
   llama:
-    image: ghcr.io/ggerganov/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server
     container_name: llama-server
     ports:
       - "8080:8080"
@@ -103,7 +101,7 @@ services:
       # Mount the directory containing your GGUF model files
       - ./models:/models
     command: >
-      --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf
+      --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf
       --host 0.0.0.0
       --port 8080
       --ctx-size 4096
@@ -117,7 +115,7 @@ services:
           memory: 8g
 ```
 
-The `--parallel 4` flag enables handling up to 4 concurrent requests. Combined with `--cont-batching`, the server batches token generation across requests for better throughput.
+The `--parallel 4` flag enables handling up to 4 concurrent request slots. The `--cont-batching` flag keeps continuous batching enabled, so the server can batch token generation across requests for better throughput.
 
 ## Understanding Quantization Levels
 
@@ -148,12 +146,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and build llama.cpp with AVX2 and FMA support
-RUN git clone https://github.com/ggerganov/llama.cpp.git /build
+RUN git clone https://github.com/ggml-org/llama.cpp.git /build
 WORKDIR /build
-RUN cmake -B build -DLLAMA_NATIVE=OFF -DLLAMA_AVX2=ON -DLLAMA_FMA=ON \
+RUN cmake -B build -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON \
     && cmake --build build --target llama-server -j$(nproc)
 
 FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/build/bin/llama-server /usr/local/bin/llama-server
 
 EXPOSE 8080
@@ -170,7 +171,7 @@ docker build -t llama-custom .
 docker run -d --name llama-custom -p 8080:8080 \
   -v ~/models:/models \
   llama-custom \
-  --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+  --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   --host 0.0.0.0 --port 8080
 ```
 
@@ -206,10 +207,10 @@ print(response.choices[0].message.content)
 Several flags help you squeeze more performance out of llama.cpp:
 
 - `--threads`: Set to physical CPU core count for CPU inference.
-- `--batch-size`: Controls prompt processing batch size. Default is 512. Higher values speed up long prompts.
+- `--batch-size`: Controls the logical maximum batch size. Default is 2048. Higher values can speed up long prompt processing at the cost of more memory.
 - `--ctx-size`: The context window size. Larger values consume more memory linearly.
 - `--mlock`: Prevents the OS from swapping model weights to disk. Useful when memory is tight but sufficient.
-- `--cont-batching`: Enables continuous batching for concurrent requests.
+- `--cont-batching`: Keeps continuous batching enabled for concurrent requests.
 
 ```bash
 # Optimized CPU configuration for a server with 16 cores and 32 GB RAM
@@ -217,8 +218,8 @@ docker run -d \
   --name llama-optimized \
   -p 8080:8080 \
   -v ~/models:/models \
-  ghcr.io/ggerganov/llama.cpp:server \
-  --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   --host 0.0.0.0 \
   --port 8080 \
   --ctx-size 4096 \
@@ -243,8 +244,8 @@ docker run -d \
   --health-retries 3 \
   -p 8080:8080 \
   -v ~/models:/models \
-  ghcr.io/ggerganov/llama.cpp:server \
-  --model /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
   --host 0.0.0.0 --port 8080
 ```
 
