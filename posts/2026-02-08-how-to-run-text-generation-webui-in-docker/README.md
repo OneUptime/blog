@@ -8,13 +8,13 @@ Description: Deploy Oobabooga's Text Generation WebUI in Docker to run and inter
 
 ---
 
-Text Generation WebUI (commonly known as Oobabooga) is one of the most popular self-hosted interfaces for running large language models. It supports a wide range of model formats including GGUF, GPTQ, AWQ, and EXL2. The interface includes features like chat mode, notebook mode, extensions for voice and image generation, and a built-in API. Running it in Docker keeps your system clean and makes the setup reproducible.
+Text Generation WebUI (now branded as TextGen, and commonly known as Oobabooga) is one of the most popular self-hosted interfaces for running large language models. It supports a wide range of backends and model formats including GGUF, Transformers models, and ExLlamaV3/EXL3 models. The interface includes features like chat mode, notebook mode, extensions for voice and image generation, and a built-in API. Running it in Docker keeps your system clean and makes the setup reproducible.
 
 ## Prerequisites
 
 Text Generation WebUI benefits heavily from GPU acceleration. Here is what you need:
 
-- Docker and Docker Compose installed
+- Docker and Docker Compose v2.17 or later installed
 - NVIDIA GPU with at least 6 GB VRAM (8+ GB recommended)
 - NVIDIA drivers and nvidia-container-toolkit installed
 - At least 20 GB of free disk space for models
@@ -28,7 +28,7 @@ docker --version
 nvidia-smi
 
 # Verify the NVIDIA container toolkit is installed
-docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 ```
 
 If you do not have a GPU, Text Generation WebUI can still run on CPU using GGUF models with llama.cpp, though inference will be significantly slower.
@@ -39,16 +39,18 @@ The project provides official Docker support through their repository.
 
 ```bash
 # Clone the repository for the Docker configuration files
-git clone https://github.com/oobabooga/text-generation-webui.git
-cd text-generation-webui
+git clone https://github.com/oobabooga/textgen.git
+cd textgen/docker/nvidia
+cp ../.env.example .env
+mkdir -p user_data
 ```
 
-The project includes several Docker Compose configurations. Start with the GPU version:
+The project includes several Docker Compose configurations under `docker/`. Start with the NVIDIA GPU version:
 
 ```bash
 # Start the WebUI with NVIDIA GPU support
 # This builds the image and starts the container
-docker compose up -d
+docker compose up --build -d
 
 # Monitor the build and startup process
 docker compose logs -f
@@ -56,38 +58,35 @@ docker compose logs -f
 
 ## Custom Docker Compose Configuration
 
-For more control, create your own Docker Compose file.
+For more control, use a Docker Compose file based on the project's NVIDIA Docker configuration.
 
 ```yaml
 # docker-compose.yml
 # Text Generation WebUI with GPU support and persistent storage
-version: "3.8"
+version: "3.3"
 
 services:
-  text-gen-webui:
-    image: atinoda/text-generation-webui:default-nvidia
-    container_name: text-gen-webui
+  textgen:
+    build:
+      context: .
+      args:
+        # Set this for your GPU architecture if needed
+        TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST:-8.6;8.9+PTX}
+        BUILD_EXTENSIONS: ${BUILD_EXTENSIONS:-}
+        APP_GID: ${APP_GID:-6972}
+        APP_UID: ${APP_UID:-6972}
+    env_file: .env
+    user: "${APP_RUNTIME_UID:-6972}:${APP_RUNTIME_GID:-6972}"
     ports:
       # Main WebUI interface
-      - "7860:7860"
-      # API endpoint
-      - "5000:5000"
-      # Streaming API endpoint
-      - "5005:5005"
+      - "${HOST_PORT:-7860}:${CONTAINER_PORT:-7860}"
+      # API endpoint, enabled with --api
+      - "${HOST_API_PORT:-5000}:${CONTAINER_API_PORT:-5000}"
     volumes:
-      # Persist downloaded models
-      - ./models:/app/models
-      # Persist LoRA adapters
-      - ./loras:/app/loras
-      # Persist character definitions
-      - ./characters:/app/characters
-      # Persist presets and settings
-      - ./presets:/app/presets
-      # Persist extensions
-      - ./extensions:/app/extensions
-    environment:
-      # Extra launch arguments for the WebUI
-      - EXTRA_LAUNCH_ARGS=--listen --api --verbose
+      # Persist models, LoRAs, characters, presets, settings, and CMD_FLAGS.txt
+      - ./user_data:/home/app/textgen/user_data
+    stdin_open: true
+    tty: true
     deploy:
       resources:
         reservations:
@@ -95,18 +94,19 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: unless-stopped
 ```
 
 ```bash
-# Create the necessary directories for volume mounts
-mkdir -p models loras characters presets extensions
+# Create the necessary user data directories and persistent launch flags
+cp ../.env.example .env
+mkdir -p user_data/models user_data/loras user_data/characters user_data/presets user_data/extensions
+printf '%s\n' '--listen --api --verbose' > user_data/CMD_FLAGS.txt
 
 # Start the service
-docker compose up -d
+docker compose up --build -d
 
 # Wait for the service to fully start (first run takes longer)
-docker compose logs -f text-gen-webui
+docker compose logs -f textgen
 ```
 
 ## CPU-Only Setup
@@ -114,35 +114,36 @@ docker compose logs -f text-gen-webui
 If you do not have a GPU, use the CPU variant.
 
 ```yaml
-# docker-compose-cpu.yml
+# docker-compose.yml
 # Text Generation WebUI running on CPU only
-version: "3.8"
+version: "3.3"
 
 services:
-  text-gen-webui:
-    image: atinoda/text-generation-webui:default-cpu
-    container_name: text-gen-webui
+  textgen:
+    build:
+      context: .
+      args:
+        BUILD_EXTENSIONS: ${BUILD_EXTENSIONS:-}
+        APP_GID: ${APP_GID:-6972}
+        APP_UID: ${APP_UID:-6972}
+    env_file: .env
+    user: "${APP_RUNTIME_UID:-6972}:${APP_RUNTIME_GID:-6972}"
     ports:
-      - "7860:7860"
-      - "5000:5000"
-      - "5005:5005"
+      - "${HOST_PORT:-7860}:${CONTAINER_PORT:-7860}"
+      - "${HOST_API_PORT:-5000}:${CONTAINER_API_PORT:-5000}"
     volumes:
-      - ./models:/app/models
-      - ./characters:/app/characters
-    environment:
-      # Use llama.cpp backend for CPU inference
-      - EXTRA_LAUNCH_ARGS=--listen --api --loader llama.cpp
-    deploy:
-      resources:
-        limits:
-          # Limit memory usage to prevent OOM
-          memory: 16G
-    restart: unless-stopped
+      - ./user_data:/home/app/textgen/user_data
+    stdin_open: true
+    tty: true
 ```
 
 ```bash
 # Start with the CPU configuration
-docker compose -f docker-compose-cpu.yml up -d
+cd textgen/docker/cpu
+cp ../.env.example .env
+mkdir -p user_data
+printf '%s\n' '--listen --api --loader llama.cpp' > user_data/CMD_FLAGS.txt
+docker compose up --build -d
 ```
 
 ## Downloading Models
@@ -155,10 +156,10 @@ Models can be downloaded through the WebUI interface or via command line.
 
 # Or download manually from Hugging Face
 # Example: Download a quantized Llama model in GGUF format
-docker exec text-gen-webui python3 download-model.py TheBloke/Llama-2-7B-Chat-GGUF
+docker compose exec textgen python3 download-model.py TheBloke/Llama-2-7B-Chat-GGUF
 
 # For GGUF files, you can also download directly
-wget -P ./models/ https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf
+wget -P ./user_data/models/ https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf
 ```
 
 After downloading, refresh the model list in the WebUI and select your model from the dropdown.
@@ -172,18 +173,18 @@ Different model formats require different loaders. Here are the common configura
 ```bash
 # In the WebUI, set these parameters on the Model tab:
 # Loader: llama.cpp
-# n-gpu-layers: 35 (adjust based on VRAM)
+# gpu-layers or n-gpu-layers: 35 (adjust based on VRAM, or use -1 for auto)
 # threads: 8 (match your CPU cores)
-# context_length: 4096
-# n_batch: 512
+# ctx-size: 4096
+# batch-size: 512
 ```
 
-### GPTQ Models (GPU only)
+### ExLlamaV3/EXL3 Models (GPU only)
 
 ```bash
-# Loader: ExLlamav2_HF or AutoGPTQ
-# gpu-memory: auto
-# context_length: 4096
+# Loader: ExLlamav3_HF or ExLlamav3
+# gpu-split: 20,7,7 (for multi-GPU systems, adjust based on available VRAM)
+# ctx-size: 4096
 ```
 
 ## Using the API
@@ -230,25 +231,24 @@ print(response.choices[0].message.content)
 Text Generation WebUI supports extensions that add functionality like voice input, image generation, and long-term memory.
 
 ```bash
-# Install extensions inside the container
-docker exec -it text-gen-webui bash
+# Open a shell inside the running container
+docker compose exec textgen bash
 
-# From inside the container, extensions are in /app/extensions/
-ls /app/extensions/
+# From inside the container, bundled extensions are in /home/app/textgen/extensions/
+ls /home/app/textgen/extensions/
 
 # Popular extensions include:
 # - silero_tts (text-to-speech)
 # - whisper_stt (speech-to-text)
 # - superbooga (long-term memory with embeddings)
-# - multimodal (image input support)
+# - send_pictures (send images to multimodal models)
 ```
 
 Enable extensions through the Session tab in the WebUI or via launch arguments:
 
-```yaml
-# Add extensions to the launch arguments
-  environment:
-    - EXTRA_LAUNCH_ARGS=--listen --api --extensions silero_tts whisper_stt
+```bash
+# Add extensions to the persistent launch arguments
+printf '%s\n' '--listen --api --extensions silero_tts whisper_stt' > user_data/CMD_FLAGS.txt
 ```
 
 ## Character Cards and Chat Modes
@@ -259,10 +259,10 @@ Text Generation WebUI supports multiple interaction modes:
 - **Instruct mode**: Follows specific instruction templates
 - **Notebook mode**: Free-form text completion
 
-Character cards define personality, system prompts, and example conversations. Place custom YAML files in the `characters` directory:
+Character cards define personality, system prompts, and example conversations. Place custom YAML files in the `user_data/characters` directory:
 
 ```yaml
-# characters/docker-expert.yaml
+# user_data/characters/docker-expert.yaml
 # Custom character definition for a Docker expert assistant
 name: Docker Expert
 context: |
@@ -277,39 +277,41 @@ greeting: |
 
 ```bash
 # Check container resource usage
-docker stats text-gen-webui
+docker compose stats textgen
 
 # Monitor GPU memory during model loading
 watch -n 1 nvidia-smi
 
 # View application logs
-docker compose logs -f text-gen-webui
+docker compose logs -f textgen
 
 # Check if the WebUI port is accessible
 curl -s -o /dev/null -w "%{http_code}" http://localhost:7860
 
 # Restart the container if the model gets stuck
-docker compose restart text-gen-webui
+docker compose restart textgen
 ```
 
 ## Updating the WebUI
 
 ```bash
-# Pull the latest image
-docker compose pull
+# Pull the latest project source
+cd ../..
+git pull
 
-# Recreate the container with the new image
-docker compose up -d
+# Rebuild and recreate the container
+cd docker/nvidia
+docker compose up --build -d
 
 # Verify the update
-docker compose logs -f text-gen-webui
+docker compose logs -f textgen
 ```
 
 ## Performance Tips
 
 - Use GGUF quantized models (Q4_K_M is a good balance of quality and speed)
-- Set `n-gpu-layers` to offload as many layers to GPU as your VRAM allows
-- Reduce `context_length` if you are running out of memory
+- Set `gpu-layers` or `n-gpu-layers` to offload as many layers to GPU as your VRAM allows
+- Reduce `ctx-size` if you are running out of memory
 - Enable `mlock` to prevent the model from being swapped to disk
 - Use the `--no-mmap` flag if you experience slow loading times on network storage
 
