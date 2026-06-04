@@ -16,7 +16,7 @@ This guide covers designing routing configurations for complex multi-team setups
 
 Alertmanager processes alerts through a routing tree. Each route has matchers that filter alerts, and child routes that provide more specific routing. Alerts traverse the tree from top to bottom, matching against route conditions.
 
-The first matching route determines where the alert goes. Routes can have continue: true to also match subsequent routes.
+The first matching child route determines where the alert goes. If no child route matches, Alertmanager uses the current route's receiver. Routes can have continue: true to also match subsequent sibling routes.
 
 ## Basic Routing Configuration
 
@@ -32,20 +32,20 @@ route:
 
   routes:
   # Platform team - cluster infrastructure
-  - match:
-      namespace: kube-system
+  - matchers:
+    - namespace="kube-system"
     receiver: platform-team
     continue: false
 
   # Application team A
-  - match:
-      namespace: team-a
+  - matchers:
+    - namespace="team-a"
     receiver: team-a
     continue: false
 
   # Application team B
-  - match:
-      namespace: team-b
+  - matchers:
+    - namespace="team-b"
     receiver: team-b
     continue: false
 
@@ -87,25 +87,29 @@ route:
 
   routes:
   # Team A alerts
-  - match:
-      namespace: team-a
+  - matchers:
+    - namespace="team-a"
     receiver: team-a
     routes:
     # Critical alerts go to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: team-a-pagerduty
       continue: true  # Also send to Slack
 
+    - matchers:
+      - severity="critical"
+      receiver: team-a-slack
+
     # Warnings go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+      - severity="warning"
       receiver: team-a-slack
 
 receivers:
 - name: 'team-a-pagerduty'
   pagerduty_configs:
-  - service_key: '<pagerduty-key>'
+  - routing_key: '<pagerduty-key>'
 
 - name: 'team-a-slack'
   slack_configs:
@@ -127,26 +131,25 @@ Match alerts using multiple label conditions:
 ```yaml
 routes:
 # Database team - all database alerts
-
-- match_re:
-    alertname: '.*Database.*|.*MySQL.*|.*Postgres.*'
+- matchers:
+  - alertname=~".*Database.*|.*MySQL.*|.*Postgres.*"
   receiver: database-team
 
 # Network team - network-related alerts
-- match_re:
-    alertname: '.*Network.*|.*Ingress.*|.*Service.*'
+- matchers:
+  - alertname=~".*Network.*|.*Ingress.*|.*Service.*"
   receiver: network-team
 
 # Team-specific application alerts
-- match:
-    namespace: team-a
-    component: api
+- matchers:
+  - namespace="team-a"
+  - component="api"
   receiver: team-a-api
   routes:
   # API critical errors
-  - match:
-      severity: critical
-      alertname: HighErrorRate
+  - matchers:
+    - severity="critical"
+    - alertname="HighErrorRate"
     receiver: team-a-oncall
     continue: true
 ```
@@ -158,21 +161,21 @@ Match multiple namespaces with regex:
 ```yaml
 routes:
 # All production namespaces
-- match_re:
-    namespace: '^prod-.*'
+- matchers:
+  - namespace=~"^prod-.*"
   receiver: production-team
   routes:
-  - match:
-      severity: critical
+  - matchers:
+    - severity="critical"
     receiver: production-oncall
 
 # All staging namespaces
-- match_re:
-    namespace: '^staging-.*'
+- matchers:
+  - namespace=~"^staging-.*"
   receiver: staging-team
 ```
 
-The `match_re` field uses regex matching instead of exact matching.
+The `=~` matcher operator uses regex matching instead of exact matching.
 
 ## Time-Based Routing
 
@@ -181,15 +184,15 @@ Route alerts differently based on time of day:
 ```yaml
 routes:
 # Business hours (9am-5pm weekdays)
-- match:
-    namespace: team-a
+- matchers:
+  - namespace="team-a"
   receiver: team-a-slack
   active_time_intervals:
   - business-hours
 
 # After hours
-- match:
-    namespace: team-a
+- matchers:
+  - namespace="team-a"
   receiver: team-a-pagerduty
   active_time_intervals:
   - after-hours
@@ -207,9 +210,13 @@ time_intervals:
   time_intervals:
   - times:
     - start_time: '17:00'
+      end_time: '24:00'
+    - start_time: '00:00'
       end_time: '09:00'
     weekdays: ['monday:friday']
+    location: 'America/New_York'
   - weekdays: ['saturday', 'sunday']
+    location: 'America/New_York'
 ```
 
 ## Continue Flag for Multiple Receivers
@@ -219,14 +226,14 @@ Send alerts to multiple receivers with continue: true:
 ```yaml
 routes:
 # Send critical cluster alerts to both teams
-- match:
-    severity: critical
-    component: cluster
+- matchers:
+  - severity="critical"
+  - component="cluster"
   receiver: platform-team
   continue: true
 
-- match:
-    severity: critical
+- matchers:
+  - severity="critical"
   receiver: oncall-team
 ```
 
@@ -234,22 +241,22 @@ The first route matches and sends to platform-team, then continues to check the 
 
 ## Inhibition Rules Integration
 
-Some routes should only fire if parent alerts aren't active:
+Some alerts should be inhibited when higher-level alerts are already active:
 
 ```yaml
 inhibit_rules:
 # If cluster is down, inhibit namespace alerts
-- source_match:
-    alertname: ClusterDown
-  target_match_re:
-    namespace: '.*'
+- source_matchers:
+  - alertname="ClusterDown"
+  target_matchers:
+  - namespace=~".*"
   equal: ['cluster']
 
 # If node is down, inhibit pod alerts on that node
-- source_match:
-    alertname: NodeDown
-  target_match:
-    alertname: PodNotReady
+- source_matchers:
+  - alertname="NodeDown"
+  target_matchers:
+  - alertname="PodNotReady"
   equal: ['node']
 ```
 
@@ -270,62 +277,68 @@ route:
 
   routes:
   # Platform team - cluster-level alerts
-  - match_re:
-      namespace: '^(kube-system|kube-public|monitoring|ingress-nginx)$'
+  - matchers:
+    - namespace=~"^(kube-system|kube-public|monitoring|ingress-nginx)$"
     receiver: platform-team
     routes:
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: platform-oncall
       continue: true
+    - matchers:
+      - severity="critical"
+      receiver: platform-team
 
   # Database team - database alerts across all namespaces
-  - match_re:
-      alertname: '.*Database.*|.*MySQL.*|.*Postgres.*|.*Redis.*'
+  - matchers:
+    - alertname=~".*Database.*|.*MySQL.*|.*Postgres.*|.*Redis.*"
     receiver: database-team
     routes:
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: database-oncall
       continue: true
+    - matchers:
+      - severity="critical"
+      receiver: database-team
+
+  # Security team - security-related alerts
+  - matchers:
+    - alertname=~".*Security.*|.*CVE.*|.*Vulnerability.*"
+    receiver: security-team
+    continue: true  # Also route to owning team
 
   # Team A - production
-  - match:
-      namespace: team-a-prod
+  - matchers:
+    - namespace="team-a-prod"
     receiver: team-a
     routes:
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: team-a-oncall
       active_time_intervals:
       - after-hours
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: team-a-slack
       active_time_intervals:
       - business-hours
 
   # Team A - staging (lower priority)
-  - match:
-      namespace: team-a-staging
+  - matchers:
+    - namespace="team-a-staging"
     receiver: team-a-slack
     group_interval: 15m
     repeat_interval: 24h
 
   # Team B - production
-  - match_re:
-      namespace: '^team-b-prod-.*'
+  - matchers:
+    - namespace=~"^team-b-prod-.*"
     receiver: team-b
     routes:
-    - match:
-        severity: critical
+    - matchers:
+      - severity="critical"
       receiver: team-b-oncall
-
-  # Security team - security-related alerts
-  - match_re:
-      alertname: '.*Security.*|.*CVE.*|.*Vulnerability.*'
-    receiver: security-team
-    continue: true  # Also route to owning team
 
 receivers:
 - name: 'default'
@@ -342,7 +355,7 @@ receivers:
 
 - name: 'platform-oncall'
   pagerduty_configs:
-  - service_key: '<platform-pd-key>'
+  - routing_key: '<platform-pd-key>'
 
 - name: 'database-team'
   slack_configs:
@@ -351,7 +364,7 @@ receivers:
 
 - name: 'database-oncall'
   pagerduty_configs:
-  - service_key: '<database-pd-key>'
+  - routing_key: '<database-pd-key>'
 
 - name: 'team-a'
   slack_configs:
@@ -365,7 +378,7 @@ receivers:
 
 - name: 'team-a-oncall'
   pagerduty_configs:
-  - service_key: '<team-a-pd-key>'
+  - routing_key: '<team-a-pd-key>'
 
 - name: 'team-b'
   slack_configs:
@@ -374,7 +387,7 @@ receivers:
 
 - name: 'team-b-oncall'
   pagerduty_configs:
-  - service_key: '<team-b-pd-key>'
+  - routing_key: '<team-b-pd-key>'
 
 - name: 'security-team'
   email_configs:
@@ -383,17 +396,17 @@ receivers:
     smarthost: 'smtp.example.com:587'
 
 inhibit_rules:
-- source_match:
-    severity: critical
-    alertname: ClusterDown
-  target_match_re:
-    severity: 'warning|info'
+- source_matchers:
+  - severity="critical"
+  - alertname="ClusterDown"
+  target_matchers:
+  - severity=~"warning|info"
   equal: ['cluster']
 
-- source_match:
-    alertname: NodeDown
-  target_match_re:
-    alertname: 'PodNotReady|PodCrashLooping'
+- source_matchers:
+  - alertname="NodeDown"
+  target_matchers:
+  - alertname=~"PodNotReady|PodCrashLooping"
   equal: ['node']
 
 time_intervals:
@@ -408,6 +421,8 @@ time_intervals:
   time_intervals:
   - times:
     - start_time: '17:00'
+      end_time: '24:00'
+    - start_time: '00:00'
       end_time: '09:00'
     weekdays: ['monday:friday']
   - weekdays: ['saturday', 'sunday']
@@ -456,7 +471,7 @@ spec:
     spec:
       containers:
       - name: alertmanager
-        image: prom/alertmanager:v0.26.0
+        image: prom/alertmanager:v0.32.1
         args:
         - --config.file=/etc/alertmanager/alertmanager.yml
         volumeMounts:
@@ -481,7 +496,7 @@ sum by (receiver) (rate(alertmanager_notifications_failed_total[5m]))
 
 # Routing latency
 histogram_quantile(0.99,
-  rate(alertmanager_notification_latency_seconds_bucket[5m])
+  sum by (le, receiver) (rate(alertmanager_notification_latency_seconds_bucket[5m]))
 )
 ```
 
