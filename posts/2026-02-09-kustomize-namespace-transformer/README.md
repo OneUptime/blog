@@ -98,7 +98,7 @@ kind: Kustomization
 
 namespace: dev
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -109,7 +109,7 @@ kind: Kustomization
 
 namespace: staging
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -120,7 +120,7 @@ kind: Kustomization
 
 namespace: production
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -150,8 +150,6 @@ namespace: production
 
 resources:
 - namespace.yaml
-
-bases:
 - ../../base
 ```
 
@@ -204,7 +202,7 @@ namespace: tenant-acme
 
 namePrefix: acme-
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -217,7 +215,7 @@ namespace: tenant-globex
 
 namePrefix: globex-
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -274,9 +272,10 @@ helmCharts:
   repo: https://prometheus-community.github.io/helm-charts
   version: 25.8.0
   releaseName: prometheus
+  namespace: monitoring
 ```
 
-The namespace field applies to all resources generated from the Helm chart. This overrides any namespace specifications in the chart's templates, giving you centralized control.
+When built with Helm support enabled, the namespace field applies to resources generated from the Helm chart. Set the chart's namespace as well when templates depend on Helm's `.Release.Namespace`.
 
 ## Regional namespace organization
 
@@ -289,10 +288,12 @@ kind: Kustomization
 
 namespace: us-east-1
 
-commonLabels:
-  region: us-east-1
+labels:
+- pairs:
+    region: us-east-1
+  includeSelectors: true
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -303,10 +304,12 @@ kind: Kustomization
 
 namespace: eu-west-1
 
-commonLabels:
-  region: eu-west-1
+labels:
+- pairs:
+    region: eu-west-1
+  includeSelectors: true
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -337,7 +340,7 @@ kind: Kustomization
 
 namespace: production
 
-bases:
+resources:
 - ../../base
 
 patches:
@@ -345,7 +348,7 @@ patches:
     kind: ClusterRoleBinding
     name: app-cluster-rolebinding
   patch: |-
-    - op: replace
+    - op: add
       path: /subjects/0/namespace
       value: production
 ```
@@ -365,10 +368,8 @@ namespace: feature-auth-system
 
 namePrefix: auth-
 
-bases:
-- ../../base
-
 resources:
+- ../../base
 - namespace.yaml
 ```
 
@@ -401,7 +402,7 @@ For more thorough validation, use tools like kubeval or kubeconform:
 kustomize build overlays/production | kubeval --strict
 ```
 
-This catches namespace-related errors like referencing resources that don't exist in the target namespace.
+This catches schema errors in the rendered manifests. Use server-side dry runs or policy checks for cluster-aware validation such as missing referenced resources.
 
 ## Namespace naming conventions
 
@@ -452,8 +453,6 @@ namespace: production
 resources:
 - namespace.yaml
 - resource-quota.yaml
-
-bases:
 - ../../base
 ```
 
@@ -476,13 +475,14 @@ elif [ "$BRANCH" = "develop" ]; then
 else
   # Feature branch - create dynamic namespace
   OVERLAY="overlays/feature"
-  NAMESPACE="feature-${BRANCH//\//-}"
-  cd $OVERLAY
-  kustomize edit set namespace $NAMESPACE
+  SAFE_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/^-*//; s/-*$//')
+  NAMESPACE="feature-${SAFE_BRANCH:0:55}"
+  cd "$OVERLAY"
+  kustomize edit set namespace "$NAMESPACE"
   cd ../..
 fi
 
-kustomize build $OVERLAY | kubectl apply -f -
+kustomize build "$OVERLAY" | kubectl apply -f -
 ```
 
 This script automatically selects the appropriate overlay and namespace based on the Git branch, enabling branch-based deployment workflows.
