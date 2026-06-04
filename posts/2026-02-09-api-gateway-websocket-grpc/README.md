@@ -190,14 +190,15 @@ The `upgrade_configs` section enables WebSocket support. Setting `timeout: 0s` d
 gRPC uses HTTP/2 for transport and protocol buffers for serialization. API gateways must support HTTP/2 and properly handle gRPC-specific headers and trailers.
 
 ```nginx
-# NGINX with gRPC support (requires NGINX 1.13+)
+# NGINX with gRPC support (requires NGINX 1.13.10+)
 upstream grpc_backend {
     server grpc-service-1:9090;
     server grpc-service-2:9090;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name grpc.example.com;
 
     ssl_certificate /etc/nginx/certs/server.crt;
@@ -273,7 +274,11 @@ static_resources:
     connect_timeout: 5s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
     load_assignment:
       cluster_name: user_grpc_cluster
       endpoints:
@@ -285,7 +290,7 @@ static_resources:
                 port_value: 9090
 ```
 
-The `http2_protocol_options` field enables HTTP/2 for gRPC communication. The `grpc_stats` filter provides detailed metrics for gRPC calls.
+The upstream HTTP protocol options enable HTTP/2 for gRPC communication. The `grpc_stats` filter provides detailed metrics for gRPC calls.
 
 ## gRPC-Web Support
 
@@ -343,7 +348,6 @@ services:
     paths:
     - /api.UserService
   plugins:
-  - name: grpc-gateway
   - name: rate-limiting
     config:
       minute: 1000
@@ -361,8 +365,12 @@ clusters:
   connect_timeout: 5s
   type: STRICT_DNS
   lb_policy: ROUND_ROBIN
-  http2_protocol_options:
-    max_concurrent_streams: 100
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options:
+          max_concurrent_streams: 100
   circuit_breakers:
     thresholds:
     - max_connections: 1000
