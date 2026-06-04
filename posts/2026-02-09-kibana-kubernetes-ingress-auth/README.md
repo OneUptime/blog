@@ -44,7 +44,7 @@ spec:
             - name: ELASTICSEARCH_HOSTS
               value: "https://elasticsearch.logging.svc:9200"
             - name: ELASTICSEARCH_USERNAME
-              value: "elastic"
+              value: "kibana_system"
             - name: ELASTICSEARCH_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -60,6 +60,11 @@ spec:
               value: "false"
             - name: XPACK_SECURITY_ENABLED
               value: "true"
+            - name: XPACK_SECURITY_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: kibana-encryption-key
+                  key: key
             - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
               valueFrom:
                 secretKeyRef:
@@ -169,7 +174,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 EOF
 ```
 
@@ -220,7 +225,7 @@ data:
     server.name: kibana
     server.host: "0.0.0.0"
     elasticsearch.hosts: ["https://elasticsearch.logging.svc:9200"]
-    elasticsearch.username: "elastic"
+    elasticsearch.username: "kibana_system"
     elasticsearch.password: "${ELASTICSEARCH_PASSWORD}"
     elasticsearch.ssl.verificationMode: none
 
@@ -255,31 +260,29 @@ spec:
             name: kibana-config
 ```
 
-Configure Elasticsearch for OAuth:
+Configure Elasticsearch for OAuth by adding the OIDC realm to `elasticsearch.yml` on each Elasticsearch node:
+
+```yaml
+xpack.security.authc.realms.oidc.oidc1:
+  order: 2
+  rp.client_id: "kibana"
+  rp.response_type: "code"
+  rp.redirect_uri: "https://kibana.example.com/api/security/oidc/callback"
+  op.issuer: "https://keycloak.example.com/realms/master"
+  op.authorization_endpoint: "https://keycloak.example.com/realms/master/protocol/openid-connect/auth"
+  op.token_endpoint: "https://keycloak.example.com/realms/master/protocol/openid-connect/token"
+  op.userinfo_endpoint: "https://keycloak.example.com/realms/master/protocol/openid-connect/userinfo"
+  op.jwkset_path: "https://keycloak.example.com/realms/master/protocol/openid-connect/certs"
+  rp.post_logout_redirect_uri: "https://kibana.example.com/security/logged_out"
+  claims.principal: "preferred_username"
+  claims.groups: "groups"
+```
+
+Store the OIDC client secret in the Elasticsearch keystore:
 
 ```bash
 kubectl exec -it elasticsearch-master-0 -n logging -- \
-  bin/elasticsearch-setup-passwords auto
-
-# Create OIDC realm in Elasticsearch
-kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD -X PUT \
-  "https://localhost:9200/_security/realm/oidc/oidc1" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "order": 2,
-    "rp.client_id": "kibana",
-    "rp.response_type": "code",
-    "rp.redirect_uri": "https://kibana.example.com/api/security/oidc/callback",
-    "op.issuer": "https://keycloak.example.com/realms/master",
-    "op.authorization_endpoint": "https://keycloak.example.com/realms/master/protocol/openid-connect/auth",
-    "op.token_endpoint": "https://keycloak.example.com/realms/master/protocol/openid-connect/token",
-    "op.userinfo_endpoint": "https://keycloak.example.com/realms/master/protocol/openid-connect/userinfo",
-    "op.jwkset_path": "https://keycloak.example.com/realms/master/protocol/openid-connect/certs",
-    "rp.post_logout_redirect_uri": "https://kibana.example.com/logged_out",
-    "claims.principal": "preferred_username",
-    "claims.groups": "groups"
-  }'
+  bin/elasticsearch-keystore add xpack.security.authc.realms.oidc.oidc1.rp.client_secret
 ```
 
 ## Implementing SAML authentication
@@ -306,27 +309,20 @@ data:
         description: "Log in with SAML"
       basic.basic1:
         order: 1
-
-    xpack.security.authc.saml.realm: saml1
 ```
 
-Configure Elasticsearch SAML realm:
+Configure Elasticsearch SAML realm by adding the SAML realm to `elasticsearch.yml` on each Elasticsearch node:
 
-```bash
-kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD -X PUT \
-  "https://localhost:9200/_security/realm/saml/saml1" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "order": 2,
-    "idp.metadata.path": "https://idp.example.com/metadata",
-    "idp.entity_id": "https://idp.example.com",
-    "sp.entity_id": "https://kibana.example.com",
-    "sp.acs": "https://kibana.example.com/api/security/saml/callback",
-    "sp.logout": "https://kibana.example.com/logout",
-    "attributes.principal": "nameid",
-    "attributes.groups": "groups"
-  }'
+```yaml
+xpack.security.authc.realms.saml.saml1:
+  order: 2
+  idp.metadata.path: "saml/idp-metadata.xml"
+  idp.entity_id: "https://idp.example.com"
+  sp.entity_id: "https://kibana.example.com"
+  sp.acs: "https://kibana.example.com/api/security/saml/callback"
+  sp.logout: "https://kibana.example.com/logout"
+  attributes.principal: "nameid"
+  attributes.groups: "groups"
 ```
 
 ## Configuring role-based access control
@@ -335,38 +331,42 @@ Define Kibana roles and spaces:
 
 ```bash
 # Create role for read-only access
-kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD -X POST \
-  "https://localhost:9200/_security/role/kibana_read_only" \
+curl -k -u elastic:$ELASTIC_PASSWORD -X PUT \
+  "https://kibana.example.com/api/security/role/kibana_read_only" \
   -H 'Content-Type: application/json' \
+  -H 'kbn-xsrf: true' \
   -d '{
-    "cluster": ["monitor"],
-    "indices": [{
-      "names": ["logstash-*", "kubernetes-*"],
-      "privileges": ["read", "view_index_metadata"]
-    }],
-    "applications": [{
-      "application": "kibana-.kibana",
-      "privileges": ["read"],
-      "resources": ["*"]
+    "elasticsearch": {
+      "cluster": ["monitor"],
+      "indices": [{
+        "names": ["logstash-*", "kubernetes-*"],
+        "privileges": ["read", "view_index_metadata"]
+      }]
+    },
+    "kibana": [{
+      "base": ["read"],
+      "feature": {},
+      "spaces": ["*"]
     }]
   }'
 
 # Create role for full access
-kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD -X POST \
-  "https://localhost:9200/_security/role/kibana_admin" \
+curl -k -u elastic:$ELASTIC_PASSWORD -X PUT \
+  "https://kibana.example.com/api/security/role/kibana_admin" \
   -H 'Content-Type: application/json' \
+  -H 'kbn-xsrf: true' \
   -d '{
-    "cluster": ["all"],
-    "indices": [{
-      "names": ["*"],
-      "privileges": ["all"]
-    }],
-    "applications": [{
-      "application": "kibana-.kibana",
-      "privileges": ["all"],
-      "resources": ["*"]
+    "elasticsearch": {
+      "cluster": ["all"],
+      "indices": [{
+        "names": ["*"],
+        "privileges": ["all"]
+      }]
+    },
+    "kibana": [{
+      "base": ["all"],
+      "feature": {},
+      "spaces": ["*"]
     }]
   }'
 
@@ -416,10 +416,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
-        - podSelector:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
             matchLabels:
-              app: nginx-ingress
+              app.kubernetes.io/name: ingress-nginx
       ports:
         - protocol: TCP
           port: 5601
