@@ -17,13 +17,13 @@ Install Knative Serving components:
 ```bash
 # Install Knative Serving CRDs
 
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.12.0/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/latest/download/serving-crds.yaml
 
 # Install Knative Serving core
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.12.0/serving-core.yaml
+kubectl apply -f https://github.com/knative/serving/releases/latest/download/serving-core.yaml
 
 # Install networking layer (Kourier)
-kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.12.0/kourier.yaml
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/latest/download/kourier.yaml
 
 # Configure Knative to use Kourier
 kubectl patch configmap/config-network \
@@ -42,13 +42,14 @@ Deploy cert-manager to automate certificate management:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 
 # Verify installation
 kubectl get pods -n cert-manager
+kubectl get pods -n knative-serving
 ```
 
-Create a ClusterIssuer for Let's Encrypt:
+Create a ClusterIssuer for Let's Encrypt. Replace `<your-ingress-class>` with the Kubernetes Ingress class that serves HTTP-01 challenge traffic in your cluster:
 
 ```yaml
 # letsencrypt-issuer.yaml
@@ -65,7 +66,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: kourier
+          ingressClassName: <your-ingress-class>
 ```
 
 Apply the issuer:
@@ -189,15 +190,18 @@ metadata:
   name: config-network
   namespace: knative-serving
 data:
-  auto-tls: "Enabled"
+  external-domain-tls: "Enabled"
   http-protocol: "Redirected"
-  certificate.class: "cert-manager.certificate.networking.knative.dev"
+  certificate-class: "cert-manager.certificate.networking.knative.dev"
 ```
 
 Apply the configuration:
 
 ```bash
 kubectl apply -f auto-tls-config.yaml
+
+# Restart the controller so the cert-manager integration starts
+kubectl rollout restart deploy/controller -n knative-serving
 ```
 
 Configure cert-manager integration:
@@ -209,6 +213,8 @@ kind: ConfigMap
 metadata:
   name: config-certmanager
   namespace: knative-serving
+  labels:
+    networking.knative.dev/certificate-provider: cert-manager
 data:
   issuerRef: |
     kind: ClusterIssuer
@@ -227,6 +233,20 @@ Map custom domains to services:
 
 ```yaml
 # domain-mapping.yaml
+apiVersion: networking.internal.knative.dev/v1alpha1
+kind: ClusterDomainClaim
+metadata:
+  name: api.example.com
+spec:
+  namespace: default
+---
+apiVersion: networking.internal.knative.dev/v1alpha1
+kind: ClusterDomainClaim
+metadata:
+  name: hello.example.com
+spec:
+  namespace: default
+---
 apiVersion: serving.knative.dev/v1beta1
 kind: DomainMapping
 metadata:
@@ -300,10 +320,12 @@ apiVersion: serving.knative.dev/v1beta1
 kind: DomainMapping
 metadata:
   name: api.example.com
+  namespace: default
 spec:
   ref:
     name: api
     kind: Service
+    apiVersion: serving.knative.dev/v1
 ---
 # web-service.yaml
 apiVersion: serving.knative.dev/v1
@@ -323,58 +345,34 @@ apiVersion: serving.knative.dev/v1beta1
 kind: DomainMapping
 metadata:
   name: www.example.com
+  namespace: default
 spec:
   ref:
     name: web
     kind: Service
+    apiVersion: serving.knative.dev/v1
 ```
 
 ## Configuring Traffic Splitting
 
 Split traffic between service revisions:
 
-```yaml
-# traffic-split.yaml
-apiVersion: serving.knative.dev/v1
-kind: Service
-metadata:
-  name: hello
-  namespace: default
-spec:
-  traffic:
-  - revisionName: hello-v1
-    percent: 80
-    tag: current
-  - revisionName: hello-v2
-    percent: 20
-    tag: canary
-  - latestRevision: true
-    percent: 0
-    tag: latest
+```bash
+kubectl patch ksvc hello --type merge --patch '{
+  "spec": {
+    "traffic": [
+      {"revisionName": "hello-v1", "percent": 80, "tag": "current"},
+      {"revisionName": "hello-v2", "percent": 20, "tag": "canary"},
+      {"latestRevision": true, "percent": 0, "tag": "latest"}
+    ]
+  }
+}'
 ```
 
-Create domain mappings for tags:
+Get the generated URLs for tagged traffic targets:
 
-```yaml
-# tag-domain-mapping.yaml
-apiVersion: serving.knative.dev/v1beta1
-kind: DomainMapping
-metadata:
-  name: current.hello.example.com
-spec:
-  ref:
-    name: hello
-    kind: Service
-    apiVersion: serving.knative.dev/v1
----
-apiVersion: serving.knative.dev/v1beta1
-kind: DomainMapping
-metadata:
-  name: canary.hello.example.com
-spec:
-  ref:
-    name: hello
-    kind: Service
+```bash
+kubectl get ksvc hello -o jsonpath='{range .status.traffic[*]}{.tag}{"\t"}{.url}{"\n"}{end}'
 ```
 
 ## Monitoring Certificate Renewal
@@ -443,20 +441,26 @@ stringData:
     MIIEvQIBADANBgkqhkiG9w0...
     -----END PRIVATE KEY-----
 ---
-# service-with-custom-cert.yaml
-apiVersion: serving.knative.dev/v1
-kind: Service
+# domain-mapping-with-custom-cert.yaml
+apiVersion: networking.internal.knative.dev/v1alpha1
+kind: ClusterDomainClaim
 metadata:
-  name: custom-cert-service
+  name: custom.example.com
+spec:
+  namespace: default
+---
+apiVersion: serving.knative.dev/v1beta1
+kind: DomainMapping
+metadata:
+  name: custom.example.com
   namespace: default
 spec:
-  template:
-    metadata:
-      annotations:
-        serving.knative.dev/tls-secret: custom-tls-cert
-    spec:
-      containers:
-      - image: your-registry/app:latest
+  ref:
+    name: custom-cert-service
+    kind: Service
+    apiVersion: serving.knative.dev/v1
+  tls:
+    secretName: custom-tls-cert
 ```
 
 ## Troubleshooting
