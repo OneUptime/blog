@@ -14,7 +14,7 @@ Kube-proxy has served Kubernetes well, but its iptables and IPVS implementations
 
 Traditional kube-proxy modes have scaling issues. In iptables mode, every packet traverses a chain of rules that grows with the number of services. Adding 1000 services means 1000 more rules to check. IPVS improves this with hash tables but still requires netfilter hooks and conntrack overhead.
 
-eBPF-based implementations attach directly to network interfaces, processing packets before they enter the normal network stack. Service lookups use eBPF maps with O(1) complexity. Connection tracking happens in eBPF maps, bypassing the kernel's conntrack subsystem entirely. This reduces CPU usage by 25-40% in typical deployments.
+eBPF-based implementations attach directly to network interfaces and cgroups, processing service traffic before it has to traverse the normal kube-proxy datapath. Service lookups use eBPF maps with O(1) complexity. Connection tracking for service load balancing happens in eBPF maps rather than kube-proxy-managed iptables state. This can reduce CPU usage in large service-heavy deployments, depending on workload and kernel support.
 
 Additional benefits include:
 - Consistent performance regardless of service count
@@ -47,10 +47,6 @@ helm install cilium cilium/cilium \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=API_SERVER_IP \
   --set k8sServicePort=API_SERVER_PORT \
-  --set hostServices.enabled=true \
-  --set externalIPs.enabled=true \
-  --set nodePort.enabled=true \
-  --set hostPort.enabled=true \
   --set bpf.masquerade=true \
   --set ipam.mode=kubernetes
 ```
@@ -61,12 +57,10 @@ Verify installation:
 
 ```bash
 # Check Cilium status
-cilium status
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 
 # Should show:
-# KubeProxyReplacement: True
-# Devices: eth0
-# Host Routing: Legacy
+# KubeProxyReplacement:   True
 
 # Verify no kube-proxy pods
 kubectl get pods -n kube-system -l k8s-app=kube-proxy
@@ -80,7 +74,7 @@ kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup kubernete
 For clusters already running kube-proxy, follow these steps to migrate:
 
 ```bash
-# Step 1: Install Cilium in hybrid mode (alongside kube-proxy)
+# Step 1: Install Cilium alongside kube-proxy
 helm install cilium cilium/cilium \
   --namespace kube-system \
   --set kubeProxyReplacement=false
@@ -98,11 +92,10 @@ helm upgrade cilium cilium/cilium \
 
 # Step 3: Delete kube-proxy
 kubectl -n kube-system delete ds kube-proxy
+kubectl -n kube-system delete cm kube-proxy
 
 # Step 4: Clean up kube-proxy iptables rules
-kubectl -n kube-system exec -ti ds/cilium -- cilium cleanup -f
-
-# Or run on each node directly:
+# Run on each node with root permissions:
 iptables-save | grep -v KUBE | iptables-restore
 ```
 
@@ -116,7 +109,7 @@ kubectl expose pod test --port=80
 kubectl run -it --rm curl --image=curlimages/curl --restart=Never -- curl test
 
 # Check eBPF maps
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
 
 # Verify no kube-proxy rules
 iptables-save | grep KUBE-SVC
@@ -135,38 +128,20 @@ kubeProxyReplacement: "true"
 # "snat" - Default, works everywhere
 # "dsr" - Direct Server Return, best performance
 # "hybrid" - DSR for TCP, SNAT for UDP
-kubeProxyReplacementMode: "dsr"
-
-# Enable Maglev consistent hashing
 loadBalancer:
   algorithm: maglev
   mode: dsr
-
-# Session affinity
-sessionAffinity: true
+  acceleration: native
 
 # NodePort configuration
 nodePort:
-  enabled: true
-  range: "30000-32767"
   bindProtection: true
-  acceleration: native
 
-# ExternalIPs support
-externalIPs:
-  enabled: true
-
-# Host reachable services
-hostServices:
-  enabled: true
-  protocols: tcp,udp
-
-# Enable XDP acceleration
+# eBPF datapath options
 bpf:
-  hostRouting: true
+  hostLegacyRouting: false
   masquerade: true
   preallocateMaps: true
-  tproxy: true
 ```
 
 Apply configuration:
@@ -189,12 +164,14 @@ DSR mode provides the best performance by having backend pods respond directly t
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
+  --set routingMode=native \
   --set loadBalancer.mode=dsr \
+  --set loadBalancer.dsrDispatch=opt \
   --set loadBalancer.algorithm=maglev
 
 # Verify DSR is active
-cilium status | grep -i dsr
-# Should show: LoadBalancing: Direct Server Return
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i "Mode:"
+# Should show the kube-proxy replacement load-balancing mode as DSR
 ```
 
 Create a service to test DSR:
@@ -240,8 +217,8 @@ tcpdump -i eth0 port 80 -n
 
 # You should see:
 # - Inbound packet to service IP
-# - Outbound response from pod IP directly to client
-# (Not routed back through service IP)
+# - Outbound response returned directly from the backend path to the client
+# - The service IP/port preserved as the response source
 ```
 
 ## Implementing Session Affinity
@@ -253,9 +230,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sticky-service
-  annotations:
-    service.cilium.io/affinity: "client-ip"
-    service.cilium.io/affinity-timeout: "300"
 spec:
   type: ClusterIP
   selector:
@@ -274,7 +248,7 @@ Cilium implements this using eBPF maps rather than conntrack, reducing memory us
 ```bash
 # View affinity map
 kubectl -n kube-system exec ds/cilium -- \
-  cilium bpf lb maglev list
+  cilium-dbg bpf lb list
 ```
 
 ## Monitoring Service Load Balancing
@@ -283,42 +257,35 @@ Check service endpoints and load balancing state:
 
 ```bash
 # List all services
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
 
 # View specific service
 kubectl -n kube-system exec ds/cilium -- \
-  cilium service list
+  cilium-dbg service list
 
 # Check backend health
 kubectl -n kube-system exec ds/cilium -- \
-  cilium bpf endpoint list
+  cilium-dbg bpf endpoint list
 
 # Monitor connection tracking
 kubectl -n kube-system exec ds/cilium -- \
-  cilium bpf ct list global
+  cilium-dbg bpf ct list global
 ```
 
 Export metrics to Prometheus:
 
-```yaml
-apiVersion: v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-metrics
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  endpoints:
-  - port: prometheus
-    interval: 30s
+```bash
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set prometheus.enabled=true \
+  --set prometheus.serviceMonitor.enabled=true
 ```
 
 Key metrics:
 - `cilium_services_events_total`: Service add/delete/update events
-- `cilium_k8s_client_api_latency_seconds`: API server latency
-- `cilium_proxy_redirects`: L7 proxy redirects
+- `cilium_service_implementation_delay`: Service datapath programming delay
+- `cilium_proxy_redirects`: L7 proxy redirects, when L7 proxying is used
 - `cilium_bpf_map_ops_total`: BPF map operations
 
 ## Performance Comparison
@@ -326,18 +293,14 @@ Key metrics:
 Benchmark kube-proxy replacement against traditional modes:
 
 ```bash
-# Install netperf
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/master/examples/kubernetes/netperf/netperf.yaml
-
-# Run tests
-kubectl exec -it netperf-client -- netperf -H netperf-server -l 30 -t TCP_STREAM
-kubectl exec -it netperf-client -- netperf -H netperf-server -l 30 -t TCP_RR
+# Run Cilium's built-in performance tests
+cilium connectivity perf --duration 30s --samples 3
 
 # Compare CPU usage
 kubectl top nodes
 
 # Check latency
-kubectl exec -it netperf-client -- ping netperf-server -c 100
+cilium connectivity perf --duration 30s --samples 3 --rr --throughput=false
 ```
 
 Typical results show:
@@ -356,10 +319,10 @@ Common issues and solutions:
 cilium status
 
 # Verify BPF programs are loaded
-cilium bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
 
 # Check service endpoints
-cilium service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
 
 # Issue: DNS not resolving
 # Ensure k8sServiceHost/Port are correct
@@ -370,14 +333,14 @@ kubectl -n kube-system exec ds/cilium -- curl -k https://$K8S_SERVICE_HOST:$K8S_
 
 # Issue: NodePort not accessible
 # Verify nodePort is enabled
-cilium config view | grep -i nodeport
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i NodePort
 
 # Check firewall rules
 iptables -L -n | grep 30000:32767
 
 # Issue: ExternalIPs not working
-# Enable externalIPs feature
-helm upgrade cilium cilium/cilium --set externalIPs.enabled=true
+# Verify externalIPs support is enabled
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i externalIPs
 
 # Check external IP routing
 ip route show table all | grep <EXTERNAL_IP>
@@ -386,16 +349,13 @@ ip route show table all | grep <EXTERNAL_IP>
 Revert to kube-proxy if needed:
 
 ```bash
-# Reinstall kube-proxy
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/kube-proxy/kube-proxy.yaml
+# Reinstall kube-proxy using the manifest generated for your Kubernetes version
+kubeadm init phase addon kube-proxy --kubeconfig /etc/kubernetes/admin.conf
 
 # Disable Cilium kube-proxy replacement
 helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set kubeProxyReplacement=false
-
-# Clean up Cilium eBPF programs
-kubectl -n kube-system exec ds/cilium -- cilium cleanup
 ```
 
 ## Advanced Features
@@ -405,7 +365,6 @@ Enable XDP acceleration for even better performance:
 ```bash
 helm upgrade cilium cilium/cilium \
   --reuse-values \
-  --set bpf.hostRouting=true \
   --set loadBalancer.acceleration=native
 
 # Verify XDP is active
