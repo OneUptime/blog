@@ -8,22 +8,22 @@ Description: Learn how to handle Kubernetes API deprecations using kubectl-conve
 
 ---
 
-Kubernetes deprecates and removes old API versions as it evolves. When you upgrade clusters, manifests using deprecated APIs stop working. The kubectl-convert plugin automatically migrates manifests from deprecated API versions to supported ones, making cluster upgrades smoother and preventing application downtime.
+Kubernetes deprecates and removes old API versions as it evolves. When you upgrade clusters past the removal release, manifests using removed API versions stop working. The kubectl-convert plugin converts manifests from deprecated API versions to supported ones, making cluster upgrades smoother and preventing deployment failures.
 
-Understanding API deprecation policies and using kubectl-convert ensures your manifests remain compatible across Kubernetes versions without manual rewriting.
+Understanding API deprecation policies and using kubectl-convert helps your manifests remain compatible across Kubernetes versions with less manual rewriting.
 
 ## Understanding API Deprecation
 
 Kubernetes follows a deprecation policy:
 
-- GA (v1) APIs: Deprecated versions supported for 12 months or 3 releases
-- Beta APIs: Deprecated versions supported for 9 months or 3 releases
+- GA (v1) APIs: May be deprecated, but are not removed within the same Kubernetes major version
+- Beta APIs: Deprecated versions supported for 9 months or 3 minor releases, whichever is longer
 - Alpha APIs: May be dropped without notice
 
 Common deprecations:
 
 ```yaml
-# Deprecated in 1.16, removed in 1.22
+# Removed in 1.16
 
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -32,7 +32,7 @@ kind: Deployment
 apiVersion: apps/v1
 kind: Deployment
 
-# Deprecated in 1.16, removed in 1.25
+# Deprecated in 1.21, removed in 1.25
 apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 
@@ -51,15 +51,16 @@ Install the kubectl convert plugin:
 
 ```bash
 # Linux
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl-convert"
+ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl-convert"
 chmod +x kubectl-convert
-sudo mv kubectl-convert /usr/local/bin/
+sudo install -o root -g root -m 0755 kubectl-convert /usr/local/bin/kubectl-convert
 
 # macOS
-brew install kubectl-convert
-
-# Or using krew
-kubectl krew install convert
+ARCH="$(uname -m | sed -e 's/x86_64/amd64/')"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/darwin/${ARCH}/kubectl-convert"
+chmod +x kubectl-convert
+sudo mv kubectl-convert /usr/local/bin/kubectl-convert
 
 # Verify installation
 kubectl convert --help
@@ -133,9 +134,10 @@ Notice the added `selector` field required by apps/v1.
 Convert all files in a directory:
 
 ```bash
-# Convert all YAML files in manifests directory
+# Convert all YAML files in manifests directory to their preferred versions
+mkdir -p converted
 for file in manifests/*.yaml; do
-    kubectl convert -f "$file" --output-version apps/v1 > "converted/$(basename $file)"
+    kubectl convert -f "$file" > "converted/$(basename "$file")"
 done
 ```
 
@@ -149,14 +151,14 @@ OUTPUT_DIR="new-manifests"
 
 mkdir -p "$OUTPUT_DIR"
 
-find "$INPUT_DIR" -name "*.yaml" -o -name "*.yml" | while read file; do
+find "$INPUT_DIR" \( -name "*.yaml" -o -name "*.yml" \) -type f | while IFS= read -r file; do
     echo "Converting $file..."
-    kubectl convert -f "$file" > "$OUTPUT_DIR/$(basename $file)" 2>/dev/null
+    kubectl convert -f "$file" > "$OUTPUT_DIR/$(basename "$file")" 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "  ✓ Converted successfully"
     else
         echo "  ✗ Conversion failed"
-        cp "$file" "$OUTPUT_DIR/$(basename $file)"
+        cp "$file" "$OUTPUT_DIR/$(basename "$file")"
     fi
 done
 ```
@@ -230,7 +232,7 @@ spec:
     http:
       paths:
       - path: /
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: webapp
@@ -282,8 +284,8 @@ kubectl api-versions
 # Check specific resource
 kubectl explain deployment --api-version=apps/v1
 
-# Check deprecation warnings
-kubectl get deployments -o yaml | grep apiVersion
+# Check API server metrics for deprecated API requests
+kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
 ```
 
 ## Handling Breaking Changes
@@ -345,7 +347,7 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install kubectl-convert
       run: |
@@ -357,7 +359,7 @@ jobs:
       run: |
         mkdir -p converted
         for file in manifests/*.yaml; do
-          kubectl-convert -f "$file" > "converted/$(basename $file)" || cp "$file" "converted/$(basename $file)"
+          kubectl convert -f "$file" > "converted/$(basename "$file")" || cp "$file" "converted/$(basename "$file")"
         done
 
     - name: Create PR
@@ -397,19 +399,14 @@ version: 2.0.0
 # Bump apiVersion from v1 to v2 for Helm 3 compatibility
 ```
 
-Update templates:
+Render templates before conversion:
 
 ```bash
-# Convert templates
-for file in templates/*.yaml; do
-    kubectl convert -f "$file" > "$file.new"
-    mv "$file.new" "$file"
-done
-
-# Test chart
+# Render and convert templates
 helm lint .
 helm template . > rendered.yaml
-kubectl apply -f rendered.yaml --dry-run=server
+kubectl convert -f rendered.yaml > rendered-converted.yaml
+kubectl apply -f rendered-converted.yaml --dry-run=server
 ```
 
 ## Migration Timeline Planning
@@ -418,7 +415,7 @@ Plan API migrations:
 
 ```bash
 # Check current Kubernetes version
-kubectl version --short
+kubectl version
 
 # Plan upgrade path
 # Current: 1.24 -> Target: 1.28
@@ -427,13 +424,13 @@ kubectl version --short
 pluto detect-files -d manifests/ --target-versions k8s=v1.28
 
 # Convert manifests
-kubectl convert -f manifests/ --output-version <latest>
+kubectl convert -f manifests/ > converted.yaml
 
 # Test in staging
-kubectl apply -f converted/ --dry-run=server
+kubectl apply -f converted.yaml --dry-run=server
 
 # Apply to production after validation
-kubectl apply -f converted/
+kubectl apply -f converted.yaml
 ```
 
 ## Monitoring Deprecation Warnings
