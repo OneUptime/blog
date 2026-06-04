@@ -8,7 +8,7 @@ Description: Step-by-step instructions for configuring Docker with the Btrfs sto
 
 ---
 
-Btrfs (B-tree filesystem) is a modern copy-on-write filesystem for Linux that pairs well with Docker's layered storage model. When Docker uses the Btrfs storage driver, each image layer and container layer gets its own Btrfs subvolume. This makes snapshotting fast, space efficient, and well suited for container workloads.
+Btrfs (B-tree filesystem) is a modern copy-on-write filesystem for Linux that pairs well with Docker's layered storage model. When Docker uses the Btrfs storage driver, the base image layer is stored as a Btrfs subvolume, while child image layers and container layers are stored as Btrfs snapshots. This makes snapshotting fast, space efficient, and well suited for container workloads.
 
 This guide covers how to prepare a Btrfs filesystem, configure Docker to use the Btrfs storage driver, and optimize the setup for reliable container operations.
 
@@ -17,21 +17,21 @@ This guide covers how to prepare a Btrfs filesystem, configure Docker to use the
 Btrfs has been in the Linux kernel since version 2.6.29 (merged in 2009) and offers features that align naturally with container storage:
 
 - **Copy-on-write**: New container layers only consume space for the data that has actually changed, not for an entire copy
-- **Subvolumes**: Each Docker layer becomes a Btrfs subvolume, giving clean isolation between layers
+- **Subvolumes and snapshots**: Docker stores the base layer as a Btrfs subvolume and child layers as snapshots, giving clean isolation between layers
 - **Snapshots**: Creating a new container from an image is essentially a Btrfs snapshot operation, which is nearly instantaneous
 - **Built-in compression**: Transparent compression with zstd or lzo saves disk space
 - **Online defragmentation**: You can defragment the filesystem without unmounting
 - **Checksumming**: Btrfs checksums all data to detect corruption
 
-Compared to the default overlay2 driver, Btrfs can offer better performance for workloads that involve many small writes, particularly databases running inside containers. However, overlay2 is generally simpler to set up and has broader compatibility.
+Compared to the default overlay2 driver, Btrfs can offer advanced filesystem features but requires more setup and maintenance. Docker volumes are still the better choice for write-heavy workloads, especially databases, and overlay2 is generally simpler to set up and has broader compatibility.
 
 ## Prerequisites
 
 You will need:
 
-- A Linux system running a distribution that supports Btrfs (Ubuntu, Fedora, openSUSE, Arch)
+- A Linux system running a distribution where Docker supports the Btrfs storage driver, such as Docker Engine CE on Ubuntu, Debian, or SLES
 - A dedicated partition or disk for the Btrfs filesystem
-- Docker Engine installed
+- Docker Engine installed and using the classic storage driver backend
 - Root or sudo access
 
 ## Step 1: Install Btrfs Tools
@@ -121,6 +121,8 @@ Note that changing storage drivers means Docker cannot read images and container
 
 Edit the Docker daemon configuration to specify the Btrfs storage driver:
 
+These instructions apply to Docker Engine's classic storage driver backend. Fresh Docker Engine 29.0 and later installations use the containerd image store by default, which uses containerd snapshotters instead of classic storage drivers.
+
 ```bash
 # Create or update the daemon configuration
 sudo tee /etc/docker/daemon.json <<EOF
@@ -168,7 +170,7 @@ You should see subvolumes for each image layer that was pulled.
 
 ## Understanding How Docker Uses Btrfs
 
-When you pull an image, Docker creates a Btrfs subvolume for each layer. When you start a container, Docker creates a snapshot of the final image layer as the container's writable layer.
+When you pull an image, Docker stores the base layer as a Btrfs subvolume and child layers as snapshots. When you start a container, Docker creates a snapshot of the final image layer as the container's writable layer.
 
 Here is the flow visualized:
 
@@ -179,18 +181,18 @@ graph TD
     C --> D[Container Writable Layer - Snapshot of C]
 ```
 
-Because Btrfs snapshots are copy-on-write, the container's writable layer initially consumes zero additional space. Space is allocated only when the container writes new data or modifies existing files.
+Because Btrfs snapshots are copy-on-write, the container's writable layer initially consumes very little additional space. Data space is allocated when the container writes new data or modifies existing files.
 
 ## Enabling Compression
 
 Btrfs supports transparent compression. Enabling it reduces disk usage, often significantly. The zstd algorithm provides the best balance of compression ratio and speed.
 
 ```bash
-# Enable zstd compression on the Docker filesystem
+# Set zstd compression for new files created under Docker's directory
 sudo btrfs property set /var/lib/docker compression zstd
 ```
 
-You can also set compression as a mount option in `/etc/fstab`:
+For filesystem-wide compression, set compression as a mount option in `/etc/fstab`:
 
 ```bash
 # Updated fstab entry with compression
@@ -200,7 +202,7 @@ You can also set compression as a mount option in `/etc/fstab`:
 Check compression statistics after running some containers:
 
 ```bash
-# Show compression ratio for the filesystem
+# Show Btrfs filesystem allocation and compression ratio
 sudo btrfs filesystem df /var/lib/docker
 sudo compsize /var/lib/docker
 ```
@@ -231,11 +233,11 @@ sudo mount -o ssd,compress=zstd /dev/sdb /var/lib/docker
 
 ### Autodefragmentation
 
-For workloads that create many small files (common with containers), enable automatic defragmentation:
+For workloads that create many small files (common with containers), you can test automatic defragmentation:
 
 ```bash
-# Mount with autodefrag
-sudo mount -o autodefrag /dev/sdb /var/lib/docker
+# Mount with autodefrag while keeping the other options
+sudo mount -o ssd,compress=zstd,autodefrag /dev/sdb /var/lib/docker
 ```
 
 ## Maintenance Tasks
