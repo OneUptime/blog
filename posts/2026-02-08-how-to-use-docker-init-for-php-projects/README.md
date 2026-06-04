@@ -8,7 +8,7 @@ Description: A hands-on guide to using docker init with PHP projects, covering L
 
 ---
 
-PHP applications require a web server (Apache or Nginx), the PHP runtime with the right extensions, and often Composer for dependency management. Getting all of these pieces right in a Dockerfile takes more effort than most languages. The `docker init` command detects PHP projects by looking for composer.json and generates Docker configuration that sets up the web server, PHP extensions, and Composer dependencies automatically.
+PHP applications require a web server (Apache or Nginx), the PHP runtime with the right extensions, and often Composer for dependency management. Getting all of these pieces right in a Dockerfile takes more effort than most languages. The `docker init` command can detect PHP projects and generate starter Docker configuration for a PHP application with Apache and Composer dependencies. You still need to add the PHP extensions required by your application.
 
 ## Setting Up a Sample Laravel Project
 
@@ -29,20 +29,20 @@ If you already have a PHP project, just navigate to it. Docker init works with a
 docker init
 ```
 
-Docker init detects the composer.json and identifies the project as PHP:
+Docker init can identify the project as PHP and prompt for the PHP with Apache template:
 
 ```text
 ? What application platform does your project use? PHP with Apache
 ? What version of PHP do you want to use? 8.3
-? What port does your server listen on? 80
-? What is the document root for your app? /var/www/html/public
+? What's the relative directory (with a leading .) for your app? .
+? What local port do you want to use to access your server? 9000
 ```
 
-For Laravel, the document root is `/var/www/html/public`. For other frameworks, adjust accordingly.
+For Laravel, the Apache document root inside the container should point to `/var/www/html/public`. Docker init does not ask for this value directly, so adjust the generated Dockerfile accordingly.
 
 ## Understanding the Generated Dockerfile
 
-The generated Dockerfile installs PHP extensions, Composer dependencies, and configures Apache:
+After customizing the generated Dockerfile, it can install PHP extensions, Composer dependencies, and configure Apache:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -70,6 +70,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg && \
     intl \
     opcache \
     bcmath
+
+# Install Redis support for Laravel cache, sessions, and queues
+RUN pecl install redis && docker-php-ext-enable redis
 
 # Enable Apache mod_rewrite for URL routing
 RUN a2enmod rewrite
@@ -134,6 +137,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg && \
     intl \
     opcache \
     bcmath
+
+# Install Redis support for Laravel cache, sessions, and queues
+RUN pecl install redis && docker-php-ext-enable redis
 
 WORKDIR /var/www/html
 
@@ -207,7 +213,7 @@ services:
       - DB_USERNAME=laravel
       - DB_PASSWORD=secret
       - REDIS_HOST=redis
-      - CACHE_DRIVER=redis
+      - CACHE_STORE=redis
       - SESSION_DRIVER=redis
       - QUEUE_CONNECTION=redis
     ports:
@@ -398,4 +404,4 @@ curl http://localhost
 curl http://localhost/api/users
 ```
 
-Docker init provides a working PHP containerization setup that handles the web server, PHP extensions, and Composer dependencies. Customize the generated files based on your framework (Laravel, Symfony, or vanilla PHP), your preferred web server (Apache or Nginx), and the extensions your application requires. The pattern of splitting the Dockerfile into dependency install and code copy stages applies universally across PHP frameworks and dramatically improves build times.
+Docker init provides a working PHP containerization starting point that handles the web server and Composer dependencies. Customize the generated files based on your framework (Laravel, Symfony, or vanilla PHP), your preferred web server (Apache or Nginx), and the extensions your application requires. The pattern of splitting the Dockerfile into dependency install and code copy stages applies universally across PHP frameworks and dramatically improves build times.
