@@ -12,7 +12,7 @@ Kyverno cleanup policies automatically delete resources based on age, status, or
 
 ## Understanding Cleanup Policies
 
-Cleanup policies are ClusterCleanupPolicy or CleanupPolicy resources that define conditions for resource deletion. They run on schedules, examining resources and deleting those matching conditions. Cleanup operates in the background, separate from admission control.
+Cleanup policies are DeletingPolicy or NamespacedDeletingPolicy resources that define conditions for resource deletion. They run on schedules, examining resources and deleting those matching conditions. Cleanup operates in the background, separate from admission control.
 
 Common use cases include removing completed jobs, cleaning up temporary namespaces, deleting old ConfigMaps, and purging stale secrets.
 
@@ -21,33 +21,30 @@ Common use cases include removing completed jobs, cleaning up temporary namespac
 Remove jobs after successful completion:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-completed-jobs
 spec:
   schedule: "*/15 * * * *"  # Run every 15 minutes
-  match:
-    any:
-      - resources:
-          kinds:
-            - Job
-          namespaces:
-            - "*"
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - batch
+        apiVersions:
+          - v1
+        resources:
+          - jobs
+        scope: Namespaced
+    objectSelector:
+      matchExpressions:
+        - key: keep
+          operator: NotIn
+          values:
+            - "true"
   conditions:
-    any:
-      - key: "{{ target.status.succeeded || `0` }}"
-        operator: GreaterThan
-        value: 0
-      - key: "{{ target.status.completionTime }}"
-        operator: NotEquals
-        value: ""
-  exclude:
-    any:
-      - resources:
-          selector:
-            matchLabels:
-              keep: "true"
+    - name: completed
+      expression: "has(object.status.conditions) && object.status.conditions.exists(c, c.type == 'Complete' && c.status == 'True')"
 ```
 
 This removes completed jobs every 15 minutes, except those labeled with `keep: true`.
@@ -57,28 +54,28 @@ This removes completed jobs every 15 minutes, except those labeled with `keep: t
 Delete resources older than a certain age:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-old-configmaps
 spec:
   schedule: "0 2 * * *"  # Run daily at 2 AM
-  match:
-    any:
-      - resources:
-          kinds:
-            - ConfigMap
-          namespaces:
-            - default
-            - apps-*
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - configmaps
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 30d  # Older than 30 days
-      - key: "{{ target.metadata.annotations.\"kyverno.io/keep\" || 'false' }}"
-        operator: NotEquals
-        value: "true"
+    - name: namespace
+      expression: "object.metadata.namespace == 'default' || object.metadata.namespace.startsWith('apps-')"
+    - name: older-than-30-days
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('720h')"
+    - name: not-kept
+      expression: "!has(object.metadata.annotations) || !('kyverno.io/keep' in object.metadata.annotations) || object.metadata.annotations['kyverno.io/keep'] != 'true'"
 ```
 
 This deletes ConfigMaps older than 30 days unless annotated to keep.
@@ -88,31 +85,31 @@ This deletes ConfigMaps older than 30 days unless annotated to keep.
 Remove pods in failed state:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-failed-pods
 spec:
   schedule: "*/30 * * * *"  # Every 30 minutes
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
-  conditions:
-    any:
-      - key: "{{ target.status.phase }}"
-        operator: Equals
-        value: "Failed"
-      - key: "{{ target.status.phase }}"
-        operator: Equals
-        value: "Unknown"
-  exclude:
-    any:
-      - resources:
-          namespaces:
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+        scope: Namespaced
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
             - kube-system
             - kube-public
+  conditions:
+    - name: failed-or-unknown
+      expression: "object.status.phase in ['Failed', 'Unknown']"
 ```
 
 This keeps the cluster clean by removing failed pods automatically.
@@ -122,32 +119,35 @@ This keeps the cluster clean by removing failed pods automatically.
 Delete ephemeral namespaces after expiration:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-temporary-namespaces
 spec:
   schedule: "0 * * * *"  # Hourly
-  match:
-    any:
-      - resources:
-          kinds:
-            - Namespace
-          selector:
-            matchLabels:
-              type: temporary
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - namespaces
+        scope: Cluster
+    objectSelector:
+      matchLabels:
+        type: temporary
   conditions:
-    any:
-      - key: "{{ target.metadata.annotations.\"expires\" }}"
-        operator: LessThan
-        value: "{{ time_now() }}"
+    - name: expired
+      expression: "has(object.metadata.annotations) && 'expires' in object.metadata.annotations && timestamp(object.metadata.annotations['expires']) < time.now()"
 ```
 
 Annotate temporary namespaces with expiration:
 
 ```bash
 kubectl create namespace temp-feature-test
-kubectl annotate namespace temp-feature-test type=temporary expires="2026-02-10T00:00:00Z"
+kubectl label namespace temp-feature-test type=temporary
+kubectl annotate namespace temp-feature-test expires="2026-02-10T00:00:00Z"
 ```
 
 ## Cleaning Up ReplicaSets
@@ -155,28 +155,26 @@ kubectl annotate namespace temp-feature-test type=temporary expires="2026-02-10T
 Remove old ReplicaSets left by Deployments:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-old-replicasets
 spec:
   schedule: "0 3 * * *"  # Daily at 3 AM
-  match:
-    any:
-      - resources:
-          kinds:
-            - ReplicaSet
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - apps
+        apiVersions:
+          - v1
+        resources:
+          - replicasets
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ target.spec.replicas || `0` }}"
-        operator: Equals
-        value: 0
-      - key: "{{ target.status.replicas || `0` }}"
-        operator: Equals
-        value: 0
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 7d  # Keep 7 days of history
+    - name: scaled-down
+      expression: "(!has(object.spec.replicas) || object.spec.replicas == 0) && (!has(object.status.replicas) || object.status.replicas == 0)"
+    - name: older-than-7-days
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('168h')"
 ```
 
 This maintains Deployment history while removing very old ReplicaSets.
@@ -186,25 +184,26 @@ This maintains Deployment history while removing very old ReplicaSets.
 Clean up unbound PersistentVolumeClaims:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-unbound-pvcs
 spec:
   schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
-  match:
-    any:
-      - resources:
-          kinds:
-            - PersistentVolumeClaim
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - persistentvolumeclaims
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ target.status.phase }}"
-        operator: Equals
-        value: "Pending"
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 48h
+    - name: pending
+      expression: "object.status.phase == 'Pending'"
+    - name: older-than-48-hours
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('48h')"
 ```
 
 Remove PVCs that have been pending for more than 48 hours.
@@ -214,128 +213,129 @@ Remove PVCs that have been pending for more than 48 hours.
 Remove resources created during testing:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-test-resources
 spec:
   schedule: "*/5 * * * *"  # Every 5 minutes
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
-            - Service
-            - ConfigMap
-          selector:
-            matchLabels:
-              test: "true"
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+          - services
+          - configmaps
+        scope: Namespaced
+    objectSelector:
+      matchLabels:
+        test: "true"
   conditions:
-    all:
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 1h
+    - name: older-than-1-hour
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('1h')"
 ```
 
 This removes test resources older than 1 hour.
 
 ## Namespace-Scoped Cleanup
 
-Use CleanupPolicy for namespace-specific rules:
+Use NamespacedDeletingPolicy for namespace-specific rules:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: CleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedDeletingPolicy
 metadata:
   name: cleanup-dev-namespace
   namespace: development
 spec:
   schedule: "0 0 * * *"  # Daily at midnight
-  match:
-    any:
-      - resources:
-          kinds:
-            - Deployment
-            - StatefulSet
-            - Service
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - apps
+        apiVersions:
+          - v1
+        resources:
+          - deployments
+          - statefulsets
+        scope: Namespaced
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - services
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ target.metadata.labels.\"last-used\" }}"
-        operator: LessThan
-        value: "{{ time_add('-7d') }}"
+    - name: unused-for-7-days
+      expression: "has(object.metadata.annotations) && 'last-used' in object.metadata.annotations && timestamp(object.metadata.annotations['last-used']) < time.now() - duration('168h')"
 ```
 
-This removes resources in development namespace unused for 7 days.
+This removes resources in development namespace unused for 7 days when they carry a `last-used` annotation.
 
 ## Protecting Critical Resources
 
 Prevent cleanup of important resources:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-with-protections
 spec:
   schedule: "0 1 * * *"
-  match:
-    any:
-      - resources:
-          kinds:
-            - Secret
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - secrets
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 90d
-  exclude:
-    any:
-      # Exclude secrets in system namespaces
-      - resources:
-          namespaces:
-            - kube-system
-            - kube-public
-            - kyverno
-      # Exclude secrets with protection label
-      - resources:
-          selector:
-            matchLabels:
-              protect: "true"
-      # Exclude secrets currently in use
-      - resources:
-          names:
-            - "default-token-*"
+    - name: older-than-90-days
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('2160h')"
+    - name: not-system-namespace
+      expression: "!(object.metadata.namespace in ['kube-system', 'kube-public', 'kyverno'])"
+    - name: not-protected
+      expression: "!has(object.metadata.labels) || !('protect' in object.metadata.labels) || object.metadata.labels['protect'] != 'true'"
+    - name: not-default-token
+      expression: "!object.metadata.name.startsWith('default-token-')"
 ```
 
-## Dry Run Mode
+## Policy Validation
 
-Test cleanup policies without deletion:
+Validate cleanup policies before installing them:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-dry-run
-  annotations:
-    kyverno.io/cleanup-mode: "dryrun"
 spec:
   schedule: "*/10 * * * *"
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+        scope: Namespaced
   conditions:
-    any:
-      - key: "{{ target.status.phase }}"
-        operator: Equals
-        value: "Succeeded"
+    - name: succeeded
+      expression: "object.status.phase == 'Succeeded'"
 ```
 
-Check cleanup logs to see what would be deleted:
+Check that the policy is accepted by the API server without creating it:
 
 ```bash
-kubectl logs -n kyverno -l app.kubernetes.io/component=cleanup-controller | grep "would delete"
+kubectl apply --dry-run=server -f cleanup-dry-run.yaml
 ```
 
 ## Monitoring Cleanup Activity
@@ -345,17 +345,16 @@ Track cleanup operations:
 ```bash
 # View cleanup policies
 
-kubectl get clustercleanuppolicy
+kubectl get deletingpolicy
 
 # Check cleanup policy status
-kubectl describe clustercleanuppolicy cleanup-completed-jobs
+kubectl describe deletingpolicy cleanup-completed-jobs
 
-# View cleanup logs
-kubectl logs -n kyverno -l app.kubernetes.io/component=cleanup-controller -f
+# View deletion events
+kubectl get events --field-selector reason=PolicyApplied -A
 
 # Count cleaned resources
-kubectl logs -n kyverno -l app.kubernetes.io/component=cleanup-controller | \
-  grep "deleted resource" | wc -l
+kubectl get events --field-selector reason=PolicyApplied -A --no-headers | wc -l
 ```
 
 Export metrics for monitoring:
@@ -365,27 +364,34 @@ Export metrics for monitoring:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
+  labels:
+    app.kubernetes.io/instance: monitoring
+    release: monitoring
   name: kyverno-cleanup
-  namespace: kyverno
+  namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - kyverno
   selector:
     matchLabels:
-      app.kubernetes.io/component: cleanup-controller
+      app.kubernetes.io/instance: kyverno
   endpoints:
-    - port: metrics
+    - targetPort: 8000
+      path: /metrics
 ```
 
 Query Prometheus:
 
 ```promql
 # Total resources cleaned
-sum(kyverno_cleanup_controller_resources_deleted_total)
+sum(kyverno_deleting_controller_deletedobjects_total)
 
-# Cleanup policy execution time
-histogram_quantile(0.95, kyverno_cleanup_controller_scan_duration_seconds_bucket)
+# Resources cleaned by policy
+sum by (policy_namespace, policy_name) (increase(kyverno_deleting_controller_deletedobjects_total[24h]))
 
 # Failed cleanups
-sum(kyverno_cleanup_controller_errors_total)
+sum(kyverno_deleting_controller_errors_total)
 ```
 
 ## Safety Best Practices
@@ -393,30 +399,30 @@ sum(kyverno_cleanup_controller_errors_total)
 Implement safety measures:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: safe-cleanup
 spec:
   schedule: "0 1 * * *"
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+        scope: Namespaced
   conditions:
-    all:
-      # Multiple conditions for safety
-      - key: "{{ target.status.phase }}"
-        operator: Equals
-        value: "Succeeded"
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 24h
-      # Require explicit cleanup label
-      - key: "{{ target.metadata.labels.\"cleanup\" || 'false' }}"
-        operator: Equals
-        value: "true"
+    # Multiple conditions for safety
+    - name: succeeded
+      expression: "object.status.phase == 'Succeeded'"
+    - name: older-than-24-hours
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('24h')"
+    # Require explicit cleanup label
+    - name: explicitly-labeled
+      expression: "has(object.metadata.labels) && 'cleanup' in object.metadata.labels && object.metadata.labels['cleanup'] == 'true'"
 ```
 
 ## Scheduled Maintenance Windows
@@ -424,29 +430,37 @@ spec:
 Run intensive cleanup during maintenance:
 
 ```yaml
-apiVersion: kyverno.io/v2alpha1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: weekend-cleanup
 spec:
   schedule: "0 2 * * 6"  # Saturday at 2 AM
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
-            - Job
-            - ConfigMap
-            - Secret
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+          - configmaps
+          - secrets
+        scope: Namespaced
+      - apiGroups:
+          - batch
+        apiVersions:
+          - v1
+        resources:
+          - jobs
+        scope: Namespaced
   conditions:
-    all:
-      - key: "{{ time_since('', '{{ target.metadata.creationTimestamp }}', '') }}"
-        operator: GreaterThan
-        value: 60d
+    - name: older-than-60-days
+      expression: "time.now() - timestamp(object.metadata.creationTimestamp) > duration('1440h')"
 ```
 
 ## Conclusion
 
-Kyverno cleanup policies automate resource lifecycle management by removing completed jobs, failed pods, old ConfigMaps, and temporary resources based on age or status. Configure schedules appropriate for each resource type, protect critical resources with exclude rules, and implement safety measures like dry run mode. Monitor cleanup activity through logs and metrics, and schedule intensive cleanup during maintenance windows. Use time-based conditions to implement retention policies, and require explicit labels for high-risk cleanup operations.
+Kyverno cleanup policies automate resource lifecycle management by removing completed jobs, failed pods, old ConfigMaps, and temporary resources based on age or status. Configure schedules appropriate for each resource type, protect critical resources with strict match constraints and conditions, and validate policies before applying them. Monitor cleanup activity through events and metrics, and schedule intensive cleanup during maintenance windows. Use time-based conditions to implement retention policies, and require explicit labels for high-risk cleanup operations.
 
 Automated cleanup maintains cluster hygiene, reduces resource consumption, and prevents manual operational toil.
