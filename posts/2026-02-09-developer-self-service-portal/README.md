@@ -10,7 +10,7 @@ Description: Build a developer self-service portal that automates Kubernetes nam
 
 Waiting for infrastructure teams to provision development environments slows down engineering velocity. A self-service portal that lets developers create their own Kubernetes namespaces with appropriate guardrails removes this bottleneck while maintaining security and resource governance.
 
-This guide walks through building a complete self-service portal that provisions namespaces with proper RBAC, resource quotas, network policies, and monitoring integration. The result is faster developer onboarding and reduced operational overhead.
+This guide walks through building the core of a self-service portal that provisions namespaces with proper RBAC, resource quotas, and network policies. The result is faster developer onboarding and reduced operational overhead.
 
 ## Architecture Overview
 
@@ -18,11 +18,11 @@ The portal consists of several components:
 
 - Web frontend for namespace requests
 - Backend API for orchestration
-- Kubernetes operator for resource provisioning
+- Kubernetes API access for resource provisioning
 - Authentication integration with your identity provider
 - Notification system for status updates
 
-We'll build this using Go for the backend, React for the frontend, and the Kubernetes operator pattern for reliable provisioning.
+We'll build this using Go for the backend, React for the frontend, and client-go for reliable provisioning through the Kubernetes API.
 
 ## Setting Up the Backend API
 
@@ -38,12 +38,15 @@ import (
     "fmt"
     "log"
     "net/http"
+    "strings"
 
     "github.com/gorilla/mux"
     corev1 "k8s.io/api/core/v1"
+    networkingv1 "k8s.io/api/networking/v1"
     rbacv1 "k8s.io/api/rbac/v1"
     "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/util/validation"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
@@ -115,7 +118,6 @@ func (np *NamespaceProvisioner) createNamespace(ctx context.Context, name string
             Name: name,
             Labels: map[string]string{
                 "team":        req.Team,
-                "owner":       req.Owner,
                 "environment": req.Environment,
                 "managed-by":  "self-service-portal",
             },
@@ -301,6 +303,19 @@ func validateRequest(req NamespaceRequest) error {
         return fmt.Errorf("name, owner, and team are required")
     }
 
+    if errs := validation.IsDNS1123Label(req.Name); len(errs) > 0 {
+        return fmt.Errorf("invalid namespace name: %s", strings.Join(errs, "; "))
+    }
+
+    if errs := validation.IsDNS1123Label(req.Team); len(errs) > 0 {
+        return fmt.Errorf("invalid team name: %s", strings.Join(errs, "; "))
+    }
+
+    nsName := fmt.Sprintf("dev-%s-%s", req.Team, req.Name)
+    if errs := validation.IsDNS1123Label(nsName); len(errs) > 0 {
+        return fmt.Errorf("generated namespace name %q is invalid: %s", nsName, strings.Join(errs, "; "))
+    }
+
     // Validate resource quotas
     if _, err := resource.ParseQuantity(req.CPUQuota); err != nil {
         return fmt.Errorf("invalid CPU quota: %w", err)
@@ -380,10 +395,10 @@ function NamespaceRequestForm() {
             type="text"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            pattern="[a-z0-9-]+"
+            pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
             required
           />
-          <small>Lowercase letters, numbers, and hyphens only</small>
+          <small>Lowercase letters, numbers, and hyphens; must start and end with a letter or number</small>
         </div>
 
         <div className="form-group">
@@ -465,6 +480,8 @@ export default NamespaceRequestForm;
 ## Deploying the Portal to Kubernetes
 
 Create a deployment manifest:
+
+NetworkPolicy resources are enforced only when your cluster uses a network plugin that supports Kubernetes NetworkPolicy.
 
 ```yaml
 # deployment.yaml
