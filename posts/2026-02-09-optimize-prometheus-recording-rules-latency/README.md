@@ -24,12 +24,14 @@ The goal is to maximize query speedup while minimizing these costs. A well-desig
 
 ## Identifying Expensive Queries
 
-Before creating recording rules, identify which queries actually need optimization. Use Prometheus query statistics to find slow queries.
+Before creating recording rules, identify which queries actually need optimization. Use the Prometheus query log to find slow queries.
 
 ```bash
-# Find slowest queries in Prometheus logs
-
-kubectl logs -n monitoring prometheus-0 | grep "query" | grep -E "took [0-9]+\.[0-9]+s" | sort -t= -k4 -n | tail -20
+# Find slow queries after enabling query_log_file in prometheus.yml
+kubectl exec -n monitoring prometheus-0 -- sh -c 'cat /prometheus/query.log' \
+  | jq -r 'select(.stats.timings.execTotalTime > 1) | "\(.stats.timings.execTotalTime)s\t\(.params.query)"' \
+  | sort -nr \
+  | head -20
 ```
 
 Focus on queries that:
@@ -282,6 +284,7 @@ Filtering at the source reduces the number of time series processed by subsequen
 Different recording rules need different evaluation frequencies. Group rules by update frequency:
 
 ```yaml
+groups:
 # High-frequency group for real-time metrics
 - name: realtime_metrics
   interval: 10s
@@ -330,11 +333,11 @@ groups:
       namespace:kube_pod_container_resource_limits_memory_bytes:sum
 
   # Network throughput ratio (transmit/receive)
-    - record: namespace:container_network_transmit_receive:ratio
-      expr: |
-        namespace:container_network_transmit_bytes:sum_rate
-        /
-        namespace:container_network_receive_bytes:sum_rate
+  - record: namespace:container_network_transmit_receive:ratio
+    expr: |
+      namespace:container_network_transmit_bytes:sum_rate
+      /
+      namespace:container_network_receive_bytes:sum_rate
 ```
 
 These ratio rules reference existing recording rules, creating a fast cached result.
@@ -345,7 +348,7 @@ Track the performance impact of recording rules:
 
 ```promql
 # Time spent evaluating each rule group
-prometheus_rule_group_duration_seconds{rule_group="namespace_metrics"}
+prometheus_rule_group_last_duration_seconds{rule_group="namespace_metrics"}
 
 # Number of samples produced by each rule
 prometheus_rule_group_last_evaluation_samples{rule_group="namespace_metrics"}
