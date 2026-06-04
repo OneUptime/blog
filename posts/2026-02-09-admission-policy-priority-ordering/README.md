@@ -8,7 +8,7 @@ Description: Learn how to configure admission policy priority and execution orde
 
 ---
 
-When multiple admission policies evaluate the same resource, execution order matters. Mutations must complete before validation, certain policies should run before others, and performance-critical validations should fail fast. Understanding admission control ordering prevents policy conflicts and optimizes cluster performance. This guide explains how Kubernetes orders admission control and how to configure it properly.
+When multiple admission policies evaluate the same resource, execution order matters. Mutations must complete before validation, dependent policy logic should be kept together, and performance-critical validations should do cheap checks before expensive work. Understanding admission control ordering prevents policy conflicts and optimizes cluster performance. This guide explains how Kubernetes orders admission control and how to configure it properly.
 
 ## Understanding Admission Chain Order
 
@@ -19,21 +19,21 @@ Kubernetes processes admission in this order:
 3. Validating webhooks execute
 4. Resource persistence to etcd
 
-Within mutating webhooks and validating webhooks, execution order depends on webhook configuration names (alphabetical by default) unless overridden by match conditions or failure policies.
+Mutating webhooks are called serially, but Kubernetes does not provide a supported way to force their order by naming `MutatingWebhookConfiguration` objects. Validating webhooks are called in parallel, so their relative order must not be used for policy correctness.
 
-## Configuring Webhook Order with Names
+## Configuring Webhook Scope with Names
 
-Control execution order through naming:
+Use clear names to make webhook intent visible in audit logs and metrics, but do not rely on names to control execution order:
 
 ```yaml
-# Executes first (alphabetically)
-
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: 01-inject-defaults
+  name: inject-defaults
 webhooks:
   - name: defaults.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     clientConfig:
       service:
         name: webhook
@@ -41,13 +41,14 @@ webhooks:
         path: /mutate/defaults
 
 ---
-# Executes second
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: 02-inject-sidecars
+  name: inject-sidecars
 webhooks:
   - name: sidecars.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     clientConfig:
       service:
         name: webhook
@@ -59,9 +60,11 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: 01-validate-security
+  name: validate-security
 webhooks:
   - name: security.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     clientConfig:
       service:
         name: webhook
@@ -69,7 +72,7 @@ webhooks:
         path: /validate/security
 ```
 
-Prefix webhook names with numbers to control order explicitly.
+If one webhook depends on another, combine the dependent logic in one webhook implementation or make each webhook idempotent and safe to run after the desired state already exists.
 
 ## Mutation Before Validation
 
@@ -83,6 +86,8 @@ metadata:
   name: 01-add-resource-limits
 webhooks:
   - name: limits.mutate.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]
@@ -102,6 +107,8 @@ metadata:
   name: 02-validate-resource-limits
 webhooks:
   - name: limits.validate.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]
@@ -118,16 +125,16 @@ Mutations always run before validations, so this configuration ensures added lim
 
 ## Handling Policy Dependencies
 
-Order policies that depend on each other:
+Keep dependent Kyverno rules in the same policy and order the rules according to their dependency:
 
 ```yaml
-# First: Add labels
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: 01-add-team-label
+  name: team-label-policy
 spec:
   rules:
+    # First: Add labels
     - name: add-label
       match:
         any:
@@ -139,14 +146,7 @@ spec:
             labels:
               +(team): "default-team"
 
----
-# Second: Validate label format
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: 02-validate-team-label
-spec:
-  rules:
+    # Second: Validate label format
     - name: check-label-format
       match:
         any:
@@ -154,10 +154,6 @@ spec:
               kinds: [Pod]
       validate:
         message: "team label must be lowercase"
-        pattern:
-          metadata:
-            labels:
-              team: "?*"
         deny:
           conditions:
             any:
@@ -166,44 +162,30 @@ spec:
                 value: "{{ toLower(request.object.metadata.labels.team) }}"
 ```
 
-The mutation adds labels that the validation then checks.
+Kyverno applies mutation rules before validation rules during admission, so the validation sees the added label.
 
 ## Fast-Fail Validations First
 
-Put quick validations early to reject bad requests fast:
+Validating webhooks run in parallel, so Kubernetes cannot guarantee that one validating webhook fails before another. Keep inexpensive checks cheap and narrow, and put ordered fast-fail logic inside one validating webhook implementation when ordering matters:
 
 ```yaml
-# Fast: Check namespace exists (local check)
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: 01-fast-namespace-check
+  name: validate-request
 webhooks:
-  - name: namespace.validate.company.com
+  - name: request.validate.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     timeoutSeconds: 3
     clientConfig:
       service:
         name: webhook
         namespace: webhooks
-        path: /validate/namespace
-
----
-# Slow: Check external registry (external API call)
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
-metadata:
-  name: 02-slow-registry-check
-webhooks:
-  - name: registry.validate.company.com
-    timeoutSeconds: 15
-    clientConfig:
-      service:
-        name: webhook
-        namespace: webhooks
-        path: /validate/registry
+        path: /validate
 ```
 
-Fast validations fail early, avoiding expensive operations on invalid requests.
+Inside the webhook service, run local checks before expensive external calls so invalid requests can be rejected without unnecessary work.
 
 ## Avoiding Circular Dependencies
 
@@ -214,11 +196,11 @@ Prevent policies from conflicting:
 # Policy A adds label X if label Y exists
 # Policy B adds label Y if label X exists
 
-# DO THIS - Make dependencies explicit
+# DO THIS - Make dependencies explicit in one policy
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: 01-add-base-labels
+  name: add-managed-labels
 spec:
   rules:
     - name: add-base
@@ -232,13 +214,6 @@ spec:
             labels:
               +(managed-by): "kyverno"
 
----
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: 02-add-derived-labels
-spec:
-  rules:
     - name: add-derived
       match:
         any:
@@ -246,7 +221,7 @@ spec:
               kinds: [Pod]
               selector:
                 matchLabels:
-                  managed-by: "kyverno"  # Only runs after first policy
+                  managed-by: "kyverno"
       mutate:
         patchStrategicMerge:
           metadata:
@@ -254,7 +229,7 @@ spec:
               +(tracking): "enabled"
 ```
 
-Each policy has clear preconditions preventing circular execution.
+Each rule has clear preconditions preventing circular execution.
 
 ## Match Conditions for Ordering
 
@@ -293,27 +268,31 @@ Configure if webhooks should be called again after mutations:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
+kind: MutatingWebhookConfiguration
 metadata:
-  name: validate-with-reinvocation
+  name: mutate-with-reinvocation
 webhooks:
-  - name: validate.company.com
+  - name: mutate.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     reinvocationPolicy: IfNeeded  # Re-run if mutations changed object
     clientConfig:
       service:
         name: webhook
         namespace: webhooks
-        path: /validate
+        path: /mutate
 ```
 
-Use `IfNeeded` when validation depends on mutated fields. Use `Never` (default) for better performance.
+Use `IfNeeded` when a mutating webhook needs a chance to observe later mutations. Use `Never` (default) for better performance when reinvocation is not needed. Use a validating webhook when policy logic must see the final state after mutation.
 
 ## Monitoring Policy Execution
 
-Track policy execution order with metrics:
+Track policy execution order inside your own webhook or policy engine with metrics:
 
 ```go
 import (
+    "fmt"
+
     "github.com/prometheus/client_golang/prometheus"
 )
 
@@ -345,7 +324,7 @@ rate(admission_policy_execution_order{sequence="2"}[5m])
 
 ## Testing Policy Ordering
 
-Verify ordering with integration tests:
+Verify policy interactions with integration tests:
 
 ```yaml
 # test-ordering.yaml
@@ -367,71 +346,62 @@ Apply and check final state:
 # Apply test pod
 kubectl apply -f test-ordering.yaml
 
-# Check applied mutations in order
+# Check applied mutations
 kubectl get pod test-ordering -o yaml | grep -A5 labels
 
-# Expected order of labels:
-# 1. team: default-team (from policy 01)
-# 2. managed-by: kyverno (from policy 02)
-# 3. tracking: enabled (from policy 03)
+# Expected labels:
+# team: default-team
+# managed-by: kyverno
+# tracking: enabled
 ```
 
 ## Performance Optimization
 
-Optimize policy order for performance:
+Optimize policy checks for performance:
 
 ```yaml
-# Pattern: Fast failures first, expensive checks last
+# Pattern inside one webhook service: fast failures first, expensive checks last
 webhooks:
-  # 1. Quick schema validation
-  - name: 01-schema-check
+  - name: policy.validate.company.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     timeoutSeconds: 2
-
-  # 2. Medium complexity
-  - name: 02-label-validation
-    timeoutSeconds: 5
-
-  # 3. Expensive external calls
-  - name: 03-registry-validation
-    timeoutSeconds: 15
-
-  # 4. Very expensive (optional)
-  - name: 04-vulnerability-scan
-    timeoutSeconds: 30
-    failurePolicy: Ignore  # Don't block on timeout
+    clientConfig:
+      service:
+        name: webhook
+        namespace: webhooks
+        path: /validate
 ```
+
+Inside `/validate`, run quick schema and label checks before external registry or vulnerability checks. Put optional expensive checks behind their own timeout and decide whether failures should block the request.
 
 ## Handling Race Conditions
 
-Prevent race conditions in concurrent policies:
+Prevent conflicting concurrent-style policies by making mutations conditional and idempotent:
 
 ```yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: thread-safe-mutation
+  name: idempotent-mutation
 spec:
   rules:
-    - name: safe-counter-increment
+    - name: add-tracking-label
       match:
         any:
           - resources:
-              kinds: [ConfigMap]
-              names: [counter]
+              kinds: [Pod]
       mutate:
-        patchesJson6902: |-
-          - op: test
-            path: /data/count
-            value: "{{ request.object.data.count }}"
-          - op: replace
-            path: /data/count
-            value: "{{ add(request.object.data.count, 1) }}"
+        patchStrategicMerge:
+          metadata:
+            labels:
+              +(tracking): "enabled"
 ```
 
-The test operation ensures the value hasn't changed since read.
+The add anchor only writes the label when it is absent, so repeated or reinvoked mutation does not overwrite an existing value.
 
 ## Conclusion
 
-Admission policy ordering determines how mutations and validations interact in Kubernetes. Control execution order through webhook naming, ensure mutations complete before validations, and place fast-fail validations early. Use match conditions and preconditions to manage policy dependencies, configure reinvocation policies appropriately, and avoid circular dependencies. Monitor policy execution order with metrics, test ordering in integration tests, and optimize for performance by ordering policies from fastest to slowest.
+Admission policy ordering determines how mutations and validations interact in Kubernetes. Do not rely on webhook names for execution order; instead, make webhooks idempotent, keep dependent logic together, and use validating webhooks when policy logic must see the final object after mutation. Use match conditions and preconditions to manage policy dependencies, configure mutating webhook reinvocation policies appropriately, and avoid circular dependencies. Monitor policy execution with metrics, test policy interactions in integration tests, and optimize performance by running cheap checks before expensive work inside the same policy engine or webhook service.
 
 Proper policy ordering ensures reliable admission control without conflicts or performance issues.
