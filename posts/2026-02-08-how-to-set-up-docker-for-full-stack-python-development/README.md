@@ -29,8 +29,10 @@ fullstack-python/
 Create the structure:
 
 ```bash
-mkdir -p fullstack-python/{backend,frontend,worker}/src
+mkdir -p fullstack-python/{backend,worker}/src
 cd fullstack-python
+docker run --rm -v "$PWD":/work -w /work node:22-alpine \
+  npm create vite@latest frontend -- --template react
 ```
 
 ## Backend Setup with FastAPI
@@ -51,32 +53,24 @@ pydantic-settings==2.1.0
 python-multipart==0.0.6
 passlib[bcrypt]==1.7.4
 celery[redis]==5.3.6
+flower==2.0.1
 httpx==0.26.0
+pytest==7.4.4
+pytest-cov==4.1.0
 ```
 
 Create the FastAPI application:
 
 ```python
 # backend/src/main.py - FastAPI application entry point
-from fastapi import FastAPI, HTTPException, Depends
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel
 import os
 import time
 import redis
 import asyncpg
-
-app = FastAPI(title="Full-Stack Python API", version="1.0.0")
-
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Global state for connections
 db_pool = None
@@ -84,9 +78,9 @@ redis_client = None
 start_time = time.time()
 
 
-@app.on_event("startup")
-async def startup():
-    """Initialize database and cache connections on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize and clean up database and cache connections."""
     global db_pool, redis_client
 
     db_pool = await asyncpg.create_pool(
@@ -100,12 +94,29 @@ async def startup():
         decode_responses=True,
     )
 
+    try:
+        yield
+    finally:
+        if db_pool:
+            await db_pool.close()
+        if redis_client:
+            redis_client.close()
 
-@app.on_event("shutdown")
-async def shutdown():
-    """Clean up connections on shutdown."""
-    if db_pool:
-        await db_pool.close()
+
+app = FastAPI(
+    title="Full-Stack Python API",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Pydantic models for request/response
@@ -258,7 +269,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Production stage
@@ -275,7 +286,7 @@ RUN apt-get update && \
 COPY --from=builder /install /usr/local
 
 # Copy application code
-COPY src/ ./src/
+COPY backend/src/ ./src/
 
 # Create non-root user
 RUN useradd -m -r appuser
@@ -313,15 +324,52 @@ RUN useradd -m -r celeryuser
 USER celeryuser
 
 # Run Celery worker
-CMD ["celery", "-A", "src.tasks", "worker", "--loglevel=info", "--concurrency=4"]
+CMD ["celery", "-A", "src.tasks:celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+```
+
+Create the frontend development Dockerfile:
+
+```dockerfile
+# frontend/Dockerfile.dev - Vite development server
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+```
+
+Create the frontend production Dockerfile:
+
+```dockerfile
+# frontend/Dockerfile - production React image
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
 ```
 
 ## Docker Compose for Development
 
 ```yaml
 # docker-compose.dev.yml - full development environment
-version: "3.8"
-
 services:
   backend:
     build:
@@ -352,7 +400,7 @@ services:
       - DATABASE_URL=postgres://app:devpass@postgres:5432/appdb
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
-    command: ["celery", "-A", "src.tasks", "worker", "--loglevel=info", "--concurrency=2"]
+    command: ["celery", "-A", "src.tasks:celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     depends_on:
       - redis
 
@@ -400,7 +448,7 @@ services:
       - "5555:5555"
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
-    command: ["celery", "-A", "src.tasks", "flower", "--port=5555"]
+    command: ["celery", "-A", "src.tasks:celery_app", "flower", "--port=5555"]
     depends_on:
       - redis
 
@@ -463,7 +511,7 @@ docker compose -f docker-compose.dev.yml up --build
 # Start specific services
 docker compose -f docker-compose.dev.yml up backend postgres redis
 
-# Run database migrations
+# Run database migrations if you add an Alembic configuration
 docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 
 # Open Celery Flower monitoring
@@ -503,8 +551,6 @@ docker compose -f docker-compose.dev.yml exec backend pytest --cov=src
 
 ```yaml
 # docker-compose.yml - production configuration
-version: "3.8"
-
 services:
   backend:
     build:
