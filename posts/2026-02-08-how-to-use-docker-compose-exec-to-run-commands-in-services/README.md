@@ -124,12 +124,12 @@ The `-T` flag is also necessary when running `docker compose exec` in CI/CD pipe
 ```bash
 #!/bin/bash
 # ci-test.sh - Run tests in CI where no TTY is available
-docker compose exec -T app python -m pytest tests/ --jv report.xml
+docker compose exec -T app python -m pytest tests/ --junit-xml=report.xml
 ```
 
 ## Running Commands as a Specific User
 
-By default, commands run as the user defined in the Dockerfile. Override this with `--user`:
+By default, commands run as the user defined by the image or Dockerfile, which is root if no user is set. Override this with `--user`:
 
 ```bash
 # Run a command as root inside the container
@@ -226,8 +226,12 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -290,7 +294,7 @@ docker compose exec web rails console
 docker compose run --rm web rails console
 ```
 
-The `run` command creates a new container each time, which means it starts with a fresh filesystem and does not share the PID namespace with the running service. For debugging, `exec` is almost always what you want because you see the exact state of the running service.
+The `run` command creates a new container each time, which means it starts with a fresh writable container layer while still using the service's configured volumes and bind mounts. It also does not share the PID namespace with the running service unless you explicitly configure it to do so. For debugging, `exec` is almost always what you want because you see the exact state of the running service.
 
 ## Creating Aliases for Common Commands
 
