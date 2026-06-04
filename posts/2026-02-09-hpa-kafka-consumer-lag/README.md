@@ -23,7 +23,7 @@ To implement lag-based scaling, you need these components:
 1. A Kafka cluster with consumer groups processing messages
 2. A metrics exporter that exposes consumer lag (like Burrow or Kafka Exporter)
 3. Prometheus to scrape and store these metrics
-4. Prometheus Adapter to expose lag metrics to the Kubernetes Metrics API
+4. Prometheus Adapter to expose lag metrics to the Kubernetes External Metrics API
 5. HPA configured to scale based on the exposed lag metric
 
 ## Setting Up Kafka Exporter
@@ -93,40 +93,40 @@ spec:
     interval: 30s
 ```
 
-Kafka Exporter provides the `kafka_consumergroup_lag` metric, which shows the total lag across all partitions for a consumer group. You can query it in Prometheus:
+Kafka Exporter provides the `kafka_consumergroup_lag` metric, which shows lag for each consumer group, topic, and partition. Sum it to get total lag for a consumer group:
 
 ```promql
-kafka_consumergroup_lag{consumergroup="payment-processor"}
+sum(kafka_consumergroup_lag{consumergroup="payment-processor"}) by (consumergroup)
 ```
 
 ## Deploying Prometheus Adapter
 
-Prometheus Adapter translates Prometheus metrics into the Kubernetes Custom Metrics API. Install it with Helm:
+Prometheus Adapter translates Prometheus metrics into the Kubernetes External Metrics API. Configure the adapter to expose consumer lag as an external metric. Create a Helm values file with this rule:
+
+```yaml
+rules:
+  default: false
+  external:
+  - seriesQuery: 'kafka_consumergroup_lag{consumergroup!="",topic!="",partition!=""}'
+    name:
+      matches: "^kafka_consumergroup_lag$"
+      as: "kafka_consumer_lag"
+    metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (consumergroup)'
+```
+
+Then install it with Helm:
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
-  --set prometheus.url=http://prometheus-server.monitoring.svc
+  --set prometheus.url=http://prometheus-server.monitoring.svc \
+  --set prometheus.port=9090 \
+  -f prometheus-adapter-values.yaml
 ```
 
-Configure the adapter to expose consumer lag as a custom metric. Create a ConfigMap with this rule:
-
-```yaml
-rules:
-- seriesQuery: 'kafka_consumergroup_lag'
-  resources:
-    overrides:
-      namespace: {resource: "namespace"}
-      consumergroup: {resource: "deployment"}
-  name:
-    matches: "^(.*)$"
-    as: "kafka_consumer_lag"
-  metricsQuery: 'max(kafka_consumergroup_lag{consumergroup="<<.LabelMatchers>>",namespace="<<.NamespaceName>>"}) by (consumergroup)'
-```
-
-This configuration maps the Kafka consumer group to a Kubernetes Deployment and exposes the max lag across all partitions.
+This configuration exposes a `kafka_consumer_lag` external metric and sums lag across the matching topic and partition series.
 
 ## Creating the Kafka Consumer Deployment
 
@@ -187,14 +187,13 @@ spec:
   minReplicas: 2
   maxReplicas: 20
   metrics:
-  - type: Object
-    object:
+  - type: External
+    external:
       metric:
         name: kafka_consumer_lag
-      describedObject:
-        apiVersion: apps/v1
-        kind: Deployment
-        name: payment-processor
+        selector:
+          matchLabels:
+            consumergroup: payment-processor
       target:
         type: AverageValue
         averageValue: "1000"
@@ -224,17 +223,17 @@ This HPA scales the deployment to maintain an average lag of 1,000 messages per 
 For more sophisticated scaling, you can use per-partition lag metrics. This is useful when partitions have uneven load distribution:
 
 ```yaml
-metricsQuery: 'sum(kafka_consumergroup_lag{consumergroup="<<.LabelMatchers>>",namespace="<<.NamespaceName>>"}) by (consumergroup)'
+metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>}) by (consumergroup)'
 ```
 
-This query sums lag across all partitions, giving you a total lag value. Combine this with the number of partitions to determine optimal replica count.
+This query uses the highest single-partition lag instead of total lag. Combine this with the number of partitions to determine optimal replica count.
 
 ## Monitoring and Validation
 
-Verify the custom metrics are available:
+Verify the external metric is available:
 
 ```bash
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/deployments/payment-processor/kafka_consumer_lag"
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/default/kafka_consumer_lag?labelSelector=consumergroup%3Dpayment-processor"
 ```
 
 Watch the HPA in action:
@@ -263,14 +262,13 @@ You can combine consumer lag with CPU or memory metrics for more robust scaling:
 
 ```yaml
 metrics:
-- type: Object
-  object:
+- type: External
+  external:
     metric:
       name: kafka_consumer_lag
-    describedObject:
-      apiVersion: apps/v1
-      kind: Deployment
-      name: payment-processor
+      selector:
+        matchLabels:
+          consumergroup: payment-processor
     target:
       type: AverageValue
       averageValue: "1000"
