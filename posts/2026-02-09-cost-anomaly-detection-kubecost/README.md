@@ -28,14 +28,19 @@ Start by installing Kubecost in your cluster with Prometheus integration enabled
 global:
   prometheus:
     enabled: true
-    fqdn: http://prometheus-server.monitoring.svc.cluster.local
 
 prometheus:
   server:
+    global:
+      external_labels:
+        cluster_id: production-cluster
     persistentVolume:
       enabled: true
       size: 32Gi
     retention: 15d
+
+kubecostProductConfigs:
+  clusterName: production-cluster
 
 kubecostMetrics:
   exporter:
@@ -50,11 +55,10 @@ helm repo add kubecost https://kubecost.github.io/cost-analyzer/
 helm repo update
 
 # Install Kubecost with Prometheus integration
-helm install kubecost kubecost/cost-analyzer \
+helm upgrade --install kubecost kubecost/cost-analyzer \
   --namespace kubecost \
   --create-namespace \
-  --values kubecost-values.yaml \
-  --set kubecostToken="your-token-here"
+  --values kubecost-values.yaml
 
 # Verify the installation
 kubectl get pods -n kubecost
@@ -65,156 +69,180 @@ Wait for all pods to reach a running state. Kubecost will begin collecting cost 
 
 ## Configuring Prometheus Recording Rules for Cost Metrics
 
-Recording rules precompute frequently needed cost queries, making alert evaluation faster and more efficient. Create recording rules that calculate hourly and daily cost aggregations.
+Recording rules precompute frequently needed cost queries, making alert evaluation faster and more efficient. Create recording rules that calculate hourly and daily cost aggregations from Kubecost/OpenCost metrics such as `container_cpu_allocation`, `container_memory_allocation_bytes`, `node_cpu_hourly_cost`, `node_ram_hourly_cost`, `pod_pvc_allocation`, and `pv_hourly_cost`.
 
 ```yaml
-# kubecost-recording-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-recording-rules
-  namespace: kubecost
-data:
-  recording_rules.yml: |
-    groups:
-    - name: kubecost_cost_metrics
-      interval: 5m
-      rules:
-      # Hourly cost per namespace
-      - record: namespace:kubecost_cluster_cost_hourly:sum
-        expr: sum by (namespace) (kubecost_cluster_cost_hourly)
+# kubecost-rules-values.yaml
+prometheus:
+  serverFiles:
+    recording_rules.yml:
+      groups:
+      - name: kubecost_cost_metrics
+        interval: 5m
+        rules:
+        # Hourly CPU and memory workload cost per namespace
+        - record: namespace:kubecost_workload_cost_hourly:sum
+          expr: |
+            sum by (namespace) (
+              (
+                container_cpu_allocation
+                * on (node) group_left
+                node_cpu_hourly_cost
+              )
+              +
+              (
+                container_memory_allocation_bytes
+                * on (node) group_left
+                node_ram_hourly_cost
+                / 1024 / 1024 / 1024
+              )
+            )
 
-      # Daily cost per namespace
-      - record: namespace:kubecost_cluster_cost_daily:sum
-        expr: sum_over_time(namespace:kubecost_cluster_cost_hourly:sum[24h])
+        # Daily CPU and memory workload cost per namespace
+        - record: namespace:kubecost_workload_cost_daily:sum
+          expr: avg_over_time(namespace:kubecost_workload_cost_hourly:sum[24h]) * 24
 
-      # 7-day rolling average cost per namespace
-      - record: namespace:kubecost_cluster_cost_7d_avg:sum
-        expr: avg_over_time(namespace:kubecost_cluster_cost_hourly:sum[7d])
+        # 7-day rolling average hourly CPU and memory cost per namespace
+        - record: namespace:kubecost_workload_cost_7d_avg:sum
+          expr: avg_over_time(namespace:kubecost_workload_cost_hourly:sum[7d])
 
-      # CPU cost per namespace
-      - record: namespace:kubecost_cpu_cost_hourly:sum
-        expr: sum by (namespace) (kubecost_node_cpu_hourly_cost)
+        # CPU cost per namespace
+        - record: namespace:kubecost_cpu_cost_hourly:sum
+          expr: |
+            sum by (namespace) (
+              container_cpu_allocation
+              * on (node) group_left
+              node_cpu_hourly_cost
+            )
 
-      # Memory cost per namespace
-      - record: namespace:kubecost_memory_cost_hourly:sum
-        expr: sum by (namespace) (kubecost_node_ram_hourly_cost)
+        # Memory cost per namespace
+        - record: namespace:kubecost_memory_cost_hourly:sum
+          expr: |
+            sum by (namespace) (
+              container_memory_allocation_bytes
+              * on (node) group_left
+              node_ram_hourly_cost
+              / 1024 / 1024 / 1024
+            )
 
-      # Storage cost per namespace
-      - record: namespace:kubecost_storage_cost_hourly:sum
-        expr: sum by (namespace) (kubecost_persistentvolume_cost)
+        # Storage cost per namespace
+        - record: namespace:kubecost_storage_cost_hourly:sum
+          expr: |
+            sum by (namespace) (
+              pod_pvc_allocation
+              * on (persistentvolume) group_left
+              pv_hourly_cost
+              / 1024 / 1024 / 1024
+            )
 ```
 
-Apply this configuration and reload Prometheus:
+Apply this configuration with Helm so the bundled Prometheus ConfigMap includes the new rule file:
 
 ```bash
-# Apply the recording rules
-kubectl apply -f kubecost-recording-rules.yaml
-
-# Reload Prometheus configuration
-kubectl exec -n kubecost prometheus-server-0 -- \
-  curl -X POST http://localhost:9090/-/reload
+helm upgrade --install kubecost kubecost/cost-analyzer \
+  --namespace kubecost \
+  --values kubecost-values.yaml \
+  --values kubecost-rules-values.yaml
 ```
 
 ## Creating Cost Anomaly Detection Alert Rules
 
 Now define alert rules that detect cost anomalies based on your recording rules. These examples use multiple detection strategies for comprehensive coverage.
 
+Add the alert rules to the same Helm values file:
+
 ```yaml
-# kubecost-alert-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alert-rules
-  namespace: kubecost
-data:
-  alert_rules.yml: |
-    groups:
-    - name: kubecost_cost_anomalies
-      interval: 5m
-      rules:
+# kubecost-rules-values.yaml
+prometheus:
+  serverFiles:
+    alerting_rules.yml:
+      groups:
+      - name: kubecost_cost_anomalies
+        interval: 5m
+        rules:
 
-      # Alert when namespace cost exceeds 50% of 7-day average
-      - alert: NamespaceCostAnomaly
-        expr: |
-          (
-            namespace:kubecost_cluster_cost_hourly:sum
+        # Alert when namespace cost exceeds 50% of 7-day average
+        - alert: NamespaceCostAnomaly
+          expr: |
+            (
+              namespace:kubecost_workload_cost_hourly:sum
+              /
+              namespace:kubecost_workload_cost_7d_avg:sum
+            ) > 1.5
+          for: 15m
+          labels:
+            severity: warning
+            component: cost-management
+          annotations:
+            summary: "Cost anomaly detected in namespace {{ $labels.namespace }}"
+            description: "Namespace {{ $labels.namespace }} hourly cost is {{ $value | humanizePercentage }} of the 7-day average"
+
+        # Alert on sudden cost spike (2x increase in 1 hour)
+        - alert: CostSpikeDetected
+          expr: |
+            (
+              namespace:kubecost_workload_cost_hourly:sum
+              /
+              namespace:kubecost_workload_cost_hourly:sum offset 1h
+            ) > 2
+          for: 10m
+          labels:
+            severity: critical
+            component: cost-management
+          annotations:
+            summary: "Sudden cost spike in namespace {{ $labels.namespace }}"
+            description: "Cost increased by {{ $value | humanizePercentage }} in the last hour"
+
+        # Alert when daily cost exceeds budget threshold
+        - alert: DailyCostBudgetExceeded
+          expr: namespace:kubecost_workload_cost_daily:sum > 500
+          for: 5m
+          labels:
+            severity: warning
+            component: cost-management
+          annotations:
+            summary: "Daily cost budget exceeded for {{ $labels.namespace }}"
+            description: "Daily CPU and memory cost of ${{ $value | humanize }} exceeds $500 budget"
+
+        # Alert on high CPU cost growth
+        - alert: CPUCostAnomalyDetected
+          expr: |
+            (
+              avg_over_time(namespace:kubecost_cpu_cost_hourly:sum[1h])
+              /
+              avg_over_time(namespace:kubecost_cpu_cost_hourly:sum[1h] offset 24h)
+            ) > 2
+          for: 20m
+          labels:
+            severity: warning
+            component: cost-management
+          annotations:
+            summary: "CPU cost anomaly in namespace {{ $labels.namespace }}"
+            description: "CPU costs growing {{ $value }}x faster than 24h ago"
+
+        # Alert on storage cost anomalies
+        - alert: StorageCostAnomalyDetected
+          expr: |
+            namespace:kubecost_storage_cost_hourly:sum
             /
-            namespace:kubecost_cluster_cost_7d_avg:sum
-          ) > 1.5
-        for: 15m
-        labels:
-          severity: warning
-          component: cost-management
-        annotations:
-          summary: "Cost anomaly detected in namespace {{ $labels.namespace }}"
-          description: "Namespace {{ $labels.namespace }} hourly cost is {{ $value | humanizePercentage }} of the 7-day average"
-
-      # Alert on sudden cost spike (2x increase in 1 hour)
-      - alert: CostSpikeDetected
-        expr: |
-          (
-            namespace:kubecost_cluster_cost_hourly:sum
-            /
-            namespace:kubecost_cluster_cost_hourly:sum offset 1h
-          ) > 2
-        for: 10m
-        labels:
-          severity: critical
-          component: cost-management
-        annotations:
-          summary: "Sudden cost spike in namespace {{ $labels.namespace }}"
-          description: "Cost increased by {{ $value | humanizePercentage }} in the last hour"
-
-      # Alert when daily cost exceeds budget threshold
-      - alert: DailyCostBudgetExceeded
-        expr: namespace:kubecost_cluster_cost_daily:sum > 500
-        for: 5m
-        labels:
-          severity: warning
-          component: cost-management
-        annotations:
-          summary: "Daily cost budget exceeded for {{ $labels.namespace }}"
-          description: "Daily cost of ${{ $value | humanize }} exceeds $500 budget"
-
-      # Alert on high CPU cost growth
-      - alert: CPUCostAnomalyDetected
-        expr: |
-          (
-            rate(namespace:kubecost_cpu_cost_hourly:sum[1h])
-            /
-            rate(namespace:kubecost_cpu_cost_hourly:sum[1h] offset 24h)
-          ) > 2
-        for: 20m
-        labels:
-          severity: warning
-          component: cost-management
-        annotations:
-          summary: "CPU cost anomaly in namespace {{ $labels.namespace }}"
-          description: "CPU costs growing {{ $value }}x faster than 24h ago"
-
-      # Alert on storage cost anomalies
-      - alert: StorageCostAnomalyDetected
-        expr: |
-          namespace:kubecost_storage_cost_hourly:sum
-          /
-          avg_over_time(namespace:kubecost_storage_cost_hourly:sum[7d])
-          > 1.5
-        for: 30m
-        labels:
-          severity: info
-          component: cost-management
-        annotations:
-          summary: "Storage cost anomaly in namespace {{ $labels.namespace }}"
-          description: "Storage costs {{ $value | humanizePercentage }} of normal baseline"
+            avg_over_time(namespace:kubecost_storage_cost_hourly:sum[7d])
+            > 1.5
+          for: 30m
+          labels:
+            severity: info
+            component: cost-management
+          annotations:
+            summary: "Storage cost anomaly in namespace {{ $labels.namespace }}"
+            description: "Storage costs {{ $value | humanizePercentage }} of normal baseline"
 ```
 
-Apply the alert rules and reload Prometheus:
+Apply the alert rules:
 
 ```bash
-kubectl apply -f kubecost-alert-rules.yaml
-kubectl exec -n kubecost prometheus-server-0 -- \
-  curl -X POST http://localhost:9090/-/reload
+helm upgrade --install kubecost kubecost/cost-analyzer \
+  --namespace kubecost \
+  --values kubecost-values.yaml \
+  --values kubecost-rules-values.yaml
 ```
 
 ## Integrating with Alertmanager for Notifications
@@ -222,76 +250,75 @@ kubectl exec -n kubecost prometheus-server-0 -- \
 Configure Alertmanager to route cost anomaly alerts to appropriate channels. Different severity levels can go to different destinations.
 
 ```yaml
-# alertmanager-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: alertmanager-config
-  namespace: kubecost
-data:
-  alertmanager.yml: |
-    global:
-      resolve_timeout: 5m
+# alertmanager-values.yaml
+prometheus:
+  alertmanager:
+    config:
+      global:
+        resolve_timeout: 5m
 
-    route:
-      group_by: ['alertname', 'namespace']
-      group_wait: 10s
-      group_interval: 5m
-      repeat_interval: 12h
-      receiver: 'cost-team'
+      route:
+        group_by: ['alertname', 'namespace']
+        group_wait: 10s
+        group_interval: 5m
+        repeat_interval: 12h
+        receiver: 'cost-team'
 
-      routes:
-      # Critical cost alerts go to PagerDuty and Slack
-      - match:
-          severity: critical
-          component: cost-management
-        receiver: 'pagerduty-critical'
-        continue: true
+        routes:
+        # Critical cost alerts go to PagerDuty and Slack
+        - matchers:
+          - severity="critical"
+          - component="cost-management"
+          receiver: 'pagerduty-critical'
+          continue: true
 
-      - match:
-          severity: critical
-          component: cost-management
-        receiver: 'slack-critical'
+        - matchers:
+          - severity="critical"
+          - component="cost-management"
+          receiver: 'slack-critical'
 
-      # Warning alerts only go to Slack
-      - match:
-          severity: warning
-          component: cost-management
-        receiver: 'slack-warnings'
+        # Warning alerts only go to Slack
+        - matchers:
+          - severity="warning"
+          - component="cost-management"
+          receiver: 'slack-warnings'
 
-    receivers:
-    - name: 'cost-team'
-      email_configs:
-      - to: 'cost-team@company.com'
-        send_resolved: true
+      receivers:
+      - name: 'cost-team'
+        email_configs:
+        - to: 'cost-team@company.com'
+          send_resolved: true
 
-    - name: 'pagerduty-critical'
-      pagerduty_configs:
-      - service_key: 'your-pagerduty-key'
-        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+      - name: 'pagerduty-critical'
+        pagerduty_configs:
+        - routing_key: 'your-pagerduty-integration-key'
+          description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
 
-    - name: 'slack-critical'
-      slack_configs:
-      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
-        channel: '#cost-alerts-critical'
-        title: 'Cost Anomaly: {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-        send_resolved: true
+      - name: 'slack-critical'
+        slack_configs:
+        - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+          channel: '#cost-alerts-critical'
+          title: 'Cost Anomaly: {{ .GroupLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+          send_resolved: true
 
-    - name: 'slack-warnings'
-      slack_configs:
-      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
-        channel: '#cost-alerts-warnings'
-        title: 'Cost Warning: {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-        send_resolved: true
+      - name: 'slack-warnings'
+        slack_configs:
+        - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+          channel: '#cost-alerts-warnings'
+          title: 'Cost Warning: {{ .GroupLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+          send_resolved: true
 ```
 
 Apply the Alertmanager configuration:
 
 ```bash
-kubectl apply -f alertmanager-config.yaml
-kubectl rollout restart deployment/alertmanager -n kubecost
+helm upgrade --install kubecost kubecost/cost-analyzer \
+  --namespace kubecost \
+  --values kubecost-values.yaml \
+  --values kubecost-rules-values.yaml \
+  --values alertmanager-values.yaml
 ```
 
 ## Testing Your Anomaly Detection System
@@ -334,10 +361,10 @@ Deploy the test workload and monitor for alerts:
 kubectl apply -f cost-spike-test.yaml
 
 # Check if Prometheus detects the cost increase
-kubectl port-forward -n kubecost svc/prometheus-server 9090:80
+kubectl port-forward -n kubecost svc/kubecost-prometheus-server 9090:80
 
 # Open http://localhost:9090 and query:
-# namespace:kubecost_cluster_cost_hourly:sum{namespace="default"}
+# namespace:kubecost_workload_cost_hourly:sum{namespace="default"}
 
 # Check for firing alerts
 # Navigate to http://localhost:9090/alerts
