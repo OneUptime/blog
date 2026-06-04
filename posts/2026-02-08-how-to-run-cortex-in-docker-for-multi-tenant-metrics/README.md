@@ -10,7 +10,7 @@ Description: Deploy Cortex in Docker to provide horizontally scalable, multi-ten
 
 When your organization runs multiple teams or customers on shared infrastructure, each group needs its own isolated view of metrics. Cortex is a horizontally scalable, multi-tenant, long-term storage system for Prometheus. It accepts metrics via the Prometheus remote write API and serves them back through a Prometheus-compatible query interface, making it a drop-in backend for Prometheus without changing your existing workflows.
 
-This guide walks you through deploying Cortex in Docker using the single-process mode for development and testing, then expands into a more realistic microservices deployment using Docker Compose.
+This guide walks you through deploying Cortex in Docker using the single-process mode for development and testing, then expands into a Docker Compose stack with Prometheus and Grafana.
 
 ## How Cortex Works
 
@@ -65,16 +65,12 @@ distributor:
     instance_addr: 127.0.0.1
 
 ingester:
-  ring:
-    kvstore:
-      store: memberlist
-    instance_addr: 127.0.0.1
-    replication_factor: 1
-
   lifecycler:
+    address: 127.0.0.1
     ring:
       kvstore:
         store: memberlist
+      replication_factor: 1
 
 memberlist:
   join_members: []
@@ -115,8 +111,6 @@ Create the `docker-compose.yml` file with Cortex, two Prometheus instances repre
 
 ```yaml
 # docker-compose.yml - Multi-tenant Cortex stack
-version: "3.8"
-
 services:
   # Cortex - multi-tenant metrics backend
   cortex:
@@ -255,7 +249,7 @@ curl -s -H "X-Scope-OrgID: team-b" \
   'http://localhost:9009/prometheus/api/v1/query?query=up' | python3 -m json.tool
 ```
 
-Each tenant only sees its own metrics. Team A cannot access Team B's data, and vice versa. This isolation happens at the Cortex level without any network segmentation.
+Each tenant only sees metrics for the tenant ID in the `X-Scope-OrgID` header. In production, put Cortex behind authentication or a trusted proxy so callers cannot spoof another tenant's header.
 
 ## Configuring Grafana for Multi-Tenancy
 
@@ -275,14 +269,14 @@ overrides:
     ingestion_rate: 50000
     ingestion_burst_size: 100000
     max_series_per_metric: 50000
-    max_series_per_query: 100000
+    max_fetched_series_per_query: 100000
 
   team-b:
     # Team B has lower limits
     ingestion_rate: 10000
     ingestion_burst_size: 20000
     max_series_per_metric: 10000
-    max_series_per_query: 20000
+    max_fetched_series_per_query: 20000
 ```
 
 Mount this file into the Cortex container and reference it in the config by adding `runtime_config: { file: /etc/cortex/runtime.yml }` to your `cortex-config.yml`.
