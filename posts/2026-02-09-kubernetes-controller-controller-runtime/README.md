@@ -112,8 +112,12 @@ import (
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/runtime/schema"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+    "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Define custom resource type
@@ -136,8 +140,50 @@ type ApplicationStatus struct {
     AvailableReplicas int32  `json:"availableReplicas"`
 }
 
+type ApplicationList struct {
+    metav1.TypeMeta `json:",inline"`
+    metav1.ListMeta `json:"metadata,omitempty"`
+    Items           []Application `json:"items"`
+}
+
+func (in *Application) DeepCopyObject() runtime.Object {
+    if in == nil {
+        return nil
+    }
+    out := new(Application)
+    *out = *in
+    out.ObjectMeta = *in.ObjectMeta.DeepCopy()
+    return out
+}
+
+func (in *ApplicationList) DeepCopyObject() runtime.Object {
+    if in == nil {
+        return nil
+    }
+    out := new(ApplicationList)
+    *out = *in
+    out.ListMeta = in.ListMeta
+    if in.Items != nil {
+        out.Items = make([]Application, len(in.Items))
+        for i := range in.Items {
+            out.Items[i] = in.Items[i]
+            out.Items[i].ObjectMeta = *in.Items[i].ObjectMeta.DeepCopy()
+        }
+    }
+    return out
+}
+
+var applicationGroupVersion = schema.GroupVersion{Group: "example.com", Version: "v1alpha1"}
+
+func addApplicationToScheme(scheme *runtime.Scheme) error {
+    scheme.AddKnownTypes(applicationGroupVersion, &Application{}, &ApplicationList{})
+    metav1.AddToGroupVersion(scheme, applicationGroupVersion)
+    return nil
+}
+
 type ApplicationReconciler struct {
     client.Client
+    Scheme *runtime.Scheme
 }
 
 func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -157,53 +203,41 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
             Name:      app.Name,
             Namespace: app.Namespace,
         },
-        Spec: appsv1.DeploymentSpec{
-            Replicas: &app.Spec.Replicas,
-            Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{
+    }
+    if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+        deployment.Labels = map[string]string{
+            "app": app.Name,
+        }
+        deployment.Spec.Replicas = &app.Spec.Replicas
+        deployment.Spec.Selector = &metav1.LabelSelector{
+            MatchLabels: map[string]string{
+                "app": app.Name,
+            },
+        }
+        deployment.Spec.Template = corev1.PodTemplateSpec{
+            ObjectMeta: metav1.ObjectMeta{
+                Labels: map[string]string{
                     "app": app.Name,
                 },
             },
-            Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{
-                        "app": app.Name,
-                    },
-                },
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{
-                        {
-                            Name:  "app",
-                            Image: app.Spec.Image,
-                            Ports: []corev1.ContainerPort{
-                                {
-                                    ContainerPort: app.Spec.Port,
-                                },
+            Spec: corev1.PodSpec{
+                Containers: []corev1.Container{
+                    {
+                        Name:  "app",
+                        Image: app.Spec.Image,
+                        Ports: []corev1.ContainerPort{
+                            {
+                                ContainerPort: app.Spec.Port,
                             },
                         },
                     },
                 },
             },
-        },
-    }
-
-    // Set owner reference for garbage collection
-    if err := ctrl.SetControllerReference(&app, deployment, r.Scheme()); err != nil {
-        return ctrl.Result{}, err
-    }
-
-    // Create or update the deployment
-    if err := r.Create(ctx, deployment); err != nil {
-        if client.IgnoreAlreadyExists(err) == nil {
-            // Deployment exists, update it
-            if err := r.Update(ctx, deployment); err != nil {
-                logger.Error(err, "Failed to update Deployment")
-                return ctrl.Result{}, err
-            }
-        } else {
-            logger.Error(err, "Failed to create Deployment")
-            return ctrl.Result{}, err
         }
+        return ctrl.SetControllerReference(&app, deployment, r.Scheme)
+    }); err != nil {
+        logger.Error(err, "Failed to create or update Deployment")
+        return ctrl.Result{}, err
     }
 
     // Update Application status
@@ -233,7 +267,6 @@ import (
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/handler"
-    "sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 type MultiResourceReconciler struct {
@@ -251,7 +284,7 @@ func setupController(mgr ctrl.Manager) error {
         Owns(&appsv1.Deployment{}). // Watch owned Deployments
         Owns(&corev1.Service{}). // Watch owned Services
         Watches(
-            &source.Kind{Type: &corev1.ConfigMap{}},
+            &corev1.ConfigMap{},
             &handler.EnqueueRequestForObject{},
         ). // Watch ConfigMaps
         Complete(&MultiResourceReconciler{
@@ -268,6 +301,7 @@ Filter events before they trigger reconciliation.
 package main
 
 import (
+    ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/event"
     "sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -302,6 +336,7 @@ func setupFilteredController(mgr ctrl.Manager) error {
         WithEventFilter(createPredicates()).
         Complete(&ApplicationReconciler{
             Client: mgr.GetClient(),
+            Scheme: mgr.GetScheme(),
         })
 }
 ```
@@ -370,7 +405,6 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
         // Requeue after 30 seconds
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: 30 * time.Second,
         }, nil
     }
@@ -476,12 +510,14 @@ func main() {
 
     mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
         Scheme: scheme,
-        MetricsBindAddress: ":8080",
+        Metrics: server.Options{
+            BindAddress: ":8080",
+        },
         HealthProbeBindAddress: ":8081",
         LeaderElection: true,
         LeaderElectionID: "application-controller-leader",
         LeaderElectionNamespace: "kube-system",
-        Namespace: "", // Watch all namespaces
+        // By default, the cache watches requested objects in all namespaces.
     })
     if err != nil {
         os.Exit(1)
