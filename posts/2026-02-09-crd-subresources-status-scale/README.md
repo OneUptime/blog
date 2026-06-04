@@ -14,7 +14,7 @@ Subresources give your CRDs the same capabilities as built-in Kubernetes resourc
 
 ## Understanding Subresources
 
-Without subresources, any update to your custom resource modifies the entire object. Users can change status fields directly. Controllers can accidentally trigger spec changes. The resource version increments on every update regardless of what changed.
+Without subresources, any update to your custom resource modifies the entire object. Users can change status fields directly. Controllers can accidentally trigger spec changes. The generation increments for status changes because status is part of the main resource body.
 
 Subresources solve these problems by creating separate endpoints for specific operations. The /status endpoint only updates status fields. The /scale endpoint provides a standard interface for replica management.
 
@@ -92,7 +92,7 @@ spec:
       status: {}
 ```
 
-With this configuration, status updates happen through a separate endpoint and don't increment the main resource version.
+With this configuration, status updates happen through a separate endpoint. They still update the object's resource version, but they don't increment the object's generation.
 
 ## Updating Status from a Controller
 
@@ -106,7 +106,7 @@ import (
     "time"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes/scheme"
+    "k8s.io/apimachinery/pkg/runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -125,8 +125,10 @@ type ApplicationSpec struct {
 
 type ApplicationStatus struct {
     Conditions        []Condition `json:"conditions,omitempty"`
+    Replicas          int32       `json:"replicas"`
     AvailableReplicas int32       `json:"availableReplicas"`
     ReadyReplicas     int32       `json:"readyReplicas"`
+    Selector          string      `json:"selector"`
     Phase             string      `json:"phase"`
 }
 
@@ -136,6 +138,21 @@ type Condition struct {
     LastTransitionTime metav1.Time `json:"lastTransitionTime"`
     Reason             string      `json:"reason"`
     Message            string      `json:"message"`
+}
+
+func (in *Application) DeepCopyObject() runtime.Object {
+    if in == nil {
+        return nil
+    }
+
+    out := new(Application)
+    *out = *in
+    out.ObjectMeta = *in.ObjectMeta.DeepCopy()
+    if in.Status.Conditions != nil {
+        out.Status.Conditions = append([]Condition(nil), in.Status.Conditions...)
+    }
+
+    return out
 }
 
 // UpdateStatus updates the application status
@@ -305,8 +322,9 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         }
     } else {
         // Update existing deployment if replicas changed
-        if *deployment.Spec.Replicas != app.Spec.Replicas {
-            deployment.Spec.Replicas = &app.Spec.Replicas
+        if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != app.Spec.Replicas {
+            replicas := app.Spec.Replicas
+            deployment.Spec.Replicas = &replicas
             if err := r.Update(ctx, &deployment); err != nil {
                 return ctrl.Result{}, err
             }
