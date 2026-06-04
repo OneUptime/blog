@@ -18,7 +18,7 @@ This is especially valuable during migrations. You can move services from VMs to
 
 ## Prerequisites
 
-You need a Kubernetes cluster with Istio installed and VM instances that can reach the Kubernetes network. The VMs must have network connectivity to the Istio control plane and be able to resolve DNS queries for Kubernetes services.
+You need a Kubernetes cluster with Istio installed and VM instances that can reach the Istio ingress or east-west gateway. The VMs must have network connectivity to the exposed Istio control plane endpoint and be able to resolve DNS queries for Kubernetes services through Istio's DNS proxy or an external DNS configuration.
 
 Check your Istio version supports VM workloads:
 
@@ -26,11 +26,11 @@ Check your Istio version supports VM workloads:
 istioctl version
 ```
 
-You need Istio 1.7 or later. This guide uses the WorkloadEntry API which replaced the older virtual machine integration approach.
+Use a currently supported Istio release. This guide uses the WorkloadGroup and WorkloadEntry APIs for virtual machine integration.
 
 ## Configuring Istio for VM Integration
 
-First, enable VM workload support in your Istio installation. Update your IstioOperator configuration:
+First, install Istio with cluster metadata and enable WorkloadEntry auto-registration if you want VMs to register automatically. Update your IstioOperator configuration:
 
 ```yaml
 # istio-vm-config.yaml
@@ -41,16 +41,12 @@ metadata:
   name: istio-vm-integration
   namespace: istio-system
 spec:
-  meshConfig:
-    # Enable VM workload entry auto-registration
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_DNS_CAPTURE: "true"
   values:
     global:
-      # Expose Istio services for VM access
-      meshExpansion:
-        enabled: true
+      meshID: mesh1
+      multiCluster:
+        clusterName: Kubernetes
+      network: ""
     pilot:
       env:
         PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: "true"
@@ -63,13 +59,20 @@ Apply the configuration:
 istioctl install -f istio-vm-config.yaml
 ```
 
+Expose the control plane through an east-west gateway so VMs can reach `istiod`:
+
+```bash
+samples/multicluster/gen-eastwest-gateway.sh --single-cluster | istioctl install -y -f -
+kubectl apply -n istio-system -f samples/multicluster/expose-istiod.yaml
+```
+
 ## Creating a WorkloadGroup for VM Services
 
 WorkloadGroups define templates for VM workloads. They specify labels, ports, and service account information that VMs will use.
 
 ```yaml
 # workloadgroup-database.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: database-vms
@@ -81,9 +84,7 @@ spec:
       version: "14"
   template:
     ports:
-      5432:
-        name: postgresql
-        protocol: TCP
+      postgresql: 5432
     serviceAccount: database-sa
   probe:
     periodSeconds: 10
@@ -125,6 +126,7 @@ istioctl x workload entry configure \
   -f workloadgroup-database.yaml \
   -o vm-configs/database \
   --ingressIP <ISTIO_INGRESS_IP> \
+  --clusterID Kubernetes \
   --autoregister
 ```
 
@@ -140,32 +142,30 @@ This generates several files in the vm-configs/database directory:
 - mesh.yaml - Mesh configuration
 - root-cert.pem - Root certificate for mTLS
 - istio-token - JWT token for authentication
+- hosts - Host entries that let the proxy reach istiod for xDS
 
 ## Installing Istio Sidecar on the VM
 
 Copy the generated files to your VM and install the Istio sidecar. SSH to your VM and run these commands:
 
 ```bash
-# On the VM - install dependencies
-sudo apt-get update
-sudo apt-get install -y curl dnsmasq
-
 # Download Istio sidecar packages
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 
 # Install the sidecar
 sudo dpkg -i istio-sidecar.deb
 
 # Copy configuration files to the correct location
-sudo mkdir -p /etc/certs /var/run/secrets/tokens /var/run/secrets/istio
+sudo mkdir -p /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config /etc/istio/proxy
 
-sudo cp root-cert.pem /etc/certs/
-sudo cp istio-token /var/run/secrets/tokens/
-sudo cp cluster.env /var/lib/istio/envoy/
+sudo cp root-cert.pem /etc/certs/root-cert.pem
+sudo cp istio-token /var/run/secrets/tokens/istio-token
+sudo cp cluster.env /var/lib/istio/envoy/cluster.env
 sudo cp mesh.yaml /etc/istio/config/mesh
+sudo sh -c 'cat hosts >> /etc/hosts'
 
 # Set ownership
-sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config
+sudo chown -R istio-proxy /var/lib/istio /etc/certs /etc/istio/proxy /etc/istio/config /var/run/secrets
 
 # Start the Istio agent
 sudo systemctl enable istio
@@ -264,7 +264,7 @@ Apply Istio traffic policies to VM workloads just like Kubernetes services. Crea
 
 ```yaml
 # destinationrule-database.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres-db
@@ -279,7 +279,7 @@ spec:
         http1MaxPendingRequests: 10
         maxRequestsPerConnection: 2
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 60s
 ```
@@ -294,7 +294,7 @@ Configure PeerAuthentication to enforce mTLS between all workloads including VMs
 
 ```yaml
 # peerauthentication-strict.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -308,18 +308,18 @@ spec:
 kubectl apply -f peerauthentication-strict.yaml
 ```
 
-With STRICT mode, all communication between services requires mTLS. The Istio sidecar on your VM handles this automatically using the certificates you installed.
+With STRICT mode, workloads only accept mTLS traffic. The Istio sidecar on your VM handles this automatically using the root certificate and token you installed.
 
 ## Monitoring VM Workloads in the Service Mesh
 
 VM workloads appear in Istio's telemetry just like pod workloads. Check metrics in Prometheus:
 
 ```promql
-# Request rate to VM database
-sum(rate(istio_requests_total{destination_service="postgres-db.default.svc.cluster.local"}[5m]))
+# TCP connection rate to VM database
+sum(rate(istio_tcp_connections_opened_total{destination_service="postgres-db.default.svc.cluster.local"}[5m]))
 
-# Error rate for database connections
-sum(rate(istio_requests_total{destination_service="postgres-db.default.svc.cluster.local",response_code=~"5.."}[5m]))
+# TCP traffic received by the database service
+sum(rate(istio_tcp_received_bytes_total{destination_service="postgres-db.default.svc.cluster.local"}[5m]))
 ```
 
 View the service graph in Kiali. Your VM workloads appear as nodes with traffic flowing from Kubernetes services.
@@ -330,7 +330,7 @@ Configure health checks so Istio removes unhealthy VMs from the load balancing p
 
 ```yaml
 # workloadgroup-with-health.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: database-vms
@@ -341,8 +341,7 @@ spec:
       app: postgres-db
   template:
     ports:
-      5432:
-        name: postgresql
+      postgresql: 5432
     serviceAccount: database-sa
   probe:
     periodSeconds: 10
