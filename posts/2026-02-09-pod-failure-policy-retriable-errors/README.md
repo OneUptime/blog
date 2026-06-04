@@ -14,9 +14,9 @@ Without failure policies, Kubernetes treats all pod failures the same way, count
 
 ## Understanding Pod Failure Policies
 
-Pod Failure Policies require Kubernetes 1.25 or later with the JobPodFailurePolicy feature gate enabled. They let you define rules based on container exit codes and pod conditions, then specify different actions for each rule.
+Pod Failure Policies are stable and enabled by default in Kubernetes 1.31 and later. They are available starting in Kubernetes 1.25; in Kubernetes 1.25 the JobPodFailurePolicy feature gate must be enabled, and in Kubernetes 1.26 through 1.30 it is beta and enabled by default. They let you define rules based on container exit codes and pod conditions, then specify different actions for each rule.
 
-Available actions include Count (increment backoff counter), FailJob (fail immediately), and Ignore (don't count against backoff limit). You can also specify FailIndex for indexed jobs to fail only a specific completion index.
+Available actions include Count (increment backoff counter), FailJob (fail immediately), and Ignore (don't count against backoff limit). You can also specify FailIndex for indexed jobs with `backoffLimitPerIndex` set to fail only a specific completion index.
 
 ```yaml
 apiVersion: batch/v1
@@ -39,7 +39,7 @@ spec:
         values: [1]
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -65,6 +65,10 @@ EXIT_INVALID_INPUT = 3         # Bad input data
 EXIT_MISSING_DEPENDENCY = 4    # Required service unavailable
 EXIT_RATE_LIMIT = 42           # API rate limit (should be ignored)
 
+class RateLimitExceeded(Exception):
+    """API rate limit error"""
+    pass
+
 class ConfigError(Exception):
     """Non-retriable configuration error"""
     pass
@@ -76,6 +80,10 @@ class TransientError(Exception):
 class InvalidInputError(Exception):
     """Non-retriable input error"""
     pass
+
+def call_external_api(data):
+    """Replace this stub with your external API call"""
+    return f"processed {len(data)} bytes"
 
 def validate_config():
     """Validate required configuration"""
@@ -190,7 +198,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -236,7 +244,7 @@ func callExternalService(apiKey string) error {
 
     req.Header.Set("Authorization", "Bearer "+apiKey)
 
-    resp, err := http.DefaultClient.Do(req)
+    resp, err := client.Do(req)
     if err != nil {
         // Network error - retriable
         return &TransientError{Err: err}
@@ -258,7 +266,7 @@ func callExternalService(apiKey string) error {
 
     case 500, 502, 503, 504:
         // Server error - retriable
-        return &TransientError{Err: fmt.Errorf("server error: %d", resp.StatusCode)}
+        return &ServiceDownError{StatusCode: resp.StatusCode}
 
     default:
         // Unknown error - treat as transient
@@ -280,6 +288,14 @@ type AuthError struct {
 
 func (e *AuthError) Error() string {
     return fmt.Sprintf("authentication error: %d", e.StatusCode)
+}
+
+type ServiceDownError struct {
+    StatusCode int
+}
+
+func (e *ServiceDownError) Error() string {
+    return fmt.Sprintf("service unavailable: %d", e.StatusCode)
 }
 
 type RateLimitError struct{}
@@ -310,6 +326,10 @@ func main() {
         fmt.Printf("Rate limited: %v\n", err)
         os.Exit(ExitRateLimit)
 
+    case *ServiceDownError:
+        fmt.Printf("Service unavailable: %v\n", err)
+        os.Exit(ExitServiceDown)
+
     case *TransientError:
         fmt.Printf("Transient error: %v\n", err)
         os.Exit(ExitTransientError)
@@ -332,11 +352,11 @@ spec:
   backoffLimit: 8
   podFailurePolicy:
     rules:
-    # Authentication errors - fail immediately
+    # Configuration and authentication errors - fail immediately
     - action: FailJob
       onExitCodes:
         operator: In
-        values: [10]
+        values: [2, 10]
 
     # Rate limits - ignore and retry
     - action: Ignore
@@ -358,7 +378,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: service-caller
         image: service-caller:latest
@@ -391,7 +411,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -418,12 +438,6 @@ spec:
       - type: DisruptionTarget
         status: "True"
 
-    # Ignore out-of-memory kills (need to adjust resources)
-    - action: Ignore
-      onPodConditions:
-      - type: OutOfMemory
-        status: "True"
-
     # Application errors still count
     - action: Count
       onExitCodes:
@@ -432,7 +446,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -461,6 +475,7 @@ spec:
   parallelism: 10
   completionMode: Indexed
   backoffLimit: 3
+  backoffLimitPerIndex: 3
   podFailurePolicy:
     rules:
     # Invalid input for this specific index - fail just this index
@@ -483,7 +498,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: indexed-processor:latest
@@ -540,7 +555,7 @@ spec:
 
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: tester
         image: busybox
