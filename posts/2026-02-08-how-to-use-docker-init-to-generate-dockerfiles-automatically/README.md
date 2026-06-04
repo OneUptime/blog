@@ -8,17 +8,18 @@ Description: Learn how to use the docker init command to automatically generate 
 
 ---
 
-Writing Dockerfiles from scratch gets repetitive. You look up the right base image, set the working directory, copy files, install dependencies, configure the entrypoint, and do the same dance for every new project. The `docker init` command automates this process. It detects your project's language and framework, asks a few questions, and generates a production-ready Dockerfile, a Docker Compose file, and a .dockerignore - all following Docker's best practices.
+Writing Dockerfiles from scratch gets repetitive. You look up the right base image, set the working directory, copy files, install dependencies, configure the entrypoint, and do the same dance for every new project. The `docker init` command automates this process. It detects your project's language and framework, asks a few questions, and generates a production-ready Dockerfile, a Docker Compose file, a .dockerignore, and usage notes - all following Docker's best practices.
 
 ## What docker init Generates
 
-Running `docker init` in a project directory produces three files:
+Running `docker init` in a project directory produces these files:
 
 - **Dockerfile** - Multi-stage build optimized for your language
 - **compose.yaml** - Docker Compose configuration for local development
 - **.dockerignore** - Excludes unnecessary files from the build context
+- **README.Docker.md** - Notes for building and running the generated Docker setup
 
-The generated files are not minimal stubs. They include multi-stage builds, proper caching of dependency layers, non-root user configuration, and health checks. These are production-quality starting points.
+The generated files are not minimal stubs. Depending on the template, they can include multi-stage builds, proper caching of dependency layers, non-root user configuration, and other best practices. These are production-quality starting points.
 
 ## Prerequisites
 
@@ -78,6 +79,7 @@ sensible defaults for your project:
   - .dockerignore
   - Dockerfile
   - compose.yaml
+  - README.Docker.md
 
 ? What application platform does your project use? Node
 ? What version of Node do you want to use? 20
@@ -95,18 +97,18 @@ The generated Dockerfile uses multi-stage builds and follows Docker best practic
 
 # Stage 1: Install dependencies
 ARG NODE_VERSION=20
-FROM node:${NODE_VERSION}-alpine as base
+FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /usr/src/app
 
 # Install dependencies in a separate stage for caching
-FROM base as deps
+FROM base AS deps
 RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=package-lock.json,target=package-lock.json \
     --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
 # Final stage: copy dependencies and source code
-FROM base as final
+FROM base AS final
 
 # Run as non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -169,9 +171,9 @@ graph TD
     B -->|requirements.txt / pyproject.toml| D[Python]
     B -->|go.mod| E[Go]
     B -->|Cargo.toml| F[Rust]
-    B -->|pom.xml / build.gradle| G[Java]
-    B -->|*.csproj| H[.NET]
-    B -->|composer.json| I[PHP]
+    B -->|Maven project| G[Java]
+    B -->|ASP.NET Core project| H[ASP.NET Core]
+    B -->|PHP app| I[PHP with Apache]
     B -->|None detected| J[Generic template]
 ```
 
@@ -218,7 +220,7 @@ volumes:
 
 ### Adding Development Mode
 
-The default Dockerfile targets production. For development, add a bind mount and use nodemon:
+The default Dockerfile targets production. For development, add a bind mount and use Node's watch mode:
 
 ```yaml
 # compose.yaml with development override
@@ -226,13 +228,13 @@ services:
   server:
     build:
       context: .
-      target: base  # Use the base stage, not the final stage
+      target: deps  # Use a stage with dependencies installed
     ports:
       - "3000:3000"
     volumes:
       - .:/usr/src/app        # Bind mount for hot reload
       - /usr/src/app/node_modules  # Preserve container node_modules
-    command: npx nodemon index.js
+    command: node --watch index.js
     environment:
       NODE_ENV: development
 ```
@@ -250,6 +252,7 @@ docker init
 #   - Dockerfile
 #   - compose.yaml
 #   - .dockerignore
+#   - README.Docker.md
 # ? Do you want to overwrite them? (y/N)
 ```
 
