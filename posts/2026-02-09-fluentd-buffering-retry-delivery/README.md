@@ -25,7 +25,7 @@ Buffer lifecycle: Input → Buffer → Retry Queue → Output (or Overflow)
 
 Use persistent file buffers for production:
 
-```yaml
+```conf
 <match kubernetes.**>
   @type elasticsearch
   host elasticsearch.logging.svc
@@ -46,8 +46,8 @@ Use persistent file buffers for production:
     total_limit_size 2GB
     
     # Queue settings
-    queue_limit_length 256
-    overflow_action drop_oldest_chunk
+    queued_chunks_limit_size 256
+    overflow_action block
   </buffer>
 </match>
 ```
@@ -56,7 +56,7 @@ Use persistent file buffers for production:
 
 Configure exponential backoff for failures:
 
-```yaml
+```conf
 <buffer>
   @type file
   path /var/log/fluentd-buffers/kubernetes.buffer
@@ -79,11 +79,11 @@ Configure exponential backoff for failures:
 
 Implement overflow strategies:
 
-```yaml
+```conf
 <buffer>
   # Buffer limits
   total_limit_size 5GB
-  queue_limit_length 512
+  queued_chunks_limit_size 512
   
   # Overflow handling
   overflow_action block
