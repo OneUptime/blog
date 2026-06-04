@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CPU Management, Performance
 
-Description: Configure Kubernetes CPU Manager with static policy to pin pods to specific CPU cores for guaranteed performance, reduced latency, and elimination of CPU throttling in latency-sensitive workloads.
+Description: Configure Kubernetes CPU Manager with static policy to pin pods to specific CPU cores for guaranteed performance, reduced latency, and reduced CPU throttling in latency-sensitive workloads.
 
 ---
 
-CPU throttling and context switching kill performance for latency-sensitive applications. Kubernetes CPU Manager's static policy solves this by pinning guaranteed pods to dedicated CPU cores. This guide shows you how to configure CPU pinning for predictable performance.
+CPU throttling and context switching kill performance for latency-sensitive applications. Kubernetes CPU Manager's static policy helps by pinning eligible guaranteed pods to dedicated CPU cores. This guide shows you how to configure CPU pinning for predictable performance.
 
 ## Why CPU Pinning Matters
 
@@ -19,7 +19,7 @@ Without CPU pinning, the kernel scheduler moves processes between CPU cores free
 - Unpredictable latency spikes
 - Poor performance for real-time workloads
 
-CPU pinning (also called CPU affinity or core isolation) dedicates specific cores to specific containers, eliminating these issues.
+CPU pinning (also called CPU affinity) dedicates specific cores to specific containers, reducing these issues.
 
 ## How CPU Manager Works
 
@@ -28,7 +28,7 @@ The kubelet's CPU Manager has two policies:
 - **none** (default): No CPU affinity, kernel schedules freely
 - **static**: Pins guaranteed pods to exclusive CPU cores
 
-With the static policy, pods in the Guaranteed QoS class with whole CPU requests get dedicated cores. The kubelet tracks CPU allocation and updates the container's cgroup cpuset.
+With the static policy, containers in the Guaranteed QoS class with whole CPU requests get dedicated CPUs. The kubelet tracks CPU allocation and updates the container's cgroup cpuset.
 
 ## Enabling CPU Manager Static Policy
 
@@ -39,6 +39,8 @@ apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 cpuManagerPolicy: static
 cpuManagerReconcilePeriod: 10s
+kubeReserved:
+  cpu: "1"
 ```
 
 Or pass flags to the kubelet:
@@ -46,18 +48,21 @@ Or pass flags to the kubelet:
 ```bash
 kubelet \
   --cpu-manager-policy=static \
-  --cpu-manager-reconcile-period=10s
+  --cpu-manager-reconcile-period=10s \
+  --kube-reserved=cpu=1
 ```
 
 Restart the kubelet after making changes.
 
 ## Removing the CPU Manager State File
 
-When switching from `none` to `static`, remove the CPU Manager state file:
+When switching from `none` to `static`, drain the node and remove the CPU Manager state file:
 
 ```bash
-# Stop kubelet first
+# Drain the node first
+kubectl drain worker-1 --ignore-daemonsets
 
+# Stop kubelet
 systemctl stop kubelet
 
 # Remove state file
@@ -65,13 +70,16 @@ rm /var/lib/kubelet/cpu_manager_state
 
 # Start kubelet
 systemctl start kubelet
+
+# Allow pods to return
+kubectl uncordon worker-1
 ```
 
-The kubelet rebuilds the state file based on running containers.
+The kubelet rebuilds the state file as new pods are admitted under the new policy.
 
 ## Creating Pods with CPU Pinning
 
-Only Guaranteed QoS pods with whole CPU requests get pinned. A pod is Guaranteed when:
+Only containers in Guaranteed QoS pods with whole CPU requests get pinned. A pod is Guaranteed when:
 
 - All containers have CPU and memory requests and limits
 - Requests equal limits
@@ -100,14 +108,17 @@ The kubelet pins this container to 2 specific CPU cores.
 
 ## Verifying CPU Pinning
 
-Check which cores are assigned by inspecting the container's cgroup:
+Check which CPUs are assigned by inspecting the container process:
 
 ```bash
 # Get container ID
 CONTAINER_ID=$(crictl ps | grep pinned-app | awk '{print $1}')
 
-# Check cpuset
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.cpus
+# Get container PID
+PID=$(crictl inspect "$CONTAINER_ID" | jq '.info.pid')
+
+# Check allowed CPUs
+grep Cpus_allowed_list /proc/"$PID"/status
 ```
 
 You'll see output like `2-3`, meaning cores 2 and 3 are assigned exclusively.
@@ -163,6 +174,8 @@ CPUs not allocated to pinned pods form the shared pool. Non-Guaranteed pods and 
 - Cores reserved via `systemReserved` and `kubeReserved`
 - Cores not allocated to any Guaranteed pod
 
+By default, system services such as the kubelet and container runtime can still run on exclusive CPUs; CPU Manager exclusivity applies to other pods. Use `reservedSystemCPUs` and the `strict-cpu-reservation` policy option when you need stricter isolation for system CPUs.
+
 ## CPU Pinning for Multi-Container Pods
 
 Each container's CPU request is pinned independently:
@@ -198,7 +211,7 @@ The app container gets 2 cores, the sidecar gets 1 core. All 3 cores are exclusi
 
 ## CPU Manager and NUMA Awareness
 
-CPU Manager works with Topology Manager to align CPU, memory, and device allocations on NUMA nodes. When both are enabled, pinned CPUs come from the same NUMA node as the pod's memory:
+CPU Manager works with Topology Manager to align CPU and device allocations on NUMA nodes. When Memory Manager is also enabled, memory allocations can be aligned too:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -207,7 +220,7 @@ cpuManagerPolicy: static
 topologyManagerPolicy: single-numa-node
 ```
 
-This eliminates cross-NUMA traffic for maximum performance.
+This reduces cross-NUMA traffic for maximum performance.
 
 ## Troubleshooting CPU Pinning
 
@@ -252,15 +265,15 @@ spec:
         memory: "32Gi"
 ```
 
-All 8 MPI ranks run on dedicated cores with no context switching.
+All 8 MPI ranks run on dedicated cores with reduced interference from other pods.
 
 ## Monitoring CPU Pinning Effectiveness
 
 Use node exporter and Prometheus to track CPU metrics:
 
-```yaml
+```promql
 # Prometheus query
-node_cpu_seconds_total{mode="system"} by (cpu)
+sum by (cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
 ```
 
 Compare CPU utilization across cores. Pinned cores should show consistent load from their assigned containers.
@@ -338,7 +351,7 @@ cpuManagerPolicyOptions:
   full-pcpus-only: "true"
 ```
 
-The `full-pcpus-only` option requires pods to request multiples of the physical CPU count (for hyperthreading-aware allocation).
+The `full-pcpus-only` option makes the static policy allocate complete physical cores. On SMT or hyperthreaded systems, the pod is admitted only if its CPU request can be satisfied with whole physical cores rather than individual hardware threads.
 
 ## Conclusion
 
