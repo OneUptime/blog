@@ -27,9 +27,9 @@ Install the Kyverno CLI for policy testing:
 ```bash
 # Install on Linux
 
-wget https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-tar -xzf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-sudo mv kyverno /usr/local/bin/
+wget https://github.com/kyverno/kyverno/releases/download/v1.18.1/kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+tar -xzf kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+sudo cp kyverno /usr/local/bin/
 
 # Install on macOS
 brew install kyverno
@@ -49,7 +49,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: check-for-labels
     match:
@@ -58,6 +57,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "Labels 'app' and 'env' are required"
       pattern:
         metadata:
@@ -69,8 +69,11 @@ spec:
 Create a test file for this policy:
 
 ```yaml
-# tests/require-labels-test.yaml
-name: require-labels-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-labels-test
 policies:
   - ../policies/require-labels.yaml
 resources:
@@ -78,17 +81,20 @@ resources:
 results:
   - policy: require-labels
     rule: check-for-labels
-    resource: good-pod
+    resources:
+    - good-pod
     kind: Pod
     result: pass
   - policy: require-labels
     rule: check-for-labels
-    resource: bad-pod-no-labels
+    resources:
+    - bad-pod-no-labels
     kind: Pod
     result: fail
   - policy: require-labels
     rule: check-for-labels
-    resource: bad-pod-missing-env
+    resources:
+    - bad-pod-missing-env
     kind: Pod
     result: fail
 ```
@@ -137,8 +143,8 @@ Run the test:
 kyverno test tests/
 
 # Expected output:
-# Executing require-labels-test...
-# pass: 1, fail: 0, warn: 0, error: 0, skip: 0
+# Loading test  ( tests/kyverno-test.yaml ) ...
+# Test Summary: 3 tests passed and 0 tests failed
 ```
 
 ## Testing Mutation Policies
@@ -170,8 +176,11 @@ spec:
 Test mutation behavior:
 
 ```yaml
-# tests/mutation-test.yaml
-name: mutation-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: mutation-test
 policies:
   - ../policies/add-default-labels.yaml
 resources:
@@ -179,9 +188,10 @@ resources:
 results:
   - policy: add-default-labels
     rule: add-labels
-    resource: test-pod
+    resources:
+    - test-pod
     kind: Pod
-    patchedResource: patched-pod.yaml
+    patchedResources: patched-pod.yaml
     result: pass
 ```
 
@@ -219,7 +229,7 @@ spec:
 Run mutation tests:
 
 ```bash
-kyverno test tests/mutation-test.yaml --detailed-results
+kyverno test tests/ --detailed-results
 ```
 
 ## Testing Complex Validation Rules
@@ -233,7 +243,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-registries
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: validate-registries
     match:
@@ -242,6 +251,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: >-
         Container images must come from approved registries:
         gcr.io, ghcr.io, or quay.io
@@ -261,8 +271,11 @@ spec:
 Comprehensive test cases:
 
 ```yaml
-# tests/registry-test.yaml
-name: registry-validation-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: registry-validation-test
 policies:
   - ../policies/restrict-registries.yaml
 resources:
@@ -270,22 +283,26 @@ resources:
 results:
   - policy: restrict-registries
     rule: validate-registries
-    resource: allowed-gcr
+    resources:
+    - allowed-gcr
     kind: Pod
     result: pass
   - policy: restrict-registries
     rule: validate-registries
-    resource: allowed-ghcr
+    resources:
+    - allowed-ghcr
     kind: Pod
     result: pass
   - policy: restrict-registries
     rule: validate-registries
-    resource: blocked-dockerhub
+    resources:
+    - blocked-dockerhub
     kind: Pod
     result: fail
   - policy: restrict-registries
     rule: validate-registries
-    resource: blocked-private
+    resources:
+    - blocked-private
     kind: Pod
     result: fail
 ```
@@ -366,8 +383,11 @@ spec:
 Test generation logic:
 
 ```yaml
-# tests/generation-test.yaml
-name: generation-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: generation-test
 policies:
   - ../policies/generate-network-policy.yaml
 resources:
@@ -375,7 +395,8 @@ resources:
 results:
   - policy: generate-network-policy
     rule: create-default-deny
-    resource: test-namespace
+    resources:
+    - test-namespace
     kind: Namespace
     generatedResource: generated-netpol.yaml
     result: pass
@@ -397,6 +418,16 @@ spec:
   - Egress
 ```
 
+Test input resource:
+
+```yaml
+# tests/generation-resources.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-namespace
+```
+
 ## Organizing Tests with Test Suites
 
 Structure multiple tests into organized suites:
@@ -412,13 +443,16 @@ kyverno-policies/
 │       └── add-annotations.yaml
 └── tests/
     ├── security/
-    │   ├── require-labels-test.yaml
-    │   ├── require-labels-resources.yaml
-    │   ├── restrict-registries-test.yaml
-    │   └── restrict-registries-resources.yaml
+    │   ├── require-labels/
+    │   │   ├── kyverno-test.yaml
+    │   │   └── resources.yaml
+    │   └── restrict-registries/
+    │       ├── kyverno-test.yaml
+    │       └── resources.yaml
     └── compliance/
-        ├── add-annotations-test.yaml
-        └── add-annotations-resources.yaml
+        └── add-annotations/
+            ├── kyverno-test.yaml
+            └── resources.yaml
 ```
 
 Run all tests:
@@ -430,8 +464,8 @@ kyverno test tests/
 # Run specific test suite
 kyverno test tests/security/
 
-# Run with verbose output
-kyverno test tests/ --verbose
+# Run with detailed output
+kyverno test tests/ --detailed-results
 ```
 
 ## Testing with Variables and Context
@@ -445,7 +479,6 @@ kind: ClusterPolicy
 metadata:
   name: limit-containers
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: max-containers
     match:
@@ -458,6 +491,7 @@ spec:
       variable:
         jmesPath: length(request.object.spec.containers)
     validate:
+      failureAction: Enforce
       message: "Pods cannot have more than 3 containers"
       deny:
         conditions:
@@ -470,8 +504,11 @@ spec:
 Test with context variables:
 
 ```yaml
-# tests/context-test.yaml
-name: context-variable-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: context-variable-test
 policies:
   - ../policies/limit-containers.yaml
 resources:
@@ -479,12 +516,14 @@ resources:
 results:
   - policy: limit-containers
     rule: max-containers
-    resource: two-containers
+    resources:
+    - two-containers
     kind: Pod
     result: pass
   - policy: limit-containers
     rule: max-containers
-    resource: four-containers
+    resources:
+    - four-containers
     kind: Pod
     result: fail
 ```
@@ -507,13 +546,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Install Kyverno CLI
       run: |
-        wget https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-        tar -xzf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-        sudo mv kyverno /usr/local/bin/
+        wget https://github.com/kyverno/kyverno/releases/download/v1.18.1/kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+        tar -xzf kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+        sudo cp kyverno /usr/local/bin/
 
     - name: Run policy tests
       run: |
@@ -521,7 +560,7 @@ jobs:
 
     - name: Validate policy manifests
       run: |
-        kyverno apply policies/ --resource tests/resources.yaml --dry-run
+        kyverno apply policies/ --resource tests/resources.yaml
 ```
 
 ## Testing Policy Exceptions
@@ -535,7 +574,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: require-limits
     match:
@@ -549,6 +587,7 @@ spec:
           namespaces:
           - kube-system
     validate:
+      failureAction: Enforce
       message: "Resource limits are required"
       pattern:
         spec:
@@ -562,8 +601,11 @@ spec:
 Test exception behavior:
 
 ```yaml
-# tests/exceptions-test.yaml
-name: exceptions-test
+# tests/kyverno-test.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: exceptions-test
 policies:
   - ../policies/with-exceptions.yaml
 resources:
@@ -571,19 +613,59 @@ resources:
 results:
   - policy: require-resource-limits
     rule: require-limits
-    resource: excluded-pod
+    resources:
+    - kube-system/excluded-pod
     kind: Pod
     result: skip
   - policy: require-resource-limits
     rule: require-limits
-    resource: included-pod-pass
+    resources:
+    - included-pod-pass
     kind: Pod
     result: pass
   - policy: require-resource-limits
     rule: require-limits
-    resource: included-pod-fail
+    resources:
+    - included-pod-fail
     kind: Pod
     result: fail
+```
+
+Create test resources for the exception cases:
+
+```yaml
+# tests/exceptions-resources.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: excluded-pod
+  namespace: kube-system
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: included-pod-pass
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: included-pod-fail
+spec:
+  containers:
+  - name: nginx
+    image: nginx
 ```
 
 ## Running Tests with Coverage Reports
@@ -594,10 +676,11 @@ Generate coverage reports showing tested scenarios:
 # Run tests with detailed output
 kyverno test tests/ \
   --detailed-results \
-  --output json > test-results.json
+  --output-format json \
+  --remove-color | sed -n '/^\[/,/^\]/p' > test-results.json
 
 # Parse results for coverage
-jq '.results[] | {policy: .policy, rule: .rule, resource: .resource, result: .result}' test-results.json
+jq '.[] | {policy: .POLICY, rule: .RULE, resource: .RESOURCE, result: .RESULT}' test-results.json
 ```
 
 ## Conclusion
