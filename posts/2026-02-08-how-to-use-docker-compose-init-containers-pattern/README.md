@@ -17,8 +17,6 @@ The core idea is simple: create a service that runs a setup task and exits, then
 ```yaml
 # docker-compose.yml - basic init container pattern
 
-version: "3.8"
-
 services:
   # Init container: runs setup and exits
   init-db:
@@ -26,10 +24,12 @@ services:
     environment:
       PGHOST: db
       PGUSER: postgres
+      PGDATABASE: myapp
       PGPASSWORD: ${DB_PASSWORD}
     # Wait for database to be ready, then run migrations
-    command: >
+    command: |
       sh -c "
+        set -e
         echo 'Waiting for database...'
         until pg_isready; do sleep 1; done
         echo 'Running migrations...'
@@ -79,13 +79,11 @@ The critical piece is `condition: service_completed_successfully`. This tells Do
 You can chain multiple init containers that run in sequence:
 
 ```yaml
-version: "3.8"
-
 services:
   # Step 1: Wait for all external dependencies
   init-wait:
     image: alpine
-    command: >
+    command: |
       sh -c "
         echo 'Checking external services...'
         until nc -z db 5432; do echo 'Waiting for PostgreSQL...'; sleep 2; done
@@ -172,8 +170,6 @@ The chain runs in order: wait -> migrate -> seed -> index -> app. Each step only
 A common use case is fixing volume permissions before the main app starts:
 
 ```yaml
-version: "3.8"
-
 services:
   init-permissions:
     image: alpine
@@ -183,8 +179,9 @@ services:
       - app_logs:/logs
       - app_uploads:/uploads
     # Set ownership to match the non-root user in the app container
-    command: >
+    command: |
       sh -c "
+        set -e
         echo 'Setting volume permissions...'
         chown -R 1000:1000 /data /logs /uploads
         chmod 755 /data /logs /uploads
@@ -214,8 +211,6 @@ volumes:
 Generate configuration files dynamically before the app starts:
 
 ```yaml
-version: "3.8"
-
 services:
   init-config:
     image: alpine
@@ -227,30 +222,31 @@ services:
       UPSTREAM_PORT: ${UPSTREAM_PORT:-3000}
       WORKER_PROCESSES: ${WORKERS:-auto}
     # Generate nginx config from environment variables
-    command: >
+    command: |
       sh -c "
+        set -e
         cat > /etc/nginx/conf.d/default.conf << CONF
-        upstream app {
-          server app:${UPSTREAM_PORT};
+      upstream app {
+        server app:$${UPSTREAM_PORT};
+      }
+      server {
+        listen 80;
+        server_name $${DOMAIN};
+        location / {
+          proxy_pass http://app;
+          proxy_set_header Host \$$host;
+          proxy_set_header X-Real-IP \$$remote_addr;
         }
-        server {
-          listen 80;
-          server_name ${DOMAIN};
-          location / {
-            proxy_pass http://app;
-            proxy_set_header Host \$$host;
-            proxy_set_header X-Real-IP \$$remote_addr;
-          }
-        }
-        CONF
+      }
+      CONF
 
         cat > /app/config/runtime.json << JSON
-        {
-          \"domain\": \"${DOMAIN}\",
-          \"workers\": \"${WORKER_PROCESSES}\",
-          \"generated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-        }
-        JSON
+      {
+        \"domain\": \"$${DOMAIN}\",
+        \"workers\": \"$${WORKER_PROCESSES}\",
+        \"generated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+      }
+      JSON
 
         echo 'Configuration files generated'
       "
@@ -283,15 +279,14 @@ volumes:
 Generate self-signed TLS certificates for development:
 
 ```yaml
-version: "3.8"
-
 services:
   init-certs:
     image: alpine
     volumes:
       - certs:/certs
-    command: >
+    command: |
       sh -c "
+        set -e
         if [ -f /certs/server.crt ]; then
           echo 'Certificates already exist, skipping generation'
           exit 0
@@ -342,30 +337,30 @@ services:
       REQUIRED_FILE: /config/app.yaml
     volumes:
       - ./config:/config:ro
-    command: >
+    command: |
       sh -c "
         errors=0
 
         # Validate required environment variables
-        if [ -z \"$DB_PASSWORD\" ]; then
+        if [ -z \"$$DB_PASSWORD\" ]; then
           echo 'FATAL: DB_PASSWORD is not set'
-          errors=\$((errors + 1))
+          errors=$$((errors + 1))
         fi
 
-        if [ -z \"$API_KEY\" ]; then
+        if [ -z \"$$API_KEY\" ]; then
           echo 'FATAL: API_KEY is not set'
-          errors=\$((errors + 1))
+          errors=$$((errors + 1))
         fi
 
         # Validate required files exist
-        if [ ! -f \"$REQUIRED_FILE\" ]; then
-          echo \"FATAL: Required file $REQUIRED_FILE not found\"
-          errors=\$((errors + 1))
+        if [ ! -f \"$$REQUIRED_FILE\" ]; then
+          echo \"FATAL: Required file $$REQUIRED_FILE not found\"
+          errors=$$((errors + 1))
         fi
 
         # Exit with failure if any validation failed
-        if [ \$errors -gt 0 ]; then
-          echo \"Validation failed with \$errors error(s)\"
+        if [ $$errors -gt 0 ]; then
+          echo \"Validation failed with $$errors error(s)\"
           exit 1
         fi
 
@@ -401,6 +396,16 @@ services:
     depends_on:
       init-migrate:
         condition: service_completed_successfully
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 ```
 
 The `restart: "no"` policy (which is the default) ensures the init container does not keep rerunning after completing its task.
