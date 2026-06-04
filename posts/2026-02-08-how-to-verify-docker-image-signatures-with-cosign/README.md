@@ -27,9 +27,9 @@ Cosign supports two signing modes:
 brew install cosign
 
 # Install on Linux (download the binary)
-curl -sL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
-  -o /usr/local/bin/cosign
-chmod +x /usr/local/bin/cosign
+curl -O -L https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+sudo chmod +x /usr/local/bin/cosign
 
 # Verify the installation
 cosign version
@@ -89,20 +89,19 @@ Keyless signing removes the burden of key management. Instead of a long-lived ke
 1. You authenticate with an OIDC provider (GitHub, Google, Microsoft)
 2. Fulcio issues a short-lived signing certificate tied to your identity
 3. Cosign signs the image with this certificate
-4. The signing event is recorded in Rekor, a tamper-proof transparency log
+4. The signing event is recorded in Rekor, a tamper-resistant transparency log
 5. The certificate expires, but the Rekor entry proves the signature was valid at signing time
 
 ### Sign with Keyless Mode
 
 ```bash
 # Sign without a key - opens a browser for OIDC authentication
-COSIGN_EXPERIMENTAL=1 cosign sign ghcr.io/your-org/myapp:v1.0.0
+cosign sign ghcr.io/your-org/myapp:v1.0.0
 
 # In CI/CD, use workload identity (no browser needed)
 # GitHub Actions example - uses the OIDC token automatically
 cosign sign ghcr.io/your-org/myapp:v1.0.0 \
-  --yes \
-  --oidc-issuer=https://token.actions.githubusercontent.com
+  --yes
 ```
 
 ### Verify Keyless Signatures
@@ -139,16 +138,16 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -156,7 +155,7 @@ jobs:
 
       - name: Build and Push
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
@@ -282,11 +281,12 @@ Cosign records every signing event in Rekor, Sigstore's transparency log. You ca
 
 ```bash
 # Search Rekor for entries related to your image
-rekor-cli search --sha $(cosign triangulate ghcr.io/your-org/myapp:v1.0.0 | \
-  xargs cosign verify --key cosign.pub 2>&1 | grep -o 'sha256:[a-f0-9]*')
+DIGEST=$(cosign verify --key cosign.pub ghcr.io/your-org/myapp:v1.0.0 | \
+  jq -r '.[0].critical.image["Docker-manifest-digest"]')
+rekor-cli search --rekor_server https://rekor.sigstore.dev --sha "$DIGEST"
 
 # View a specific log entry
-rekor-cli get --uuid <entry-uuid> --format json | jq .
+rekor-cli get --rekor_server https://rekor.sigstore.dev --uuid <entry-uuid> --format json | jq .
 ```
 
 ## Wrapping Up
