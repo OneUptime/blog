@@ -38,54 +38,66 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install base tools
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    gnupg \
     git \
     vim \
     tmux \
     curl \
     wget \
+    sudo \
+    openssh-server \
     build-essential \
     python3 \
     python3-pip \
     nodejs \
     npm \
-    kubectl \
     docker.io \
     jq \
     fzf \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
+# Install kubectl from the official Kubernetes release channel
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
+
 # Install Go
-RUN wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz && \
-    rm go1.21.5.linux-amd64.tar.gz
+RUN wget https://go.dev/dl/go1.26.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.26.4.linux-amd64.tar.gz && \
+    rm go1.26.4.linux-amd64.tar.gz
 
 ENV PATH="/usr/local/go/bin:${PATH}"
+ENV PASSWORD=change-me
 
 # Install useful CLI tools
-RUN go install github.com/junegunn/fzf@latest && \
-    go install github.com/jesseduffield/lazygit@latest && \
-    go install github.com/ahmetb/kubectx/cmd/kubectx@latest && \
-    go install github.com/ahmetb/kubectx/cmd/kubens@latest
+RUN GOBIN=/usr/local/bin go install github.com/junegunn/fzf@latest && \
+    GOBIN=/usr/local/bin go install github.com/jesseduffield/lazygit@latest && \
+    GOBIN=/usr/local/bin go install github.com/ahmetb/kubectx/cmd/kubectx@latest && \
+    GOBIN=/usr/local/bin go install github.com/ahmetb/kubectx/cmd/kubens@latest
 
 # Install code-server for browser-based VS Code
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # Create developer user
-RUN useradd -m -s /bin/bash developer && \
-    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN useradd -m -u 1000 -s /bin/bash developer && \
+    echo "developer:change-me" | chpasswd && \
+    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /run/sshd
 
-# Set up default shell configuration
-COPY --chown=developer:developer configs/.bashrc /home/developer/.bashrc
-COPY --chown=developer:developer configs/.vimrc /home/developer/.vimrc
-COPY --chown=developer:developer configs/.tmux.conf /home/developer/.tmux.conf
-COPY --chown=developer:developer configs/.gitconfig /home/developer/.gitconfig
+# Set up default shell configuration that will be copied into a new persistent home directory
+RUN mkdir -p /etc/devspace-defaults
+COPY --chown=developer:developer configs/.bashrc /etc/devspace-defaults/.bashrc
+COPY --chown=developer:developer configs/.vimrc /etc/devspace-defaults/.vimrc
+COPY --chown=developer:developer configs/.tmux.conf /etc/devspace-defaults/.tmux.conf
+COPY --chown=developer:developer configs/.gitconfig /etc/devspace-defaults/.gitconfig
 
 USER developer
 WORKDIR /home/developer
 
-# Default command starts code-server
-CMD ["code-server", "--bind-addr", "0.0.0.0:8080", "--auth", "none"]
+# Default command starts SSH and code-server
+CMD ["bash", "-lc", "find /etc/devspace-defaults -mindepth 1 -maxdepth 1 -exec cp -n {} /home/developer/ \\; && sudo /usr/sbin/sshd && exec code-server --bind-addr 0.0.0.0:8080 --auth password"]
 ```
 
 Create default configuration files:
@@ -154,19 +166,34 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: devspaces
+  labels:
+    type: devspace
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Secret
 metadata:
-  name: devspace-storage
+  name: devspace-code-server
+  namespace: devspaces
+type: Opaque
+stringData:
+  password: change-me
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devspace-headless
   namespace: devspaces
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: fast-ssd
+  clusterIP: None
+  selector:
+    app: devspace
+  ports:
+  - name: code-server
+    port: 8080
+    targetPort: 8080
+  - name: ssh
+    port: 22
+    targetPort: 22
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -174,7 +201,7 @@ metadata:
   name: devspace
   namespace: devspaces
 spec:
-  serviceName: devspace
+  serviceName: devspace-headless
   replicas: 1
   selector:
     matchLabels:
@@ -184,6 +211,8 @@ spec:
       labels:
         app: devspace
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
       - name: devspace
         image: myregistry/devspace:latest
@@ -200,6 +229,11 @@ spec:
         env:
         - name: DEVELOPER_NAME
           value: "john-doe"
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: devspace-code-server
+              key: password
         resources:
           requests:
             cpu: "1"
@@ -261,7 +295,7 @@ kubectl port-forward -n devspaces statefulset/devspace 8080:8080
 
 Access the workspace at `http://localhost:8080`.
 
-For SSH access, configure a service:
+For SSH access, forward the SSH port and use the developer account password configured in the image:
 
 ```bash
 kubectl port-forward -n devspaces statefulset/devspace 2222:22
@@ -289,6 +323,7 @@ DEV_NAME=$(echo "$DEVELOPER" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 NAMESPACE="devspace-$DEV_NAME"
 
 echo "Provisioning dev space for $DEVELOPER ($EMAIL)..."
+CODE_SERVER_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
 
 # Create namespace
 kubectl create namespace "$NAMESPACE"
@@ -299,15 +334,35 @@ kubectl label namespace "$NAMESPACE" \
   developer="$DEV_NAME" \
   email="$EMAIL"
 
+# Create code-server password secret
+kubectl create secret generic code-server-auth \
+  --from-literal=password="$CODE_SERVER_PASSWORD" \
+  -n "$NAMESPACE"
+
 # Create StatefulSet
 cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DEV_NAME}-headless
+  namespace: $NAMESPACE
+spec:
+  clusterIP: None
+  selector:
+    app: devspace
+    owner: $DEV_NAME
+  ports:
+  - name: code-server
+    port: 8080
+    targetPort: 8080
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: $DEV_NAME
   namespace: $NAMESPACE
 spec:
-  serviceName: $DEV_NAME
+  serviceName: ${DEV_NAME}-headless
   replicas: 1
   selector:
     matchLabels:
@@ -338,6 +393,11 @@ spec:
           value: "$DEVELOPER"
         - name: GIT_COMMITTER_EMAIL
           value: "$EMAIL"
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: code-server-auth
+              key: password
         volumeMounts:
         - name: workspace
           mountPath: /home/developer
@@ -408,6 +468,7 @@ kubectl wait --for=condition=ready pod \
 echo ""
 echo "Dev space provisioned successfully!"
 echo "URL: https://$DEV_NAME.devspaces.example.com"
+echo "Password: $CODE_SERVER_PASSWORD"
 echo "Namespace: $NAMESPACE"
 echo ""
 echo "Send this information to $EMAIL"
@@ -514,6 +575,37 @@ Implement scheduled backups with CronJob:
 
 ```yaml
 # backup-cronjob.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-sa
+  namespace: devspaces
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devspace-backup
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "persistentvolumeclaims"]
+  verbs: ["get", "list"]
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshots"]
+  verbs: ["create", "get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devspace-backup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devspace-backup
+subjects:
+- kind: ServiceAccount
+  name: backup-sa
+  namespace: devspaces
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -533,23 +625,25 @@ spec:
             - /bin/bash
             - -c
             - |
-              for pvc in $(kubectl get pvc -n devspaces -o name); do
-                name=$(basename $pvc)
-                snapshot="${name}-backup-$(date +%Y%m%d)"
+              for namespace in $(kubectl get namespaces -l type=devspace -o jsonpath='{.items[*].metadata.name}'); do
+                for pvc in $(kubectl get pvc -n "$namespace" -o name); do
+                  name=$(basename "$pvc")
+                  snapshot="${name}-backup-$(date +%Y%m%d)"
 
-                cat <<EOF | kubectl apply -f -
+                  cat <<EOF | kubectl apply -f -
               apiVersion: snapshot.storage.k8s.io/v1
               kind: VolumeSnapshot
               metadata:
                 name: $snapshot
-                namespace: devspaces
+                namespace: $namespace
               spec:
                 volumeSnapshotClassName: csi-snapclass
                 source:
                   persistentVolumeClaimName: $name
               EOF
 
-                echo "Created snapshot: $snapshot"
+                  echo "Created snapshot: $namespace/$snapshot"
+                done
               done
           restartPolicy: OnFailure
 ```
@@ -570,7 +664,8 @@ kubectl get namespaces -l type=devspace -o json | \
   while read ns; do
     echo ""
     echo "Namespace: $ns"
-    echo "Developer: $(kubectl get namespace $ns -o jsonpath='{.metadata.labels.developer}')"
+    developer=$(kubectl get namespace "$ns" -o jsonpath='{.metadata.labels.developer}')
+    echo "Developer: ${developer:-shared}"
 
     # CPU and memory usage
     kubectl top pods -n "$ns" 2>/dev/null || echo "  Metrics unavailable"
