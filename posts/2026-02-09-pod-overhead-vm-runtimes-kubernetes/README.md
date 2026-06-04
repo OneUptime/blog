@@ -1,22 +1,22 @@
-# How to Use Pod Overhead for Virtual Machine-Based Runtimes in Kubernetes
+# How to Use Pod Overhead for Sandboxed and VM-Based Runtimes in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Virtualization, Resource
 
-Description: Learn how to configure Pod Overhead in Kubernetes for VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application.
+Description: Learn how to configure Pod Overhead in Kubernetes for sandboxed and VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application.
 
 ---
 
-Virtual machine-based container runtimes provide stronger isolation than standard containers by running each pod in a lightweight VM. This additional security comes with overhead, consuming memory and CPU beyond what your application containers use. Pod Overhead lets Kubernetes account for this extra resource consumption.
+Sandboxed and virtual machine-based container runtimes provide stronger isolation than standard containers. Some runtimes, such as Kata Containers, run each pod in a lightweight VM, while others, such as gVisor, use a userspace application kernel to sandbox containers. This additional security comes with overhead, consuming memory and CPU beyond what your application containers use. Pod Overhead lets Kubernetes account for this extra resource consumption.
 
-Without Pod Overhead configuration, the scheduler might place too many VM-based pods on a node, leading to resource exhaustion. Understanding and configuring Pod Overhead ensures accurate resource accounting and stable cluster operations when using secure container runtimes.
+Without Pod Overhead configuration, the scheduler might place too many sandboxed pods on a node, leading to resource exhaustion. Understanding and configuring Pod Overhead ensures accurate resource accounting and stable cluster operations when using secure container runtimes.
 
 ## Understanding Pod Overhead
 
-When you run containers with standard runtimes like containerd or CRI-O, the only significant resource consumption comes from your application containers. But VM-based runtimes like Kata Containers, gVisor, or Firecracker create additional processes that consume resources.
+When you run containers with standard runtimes through containerd or CRI-O, the primary scheduled resource requests usually come from your application containers. But sandboxed and VM-based runtimes like Kata Containers, gVisor, or Firecracker create additional processes that consume resources.
 
-These runtimes might start a QEMU process, a VM kernel, or security sandbox processes. Each consumes memory and CPU. Pod Overhead tells Kubernetes about these additional resources so it can make better scheduling decisions.
+These runtimes might start a QEMU process, a VM kernel, a VMM process, or security sandbox processes. Each consumes memory and CPU. Pod Overhead tells Kubernetes about these additional resources so it can make better scheduling decisions.
 
 Without Pod Overhead, Kubernetes only considers container requests when scheduling. With Pod Overhead, it adds the overhead to the container requests, giving a more accurate picture of total pod resource needs.
 
@@ -102,8 +102,8 @@ kubectl get pod secure-pod -o jsonpath='{.spec.overhead}'
 ```
 
 Output:
-```json
-{"cpu":"250m","memory":"130Mi"}
+```text
+map[cpu:250m memory:130Mi]
 ```
 
 View the combined resource requirements:
@@ -137,7 +137,7 @@ kubectl wait --for=condition=Ready pod/test-overhead
 kubectl top pod test-overhead
 ```
 
-Note the total memory and CPU usage. Subtract your application's known consumption to estimate overhead.
+Use this as a quick workload-level signal. For overhead that runs outside the visible application containers, node-level measurements are usually more useful.
 
 For more accurate measurements, use node metrics:
 
@@ -145,12 +145,14 @@ For more accurate measurements, use node metrics:
 # Before creating pod
 kubectl top node worker-node-1
 
-# Create pod on specific node
+# Create pod on a node with a matching label
 kubectl run test-overhead --image=nginx --overrides='
 {
   "spec": {
     "runtimeClassName": "kata-containers",
-    "nodeName": "worker-node-1"
+    "nodeSelector": {
+      "kubernetes.io/hostname": "worker-node-1"
+    }
   }
 }'
 
@@ -158,7 +160,7 @@ kubectl run test-overhead --image=nginx --overrides='
 kubectl top node worker-node-1
 ```
 
-The difference in node resource consumption minus container requests approximates the overhead.
+The difference in node resource consumption minus the workload's measured container usage approximates the overhead.
 
 Repeat this with different workloads to find average overhead values. Use conservative (higher) estimates to avoid scheduling failures.
 
@@ -332,7 +334,10 @@ groups:
   rules:
   - alert: HighOverheadUsage
     expr: |
-      sum(kube_pod_overhead{resource="memory"}) by (node) > 4000000000
+      sum by (node) (
+        kube_pod_overhead_memory_bytes
+        * on(namespace, pod, uid) group_left(node) kube_pod_info
+      ) > 4000000000
     annotations:
       summary: "Node {{ $labels.node }} has high Pod Overhead"
 ```
@@ -409,7 +414,7 @@ Test Pod Overhead changes in development before applying to production. Changing
 
 Pod Overhead works with other Kubernetes features:
 
-Vertical Pod Autoscaler considers overhead:
+Vertical Pod Autoscaler can still be used with pods that have overhead, but VPA adjusts container resource requests and must be installed separately:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -422,12 +427,12 @@ spec:
     kind: Deployment
     name: secure-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 ```
 
-VPA recommendations include overhead in its calculations.
+Pod Overhead remains accounted for separately by Kubernetes through the RuntimeClass.
 
-Horizontal Pod Autoscaler uses metrics that reflect total resource usage (container plus overhead):
+Horizontal Pod Autoscaler resource metrics are based on pod resource metrics and the container requests in the target pods:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -467,16 +472,16 @@ Calculate maximum pod density with overhead:
 
 This reduction in density is the cost of improved isolation and security.
 
-Consider this trade-off when choosing runtimes. Standard containers offer higher density. VM-based runtimes offer better security with lower density.
+Consider this trade-off when choosing runtimes. Standard containers offer higher density. Sandboxed and VM-based runtimes offer better security with lower density.
 
-For cost-sensitive workloads, standard runtimes might be more economical. For security-sensitive workloads, the overhead cost is justified.
+For cost-sensitive workloads, standard runtimes might be more economical. For security-sensitive workloads, the overhead cost may be justified.
 
 ## Conclusion
 
-Pod Overhead ensures accurate resource accounting when using VM-based container runtimes. Configure overhead values in RuntimeClasses based on empirical measurements of your specific runtime and workloads.
+Pod Overhead ensures accurate resource accounting when using sandboxed and VM-based container runtimes. Configure overhead values in RuntimeClasses based on empirical measurements of your specific runtime and workloads.
 
 Use Pod Overhead to prevent resource exhaustion and scheduling failures in clusters running secure container runtimes. Monitor overhead impact on cluster capacity and adjust as needed.
 
-Combine Pod Overhead with resource quotas, autoscaling, and monitoring for comprehensive resource management. Balance the security benefits of VM-based runtimes against their overhead costs.
+Combine Pod Overhead with resource quotas, autoscaling, and monitoring for comprehensive resource management. Balance the security benefits of sandboxed and VM-based runtimes against their overhead costs.
 
 Master Pod Overhead configuration to run secure, isolated workloads efficiently in Kubernetes.
