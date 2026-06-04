@@ -86,9 +86,9 @@ monorepo/
 Build the API service with access to shared code:
 
 ```bash
-# Build from the services/api directory, with shared code as a named context
+# Build with services/api as the main context, with shared code as a named context
 docker buildx build \
-  --build-context shared=../../shared \
+  --build-context shared=./shared \
   -t api:latest \
   ./services/api
 ```
@@ -137,20 +137,20 @@ COPY --from=nginx-base /etc/nginx/nginx.conf /etc/nginx/nginx.conf.default
 COPY nginx.conf /etc/nginx/nginx.conf
 ```
 
-A more practical example pulls a binary from a tools image:
+A more practical example pulls a self-contained binary from a tools image:
 
 ```bash
 # Use a tools image as a context for grabbing a binary
 docker buildx build \
-  --build-context tools=docker-image://alpine/curl:latest \
+  --build-context tools=docker-image://your-org/build-tools:2026-02-08 \
   -t myapp:latest .
 ```
 
 ```dockerfile
 FROM alpine:3.19
 
-# Grab curl binary from the tools image context
-COPY --from=tools /usr/bin/curl /usr/local/bin/curl
+# Grab a self-contained binary from the tools image context
+COPY --from=tools /usr/local/bin/mytool /usr/local/bin/mytool
 
 # Continue building your app
 RUN apk add --no-cache ca-certificates
@@ -211,12 +211,10 @@ Now the build skips the `FROM alpine:3.19 AS base` stage entirely and uses `my-c
 
 ## Combining Multiple Contexts in Docker Compose
 
-Docker Compose supports multiple build contexts in the `build` configuration:
+Docker Compose 2.17.0 and later supports multiple build contexts in the `build` configuration:
 
 ```yaml
 # docker-compose.yml with multiple build contexts
-version: "3.9"
-
 services:
   api:
     build:
@@ -269,7 +267,7 @@ Named contexts must follow Docker's naming conventions:
 
 Multiple build contexts expand the attack surface of your builds. Each context is a source of files that end up in your image, so treat them with the same scrutiny as your main build context.
 
-Create a `.dockerignore` file in each context directory to exclude sensitive files:
+For local directory or Git contexts, create a `.dockerignore` file in each context directory to exclude sensitive files:
 
 ```text
 # .dockerignore in the shared config directory
