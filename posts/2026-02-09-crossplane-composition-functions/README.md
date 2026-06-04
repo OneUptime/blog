@@ -8,31 +8,31 @@ Description: Learn how to use Crossplane Composition Functions to implement adva
 
 ---
 
-Composition Functions extend Crossplane Compositions with programmatic logic. While patches handle simple field mappings, functions enable complex scenarios like conditional resource creation, external API calls, and advanced transformations. Functions run as containers during composition rendering, receiving desired state and returning modified state with additional resources or changed configurations.
+Composition Functions extend Crossplane Compositions with programmatic logic. While patches handle simple field mappings, functions enable complex scenarios like conditional resource creation, external API calls, and advanced transformations. Functions run as gRPC servers during composition rendering, receiving observed state, desired state, function input, and pipeline context, then returning updated desired state.
 
-Functions make Compositions programmable. Instead of declarative YAML with limited transformation capabilities, you write Go, Python, or any language to implement arbitrarily complex provisioning logic. This unlocks use cases like dynamic subnet allocation, conditional security groups based on environment, or integration with external CMDBs.
+Functions make Compositions programmable. Instead of declarative YAML with limited transformation capabilities, you write Go, Python, or any language that implements the function protocol to implement arbitrarily complex provisioning logic. This unlocks use cases like dynamic subnet allocation, conditional security groups based on environment, or integration with external CMDBs.
 
 ## Understanding Function Pipeline
 
 Crossplane executes functions in a pipeline:
 
-1. Crossplane reads the Composite Resource
+1. Crossplane observes the Composite Resource and any composed resources
 2. Runs each function in sequence
-3. Functions receive current state and return modified state
-4. Crossplane reconciles the final state
+3. Functions receive the current observed state and accumulated desired state, then return modified desired state
+4. Crossplane reconciles the final desired state
 
-Each function can add resources, modify existing ones, or query external systems.
+Each function can add resources, modify existing desired resources, update composite status, or query external systems.
 
 ## Installing Function Runtime
 
-Enable function support in Crossplane:
+Install Crossplane, then install the function packages you want to use. Recent Crossplane releases support composition functions without a separate composition-functions feature flag.
 
 ```bash
-# Install Crossplane with functions enabled
+# Install Crossplane
 
-helm upgrade crossplane crossplane-stable/crossplane \
+helm upgrade --install crossplane crossplane-stable/crossplane \
   -n crossplane-system \
-  --set args='{--enable-composition-functions}' \
+  --create-namespace \
   --wait
 ```
 
@@ -44,15 +44,15 @@ kubectl get crd functions.pkg.crossplane.io
 
 ## Creating a Basic Function
 
-Define a function that adds labels to resources:
+Define a function that adds cloud tags to supported managed resources:
 
 ```yaml
-apiVersion: pkg.crossplane.io/v1beta1
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-add-labels
+  name: function-tag-manager
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-add-labels:v0.1.0
+  package: xpkg.upbound.io/crossplane-contrib/function-tag-manager:v0.8.2
 ```
 
 Apply the function:
@@ -61,7 +61,7 @@ Apply the function:
 kubectl apply -f function.yaml
 
 # Wait for function to become healthy
-kubectl wait --for=condition=Healthy function/function-add-labels --timeout=300s
+kubectl wait --for=condition=Healthy function/function-tag-manager --timeout=300s
 
 # Check function status
 kubectl get functions
@@ -75,11 +75,11 @@ Reference functions in composition pipeline:
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: postgres-with-functions
+  name: bucket-with-functions
 spec:
   compositeTypeRef:
-    apiVersion: database.example.com/v1alpha1
-    kind: XPostgreSQLInstance
+    apiVersion: storage.example.com/v1alpha1
+    kind: XBucket
   mode: Pipeline
   pipeline:
   - step: patch-and-transform
@@ -89,70 +89,88 @@ spec:
       apiVersion: pt.fn.crossplane.io/v1beta1
       kind: Resources
       resources:
-      - name: rds-instance
+      - name: storage-bucket
         base:
-          apiVersion: database.aws.crossplane.io/v1beta1
-          kind: RDSInstance
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: Bucket
           spec:
             forProvider:
               region: us-west-2
-              engine: postgres
         patches:
         - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.storageGB
-          toFieldPath: spec.forProvider.allocatedStorage
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
   - step: add-tags
     functionRef:
-      name: function-add-labels
+      name: function-tag-manager
     input:
-      apiVersion: meta.fn.crossplane.io/v1alpha1
-      kind: Input
-      labels:
-        managed-by: crossplane
-        team: platform
+      apiVersion: tag-manager.fn.crossplane.io/v1beta1
+      kind: ManagedTags
+      addTags:
+      - type: FromValue
+        policy: Replace
+        tags:
+          managed-by: crossplane
+          team: platform
 ```
 
-Functions execute in order, each modifying the resource state.
+Functions execute in order, each modifying the accumulated desired state.
 
 ## Implementing Conditional Logic
 
-Use function-cond for conditional resource creation:
+Use function-cel-filter for conditional resource creation:
 
 ```yaml
-apiVersion: pkg.crossplane.io/v1beta1
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-cond
+  name: function-cel-filter
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-cond:v0.1.0
+  package: xpkg.upbound.io/crossplane-contrib/function-cel-filter:v0.2.0
 ---
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: database-conditional
+  name: bucket-conditional
 spec:
+  compositeTypeRef:
+    apiVersion: storage.example.com/v1alpha1
+    kind: XBucket
   mode: Pipeline
   pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: primary-bucket
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: Bucket
+          spec:
+            forProvider:
+              region: us-west-2
+      - name: archive-bucket
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: Bucket
+          spec:
+            forProvider:
+              region: us-west-2
   - step: conditional-resources
     functionRef:
-      name: function-cond
+      name: function-cel-filter
     input:
-      apiVersion: cond.fn.crossplane.io/v1beta1
-      kind: Input
-      conditions:
-      - condition: spec.parameters.highAvailability
-        resources:
-        - name: read-replica
-          base:
-            apiVersion: database.aws.crossplane.io/v1beta1
-            kind: RDSInstance
-            spec:
-              forProvider:
-                replicateSourceDB: rds-instance
-                region: us-west-2
+      apiVersion: cel.fn.crossplane.io/v1beta1
+      kind: Filters
+      filters:
+      - name: archive-bucket
+        expression: observed.composite.resource.spec.parameters.enableArchive == true
 ```
 
-The read replica only creates when highAvailability is true.
+The archive bucket only creates when enableArchive is true.
 
 ## Building Custom Functions
 
@@ -163,29 +181,34 @@ package main
 
 import (
     "context"
-    "fmt"
 
-    "github.com/crossplane/function-sdk-go/proto/v1beta1"
+    fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
     "github.com/crossplane/function-sdk-go/request"
+    "github.com/crossplane/function-sdk-go/resource"
+    "github.com/crossplane/function-sdk-go/resource/composed"
     "github.com/crossplane/function-sdk-go/response"
 )
 
-type Function struct{}
+type Function struct {
+    fnv1.UnimplementedFunctionRunnerServiceServer
+}
 
-func (f *Function) RunFunction(ctx context.Context, req *v1beta1.RunFunctionRequest) (*v1beta1.RunFunctionResponse, error) {
-    // Get composite resource
-    composite := req.GetObserved().GetComposite().GetResource()
-
-    // Create response
+func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     rsp := response.To(req, response.DefaultTTL)
 
-    // Read parameters from composite
-    params, err := composite.GetFieldPath("spec.parameters")
+    // Get composite resource
+    xr, err := request.GetObservedCompositeResource(req)
     if err != nil {
-        return rsp, err
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
-    environment := params.(map[string]interface{})["environment"].(string)
+    // Read parameters from composite
+    environment, err := xr.Resource.GetString("spec.parameters.environment")
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     // Determine instance size based on environment
     var instanceClass string
@@ -198,34 +221,35 @@ func (f *Function) RunFunction(ctx context.Context, req *v1beta1.RunFunctionRequ
         instanceClass = "db.t3.medium"
     }
 
+    desired, err := request.GetDesiredComposedResources(req)
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
+
     // Add resource with calculated instance class
-    rsp.AddDesiredComposedResource(&v1beta1.Resource{
-        Name: "rds-instance",
-        Resource: map[string]interface{}{
-            "apiVersion": "database.aws.crossplane.io/v1beta1",
-            "kind":       "RDSInstance",
-            "spec": map[string]interface{}{
-                "forProvider": map[string]interface{}{
-                    "dbInstanceClass": instanceClass,
-                    "engine":          "postgres",
-                    "region":          "us-west-2",
-                },
-            },
-        },
-    })
+    db := composed.New()
+    db.SetAPIVersion("database.example.com/v1alpha1")
+    db.SetKind("DatabaseInstance")
+    db.SetString("spec.engine", "postgres")
+    db.SetString("spec.region", "us-west-2")
+    db.SetString("spec.instanceClass", instanceClass)
+
+    desired[resource.Name("database-instance")] = &resource.DesiredComposed{Resource: db}
+
+    if err := response.SetDesiredComposedResources(rsp, desired); err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     return rsp, nil
-}
-
-func main() {
-    server.Serve(&Function{})
 }
 ```
 
 Package and deploy:
 
 ```dockerfile
-FROM golang:1.21 AS builder
+FROM golang:1.23 AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -o function .
@@ -236,15 +260,19 @@ ENTRYPOINT ["/function"]
 ```
 
 ```bash
-# Build and push
-docker build -t myregistry/my-function:v1 .
-docker push myregistry/my-function:v1
+# Build the runtime image, then embed it in a Crossplane function package
+docker build -t runtime .
+crossplane xpkg build \
+  --package-root=package \
+  --embed-runtime-image=runtime \
+  --package-file=my-function.xpkg
+crossplane xpkg push -f my-function.xpkg myregistry/my-function:v1
 ```
 
 Register the function:
 
 ```yaml
-apiVersion: pkg.crossplane.io/v1beta1
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: my-custom-function
@@ -257,37 +285,44 @@ spec:
 Create a function that fetches data from external APIs:
 
 ```go
-func (f *Function) RunFunction(ctx context.Context, req *v1beta1.RunFunctionRequest) (*v1beta1.RunFunctionResponse, error) {
+func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     rsp := response.To(req, response.DefaultTTL)
+
+    desired, err := request.GetDesiredComposedResources(req)
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     // Query external CMDB for network configuration
     httpClient := &http.Client{Timeout: 10 * time.Second}
     resp, err := httpClient.Get("https://cmdb.example.com/api/networks")
     if err != nil {
-        return rsp, err
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
     defer resp.Body.Close()
 
     var networks []Network
     if err := json.NewDecoder(resp.Body).Decode(&networks); err != nil {
-        return rsp, err
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
     // Use fetched data to configure resources
     for _, network := range networks {
-        rsp.AddDesiredComposedResource(&v1beta1.Resource{
-            Name: fmt.Sprintf("subnet-%s", network.ID),
-            Resource: map[string]interface{}{
-                "apiVersion": "ec2.aws.crossplane.io/v1beta1",
-                "kind":       "Subnet",
-                "spec": map[string]interface{}{
-                    "forProvider": map[string]interface{}{
-                        "cidrBlock": network.CIDR,
-                        "vpcId":     network.VpcID,
-                    },
-                },
-            },
-        })
+        subnet := composed.New()
+        subnet.SetAPIVersion("network.example.com/v1alpha1")
+        subnet.SetKind("Subnet")
+        subnet.SetString("spec.cidrBlock", network.CIDR)
+        subnet.SetString("spec.vpcID", network.VpcID)
+
+        desired[resource.Name("subnet-"+network.ID)] = &resource.DesiredComposed{Resource: subnet}
+    }
+
+    if err := response.SetDesiredComposedResources(rsp, desired); err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
     return rsp, nil
@@ -301,45 +336,53 @@ This enables dynamic infrastructure based on external state.
 Create a function for consistent resource naming:
 
 ```go
-func (f *Function) RunFunction(ctx context.Context, req *v1beta1.RunFunctionRequest) (*v1beta1.RunFunctionResponse, error) {
+func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     rsp := response.To(req, response.DefaultTTL)
 
-    composite := req.GetObserved().GetComposite().GetResource()
+    xr, err := request.GetObservedCompositeResource(req)
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
+
+    desired, err := request.GetDesiredComposedResources(req)
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     // Extract metadata
-    namespace := composite.GetString("metadata.namespace")
-    name := composite.GetString("metadata.name")
-    environment := composite.GetString("spec.parameters.environment")
+    namespace := xr.Resource.GetNamespace()
+    name := xr.Resource.GetName()
+    environment, err := xr.Resource.GetString("spec.parameters.environment")
+    if err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     // Generate consistent names
     bucketName := fmt.Sprintf("%s-%s-%s-data", environment, namespace, name)
     dbName := fmt.Sprintf("%s_%s_%s_db", environment, namespace, name)
 
     // Create S3 bucket with generated name
-    rsp.AddDesiredComposedResource(&v1beta1.Resource{
-        Name: "storage-bucket",
-        Resource: map[string]interface{}{
-            "apiVersion": "s3.aws.crossplane.io/v1beta1",
-            "kind":       "Bucket",
-            "metadata": map[string]interface{}{
-                "name": bucketName,
-            },
-        },
-    })
+    bucket := composed.New()
+    bucket.SetAPIVersion("s3.aws.m.upbound.io/v1beta1")
+    bucket.SetKind("Bucket")
+    bucket.SetAnnotations(map[string]string{"crossplane.io/external-name": bucketName})
 
     // Create database with generated name
-    rsp.AddDesiredComposedResource(&v1beta1.Resource{
-        Name: "database",
-        Resource: map[string]interface{}{
-            "apiVersion": "database.aws.crossplane.io/v1beta1",
-            "kind":       "RDSInstance",
-            "spec": map[string]interface{}{
-                "forProvider": map[string]interface{}{
-                    "dbName": dbName,
-                },
-            },
-        },
-    })
+    database := composed.New()
+    database.SetAPIVersion("database.example.com/v1alpha1")
+    database.SetKind("DatabaseInstance")
+    database.SetString("spec.dbName", dbName)
+
+    desired[resource.Name("storage-bucket")] = &resource.DesiredComposed{Resource: bucket}
+    desired[resource.Name("database")] = &resource.DesiredComposed{Resource: database}
+
+    if err := response.SetDesiredComposedResources(rsp, desired); err != nil {
+        response.Fatal(rsp, err)
+        return rsp, nil
+    }
 
     return rsp, nil
 }
@@ -355,6 +398,9 @@ kind: Composition
 metadata:
   name: multi-function-pipeline
 spec:
+  compositeTypeRef:
+    apiVersion: example.org/v1alpha1
+    kind: XPlatformResource
   mode: Pipeline
   pipeline:
   - step: generate-names
@@ -365,10 +411,10 @@ spec:
       name: function-network-lookup
   - step: conditional-resources
     functionRef:
-      name: function-cond
-  - step: add-labels
+      name: function-cel-filter
+  - step: add-tags
     functionRef:
-      name: function-add-labels
+      name: function-tag-manager
   - step: validate
     functionRef:
       name: function-validate
@@ -381,25 +427,25 @@ Each function processes output from the previous function.
 Test functions before deployment:
 
 ```bash
-# Create test input
-cat > test-input.yaml <<EOF
-apiVersion: v1beta1
-kind: RunFunctionRequest
-observed:
-  composite:
-    resource:
-      apiVersion: database.example.com/v1alpha1
-      kind: XPostgreSQLInstance
-      metadata:
-        name: test-db
-      spec:
-        parameters:
-          environment: production
-          storageGB: 100
-EOF
+# Run the function locally in development mode
+go run . --insecure
+```
 
-# Run function locally
-cat test-input.yaml | docker run -i myregistry/my-function:v1
+```yaml
+# In functions.yaml, tell the Crossplane CLI to use the local function runtime
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: my-custom-function
+  annotations:
+    render.crossplane.io/runtime: Development
+spec:
+  package: myregistry/my-function:v1
+```
+
+```bash
+# Render the XR and Composition locally
+crossplane composition render xr.yaml composition.yaml functions.yaml
 ```
 
 ## Monitoring Function Execution
@@ -410,8 +456,8 @@ Track function performance:
 # Check function pod logs
 kubectl logs -n crossplane-system -l pkg.crossplane.io/function=my-custom-function
 
-# Monitor function execution time
-kubectl get events --all-namespaces --field-selector reason=ComposeFailed
+# Monitor composition failures
+kubectl get events --all-namespaces --field-selector reason=ComposeResources
 
 # Check function health
 kubectl get functions
@@ -429,13 +475,13 @@ spec:
   groups:
   - name: composition-functions
     rules:
-    - alert: FunctionExecutionFailure
+    - alert: FunctionResponsesMissing
       expr: |
-        rate(crossplane_function_execution_errors_total[5m]) > 0
+        increase(function_run_function_request_total[5m]) > increase(function_run_function_response_total[5m])
       labels:
         severity: warning
       annotations:
-        summary: "Function {{ $labels.function }} failing"
+        summary: "Crossplane sent more function requests than it received responses for"
 ```
 
 ## Conclusion
