@@ -10,7 +10,7 @@ Description: Learn how to automatically provision TLS certificates for Kubernete
 
 The Kubernetes Gateway API is the next-generation routing API designed to replace Ingress. It provides more expressive and extensible traffic routing capabilities with role-oriented design. cert-manager integrates seamlessly with Gateway API to automatically provision and manage TLS certificates for Gateway listeners.
 
-In this guide, you'll learn how to configure cert-manager with Gateway API resources, automate certificate provisioning for HTTPRoute and TLSRoute, and implement advanced certificate management patterns for modern Kubernetes networking.
+In this guide, you'll learn how to configure cert-manager with Gateway API resources, automate certificate provisioning for Gateway listeners used by HTTPRoute and TLSRoute, and implement advanced certificate management patterns for modern Kubernetes networking.
 
 ## Understanding Gateway API and TLS
 
@@ -36,7 +36,7 @@ First, install the Gateway API CRDs:
 ```bash
 # Install Gateway API CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
 
 # Verify installation
 kubectl get crd gateways.gateway.networking.k8s.io
@@ -46,7 +46,7 @@ Install a Gateway controller (using Envoy Gateway as example):
 
 ```bash
 helm install eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.0.0 \
+  --version v1.8.0 \
   --namespace envoy-gateway-system \
   --create-namespace
 ```
@@ -54,14 +54,15 @@ helm install eg oci://docker.io/envoyproxy/gateway-helm \
 Ensure cert-manager is installed with Gateway API support:
 
 ```bash
-helm upgrade --install cert-manager jetstack/cert-manager \
+helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
-  --set "extraArgs={--enable-gateway-api}"
+  --set crds.enabled=true \
+  --set config.enableGatewayAPI=true
 ```
 
-The `--enable-gateway-api` flag enables cert-manager's Gateway API integration.
+The `config.enableGatewayAPI=true` value enables cert-manager's Gateway API integration. If you install the Gateway API CRDs after cert-manager has already started, restart the cert-manager Deployment so it detects the Gateway API resources.
 
 ## Configuring Automatic Certificate Provisioning
 
@@ -108,7 +109,7 @@ spec:
   - name: https
     protocol: HTTPS
     port: 443
-    hostname: "*.example.com"
+    hostname: "web.example.com"
     allowedRoutes:
       namespaces:
         from: All
@@ -149,9 +150,7 @@ spec:
   usages:
     - server auth
   dnsNames:
-    - example.com
-    - "*.example.com"
-    - api.example.com
+    - web.example.com
   issuerRef:
     name: letsencrypt-gateway
     kind: ClusterIssuer
@@ -186,45 +185,44 @@ spec:
       port: 80
 ```
 
-Since the Gateway has a wildcard certificate for `*.example.com`, this HTTPRoute automatically gets TLS protection.
+Since the Gateway has a certificate for `web.example.com`, this HTTPRoute automatically gets TLS protection.
 
-## Configuring Per-Route Certificates
+## Configuring Additional Gateway Certificates
 
-For more granular control, request certificates per route using annotations:
+For more granular control, add another HTTPS listener and certificate reference to the Gateway. cert-manager's Gateway integration creates certificates from annotated Gateway listeners, not from HTTPRoute annotations:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+kind: Gateway
 metadata:
-  name: api-route
-  namespace: production
+  name: external-gateway
+  namespace: envoy-gateway-system
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-gateway
 spec:
-  parentRefs:
-  - name: external-gateway
-    namespace: envoy-gateway-system
-    sectionName: https
-  hostnames:
-  - "api.example.com"
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /v1
-    backendRefs:
-    - name: api-service
-      port: 8080
+  gatewayClassName: eg
+  listeners:
+  - name: api-https
+    protocol: HTTPS
+    port: 443
+    hostname: "api.example.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: api-example-com-tls
 ```
 
-cert-manager will create a Certificate for `api.example.com` and update the Gateway listener to reference it.
+cert-manager will create a Certificate for `api.example.com` based on the annotated Gateway listener. The HTTPRoute for `api.example.com` can then attach to this listener with `sectionName: api-https`.
 
 ## Implementing TLS Passthrough with TLSRoute
 
 For services that handle TLS termination themselves, use TLS passthrough:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: secure-service-route
@@ -273,7 +271,7 @@ The backend service manages its own certificates, potentially issued by cert-man
 Use ReferenceGrant to allow cross-namespace certificate references:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-gateway-cert-ref
@@ -330,10 +328,8 @@ kubectl get certificate -A
 # Watch certificate renewal events
 kubectl get events --all-namespaces --field-selector reason=Renewed
 
-# Force immediate renewal
-kubectl annotate certificate example-com-tls \
-  -n envoy-gateway-system \
-  cert-manager.io/issue-temporary-certificate="true"
+# Force immediate renewal with the cert-manager CLI plugin
+kubectl cert-manager renew example-com-tls -n envoy-gateway-system
 ```
 
 Gateway controllers automatically reload certificates when secrets are updated.
