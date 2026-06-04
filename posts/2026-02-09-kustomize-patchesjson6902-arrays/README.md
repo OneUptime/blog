@@ -1,16 +1,16 @@
-# How to use Kustomize patchesJson6902 for array element modifications
+# How to use Kustomize JSON 6902 patches for array element modifications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kustomize, JSON Patch
 
-Description: Master Kustomize patchesJson6902 to perform precise array modifications in Kubernetes resources including adding, removing, and replacing specific array elements.
+Description: Master Kustomize JSON 6902 patches to perform precise array modifications in Kubernetes resources including adding, removing, and replacing specific array elements.
 
 ---
 
-While strategic merge patches work well for simple modifications, they struggle with precise array manipulations. The patchesJson6902 field uses JSON Patch (RFC 6902) to provide fine-grained control over array elements. This precision is essential when you need to add a specific container to an existing list, modify environment variables, or update volume mounts.
+While strategic merge patches work well for simple modifications, they struggle with precise array manipulations. Kustomize supports JSON Patch (RFC 6902) through the `patches` field to provide fine-grained control over array elements. Older kustomizations may use the deprecated `patchesJson6902` field for the same patch format. This precision is essential when you need to add a specific container to an existing list, modify environment variables, or update volume mounts.
 
-Understanding JSON Patch syntax unlocks powerful capabilities for modifying complex Kubernetes resources. Unlike strategic merge patches that replace entire arrays, JSON Patch lets you target specific array indexes or append elements without affecting others.
+Understanding JSON Patch syntax unlocks powerful capabilities for modifying complex Kubernetes resources. Unlike strategic merge patches, which merge some Kubernetes lists by merge key and replace others, JSON Patch lets you target specific array indexes or append elements without affecting others.
 
 ## Understanding JSON Patch operations
 
@@ -25,7 +25,7 @@ kind: Kustomization
 resources:
 - deployment.yaml
 
-patchesJson6902:
+patches:
 - target:
     group: apps
     version: v1
@@ -45,7 +45,7 @@ Append elements to arrays using the `-` index or specific positions:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -63,7 +63,7 @@ patchesJson6902:
 The `-` character appends to the array. For inserting at specific positions, use an index:
 
 ```yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -83,7 +83,7 @@ Add or replace specific environment variables without affecting others:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: api
@@ -104,7 +104,7 @@ patchesJson6902:
             key: url
 ```
 
-Each operation adds a new environment variable to the first container's env array.
+Each operation adds a new environment variable to the first container's existing env array.
 
 ## Replacing array elements
 
@@ -112,7 +112,7 @@ Replace specific array elements by index:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -126,7 +126,7 @@ patchesJson6902:
       value: 8080
 ```
 
-The replace operation requires the path to exist. Use add for paths that might not exist.
+The replace operation requires the path to exist. Use add for new object members when their parent path already exists.
 
 ## Removing array elements
 
@@ -134,7 +134,7 @@ Remove specific elements from arrays:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -156,7 +156,7 @@ Add volume mounts to containers:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -179,7 +179,7 @@ patchesJson6902:
         mountPath: /etc/config
 ```
 
-The second operation creates the volumeMounts array if it doesn't exist, then the third operation adds the mount.
+The second operation creates the volumeMounts array if it doesn't exist, then the third operation adds the mount. If `volumeMounts` already exists, skip the second operation because `add` replaces existing object members.
 
 ## Working with security context arrays
 
@@ -187,7 +187,7 @@ Modify capabilities in security contexts:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -216,7 +216,7 @@ Use test operations to make patches conditional:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -233,11 +233,11 @@ The replace only applies if the test passes. If replicas isn't 1, the entire pat
 
 ## Handling special characters in paths
 
-Escape special characters in JSON Pointer paths:
+Escape special characters in JSON Pointer paths. When the `annotations` map already exists, patch keys that contain `/` by escaping the slash:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Service
     name: webapp
@@ -257,7 +257,7 @@ Apply several modifications in sequence:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -296,7 +296,7 @@ Modify init containers independently from main containers:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -319,7 +319,7 @@ patchesJson6902:
               key: url
 ```
 
-This creates the initContainers array and adds a migration container.
+This creates the initContainers array and adds a migration container. If `initContainers` already exists, skip the first operation because `add` replaces existing object members.
 
 ## Using patch files for complex modifications
 
@@ -333,7 +333,7 @@ kind: Kustomization
 resources:
 - deployment.yaml
 
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -377,7 +377,7 @@ This indicates the array doesn't have an element at index 5. Check your base res
 Build and inspect output to verify patches:
 
 ```bash
-kustomize build . | yq eval '.items[] | select(.kind=="Deployment")' -
+kustomize build . | yq eval 'select(.kind == "Deployment")' -
 ```
 
 This shows the final Deployment after patches apply.
@@ -402,7 +402,7 @@ JSON Patch excels at precise array operations:
 
 ```yaml
 # JSON Patch - precise array insertion
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -416,11 +416,11 @@ Choose the right tool for your use case.
 
 ## Patching StatefulSets and DaemonSets
 
-JSON Patch works identically on all workload types:
+JSON Patch works the same way on workload manifests:
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
+patches:
 - target:
     kind: StatefulSet
     name: database
@@ -437,18 +437,18 @@ patchesJson6902:
               storage: 100Gi
 ```
 
-This adds a volume claim template to a StatefulSet.
+This adds a volume claim template to a StatefulSet manifest before creation. Kubernetes restricts updates to several StatefulSet fields on live objects, including `volumeClaimTemplates`, so this patch is not suitable for changing an already-created StatefulSet in place.
 
 ## Best practices for JSON Patch
 
-Use add operations for paths that might not exist. The add operation creates missing paths, while replace requires them to exist.
+Use add operations for new object members or array elements when the parent object or array already exists. The add operation can create the final object member, while replace requires the target path itself to exist.
 
 Test patches in non-production environments first. JSON Patch failures can prevent entire kustomizations from building.
 
 Keep patches focused and well-documented. Comment complex paths to explain what they modify:
 
 ```yaml
-patchesJson6902:
+patches:
 - target:
     kind: Deployment
     name: webapp
@@ -465,6 +465,6 @@ Use external patch files for multi-step modifications. This improves readability
 
 ## Conclusion
 
-Kustomize patchesJson6902 provides surgical precision for modifying Kubernetes resources, especially when working with arrays. The JSON Patch format gives you complete control over array elements, allowing insertions, deletions, and replacements at specific positions without affecting other elements.
+Kustomize JSON 6902 patches provide surgical precision for modifying Kubernetes resources, especially when working with arrays. The JSON Patch format gives you complete control over array elements, allowing insertions, deletions, and replacements at specific positions without affecting other elements.
 
 While strategic merge patches handle many common scenarios, JSON Patch becomes essential when you need to modify specific array elements or perform complex structural changes. By mastering the JSON Patch operations and understanding JSON Pointer syntax, you can handle any configuration modification requirement while maintaining clean, maintainable kustomizations.
