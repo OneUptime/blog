@@ -40,6 +40,8 @@ spec:
   - name: v1alpha1
     served: true
     storage: true
+    subresources:
+      status: {}
     schema:
       openAPIV3Schema:
         type: object
@@ -66,6 +68,18 @@ spec:
               suspend:
                 type: boolean
                 description: Suspend reconciliation
+              dependsOn:
+                type: array
+                description: HelmRelease dependencies that must be ready first
+                items:
+                  type: object
+                  required:
+                  - name
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
           status:
             type: object
             properties:
@@ -159,18 +173,20 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     if releaseExists {
         // Upgrade existing release
         if err := r.upgradeRelease(ctx, actionConfig, &helmRelease); err != nil {
-            r.updateStatus(ctx, &helmRelease, "Failed", err.Error())
+            _ = r.updateStatus(ctx, &helmRelease, "Failed", err.Error())
             return ctrl.Result{RequeueAfter: time.Minute}, err
         }
     } else {
         // Install new release
         if err := r.installRelease(ctx, actionConfig, &helmRelease); err != nil {
-            r.updateStatus(ctx, &helmRelease, "Failed", err.Error())
+            _ = r.updateStatus(ctx, &helmRelease, "Failed", err.Error())
             return ctrl.Result{RequeueAfter: time.Minute}, err
         }
     }
 
-    r.updateStatus(ctx, &helmRelease, "Deployed", "Release reconciled successfully")
+    if err := r.updateStatus(ctx, &helmRelease, "Deployed", "Release reconciled successfully"); err != nil {
+        return ctrl.Result{}, err
+    }
     return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
@@ -194,6 +210,7 @@ func (r *HelmReleaseReconciler) installRelease(ctx context.Context, cfg *action.
     client.ReleaseName = hr.Name
     client.Namespace = hr.Namespace
     client.Version = hr.Spec.Version
+    client.ChartPathOptions.RepoURL = hr.Spec.Repo
 
     // Load chart from repository
     chartPath, err := client.ChartPathOptions.LocateChart(hr.Spec.Chart, cli.New())
@@ -207,7 +224,7 @@ func (r *HelmReleaseReconciler) installRelease(ctx context.Context, cfg *action.
     }
 
     // Install with custom values
-    _, err = client.Run(chart, hr.Spec.Values)
+    _, err = client.RunWithContext(ctx, chart, hr.Spec.Values)
     return err
 }
 
@@ -215,6 +232,7 @@ func (r *HelmReleaseReconciler) upgradeRelease(ctx context.Context, cfg *action.
     client := action.NewUpgrade(cfg)
     client.Namespace = hr.Namespace
     client.Version = hr.Spec.Version
+    client.ChartPathOptions.RepoURL = hr.Spec.Repo
 
     chartPath, err := client.ChartPathOptions.LocateChart(hr.Spec.Chart, cli.New())
     if err != nil {
@@ -226,14 +244,14 @@ func (r *HelmReleaseReconciler) upgradeRelease(ctx context.Context, cfg *action.
         return err
     }
 
-    _, err = client.Run(hr.Name, chart, hr.Spec.Values)
+    _, err = client.RunWithContext(ctx, hr.Name, chart, hr.Spec.Values)
     return err
 }
 
-func (r *HelmReleaseReconciler) updateStatus(ctx context.Context, hr *chartsv1alpha1.HelmRelease, status, message string) {
+func (r *HelmReleaseReconciler) updateStatus(ctx context.Context, hr *chartsv1alpha1.HelmRelease, status, message string) error {
     hr.Status.ReleaseStatus = status
     hr.Status.LastAppliedRevision = hr.Spec.Version
-    r.Status().Update(ctx, hr)
+    return r.Status().Update(ctx, hr)
 }
 
 // SetupWithManager sets up the controller with the Manager
@@ -259,7 +277,7 @@ metadata:
   namespace: default
 spec:
   chart: nginx
-  version: 15.0.0
+  version: 25.0.0
   repo: https://charts.bitnami.com/bitnami
   values:
     replicaCount: 3
