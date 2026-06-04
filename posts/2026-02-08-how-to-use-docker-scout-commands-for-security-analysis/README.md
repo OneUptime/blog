@@ -57,16 +57,16 @@ Filter results to show only critical and high severity vulnerabilities:
 docker scout cves --only-severity critical,high my-app:latest
 ```
 
-Output results in JSON for processing in CI pipelines:
+Output results in SARIF JSON for processing in CI pipelines:
 
 ```bash
-docker scout cves --format json my-app:latest
+docker scout cves --format sarif --output scout-results.sarif.json my-app:latest
 ```
 
 Filter by a specific CVE ID to check if your image is affected:
 
 ```bash
-docker scout cves --cve-id CVE-2024-1234 my-app:latest
+docker scout cves --only-cve-id CVE-2024-1234 my-app:latest
 ```
 
 Scan a specific platform variant for multi-arch images:
@@ -109,15 +109,15 @@ docker scout quickview my-app:latest
 
 This prints a concise table showing the total number of vulnerabilities broken down by severity level. It is the fastest way to assess an image's health.
 
-Compare the quickview between your image and a base image:
+If Scout detects base image metadata, quickview can also show base image refresh and update recommendations:
 
 ```bash
-docker scout quickview my-app:latest --ref nginx:latest
+docker scout quickview my-app:latest
 ```
 
 ## Viewing Recommendations
 
-Scout does not just find problems - it suggests fixes. The `recommendations` command tells you which base image to upgrade to and which packages to update.
+Scout does not just find problems - it suggests fixes. The `recommendations` command tells you which base image refreshes or updates can reduce vulnerabilities or image size.
 
 Get upgrade recommendations for an image:
 
@@ -150,10 +150,10 @@ docker scout compare my-app:latest --to node:20-alpine
 See which layer introduced which packages and vulnerabilities:
 
 ```bash
-docker scout cves --format json my-app:latest | jq '.[] | select(.severity == "CRITICAL")'
+docker scout cves --locations --only-severity critical my-app:latest
 ```
 
-Understanding which Dockerfile instruction introduced a vulnerability helps you fix it. If a vulnerability comes from the base image, switch to a patched base. If it comes from your `RUN apt-get install` step, update the package.
+Understanding which layer or file path introduced a vulnerability helps you fix it. If a vulnerability comes from the base image, switch to a patched base. If it comes from your `RUN apt-get install` step, update the package.
 
 ## Setting Up Policies
 
@@ -188,29 +188,34 @@ fi
 
 echo "Scanning $IMAGE for vulnerabilities..."
 
-# Run scan and capture critical count
-CRITICAL_COUNT=$(docker scout cves "$IMAGE" --format json 2>/dev/null | \
-  jq '[.[] | select(.severity == "CRITICAL")] | length')
-
-HIGH_COUNT=$(docker scout cves "$IMAGE" --format json 2>/dev/null | \
-  jq '[.[] | select(.severity == "HIGH")] | length')
-
-echo "Found: $CRITICAL_COUNT critical, $HIGH_COUNT high"
-
 # Fail if any critical vulnerabilities exist
-if [ "$CRITICAL_COUNT" -gt 0 ]; then
-  echo "FAILED: $CRITICAL_COUNT critical vulnerabilities found"
+docker scout cves --only-severity critical --exit-code "$IMAGE"
+SCOUT_EXIT=$?
+
+if [ "$SCOUT_EXIT" -eq 0 ]; then
+  echo "PASSED: No critical vulnerabilities"
+elif [ "$SCOUT_EXIT" -eq 2 ]; then
+  echo "FAILED: Critical vulnerabilities found"
   docker scout cves --only-severity critical "$IMAGE"
   exit 1
+else
+  echo "FAILED: Docker Scout scan failed"
+  exit "$SCOUT_EXIT"
 fi
 
 # Warn on high vulnerabilities but don't fail
-if [ "$HIGH_COUNT" -gt 0 ]; then
-  echo "WARNING: $HIGH_COUNT high severity vulnerabilities found"
+docker scout cves --only-severity high --exit-code "$IMAGE" >/dev/null
+SCOUT_EXIT=$?
+
+if [ "$SCOUT_EXIT" -eq 2 ]; then
+  echo "WARNING: High severity vulnerabilities found"
   docker scout cves --only-severity high "$IMAGE"
+elif [ "$SCOUT_EXIT" -ne 0 ]; then
+  echo "FAILED: Docker Scout scan failed"
+  exit "$SCOUT_EXIT"
 fi
 
-echo "PASSED: No critical vulnerabilities"
+echo "PASSED: Scan completed"
 exit 0
 ```
 
@@ -243,7 +248,7 @@ jobs:
         run: docker scout quickview my-app:scan
 
       - name: Scout CVE scan
-        run: docker scout cves --only-severity critical,high my-app:scan
+        run: docker scout cves --only-severity critical --exit-code my-app:scan
 
       - name: Scout recommendations
         run: docker scout recommendations my-app:scan
