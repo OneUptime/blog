@@ -26,10 +26,12 @@ Enable NRI in containerd configuration.
 version = 2
 
 [plugins."io.containerd.nri.v1.nri"]
-  # Enable NRI
+  # Enable NRI. In containerd 2.0 and later, NRI is enabled by default.
   disable = false
+  # Allow externally launched NRI plugins to connect to the NRI socket
+  disable_connections = false
   # Plugin configuration directory
-  config_file = "/etc/nri/nri.conf"
+  plugin_config_path = "/etc/nri/conf.d"
   # Plugin binary directory
   plugin_path = "/opt/nri/plugins"
   # Socket path
@@ -39,7 +41,7 @@ version = 2
 Create NRI directories:
 
 ```bash
-sudo mkdir -p /etc/nri /opt/nri/plugins /var/run/nri
+sudo mkdir -p /etc/nri/conf.d /opt/nri/plugins /var/run/nri
 sudo chmod 755 /opt/nri/plugins
 ```
 
@@ -59,7 +61,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
 
     "github.com/containerd/nri/pkg/api"
@@ -70,11 +71,11 @@ type PriorityAdjuster struct {
     stub stub.Stub
 }
 
-func (p *PriorityAdjuster) Configure(config, runtime, version string) (stub.EventMask, error) {
+func (p *PriorityAdjuster) Configure(ctx context.Context, config, runtime, version string) (stub.EventMask, error) {
     log.Printf("Configuring plugin for runtime %s %s", runtime, version)
 
     // Subscribe to container creation events
-    return api.MustParseEventMask("RunPodSandbox,CreateContainer"), nil
+    return api.MustParseEventMask("CreateContainer"), nil
 }
 
 func (p *PriorityAdjuster) CreateContainer(ctx context.Context, pod *api.PodSandbox, container *api.Container) (*api.ContainerAdjustment, []*api.ContainerUpdate, error) {
@@ -95,9 +96,9 @@ func (p *PriorityAdjuster) CreateContainer(ctx context.Context, pod *api.PodSand
         adjustment.Linux = &api.LinuxContainerAdjustment{
             Resources: &api.LinuxResources{
                 Cpu: &api.LinuxCPU{
-                    Shares: proto.Uint64(2048),
-                    Quota:  proto.Int64(200000),
-                    Period: proto.Uint64(100000),
+                    Shares: api.UInt64(2048),
+                    Quota:  api.Int64(200000),
+                    Period: api.UInt64(100000),
                 },
             },
         }
@@ -108,9 +109,9 @@ func (p *PriorityAdjuster) CreateContainer(ctx context.Context, pod *api.PodSand
         adjustment.Linux = &api.LinuxContainerAdjustment{
             Resources: &api.LinuxResources{
                 Cpu: &api.LinuxCPU{
-                    Shares: proto.Uint64(512),
-                    Quota:  proto.Int64(50000),
-                    Period: proto.Uint64(100000),
+                    Shares: api.UInt64(512),
+                    Quota:  api.Int64(50000),
+                    Period: api.UInt64(100000),
                 },
             },
         }
@@ -121,7 +122,7 @@ func (p *PriorityAdjuster) CreateContainer(ctx context.Context, pod *api.PodSand
         adjustment.Linux = &api.LinuxContainerAdjustment{
             Resources: &api.LinuxResources{
                 Cpu: &api.LinuxCPU{
-                    Shares: proto.Uint64(1024),
+                    Shares: api.UInt64(1024),
                 },
             },
         }
