@@ -8,7 +8,7 @@ Description: Learn how to enable and configure ArgoCD server-side apply to elimi
 
 ---
 
-Kubernetes introduced server-side apply in version 1.16 as a more robust alternative to client-side apply. Traditional client-side apply can cause field ownership conflicts when multiple controllers modify the same resource. Server-side apply solves this by tracking field ownership at the API server level, making it possible for ArgoCD and other operators to safely manage different fields of the same resource.
+Kubernetes introduced server-side apply as a beta feature in version 1.16, and it has been stable since version 1.22. Traditional client-side apply can overwrite changes made by other controllers because it relies on the `kubectl.kubernetes.io/last-applied-configuration` annotation instead of API-server field ownership. Server-side apply solves this by tracking field ownership at the API server level, making it possible for ArgoCD and other operators to safely manage different fields of the same resource.
 
 This guide shows you how to configure ArgoCD to use server-side apply, understand its benefits, and implement it effectively in production environments.
 
@@ -17,7 +17,7 @@ This guide shows you how to configure ArgoCD to use server-side apply, understan
 Client-side apply (the default in ArgoCD) has limitations:
 
 - Last-write-wins behavior causes conflicts
-- Entire resource is owned by a single controller
+- No API-server field ownership tracking
 - Strategic merge patches can produce unexpected results
 - Difficult to coordinate with operators and controllers
 - Inaccurate diffs when fields are modified externally
@@ -32,27 +32,25 @@ Server-side apply provides:
 
 ## Enabling server-side apply in ArgoCD
 
-Enable server-side apply globally in the argocd-cm ConfigMap:
+Argo CD does not provide a documented `argocd-cm` setting that turns on server-side apply for every Application. Enable it in each Application spec or in the ApplicationSet template that generates your Applications.
+
+If you also want server-side diff globally, configure it separately in the `argocd-cmd-params-cm` ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  application.resourceTrackingMethod: annotation
-  resource.respectRBAC: "true"
-  # Enable server-side apply globally
-  resource.server-side-diff: "true"
+  # Enable server-side diff globally
+  controller.diff.server.side: "true"
 ```
 
-After updating the ConfigMap, restart ArgoCD components:
+After updating the ConfigMap, restart the ArgoCD application controller:
 
 ```bash
 kubectl rollout restart deployment argocd-application-controller -n argocd
-kubectl rollout restart deployment argocd-repo-server -n argocd
-kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 ## Enabling server-side apply per application
@@ -130,7 +128,7 @@ Server-side apply tracks which manager owns which fields. View field ownership:
 
 ```bash
 # View managed fields for a resource
-kubectl get deployment api-server -n production -o yaml
+kubectl get deployment api-server -n production -o yaml --show-managed-fields
 
 # Output shows managedFields section
 # managedFields:
@@ -138,8 +136,8 @@ kubectl get deployment api-server -n production -o yaml
 #   fieldsType: FieldsV1
 #   fieldsV1:
 #     f:metadata:
-#       f:annotations:
-#         f:kubectl.kubernetes.io/last-applied-configuration: {}
+#       f:labels:
+#         f:app: {}
 #     f:spec:
 #       f:replicas: {}
 #       f:template:
@@ -177,7 +175,7 @@ spec:
           averageUtilization: 70
 ```
 
-With server-side apply, ArgoCD manages most fields while HPA manages the `replicas` field. Configure ArgoCD to ignore HPA-managed fields:
+With server-side apply, field ownership is tracked, but ArgoCD will still apply fields that remain in Git. If an HPA should manage `replicas`, remove `replicas` from the Deployment manifest or configure ArgoCD to ignore and respect that field:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -197,6 +195,7 @@ spec:
   syncPolicy:
     syncOptions:
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: apps
       kind: Deployment
@@ -239,7 +238,7 @@ ArgoCD manages `spec` fields while the operator manages `status` fields without 
 
 ## Implementing force sync with server-side apply
 
-Sometimes you need to force ownership of fields. Use the Replace sync option:
+Sometimes you need to replace resources instead of applying patches. Use the Replace sync option:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -258,28 +257,23 @@ spec:
     namespace: production
   syncPolicy:
     syncOptions:
-      - ServerSideApply=true
-      - Replace=true  # Force field ownership
+      - Replace=true  # Use kubectl replace/create instead of apply
 ```
 
-The Replace option makes ArgoCD take ownership of all fields, potentially overwriting changes from other managers. Use this carefully.
+The Replace option takes precedence over `ServerSideApply=true` and makes ArgoCD use `kubectl replace` or `kubectl create`. This can be destructive because immutable field changes may require resource recreation. Use this carefully.
 
 ## Handling conflicts with server-side apply
 
-When conflicts occur, ArgoCD detects them:
+Kubernetes server-side apply normally rejects changes to fields owned by another manager unless the applier forces conflicts. Current Argo CD server-side apply uses `kubectl apply --server-side --force-conflicts`, so the safer operational pattern is to avoid applying fields that another controller should own.
 
 ```bash
 # View application status
 argocd app get my-app
 
-# Output shows conflict information
-# Sync Status:      OutOfSync
-# Health Status:    Healthy
-# Last Sync Result: Failed
-# Message:          Conflict: field spec.replicas owned by hpa-controller, cannot be modified by argocd-controller
+# Inspect sync results and messages
 ```
 
-Resolve conflicts by configuring ArgoCD to ignore the conflicting field:
+Avoid ownership fights by configuring ArgoCD to ignore the field during diff and sync:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -296,6 +290,7 @@ spec:
   syncPolicy:
     syncOptions:
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
 ```
 
 Or transfer ownership explicitly by removing the field from Git:
@@ -380,7 +375,7 @@ spec:
           image: myorg/api:v1.2.3
 ```
 
-Server-side apply ensures each wave applies cleanly without ownership conflicts.
+Server-side apply can be used with sync waves, but resource ordering and field ownership are still separate concerns.
 
 ## Implementing server-side apply with ApplicationSets
 
@@ -424,7 +419,7 @@ All generated applications use server-side apply automatically.
 
 ## Monitoring server-side apply operations
 
-Track server-side apply metrics:
+Track server-side apply operations:
 
 ```bash
 # Check sync operation details
@@ -452,9 +447,9 @@ Migrate existing applications gradually:
 1. **Enable server-side diff first:**
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 data:
-  resource.server-side-diff: "true"
+  controller.diff.server.side: "true"
 ```
 
 This makes ArgoCD use server-side apply for diffs but still uses client-side for actual syncs.
@@ -496,15 +491,13 @@ spec:
       - ServerSideApply=true
 ```
 
-5. **Enable globally after validation:**
+5. **Roll out through ApplicationSets after validation:**
 
 ```yaml
-# argocd-cm ConfigMap
-data:
-  application.resourceTrackingMethod: annotation
-  resource.server-side-diff: "true"
-  # Consider enabling globally
-  sync.defaultSyncOptions: ServerSideApply=true
+# ApplicationSet template
+syncPolicy:
+  syncOptions:
+    - ServerSideApply=true
 ```
 
 ## Troubleshooting server-side apply issues
@@ -519,11 +512,10 @@ Some fields cannot be changed after creation. Server-side apply makes this more 
 Error: field spec.clusterIP is immutable
 ```
 
-Solution: Delete and recreate the resource, or use Replace=true:
+Solution: Delete and recreate the resource, or use `Replace=true` when replacement is acceptable:
 
 ```yaml
 syncOptions:
-  - ServerSideApply=true
   - Replace=true
 ```
 
@@ -533,11 +525,11 @@ syncOptions:
 Error: conflict: field managed by other manager
 ```
 
-Solution: Add the field to ignoreDifferences or remove it from Git.
+Solution: Add the field to `ignoreDifferences` with `RespectIgnoreDifferences=true`, or remove it from Git.
 
 **Custom resource validation failures:**
 
-Server-side apply enforces CRD validation more strictly:
+Server-side apply can surface CRD validation failures during apply or server-side diff:
 
 ```text
 Error: validation failed: spec.replicas must be >= 1
@@ -547,7 +539,7 @@ Solution: Fix the manifest to match CRD requirements.
 
 ## Best practices for server-side apply
 
-1. **Use annotation-based tracking:** Server-side apply works best with annotation tracking
+1. **Use explicit tracking deliberately:** Choose annotation-based tracking when you need to avoid label ownership issues or label size constraints
 2. **Enable gradually:** Start with dev/staging before production
 3. **Document field ownership:** Clearly define which controller manages which fields
 4. **Monitor for conflicts:** Set up alerts for sync failures due to conflicts
