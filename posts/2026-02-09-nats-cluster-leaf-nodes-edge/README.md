@@ -63,15 +63,31 @@ data:
     leafnodes {
       port: 7422
       # Allow any leaf to connect
-      authorization {
-        timeout: 2
-      }
     }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: nats-hub
+  namespace: nats
+spec:
+  clusterIP: None
+  selector:
+    app: nats-hub
+  ports:
+  - name: client
+    port: 4222
+  - name: cluster
+    port: 6222
+  - name: leafnodes
+    port: 7422
+  - name: monitor
+    port: 8222
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-hub-lb
   namespace: nats
 spec:
   selector:
@@ -132,11 +148,12 @@ spec:
 Deploy the hub:
 
 ```bash
+kubectl create namespace nats
 kubectl apply -f nats-hub.yaml
 
 # Get the LoadBalancer IP
 
-HUB_IP=$(kubectl get svc nats-hub -n nats -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+HUB_IP=$(kubectl get svc nats-hub-lb -n nats -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "Hub cluster available at: $HUB_IP"
 ```
 
@@ -165,7 +182,6 @@ data:
       remotes = [
         {
           url: "nats://HUB_CLUSTER_IP:7422"
-          account: "edge-account"
         }
       ]
     }
@@ -236,7 +252,6 @@ leafnodes {
   remotes = [
     {
       url: "nats://leaf_user:secure_password@hub-cluster:7422"
-      account: "edge-account"
     }
   ]
 }
@@ -297,6 +312,9 @@ func main() {
     // Publish sensor data - routed to hub
     nc.Publish("sensors.temperature", []byte(`{"value": 72.5, "unit": "F"}`))
     nc.Publish("sensors.humidity", []byte(`{"value": 45, "unit": "%"}`))
+    if err := nc.Flush(); err != nil {
+        log.Fatal(err)
+    }
 
     log.Println("Published sensor data from edge")
 }
@@ -330,6 +348,7 @@ func sendCommandToEdge(edgeID string) {
 
     subject := fmt.Sprintf("commands.%s.restart", edgeID)
     nc.Publish(subject, []byte(`{"action": "restart", "service": "data-collector"}`))
+    nc.Flush()
 
     log.Printf("Sent command to edge: %s", edgeID)
 }
@@ -356,18 +375,15 @@ func handleCommands(edgeID string) {
 
 ## Handling Intermittent Connectivity
 
-Leaf nodes buffer messages during disconnections:
+Leaf nodes reconnect to the hub after disconnections. Core NATS messages are not persisted across a disconnected leaf link unless you use JetStream or another store-and-forward pattern:
 
 ```yaml
 leafnodes {
+  # Retry remote leaf connections every 5 seconds
+  reconnect: 5s
   remotes = [
     {
       url: "nats://hub-cluster:7422"
-      account: "edge-account"
-      # Retry connection every 5 seconds
-      reconnect_time_wait: 5s
-      # Maximum 10 reconnection attempts before backing off
-      max_reconnect_attempts: 10
     }
   ]
 }
@@ -400,11 +416,8 @@ func publishWithPersistence() {
 Check leaf node connections:
 
 ```bash
-# On hub cluster
-kubectl exec -n nats nats-hub-0 -- nats server report connections
-
 # View leaf node status
-curl http://HUB_IP:8222/leafz
+curl http://$HUB_IP:8222/leafz
 ```
 
 Create alerts for disconnected leaf nodes:
@@ -420,7 +433,7 @@ spec:
     rules:
     - alert: LeafNodeDisconnected
       expr: |
-        nats_leafnodes_count < 1
+        gnatsd_leafz_conn_nodes_total < 1
       for: 5m
       labels:
         severity: warning
@@ -429,7 +442,7 @@ spec:
 
     - alert: LeafNodeHighLatency
       expr: |
-        nats_leafnode_rtt_seconds > 0.5
+        gnatsd_leafz_conn_rtt > 0.5
       for: 10m
       labels:
         severity: warning
@@ -443,10 +456,10 @@ Create cascading leaf nodes:
 # Regional hub (itself a leaf to global hub)
 leafnodes {
   port: 7422  # Accept leaf connections
+  reconnect: 5s
   remotes = [
     {
       url: "nats://global-hub:7422"
-      account: "regional"
     }
   ]
 }
@@ -463,12 +476,10 @@ leafnodes {
   remotes = [
     {
       url: "nats://hub-cluster:7422"
-      # Only subscribe to these subjects from hub
-      deny_import: ">"
-      allow_import: ["commands.edge1.>", "config.>"]
-      # Only export these subjects to hub
-      deny_export: ">"
-      allow_export: ["sensors.>", "alerts.>"]
+      # Do not import these subjects from the hub
+      deny_imports: ["debug.>", "internal.>"]
+      # Do not export these local subjects to the hub
+      deny_exports: ["commands.>", "config.>"]
     }
   ]
 }
@@ -492,14 +503,14 @@ Common problems and solutions:
 
 ```bash
 # Check leaf node connection from hub
-kubectl exec -n nats nats-hub-0 -- nats server report leafnodes
+curl http://$HUB_IP:8222/leafz
 
 # View leaf node logs
 kubectl logs -n nats-edge deployment/nats-leaf -f
 
 # Test connectivity from leaf to hub
 kubectl exec -n nats-edge deployment/nats-leaf -- \
-  nats-server --signal reload
+  sh -c 'nc -vz HUB_CLUSTER_IP 7422'
 
 # Check route configuration
 kubectl exec -n nats nats-hub-0 -- cat /etc/nats/nats.conf | grep -A 10 leafnodes
