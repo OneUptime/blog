@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, TLS, Networking
 
-Description: Learn how to use cert-manager annotations on Ingress resources to automatically request and manage TLS certificates without creating separate Certificate objects.
+Description: Learn how to use cert-manager annotations on Ingress resources to automatically request and manage TLS certificates without writing separate Certificate manifests.
 
 ---
 
-cert-manager can automatically create Certificate resources based on Ingress annotations. This approach simplifies certificate management by consolidating Ingress and certificate configuration in a single resource. When you create or update an Ingress with cert-manager annotations, it automatically handles certificate issuance and renewal without additional Certificate objects.
+cert-manager can automatically create Certificate resources based on Ingress annotations. This approach simplifies certificate management by consolidating Ingress and certificate configuration in a single resource. When you create or update an Ingress with cert-manager annotations, it automatically handles certificate issuance and renewal through generated Certificate resources.
 
 This annotation-driven approach reduces configuration duplication, simplifies application deployment, and provides a more intuitive workflow for developers who think in terms of Ingresses rather than certificates.
 
@@ -40,10 +40,8 @@ metadata:
   annotations:
     # Tell cert-manager to manage this certificate
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-
-    # Ingress class
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -92,11 +90,9 @@ metadata:
     # Reference namespace-scoped Issuer
     cert-manager.io/issuer: "production-issuer"
 
-    # Optionally specify issuer kind explicitly
-    cert-manager.io/issuer-kind: "Issuer"
-
-    kubernetes.io/ingress.class: "nginx"
+    # issuer-kind and issuer-group are only needed for out-of-tree issuers
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.production.example.com
@@ -129,8 +125,8 @@ metadata:
   namespace: production
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -186,8 +182,8 @@ metadata:
   namespace: production
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   # Certificate for main app
   - hosts:
@@ -257,10 +253,8 @@ metadata:
 
     # Common name for certificate
     cert-manager.io/common-name: "app.example.com"
-
-    # Ingress class
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -294,8 +288,8 @@ metadata:
   annotations:
     # Use staging issuer for development
     cert-manager.io/cluster-issuer: "letsencrypt-staging"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.dev.example.com
@@ -321,8 +315,8 @@ metadata:
   annotations:
     # Use production issuer
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -342,7 +336,7 @@ spec:
 
 ## Ingress Annotations with ACME DNS-01
 
-Configure DNS-01 challenges via annotations:
+Use an issuer configured for DNS-01 challenges with an annotated Ingress:
 
 ```yaml
 # dns01-ingress.yaml
@@ -356,9 +350,8 @@ metadata:
 
     # ACME challenge type is determined by issuer configuration
     # No need to specify challenge type in Ingress annotations
-
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -390,12 +383,8 @@ kind: Ingress
 metadata:
   name: manual-cert-ingress
   namespace: production
-  annotations:
-    # Disable cert-manager automatic certificate creation
-    cert-manager.io/issuer: ""
-
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -414,7 +403,7 @@ spec:
               number: 80
 ```
 
-Use this when you manage Certificate resources separately from Ingress resources.
+Omit cert-manager issuer annotations when you manage Certificate resources separately from Ingress resources.
 
 ## Ingress Controller Specific Annotations
 
@@ -431,13 +420,13 @@ metadata:
   namespace: production
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 
     # nginx-specific annotations
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -514,7 +503,7 @@ Common issues:
 - Missing or incorrect issuer annotation
 - TLS section missing in Ingress spec
 - Referenced issuer doesn't exist
-- Ingress controller not compatible with cert-manager
+- Ingress controller not reading the referenced TLS secret or ACME solver Ingress class mismatch
 
 ## Migrating from Manual Certificates to Annotations
 
@@ -542,6 +531,7 @@ metadata:
   name: app-ingress
   namespace: production
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -566,8 +556,8 @@ metadata:
   namespace: production
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
