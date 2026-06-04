@@ -371,10 +371,9 @@ metadata:
   namespace: batch-processing
 spec:
   hard:
+    pods: "50"
     requests.cpu: "100"
     requests.memory: "200Gi"
-    requests.nvidia.com/gpu: "4"
-    persistentvolumeclaims: "20"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -399,7 +398,7 @@ kubectl get pods --all-namespaces \
   --field-selector=status.phase=Pending \
   -o json | \
   jq -r '.items[] |
-    select(.spec.priorityClassName | contains("batch")) |
+    select((.spec.priorityClassName // "") | contains("batch")) |
     {namespace: .metadata.namespace,
      name: .metadata.name,
      priority: .spec.priorityClassName,
@@ -412,7 +411,7 @@ kubectl get pods --all-namespaces \
   --field-selector=status.phase=Running \
   -o json | \
   jq -r '.items[] |
-    select(.spec.priorityClassName | contains("batch")) |
+    select((.spec.priorityClassName // "") | contains("batch")) |
     {namespace: .metadata.namespace,
      name: .metadata.name,
      priority: .spec.priorityClassName}' | \
@@ -437,7 +436,7 @@ data:
     while true; do
       kubectl get pods --all-namespaces -o json | \
         jq -r '.items[] |
-          select(.spec.priorityClassName | contains("batch-")) |
+          select((.spec.priorityClassName // "") | contains("batch-")) |
           select(.status.phase == "Pending") |
           {
             name: .metadata.name,
@@ -465,7 +464,7 @@ data:
 
 ## Cluster Autoscaler Integration
 
-Configure Cluster Autoscaler to respond to non-preempting job demands:
+If Cluster Autoscaler is already running with the priority expander enabled, configure its node group preferences for non-preempting job demands:
 
 ```yaml
 # cluster-autoscaler-config.yaml
@@ -484,7 +483,7 @@ data:
       - .*general-purpose.*
 ```
 
-The autoscaler will add nodes when non-preempting jobs are pending, giving them resources without disrupting existing workloads.
+With Cluster Autoscaler enabled, pending non-preempting jobs can trigger scale-up when adding a node would make them schedulable. The priority expander ConfigMap controls which matching node group is preferred during scale-up; enable the expander on Cluster Autoscaler with `--expander=priority`.
 
 ## Best Practices
 
@@ -546,7 +545,13 @@ kind: Deployment
 metadata:
   name: payment-api
 spec:
+  selector:
+    matchLabels:
+      app: payment-api
   template:
+    metadata:
+      labels:
+        app: payment-api
     spec:
       priorityClassName: production-high  # Preempting
       containers:
@@ -570,4 +575,3 @@ spec:
 This gives you the flexibility to protect running services while still prioritizing important batch work.
 
 Non-preempting priority classes provide the perfect balance for batch workloads: they get scheduled quickly when resources are available, but they never disrupt running services. This makes them ideal for data processing, analytics, ML training, and other batch operations that are important but not urgent enough to justify preempting production workloads.
-
