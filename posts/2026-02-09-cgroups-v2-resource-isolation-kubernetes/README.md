@@ -70,7 +70,7 @@ stat -fc %T /sys/fs/cgroup/
 
 ## Configuring containerd for cgroups v2
 
-Kubernetes uses containerd as the container runtime. Configure it to use cgroups v2:
+If your cluster uses containerd as the container runtime, configure it to use the systemd cgroup driver:
 
 ```toml
 # /etc/containerd/config.toml
@@ -81,10 +81,6 @@ version = 2
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
   SystemdCgroup = true
-
-[plugins."io.containerd.grpc.v1.cri"]
-  # Enable cgroup v2 support
-  enable_cdi = true
 ```
 
 Restart containerd to apply changes:
@@ -107,11 +103,12 @@ cgroupsPerQOS: true
 enforceNodeAllocatable:
   - pods
 featureGates:
-  CgroupsV2: true
   MemoryQoS: true
+memoryReservationPolicy: TieredReservation
+memoryThrottlingFactor: 0.9
 ```
 
-The `MemoryQoS` feature gate enables cgroups v2-specific memory quality of service features. Restart kubelet:
+The kubelet automatically detects cgroups v2 when the operating system uses it. The `MemoryQoS` feature gate enables cgroups v2-specific memory quality of service features, and `memoryReservationPolicy: TieredReservation` enables memory protection for Guaranteed and Burstable pods. Restart kubelet:
 
 ```bash
 sudo systemctl restart kubelet
@@ -123,9 +120,10 @@ sudo systemctl status kubelet
 PSI provides real-time metrics about resource contention. cgroups v2 exposes PSI metrics for CPU, memory, and I/O:
 
 ```bash
-# View memory pressure for a pod's cgroup
-POD_CGROUP=$(crictl inspect <container-id> | jq -r '.info.runtimeSpec.linux.cgroupsPath')
-cat /sys/fs/cgroup/$POD_CGROUP/memory.pressure
+# View memory pressure for a container's cgroup
+PID=$(crictl inspect <container-id> | jq -r '.info.pid')
+CGROUP_PATH=$(awk -F: '$1 == "0" {print $3}' /proc/$PID/cgroup)
+cat /sys/fs/cgroup$CGROUP_PATH/memory.pressure
 
 # Output shows time spent waiting for memory:
 # some avg10=0.00 avg60=0.00 avg300=0.00 total=12345
@@ -177,30 +175,27 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: protected-app
-  annotations:
-    # These translate to cgroup v2 memory controls
-    io.kubernetes.cri.memory-swap-max: "2Gi"
 spec:
   containers:
   - name: app
     image: myapp:latest
     resources:
       requests:
-        memory: "1Gi"  # Sets memory.min
+        memory: "1Gi"  # Used for memory protection when MemoryQoS tiered reservation is enabled
       limits:
         memory: "2Gi"  # Sets memory.max
 ```
 
-The kubelet maps resource requests and limits to cgroups v2 settings:
+With the MemoryQoS feature gate enabled, the kubelet maps resource requests and limits to cgroups v2 settings:
 
-- **memory.min**: Protected memory (based on requests)
-- **memory.low**: Best-effort protected memory
-- **memory.high**: Throttling threshold
+- **memory.min**: Hard protected memory for Guaranteed pods when `memoryReservationPolicy: TieredReservation` is set
+- **memory.low**: Soft protected memory for Burstable pods when `memoryReservationPolicy: TieredReservation` is set
+- **memory.high**: Throttling threshold for Burstable pods
 - **memory.max**: Hard limit (based on limits)
 
 ## Configuring I/O Priority and Limits
 
-cgroups v2 provides unified I/O control through io.weight and io.max:
+cgroups v2 provides unified I/O control through io.weight and io.max, but Kubernetes does not expose native pod-level fields for those cgroup settings:
 
 ```yaml
 # pod-with-io-priority.yaml
@@ -219,12 +214,12 @@ spec:
         ephemeral-storage: "20Gi"
 ```
 
-For more granular control, configure I/O weights in pod annotations (requires cluster support):
+For more granular control, use runtime-specific configuration, a custom node agent, or a platform extension that writes `io.weight` and `io.max` on the node:
 
 ```yaml
 metadata:
   annotations:
-    io.kubernetes.cri.io-weight: "500"  # Range: 1-10000, default 100
+    example.com/io-weight: "500"  # Platform-specific; not interpreted by upstream Kubernetes
 ```
 
 ## Monitoring cgroups v2 Metrics
@@ -234,10 +229,11 @@ Access detailed cgroup v2 metrics for containers:
 ```bash
 # Find container's cgroup path
 CONTAINER_ID=$(crictl ps --name myapp -q)
-CGROUP_PATH=$(crictl inspect $CONTAINER_ID | jq -r '.info.runtimeSpec.linux.cgroupsPath')
+PID=$(crictl inspect $CONTAINER_ID | jq -r '.info.pid')
+CGROUP_PATH=$(awk -F: '$1 == "0" {print $3}' /proc/$PID/cgroup)
 
 # View comprehensive memory stats
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.stat
+cat /sys/fs/cgroup$CGROUP_PATH/memory.stat
 
 # Key metrics include:
 # anon - Anonymous memory (not file-backed)
@@ -253,10 +249,10 @@ cat /sys/fs/cgroup/$CGROUP_PATH/memory.stat
 # pgmajfault - Major page faults
 
 # View current memory usage
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.current
+cat /sys/fs/cgroup$CGROUP_PATH/memory.current
 
 # View memory events (OOM kills, etc.)
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.events
+cat /sys/fs/cgroup$CGROUP_PATH/memory.events
 ```
 
 ## Implementing CPU Isolation
@@ -277,7 +273,7 @@ spec:
       requests:
         cpu: "2000m"
       limits:
-        cpu: "4000m"
+        cpu: "2000m"
   # Requires kubelet cpuManagerPolicy: static
   # and Guaranteed QoS (requests == limits)
 ```
@@ -334,7 +330,7 @@ spec:
         cpu: "2000m"
 ```
 
-With cgroups v2, QoS classes map to different memory.min values, providing better protection for Guaranteed pods during memory pressure.
+With MemoryQoS and `memoryReservationPolicy: TieredReservation`, QoS classes map to different cgroup v2 memory protection settings: Guaranteed pods use `memory.min`, while Burstable pods use `memory.low`.
 
 ## Debugging cgroups v2 Issues
 
@@ -350,22 +346,23 @@ NAMESPACE=${2:-default}
 CONTAINER_ID=$(kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.status.containerStatuses[0].containerID}' | cut -d'/' -f3)
 
 # Get cgroup path
-CGROUP_PATH=$(crictl inspect $CONTAINER_ID | jq -r '.info.runtimeSpec.linux.cgroupsPath')
+PID=$(crictl inspect $CONTAINER_ID | jq -r '.info.pid')
+CGROUP_PATH=$(awk -F: '$1 == "0" {print $3}' /proc/$PID/cgroup)
 
 echo "=== Memory Stats ==="
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.stat
+cat /sys/fs/cgroup$CGROUP_PATH/memory.stat
 
 echo -e "\n=== Memory Current ==="
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.current
+cat /sys/fs/cgroup$CGROUP_PATH/memory.current
 
 echo -e "\n=== Memory Pressure ==="
-cat /sys/fs/cgroup/$CGROUP_PATH/memory.pressure
+cat /sys/fs/cgroup$CGROUP_PATH/memory.pressure
 
 echo -e "\n=== CPU Stats ==="
-cat /sys/fs/cgroup/$CGROUP_PATH/cpu.stat
+cat /sys/fs/cgroup$CGROUP_PATH/cpu.stat
 
 echo -e "\n=== I/O Stats ==="
-cat /sys/fs/cgroup/$CGROUP_PATH/io.stat
+cat /sys/fs/cgroup$CGROUP_PATH/io.stat
 ```
 
 Save this as `cgroup-debug.sh` and run:
@@ -381,7 +378,7 @@ When migrating from cgroups v1 to v2, be aware of these changes:
 
 1. **Memory accounting**: More accurate but shows higher usage
 2. **OOM behavior**: OOM killer operates differently with memory.min protection
-3. **CPU shares**: Converted to cpu.weight (shares/1024 * 10000)
+3. **CPU shares**: Converted to cpu.weight on a 1-10000 scale with a default weight of 100
 4. **I/O throttling**: Different syntax for io.max vs blkio.throttle
 
 Test thoroughly in staging before migrating production clusters.
