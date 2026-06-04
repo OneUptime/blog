@@ -14,7 +14,7 @@ MinIO is a high-performance, S3-compatible object storage system designed for cl
 
 MinIO distributed mode requires at least 4 drives to enable erasure coding. The system divides objects into data and parity blocks distributed across drives, allowing recovery from drive failures. With 16 drives, MinIO tolerates up to 8 drive failures while maintaining data availability.
 
-For production deployments, use the distributed mode with multiple nodes, each contributing multiple drives. This configuration provides both drive-level and node-level fault tolerance. MinIO automatically handles data distribution, rebalancing, and healing without manual intervention.
+For production deployments, use the distributed mode with multiple nodes, each contributing multiple drives. This configuration provides both drive-level and node-level fault tolerance. MinIO automatically handles data distribution and healing. When you add a new server pool, you can run a manual rebalance to redistribute existing objects across pools.
 
 ## Deploying MinIO with Operator
 
@@ -23,7 +23,7 @@ The MinIO Operator simplifies deployment and management with Kubernetes custom r
 ```bash
 # Install MinIO Operator
 
-kubectl apply -f https://github.com/minio/operator/releases/latest/download/operator.yaml
+kubectl apply -k "github.com/minio/operator?ref=v7.1.1"
 
 # Verify operator installation
 kubectl get pods -n minio-operator
@@ -39,7 +39,11 @@ metadata:
   name: minio
   namespace: minio-tenant
 spec:
-  image: quay.io/minio/minio:RELEASE.2024-01-31T20-20-33Z
+  image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+  configuration:
+    name: storage-configuration
+  users:
+  - name: storage-user
   pools:
   - servers: 4
     name: pool-0
@@ -63,11 +67,9 @@ spec:
         cpu: 2000m
   mountPath: /export
   requestAutoCert: false
-  console:
-    image: quay.io/minio/console:v0.31.0
-    replicas: 2
-    consoleSecret:
-      name: console-secret
+  serviceMetadata:
+    minioServiceLabels:
+      app: minio
   env:
   - name: MINIO_BROWSER
     value: "on"
@@ -80,8 +82,18 @@ Create namespace and deploy:
 ```bash
 kubectl create namespace minio-tenant
 
-# Create console credentials secret
-kubectl create secret generic console-secret \
+cat > tenant-config.env <<EOF
+export MINIO_ROOT_USER="minioadmin"
+export MINIO_ROOT_PASSWORD="minioadmin123"
+export MINIO_BROWSER="on"
+EOF
+
+kubectl create secret generic storage-configuration \
+  --from-file=config.env=tenant-config.env \
+  -n minio-tenant
+
+# Create initial tenant user credentials secret
+kubectl create secret generic storage-user \
   --from-literal=CONSOLE_ACCESS_KEY=admin \
   --from-literal=CONSOLE_SECRET_KEY=admin123 \
   -n minio-tenant
@@ -132,7 +144,7 @@ spec:
     spec:
       containers:
       - name: minio
-        image: quay.io/minio/minio:RELEASE.2024-01-31T20-20-33Z
+        image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
         args:
         - server
         - http://minio-{0...3}.minio.minio.svc.cluster.local/data{1...4}
@@ -230,7 +242,7 @@ spec:
           service:
             name: minio
             port:
-              number: 9000
+              number: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -252,7 +264,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: minio-tenant-console
+            name: minio-console
             port:
               number: 9090
 ```
@@ -349,8 +361,8 @@ spec:
     matchLabels:
       app: minio
   endpoints:
-  - port: api
-    path: /minio/v2/metrics/cluster
+  - port: http-minio
+    path: /minio/metrics/v3
     interval: 30s
 ```
 
@@ -358,17 +370,17 @@ Key metrics to monitor:
 
 ```promql
 # Total storage used
-minio_cluster_capacity_usable_total_bytes - minio_cluster_capacity_usable_free_bytes
+minio_cluster_health_capacity_usable_total_bytes - minio_cluster_health_capacity_usable_free_bytes
 
 # Request rate
-rate(minio_s3_requests_total[5m])
+rate(minio_api_requests_total[5m])
 
 # Error rate
-rate(minio_s3_errors_total[5m])
+rate(minio_api_requests_errors_total[5m])
 
 # Drive health
-minio_cluster_drive_online_total
-minio_cluster_drive_offline_total
+minio_cluster_health_drives_online_count
+minio_cluster_health_drives_offline_count
 ```
 
 ## Backup and Disaster Recovery
@@ -423,7 +435,7 @@ spec:
         storageClassName: fast-ssd
 ```
 
-MinIO automatically balances data across pools.
+New objects use the expanded capacity, and existing objects can be redistributed with `mc admin rebalance`.
 
 ## Performance Tuning
 
