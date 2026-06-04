@@ -34,7 +34,7 @@ Set connect_timeout based on network conditions. 1-5 seconds is typical for in-c
 
 ## Request Timeout
 
-Maximum time for the entire request (including retries):
+Maximum time for Envoy to receive the complete upstream response after the downstream request has been fully received. This includes retries:
 
 ```yaml
 routes:
@@ -62,8 +62,13 @@ clusters:
 - name: backend_service
   connect_timeout: 5s
   type: STRICT_DNS
-  common_http_protocol_options:
-    idle_timeout: 60s
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      common_http_protocol_options:
+        idle_timeout: 60s
+      explicit_http_config:
+        http_protocol_options: {}
   load_assignment:
     cluster_name: backend_service
     endpoints:
@@ -79,7 +84,7 @@ Idle timeout prevents keeping connections open indefinitely when not in use.
 
 ## Stream Idle Timeout
 
-Timeout for individual HTTP streams (requests on HTTP/2 connections):
+Timeout for individual HTTP streams. Envoy also maps HTTP/1 requests to streams internally:
 
 ```yaml
 http_connection_manager:
@@ -114,7 +119,7 @@ routes:
       per_try_timeout: 10s
 ```
 
-Each of the 3 retries gets 10 seconds, but the entire request must complete within 30 seconds.
+The initial attempt and each of the 3 retries get 10 seconds, but the entire request must complete within 30 seconds.
 
 ## HTTP/2 Ping Timeout
 
@@ -125,10 +130,14 @@ clusters:
 - name: backend_service
   connect_timeout: 5s
   type: STRICT_DNS
-  http2_protocol_options:
-    connection_keepalive:
-      interval: 30s
-      timeout: 10s
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options:
+          connection_keepalive:
+            interval: 30s
+            timeout: 10s
   load_assignment:
     cluster_name: backend_service
     endpoints:
@@ -154,11 +163,11 @@ http_connection_manager:
     max_connection_duration: 3600s
 ```
 
-max_connection_duration closes connections after 1 hour regardless of activity.
+max_connection_duration starts draining connections after 1 hour. Active streams are allowed to complete before the connection closes.
 
-## Grpc Timeout
+## gRPC Timeout
 
-Pass gRPC deadline to upstream services:
+Honor the incoming gRPC timeout header for stream duration, capped at 60 seconds:
 
 ```yaml
 routes:
