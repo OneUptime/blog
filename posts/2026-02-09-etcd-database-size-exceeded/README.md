@@ -29,8 +29,8 @@ Error from server: etcdserver: mvcc: database space exceeded
 kubectl apply -f deployment.yaml
 Error from server: etcdserver: mvcc: database space exceeded
 
-# Cluster appears frozen
-kubectl get pods
+# Write operations appear frozen
+kubectl scale deployment/web --replicas=3
 Error from server: etcdserver: mvcc: database space exceeded
 ```
 
@@ -38,14 +38,15 @@ The cluster becomes read-only. You can still query existing resources, but any o
 
 ## Checking etcd Database Size
 
-First, determine the current database size and quota utilization.
+First, determine the current database size, then compare it with the configured quota.
 
 ```bash
-# For managed Kubernetes (check control plane logs)
-kubectl logs -n kube-system etcd-master-node
+# For managed Kubernetes, use your provider's control plane logs.
+# etcd pods are usually not exposed through kubectl.
 
-# For kubeadm clusters, access etcd directly
-kubectl exec -it -n kube-system etcd-master-node -- /bin/sh
+# For kubeadm clusters, find and access the static etcd pod directly
+ETCD_POD=$(kubectl -n kube-system get pods -l component=etcd -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it -n kube-system "$ETCD_POD" -- /bin/sh
 
 # Inside etcd pod, check database size
 ETCDCTL_API=3 etcdctl \
@@ -55,7 +56,7 @@ ETCDCTL_API=3 etcdctl \
   --key=/etc/kubernetes/pki/etcd/server.key \
   endpoint status --write-out=table
 
-# Output shows DB size and quota
+# Output shows DB size. Compare this with the configured quota.
 +----------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
 |          ENDPOINT          |        ID        | VERSION | DB SIZE | IS LEADER | IS LEARNER | RAFT TERM | RAFT INDEX | RAFT APPLIED INDEX | ERRORS |
 +----------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
@@ -78,10 +79,10 @@ ETCDCTL_API=3 etcdctl \
   --key=/etc/kubernetes/pki/etcd/server.key \
   endpoint status --write-out=json | jq '.[0].Status.header.revision'
 
-# Large revision numbers indicate lots of historical data
+# Large revision numbers indicate lots of writes
 ```
 
-High revision numbers combined with large database size suggest that compaction hasn't run recently.
+High revision numbers combined with large database size can point to delayed compaction, high write churn, or too many current objects.
 
 ## Performing Manual Compaction
 
@@ -147,23 +148,23 @@ metadata:
 spec:
   containers:
   - name: etcd
-    image: k8s.gcr.io/etcd:3.5.9-0
+    image: registry.k8s.io/etcd:3.5.9-0
     command:
     - etcd
-    - --auto-compaction-retention=1  # Keep 1 hour of history
+    - --auto-compaction-retention=1h  # Keep 1 hour of history
     - --auto-compaction-mode=periodic
     - --quota-backend-bytes=2147483648  # 2GB quota
     # ... other flags
 ```
 
-The `--auto-compaction-retention` flag controls how much history to retain. A value of 1 hour is reasonable for most clusters.
+The `--auto-compaction-retention` flag controls how much history to retain. etcd's general-purpose default recommendation is 10 hours; shorter values such as 1 hour or 30 minutes are useful for clusters with frequent updates to the same keys.
 
 ## Identifying Space-Consuming Resources
 
 Find which resources consume the most etcd space to address the root cause.
 
 ```bash
-# Count objects by type
+# Count common built-in workload and service objects by type
 kubectl get all -A --no-headers | awk '{print $1}' | sort | uniq -c | sort -rn
 
 # Count events (major contributor to database size)
@@ -189,8 +190,9 @@ kubectl get pods -A | grep -i "crash\|error\|backoff"
 # Delete problematic pods to stop event generation
 kubectl delete pod problem-pod -n namespace --force --grace-period=0
 
-# For development clusters, manually delete old events
-kubectl delete events -A --field-selector reason=Failed,reason=FailedScheduling
+# For development clusters, manually delete selected old events
+kubectl delete events -A --field-selector reason=Failed
+kubectl delete events -A --field-selector reason=FailedScheduling
 ```
 
 Fix the underlying issues causing excessive events. CrashLoopBackOff pods should be debugged and fixed, not ignored.
@@ -200,16 +202,16 @@ Fix the underlying issues causing excessive events. CrashLoopBackOff pods should
 High resource churn causes database growth. Deployments that update frequently create many revisions.
 
 ```bash
-# Find resources with many revisions
+# Find deployments with frequent spec changes
 kubectl get deployments -A -o json | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name) - Generation: \(.metadata.generation)"' | \
   sort -t: -k2 -rn | head -20
 
 # Check for resources being recreated frequently
-kubectl get pods -A --sort-by='.metadata.creationTimestamp' | head -50
+kubectl get pods -A --sort-by='.metadata.creationTimestamp' | tail -50
 ```
 
-Resources with high generation numbers or frequent recreation contribute to database growth.
+Resources with high generation numbers or frequent recreation can contribute to database growth.
 
 ## Configuring Event TTL
 
@@ -225,7 +227,7 @@ metadata:
 spec:
   containers:
   - name: kube-apiserver
-    image: k8s.gcr.io/kube-apiserver:v1.28.0
+    image: registry.k8s.io/kube-apiserver:v1.36.1
     command:
     - kube-apiserver
     - --event-ttl=30m  # Retain events for 30 minutes instead of 1 hour
@@ -248,7 +250,7 @@ metadata:
 spec:
   containers:
   - name: etcd
-    image: k8s.gcr.io/etcd:3.5.9-0
+    image: registry.k8s.io/etcd:3.5.9-0
     command:
     - etcd
     - --quota-backend-bytes=8589934592  # Increase to 8GB
@@ -281,7 +283,7 @@ data:
 
       - record: etcd_database_usage_percent
         expr: |
-          (etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes) * 100
+          100 * etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes
 
       - alert: EtcdDatabaseSizeHigh
         expr: etcd_database_usage_percent > 80
@@ -290,7 +292,7 @@ data:
           severity: warning
         annotations:
           summary: "etcd database size high"
-          description: "etcd database using {{ $value | humanizePercentage }} of quota"
+          description: "etcd database using {{ $value | humanize }}% of quota"
 
       - alert: EtcdDatabaseSizeCritical
         expr: etcd_database_usage_percent > 95
@@ -299,7 +301,7 @@ data:
           severity: critical
         annotations:
           summary: "etcd database size critical"
-          description: "etcd database using {{ $value | humanizePercentage }} of quota - cluster writes will fail soon"
+          description: "etcd database using {{ $value | humanize }}% of quota - cluster writes will fail soon"
 ```
 
 These alerts give you time to compact the database before hitting the quota.
@@ -310,20 +312,17 @@ Always backup etcd before performing maintenance operations.
 
 ```bash
 # Create etcd snapshot
+SNAPSHOT="/backup/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
+
 ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key \
-  snapshot save /backup/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db
+  snapshot save "$SNAPSHOT"
 
 # Verify snapshot
-ETCDCTL_API=3 etcdctl \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key \
-  snapshot status /backup/etcd-snapshot-*.db --write-out=table
+etcdutl snapshot status "$SNAPSHOT" --write-out=table
 ```
 
 Store snapshots safely off-cluster. You'll need them if compaction causes unexpected issues.
@@ -367,4 +366,4 @@ Schedule regular maintenance windows for manual defragmentation. Even with auto-
 
 ## Conclusion
 
-etcd database size exceeded errors completely halt cluster operations, but they're preventable and fixable. Regular compaction and defragmentation keep the database healthy. Monitor database size, identify resources causing excessive growth, and configure appropriate auto-compaction settings. With proactive maintenance, your etcd database will remain well below quota limits, ensuring continuous cluster availability.
+etcd database size exceeded errors halt cluster write operations, but they're preventable and fixable. Regular compaction and defragmentation keep the database healthy. Monitor database size, identify resources causing excessive growth, and configure appropriate auto-compaction settings. With proactive maintenance, your etcd database will remain well below quota limits, ensuring continuous cluster availability.
