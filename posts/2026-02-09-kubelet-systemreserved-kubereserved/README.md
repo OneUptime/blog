@@ -8,7 +8,7 @@ Description: Learn how to configure kubelet systemReserved and kubeReserved sett
 
 ---
 
-Node resources must be divided between user pods, Kubernetes components, and system daemons. Without explicit reservations, pods can consume all available resources, starving critical system processes and causing node failures. The kubelet uses systemReserved and kubeReserved settings to guarantee resources for non-pod processes.
+Node resources must be divided between user pods, Kubernetes components, and system daemons. Without explicit reservations, pods can consume all available resources, starving critical system processes and causing node failures. The kubelet uses systemReserved and kubeReserved settings to reserve node capacity for non-pod processes.
 
 This guide explains how to calculate and configure appropriate resource reservations for production Kubernetes nodes.
 
@@ -91,7 +91,7 @@ kubeReserved:
 
 ## Enforcing Reservations
 
-Enable enforcement to create cgroups for reserved resources:
+Enable enforcement to apply the reservations to existing cgroups:
 
 ```yaml
 # /var/lib/kubelet/config.yaml
@@ -100,28 +100,30 @@ kind: KubeletConfiguration
 systemReserved:
   cpu: "500m"
   memory: "1Gi"
+systemReservedCgroup: "system.slice"
 kubeReserved:
   cpu: "500m"
   memory: "1Gi"
+kubeReservedCgroup: "runtime.slice"
 enforceNodeAllocatable:
 - pods
 - system-reserved
 - kube-reserved
 ```
 
-This creates cgroups:
-- `/sys/fs/cgroup/kubepods/` for pod resources
-- `/sys/fs/cgroup/system.slice/` for system processes
-- `/sys/fs/cgroup/kube.slice/` for Kubernetes components
+This enforces reservations through cgroups:
+- Pod allocatable enforcement uses the kubelet-managed pod cgroup, such as `kubepods.slice` with the systemd cgroup driver
+- `systemReservedCgroup`, such as `system.slice`, is used for system processes
+- `kubeReservedCgroup`, such as `runtime.slice`, is used for Kubernetes node daemons
 
-Verify cgroups were created:
+The kubelet does not create `systemReservedCgroup` or `kubeReservedCgroup`; it fails to start if a configured cgroup does not exist. Verify the cgroups before enabling enforcement:
 
 ```bash
 # Check for system-reserved cgroup
 ls -la /sys/fs/cgroup/system.slice/
 
 # Check for kube-reserved cgroup
-ls -la /sys/fs/cgroup/kubepods/
+ls -la /sys/fs/cgroup/runtime.slice/
 ```
 
 ## Calculating systemReserved Values
@@ -170,7 +172,7 @@ Storage: max(5Gi, node_storage * 0.02)
 
 ## Calculating kubeReserved Values
 
-kubeReserved depends on cluster size and control plane load:
+kubeReserved depends on pod density and the resource needs of Kubernetes node daemons:
 
 **Worker nodes:**
 ```yaml
@@ -180,13 +182,15 @@ kubeReserved:
   ephemeral-storage: "5Gi"
 ```
 
-**Control plane nodes:**
+**Control plane nodes with non-pod Kubernetes daemons:**
 ```yaml
 kubeReserved:
-  cpu: "2000m"  # API server, controller manager, scheduler, etcd
+  cpu: "2000m"  # kubelet, container runtime, kube-proxy, and other non-pod Kubernetes daemons
   memory: "4Gi"
   ephemeral-storage: "20Gi"
 ```
+
+If control plane components such as the API server, controller manager, scheduler, or etcd run as static Pods, `kubeReserved` is not meant to reserve resources for them; set appropriate Pod requests and limits for those components.
 
 Scale with cluster size:
 
@@ -225,6 +229,8 @@ kubeReserved:
   ephemeral-storage: "5Gi"
   pid: "500"
 # Enforce reservations via cgroups
+systemReservedCgroup: "system.slice"
+kubeReservedCgroup: "runtime.slice"
 enforceNodeAllocatable:
 - pods
 - system-reserved
@@ -260,7 +266,7 @@ Set reservations during cluster initialization:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -273,6 +279,8 @@ kubeReserved:
   cpu: "500m"
   memory: "1Gi"
   ephemeral-storage: "5Gi"
+systemReservedCgroup: "system.slice"
+kubeReservedCgroup: "runtime.slice"
 enforceNodeAllocatable:
 - pods
 - system-reserved
@@ -298,15 +306,15 @@ kubectl top pod -n kube-system
 
 # Check cgroup usage
 cat /sys/fs/cgroup/system.slice/memory.current
-cat /sys/fs/cgroup/kubepods/kubepods.slice/memory.current
+cat /sys/fs/cgroup/runtime.slice/memory.current
 ```
 
 Create Prometheus queries:
 
 ```promql
 # Node allocatable vs capacity
-node_cpu_capacity - node_cpu_allocatable
-node_memory_MemTotal_bytes - kube_node_status_allocatable{resource="memory"}
+kube_node_status_capacity{resource="cpu",unit="core"} - kube_node_status_allocatable{resource="cpu",unit="core"}
+kube_node_status_capacity{resource="memory",unit="byte"} - kube_node_status_allocatable{resource="memory",unit="byte"}
 
 # System resource usage
 node_systemd_unit_state
@@ -339,7 +347,7 @@ groups:
     expr: |
       sum by (node) (
         rate(container_cpu_usage_seconds_total{namespace="kube-system"}[5m])
-      ) > (kube_node_status_allocatable{resource="cpu"} * 0.1)
+      ) > on (node) (kube_node_status_allocatable{resource="cpu",unit="core"} * 0.1)
     for: 15m
     labels:
       severity: warning
@@ -372,11 +380,14 @@ sudo vim /var/lib/kubelet/config.yaml
 sudo systemctl restart kubelet
 ```
 
-**Issue: Kubelet not creating cgroups**
+**Issue: Kubelet fails to enforce reserved cgroups**
 
 ```bash
 # Verify enforcement is enabled
 cat /var/lib/kubelet/config.yaml | grep enforceNodeAllocatable
+
+# Verify cgroups are configured
+cat /var/lib/kubelet/config.yaml | grep -E "systemReservedCgroup|kubeReservedCgroup"
 
 # Check cgroup driver matches
 cat /var/lib/kubelet/config.yaml | grep cgroupDriver
