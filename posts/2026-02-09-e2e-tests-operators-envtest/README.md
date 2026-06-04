@@ -14,11 +14,11 @@ In this guide, we'll build end-to-end tests for a Kubernetes operator using envt
 
 ## Understanding Envtest
 
-Envtest runs real Kubernetes API server and etcd binaries locally in test processes. Unlike mocking the API, envtest provides actual Kubernetes behavior including validation, defaulting, and webhooks. This catches integration issues that unit tests miss while remaining fast enough for CI/CD pipelines.
+Envtest runs real Kubernetes API server and etcd binaries locally in test processes. Unlike mocking the API, envtest provides actual Kubernetes behavior including API validation and defaulting, and it can test admission webhooks when you configure webhook installation. This catches integration issues that unit tests miss while remaining fast enough for CI/CD pipelines.
 
-The framework integrates with Go testing and supports parallel test execution. Tests create resources, trigger reconciliation, and verify expected outcomes using the same client libraries as production code. This ensures tests validate actual operator behavior.
+The framework integrates with Go testing and can be used with parallel test execution when tests create their own resources, such as unique namespaces or names. Tests create resources, trigger reconciliation, and verify expected outcomes using the same client libraries as production code. This ensures tests validate actual operator behavior.
 
-Envtest handles lifecycle management of test clusters, cleaning up resources between tests and providing isolated namespaces for parallel execution. This eliminates test interference and makes test suites reliable.
+Envtest handles lifecycle management of the test API server and etcd. Individual tests should clean up their own resources or use isolated namespaces for parallel execution. This eliminates test interference and makes test suites reliable.
 
 ## Setting Up Envtest
 
@@ -27,7 +27,7 @@ Install envtest binaries:
 ```bash
 # Install setup-envtest tool
 
-go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.16
 
 # Download Kubernetes binaries
 setup-envtest use 1.28.0 -p path
@@ -42,7 +42,6 @@ Add envtest dependencies to your operator project:
 // go.mod additions
 require (
     sigs.k8s.io/controller-runtime v0.16.0
-    sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-latest
 )
 ```
 
@@ -97,9 +96,13 @@ import (
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/utils/ptr"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
     myappv1 "example.com/myoperator/api/v1"
 )
@@ -112,12 +115,41 @@ type ApplicationReconciler struct {
 func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
     var app myappv1.Application
     if err := r.Get(ctx, req.NamespacedName, &app); err != nil {
-        return ctrl.Result{}, client.IgnoreNotFound(err)
+        if apierrors.IsNotFound(err) {
+            deployment := &appsv1.Deployment{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      req.Name,
+                    Namespace: req.Namespace,
+                },
+            }
+            return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, deployment))
+        }
+        return ctrl.Result{}, err
     }
 
     // Create or update deployment
-    deployment := r.constructDeployment(&app)
-    if err := r.createOrUpdate(ctx, deployment); err != nil {
+    deployment := &appsv1.Deployment{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      app.Name,
+            Namespace: app.Namespace,
+        },
+    }
+
+    _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+        labels := map[string]string{"app": app.Name}
+
+        deployment.Labels = labels
+        deployment.Spec.Replicas = ptr.To(app.Spec.Replicas)
+        deployment.Spec.Selector = &metav1.LabelSelector{MatchLabels: labels}
+        deployment.Spec.Template.ObjectMeta.Labels = labels
+        deployment.Spec.Template.Spec.Containers = []corev1.Container{{
+            Name:  "application",
+            Image: app.Spec.Image,
+        }}
+
+        return controllerutil.SetControllerReference(&app, deployment, r.Scheme)
+    })
+    if err != nil {
         return ctrl.Result{}, err
     }
 
@@ -130,10 +162,11 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     return ctrl.Result{}, nil
 }
 
-func (r *ApplicationReconciler) constructDeployment(app *myappv1.Application) *appsv1.Deployment {
-    // Construct deployment from Application spec
-    // Implementation details omitted for brevity
-    return &appsv1.Deployment{}
+func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+    return ctrl.NewControllerManagedBy(mgr).
+        For(&myappv1.Application{}).
+        Owns(&appsv1.Deployment{}).
+        Complete(r)
 }
 ```
 
@@ -146,6 +179,7 @@ Create test suite setup:
 package controller
 
 import (
+    "context"
     "path/filepath"
     "testing"
 
@@ -164,6 +198,7 @@ var (
     cfg       *rest.Config
     k8sClient client.Client
     testEnv   *envtest.Environment
+    cancel    context.CancelFunc
 )
 
 func TestControllers(t *testing.T) {
@@ -203,15 +238,19 @@ var _ = BeforeSuite(func() {
     }).SetupWithManager(mgr)
     Expect(err).NotTo(HaveOccurred())
 
+    var ctx context.Context
+    ctx, cancel = context.WithCancel(context.TODO())
+
     go func() {
         defer GinkgoRecover()
-        err = mgr.Start(ctrl.SetupSignalHandler())
+        err = mgr.Start(ctx)
         Expect(err).NotTo(HaveOccurred())
     }()
 })
 
 var _ = AfterSuite(func() {
     By("tearing down the test environment")
+    cancel()
     err := testEnv.Stop()
     Expect(err).NotTo(HaveOccurred())
 })
@@ -289,10 +328,21 @@ var _ = Describe("Application Controller", func() {
         It("Should update the Deployment", func() {
             ctx := context.Background()
 
-            appLookupKey := types.NamespacedName{Name: "test-app", Namespace: "default"}
-            app := &myappv1.Application{}
+            app := &myappv1.Application{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      "update-test-app",
+                    Namespace: "default",
+                },
+                Spec: myappv1.ApplicationSpec{
+                    Image:    "nginx:latest",
+                    Replicas: 3,
+                },
+            }
 
-            By("Fetching the Application")
+            By("Creating the Application resource")
+            Expect(k8sClient.Create(ctx, app)).Should(Succeed())
+
+            appLookupKey := types.NamespacedName{Name: "update-test-app", Namespace: "default"}
             Eventually(func() bool {
                 err := k8sClient.Get(ctx, appLookupKey, app)
                 return err == nil
@@ -304,7 +354,7 @@ var _ = Describe("Application Controller", func() {
 
             By("Checking that Deployment was updated")
             deployment := &appsv1.Deployment{}
-            deploymentLookupKey := types.NamespacedName{Name: "test-app", Namespace: "default"}
+            deploymentLookupKey := types.NamespacedName{Name: "update-test-app", Namespace: "default"}
 
             Eventually(func() int32 {
                 err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
@@ -320,19 +370,31 @@ var _ = Describe("Application Controller", func() {
         It("Should delete the Deployment", func() {
             ctx := context.Background()
 
-            appLookupKey := types.NamespacedName{Name: "test-app", Namespace: "default"}
-            app := &myappv1.Application{}
+            app := &myappv1.Application{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      "delete-test-app",
+                    Namespace: "default",
+                },
+                Spec: myappv1.ApplicationSpec{
+                    Image:    "nginx:latest",
+                    Replicas: 1,
+                },
+            }
 
-            By("Fetching the Application")
-            Expect(k8sClient.Get(ctx, appLookupKey, app)).Should(Succeed())
+            By("Creating the Application resource")
+            Expect(k8sClient.Create(ctx, app)).Should(Succeed())
+
+            deployment := &appsv1.Deployment{}
+            deploymentLookupKey := types.NamespacedName{Name: "delete-test-app", Namespace: "default"}
+            Eventually(func() bool {
+                err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
+                return err == nil
+            }, timeout, interval).Should(BeTrue())
 
             By("Deleting the Application")
             Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
 
             By("Checking that Deployment was deleted")
-            deployment := &appsv1.Deployment{}
-            deploymentLookupKey := types.NamespacedName{Name: "test-app", Namespace: "default"}
-
             Eventually(func() bool {
                 err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
                 return err != nil
@@ -402,7 +464,7 @@ var _ = Describe("Application Status", func() {
 
 ## Testing Error Handling
 
-Test controller behavior during error conditions:
+Test controller behavior during error conditions. This example assumes your reconciler validates image names and writes an error condition before creating or updating a Deployment:
 
 ```go
 var _ = Describe("Error Handling", func() {
@@ -422,7 +484,7 @@ var _ = Describe("Error Handling", func() {
 
         Expect(k8sClient.Create(ctx, app)).Should(Succeed())
 
-        // Verify status contains error condition
+        // Verify status contains error condition set by the reconciler's validation logic
         appLookupKey := types.NamespacedName{Name: "invalid-app", Namespace: "default"}
         updatedApp := &myappv1.Application{}
 
@@ -459,13 +521,12 @@ var _ = Describe("Parallel Tests", func() {
     })
 
     AfterEach(func() {
-        // Cleanup namespace after test
-        ns := &corev1.Namespace{
-            ObjectMeta: metav1.ObjectMeta{
-                Name: testNamespace,
-            },
-        }
-        Expect(k8sClient.Delete(context.Background(), ns)).Should(Succeed())
+        // Delete test resources explicitly; envtest does not run the namespace controller.
+        Expect(k8sClient.DeleteAllOf(
+            context.Background(),
+            &myappv1.Application{},
+            client.InNamespace(testNamespace),
+        )).Should(Succeed())
     })
 
     It("Should run independently", func() {
@@ -497,7 +558,7 @@ jobs:
 
     - name: Install envtest binaries
       run: |
-        go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+        go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.16
         setup-envtest use 1.28.0
 
     - name: Run tests
