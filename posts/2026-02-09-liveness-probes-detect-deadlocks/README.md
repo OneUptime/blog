@@ -24,7 +24,6 @@ Create a heartbeat system in Go:
 package main
 
 import (
-    "encoding/json"
     "net/http"
     "sync"
     "time"
@@ -60,9 +59,7 @@ func (hm *HeartbeatMonitor) IsAlive() bool {
 var heartbeat = NewHeartbeatMonitor(30 * time.Second)
 
 func main() {
-    // Start worker goroutines
-    go worker1()
-    go worker2()
+    // Start critical worker goroutine
     go criticalProcessor()
 
     // Health check endpoint
@@ -115,7 +112,7 @@ spec:
       initialDelaySeconds: 30
       periodSeconds: 10
       timeoutSeconds: 5
-      failureThreshold: 3  # 30 seconds without heartbeat = restart
+      failureThreshold: 3  # Restart after 3 failed probes
 ```
 
 ## Monitoring Multiple Critical Threads
@@ -129,9 +126,14 @@ type ComponentHeartbeats struct {
     threshold  time.Duration
 }
 
-func NewComponentHeartbeats(threshold time.Duration) *ComponentHeartbeats {
+func NewComponentHeartbeats(threshold time.Duration, componentNames ...string) *ComponentHeartbeats {
+    components := make(map[string]time.Time)
+    for _, component := range componentNames {
+        components[component] = time.Time{}
+    }
+
     return &ComponentHeartbeats{
-        components: make(map[string]time.Time),
+        components: components,
         threshold:  threshold,
     }
 }
@@ -148,12 +150,16 @@ func (ch *ComponentHeartbeats) CheckAll() map[string]bool {
 
     status := make(map[string]bool)
     for component, lastBeat := range ch.components {
-        status[component] = time.Since(lastBeat) < ch.threshold
+        status[component] = !lastBeat.IsZero() && time.Since(lastBeat) < ch.threshold
     }
     return status
 }
 
-var heartbeats = NewComponentHeartbeats(60 * time.Second)
+var heartbeats = NewComponentHeartbeats(
+    60*time.Second,
+    "message_processor",
+    "database_sync",
+)
 
 func livenessHandler(w http.ResponseWriter, r *http.Request) {
     status := heartbeats.CheckAll()
@@ -211,9 +217,12 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 class HeartbeatMonitor:
-    def __init__(self, threshold_seconds=60):
+    def __init__(self, threshold_seconds=60, components=None):
         self.lock = threading.Lock()
-        self.components = {}
+        self.components = {
+            component: datetime.min
+            for component in (components or [])
+        }
         self.threshold = timedelta(seconds=threshold_seconds)
 
     def beat(self, component):
@@ -239,7 +248,10 @@ class HeartbeatMonitor:
                 }
             return status
 
-heartbeat = HeartbeatMonitor(threshold_seconds=60)
+heartbeat = HeartbeatMonitor(
+    threshold_seconds=60,
+    components=['message_processor', 'database_sync']
+)
 
 def message_processor():
     """Critical worker thread"""
@@ -273,7 +285,7 @@ def liveness():
 
     all_alive = all(comp['alive'] for comp in status.values())
 
-    if all_alive and len(status) > 0:
+    if all_alive:
         return jsonify({'status': 'alive', 'components': status}), 200
     else:
         return jsonify({'status': 'deadlocked', 'components': status}), 503
@@ -298,6 +310,13 @@ type LockMonitor struct {
     threshold       time.Duration
 }
 
+func NewLockMonitor(threshold time.Duration) *LockMonitor {
+    return &LockMonitor{
+        lockAcquisitions: make(map[string]time.Duration),
+        threshold:        threshold,
+    }
+}
+
 func (lm *LockMonitor) RecordLockWait(lockName string, waitTime time.Duration) {
     lm.mu.Lock()
     defer lm.mu.Unlock()
@@ -315,6 +334,8 @@ func (lm *LockMonitor) CheckLockHealth() bool {
     }
     return true
 }
+
+var lockMonitor = NewLockMonitor(5 * time.Second)
 
 // Instrumented lock acquisition
 func acquireLockWithMonitoring(lock *sync.Mutex, lockName string) {
@@ -413,7 +434,7 @@ func processWithTimeout(data []byte) error {
 
     select {
     case err := <-done:
-        heartbeat.Beat("processor")
+        heartbeat.Beat()
         return err
     case <-time.After(30 * time.Second):
         // Operation timed out, likely deadlocked
@@ -426,32 +447,32 @@ func processWithTimeout(data []byte) error {
 
 Follow these guidelines:
 
-```yaml
-# DO: Set heartbeat threshold > than normal operation time
-# If processing takes 10s max, use 30s threshold
+```go
+// DO: Set heartbeat threshold > than normal operation time
+// If processing takes 10s max, use 30s threshold
 
-# DO: Update heartbeat in critical loops
+// DO: Update heartbeat in critical loops
 for msg := range messages {
     process(msg)
-    heartbeat.Beat("processor")  # Beat after each message
+    heartbeats.Beat("processor")  // Beat after each message
 }
 
-# DON'T: Update heartbeat before work
-# BAD
+// DON'T: Update heartbeat before work
+// BAD
 heartbeat.Beat()
-doWork()  # If this deadlocks, beat already happened
+doWork()  // If this deadlocks, beat already happened
 
-# GOOD
+// GOOD
 doWork()
-heartbeat.Beat()  # Beat after work completes
+heartbeat.Beat()  // Beat after work completes
 
-# DO: Monitor multiple critical components
+// DO: Monitor multiple critical components
 heartbeats.Beat("worker1")
 heartbeats.Beat("worker2")
 heartbeats.Beat("scheduler")
 
-# DON'T: Share heartbeat with non-critical threads
-# Only beat from threads that must stay alive
+// DON'T: Share heartbeat with non-critical threads
+// Only beat from threads that must stay alive
 ```
 
 ## Conclusion
