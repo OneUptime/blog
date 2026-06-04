@@ -55,7 +55,7 @@ retry_policy:
   per_try_timeout: 2s
 ```
 
-Each attempt gets 2 seconds. Total timeout could be 6 seconds (3 retries × 2 seconds).
+Each attempt, including the initial attempt, gets 2 seconds. With 3 retries, there can be up to 4 attempts, subject to the route's overall timeout and any retry backoff.
 
 ## Retry Budgets
 
@@ -66,7 +66,10 @@ clusters:
 - name: api_service
   circuit_breakers:
     thresholds:
-    - max_retries: 100
+    - retry_budget:
+        budget_percent:
+          value: 25.0
+        min_retry_concurrency: 10
 
 routes:
 - match:
@@ -78,7 +81,7 @@ routes:
       num_retries: 3
 ```
 
-The cluster-level max_retries limits concurrent retry requests across all routes.
+The cluster-level retry budget limits concurrent retries as a percentage of active and pending requests, with a minimum retry concurrency.
 
 ## Retry Host Selection
 
@@ -109,7 +112,7 @@ retry_policy:
     max_interval: 10s
 ```
 
-Wait 100ms after first failure, 200ms after second, 400ms after third, capped at 10s.
+Envoy uses fully jittered exponential backoff. With a 100ms base interval, the first retry is delayed by a random value below 100ms, later retries use a wider exponential range, and delays are capped at 10s.
 
 ## Hedged Requests
 
@@ -121,19 +124,19 @@ routes:
     prefix: "/api"
   route:
     cluster: api_service
+    retry_policy:
+      retry_on: "5xx"
+      num_retries: 3
+      per_try_timeout: 2s
     hedge_policy:
-      initial_requests: 1
-      additional_request_chance:
-        numerator: 20
-        denominator: 100
       hedge_on_per_try_timeout: true
 ```
 
-After the per-try timeout, there's a 20% chance of sending the request to another host.
+After the per-try timeout, Envoy sends a hedged retry without canceling the original request, leaving multiple upstream requests in flight.
 
 ## Retry Priority
 
-Use different retry logic based on request priority:
+Spread retries across upstream priorities:
 
 ```yaml
 retry_policy:
@@ -146,6 +149,8 @@ retry_policy:
       update_frequency: 2
 ```
 
+This retry priority plugin excludes previously attempted priorities as retries progress, helping distribute retry load across healthy priorities.
+
 ## Rate Limited Retries
 
 Respect rate limit responses:
@@ -156,12 +161,16 @@ retry_policy:
   retriable_status_codes: [429]
   num_retries: 3
   per_try_timeout: 10s
-  retry_back_off:
-    base_interval: 1s
+  rate_limited_retry_back_off:
+    reset_headers:
+    - name: Retry-After
+      format: SECONDS
+    - name: X-RateLimit-Reset
+      format: UNIX_TIMESTAMP
     max_interval: 60s
 ```
 
-Retry 429 (Too Many Requests) with exponential backoff.
+Retry 429 (Too Many Requests) and use rate-limit reset headers when present, falling back to exponential backoff otherwise.
 
 ## Method-Specific Retries
 
@@ -173,7 +182,8 @@ routes:
     prefix: "/api"
     headers:
     - name: ":method"
-      exact_match: "GET"
+      string_match:
+        exact: "GET"
   route:
     cluster: api_service
     retry_policy:
