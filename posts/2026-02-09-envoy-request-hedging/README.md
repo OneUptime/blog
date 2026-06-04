@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Performance, Latency, Load Balancing, Reliability
 
-Description: Learn how to implement Envoy request hedging to reduce tail latency by issuing duplicate requests to multiple backends and using the first successful response.
+Description: Learn how to implement Envoy request hedging to reduce tail latency by racing an original request against a retry attempt and using the first acceptable response.
 
 ---
 
-Request hedging is a powerful technique for reducing tail latency in distributed systems. Instead of waiting for a slow backend instance to respond, Envoy can issue duplicate requests to multiple instances after a configurable delay. The first successful response wins, and the others are cancelled. This approach trades a modest increase in backend load for significant improvements in p99 and p999 latency.
+Request hedging is a powerful technique for reducing tail latency in distributed systems. Instead of waiting for a slow backend instance to respond, Envoy can issue a retry without cancelling the original request when the per-try timeout is hit. The first acceptable response according to the retry policy is returned downstream. This approach trades a modest increase in backend load for significant improvements in p99 and p999 latency.
 
-Hedging differs from retries in an important way: retries wait for a request to fail before trying again, while hedging proactively sends duplicate requests before the first one completes. This preemptive approach helps when you have high variance in response times, often caused by garbage collection pauses, CPU contention, or network hiccups that make some requests much slower than average.
+Hedging differs from ordinary retries in an important way: an ordinary retry resets the timed-out attempt before trying again, while hedging leaves the original timed-out attempt in flight and races it against the retry attempt. This approach helps when you have high variance in response times, often caused by garbage collection pauses, CPU contention, or network hiccups that make some requests much slower than average.
 
 ## Understanding Request Hedging
 
 When Envoy hedges a request, it follows this pattern:
 
 1. Send the initial request to a backend instance
-2. Wait for a configured hedging delay (hedge_on_per_try_timeout)
-3. If no response arrives within the delay, send a duplicate request to a different instance
-4. Use whichever response arrives first
-5. Cancel the remaining in-flight request
+2. Wait for the configured `per_try_timeout`
+3. If the per-try timeout is hit, send a retry without cancelling the original attempt
+4. Return the first response that is acceptable according to the retry policy
+5. Discard late retriable errors while the hedged request is already in progress
 
-The key is setting the hedging delay appropriately. Too short, and you waste backend resources with unnecessary duplicate requests. Too long, and hedging provides no benefit. The sweet spot is typically around the 95th percentile of your normal response time.
+The key is setting the per-try timeout appropriately. Too short, and you waste backend resources with unnecessary duplicate requests. Too long, and hedging provides no benefit. The sweet spot is typically around the 95th percentile of your normal response time.
 
 ## Basic Hedging Configuration
 
@@ -59,17 +59,17 @@ static_resources:
                   hedge_policy:
                     # Hedge on per-try timeout
                     hedge_on_per_try_timeout: true
-                    # Initial hedge delay
-                    initial_requests: 1
-                    additional_request_chance:
-                      numerator: 30
-                      denominator: 100  # 30% chance to hedge
                   # Per-try timeout that triggers hedging
                   timeout: 3s
                   retry_policy:
                     retry_on: "5xx,reset,connect-failure,refused-stream"
                     per_try_timeout: 1s
                     num_retries: 2
+                    retry_host_predicate:
+                    - name: envoy.retry_host_predicates.previous_hosts
+                      typed_config:
+                        "@type": type.googleapis.com/envoy.extensions.retry.host.previous_hosts.v3.PreviousHostsPredicate
+                    host_selection_retry_max_attempts: 3
           http_filters:
           - name: envoy.filters.http.router
             typed_config:
@@ -100,10 +100,14 @@ static_resources:
                 port_value: 8000
     # Connection settings
     connect_timeout: 0.5s
-    common_http_protocol_options:
-      idle_timeout: 30s
-    http2_protocol_options:
-      max_concurrent_streams: 100
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 30s
+        explicit_http_config:
+          http2_protocol_options:
+            max_concurrent_streams: 100
 
 admin:
   address:
@@ -113,10 +117,9 @@ admin:
 ```
 
 In this configuration:
-- `hedge_on_per_try_timeout: true` enables hedging when per-try timeout is about to expire
-- `initial_requests: 1` means we start with one request
-- `additional_request_chance` controls how aggressively we hedge (30% chance)
+- `hedge_on_per_try_timeout: true` enables hedging when the per-try timeout is hit
 - `per_try_timeout: 1s` is the delay before issuing a hedged request
+- `retry_host_predicate` helps retries prefer a host that has not already been attempted
 
 ## Advanced Hedging Strategies
 
@@ -131,10 +134,6 @@ routes:
     # Aggressive hedging for critical endpoints
     hedge_policy:
       hedge_on_per_try_timeout: true
-      initial_requests: 2  # Start with 2 parallel requests
-      additional_request_chance:
-        numerator: 100
-        denominator: 100  # Always hedge (100% chance)
     timeout: 2s
     retry_policy:
       retry_on: "5xx,reset,connect-failure"
@@ -148,12 +147,9 @@ routes:
     # Conservative hedging for batch operations
     hedge_policy:
       hedge_on_per_try_timeout: true
-      initial_requests: 1
-      additional_request_chance:
-        numerator: 10
-        denominator: 100  # Only 10% hedge rate
     timeout: 30s
     retry_policy:
+      retry_on: "5xx,reset,connect-failure"
       per_try_timeout: 10s
       num_retries: 1
 
@@ -164,10 +160,6 @@ routes:
     # Medium hedging for read-only operations
     hedge_policy:
       hedge_on_per_try_timeout: true
-      initial_requests: 1
-      additional_request_chance:
-        numerator: 50
-        denominator: 100  # 50% hedge rate
     timeout: 5s
     retry_policy:
       retry_on: "5xx,reset,retriable-4xx"
@@ -178,9 +170,27 @@ routes:
 
 ## Hedging with Request Priorities
 
-Combine hedging with priority routing to ensure hedged requests don't overwhelm your backends:
+Combine hedging with retry priority routing to spread retry attempts across priorities instead of always selecting from the same priority level:
 
 ```yaml
+routes:
+- match:
+    prefix: "/api"
+  route:
+    cluster: backend_service
+    hedge_policy:
+      hedge_on_per_try_timeout: true
+    timeout: 3s
+    retry_policy:
+      retry_on: "5xx,reset,connect-failure"
+      per_try_timeout: 1s
+      num_retries: 2
+      retry_priority:
+        name: envoy.retry_priorities.previous_priorities
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.retry.priority.previous_priorities.v3.PreviousPrioritiesConfig
+          update_frequency: 1
+
 clusters:
 - name: backend_service
   type: STRICT_DNS
@@ -210,7 +220,7 @@ clusters:
             socket_address:
               address: backend-primary-2
               port_value: 8000
-    # Priority 1 (fallback for hedged requests)
+    # Priority 1 (available to retry/hedged attempts when retry_priority selects another priority)
     - priority: 1
       lb_endpoints:
       - endpoint:
@@ -230,32 +240,32 @@ clusters:
 Track hedging effectiveness using Envoy's built-in metrics:
 
 ```bash
-# View hedge-related statistics
-curl -s http://localhost:9901/stats | grep -E 'upstream_rq_retry|hedge'
+# View retry and timeout statistics used to evaluate hedging
+curl -s http://localhost:9901/stats | grep -E 'upstream_rq_retry|upstream_rq_timeout'
 
 # Key metrics to monitor:
-# - cluster.backend_service.upstream_rq_retry_success: successful hedges
-# - cluster.backend_service.upstream_rq_retry_overflow: hedge budget exhausted
+# - cluster.backend_service.upstream_rq_retry_success: successful retries, including successful hedged retries
+# - cluster.backend_service.upstream_rq_retry_overflow: retries not attempted because circuit breaking or retry budget was exhausted
 # - cluster.backend_service.upstream_rq_timeout: requests that timed out
-# - cluster.backend_service.upstream_rq_per_try_timeout: per-try timeouts
+# - cluster.backend_service.upstream_rq_retry: total retry attempts, including hedged retries
 ```
 
-Create a Prometheus query to calculate hedge efficiency:
+Create a Prometheus query to calculate retry efficiency and added upstream load:
 
 ```promql
-# Hedge success rate
-rate(envoy_cluster_upstream_rq_retry_success{cluster="backend_service"}[5m])
+# Retry success rate
+rate(envoy_cluster_upstream_rq_retry_success{envoy_cluster_name="backend_service"}[5m])
 /
-rate(envoy_cluster_upstream_rq_retry{cluster="backend_service"}[5m])
+rate(envoy_cluster_upstream_rq_retry{envoy_cluster_name="backend_service"}[5m])
 
-# Additional load from hedging
+# Additional upstream load from retries and hedges
 (
-  rate(envoy_cluster_upstream_rq_total{cluster="backend_service"}[5m])
+  rate(envoy_cluster_upstream_rq_total{envoy_cluster_name="backend_service"}[5m])
   -
-  rate(envoy_http_downstream_rq_completed{cluster="backend_service"}[5m])
+  rate(envoy_http_downstream_rq_completed{envoy_http_conn_manager_prefix="ingress_http"}[5m])
 )
 /
-rate(envoy_http_downstream_rq_completed{cluster="backend_service"}[5m])
+rate(envoy_http_downstream_rq_completed{envoy_http_conn_manager_prefix="ingress_http"}[5m])
 ```
 
 ## Implementing Hedging Headers
@@ -263,25 +273,22 @@ rate(envoy_http_downstream_rq_completed{cluster="backend_service"}[5m])
 Pass hedging metadata to backends so they can identify and potentially prioritize hedged requests:
 
 ```yaml
-routes:
-- match:
-    prefix: "/api"
-  route:
-    cluster: backend_service
-    hedge_policy:
-      hedge_on_per_try_timeout: true
-      initial_requests: 1
-      additional_request_chance:
-        numerator: 30
-        denominator: 100
-    request_headers_to_add:
-    # Add header indicating this is a hedged request
-    - header:
-        key: "X-Request-Attempt"
-        value: "%UPSTREAM_REQUEST_ATTEMPT_COUNT%"
-    - header:
-        key: "X-Envoy-Expected-Rq-Timeout-Ms"
-        value: "%RESP_FLAGS%"
+virtual_hosts:
+- name: backend
+  domains: ["*"]
+  include_request_attempt_count: true
+  include_is_timeout_retry_header: true
+  routes:
+  - match:
+      prefix: "/api"
+    route:
+      cluster: backend_service
+      hedge_policy:
+        hedge_on_per_try_timeout: true
+      retry_policy:
+        retry_on: "5xx,reset,connect-failure"
+        per_try_timeout: 1s
+        num_retries: 2
 ```
 
 Backend services can use these headers to implement strategies like:
@@ -289,16 +296,16 @@ Backend services can use these headers to implement strategies like:
 ```python
 # Example Python backend handling hedged requests
 from flask import Flask, request
-import time
 
 app = Flask(__name__)
 
 @app.route('/api/data')
 def get_data():
-    attempt_count = request.headers.get('X-Request-Attempt', '1')
+    attempt_count = request.headers.get('x-envoy-attempt-count', '1')
+    is_timeout_retry = 'x-envoy-is-timeout-retry' in request.headers
 
-    # If this is a hedged request (attempt > 1), use a faster path
-    if int(attempt_count) > 1:
+    # If this is a timeout retry or hedged retry, use a faster path
+    if int(attempt_count) > 1 and is_timeout_retry:
         # Use cache, skip expensive operations, etc.
         return get_cached_data()
     else:
@@ -311,7 +318,7 @@ def get_cached_data():
 
 def get_fresh_data():
     # Slower path with database queries
-    result = db.query("SELECT * FROM data")
+    result = {"value": "fresh_value"}  # Replace with your database query
     return {"data": result, "hedged": False}
 ```
 
@@ -394,10 +401,10 @@ wrk -t 4 -c 100 -d 30s --latency http://localhost:8080/api/test
 
 ## Best Practices for Hedging
 
-1. **Start conservative**: Begin with low hedge rates (10-20%) and increase based on monitoring
+1. **Start conservative**: Begin with a per-try timeout near your observed tail latency and adjust based on monitoring
 2. **Idempotent only**: Only hedge GET requests and idempotent operations
 3. **Monitor backend load**: Ensure hedging doesn't push backends into overload
-4. **Set appropriate timeouts**: Hedge delay should be around p95 response time
+4. **Set appropriate timeouts**: The per-try timeout should be around p95 response time
 5. **Use circuit breakers**: Protect backends from hedge-induced load spikes
 6. **Track effectiveness**: Monitor whether hedging actually improves latency
 
