@@ -138,6 +138,7 @@ package main
 
 import (
     "encoding/json"
+    "hash/fnv"
     "log"
     "github.com/nats-io/nats.go"
 )
@@ -187,6 +188,12 @@ func isFeatureEnabled(kv nats.KeyValue, featureName string, userID string) bool 
     return (hash(userID) % 100) < flag.Rollout
 }
 
+func hash(s string) uint32 {
+    h := fnv.New32a()
+    h.Write([]byte(s))
+    return h.Sum32()
+}
+
 func main() {
     nc, _ := nats.Connect("nats://nats:4222")
     defer nc.Close()
@@ -225,7 +232,7 @@ func watchConfig(kv nats.KeyValue) {
 
     for entry := range watcher.Updates() {
         if entry == nil {
-            break
+            continue
         }
 
         switch entry.Operation() {
@@ -257,15 +264,15 @@ Watch specific keys:
 watcher, _ := kv.Watch("database.host")
 
 // Watch keys with prefix
-watcher, _ := kv.Watch("features.")
+watcher, _ := kv.Watch("features.>")
 ```
 
 ## Implementing Distributed Locks
 
-Use KV store for coordination:
+Use a KV bucket configured with a TTL for coordination:
 
 ```go
-func acquireLock(kv nats.KeyValue, lockName string, ttl time.Duration) (bool, error) {
+func acquireLock(kv nats.KeyValue, lockName string) (bool, error) {
     lockKey := "locks." + lockName
     timestamp := time.Now().Unix()
 
@@ -274,9 +281,6 @@ func acquireLock(kv nats.KeyValue, lockName string, ttl time.Duration) (bool, er
     if err != nil {
         return false, nil // Lock already held
     }
-
-    // Set TTL
-    kv.Put(lockKey, []byte(fmt.Sprintf("%d", timestamp)))
 
     return true, nil
 }
@@ -288,7 +292,7 @@ func releaseLock(kv nats.KeyValue, lockName string) error {
 
 // Usage
 func processWithLock(kv nats.KeyValue) {
-    if acquired, _ := acquireLock(kv, "process_job", 30*time.Second); acquired {
+    if acquired, _ := acquireLock(kv, "process_job"); acquired {
         defer releaseLock(kv, "process_job")
 
         // Do work while holding lock
@@ -396,7 +400,6 @@ Service implementation:
 package main
 
 import (
-    "net/http"
     "github.com/gin-gonic/gin"
     "github.com/nats-io/nats.go"
 )
@@ -458,7 +461,7 @@ func deleteConfig(c *gin.Context) {
 
 ## Monitoring KV Store Health
 
-Create alerts for KV operations:
+Create alerts for KV storage. KV buckets are backed by JetStream streams named `KV_<bucket>`:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -471,19 +474,21 @@ spec:
     rules:
     - alert: KVBucketHighUsage
       expr: |
-        nats_kv_bucket_bytes > 1000000000
+        jetstream_stream_total_bytes{stream_name=~"KV_.*"} > 1000000000
       for: 10m
       labels:
         severity: warning
       annotations:
         summary: "KV bucket high storage usage"
 
-    - alert: KVWatcherLagging
+    - alert: KVBucketHighMessageCount
       expr: |
-        nats_kv_watcher_pending > 1000
+        jetstream_stream_total_messages{stream_name=~"KV_.*"} > 100000
       for: 5m
       labels:
         severity: warning
+      annotations:
+        summary: "KV bucket high message count"
 ```
 
 ## Best Practices
