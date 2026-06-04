@@ -8,7 +8,7 @@ Description: Learn how to configure the CoreDNS file plugin to serve custom DNS 
 
 ---
 
-The CoreDNS file plugin allows you to serve custom DNS records from zone files directly within your Kubernetes cluster. This capability is essential when you need to provide custom DNS entries for internal services, override external DNS records, or create split-horizon DNS configurations. Unlike the hosts plugin, which is limited to simple A and AAAA records, the file plugin supports the full range of DNS record types using standard zone file format.
+The CoreDNS file plugin allows you to serve custom DNS records from zone files directly within your Kubernetes cluster. This capability is essential when you need to provide custom DNS entries for internal services, override external DNS records, or create split-horizon DNS configurations. Unlike the hosts plugin, which is limited to A, AAAA, and automatically generated PTR records, the file plugin supports the full range of DNS record types using standard zone file format.
 
 ## Understanding the File Plugin
 
@@ -185,7 +185,7 @@ This configuration creates separate server blocks for each custom zone, with the
 
 ## Implementing Automatic Zone Reloads
 
-CoreDNS can automatically reload zone files when they change. Enable the reload plugin to detect ConfigMap updates:
+CoreDNS can automatically reload zone files when they change. Use the file plugin's `reload` option to check for zone file updates:
 
 ```yaml
 apiVersion: v1
@@ -206,7 +206,7 @@ data:
     }
 ```
 
-The `reload` directive checks the zone file for changes every 30 seconds and reloads it if the modification time or content has changed.
+The `reload` option checks the zone file every 30 seconds and reloads it when the SOA serial number changes. The default file plugin reload interval is one minute, and a value of `0` disables scanning for zone file changes.
 
 ## Creating Reverse DNS Zones
 
@@ -282,7 +282,9 @@ example.internal:53 {
     errors
     log
     # Serve records from file first
-    file /etc/coredns/zones/example.internal.zone
+    file /etc/coredns/zones/example.internal.zone {
+        fallthrough
+    }
     # Fall back to external DNS
     forward . 8.8.8.8 8.8.4.4
     # Cache responses
@@ -291,7 +293,7 @@ example.internal:53 {
 }
 ```
 
-This configuration attempts to resolve queries from the zone file first, then forwards unmatched queries to external DNS servers, and caches all responses for 5 minutes.
+This configuration attempts to resolve queries from the zone file first, then forwards unmatched queries to external DNS servers because `fallthrough` is enabled, and caches all responses for 5 minutes.
 
 ## Testing Zone File Configuration
 
@@ -374,11 +376,11 @@ spec:
 Query metrics to monitor file plugin performance:
 
 ```promql
-# Total queries served by file plugin
-sum(rate(coredns_dns_requests_total{plugin="file"}[5m]))
+# Total responses served by file plugin
+sum(rate(coredns_dns_responses_total{plugin="file"}[5m]))
 
-# Response time for file plugin
-histogram_quantile(0.99, rate(coredns_dns_request_duration_seconds_bucket{plugin="file"}[5m]))
+# Response time for a custom zone
+histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket{zone="example.internal."}[5m])) by (le))
 ```
 
 ## Conclusion
