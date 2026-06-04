@@ -8,7 +8,7 @@ Description: Deploy Matomo in Docker as a full-featured, self-hosted Google Anal
 
 ---
 
-Matomo (formerly Piwik) is the most established open-source web analytics platform available. It has been around since 2007 and provides a feature set that rivals Google Analytics, including real-time analytics, custom dashboards, e-commerce tracking, heatmaps, session recordings, A/B testing, and full-funnel analysis. The critical difference is that you own all the data. Nothing gets sent to third parties.
+Matomo (formerly Piwik) is the most established open-source web analytics platform available. It has been around since 2007 and provides a feature set that rivals Google Analytics, including real-time analytics, custom dashboards, e-commerce tracking, and, through optional plugins, heatmaps, session recordings, A/B testing, and full-funnel analysis. The critical difference is that you own all the data. Nothing gets sent to third parties.
 
 Running Matomo in Docker makes the deployment straightforward, even though the application itself has more moving parts than lighter alternatives like Umami or Plausible. This guide covers deploying Matomo with Docker Compose, configuring it for production workloads, and integrating it with your websites.
 
@@ -35,8 +35,6 @@ Matomo needs a web server (the official image includes Apache), a MariaDB databa
 
 ```yaml
 # docker-compose.yml - Matomo Analytics with MariaDB
-version: "3.8"
-
 services:
   matomo:
     image: matomo:5-apache
@@ -192,22 +190,22 @@ For server-side tracking (useful for APIs, backend events, and mobile apps), use
 
 ```bash
 # Track a page view via the server-side API
-curl "https://analytics.yourdomain.com/matomo.php?\
-idsite=1&\
-rec=1&\
-action_name=API+Documentation&\
-url=https://yourdomain.com/docs/api&\
-rand=$(date +%s)&\
-apiv=1"
+curl --get "https://analytics.yourdomain.com/matomo.php" \
+  --data-urlencode "idsite=1" \
+  --data-urlencode "rec=1" \
+  --data-urlencode "action_name=API Documentation" \
+  --data-urlencode "url=https://yourdomain.com/docs/api" \
+  --data-urlencode "rand=$(date +%s)" \
+  --data-urlencode "apiv=1"
 
 # Track a custom event server-side
-curl "https://analytics.yourdomain.com/matomo.php?\
-idsite=1&\
-rec=1&\
-e_c=Backend&\
-e_a=User+Signup&\
-e_n=Pro+Plan&\
-apiv=1"
+curl --get "https://analytics.yourdomain.com/matomo.php" \
+  --data-urlencode "idsite=1" \
+  --data-urlencode "rec=1" \
+  --data-urlencode "e_c=Backend" \
+  --data-urlencode "e_a=User Signup" \
+  --data-urlencode "e_n=Pro Plan" \
+  --data-urlencode "apiv=1"
 ```
 
 ## Using the Reporting API
@@ -243,7 +241,7 @@ For accurate visitor location data, configure GeoIP2 database downloads.
 ```bash
 # Download the GeoLite2 database (requires a free MaxMind account)
 docker exec matomo bash -c "cd /var/www/html/misc && \
-  wget 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_KEY&suffix=tar.gz' -O GeoLite2-City.tar.gz && \
+  curl -L 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_KEY&suffix=tar.gz' -o GeoLite2-City.tar.gz && \
   tar xzf GeoLite2-City.tar.gz --strip-components=1 && \
   rm GeoLite2-City.tar.gz"
 ```
@@ -254,7 +252,7 @@ Then configure Matomo to use it: Administration > System > Geolocation > GeoIP 2
 
 ```bash
 # Backup the MariaDB database
-docker exec matomo-mariadb mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" matomo > matomo-db-$(date +%Y%m%d).sql
+docker exec matomo-mariadb sh -c 'mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" matomo' > matomo-db-$(date +%Y%m%d).sql
 
 # Backup the Matomo data volume (config, plugins, tmp files)
 docker run --rm \
@@ -263,7 +261,7 @@ docker run --rm \
   alpine tar czf /backup/matomo-data-$(date +%Y%m%d).tar.gz -C /source .
 
 # Restore the database
-docker exec -i matomo-mariadb mariadb -u root -p"$MARIADB_ROOT_PASSWORD" matomo < matomo-db-20260208.sql
+docker exec -i matomo-mariadb sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" matomo' < matomo-db-20260208.sql
 ```
 
 ## Reverse Proxy with SSL
