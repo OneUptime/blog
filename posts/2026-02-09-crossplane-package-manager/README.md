@@ -31,7 +31,7 @@ my-platform/
 ├── crossplane.yaml
 ├── apis/
 │   ├── definition.yaml      # CompositeResourceDefinition
-│   └── composition-aws.yaml # Composition for AWS
+│   ├── composition-aws.yaml # Composition for AWS
 │   └── composition-gcp.yaml # Composition for GCP
 └── examples/
     └── network-claim.yaml   # Example claim
@@ -56,14 +56,20 @@ metadata:
       provisions cloud-specific networking resources.
 spec:
   crossplane:
-    version: ">=1.14.0"
+    version: ">=v1.14.0"
   dependsOn:
-    - provider: xpkg.upbound.io/upbound/provider-aws-ec2
-      version: ">=1.0.0"
-    - provider: xpkg.upbound.io/upbound/provider-gcp-compute
-      version: ">=1.0.0"
-    - provider: xpkg.upbound.io/upbound/provider-azure-network
-      version: ">=1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-aws-ec2
+      version: ">=v1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-gcp-compute
+      version: ">=v1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-azure-network
+      version: ">=v1.0.0"
 ```
 
 For a Provider package:
@@ -75,9 +81,7 @@ metadata:
   name: provider-custom-dns
 spec:
   crossplane:
-    version: ">=1.14.0"
-  controller:
-    image: registry.example.com/provider-custom-dns-controller:v1.0.0
+    version: ">=v1.14.0"
 ```
 
 ## Building Packages
@@ -87,22 +91,24 @@ Use the Crossplane CLI to build packages:
 ```bash
 # Install the Crossplane CLI
 
-curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
+curl -sL https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh | sh
 sudo mv crossplane /usr/local/bin/
 
 # Build a configuration package
 crossplane xpkg build \
   --package-root=./my-platform \
-  --output=my-platform.xpkg
+  --ignore="./examples/*" \
+  --package-file=my-platform.xpkg
 
 # Build with examples included
 crossplane xpkg build \
   --package-root=./my-platform \
+  --ignore="./examples/*" \
   --examples-root=./my-platform/examples \
-  --output=my-platform.xpkg
+  --package-file=my-platform.xpkg
 ```
 
-The build process validates your manifests, resolves dependencies, and creates an OCI-compliant image that can be pushed to any container registry.
+The build process validates your manifests and creates an OCI-compliant image that can be pushed to any container registry.
 
 ## Publishing Packages
 
@@ -110,8 +116,7 @@ Push packages to an OCI registry:
 
 ```bash
 # Login to the registry
-crossplane xpkg login \
-  --domain=registry.example.com \
+docker login registry.example.com \
   --username=platform-team \
   --password-stdin < token.txt
 
@@ -131,7 +136,7 @@ crossplane xpkg push \
 
 # Push to Amazon ECR
 aws ecr get-login-password --region us-east-1 | \
-  crossplane xpkg login --domain=123456789.dkr.ecr.us-east-1.amazonaws.com --username=AWS --password-stdin
+  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
 
 crossplane xpkg push \
   123456789.dkr.ecr.us-east-1.amazonaws.com/platform-networking:v1.0.0 \
@@ -207,10 +212,14 @@ Dependency version constraints follow semantic versioning. You can specify exact
 ```yaml
 spec:
   dependsOn:
-    - provider: xpkg.upbound.io/upbound/provider-aws-ec2
-      version: ">=1.0.0 <2.0.0"    # Any 1.x version
-    - configuration: registry.example.com/platform/base
-      version: "1.2.x"              # Any 1.2.x patch version
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-aws-ec2
+      version: ">=v1.0.0 <v2.0.0"    # Any 1.x version
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      package: registry.example.com/platform/base
+      version: "v1.2.x"              # Any 1.2.x patch version
 ```
 
 ## Package Revisions
@@ -251,16 +260,24 @@ metadata:
   name: platform-complete
 spec:
   crossplane:
-    version: ">=1.14.0"
+    version: ">=v1.14.0"
   dependsOn:
-    - configuration: registry.example.com/platform/networking
-      version: ">=1.0.0"
-    - configuration: registry.example.com/platform/databases
-      version: ">=1.0.0"
-    - configuration: registry.example.com/platform/kubernetes-clusters
-      version: ">=1.0.0"
-    - configuration: registry.example.com/platform/observability
-      version: ">=1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      package: registry.example.com/platform/networking
+      version: ">=v1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      package: registry.example.com/platform/databases
+      version: ">=v1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      package: registry.example.com/platform/kubernetes-clusters
+      version: ">=v1.0.0"
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      package: registry.example.com/platform/observability
+      version: ">=v1.0.0"
 ```
 
 ## CI/CD for Packages
@@ -281,19 +298,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Crossplane CLI
         run: |
-          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
+          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh | sh
           sudo mv crossplane /usr/local/bin/
       - name: Build package
         run: |
           crossplane xpkg build \
             --package-root=. \
-            --output=package.xpkg
+            --ignore="./examples/*" \
+            --package-file=package.xpkg
       - name: Push package
         run: |
-          crossplane xpkg login \
-            --domain=ghcr.io \
-            --username=${{ github.actor }} \
-            --password-stdin <<< "${{ secrets.GITHUB_TOKEN }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
           crossplane xpkg push \
             ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
             -f package.xpkg
@@ -305,14 +322,16 @@ Before publishing, test packages locally:
 
 ```bash
 # Validate the package structure
-crossplane xpkg build --package-root=. --output=/dev/null
+crossplane xpkg build --package-root=. --ignore="./examples/*" --package-file=package.xpkg
 
 # Install locally on a development cluster
 kind create cluster
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
 helm install crossplane crossplane-stable/crossplane -n crossplane-system --create-namespace
 
-# Install the package from a local file
-crossplane xpkg install configuration ./my-platform.xpkg
+# Install the package from a registry reachable by the cluster
+crossplane xpkg install configuration registry.example.com/platform/networking:v1.0.0
 
 # Verify XRDs and Compositions are installed
 kubectl get xrd
