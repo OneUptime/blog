@@ -12,9 +12,9 @@ Platform engineering teams need to provide self-service infrastructure while mai
 
 ## Understanding Crossplane Claims and XRDs
 
-Crossplane extends Kubernetes with custom resources that represent cloud infrastructure. XRDs define the schema for composite resources, while Claims provide a namespace-scoped interface that developers use to request infrastructure. This separation allows platform teams to manage implementation details while developers focus on their requirements.
+Crossplane extends Kubernetes with custom resources that represent cloud infrastructure. XRDs define the schema for composite resources, while Claims provide a namespace-scoped interface that developers use to request infrastructure. Claims are the v1-style interface, and continue to work with Crossplane v2 when you use the v1 XRD API in legacy mode. Crossplane v2's native namespaced composite resources do not use claims. This separation allows platform teams to manage implementation details while developers focus on their requirements.
 
-The XRD defines what infrastructure can be provisioned and how it maps to underlying resources. Claims reference XRDs and provide the user-facing API. When a developer creates a Claim, Crossplane automatically provisions the corresponding Composite Resource along with all its managed resources.
+The XRD defines the user-facing API for what can be requested, while the Composition maps that API to underlying resources. Claims use the XRD-generated claim API. When a developer creates a Claim, Crossplane automatically provisions the corresponding Composite Resource along with all its managed resources.
 
 ## Creating a Basic XRD
 
@@ -35,6 +35,10 @@ spec:
   claimNames:
     kind: PostgreSQLDatabase
     plural: postgresqldatabases
+  connectionSecretKeys:
+    - endpoint
+    - username
+    - password
   versions:
   - name: v1alpha1
     served: true
@@ -46,6 +50,13 @@ spec:
           spec:
             type: object
             properties:
+              writeConnectionSecretToRef:
+                type: object
+                properties:
+                  name:
+                    type: string
+                required:
+                  - name
               parameters:
                 type: object
                 properties:
@@ -87,82 +98,92 @@ spec:
     apiVersion: platform.example.com/v1alpha1
     kind: XPostgreSQLDatabase
 
-  # Define connection secret details
-  writeConnectionSecretsToNamespace: crossplane-system
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Create the RDS subnet group
+      - name: subnetgroup
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: SubnetGroup
+          spec:
+            forProvider:
+              region: us-west-2
+              subnetIdSelector:
+                matchLabels:
+                  network: platform-private
 
-  resources:
-  # Create the RDS subnet group
-  - name: subnetgroup
-    base:
-      apiVersion: database.aws.upbound.io/v1beta1
-      kind: SubnetGroup
-      spec:
-        forProvider:
-          region: us-west-2
-          subnetIdSelector:
-            matchLabels:
-              network: platform-private
+      # Create the RDS instance with size-based configuration
+      - name: rdsinstance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              username: postgres
+              autoGeneratePassword: true
+              skipFinalSnapshot: true
+              publiclyAccessible: false
+              dbSubnetGroupNameSelector:
+                matchControllerRef: true
+              # These values will be patched based on the claim
+              instanceClass: db.t3.small
+              allocatedStorage: 20
+            writeConnectionSecretToRef:
+              name: api-database-rdsinstance
+              namespace: crossplane-system
+        patches:
+        # Map size to instance class
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.size
+          toFieldPath: spec.forProvider.instanceClass
+          transforms:
+          - type: map
+            map:
+              small: db.t3.small
+              medium: db.t3.large
+              large: db.r5.xlarge
 
-  # Create the RDS instance with size-based configuration
-  - name: rdsinstance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-          skipFinalSnapshot: true
-          publiclyAccessible: false
-          # These values will be patched based on the claim
-          instanceClass: db.t3.small
-          allocatedStorage: 20
-        writeConnectionSecretToRef:
-          namespace: crossplane-system
-    patches:
-    # Map size to instance class
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.size
-      toFieldPath: spec.forProvider.instanceClass
-      transforms:
-      - type: map
-        map:
-          small: db.t3.small
-          medium: db.t3.large
-          large: db.r5.xlarge
+        # Map size to storage
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.size
+          toFieldPath: spec.forProvider.allocatedStorage
+          transforms:
+          - type: map
+            map:
+              small: 20
+              medium: 100
+              large: 500
 
-    # Map size to storage
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.size
-      toFieldPath: spec.forProvider.allocatedStorage
-      transforms:
-      - type: map
-        map:
-          small: 20
-          medium: 100
-          large: 500
+        # Set PostgreSQL version
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.version
+          toFieldPath: spec.forProvider.engineVersion
 
-    # Set PostgreSQL version
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.version
-      toFieldPath: spec.forProvider.engineVersion
+        # Enable multi-AZ if requested
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.highAvailability
+          toFieldPath: spec.forProvider.multiAz
 
-    # Enable multi-AZ if requested
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.highAvailability
-      toFieldPath: spec.forProvider.multiAz
-
-    # Generate connection details
-    connectionDetails:
-    - type: FromConnectionSecretKey
-      name: endpoint
-      fromConnectionSecretKey: endpoint
-    - type: FromConnectionSecretKey
-      name: username
-      fromConnectionSecretKey: username
-    - type: FromConnectionSecretKey
-      name: password
-      fromConnectionSecretKey: password
+        # Generate connection details
+        connectionDetails:
+        - type: FromConnectionSecretKey
+          name: endpoint
+          fromConnectionSecretKey: endpoint
+        - type: FromConnectionSecretKey
+          name: username
+          fromConnectionSecretKey: username
+        - type: FromConnectionSecretKey
+          name: password
+          fromConnectionSecretKey: password
 ```
 
 The Composition uses patches to transform simple parameters into detailed resource configurations. This keeps the developer interface simple while maintaining full control over implementation.
@@ -192,6 +213,7 @@ patches:
   transforms:
   - type: math
     math:
+      type: multiply
       multiply: 100
 
 # Convert boolean to string for tags
@@ -286,27 +308,35 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XPostgreSQLDatabase
-  resources:
-  - name: sqlinstance
-    base:
-      apiVersion: sql.gcp.upbound.io/v1beta1
-      kind: DatabaseInstance
-      spec:
-        forProvider:
-          region: us-central1
-          databaseVersion: POSTGRES_14
-          settings:
-          - tier: db-f1-micro
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.size
-      toFieldPath: spec.forProvider.settings[0].tier
-      transforms:
-      - type: map
-        map:
-          small: db-f1-micro
-          medium: db-n1-standard-2
-          large: db-n1-standard-8
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: sqlinstance
+        base:
+          apiVersion: sql.gcp.upbound.io/v1beta1
+          kind: DatabaseInstance
+          spec:
+            forProvider:
+              region: us-central1
+              databaseVersion: POSTGRES_14
+              settings:
+              - tier: db-f1-micro
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.size
+          toFieldPath: spec.forProvider.settings[0].tier
+          transforms:
+          - type: map
+            map:
+              small: db-f1-micro
+              medium: db-n1-standard-2
+              large: db-n1-standard-8
 ```
 
 Developers select the provider using labels in their Claims, enabling multi-cloud deployments with identical interfaces.
@@ -335,14 +365,14 @@ resources:
         region: us-west-2
         vpcSecurityGroupIdSelector:
           matchControllerRef: true
-        # This creates a dependency on the security group
+        # This creates a reference to the security group
 ```
 
-The `matchControllerRef` selector automatically references resources created in the same Composite, ensuring correct ordering.
+The `matchControllerRef` selector automatically references matching resources created by the same Composite, so the RDS instance does not bind to an unrelated security group.
 
 ## Monitoring Claim Status
 
-Platform teams need visibility into Claim status. Add status fields to track provisioning progress and expose operational information.
+Platform teams need visibility into Claim status. Use status fields to track provisioning progress and expose operational information.
 
 ```yaml
 # Check claim status
@@ -359,7 +389,7 @@ Status conditions indicate whether resources are ready, and events provide troub
 
 ## Implementing Policy and Compliance
 
-Use Composition functions to enforce policies automatically. This example adds required tags based on namespace labels.
+Use Composition functions to enforce policies automatically. This simplified example uses a custom function that you would install and maintain to add required tags based on namespace labels.
 
 ```yaml
 # composition-with-policy.yaml
