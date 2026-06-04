@@ -38,6 +38,7 @@ metadata:
   namespace: apisix
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   ports:
   - port: 2379
     name: client
@@ -89,6 +90,8 @@ spec:
           value: "new"
         - name: ETCD_INITIAL_CLUSTER_TOKEN
           value: "apisix-etcd-cluster"
+        - name: ETCD_DATA_DIR
+          value: "/var/lib/etcd"
         volumeMounts:
         - name: etcd-data
           mountPath: /var/lib/etcd
@@ -130,13 +133,14 @@ data:
       enable_ipv6: false
       enable_control: true
       enable_admin: true
-      allow_admin:
-        - 0.0.0.0/0
 
     deployment:
       role: traditional
       role_traditional:
         config_provider: etcd
+      admin:
+        allow_admin:
+          - 0.0.0.0/0
 
       etcd:
         host:
@@ -184,6 +188,7 @@ data:
       - csrf
       - public-api
       - gzip
+      - node-status
       - server-info
       - traffic-split
       - limit-req
@@ -214,7 +219,6 @@ data:
       - clickhouse-logger
       - tencent-cloud-cls
       - google-cloud-logging
-      - prometheus-native
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -241,7 +245,7 @@ spec:
           name: https
         - containerPort: 9180
           name: admin
-        - containerPort: 9092
+        - containerPort: 9090
           name: control
         volumeMounts:
         - name: config
@@ -318,28 +322,29 @@ Alternatively, use Helm for simplified deployment:
 
 ```bash
 # Add APISIX Helm repository
-helm repo add apisix https://charts.apiseven.com
+helm repo add apisix https://apache.github.io/apisix-helm-chart
 helm repo update
 
 # Install with custom values
 cat > apisix-values.yaml <<EOF
-apisix:
-  enabled: true
-  replicaCount: 3
+replicaCount: 3
 
-gateway:
+service:
   type: LoadBalancer
   http:
     enabled: true
   tls:
-    enabled: true
+    servicePort: 443
 
-admin:
-  enabled: true
-  type: ClusterIP
-  allow:
-    ipList:
-    - 0.0.0.0/0
+apisix:
+  ssl:
+    enabled: true
+  admin:
+    enabled: true
+    type: ClusterIP
+    allow:
+      ipList:
+      - 0.0.0.0/0
 
 etcd:
   enabled: true
@@ -361,27 +366,37 @@ For Kubernetes-native configuration, deploy the APISIX Ingress Controller:
 
 ```bash
 # Install CRDs and controller
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixRoute.yaml
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixUpstream.yaml
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixTls.yaml
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixClusterConfig.yaml
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixConsumer.yaml
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/crd/v1/ApisixPluginConfig.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixRoute.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixUpstream.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixTls.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixClusterConfig.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixConsumer.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/crd/v1/ApisixPluginConfig.yaml
 
 # Deploy ingress controller
-kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/master/samples/deploy/composite.yaml
+kubectl apply -f https://raw.githubusercontent.com/apache/apisix-ingress-controller/v1.8.0/samples/deploy/composite.yaml
 ```
 
 Or with Helm:
 
 ```yaml
 # ingress-controller-values.yaml
-controller:
+deployment:
   replicas: 2
-  config:
-    apisix:
-      adminAPIVersion: v3
-      baseURL: http://apisix-admin.apisix:9180/apisix/admin
+
+apisix:
+  adminService:
+    namespace: apisix
+    name: apisix-admin
+    port: 9180
+
+gatewayProxy:
+  createDefault: true
+  provider:
+    controlPlane:
+      auth:
+        adminKey:
+          value: "edd1c9f034335f136f87ad84b625c8f1"
 ```
 
 ```bash
