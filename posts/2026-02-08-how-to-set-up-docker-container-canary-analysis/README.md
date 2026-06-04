@@ -52,6 +52,10 @@ upstream app_canary {
     server 127.0.0.1:8002;
 }
 
+# Log which version handled each request
+log_format canary '$remote_addr - $upstream_variant - $status '
+                  '$request_time $upstream_response_time';
+
 # Split map based on a consistent hash of the client IP
 # This ensures the same client always hits the same version
 split_clients "${remote_addr}" $upstream_variant {
@@ -63,9 +67,6 @@ server {
     listen 80;
     server_name app.example.com;
 
-    # Log which version handled each request
-    log_format canary '$remote_addr - $upstream_variant - $status '
-                      '$request_time $upstream_response_time';
     access_log /var/log/nginx/canary.log canary;
 
     location / {
@@ -77,7 +78,7 @@ server {
 
     # Metrics endpoint for the analysis script
     location /nginx-status {
-        stub_status on;
+        stub_status;
         allow 127.0.0.1;
         deny all;
     }
@@ -125,8 +126,6 @@ If your application does not have built-in metrics, use a sidecar approach with 
 
 ```yaml
 # docker-compose.canary.yml - Canary setup with metrics collection
-version: "3.9"
-
 services:
   app-stable:
     image: myapp:1.0
@@ -287,11 +286,70 @@ set -e
 
 NEW_IMAGE=$1
 CANARY_WEIGHT=10  # Start with 10% traffic to canary
+NGINX_CONFIG=/etc/nginx/conf.d/canary.conf
 
 if [ -z "$NEW_IMAGE" ]; then
     echo "Usage: $0 <new-image:tag>"
     exit 1
 fi
+
+write_nginx_config() {
+    mode=$1
+    stable_weight=$2
+
+    {
+        cat <<'EOF'
+upstream app_stable {
+    server 127.0.0.1:8001;
+}
+
+upstream app_canary {
+    server 127.0.0.1:8002;
+}
+
+log_format canary '$remote_addr - $upstream_variant - $status '
+                  '$request_time $upstream_response_time';
+
+split_clients "${remote_addr}" $upstream_variant {
+EOF
+
+        if [ "$mode" = "stable" ]; then
+            echo "    * app_stable;"
+        elif [ "$mode" = "canary" ]; then
+            echo "    * app_canary;"
+        else
+            echo "    ${stable_weight}% app_stable;"
+            echo "    *   app_canary;"
+        fi
+
+        cat <<'EOF'
+}
+
+server {
+    listen 80;
+    server_name app.example.com;
+
+    access_log /var/log/nginx/canary.log canary;
+
+    location / {
+        proxy_pass http://$upstream_variant;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Canary-Version $upstream_variant;
+    }
+
+    location /nginx-status {
+        stub_status;
+        allow 127.0.0.1;
+        deny all;
+    }
+}
+EOF
+    } > "$NGINX_CONFIG"
+
+    docker exec nginx-canary nginx -t
+    docker exec nginx-canary nginx -s reload
+}
 
 echo "=== Starting Canary Deployment ==="
 echo "New image: $NEW_IMAGE"
@@ -328,8 +386,7 @@ done
 
 # Step 4: Enable traffic splitting (90/10)
 echo "Enabling traffic split: 90% stable, 10% canary..."
-# Update Nginx config to split traffic
-docker exec nginx-canary nginx -s reload
+write_nginx_config split "$((100 - CANARY_WEIGHT))"
 
 # Step 5: Run canary analysis
 echo "Running canary analysis (this takes ~10 minutes)..."
@@ -337,21 +394,20 @@ if python3 /opt/scripts/canary_analysis.py; then
     echo "Canary analysis PASSED"
 else
     echo "Canary analysis FAILED. Rolling back."
+    write_nginx_config stable
     docker rm -f app-canary
-    docker exec nginx-canary nginx -s reload
     exit 1
 fi
 
 # Step 6: Promote canary to stable
 echo "Promoting canary to stable..."
 
+# Send all traffic to the canary while replacing the stable container
+write_nginx_config canary
+
 # Stop the old stable container
 docker stop app-stable
 docker rm app-stable
-
-# Rename canary to stable and update port mapping
-docker stop app-canary
-docker rm app-canary
 
 # Start the new version as the stable container
 docker run -d \
@@ -363,7 +419,11 @@ docker run -d \
   "$NEW_IMAGE"
 
 # Update Nginx to send all traffic to the new stable
-docker exec nginx-canary nginx -s reload
+write_nginx_config stable
+
+# Remove the temporary canary container after stable is serving traffic
+docker stop app-canary
+docker rm app-canary
 
 echo "=== Canary Deployment Complete ==="
 echo "New stable version: $NEW_IMAGE"
