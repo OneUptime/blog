@@ -25,8 +25,6 @@ First, here is a Docker Compose file that defines both the database and the back
 ```yaml
 # docker-compose.yml - PostgreSQL with automated backup sidecar
 
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -55,7 +53,8 @@ services:
     # Run backup every 6 hours using crond
     command:
       - |
-        echo "0 */6 * * * /usr/local/bin/pg-backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/pg-backup
+        apt-get update && apt-get install -y cron && rm -rf /var/lib/apt/lists/*
+        echo "0 */6 * * * bash /usr/local/bin/pg-backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/pg-backup
         chmod 0644 /etc/cron.d/pg-backup
         crontab /etc/cron.d/pg-backup
         cron -f
@@ -79,19 +78,19 @@ set -euo pipefail
 
 BACKUP_DIR="/backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-FILENAME="pg_backup_${TIMESTAMP}.sql.gz"
+FILENAME="pg_backup_${TIMESTAMP}.dump"
 
 echo "[$(date)] Starting PostgreSQL backup..."
 
-# Run pg_dump and compress the output with gzip
-pg_dump -Fc | gzip > "${BACKUP_DIR}/${FILENAME}"
+# Run pg_dump in custom format, which is compressed by default
+pg_dump -Fc --file="${BACKUP_DIR}/${FILENAME}"
 
 # Calculate and display the backup file size
 SIZE=$(du -h "${BACKUP_DIR}/${FILENAME}" | cut -f1)
 echo "[$(date)] Backup complete: ${FILENAME} (${SIZE})"
 
 # Remove backup files older than 7 days to save disk space
-find "${BACKUP_DIR}" -name "pg_backup_*.sql.gz" -mtime +7 -delete
+find "${BACKUP_DIR}" -name "pg_backup_*.dump" -mtime +7 -delete
 echo "[$(date)] Old backups cleaned up."
 ```
 
@@ -108,7 +107,6 @@ MySQL follows a similar pattern but uses `mysqldump` instead. Here is a dedicate
 
 ```yaml
 # docker-compose.yml - MySQL with automated backup service
-version: "3.8"
 
 services:
   mysql:
@@ -133,11 +131,11 @@ services:
     # Cron entry runs mysqldump every 6 hours
     command:
       - |
-        apt-get update && apt-get install -y cron
-        echo "0 */6 * * * mysqldump -h mysql -u appuser -psecretpass --single-transaction --routines myapp | gzip > /backups/mysql_backup_\$(date +\%Y\%m\%d_\%H\%M\%S).sql.gz && find /backups -name 'mysql_backup_*.sql.gz' -mtime +7 -delete" > /etc/cron.d/mysql-backup
+        microdnf install -y cronie gzip && microdnf clean all
+        echo "0 */6 * * * mysqldump -h mysql -u appuser -psecretpass --single-transaction --routines --no-tablespaces myapp | gzip > /backups/mysql_backup_\$(date +\%Y\%m\%d_\%H\%M\%S).sql.gz && find /backups -name 'mysql_backup_*.sql.gz' -mtime +7 -delete" > /etc/cron.d/mysql-backup
         chmod 0644 /etc/cron.d/mysql-backup
         crontab /etc/cron.d/mysql-backup
-        cron -f
+        crond -n
     networks:
       - dbnet
 
@@ -148,7 +146,7 @@ networks:
   dbnet:
 ```
 
-The `--single-transaction` flag ensures a consistent snapshot without locking the tables, which is critical for production databases that serve live traffic.
+The `--single-transaction` flag ensures a consistent snapshot for transactional tables such as InnoDB without blocking applications, which is critical for production databases that serve live traffic.
 
 ## MongoDB Automated Backups
 
@@ -156,7 +154,6 @@ MongoDB uses `mongodump` for its backup utility. Here is the setup:
 
 ```yaml
 # docker-compose.yml - MongoDB with backup sidecar
-version: "3.8"
 
 services:
   mongo:
@@ -179,7 +176,8 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        echo "0 */6 * * * /usr/local/bin/mongo-backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/mongo-backup
+        apt-get update && apt-get install -y cron && rm -rf /var/lib/apt/lists/*
+        echo "0 */6 * * * bash /usr/local/bin/mongo-backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/mongo-backup
         chmod 0644 /etc/cron.d/mongo-backup
         crontab /etc/cron.d/mongo-backup
         cron -f
@@ -238,12 +236,13 @@ set -euo pipefail
 BACKUP_DIR="/backups"
 S3_BUCKET="s3://my-db-backups/production"
 
-# Sync only new files to S3 (existing files are skipped)
+# Sync new and changed files to S3
 aws s3 sync "${BACKUP_DIR}" "${S3_BUCKET}" \
   --storage-class STANDARD_IA \
   --exclude "*" \
   --include "*.sql.gz" \
-  --include "*.archive.gz"
+  --include "*.archive.gz" \
+  --include "*.dump"
 
 echo "[$(date)] S3 upload complete."
 ```
@@ -263,7 +262,7 @@ docker exec -i postgres pg_restore \
   -d myapp_test \
   --clean \
   --if-exists \
-  < backups/postgres/pg_backup_20260208_060000.sql.gz
+  < backups/postgres/pg_backup_20260208_060000.dump
 ```
 
 For MySQL restores:
@@ -301,7 +300,7 @@ BACKUP_DIR="/backups"
 MAX_AGE_HOURS=12
 
 # Find backups modified within the last MAX_AGE_HOURS
-RECENT=$(find "${BACKUP_DIR}" -type f \( -name "*.sql.gz" -o -name "*.archive.gz" \) -mmin -$((MAX_AGE_HOURS * 60)) | wc -l)
+RECENT=$(find "${BACKUP_DIR}" -type f \( -name "*.sql.gz" -o -name "*.archive.gz" -o -name "*.dump" \) -mmin -$((MAX_AGE_HOURS * 60)) | wc -l)
 
 if [ "$RECENT" -eq 0 ]; then
   echo "ALERT: No backup found in the last ${MAX_AGE_HOURS} hours!"
@@ -321,11 +320,11 @@ Keep these principles in mind when setting up Docker database backups:
 
 1. **Separate backup containers from database containers.** This keeps concerns isolated and lets you update backup logic without touching the database.
 
-2. **Compress all backups.** Gzip reduces backup sizes by 80-90% for typical SQL dumps, saving both storage and transfer costs.
+2. **Compress all backups.** Gzip or PostgreSQL's compressed custom format reduces backup sizes for typical dumps, saving both storage and transfer costs.
 
 3. **Rotate old backups.** The `find -mtime +7 -delete` pattern shown above prevents disk space from growing unbounded.
 
-4. **Use consistent snapshot options.** The `--single-transaction` flag for MySQL and the `-Fc` format for PostgreSQL ensure you get consistent point-in-time snapshots.
+4. **Use consistent snapshot options.** The `--single-transaction` flag gives MySQL consistent InnoDB snapshots, while PostgreSQL's `pg_dump` takes a consistent snapshot and `-Fc` produces a compressed custom archive for `pg_restore`.
 
 5. **Store secrets in Docker secrets or environment files.** Never hardcode passwords in scripts meant for production. Use `.env` files referenced by Docker Compose or Docker Swarm secrets.
 
