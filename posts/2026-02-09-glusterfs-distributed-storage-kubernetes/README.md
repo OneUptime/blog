@@ -8,7 +8,9 @@ Description: Learn how to deploy and configure GlusterFS as a distributed storag
 
 ---
 
-GlusterFS is a distributed filesystem that aggregates storage from multiple servers into a single global namespace. It provides ReadWriteMany (RWX) access for Kubernetes workloads, making it ideal for shared application data, content management systems, and collaborative tools.
+GlusterFS is a distributed filesystem that aggregates storage from multiple servers into a single global namespace. With the legacy in-tree Kubernetes GlusterFS volume plugin, it provides ReadWriteMany (RWX) access for Kubernetes workloads, making it ideal for shared application data, content management systems, and collaborative tools.
+
+> **Note:** The Kubernetes in-tree GlusterFS volume plugin was deprecated in Kubernetes v1.25 and removed in Kubernetes v1.26. The Kubernetes PersistentVolume and StorageClass examples in this guide apply only to legacy Kubernetes clusters that still include the in-tree GlusterFS plugin. For current Kubernetes releases, use a supported CSI storage driver instead. Heketi is also archived, so treat the dynamic provisioning section as historical guidance for older clusters.
 
 ## Understanding GlusterFS Architecture
 
@@ -26,7 +28,7 @@ Volume types:
 
 ## Prerequisites
 
-You need at least 3 nodes with additional disks for GlusterFS storage. Label your nodes:
+You need a legacy Kubernetes cluster running v1.25 or older, plus at least 3 nodes with additional disks for GlusterFS storage. Label your nodes:
 
 ```bash
 # Label storage nodes
@@ -104,23 +106,25 @@ sudo gluster volume info gv0
 
 ## Deploying GlusterFS in Kubernetes
 
-Use the GlusterFS DaemonSet for client support:
+If you run GlusterFS servers as Kubernetes pods, use the historical GlusterFS DaemonSet pattern. If you run GlusterFS directly on the hosts as shown above, install the GlusterFS client package on every Kubernetes node that might mount the volume instead.
 
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: glusterfs-client
+  name: glusterfs
   namespace: kube-system
 spec:
   selector:
     matchLabels:
-      name: glusterfs-client
+      glusterfs-node: daemonset
   template:
     metadata:
       labels:
-        name: glusterfs-client
+        glusterfs-node: daemonset
     spec:
+      nodeSelector:
+        storagenode: glusterfs
       hostNetwork: true
       containers:
       - name: glusterfs
@@ -214,6 +218,7 @@ spec:
     storage: 10Gi
   accessModes:
   - ReadWriteMany  # Multiple pods can mount
+  storageClassName: ""
   glusterfs:
     endpoints: glusterfs-cluster
     path: gv0  # GlusterFS volume name
@@ -231,6 +236,7 @@ metadata:
 spec:
   accessModes:
   - ReadWriteMany
+  storageClassName: ""
   resources:
     requests:
       storage: 10Gi
@@ -354,11 +360,12 @@ cat > topology.json <<EOF
 }
 EOF
 
-# Deploy Heketi
-kubectl create -f https://raw.githubusercontent.com/heketi/heketi/master/extras/kubernetes/heketi-deployment.yaml
+# Deploy Heketi from the archived example manifests
+kubectl create -f https://raw.githubusercontent.com/heketi/heketi/master/extras/kubernetes/heketi-deployment.json
 
 # Load topology
-kubectl exec -n default heketi-xxxxx -- heketi-cli topology load --json=/topology.json
+kubectl cp topology.json default/heketi-xxxxx:/tmp/topology.json
+kubectl exec -n default heketi-xxxxx -- heketi-cli topology load --json=/tmp/topology.json
 ```
 
 Create a StorageClass for dynamic provisioning:
@@ -370,7 +377,7 @@ metadata:
   name: glusterfs
 provisioner: kubernetes.io/glusterfs
 parameters:
-  resturl: "http://heketi-service:8080"
+  resturl: "http://heketi:8080"
   restuser: "admin"
   secretNamespace: "default"
   secretName: "heketi-secret"
