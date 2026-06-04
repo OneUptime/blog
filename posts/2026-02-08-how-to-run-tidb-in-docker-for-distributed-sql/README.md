@@ -39,8 +39,6 @@ The easiest way to run a full TiDB cluster locally is with Docker Compose.
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   pd:
     image: pingcap/pd:v8.1.0
@@ -125,6 +123,7 @@ services:
 
 networks:
   tidb-net:
+    name: tidb-net
     driver: bridge
 
 volumes:
@@ -161,7 +160,7 @@ If you do not have the MySQL client installed locally, use it from a container.
 ```bash
 # Run MySQL client from a container
 docker run -it --rm --network tidb-net mysql:8 \
-  mysql -h tidb-server -P 4000 -u root
+  mysql -h tidb -P 4000 -u root
 ```
 
 ## Creating Tables and Inserting Data
@@ -206,10 +205,10 @@ INSERT INTO products (name, category, price, stock) VALUES
     ('Ergonomic Chair', 'furniture', 799.00, 25);
 
 INSERT INTO orders (user_id, product_id, quantity, total, status) VALUES
-    (1001, 1, 1, 1299.99, 'completed'),
-    (1002, 2, 3, 89.97, 'completed'),
-    (1001, 4, 2, 899.98, 'shipped'),
-    (1003, 5, 1, 799.00, 'pending');
+    (1001, (SELECT id FROM products WHERE name = 'Laptop Pro'), 1, 1299.99, 'completed'),
+    (1002, (SELECT id FROM products WHERE name = 'Wireless Mouse'), 3, 89.97, 'completed'),
+    (1001, (SELECT id FROM products WHERE name = 'Monitor 27"'), 2, 899.98, 'shipped'),
+    (1003, (SELECT id FROM products WHERE name = 'Ergonomic Chair'), 1, 799.00, 'pending');
 ```
 
 ## Distributed Features
@@ -237,9 +236,9 @@ TiDB supports distributed ACID transactions. This works even when rows are on di
 -- Start a transaction that touches multiple rows potentially on different nodes
 BEGIN;
 
-UPDATE products SET stock = stock - 1 WHERE id = 1;
+UPDATE products SET stock = stock - 1 WHERE name = 'Laptop Pro';
 INSERT INTO orders (user_id, product_id, quantity, total, status)
-    VALUES (1004, 1, 1, 1299.99, 'pending');
+    VALUES (1004, (SELECT id FROM products WHERE name = 'Laptop Pro'), 1, 1299.99, 'pending');
 
 COMMIT;
 ```
@@ -328,10 +327,13 @@ Use the `dumpling` tool for logical backups.
 
 ```bash
 # Export data using TiDB's Dumpling tool
+mkdir -p ./dumpling-output
+
 docker run --rm --network tidb-net \
+  -v "$PWD/dumpling-output:/output" \
   pingcap/dumpling:v8.1.0 \
   dumpling \
-    -h tidb-server \
+    -h tidb \
     -P 4000 \
     -u root \
     -o /output \
