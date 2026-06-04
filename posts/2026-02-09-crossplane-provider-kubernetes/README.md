@@ -26,6 +26,7 @@ Install Crossplane first, then add Provider-Kubernetes:
 # Install Crossplane
 
 helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
 helm install crossplane crossplane-stable/crossplane \
   --namespace crossplane-system \
   --create-namespace
@@ -37,11 +38,22 @@ kind: Provider
 metadata:
   name: provider-kubernetes
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v0.11.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes:v1.2.1
+EOF
+
+# Install Function Patch and Transform for the composition examples
+kubectl apply -f - <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
 EOF
 
 # Wait for provider to be ready
-kubectl wait --for=condition=Healthy provider/provider-kubernetes --timeout=300s
+kubectl wait --for=condition=Healthy provider.pkg.crossplane.io/provider-kubernetes --timeout=300s
+kubectl wait --for=condition=Healthy function.pkg.crossplane.io/function-patch-and-transform --timeout=300s
 ```
 
 Configure the provider to manage the same cluster:
@@ -60,10 +72,14 @@ spec:
 Apply the configuration:
 
 ```bash
+SA=$(kubectl -n crossplane-system get sa -o name | grep provider-kubernetes | sed -e 's|serviceaccount/|crossplane-system:|g')
+kubectl create clusterrolebinding provider-kubernetes-admin-binding \
+  --clusterrole cluster-admin \
+  --serviceaccount="${SA}"
 kubectl apply -f provider-config.yaml
 ```
 
-This uses the provider pod's service account to access the API server.
+This uses the provider pod's service account to access the API server, so the service account needs RBAC permissions for the Kubernetes resources it manages.
 
 ## Managing Basic Kubernetes Resources
 
@@ -114,6 +130,7 @@ kind: CompositeResourceDefinition
 metadata:
   name: xapplications.platform.example.com
 spec:
+  scope: LegacyCluster
   group: platform.example.com
   names:
     kind: XApplication
@@ -171,132 +188,145 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XApplication
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # RDS database
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              engineVersion: "15.4"
+              instanceClass: db.t3.micro
+              allocatedStorage: 20
+              username: dbadmin
+              passwordSecretRef:
+                name: db-password
+                namespace: crossplane-system
+                key: password
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db"
 
-  resources:
-  # RDS database
-  - name: rds-instance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-          engineVersion: "15.4"
-          instanceClass: db.t3.micro
-          allocatedStorage: 20
-          username: dbadmin
-          passwordSecretRef:
-            name: db-password
-            namespace: crossplane-system
-            key: password
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: metadata.name
-      transforms:
-      - type: string
-        string:
-          fmt: "%s-db"
-
-  # Kubernetes namespace
-  - name: app-namespace
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: Namespace
-            metadata:
-              name: placeholder
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.metadata.name
-
-  # Kubernetes deployment
-  - name: app-deployment
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: app
-              namespace: placeholder
-            spec:
-              replicas: 2
-              selector:
-                matchLabels:
-                  app: myapp
-              template:
+      # Kubernetes namespace
+      - name: app-namespace
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: Namespace
                 metadata:
-                  labels:
-                    app: myapp
-                spec:
-                  containers:
-                  - name: app
-                    image: nginx
-                    ports:
-                    - containerPort: 8080
-                    env:
-                    - name: DATABASE_URL
-                      value: placeholder
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.metadata.name
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.metadata.namespace
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.image
-      toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].image
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.replicas
-      toFieldPath: spec.forProvider.manifest.spec.replicas
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.spec.selector.matchLabels.app
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.spec.template.metadata.labels.app
+                  name: placeholder
+            providerConfigRef:
+              name: kubernetes-provider
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.metadata.name
 
-  # Kubernetes service
-  - name: app-service
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: Service
-            metadata:
-              name: app
-              namespace: placeholder
-            spec:
-              type: LoadBalancer
-              selector:
-                app: myapp
-              ports:
-              - port: 80
-                targetPort: 8080
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.metadata.name
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.metadata.namespace
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.appName
-      toFieldPath: spec.forProvider.manifest.spec.selector.app
+      # Kubernetes deployment
+      - name: app-deployment
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: app
+                  namespace: placeholder
+                spec:
+                  replicas: 2
+                  selector:
+                    matchLabels:
+                      app: myapp
+                  template:
+                    metadata:
+                      labels:
+                        app: myapp
+                    spec:
+                      containers:
+                      - name: app
+                        image: nginx
+                        ports:
+                        - containerPort: 8080
+                        env:
+                        - name: DATABASE_URL
+                          value: placeholder
+            providerConfigRef:
+              name: kubernetes-provider
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.metadata.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.metadata.namespace
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.image
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].image
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.replicas
+          toFieldPath: spec.forProvider.manifest.spec.replicas
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.spec.selector.matchLabels.app
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.spec.template.metadata.labels.app
+
+      # Kubernetes service
+      - name: app-service
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: app
+                  namespace: placeholder
+                spec:
+                  type: LoadBalancer
+                  selector:
+                    app: myapp
+                  ports:
+                  - port: 80
+                    targetPort: 8080
+            providerConfigRef:
+              name: kubernetes-provider
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.metadata.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.metadata.namespace
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.appName
+          toFieldPath: spec.forProvider.manifest.spec.selector.app
 ```
 
 Developers request complete applications:
@@ -412,46 +442,55 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XApplicationConfig
-
-  resources:
-  - name: app-configmap
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: ConfigMap
-            metadata:
-              name: app-config
-              namespace: default
-            data:
-              app.properties: |
-                server.port=8080
-                log.level=INFO
-              database.properties: |
-                host=placeholder
-                port=5432
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.namespace
-      toFieldPath: spec.forProvider.manifest.metadata.namespace
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.dbHost
-      toFieldPath: spec.forProvider.manifest.data["database.properties"]
-      transforms:
-      - type: string
-        string:
-          fmt: "host=%s\nport=5432"
-    - type: CombineFromComposite
-      combine:
-        variables:
-        - fromFieldPath: spec.parameters.logLevel
-        strategy: string
-        string:
-          fmt: "server.port=8080\nlog.level=%s"
-      toFieldPath: spec.forProvider.manifest.data["app.properties"]
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: app-configmap
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: app-config
+                  namespace: default
+                data:
+                  app.properties: |
+                    server.port=8080
+                    log.level=INFO
+                  database.properties: |
+                    host=placeholder
+                    port=5432
+            providerConfigRef:
+              name: kubernetes-provider
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.namespace
+          toFieldPath: spec.forProvider.manifest.metadata.namespace
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.dbHost
+          toFieldPath: spec.forProvider.manifest.data["database.properties"]
+          transforms:
+          - type: string
+            string:
+              fmt: "host=%s\nport=5432"
+        - type: CombineFromComposite
+          combine:
+            variables:
+            - fromFieldPath: spec.parameters.logLevel
+            strategy: string
+            string:
+              fmt: "server.port=8080\nlog.level=%s"
+          toFieldPath: spec.forProvider.manifest.data["app.properties"]
 ```
 
 ## Handling Resource Dependencies
@@ -468,74 +507,98 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XApplication
-
-  resources:
-  # Step 1: Create namespace
-  - name: namespace
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: Namespace
-            metadata:
-              name: myapp
-
-  # Step 2: Create secret (depends on namespace)
-  - name: app-secret
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: Secret
-            metadata:
-              name: app-secret
-              namespace: myapp
-            type: Opaque
-            stringData:
-              api-key: secret-value
-        references:
-        - patchesFrom:
-            apiVersion: kubernetes.crossplane.io/v1alpha2
-            kind: Object
-            name: namespace
-            fieldPath: spec.forProvider.manifest.metadata.name
-          toFieldPath: spec.forProvider.manifest.metadata.namespace
-
-  # Step 3: Create deployment (depends on secret)
-  - name: deployment
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: myapp
-              namespace: myapp
-            spec:
-              replicas: 2
-              selector:
-                matchLabels:
-                  app: myapp
-              template:
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Step 1: Create namespace
+      - name: namespace
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          metadata:
+            name: myapp-namespace
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: Namespace
                 metadata:
-                  labels:
-                    app: myapp
+                  name: myapp
+            providerConfigRef:
+              name: kubernetes-provider
+
+      # Step 2: Create secret (depends on namespace)
+      - name: app-secret
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          metadata:
+            name: myapp-secret
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: app-secret
+                  namespace: myapp
+                type: Opaque
+                stringData:
+                  api-key: secret-value
+            providerConfigRef:
+              name: kubernetes-provider
+            references:
+            - patchesFrom:
+                apiVersion: kubernetes.crossplane.io/v1alpha2
+                kind: Object
+                name: myapp-namespace
+                fieldPath: spec.forProvider.manifest.metadata.name
+              toFieldPath: spec.forProvider.manifest.metadata.namespace
+
+      # Step 3: Create deployment (depends on secret)
+      - name: deployment
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          metadata:
+            name: myapp-deployment
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: myapp
+                  namespace: myapp
                 spec:
-                  containers:
-                  - name: app
-                    image: myapp:latest
-                    envFrom:
-                    - secretRef:
-                        name: app-secret
+                  replicas: 2
+                  selector:
+                    matchLabels:
+                      app: myapp
+                  template:
+                    metadata:
+                      labels:
+                        app: myapp
+                    spec:
+                      containers:
+                      - name: app
+                        image: myapp:latest
+                        envFrom:
+                        - secretRef:
+                            name: app-secret
+            providerConfigRef:
+              name: kubernetes-provider
+            references:
+            - dependsOn:
+                apiVersion: kubernetes.crossplane.io/v1alpha2
+                kind: Object
+                name: myapp-secret
 ```
 
 References ensure resources are created in the correct order.
