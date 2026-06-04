@@ -8,7 +8,7 @@ Description: Learn how to deploy Kata Containers with QEMU hypervisor in Kuberne
 
 ---
 
-Standard containers share the host kernel, creating security risks for multi-tenant environments. Kata Containers solves this by running each pod in its own lightweight virtual machine while maintaining a container-like interface. Using QEMU as the hypervisor provides true hardware isolation without requiring specialized hardware. This guide shows you how to set up Kata Containers with QEMU in Kubernetes.
+Standard containers share the host kernel, creating security risks for multi-tenant environments. Kata Containers solves this by running each pod in its own lightweight virtual machine while maintaining a container-like interface. Using QEMU with KVM acceleration as the hypervisor provides hardware-backed isolation on nodes with CPU virtualization support. This guide shows you how to set up Kata Containers with QEMU in Kubernetes.
 
 ## Understanding Kata Containers Architecture
 
@@ -18,24 +18,17 @@ The architecture includes the kata-runtime, kata-agent (running inside the VM), 
 
 ## Installing Kata Containers Runtime
 
-Install Kata Containers and its dependencies on all nodes where you want to run isolated workloads.
+Install Kata Containers and its dependencies on the Kubernetes nodes where you want to run isolated workloads. For Kubernetes, the Kata Deploy Helm chart is the preferred installation method because it installs the Kata artifacts, configures the CRI runtime, and creates the default RuntimeClass resources.
 
 ```bash
-# Add Kata Containers repository
-
-ARCH=$(arch)
-BRANCH="${BRANCH:-master}"
-sudo sh -c "echo 'deb http://download.opensuse.org/repositories/home:/katacontainers:/releases:/${ARCH}:/${BRANCH}/xUbuntu_$(lsb_release -rs)/ /' > /etc/apt/sources.list.d/kata-containers.list"
-
-# Add GPG key
-curl -fsSL https://download.opensuse.org/repositories/home:/katacontainers:/releases:/${ARCH}:/${BRANCH}/xUbuntu_$(lsb_release -rs)/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/kata-containers.gpg > /dev/null
-
-# Install Kata Containers
-sudo apt-get update
-sudo apt-get install -y kata-runtime kata-proxy kata-shim
+# Install from the official Kata Deploy OCI Helm chart
+export VERSION=$(curl -sSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
+export CHART="oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy"
+helm install kata-deploy "${CHART}" --version "${VERSION}" --namespace kube-system --create-namespace
 
 # Verify installation
-kata-runtime --version
+kubectl -n kube-system rollout status ds/kata-deploy
+kubectl get runtimeclass
 ```
 
 Check hardware virtualization support:
@@ -48,8 +41,11 @@ egrep -c '(vmx|svm)' /proc/cpuinfo
 if [ -w /dev/kvm ]; then
     echo "KVM is available"
 else
-    echo "KVM is not available - will use QEMU without acceleration"
+    echo "KVM is not available - use bare metal or enable nested virtualization"
 fi
+
+# Run Kata's host capability checks on each worker node
+sudo kata-runtime check --verbose
 ```
 
 ## Configuring QEMU Hypervisor
@@ -64,9 +60,6 @@ path = "/usr/bin/qemu-system-x86_64"
 
 # QEMU machine type
 machine_type = "q35"
-
-# Enable KVM acceleration
-enable_kvm = true
 
 # CPU configuration
 default_vcpus = 1
@@ -86,14 +79,11 @@ enable_hugepages = false
 # Kernel path
 kernel = "/usr/share/kata-containers/vmlinuz.container"
 
-# Initial RAM disk
-initrd = "/usr/share/kata-containers/kata-containers-initrd.img"
+# Guest image path
+image = "/usr/share/kata-containers/kata-containers.img"
 
 # Firmware path
 firmware = ""
-
-# Machine accelerators
-machine_accelerators = "kvm,nvdimm"
 
 # CPU features
 cpu_features = "pmu=off"
@@ -105,7 +95,7 @@ enable_debug = false
 block_device_driver = "virtio-scsi"
 
 # Enable vhost-net for better network performance
-enable_vhost_net = true
+disable_vhost_net = false
 
 # Shared filesystem type
 shared_fs = "virtio-fs"
@@ -116,9 +106,6 @@ virtio_fs_daemon = "/usr/libexec/virtiofsd"
 # Virtio-fs cache mode
 virtio_fs_cache = "auto"
 
-# Enable vsock for agent communication
-use_vsock = true
-
 # Entropy source
 entropy_source = "/dev/urandom"
 
@@ -126,12 +113,9 @@ entropy_source = "/dev/urandom"
 # Enable agent tracing
 enable_tracing = false
 
-# Container pipe size
-container_pipe_size = 0
-
 [runtime]
 # Enable experimental features
-experimental = ["newstore"]
+experimental = []
 
 # Sandbox cgroup only
 sandbox_cgroup_only = true
@@ -150,7 +134,7 @@ This configuration optimizes QEMU for container workloads while maintaining stro
 
 ## Integrating with containerd
 
-Configure containerd to use Kata Containers as a runtime option.
+If you install Kata from distribution packages or maintain containerd manually instead of using Kata Deploy, configure containerd to use Kata Containers as a runtime option.
 
 ```toml
 # /etc/containerd/config.toml
@@ -170,18 +154,27 @@ version = 2
       # Kata Containers with QEMU
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
         runtime_type = "io.containerd.kata.v2"
+        privileged_without_host_devices = true
+        pod_annotations = ["io.katacontainers.*"]
+        container_annotations = ["io.katacontainers.*"]
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata.options]
           ConfigPath = "/etc/kata-containers/configuration.toml"
 
       # Kata with custom configuration
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-qemu]
         runtime_type = "io.containerd.kata.v2"
+        privileged_without_host_devices = true
+        pod_annotations = ["io.katacontainers.*"]
+        container_annotations = ["io.katacontainers.*"]
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-qemu.options]
           ConfigPath = "/etc/kata-containers/configuration-qemu.toml"
 
       # Kata with higher resources for demanding workloads
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-large]
         runtime_type = "io.containerd.kata.v2"
+        privileged_without_host_devices = true
+        pod_annotations = ["io.katacontainers.*"]
+        container_annotations = ["io.katacontainers.*"]
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-large.options]
           ConfigPath = "/etc/kata-containers/configuration-large.toml"
 ```
@@ -193,13 +186,12 @@ Create variant configurations:
 [hypervisor.qemu]
 path = "/usr/bin/qemu-system-x86_64"
 machine_type = "q35"
-enable_kvm = true
 default_vcpus = 4
 default_maxvcpus = 8
 default_memory = 8192
 enable_mem_prealloc = true
 kernel = "/usr/share/kata-containers/vmlinuz.container"
-initrd = "/usr/share/kata-containers/kata-containers-initrd.img"
+image = "/usr/share/kata-containers/kata-containers.img"
 ```
 
 Restart containerd:
@@ -324,8 +316,6 @@ kind: Pod
 metadata:
   name: tenant-workload
   namespace: tenant-a
-  annotations:
-    io.katacontainers.config.hypervisor.enable_annotations: "[\".*\"]"
 spec:
   runtimeClassName: kata
   securityContext:
@@ -361,20 +351,15 @@ Tune Kata Containers for better performance while maintaining isolation.
 [hypervisor.qemu]
 path = "/usr/bin/qemu-system-x86_64"
 machine_type = "q35"
-enable_kvm = true
 
 # Optimize CPU allocation
 default_vcpus = 2
 default_maxvcpus = 8
 
-# Enable CPU pinning for predictable performance
-enable_cpu_pinning = true
-
 # Memory optimization
 default_memory = 2048
 enable_mem_prealloc = true
 enable_hugepages = true
-hugepage_size = "2M"
 
 # Use virtio-fs for better filesystem performance
 shared_fs = "virtio-fs"
@@ -391,9 +376,6 @@ block_device_driver = "virtio-scsi"
 block_device_cache_set = true
 block_device_cache_direct = true
 
-# Enable vsock for faster guest-host communication
-use_vsock = true
-
 # Reduce boot time
 disable_block_device_use = false
 enable_iothreads = true
@@ -402,6 +384,10 @@ enable_iothreads = true
 # Reduce agent startup time
 enable_tracing = false
 kernel_modules = []
+
+[runtime]
+# Enable CPU pinning for predictable performance
+enable_vcpus_pinning = true
 ```
 
 Enable hugepages on the host:
@@ -421,58 +407,28 @@ Track VM resource usage and performance metrics.
 
 ```bash
 # Check running Kata VMs
-kata-runtime list
+sudo ctr --namespace k8s.io tasks list | grep kata
 
 # Get detailed VM information
-kata-runtime state <container-id>
+sudo kata-runtime state <sandbox-id>
 
-# Monitor VM resources
-kata-runtime exec <container-id> ps aux
-
-# View hypervisor metrics
-sudo virsh list --all
-sudo virsh dominfo <domain>
+# Check Kata and containerd logs
+sudo journalctl -t kata -f
+sudo journalctl -u containerd -f
 
 # Check QEMU process details
 ps aux | grep qemu
 ```
 
-Configure Prometheus metrics:
+Expose Prometheus metrics with `kata-monitor` on each node:
 
-```yaml
-# kata-metrics-exporter.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: kata-metrics-exporter
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: kata-metrics
-  template:
-    metadata:
-      labels:
-        app: kata-metrics
-    spec:
-      hostNetwork: true
-      hostPID: true
-      containers:
-      - name: exporter
-        image: kata/metrics-exporter:latest
-        ports:
-        - containerPort: 9750
-          name: metrics
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: kata-state
-          mountPath: /run/kata-containers
-          readOnly: true
-      volumes:
-      - name: kata-state
-        hostPath:
-          path: /run/kata-containers
+```bash
+# Start kata-monitor on the node and expose Prometheus-format metrics
+sudo kata-monitor --listen-address 0.0.0.0:8090 --runtime-endpoint /run/containerd/containerd.sock
+
+# Check available endpoints
+curl http://127.0.0.1:8090/metrics
+curl http://127.0.0.1:8090/sandboxes
 ```
 
 ## Implementing Resource Limits
@@ -524,12 +480,17 @@ echo "options kvm_intel nested=1" | sudo tee /etc/modprobe.d/kvm.conf
 # Enable nested virtualization for AMD
 echo "options kvm_amd nested=1" | sudo tee /etc/modprobe.d/kvm.conf
 
-# Reload module
+# Reload the matching module
 sudo modprobe -r kvm_intel
 sudo modprobe kvm_intel
+# or
+sudo modprobe -r kvm_amd
+sudo modprobe kvm_amd
 
 # Verify
 cat /sys/module/kvm_intel/parameters/nested
+# or
+cat /sys/module/kvm_amd/parameters/nested
 ```
 
 ## Troubleshooting Kata Issues
@@ -542,7 +503,7 @@ sudo mkdir -p /var/log/kata-containers
 sudo kata-runtime kata-env
 
 # Check Kata configuration
-kata-runtime kata-check
+sudo kata-runtime check
 
 # View detailed logs
 sudo journalctl -u containerd -f | grep kata
@@ -556,10 +517,10 @@ sudo ctr run --runtime io.containerd.kata.v2 \
 sudo cat /run/vc/vm/<vm-id>/console.log
 
 # Verify hypervisor availability
-kata-runtime kata-check --verbose
+sudo kata-runtime check --verbose
 
-# Debug networking issues
-sudo kata-runtime exec <container-id> ip addr show
+# Debug networking issues from inside the workload
+kubectl exec -n <namespace> <pod-name> -- ip addr show
 ```
 
 Common issues include KVM access permissions, resource constraints, and networking configuration problems.
