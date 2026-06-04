@@ -8,17 +8,17 @@ Description: Learn how to configure OpenTelemetry histogram bucket boundaries fo
 
 ---
 
-Histogram buckets determine how OpenTelemetry aggregates latency measurements. Proper bucket configuration ensures accurate percentile calculations and meaningful performance insights without excessive cardinality.
+Histogram buckets determine how OpenTelemetry aggregates latency measurements. Proper bucket configuration ensures accurate percentile calculations and meaningful performance insights without excessive metric data volume.
 
 ## Understanding Histogram Buckets
 
 Histograms distribute measurements into predefined buckets. Each bucket counts values within a range. The bucket boundaries determine the precision of percentile calculations. Poor bucket selection leads to inaccurate or useless metrics.
 
-OpenTelemetry uses exponential histograms by default, which provide good general-purpose coverage. However, custom buckets often provide better insights for specific latency patterns in your application.
+OpenTelemetry uses explicit bucket histograms by default for histogram instruments. However, custom buckets often provide better insights for specific latency patterns in your application.
 
 ## Default Bucket Configuration
 
-OpenTelemetry SDKs come with default histogram buckets suitable for general latency tracking.
+OpenTelemetry SDKs come with default histogram buckets suitable for general latency tracking. For HTTP server duration metrics, the semantic convention recommends second-based bucket boundaries.
 
 ```python
 # default_histograms.py
@@ -36,18 +36,20 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter(__name__)
 
-# Create histogram with default buckets
-# Default: [0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+# Create histogram with HTTP semantic convention bucket boundaries
+http_duration_buckets = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+
 request_duration = meter.create_histogram(
-    name="http.server.duration",
-    description="HTTP request duration in milliseconds",
-    unit="ms",
+    name="http.server.request.duration",
+    description="HTTP request duration in seconds",
+    unit="s",
+    explicit_bucket_boundaries_advisory=http_duration_buckets,
 )
 
 # Record latencies
-request_duration.record(45.2, {"endpoint": "/api/users"})
-request_duration.record(123.5, {"endpoint": "/api/orders"})
-request_duration.record(1520.8, {"endpoint": "/api/reports"})
+request_duration.record(0.0452, {"http.route": "/api/users"})
+request_duration.record(0.1235, {"http.route": "/api/orders"})
+request_duration.record(1.5208, {"http.route": "/api/reports"})
 ```
 
 ## Custom Bucket Boundaries
@@ -61,14 +63,14 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation
 
-# Define custom buckets for API latency (in milliseconds)
-api_latency_buckets = [10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 5000]
+# Define custom buckets for API latency (in seconds)
+api_latency_buckets = [0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 2, 5]
 
 # Create view with custom buckets
 api_latency_view = View(
-    instrument_name="http.server.duration",
+    instrument_name="http.server.request.duration",
     aggregation=ExplicitBucketHistogramAggregation(boundaries=api_latency_buckets),
 )
 
@@ -82,9 +84,9 @@ meter = metrics.get_meter(__name__)
 
 # Create histogram - uses custom buckets from view
 request_duration = meter.create_histogram(
-    name="http.server.duration",
+    name="http.server.request.duration",
     description="HTTP request duration",
-    unit="ms",
+    unit="s",
 )
 ```
 
@@ -97,11 +99,11 @@ Configure fine-grained buckets for low-latency operations like cache lookups.
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-# Fine-grained buckets for cache operations (microseconds)
+# Fine-grained buckets for cache operations (milliseconds)
 cache_buckets = [0.1, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
 
 # Create view for cache latency
@@ -147,8 +149,11 @@ Use coarse-grained buckets for long-running operations like batch processing.
 ```python
 # slow_operation_buckets.py
 from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Coarse buckets for batch jobs (seconds)
 batch_buckets = [1, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600]
@@ -157,6 +162,11 @@ batch_view = View(
     instrument_name="batch.job.duration",
     aggregation=ExplicitBucketHistogramAggregation(boundaries=batch_buckets),
 )
+
+exporter = OTLPMetricExporter(endpoint="http://localhost:4317")
+reader = PeriodicExportingMetricReader(exporter)
+provider = MeterProvider(metric_readers=[reader], views=[batch_view])
+metrics.set_meter_provider(provider)
 
 # Track batch processing
 meter = metrics.get_meter(__name__)
@@ -191,8 +201,11 @@ Configure buckets appropriate for database query latencies.
 ```python
 # database_buckets.py
 from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Database query buckets (milliseconds)
 # Most queries under 100ms, some up to 5 seconds
@@ -202,6 +215,11 @@ db_view = View(
     instrument_name="db.query.duration",
     aggregation=ExplicitBucketHistogramAggregation(boundaries=db_query_buckets),
 )
+
+exporter = OTLPMetricExporter(endpoint="http://localhost:4317")
+reader = PeriodicExportingMetricReader(exporter)
+provider = MeterProvider(metric_readers=[reader], views=[db_view])
+metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter(__name__)
 query_duration = meter.create_histogram(
@@ -241,35 +259,42 @@ def extract_table_name(sql):
 
 ## Service-Specific Bucket Configuration
 
-Configure different bucket sets for different services or endpoints.
+Configure different bucket sets for different services or separately named instruments.
 
 ```python
 # service_specific_buckets.py
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-# Fast API endpoints (< 200ms expected)
+# Fast API operations (< 200ms expected)
 fast_api_buckets = [10, 20, 30, 50, 75, 100, 150, 200, 300, 500]
 
-# Slow API endpoints (< 2s expected)
+# Slow API operations (< 2s expected)
 slow_api_buckets = [100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
 
-# Create views for different endpoint types
+# Create views for different instruments
 fast_api_view = View(
-    instrument_name="http.server.duration",
+    instrument_name="api.fast.duration",
     instrument_unit="ms",
     aggregation=ExplicitBucketHistogramAggregation(boundaries=fast_api_buckets),
+    attribute_keys={"http.route"},  # Only include route attribute
+)
+
+slow_api_view = View(
+    instrument_name="api.slow.duration",
+    instrument_unit="ms",
+    aggregation=ExplicitBucketHistogramAggregation(boundaries=slow_api_buckets),
     attribute_keys={"http.route"},  # Only include route attribute
 )
 
 # Configure provider with views
 exporter = OTLPMetricExporter(endpoint="http://localhost:4317")
 reader = PeriodicExportingMetricReader(exporter)
-provider = MeterProvider(metric_readers=[reader], views=[fast_api_view])
+provider = MeterProvider(metric_readers=[reader], views=[fast_api_view, slow_api_view])
 metrics.set_meter_provider(provider)
 ```
 
@@ -330,7 +355,7 @@ Use exponentially distributed buckets for wide latency ranges.
 
 ```python
 # exponential_buckets.py
-from opentelemetry.sdk.metrics.aggregation import ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 
 def create_exponential_buckets(start, factor, num_buckets):
     """Create exponentially distributed buckets"""
@@ -363,9 +388,9 @@ Track which buckets receive the most observations to validate configuration.
 Check histogram bucket distribution in your backend:
 
 In Prometheus/Grafana, query:
-  histogram_quantile(0.50, http_server_duration_bucket)
-  histogram_quantile(0.95, http_server_duration_bucket)
-  histogram_quantile(0.99, http_server_duration_bucket)
+  histogram_quantile(0.50, rate(http_server_request_duration_seconds_bucket[5m]))
+  histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket[5m]))
+  histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket[5m]))
 
 If percentiles show:
 - p95 and p99 in same bucket -> needs more granularity
@@ -386,8 +411,8 @@ Second, place more buckets where most values fall. If 90% of requests are under 
 
 Third, include buckets slightly above your SLA targets. This helps identify when performance approaches limits.
 
-Fourth, limit the number of buckets to avoid excessive cardinality. Typically 10-20 buckets provide good accuracy without explosion.
+Fourth, limit the number of buckets to avoid excessive metric data volume. Typically 10-20 buckets provide good accuracy without too many bucket time series.
 
 Fifth, use the same buckets across similar services. Consistency enables easier comparison and aggregation.
 
-OpenTelemetry histogram buckets determine the accuracy of latency metrics and percentile calculations. Proper bucket configuration balances precision against cardinality to provide meaningful performance insights aligned with your application's actual behavior and SLA requirements.
+OpenTelemetry histogram buckets determine the accuracy of latency metrics and percentile calculations. Proper bucket configuration balances precision against metric data volume to provide meaningful performance insights aligned with your application's actual behavior and SLA requirements.
