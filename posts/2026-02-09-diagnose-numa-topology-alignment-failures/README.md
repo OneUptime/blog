@@ -8,16 +8,16 @@ Description: Debug and resolve NUMA topology alignment failures in Kubernetes by
 
 ---
 
-Pods failing to schedule with topology alignment errors can be frustrating. This guide walks through diagnosing why pods fail NUMA alignment and how to fix the underlying issues.
+Pods failing to run with topology alignment errors can be frustrating. This guide walks through diagnosing why pods fail NUMA alignment and how to fix the underlying issues.
 
 ## Common Alignment Failure Symptoms
 
 You'll see these symptoms when topology alignment fails:
 
-- Pods stuck in Pending state
-- Events showing "Topology Affinity Error"
+- Pods in `TopologyAffinityError` status
+- Events showing `TopologyAffinityError`
 - Kubelet logs mentioning NUMA node exhaustion
-- Pods scheduling on wrong nodes
+- Pods bound to nodes that the kubelet then rejects
 
 The root cause is usually resource constraints or configuration issues.
 
@@ -35,10 +35,10 @@ Look for events like:
 Events:
   Type     Reason            Message
   ----     ------            -------
-  Warning  FailedScheduling  0/3 nodes are available: 3 Topology Affinity Error
+  Warning  TopologyAffinityError  Resources cannot be allocated with Topology locality
 ```
 
-This tells you the pod can't find a node with aligned resources.
+This tells you the kubelet on the selected node rejected the pod because it could not satisfy the topology policy.
 
 ## Analyzing Kubelet Logs
 
@@ -51,8 +51,8 @@ journalctl -u kubelet -n 1000 | grep -i "topology"
 Look for messages like:
 
 ```text
-Topology Affinity Error: cannot align resources to a single NUMA node
-Admit: Resources cannot fit in available NUMA nodes
+TopologyAffinityError: Resources cannot be allocated with Topology locality
+Topology Manager: best Hint NUMANodeAffinity does not satisfy policy
 ```
 
 These indicate the specific failure reason.
@@ -87,15 +87,16 @@ Your pod might need 40GB memory, but no single NUMA node has that much.
 
 ## Checking Allocatable Resources Per NUMA Node
 
-Calculate allocatable resources by subtracting reserved amounts:
+Check the kubelet's node-level reservations and Memory Manager per-NUMA reservations:
 
 ```bash
 # Get kubelet config
 
-kubectl get --raw /api/v1/nodes/worker-1/proxy/configz | jq '.kubeletconfig.systemReserved'
+kubectl get --raw /api/v1/nodes/worker-1/proxy/configz | \
+  jq '.kubeletconfig | {systemReserved, kubeReserved, reservedMemory}'
 ```
 
-If you reserved 4GB system memory on a 32GB NUMA node, allocatable is 28GB per node.
+`systemReserved` and `kubeReserved` are node-level reservations. If Memory Manager is enabled, use `reservedMemory` to see how that reserved memory is split across NUMA nodes. If `reservedMemory` reserves 4Gi on NUMA 0 of a 32Gi NUMA node, Memory Manager treats that NUMA node as having 28Gi available for pods.
 
 ## Diagnosing CPU Exhaustion
 
@@ -108,12 +109,20 @@ kubectl describe node worker-1 | grep -A 10 "Allocated resources"
 You'll see total allocated CPUs, but not per-NUMA distribution. Check running pods:
 
 ```bash
-# List all Guaranteed pods on the node
+# List Guaranteed pods with CPU requests on the node
 kubectl get pods --all-namespaces -o json --field-selector spec.nodeName=worker-1 | \
   jq '.items[] | select(.status.qosClass=="Guaranteed") | {name: .metadata.name, cpu: .spec.containers[].resources.requests.cpu}'
 ```
 
-Add up CPU requests. If 6 CPUs are allocated and your NUMA node has 8 CPUs, only 2 remain for new pods.
+This identifies pods that may receive exclusive CPUs when CPU Manager uses the `static` policy and the CPU requests are whole numbers.
+
+For the exact exclusive CPU assignments made by CPU Manager, check the kubelet state file on the node:
+
+```bash
+cat /var/lib/kubelet/cpu_manager_state
+```
+
+If the state file shows that 6 CPUs from an 8-CPU NUMA node are assigned, only 2 remain from that NUMA node for new exclusive CPU assignments.
 
 ## Diagnosing Memory Exhaustion
 
@@ -124,6 +133,12 @@ kubectl describe node worker-1 | grep -A 10 "Allocated resources"
 ```
 
 Compare against per-NUMA capacity from `numactl --hardware`.
+
+When Memory Manager is enabled, its state file shows memory assignments and free memory by NUMA node:
+
+```bash
+cat /var/lib/kubelet/memory_manager_state
+```
 
 ## Understanding Topology Manager Hints
 
@@ -143,7 +158,7 @@ Restart kubelet and check logs:
 journalctl -u kubelet -f | grep -i "topology hint"
 ```
 
-You'll see hints from CPU Manager, Memory Manager, and Device Manager, plus the final admission decision.
+You'll see hints from enabled hint providers such as CPU Manager, Memory Manager, and Device Manager, plus the final admission decision.
 
 ## Common Failure Scenarios
 
@@ -160,7 +175,7 @@ resources:
 
 But each NUMA node has only 8 CPUs and 32GB memory.
 
-**Solution**: Reduce resource requests or disable Topology Manager for this pod.
+**Solution**: Reduce resource requests or run the workload on nodes with a less strict Topology Manager policy.
 
 ### Scenario 2: Fragmentation
 
@@ -230,7 +245,7 @@ kind: KubeletConfiguration
 topologyManagerPolicy: best-effort
 ```
 
-Pods schedule even if alignment isn't perfect.
+Pods are admitted even if alignment isn't perfect.
 
 ### Solution 3: Add More Nodes
 
@@ -267,19 +282,19 @@ You'll see writes to `cpuset.cpus` and `cpuset.mems` showing NUMA assignments.
 
 ## Validating Alignment After Scheduling
 
-Once a pod schedules, verify alignment:
+Once a pod is admitted and running, verify alignment:
 
 ```bash
-# Get pod's container ID
-CONTAINER_ID=$(crictl ps | grep my-app | awk '{print $1}')
+# Get pod UID
+POD_UID=$(kubectl get pod my-app -o jsonpath='{.metadata.uid}')
+POD_UID_UNDERSCORE=${POD_UID//-/_}
 
-# Check CPU NUMA node
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.cpus
-# Output: 0-7 (NUMA node 0)
-
-# Check memory NUMA node
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.mems
-# Output: 0 (NUMA node 0)
+# Check CPU and memory NUMA placement in the matching pod/container cgroups.
+# On cgroup v2, use the *.effective files if cpuset.cpus or cpuset.mems is empty.
+sudo find /sys/fs/cgroup -type f \
+  \( -path "*${POD_UID}*" -o -path "*${POD_UID_UNDERSCORE}*" \) \
+  \( -name cpuset.cpus -o -name cpuset.cpus.effective -o -name cpuset.mems -o -name cpuset.mems.effective \) \
+  -print -exec cat {} \;
 ```
 
 Both should match.
@@ -307,7 +322,7 @@ spec:
         memory: "4Gi"
 ```
 
-If this small pod fails, you have a configuration issue, not a capacity issue.
+If this small pod fails on an otherwise idle node, you likely have a configuration issue, not a capacity issue.
 
 ## Checking Topology Manager State
 
@@ -339,16 +354,16 @@ These show current allocations per NUMA node.
 Track admission failures with a metric:
 
 ```bash
-# Count pending pods with topology errors
+# Count pods with topology errors
 kubectl get pods --all-namespaces -o json | \
-  jq '[.items[] | select(.status.phase=="Pending") | select(.status.conditions[].reason=="TopologyAffinityError")] | length'
+  jq '[.items[] | select(.status.reason=="TopologyAffinityError")] | length'
 ```
 
 Export to Prometheus for alerting.
 
 ## Real-World Debugging Example
 
-A pod requesting 6 CPUs, 24GB memory, and 1 GPU fails to schedule. Investigation:
+A pod requesting 6 CPUs, 24GB memory, and 1 GPU fails to run. Investigation:
 
 ```bash
 # Check node NUMA layout
@@ -359,8 +374,9 @@ ssh worker-1 numactl --hardware
 ssh worker-1 nvidia-smi topo -m
 # GPU 0 on NUMA 0, GPU 1 on NUMA 1
 
-# Check current allocations
-kubectl describe node worker-1 | grep -A 10 "Allocated"
+# Check current per-NUMA allocations
+ssh worker-1 cat /var/lib/kubelet/cpu_manager_state
+ssh worker-1 cat /var/lib/kubelet/memory_manager_state
 # NUMA 0: 5 CPUs allocated, 20GB allocated
 # NUMA 1: 7 CPUs allocated, 28GB allocated
 
