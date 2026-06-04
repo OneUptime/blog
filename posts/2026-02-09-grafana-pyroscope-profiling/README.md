@@ -30,13 +30,12 @@ services:
     image: grafana/pyroscope:latest
     ports:
       - "4040:4040"
-    environment:
-      - PYROSCOPE_LOG_LEVEL=info
     volumes:
-      - pyroscope-data:/var/lib/pyroscope
+      - pyroscope-data:/data
     command:
-      - "server"
-      - "-config.file=/etc/pyroscope/config.yaml"
+      - "-pyroscopedb.data-path=/data"
+      - "-storage.filesystem.dir=/data/v2/shared"
+      - "-log.level=info"
 
 volumes:
   pyroscope-data:
@@ -61,11 +60,11 @@ storage:
     region: us-east-1
 
 limits:
-  # Maximum samples per profile
-  max_nodes_per_profile: 8192
+  # Maximum flame graph nodes returned by default
+  max_flamegraph_nodes_default: 8192
 
   # Retention period
-  retention: 720h  # 30 days
+  compactor_blocks_retention_period: 720h  # 30 days
 
 analytics:
   reporting_enabled: false
@@ -82,8 +81,10 @@ Add Pyroscope instrumentation to your Go applications with minimal code changes.
 package main
 
 import (
-    "github.com/grafana/pyroscope-go"
     "log"
+    "time"
+
+    "github.com/grafana/pyroscope-go"
 )
 
 func main() {
@@ -233,22 +234,24 @@ func main() {
 }
 ```
 
-Configure Pyroscope to scrape the endpoint:
+Configure Grafana Alloy to scrape the endpoint and forward profiles to Pyroscope:
 
-```yaml
-# pyroscope-config.yaml
-scrape_configs:
-  - job_name: "my-application"
-    enabled_profiles: [cpu, mem]
-    static_configs:
-      - application: my-application
-        spy_name: gospy
-        targets:
-          - app-1:6060
-          - app-2:6060
-          - app-3:6060
-        labels:
-          env: production
+```alloy
+# config.alloy
+pyroscope.scrape "my_application" {
+  targets = [
+    {"__address__" = "app-1:6060", "service_name" = "my-application", "env" = "production"},
+    {"__address__" = "app-2:6060", "service_name" = "my-application", "env" = "production"},
+    {"__address__" = "app-3:6060", "service_name" = "my-application", "env" = "production"},
+  ]
+  forward_to = [pyroscope.write.local.receiver]
+}
+
+pyroscope.write "local" {
+  endpoint {
+    url = "http://pyroscope:4040"
+  }
+}
 ```
 
 Pull mode centralizes configuration and works well for large fleets of services.
@@ -277,12 +280,12 @@ Use comparison mode to understand how performance changed between deployments or
 
 ```bash
 # Via API - compare two time ranges
-curl "http://pyroscope:4040/render?query=my-app.cpu&from=now-2h&until=now-1h&format=json" > before.json
-curl "http://pyroscope:4040/render?query=my-app.cpu&from=now-1h&until=now&format=json" > after.json
+curl "http://pyroscope:4040/pyroscope/render?query=process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=\"my-app\"}&from=now-2h&until=now-1h&format=json" > before.json
+curl "http://pyroscope:4040/pyroscope/render?query=process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=\"my-app\"}&from=now-1h&until=now&format=json" > after.json
 
 # Pyroscope UI provides visual diff showing:
-# - Green = functions that improved (less CPU)
-# - Red = functions that regressed (more CPU)
+# - Green = functions that decreased in CPU usage
+# - Red = functions that increased in CPU usage
 # - Gray = unchanged
 ```
 
@@ -307,13 +310,13 @@ Query specific tag combinations:
 
 ```text
 # View profiles for specific endpoint
-my-app.cpu{endpoint="/api/data"}
+process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="my-app", endpoint="/api/data"}
 
 # Compare performance across customer tiers
-my-app.cpu{customer_tier="premium"} vs my-app.cpu{customer_tier="free"}
+process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="my-app", customer_tier="premium"} vs process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="my-app", customer_tier="free"}
 
 # Filter by version
-my-app.cpu{version="1.0.0"}
+process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="my-app", version="1.0.0"}
 ```
 
 Tags enable precise analysis of performance variations across dimensions.
@@ -346,8 +349,8 @@ Create dashboards that combine profiles with metrics and traces:
       "datasource": "Pyroscope",
       "targets": [
         {
-          "profileTypeId": "cpu",
-          "labelSelector": "{app=\"my-app\"}",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{service_name=\"my-app\"}",
           "groupBy": []
         }
       ]
@@ -363,8 +366,9 @@ Link profiling data to distributed traces for complete request analysis.
 ```go
 // Go application with tracing and profiling
 import (
+    "context"
+
     "github.com/grafana/pyroscope-go"
-    "go.opentelemetry.io/otel"
 )
 
 func handleRequest(ctx context.Context) {
@@ -383,7 +387,7 @@ func handleRequest(ctx context.Context) {
 }
 ```
 
-Query profiles by trace ID to see CPU usage for specific requests.
+Use Grafana's traces-to-profiles integration to correlate trace spans with profiling data for specific requests.
 
 ## Monitoring Memory Allocations
 
@@ -410,14 +414,14 @@ View allocation profiles in Pyroscope UI to find code that allocates excessively
 Create alerts when profile patterns change significantly.
 
 ```promql
-# Alert when CPU usage in specific function increases
-increase(pyroscope_function_cpu_seconds_total{function="expensiveOperation"}[5m]) > 100
+# After creating a recording rule from profile data, alert when CPU usage increases
+rate(my_app_cpu_seconds_total{function="expensiveOperation"}[5m]) > 100
 
 # Alert when allocation rate spikes
-rate(pyroscope_alloc_bytes_total[5m]) > 10000000
+rate(my_app_alloc_bytes_total[5m]) > 10000000
 ```
 
-These alerts catch performance regressions automatically.
+Recording rules export selected profile data as metrics, which you can then use in Grafana alert rules.
 
 ## Best Practices for Continuous Profiling
 
