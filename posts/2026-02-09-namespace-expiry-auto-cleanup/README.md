@@ -370,7 +370,7 @@ fi
 
 CURRENT_TIME=$(date -d "$CURRENT_EXPIRY" +%s)
 EXTRA_SECONDS=$(echo "$EXTRA_TIME" | sed 's/h$//' | awk '{print $1 * 3600}')
-NEW_TIME=$(date -d "@$((CURRENT_TIME + EXTRA_SECONDS))" --rfc-3339=seconds)
+NEW_TIME=$(date -u -d "@$((CURRENT_TIME + EXTRA_SECONDS))" +"%Y-%m-%dT%H:%M:%SZ")
 
 kubectl annotate namespace "$NAMESPACE" \
   expiry.example.com/expires-at="$NEW_TIME" \
@@ -387,7 +387,7 @@ kubectl extend-namespace pr-1234-preview 48h
 
 ## Monitoring Namespace Expiry
 
-Create a dashboard to track namespace expiration:
+Create a dashboard to track namespace expiration when kube-state-metrics is configured with `--metric-annotations-allowlist=namespaces=[expiry.example.com/expires-at]`:
 
 ```yaml
 apiVersion: v1
@@ -405,7 +405,7 @@ data:
             "title": "Expiring Soon",
             "targets": [
               {
-                "expr": "count(kube_namespace_annotations{annotation_expiry_example_com_expires_at!=\"\"}) by (namespace)"
+                "expr": "count(kube_namespace_annotations{label_expiry_example_com_expires_at!=\"\"}) by (namespace)"
               }
             ]
           }
