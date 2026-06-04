@@ -30,38 +30,66 @@ import (
     "net/http"
 )
 
+const providerAPIVersion = "externaldata.gatekeeper.sh/v1beta1"
+
 type ProviderRequest struct {
-    Keys []string `json:"keys"`
+    APIVersion string  `json:"apiVersion,omitempty"`
+    Kind       string  `json:"kind,omitempty"`
+    Request    Request `json:"request,omitempty"`
+}
+
+type Request struct {
+    Keys []string `json:"keys,omitempty"`
 }
 
 type ProviderResponse struct {
-    Responses []Response `json:"responses"`
+    APIVersion string   `json:"apiVersion,omitempty"`
+    Kind       string   `json:"kind,omitempty"`
+    Response   Response `json:"response,omitempty"`
 }
 
 type Response struct {
+    Idempotent  bool   `json:"idempotent,omitempty"`
+    Items       []Item `json:"items,omitempty"`
+    SystemError string `json:"systemError,omitempty"`
+}
+
+type Item struct {
     Key   string `json:"key"`
     Value string `json:"value"`
     Error string `json:"error,omitempty"`
 }
 
 func vulnerabilityHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
     var req ProviderRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
 
-    var responses []Response
-    for _, imageRef := range req.Keys {
+    var items []Item
+    for _, imageRef := range req.Request.Keys {
         // Query vulnerability database
         vulnScore := queryVulnerabilityDB(imageRef)
-        responses = append(responses, Response{
+        items = append(items, Item{
             Key:   imageRef,
             Value: vulnScore,
         })
     }
 
-    resp := ProviderResponse{Responses: responses}
+    resp := ProviderResponse{
+        APIVersion: providerAPIVersion,
+        Kind:       "ProviderResponse",
+        Response: Response{
+            Idempotent: true,
+            Items:      items,
+        },
+    }
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(resp)
 }
@@ -83,9 +111,14 @@ func queryVulnerabilityDB(imageRef string) string {
 }
 
 func main() {
-    http.HandleFunc("/", vulnerabilityHandler)
-    log.Println("Provider listening on :8080")
-    log.Fatal(http.ListenAndServe(":8080", nil))
+    http.HandleFunc("/validate", vulnerabilityHandler)
+    go func() {
+        log.Println("Provider listening on :8080 for local testing")
+        log.Fatal(http.ListenAndServe(":8080", nil))
+    }()
+
+    log.Println("Provider listening on :8443 for Gatekeeper")
+    log.Fatal(http.ListenAndServeTLS(":8443", "/certs/tls.crt", "/certs/tls.key", nil))
 }
 ```
 
@@ -125,6 +158,11 @@ spec:
           image: company/vuln-provider:v1.0.0
           ports:
             - containerPort: 8080
+            - containerPort: 8443
+          volumeMounts:
+            - name: provider-tls
+              mountPath: /certs
+              readOnly: true
           resources:
             limits:
               cpu: 500m
@@ -132,6 +170,10 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+      volumes:
+        - name: provider-tls
+          secret:
+            secretName: vuln-provider-tls
 ---
 apiVersion: v1
 kind: Service
@@ -142,22 +184,23 @@ spec:
   selector:
     app: vuln-provider
   ports:
-    - port: 80
-      targetPort: 8080
+    - port: 443
+      targetPort: 8443
 ```
 
 ## Configuring Provider in Gatekeeper
 
-Register the external data provider:
+Register the external data provider. Gatekeeper v3.11 and later require TLS or mTLS for external data providers, so use HTTPS and configure the provider CA bundle:
 
 ```yaml
-apiVersion: externaldata.gatekeeper.sh/v1alpha1
+apiVersion: externaldata.gatekeeper.sh/v1beta1
 kind: Provider
 metadata:
   name: vuln-provider
 spec:
-  url: http://vuln-provider.gatekeeper-system.svc.cluster.local
+  url: https://vuln-provider.gatekeeper-system.svc.cluster.local/validate
   timeout: 5
+  caBundle: <base64-encoded-ca-certificate>
 ```
 
 ## Using External Data in Policies
@@ -198,8 +241,12 @@ spec:
             "keys": [image]
           })
 
+          response.system_error == ""
+          severity_response := response.responses[_]
+          severity_response[0] == image
+
           # Check vulnerability severity
-          severity := response[image]
+          severity := severity_response[1]
           severity_rank := {"low": 1, "medium": 2, "high": 3, "critical": 4}
           max_severity_rank := severity_rank[input.parameters.maxSeverity]
           actual_severity_rank := severity_rank[severity]
@@ -286,11 +333,11 @@ func vulnerabilityHandler(w http.ResponseWriter, r *http.Request) {
     var req ProviderRequest
     json.NewDecoder(r.Body).Decode(&req)
 
-    var responses []Response
-    for _, image := range req.Keys {
+    var items []Item
+    for _, image := range req.Request.Keys {
         // Check cache first
         if value, found := provider.Get(image); found {
-            responses = append(responses, Response{
+            items = append(items, Item{
                 Key:   image,
                 Value: value,
             })
@@ -301,13 +348,20 @@ func vulnerabilityHandler(w http.ResponseWriter, r *http.Request) {
         vulnScore := queryVulnerabilityDB(image)
         provider.Set(image, vulnScore)
 
-        responses = append(responses, Response{
+        items = append(items, Item{
             Key:   image,
             Value: vulnScore,
         })
     }
 
-    resp := ProviderResponse{Responses: responses}
+    resp := ProviderResponse{
+        APIVersion: providerAPIVersion,
+        Kind:       "ProviderResponse",
+        Response: Response{
+            Idempotent: true,
+            Items:      items,
+        },
+    }
     json.NewEncoder(w).Encode(resp)
 }
 ```
@@ -317,21 +371,23 @@ func vulnerabilityHandler(w http.ResponseWriter, r *http.Request) {
 Use multiple providers in policies:
 
 ```yaml
-apiVersion: externaldata.gatekeeper.sh/v1alpha1
+apiVersion: externaldata.gatekeeper.sh/v1beta1
 kind: Provider
 metadata:
   name: license-checker
 spec:
-  url: http://license-checker.gatekeeper-system.svc.cluster.local
+  url: https://license-checker.gatekeeper-system.svc.cluster.local/validate
   timeout: 3
+  caBundle: <base64-encoded-ca-certificate>
 ---
-apiVersion: externaldata.gatekeeper.sh/v1alpha1
+apiVersion: externaldata.gatekeeper.sh/v1beta1
 kind: Provider
 metadata:
   name: registry-validator
 spec:
-  url: http://registry-validator.gatekeeper-system.svc.cluster.local
+  url: https://registry-validator.gatekeeper-system.svc.cluster.local/validate
   timeout: 5
+  caBundle: <base64-encoded-ca-certificate>
 ```
 
 Policy using multiple providers:
@@ -360,14 +416,20 @@ spec:
             "provider": "vuln-provider",
             "keys": [image]
           })
-          vuln_response[image] == "high"
+          vuln_response.system_error == ""
+          vuln_result := vuln_response.responses[_]
+          vuln_result[0] == image
+          vuln_result[1] == "high"
 
           # Check license
           license_response := external_data({
             "provider": "license-checker",
             "keys": [image]
           })
-          license_response[image] == "unapproved"
+          license_response.system_error == ""
+          license_result := license_response.responses[_]
+          license_result[0] == image
+          license_result[1] == "unapproved"
 
           msg := sprintf("Image %v has high vulnerabilities and unapproved license", [image])
         }
@@ -390,8 +452,8 @@ rego: |
       "keys": [image]
     })
 
-    # Check if provider returned error
-    not response[image]
+    # Check if provider returned an item error or system error
+    response.system_error != ""
     msg := sprintf("Unable to verify image %v - provider unavailable", [image])
   }
 
@@ -404,8 +466,26 @@ rego: |
       "keys": [image]
     })
 
+    # Check if provider returned an item error
+    error_response := response.errors[_]
+    error_response[0] == image
+    msg := sprintf("Unable to verify image %v: %v", [image, error_response[1]])
+  }
+
+  violation[{"msg": msg}] {
+    container := input.review.object.spec.containers[_]
+    image := container.image
+
+    response := external_data({
+      "provider": "vuln-provider",
+      "keys": [image]
+    })
+
     # Check actual vulnerability
-    response[image] == "high"
+    response.system_error == ""
+    severity_response := response.responses[_]
+    severity_response[0] == image
+    severity_response[1] == "high"
     msg := sprintf("Image %v has high vulnerabilities", [image])
   }
 ```
@@ -452,7 +532,7 @@ func init() {
 }
 
 func main() {
-    http.HandleFunc("/", vulnerabilityHandler)
+    http.HandleFunc("/validate", vulnerabilityHandler)
     http.Handle("/metrics", promhttp.Handler())
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -466,14 +546,25 @@ Test provider locally:
 # Send test request
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
-  -d '{"keys": ["nginx:latest", "alpine:3.18"]}'
+  -d '{
+    "apiVersion": "externaldata.gatekeeper.sh/v1beta1",
+    "kind": "ProviderRequest",
+    "request": {
+      "keys": ["nginx:latest", "alpine:3.18"]
+    }
+  }'
 
 # Expected response:
 # {
-#   "responses": [
-#     {"key": "nginx:latest", "value": "high"},
-#     {"key": "alpine:3.18", "value": "low"}
-#   ]
+#   "apiVersion": "externaldata.gatekeeper.sh/v1beta1",
+#   "kind": "ProviderResponse",
+#   "response": {
+#     "idempotent": true,
+#     "items": [
+#       {"key": "nginx:latest", "value": "high"},
+#       {"key": "alpine:3.18", "value": "low"}
+#     ]
+#   }
 # }
 ```
 
