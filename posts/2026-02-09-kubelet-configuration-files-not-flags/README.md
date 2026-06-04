@@ -40,9 +40,7 @@ ps aux | grep kubelet
 # /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf \
 #   --kubeconfig=/etc/kubernetes/kubelet.conf \
 #   --config=/var/lib/kubelet/config.yaml \
-#   --pod-infra-container-image=registry.k8s.io/pause:3.9 \
 #   --max-pods=110 \
-#   --container-runtime=remote \
 #   --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock
 
 # Check systemd service file
@@ -82,15 +80,12 @@ podPidsLimit: 4096
 systemReserved:
   cpu: 500m
   memory: 1Gi
-  ephemeral-storage: 10Gi
 kubeReserved:
   cpu: 500m
   memory: 1Gi
   ephemeral-storage: 5Gi
 enforceNodeAllocatable:
 - pods
-- system-reserved
-- kube-reserved
 # Eviction
 evictionHard:
   memory.available: 500Mi
@@ -126,16 +121,14 @@ Map common flags to configuration file fields:
 ```bash
 kubelet \
   --max-pods=110 \
-  --pod-infra-container-image=registry.k8s.io/pause:3.9 \
   --cluster-dns=10.96.0.10 \
   --cluster-domain=cluster.local \
   --cgroup-driver=systemd \
-  --container-runtime=remote \
   --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \
   --eviction-hard=memory.available<500Mi,nodefs.available<10% \
   --system-reserved=cpu=500m,memory=1Gi \
   --kube-reserved=cpu=500m,memory=1Gi \
-  --enforce-node-allocatable=pods,system-reserved,kube-reserved
+  --enforce-node-allocatable=pods
 ```
 
 **File-based equivalent:**
@@ -144,7 +137,6 @@ kubelet \
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 maxPods: 110
-podInfraContainerImage: registry.k8s.io/pause:3.9
 clusterDNS:
 - 10.96.0.10
 clusterDomain: cluster.local
@@ -161,8 +153,6 @@ kubeReserved:
   memory: "1Gi"
 enforceNodeAllocatable:
 - pods
-- system-reserved
-- kube-reserved
 ```
 
 ## Applying Configuration File
@@ -194,11 +184,14 @@ sudo journalctl -u kubelet -n 50
 Validate configuration before applying:
 
 ```bash
-# Use kubelet to validate config
-kubelet --config=/var/lib/kubelet/config.yaml --dry-run
+# Check YAML syntax
+python3 -c "import yaml; yaml.safe_load(open('/var/lib/kubelet/config.yaml'))"
 
-# Check for API version compatibility
-kubectl explain kubeletconfiguration
+# Check current kubeadm defaults for the KubeletConfiguration API
+kubeadm config print init-defaults --component-configs KubeletConfiguration
+
+# For kubeadm init configuration files, validate the kubeadm config
+kubeadm config validate --config kubeadm-cluster-config.yaml
 
 # Use a validation script
 cat > validate-kubelet-config.sh <<'EOF'
@@ -234,7 +227,7 @@ kubeadm automatically generates kubelet config files:
 
 ```yaml
 # kubeadm-cluster-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -264,17 +257,13 @@ sudo kubeadm init --config kubeadm-cluster-config.yaml
 For existing clusters, update ConfigMap:
 
 ```bash
-# Extract current kubelet configuration
-kubectl -n kube-system get configmap kubelet-config -o yaml > kubelet-config.yaml
+# Edit the kubelet configuration stored in the ConfigMap
+kubectl edit cm -n kube-system kubelet-config
 
-# Edit the configuration
-vim kubelet-config.yaml
+# On each node, download the updated ConfigMap to /var/lib/kubelet/config.yaml
+sudo kubeadm upgrade node phase kubelet-config
 
-# Apply changes
-kubectl apply -f kubelet-config.yaml
-
-# Restart kubelet on each node
-# (Must be done manually on each node)
+# Restart kubelet on each node after updating the local file
 sudo systemctl restart kubelet
 ```
 
@@ -388,8 +377,8 @@ Use Ansible to deploy configurations:
       mode: '0644'
     notify: restart kubelet
 
-  - name: Validate kubelet configuration
-    command: kubelet --config=/var/lib/kubelet/config.yaml --dry-run
+  - name: Check kubelet configuration YAML syntax
+    command: python3 -c "import yaml; yaml.safe_load(open('/var/lib/kubelet/config.yaml'))"
     register: validation
     failed_when: validation.rc != 0
 
@@ -469,17 +458,12 @@ podPidsLimit: 4096
 systemReserved:
   cpu: 1000m
   memory: 2Gi
-  ephemeral-storage: 20Gi
-  pid: 1000
 kubeReserved:
   cpu: 1000m
   memory: 2Gi
   ephemeral-storage: 10Gi
-  pid: 500
 enforceNodeAllocatable:
 - pods
-- system-reserved
-- kube-reserved
 # Eviction thresholds
 evictionHard:
   memory.available: 1Gi
