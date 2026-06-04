@@ -58,7 +58,7 @@ When you apply this pod, kubectl displays warnings:
 
 ```bash
 kubectl apply -f pod.yaml
-# Warning: would violate PodSecurity "restricted:latest": runAsNonRoot != true
+# Warning: would violate PodSecurity "restricted:latest": runAsUser=0
 
 # pod/test-pod created
 ```
@@ -70,8 +70,9 @@ The pod is created, but users receive feedback about security issues.
 Audit mode logs violations to the Kubernetes audit log:
 
 ```bash
-# View audit logs on the API server
-kubectl logs -n kube-system kube-apiserver-<node> | grep "PodSecurity"
+# Read audit events from your configured audit backend.
+# For clusters that write audit events to the API server container logs:
+kubectl logs -n kube-system kube-apiserver-<node> | grep "pod-security.kubernetes.io/audit-violations"
 
 # Example audit log entry
 {
@@ -148,6 +149,7 @@ Analyze audit logs to measure compliance:
 
 ```bash
 # Count violations by namespace
+# Replace the kubectl logs command with your cluster's audit log backend if needed.
 kubectl logs -n kube-system kube-apiserver-<node> | \
   grep "pod-security.kubernetes.io/audit-violations" | \
   jq -r '.objectRef.namespace' | \
@@ -187,9 +189,9 @@ metadata:
 
 This lets you prepare for future policy changes before they affect enforcement.
 
-## Silencing Specific Warnings
+## Documenting Specific Warnings
 
-Add labels to acknowledge known issues:
+Pod Security Admission exemptions are configured in the admission controller, not with per-pod labels. Add annotations to acknowledge known issues while you work toward remediation:
 
 ```yaml
 apiVersion: v1
@@ -197,8 +199,6 @@ kind: Pod
 metadata:
   name: acknowledged-violation
   namespace: applications
-  labels:
-    pod-security.kubernetes.io/exempt: "true"
   annotations:
     pod-security-violation: "runAsNonRoot=false"
     violation-reason: "Legacy application migration in progress"
@@ -210,11 +210,11 @@ spec:
     image: legacy-app:1.0
 ```
 
-Document exceptions while working toward compliance.
+Document exceptions while working toward compliance. Use admission controller exemptions only for explicitly approved users, runtime classes, or namespaces.
 
 ## Creating Compliance Dashboards
 
-Build dashboards showing security posture:
+After exporting audit events to metrics, build dashboards showing security posture:
 
 ```yaml
 apiVersion: v1
@@ -347,18 +347,18 @@ Test strict enforcement in staging before applying to production.
 
 ## Monitoring Warning Frequency
 
-Track how often users see warnings:
+Pod Security Admission warnings are returned to clients. To track warning patterns centrally, configure audit at the same policy level and use audit violations as a proxy:
 
 ```bash
-# Count warnings per user
+# Count audited violations per user
 kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep "pod-security.kubernetes.io/warn" | \
+  grep "pod-security.kubernetes.io/audit-violations" | \
   jq -r '.user.username' | \
   sort | uniq -c
 
 # Identify most common violations
 kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep "pod-security.kubernetes.io/warn" | \
+  grep "pod-security.kubernetes.io/audit-violations" | \
   jq -r '.annotations."pod-security.kubernetes.io/audit-violations"' | \
   sort | uniq -c | sort -rn
 ```
