@@ -32,7 +32,7 @@ type: Opaque
 stringData:
   username: "admin"
   password: "secure-password"
-  host: "rabbitmq.messaging.svc.cluster.local"
+  host: "amqp://rabbitmq.messaging.svc.cluster.local:5672/"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -68,7 +68,8 @@ spec:
       name: rabbitmq-trigger-auth
     metadata:
       queueName: work-queue
-      queueLength: "10"
+      mode: QueueLength
+      value: "10"
 ```
 
 The ScaledObject references the TriggerAuthentication, which retrieves credentials from the secret at runtime.
@@ -81,7 +82,7 @@ Use IRSA on EKS for credential-free AWS authentication.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: keda-operator-sa
+  name: keda-operator
   namespace: keda
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/KedaOperatorRole
@@ -93,7 +94,8 @@ metadata:
   namespace: workers
 spec:
   podIdentity:
-    provider: aws-eks
+    provider: aws
+    identityOwner: keda
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -114,7 +116,6 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
       queueLength: "15"
       awsRegion: us-east-1
-      identityOwner: operator  # Use KEDA operator's service account
 ```
 
 The KEDA operator assumes the IAM role configured in its service account, eliminating the need for static AWS credentials.
@@ -127,7 +128,7 @@ Configure Azure AD workload identity for AKS clusters.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: keda-operator-sa
+  name: keda-operator
   namespace: keda
   annotations:
     azure.workload.identity/client-id: "12345678-1234-1234-1234-123456789012"
@@ -174,7 +175,7 @@ Use GCP workload identity for authentication with Google Cloud services.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: keda-operator-sa
+  name: keda-operator
   namespace: keda
   annotations:
     iam.gke.io/gcp-service-account: keda-operator@project-id.iam.gserviceaccount.com
@@ -205,7 +206,8 @@ spec:
       name: gcp-pubsub-auth
     metadata:
       subscriptionName: workers-subscription
-      subscriptionSize: "10"
+      mode: SubscriptionSize
+      value: "10"
 ```
 
 The Kubernetes service account is bound to a GCP service account, providing automatic credential management.
@@ -248,7 +250,8 @@ spec:
 
   # Pod identity
   podIdentity:
-    provider: aws-eks
+    provider: aws
+    identityOwner: keda
 ```
 
 This supports complex scenarios where authentication requires multiple credential types.
@@ -331,6 +334,7 @@ stringData:
     -----BEGIN PRIVATE KEY-----
     ...
     -----END PRIVATE KEY-----
+  tls: "enable"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -341,7 +345,7 @@ spec:
   secretTargetRef:
   - parameter: tls
     name: tls-credentials
-    key: enable
+    key: tls
   - parameter: ca
     name: tls-credentials
     key: ca.crt
