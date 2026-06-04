@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Crossplane, Database, Cloud, Kubernetes, Infrastructure as Code
 
-Description: How to use Crossplane to provision and manage cloud database services like RDS, Cloud SQL, and Azure Database directly from Kubernetes
+Description: How to use Crossplane to provision and manage cloud database services like RDS and Cloud SQL directly from Kubernetes
 
 ---
 
-Managing cloud infrastructure has traditionally required separate tooling from application deployment. Development teams submit tickets or use cloud consoles to provision databases, then manually configure connection strings in their Kubernetes workloads. Crossplane changes this paradigm by extending the Kubernetes API to provision and manage cloud resources, including managed database services, using the same declarative approach you use for pods and deployments. This guide demonstrates how to provision databases across AWS, GCP, and Azure using Crossplane, creating a self-service platform for development teams.
+Managing cloud infrastructure has traditionally required separate tooling from application deployment. Development teams submit tickets or use cloud consoles to provision databases, then manually configure connection strings in their Kubernetes workloads. Crossplane changes this paradigm by extending the Kubernetes API to provision and manage cloud resources, including managed database services, using the same declarative approach you use for pods and deployments. This guide demonstrates how to provision databases across AWS and GCP using Crossplane, creating a self-service platform for development teams.
 
 ## What Is Crossplane?
 
-Crossplane is an open-source Kubernetes add-on that transforms your Kubernetes cluster into a universal control plane for infrastructure. It uses Custom Resource Definitions (CRDs) to represent cloud resources as Kubernetes objects. When you create a Crossplane managed resource, the corresponding cloud resource is provisioned automatically. When you delete it, the cloud resource is cleaned up.
+Crossplane is an open-source Kubernetes add-on that transforms your Kubernetes cluster into a universal control plane for infrastructure. It uses Custom Resource Definitions (CRDs) to represent cloud resources as Kubernetes objects. When you create a Crossplane managed resource, the corresponding cloud resource is provisioned automatically. When you delete it, the cloud resource is cleaned up according to the resource's deletion policy and any cloud-side protection settings.
 
 Crossplane providers are plugins that add support for specific cloud platforms. Each provider includes CRDs for the cloud resources it manages and controllers that reconcile the desired state with the actual state of the cloud resources.
 
@@ -26,8 +26,7 @@ helm repo update
 
 helm install crossplane crossplane-stable/crossplane \
   --namespace crossplane-system \
-  --create-namespace \
-  --set args='{"--enable-composition-revisions"}'
+  --create-namespace
 ```
 
 Verify the installation:
@@ -124,11 +123,10 @@ spec:
 Create a managed PostgreSQL database on AWS RDS:
 
 ```yaml
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.upbound.io/v1beta2
 kind: Instance
 metadata:
   name: production-postgres
-  namespace: default
 spec:
   forProvider:
     region: us-east-1
@@ -162,7 +160,7 @@ spec:
     namespace: default
 ```
 
-The `writeConnectionSecretToRef` field is particularly important. Crossplane automatically creates a Kubernetes secret containing the database connection details (host, port, username, password) that your applications can consume directly.
+The `writeConnectionSecretToRef` field is particularly important. Crossplane creates a Kubernetes secret containing the connection details the provider publishes, such as endpoint, port, username, and password, that your applications can consume directly.
 
 ## Provisioning a Google Cloud SQL Instance
 
@@ -223,6 +221,11 @@ spec:
   claimNames:
     kind: Database
     plural: databases
+  connectionSecretKeys:
+    - endpoint
+    - port
+    - username
+    - password
   versions:
     - name: v1alpha1
       served: true
@@ -248,11 +251,20 @@ spec:
               required:
                 - size
                 - engine
+          required:
+            - spec
 ```
 
-Now create a Composition that maps these simple inputs to cloud resources:
+Install the patch-and-transform function and create a Composition that maps these simple inputs to cloud resources:
 
 ```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+---
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -263,46 +275,82 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XDatabase
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-east-1
-            engine: postgres
-            storageType: gp3
-            storageEncrypted: true
-            multiAz: true
-            publiclyAccessible: false
-            backupRetentionPeriod: 7
-            deletionProtection: true
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.engine
-          toFieldPath: spec.forProvider.engine
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.version
-          toFieldPath: spec.forProvider.engineVersion
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.size
-          toFieldPath: spec.forProvider.instanceClass
-          transforms:
-            - type: map
-              map:
-                small: db.t4g.medium
-                medium: db.r6g.large
-                large: db.r6g.2xlarge
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.size
-          toFieldPath: spec.forProvider.allocatedStorage
-          transforms:
-            - type: map
-              map:
-                small: 50
-                medium: 200
-                large: 500
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta2
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  engine: postgres
+                  username: dbadmin
+                  passwordSecretRef:
+                    name: shared-db-password
+                    namespace: crossplane-system
+                    key: password
+                  storageType: gp3
+                  storageEncrypted: true
+                  multiAz: true
+                  publiclyAccessible: false
+                  backupRetentionPeriod: 7
+                  deletionProtection: true
+                writeConnectionSecretToRef:
+                  name: rds-instance-connection
+                  namespace: crossplane-system
+            connectionDetails:
+              - name: endpoint
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      fmt: "%s-rds"
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.engine
+                toFieldPath: spec.forProvider.engine
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.version
+                toFieldPath: spec.forProvider.engineVersion
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.size
+                toFieldPath: spec.forProvider.instanceClass
+                transforms:
+                  - type: map
+                    map:
+                      small: db.t4g.medium
+                      medium: db.r6g.large
+                      large: db.r6g.2xlarge
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.size
+                toFieldPath: spec.forProvider.allocatedStorage
+                transforms:
+                  - type: map
+                    map:
+                      small: 50
+                      medium: 200
+                      large: 500
 ```
 
 ## Consuming Databases from Applications
@@ -322,6 +370,8 @@ spec:
   compositionSelector:
     matchLabels:
       provider: aws
+  writeConnectionSecretToRef:
+    name: my-app-database-connection
 ```
 
 The connection secret is automatically created in the application namespace and can be consumed by pods:
@@ -333,7 +383,13 @@ metadata:
   name: my-app
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -342,17 +398,17 @@ spec:
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
-                  name: my-app-database
+                  name: my-app-database-connection
                   key: endpoint
             - name: DB_PORT
               valueFrom:
                 secretKeyRef:
-                  name: my-app-database
+                  name: my-app-database-connection
                   key: port
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: my-app-database
+                  name: my-app-database-connection
                   key: password
 ```
 
@@ -369,7 +425,7 @@ kubectl get databases -A
 kubectl get xdatabases
 
 # Inspect the underlying managed resource
-kubectl describe instance.rds production-postgres
+kubectl describe instance.rds.aws.upbound.io production-postgres
 
 # View Crossplane events
 kubectl get events --field-selector involvedObject.kind=Instance
@@ -379,8 +435,8 @@ Common issues and their solutions:
 
 - **Resource stuck in "Creating"**: Check provider logs with `kubectl logs -n crossplane-system -l pkg.crossplane.io/revision`
 - **Permission errors**: Verify IAM roles have the necessary permissions for the resource type
-- **Connection secret not appearing**: Ensure `writeConnectionSecretToRef` namespace matches the claim namespace
+- **Connection secret not appearing**: Ensure the Claim defines `writeConnectionSecretToRef.name` and the Composition lists the expected keys in `connectionDetails`
 
 ## Conclusion
 
-Crossplane transforms database provisioning from a manual, ticket-driven process into a self-service, declarative workflow. By defining Compositions that encode your organization's best practices for database configuration, you empower development teams to provision production-grade databases without deep cloud expertise. The Kubernetes-native approach means databases are managed alongside application resources, connection secrets flow naturally into pods, and the entire lifecycle is governed by Kubernetes RBAC. Whether you are running on AWS, GCP, Azure, or a combination, Crossplane provides a consistent interface that abstracts cloud-specific complexity while maintaining full configurability when needed.
+Crossplane transforms database provisioning from a manual, ticket-driven process into a self-service, declarative workflow. By defining Compositions that encode your organization's best practices for database configuration, you empower development teams to provision production-grade databases without deep cloud expertise. The Kubernetes-native approach means databases are managed alongside application resources, connection secrets flow naturally into pods, and the entire lifecycle is governed by Kubernetes RBAC. Whether you are running on AWS, GCP, or a combination of cloud providers, Crossplane provides a consistent interface that abstracts cloud-specific complexity while maintaining full configurability when needed.
