@@ -28,7 +28,7 @@ kind: GatewayClass
 metadata:
   name: nginx-gateway
 spec:
-  controllerName: nginx.org/nginx-gateway-controller
+  controllerName: gateway.nginx.org/nginx-gateway-controller
   description: "NGINX Gateway Controller"
 ```
 
@@ -45,47 +45,46 @@ The controller watches for GatewayClasses with its controllerName and marks them
 
 ## Configuring Controller-Specific Parameters
 
-Different controllers support different configuration options through parametersRef.
+Different controllers support different configuration options. Some controllers use `parametersRef`; others use their own defaulting mechanism.
 
 ```yaml
 # gatewayclass-with-params.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: istio-gateway
+  name: envoy-gateway
 spec:
-  controllerName: istio.io/gateway-controller
-  description: "Istio Gateway Controller"
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: "Envoy Gateway Controller"
   parametersRef:
-    group: gateway.istio.io
-    kind: IstioGatewayConfig
-    name: istio-gateway-config
-    namespace: istio-system
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: envoy-gateway-config
+    namespace: default
 
 ---
-apiVersion: gateway.istio.io/v1alpha1
-kind: IstioGatewayConfig
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
 metadata:
-  name: istio-gateway-config
-  namespace: istio-system
+  name: envoy-gateway-config
+  namespace: default
 spec:
-  # Istio-specific configuration
-  service:
-    type: LoadBalancer
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-  deployment:
-    replicas: 3
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "500m"
-      limits:
-        memory: "1Gi"
-        cpu: "1000m"
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 3
+        container:
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
 ```
 
-This configuration tells Istio how to provision gateway infrastructure.
+This configuration tells Envoy Gateway how to provision gateway infrastructure.
 
 ## Creating Multiple GatewayClasses
 
@@ -100,12 +99,13 @@ metadata:
   labels:
     scope: external
 spec:
-  controllerName: nginx.org/nginx-gateway-controller
+  controllerName: gateway.nginx.org/nginx-gateway-controller
   description: "External-facing NGINX gateways"
   parametersRef:
     group: gateway.nginx.org
-    kind: NginxGatewayConfig
+    kind: NginxProxy
     name: external-config
+    namespace: default
 
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -115,12 +115,8 @@ metadata:
   labels:
     scope: internal
 spec:
-  controllerName: nginx.org/nginx-gateway-controller
-  description: "Internal-only NGINX gateways"
-  parametersRef:
-    group: gateway.nginx.org
-    kind: NginxGatewayConfig
-    name: internal-config
+  controllerName: istio.io/gateway-controller
+  description: "Internal-only Istio gateways"
 
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -128,11 +124,11 @@ kind: GatewayClass
 metadata:
   name: service-mesh
 spec:
-  controllerName: istio.io/gateway-controller
-  description: "Istio service mesh gateway"
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: "Envoy Gateway service mesh gateway"
 ```
 
-Different teams or applications can select appropriate GatewayClasses for their needs.
+Different teams or applications can select appropriate GatewayClasses for their needs. Check your controller documentation before creating multiple classes with the same controller, because some implementations only manage one GatewayClass per controller deployment.
 
 ## Checking GatewayClass Status
 
@@ -144,7 +140,7 @@ kubectl get gatewayclass
 
 # Output shows:
 # NAME               CONTROLLER                        ACCEPTED   AGE
-# nginx-gateway      nginx.org/nginx-gateway-controller   True       5m
+# nginx-gateway      gateway.nginx.org/nginx-gateway-controller   True       5m
 # istio-gateway      istio.io/gateway-controller         True       5m
 
 # Get detailed status
@@ -158,7 +154,7 @@ An Accepted condition with status True means the controller recognized and accep
 
 ## Implementing GatewayClass with RBAC
 
-Control who can create and use specific GatewayClasses.
+Control who can create GatewayClasses and which GatewayClasses a team can reference.
 
 ```yaml
 # gatewayclass-rbac.yaml
@@ -182,14 +178,37 @@ rules:
     verbs: ["create", "update", "patch", "delete"]
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["gatewayclasses"]
-    verbs: ["get", "list"]
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gatewayclasses"]
-    resourceNames: ["internal-gateway"]  # Only this class
-    verbs: ["use"]
+    resourceNames: ["internal-gateway"]
+    verbs: ["get"]
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-gateway-class
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["gateway.networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["gateways"]
+  validations:
+    - expression: "object.spec.gatewayClassName == 'internal-gateway'"
+      message: "Only the internal-gateway GatewayClass is allowed."
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-gateway-class
+spec:
+  policyName: restrict-gateway-class
+  validationActions: ["Deny"]
 ```
 
-This limits developers to using approved GatewayClasses while restricting GatewayClass management to administrators.
+RBAC restricts GatewayClass management and visibility, while admission policy enforces which GatewayClass names developers can reference.
 
 ## Configuring Load Balancer Behavior
 
@@ -202,25 +221,31 @@ kind: GatewayClass
 metadata:
   name: aws-nlb-gateway
 spec:
-  controllerName: nginx.org/nginx-gateway-controller
+  controllerName: gateway.nginx.org/nginx-gateway-controller
   parametersRef:
     group: gateway.nginx.org
-    kind: NginxGatewayConfig
+    kind: NginxProxy
     name: aws-nlb-config
+    namespace: default
 
 ---
-apiVersion: gateway.nginx.org/v1alpha1
-kind: NginxGatewayConfig
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
 metadata:
   name: aws-nlb-config
+  namespace: default
 spec:
-  service:
-    type: LoadBalancer
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  kubernetes:
+    service:
+      type: LoadBalancer
+      patches:
+        - type: StrategicMerge
+          value:
+            metadata:
+              annotations:
+                service.beta.kubernetes.io/aws-load-balancer-type: "external"
+                service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+                service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 ```
 
 ## Setting Resource Limits via GatewayClass
@@ -234,24 +259,26 @@ kind: GatewayClass
 metadata:
   name: production-gateway
 spec:
-  controllerName: envoyproxy.io/gateway-controller
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
   parametersRef:
     group: gateway.envoyproxy.io
-    kind: EnvoyGatewayConfig
+    kind: EnvoyProxy
     name: production-config
+    namespace: default
 
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyGatewayConfig
+kind: EnvoyProxy
 metadata:
   name: production-config
+  namespace: default
 spec:
   provider:
     type: Kubernetes
     kubernetes:
       envoyDeployment:
         replicas: 3
-        pod:
+        container:
           resources:
             requests:
               cpu: "1000m"
@@ -259,6 +286,7 @@ spec:
             limits:
               cpu: "2000m"
               memory: "2Gi"
+        pod:
           affinity:
             podAntiAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -270,7 +298,7 @@ spec:
 
 This ensures production gateways have adequate resources and spread across nodes.
 
-## Implementing Default Timeouts and Limits
+## Implementing Default Limits
 
 Configure default behavior for all gateways using a GatewayClass.
 
@@ -281,36 +309,26 @@ kind: GatewayClass
 metadata:
   name: standard-gateway
 spec:
-  controllerName: nginx.org/nginx-gateway-controller
+  controllerName: gateway.nginx.org/nginx-gateway-controller
   parametersRef:
     group: gateway.nginx.org
-    kind: NginxGatewayConfig
+    kind: NginxProxy
     name: standard-config
+    namespace: default
 
 ---
-apiVersion: gateway.nginx.org/v1alpha1
-kind: NginxGatewayConfig
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
 metadata:
   name: standard-config
+  namespace: default
 spec:
-  defaults:
-    # Request timeouts
-    timeouts:
-      request: 30s
-      backend: 60s
-
-    # Connection limits
-    maxConnections: 10000
-    maxConnectionsPerBackend: 100
-
-    # Buffer sizes
-    bufferSize: "16k"
-
-    # Rate limiting
-    rateLimit:
-      enabled: true
-      requests: 100
-      window: 1m
+  workerConnections: 10000
+  logging:
+    errorLevel: warn
+  kubernetes:
+    deployment:
+      replicas: 3
 ```
 
 ## Selecting GatewayClass in Gateway Resources
@@ -339,7 +357,7 @@ spec:
           - name: tls-secret
 ```
 
-The gateway inherits configuration from the specified GatewayClass.
+The gateway uses the implementation-specific defaults associated with the specified GatewayClass.
 
 ## Monitoring GatewayClass Usage
 
@@ -391,7 +409,7 @@ kubectl patch gateway my-gateway -p '{"spec":{"gatewayClassName":"new-gateway-cl
 kubectl get gateway my-gateway -w
 ```
 
-The new controller provisions infrastructure while the old controller cleans up.
+The new controller provisions infrastructure for the updated class. Cleanup behavior for infrastructure owned by the previous class is implementation-specific, so test migrations before changing production Gateways.
 
 ## Best Practices for GatewayClass Management
 
@@ -405,7 +423,7 @@ Limit the number of GatewayClasses to avoid confusion. Most clusters need only 2
 
 Set reasonable resource limits in GatewayClass parameters to prevent resource exhaustion.
 
-Use RBAC to control which teams can use specific GatewayClasses.
+Use RBAC to control who manages GatewayClasses, and use admission policy to control which teams can reference specific GatewayClasses.
 
 Monitor GatewayClass acceptance status to catch controller configuration issues early.
 
