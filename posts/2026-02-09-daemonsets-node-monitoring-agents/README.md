@@ -12,7 +12,7 @@ Monitoring individual nodes in a Kubernetes cluster requires agents running on e
 
 ## Understanding DaemonSet for Node Monitoring
 
-DaemonSets guarantee exactly one pod runs on each node. This pattern fits perfectly for node-level monitoring because you need one agent per machine to collect CPU, memory, disk, and network metrics. When new nodes join the cluster, Kubernetes automatically schedules monitoring pods on them.
+DaemonSets ensure one pod runs on each eligible node. This pattern fits perfectly for node-level monitoring because you need one agent per machine to collect CPU, memory, disk, and network metrics. When new eligible nodes join the cluster, Kubernetes automatically schedules monitoring pods on them.
 
 Node monitoring agents typically require elevated permissions to read system metrics. They often mount host directories to access kernel interfaces, system files, and process information. DaemonSets handle these requirements through pod security contexts and volume mounts.
 
@@ -104,7 +104,7 @@ spec:
     app: node-exporter
 ```
 
-The `hostNetwork: true` allows the exporter to see host-level network metrics. The `hostPID: true` enables process monitoring. Volume mounts provide access to proc, sys, and root filesystems.
+The `hostNetwork: true` allows the exporter to see host-level network metrics. The `hostPID: true` lets the exporter share the host process namespace when process-related collectors need it. Volume mounts provide access to proc, sys, and root filesystems.
 
 ## Creating ServiceMonitor for Prometheus
 
@@ -150,7 +150,7 @@ spec:
       hostNetwork: true
       containers:
       - name: cadvisor
-        image: gcr.io/cadvisor/cadvisor:v0.47.0
+        image: ghcr.io/google/cadvisor:0.55.1
         ports:
         - containerPort: 8080
           name: http
@@ -165,9 +165,6 @@ spec:
         - name: sys
           mountPath: /sys
           readOnly: true
-        - name: docker
-          mountPath: /var/lib/docker
-          readOnly: true
         - name: disk
           mountPath: /dev/disk
           readOnly: true
@@ -176,8 +173,7 @@ spec:
         - --max_housekeeping_interval=15s
         - --event_storage_event_limit=default=0
         - --event_storage_age_limit=default=0
-        - --disable_metrics=percpu,sched,tcp,udp,disk,diskIO,accelerator,hugetlb,referenced_memory,cpu_topology,resctrl
-        - --docker_only
+        - --disable_metrics=percpu,sched,tcp,udp,accelerator,hugetlb,referenced_memory,cpu_topology,resctrl
         resources:
           requests:
             memory: 200Mi
@@ -197,9 +193,6 @@ spec:
       - name: sys
         hostPath:
           path: /sys
-      - name: docker
-        hostPath:
-          path: /var/lib/docker
       - name: disk
         hostPath:
           path: /dev/disk
@@ -258,6 +251,8 @@ spec:
           value: "true"
         - name: DD_CONTAINER_EXCLUDE
           value: "name:datadog-agent"
+        - name: DD_HEALTH_PORT
+          value: "5555"
         resources:
           requests:
             memory: "256Mi"
@@ -363,88 +358,17 @@ subjects:
 
 ## Deploying New Relic Infrastructure Agent
 
-For New Relic monitoring:
+For New Relic monitoring, use the official `nri-bundle` Helm chart, which deploys the New Relic Kubernetes integration components, including DaemonSets for node-level collection:
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: newrelic-infra
-  namespace: monitoring
-  labels:
-    app: newrelic-infra
-spec:
-  selector:
-    matchLabels:
-      name: newrelic-infra
-  updateStrategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        name: newrelic-infra
-    spec:
-      serviceAccountName: newrelic-infra
-      hostNetwork: true
-      hostPID: true
-      hostIPC: true
-      containers:
-      - name: newrelic-infra
-        image: newrelic/infrastructure-k8s:3.0.0
-        securityContext:
-          privileged: true
-        env:
-        - name: NRIA_LICENSE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: newrelic-secret
-              key: license-key
-        - name: CLUSTER_NAME
-          value: "production-cluster"
-        - name: NRIA_DISPLAY_NAME
-          valueFrom:
-            fieldRef:
-              apiVersion: v1
-              fieldPath: spec.nodeName
-        - name: NRI_KUBERNETES_CLUSTER_NAME
-          value: "production-cluster"
-        - name: NRIA_PASSTHROUGH_ENVIRONMENT
-          value: "KUBERNETES_SERVICE_HOST,KUBERNETES_SERVICE_PORT,CLUSTER_NAME,CADVISOR_PORT,NRI_KUBERNETES_CLUSTER_NAME,KUBE_STATE_METRICS_URL"
-        volumeMounts:
-        - name: host-volume
-          mountPath: /host
-          readOnly: true
-        - name: host-docker-socket
-          mountPath: /var/run/docker.sock
-        - name: host-log
-          mountPath: /var/log
-          readOnly: true
-        - name: host-cache
-          mountPath: /var/cache
-        resources:
-          limits:
-            memory: 300Mi
-          requests:
-            cpu: 100m
-            memory: 150Mi
-      volumes:
-      - name: host-volume
-        hostPath:
-          path: /
-      - name: host-docker-socket
-        hostPath:
-          path: /var/run/docker.sock
-      - name: host-log
-        hostPath:
-          path: /var/log
-      - name: host-cache
-        hostPath:
-          path: /var/cache
-      tolerations:
-      - effect: NoSchedule
-        operator: Exists
-      - effect: NoExecute
-        operator: Exists
+```bash
+helm repo add newrelic https://helm-charts.newrelic.com
+helm repo update
+helm upgrade --install newrelic-bundle newrelic/nri-bundle \
+  --namespace monitoring \
+  --create-namespace \
+  --set global.licenseKey=<NEW_RELIC_LICENSE_KEY> \
+  --set global.cluster=production-cluster \
+  --set newrelic-infrastructure.privileged=true
 ```
 
 ## Implementing Custom Monitoring Agent
@@ -454,11 +378,13 @@ Create your own monitoring agent:
 ```python
 # monitor.py
 
+import os
 import psutil
-import socket
 import time
-import json
 from prometheus_client import start_http_server, Gauge
+
+psutil.PROCFS_PATH = os.environ.get('HOST_PROC', '/proc')
+DISK_PATH = os.environ.get('HOST_ROOT', '/')
 
 # Define metrics
 cpu_usage = Gauge('node_cpu_usage_percent', 'CPU usage percentage')
@@ -478,7 +404,7 @@ def collect_metrics():
     memory_usage.set(memory.percent)
 
     # Disk metrics
-    disk = psutil.disk_usage('/')
+    disk = psutil.disk_usage(DISK_PATH)
     disk_usage.set(disk.percent)
 
     # Network metrics
@@ -515,9 +441,15 @@ spec:
         app: custom-node-monitor
     spec:
       hostNetwork: true
+      hostPID: true
       containers:
       - name: monitor
         image: custom-node-monitor:latest
+        env:
+        - name: HOST_PROC
+          value: /host/proc
+        - name: HOST_ROOT
+          value: /host/root
         ports:
         - containerPort: 9090
           name: metrics
@@ -530,6 +462,20 @@ spec:
             memory: 128Mi
         securityContext:
           privileged: true
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: root
+          mountPath: /host/root
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: root
+        hostPath:
+          path: /
       tolerations:
       - operator: Exists
 ```
@@ -581,6 +527,6 @@ Test agent performance impact on node resources. Monitoring overhead should rema
 
 ## Conclusion
 
-DaemonSets provide the perfect mechanism for deploying node monitoring agents across Kubernetes clusters. By ensuring every node runs exactly one monitoring pod, you maintain comprehensive observability even as clusters scale. Whether using established solutions like Prometheus Node Exporter, Datadog, or custom agents, the DaemonSet pattern guarantees consistent monitoring coverage across your infrastructure.
+DaemonSets provide the perfect mechanism for deploying node monitoring agents across Kubernetes clusters. By ensuring every eligible node runs one monitoring pod, you maintain comprehensive observability even as clusters scale. Whether using established solutions like Prometheus Node Exporter, Datadog, or custom agents, the DaemonSet pattern provides consistent monitoring coverage across your infrastructure.
 
 Implement robust node monitoring with DaemonSets to gain visibility into cluster health and performance.
