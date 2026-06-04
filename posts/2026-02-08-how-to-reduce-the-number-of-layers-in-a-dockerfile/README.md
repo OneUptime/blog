@@ -8,7 +8,7 @@ Description: Practical techniques for reducing Docker image layers to improve bu
 
 ---
 
-Every instruction in a Dockerfile that modifies the filesystem creates a new layer in the resulting image. Layers are the building blocks of Docker images, and while they enable powerful features like caching and image sharing, too many layers lead to larger images, slower pulls, and more complex debugging. Understanding what creates layers and how to minimize them is fundamental to writing efficient Dockerfiles.
+Most Dockerfile instructions that modify the filesystem create a new layer in the resulting image. Layers are the building blocks of Docker images, and while they enable powerful features like caching and image sharing, unnecessary layers and duplicated filesystem changes can lead to larger images, slower pulls, and more complex debugging. Understanding what creates layers and how to minimize them is fundamental to writing efficient Dockerfiles.
 
 This guide explains how layers work, which instructions create them, and practical techniques for keeping your layer count under control.
 
@@ -20,19 +20,19 @@ Only certain Dockerfile instructions create layers:
 
 | Instruction | Creates a Layer? | Description |
 |------------|-----------------|-------------|
-| FROM | Yes | Creates the base layer |
+| FROM | No | Starts a new build stage from a base image |
 | RUN | Yes | Executes a command and saves the result |
 | COPY | Yes | Copies files from the build context |
 | ADD | Yes | Copies files (with extra features) |
 | ENV | No* | Sets environment variable (metadata only) |
 | EXPOSE | No | Documents a port (metadata only) |
-| WORKDIR | No* | Sets the working directory (metadata only) |
+| WORKDIR | Sometimes* | Sets the working directory |
 | LABEL | No* | Adds metadata (metadata only) |
 | CMD | No | Sets the default command (metadata only) |
 | ENTRYPOINT | No | Sets the entry point (metadata only) |
 | ARG | No | Defines a build argument |
 
-*These instructions create very thin configuration layers in some Docker versions, but they do not contribute meaningfully to image size.
+*These instructions add image configuration and may appear as 0-byte entries in `docker history`. `WORKDIR` also creates the directory if it does not already exist, which can add a small filesystem layer.
 
 Check the layers in an existing image:
 
@@ -211,14 +211,14 @@ EOF
 
 ## Technique 7: Use the --squash Flag (Experimental)
 
-Docker's experimental `--squash` flag compresses all layers created during a build into a single layer:
+Docker's experimental `--squash` flag in the legacy builder squashes the new layers created during a build into a single new layer:
 
 ```bash
 # Build with layer squashing (requires experimental features)
 docker build --squash -t myapp:squashed .
 ```
 
-This produces the smallest possible image in terms of layers, but it has a significant downside: it eliminates all layer sharing between images. If you have multiple images that share a common base, squashing means each image stores its own complete copy of that base.
+This produces fewer layers, but it has a significant downside: it reduces layer sharing between images. Sharing the base image is still supported, but if you have multiple images with common layers created by the build, squashing means those layers can no longer be shared independently.
 
 For most use cases, multi-stage builds provide better results than squashing.
 
@@ -239,7 +239,7 @@ RUN apk add --no-cache curl
 RUN pip install --no-cache-dir -r requirements.txt
 
 # For npm (Node.js)
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # For yum/dnf (Red Hat/CentOS/Fedora)
 RUN dnf install -y curl && \
@@ -261,8 +261,8 @@ docker inspect myapp:latest --format='{{len .RootFS.Layers}}'
 docker history myapp:latest --format "table {{.CreatedBy}}\t{{.Size}}"
 
 # Compare two images
-docker history myapp:v1 --no-trunc --format "{{.Size}}" | paste -sd+ | bc
-docker history myapp:v2 --no-trunc --format "{{.Size}}" | paste -sd+ | bc
+docker history myapp:v1 --human=false --no-trunc --format "{{.Size}}" | paste -sd+ | bc
+docker history myapp:v2 --human=false --no-trunc --format "{{.Size}}" | paste -sd+ | bc
 ```
 
 ## A Before and After Example
@@ -304,6 +304,9 @@ RUN apt-get update && \
 
 FROM python:3.11-slim
 WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq5 && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
 COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 COPY . .
