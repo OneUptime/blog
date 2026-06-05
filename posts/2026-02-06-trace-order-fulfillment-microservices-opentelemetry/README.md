@@ -35,7 +35,7 @@ graph TB
     style E fill:#fc9,stroke:#333,stroke-width:2px
 ```
 
-Each arrow represents an asynchronous message (typically through a message broker like Kafka or RabbitMQ). The challenge with tracing across message brokers is that standard HTTP header propagation does not work. You need to explicitly inject and extract trace context from message headers.
+Each arrow represents an asynchronous message (typically through a message broker like Kafka or RabbitMQ). The challenge with tracing across message brokers is that automatic HTTP instrumentation usually does not cover broker messages. You need to explicitly inject and extract trace context from message headers.
 
 ## Starting the Trace at Checkout
 
@@ -46,8 +46,9 @@ The checkout service creates the root span for the entire order journey. This sp
 
 # Create the root trace for an order fulfillment journey
 
-from opentelemetry import trace, context
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 tracer = trace.get_tracer("checkout-service", "3.0.0")
 propagator = TraceContextTextMapPropagator()
@@ -70,7 +71,7 @@ def place_order(cart, customer_id):
             validate_span.set_attribute("validation.passed", validation.is_valid)
             if not validation.is_valid:
                 validate_span.set_attribute("validation.error", validation.error)
-                span.set_status(trace.StatusCode.ERROR, "Cart validation failed")
+                span.set_status(Status(StatusCode.ERROR, "Cart validation failed"))
                 return OrderResult(status="failed", reason=validation.error)
 
         # Create the order record
@@ -102,8 +103,9 @@ Each downstream service extracts the trace context from the incoming message and
 # payment_service.py
 # Continue the order trace when processing payment
 
-from opentelemetry import trace, context
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 tracer = trace.get_tracer("payment-service", "2.0.0")
 propagator = TraceContextTextMapPropagator()
@@ -147,12 +149,15 @@ def handle_order_created(message):
 
             span.add_event("payment_confirmed_event_published")
         else:
+            next_headers = {}
+            propagator.inject(next_headers)
+
             publish_event("payment.failed", {
                 "order_id": order_id,
                 "reason": result.decline_code,
             }, headers=next_headers)
 
-            span.set_status(trace.StatusCode.ERROR, "Payment declined")
+            span.set_status(Status(StatusCode.ERROR, "Payment declined"))
 ```
 
 The extract-process-inject pattern repeats at every service boundary. Each service extracts the context from the incoming message, does its work under that context, and injects the context into any outgoing messages.
@@ -166,8 +171,7 @@ The warehouse service is where physical operations meet digital tracing. Picking
 # Trace warehouse operations with long-running spans
 
 from opentelemetry import trace
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
-from opentelemetry.trace import Link
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 tracer = trace.get_tracer("warehouse-service", "1.5.0")
 propagator = TraceContextTextMapPropagator()
@@ -184,6 +188,7 @@ def handle_stock_reserved(message):
         order_id = message.body["order_id"]
         span.set_attribute("order.id", order_id)
         span.set_attribute("warehouse.location", "warehouse-east-1")
+        store_trace_context(order_id)
 
         # Record the pick list generation
         with tracer.start_as_current_span("generate_pick_list") as pick_span:
@@ -200,11 +205,11 @@ def handle_stock_reserved(message):
 
 
 def handle_item_scanned(scan_event):
-    """Record each item scan as a span event on the fulfillment trace.
+    """Record each item scan under the fulfillment trace.
 
-    Rather than creating a new span for each scan (which would be
-    too granular), we record scan events on the existing fulfillment
-    span using span links.
+    For high-volume warehouse events, you might record scan events on a
+    stage span instead. This example creates one span per scan so each
+    scan remains searchable.
     """
     # Retrieve the stored trace context for this order
     stored_context = get_stored_trace_context(scan_event.order_id)
@@ -255,7 +260,9 @@ A simple way to handle this is to store the serialized trace context alongside t
 # trace_context_store.py
 # Persist and retrieve trace context for long-running operations
 
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+import json
+
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 propagator = TraceContextTextMapPropagator()
 
@@ -282,7 +289,7 @@ def get_stored_trace_context(order_id: str) -> dict:
 
 ## Configuring the Collector for Order Tracing
 
-The collector needs to handle telemetry from all the services in the fulfillment pipeline. Use a tail-based sampling strategy to keep complete traces for orders that experienced errors or high latency:
+The collector needs to handle telemetry from all the services in the fulfillment pipeline. Use a tail-based sampling strategy to keep traces for orders that experienced errors or high latency:
 
 ```yaml
 # otel-collector-orders.yaml
@@ -297,15 +304,12 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Group spans by trace ID so we can make sampling decisions
-  # based on the complete trace
-  groupbytrace:
-    wait_duration: 30s
-    num_traces: 100000
-
   # Tail-based sampling: keep traces that show problems
+  # The tail_sampling processor groups spans by trace ID internally
+  # before making sampling decisions.
   tail_sampling:
     decision_wait: 30s
+    num_traces: 100000
     policies:
       # Always keep traces with errors
       - name: error-traces
@@ -348,11 +352,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [groupbytrace, tail_sampling, resource, batch]
+      processors: [tail_sampling, resource, batch]
       exporters: [otlp]
 ```
 
-The `groupbytrace` processor is important here. Order fulfillment traces can span minutes or hours, and spans from different services arrive at the collector in unpredictable order. The group-by-trace processor collects all spans belonging to the same trace before making a sampling decision.
+The `tail_sampling` processor groups spans belonging to the same trace before making a sampling decision. If you run multiple collector instances, make sure all spans for the same trace reach the same collector instance, such as by using a load-balancing collector layer that routes by trace ID.
 
 The 30-second `decision_wait` means the collector waits 30 seconds after seeing the first span of a trace before deciding whether to keep or drop it. For very long-running fulfillment processes, you may need to increase this or use a two-phase approach where the warehouse stores its spans locally and forwards them in a batch when the order is packed.
 
@@ -409,6 +413,7 @@ Order fulfillment involves retries. Payment gateways time out. Inventory checks 
 # Retry with trace context preservation
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 import time
 
 tracer = trace.get_tracer("retry-handler", "1.0.0")
@@ -431,7 +436,7 @@ def retry_with_tracing(operation_name, func, max_retries=3, backoff_base=1.0):
                 span.set_attribute("error.type", type(e).__name__)
 
                 if attempt == max_retries:
-                    span.set_status(trace.StatusCode.ERROR, "All retries exhausted")
+                    span.set_status(Status(StatusCode.ERROR, "All retries exhausted"))
                     raise
 
                 # Exponential backoff
