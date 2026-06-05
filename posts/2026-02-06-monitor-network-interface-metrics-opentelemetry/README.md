@@ -10,7 +10,7 @@ Description: Learn how to monitor network interface metrics like bandwidth usage
 
 Network issues are some of the hardest problems to debug in production. A saturated interface, rising error counts, or unexpected packet drops can degrade application performance in ways that look like application bugs. Monitoring network interface metrics gives you early visibility into these problems before they cascade into outages.
 
-The OpenTelemetry Collector includes a `network` scraper within the hostmetrics receiver that collects per-interface statistics on Linux, macOS, and Windows. This guide covers how to configure it, what metrics it produces, how to filter interfaces, and how to build meaningful alerts from the data.
+The OpenTelemetry Collector includes a `network` scraper within the `host_metrics` receiver that collects per-interface statistics on Linux, macOS, and Windows. This guide covers how to configure it, what metrics it produces, how to filter interfaces, and how to build meaningful alerts from the data.
 
 ## What Network Interface Metrics Tell You
 
@@ -22,7 +22,7 @@ The key metrics to monitor include:
 - **Packets sent/received**: Packet counts, independent of packet size
 - **Errors (in/out)**: Count of malformed, corrupted, or otherwise problematic packets
 - **Drops (in/out)**: Packets dropped due to buffer overflows or resource constraints
-- **Connections**: Active TCP/UDP connections (via the optional connections scraper)
+- **Connections**: Active TCP connections by state (via the `system.network.connections` metric)
 
 A healthy network interface shows steady byte and packet counters with zero or near-zero errors and drops. Any sustained increase in errors or drops warrants investigation.
 
@@ -43,18 +43,18 @@ flowchart LR
 
 ## Basic Configuration
 
-Enable the network scraper in the hostmetrics receiver:
+Enable the network scraper in the `host_metrics` receiver:
 
 ```yaml
 # otel-collector-config.yaml
 
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       # Network interface metrics scraper
       network:
-        # All metrics are enabled by default
+        # These network metrics are enabled by default
         metrics:
           system.network.io:
             enabled: true
@@ -72,15 +72,15 @@ processors:
     timeout: 10s
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: "otel-backend.example.com:4317"
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [host_metrics]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 With this configuration, the collector gathers network metrics for every interface on the host, including physical NICs, virtual interfaces, bridges, and the loopback interface. Each metric includes a `device` attribute identifying the interface name (e.g., `eth0`, `ens5`, `lo`).
@@ -95,11 +95,11 @@ Here is a breakdown of each metric and what it represents:
 | system.network.packets | Sum (cumulative) | device, direction | Total packets per interface |
 | system.network.errors | Sum (cumulative) | device, direction | Packets with errors per interface |
 | system.network.dropped | Sum (cumulative) | device, direction | Packets dropped per interface |
-| system.network.connections | Sum | protocol, state | Count of network connections by protocol and state |
+| system.network.connections | Sum (cumulative, non-monotonic) | protocol, state | Count of network connections by protocol and state |
 
-All counters except connections are cumulative, meaning they increase monotonically from system boot. To get rates (bytes per second, packets per second), your backend needs to compute the difference between consecutive samples and divide by the scrape interval.
+The interface I/O, packet, error, and dropped packet metrics are monotonic cumulative counters, meaning they increase from system boot. To get rates (bytes per second, packets per second), your backend needs to compute the difference between consecutive samples and divide by the scrape interval.
 
-The `system.network.connections` metric is a snapshot gauge that counts current TCP and UDP connections grouped by state (ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.).
+The `system.network.connections` metric is a non-monotonic sum that counts current TCP connections grouped by state (ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.).
 
 ## Filtering Network Interfaces
 
@@ -107,7 +107,7 @@ Most hosts have interfaces you do not need to monitor. The loopback interface, D
 
 ```yaml
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       network:
@@ -121,7 +121,7 @@ If your interface naming is unpredictable (common in cloud environments), use re
 
 ```yaml
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       network:
@@ -135,11 +135,11 @@ The exclude approach is often more practical than include, because it lets you i
 
 ## Combining Network with Other Host Metrics
 
-Network metrics are most useful when combined with CPU, memory, and disk data from the same host. You can enable multiple scrapers in a single hostmetrics receiver:
+Network metrics are most useful when combined with CPU, memory, and disk data from the same host. You can enable multiple scrapers in a single `host_metrics` receiver:
 
 ```yaml
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       # System-level scrapers
@@ -156,7 +156,7 @@ receivers:
 
 processors:
   # Attach host identity to all metrics
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: ["os"]
@@ -172,9 +172,9 @@ processors:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
-      processors: [resourcedetection, batch]
-      exporters: [otlp]
+      receivers: [host_metrics]
+      processors: [resource_detection, batch]
+      exporters: [otlp_grpc]
 ```
 
 This single collector configuration gives you a complete picture of host health. When you see a CPU spike, you can correlate it with network traffic to determine whether the load is driven by incoming requests, outbound data transfers, or something unrelated to the network.
@@ -191,7 +191,7 @@ Many `ESTABLISHED` connections is normal for a busy server, but a sudden spike b
 
 ```yaml
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       network:
@@ -216,19 +216,25 @@ When the collector runs inside a container, it sees only the network interfaces 
 # Docker Compose configuration for network monitoring
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     # Use host network namespace for accurate interface metrics
     network_mode: host
     volumes:
       - /proc:/hostfs/proc:ro
       - /sys:/hostfs/sys:ro
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
-    environment:
-      - HOST_PROC=/hostfs/proc
-      - HOST_SYS=/hostfs/sys
 ```
 
-The `network_mode: host` setting is essential for network monitoring. Without it, the collector only sees the container's virtual interface and misses the host's physical NICs entirely.
+The `network_mode: host` setting is essential for network monitoring. Without it, the collector only sees the container's virtual interface and misses the host's physical NICs entirely. In the collector configuration, set `root_path` so the `host_metrics` receiver reads from the mounted host filesystem:
+
+```yaml
+receivers:
+  host_metrics:
+    root_path: /hostfs
+    collection_interval: 30s
+    scrapers:
+      network:
+```
 
 In Kubernetes, you can achieve the same result with `hostNetwork: true` in the pod spec:
 
@@ -246,7 +252,7 @@ spec:
       hostPID: true
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           volumeMounts:
             - name: proc
               mountPath: /hostfs/proc
@@ -262,6 +268,8 @@ spec:
           hostPath:
             path: /sys
 ```
+
+Use the same `root_path: /hostfs` setting in the DaemonSet's collector configuration so the receiver reads from the mounted host filesystem.
 
 ## Alerting Strategies
 
@@ -295,4 +303,4 @@ This calculation is typically done in your dashboard or alerting queries rather 
 
 ## Wrap Up
 
-Network interface monitoring with the OpenTelemetry Collector provides the visibility needed to catch network issues before they become application outages. The network scraper in the hostmetrics receiver collects the fundamental metrics that matter: traffic volume, packet rates, errors, drops, and connection states. By filtering out virtual interfaces, combining network data with other host metrics, and building targeted alerts, you get a comprehensive view of network health that integrates naturally with the rest of your OpenTelemetry observability pipeline.
+Network interface monitoring with the OpenTelemetry Collector provides the visibility needed to catch network issues before they become application outages. The network scraper in the `host_metrics` receiver collects the fundamental metrics that matter: traffic volume, packet rates, errors, drops, and connection states. By filtering out virtual interfaces, combining network data with other host metrics, and building targeted alerts, you get a comprehensive view of network health that integrates naturally with the rest of your OpenTelemetry observability pipeline.
