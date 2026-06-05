@@ -32,20 +32,22 @@ Every service must have a unique name. This seems obvious, but problems arise wh
 
 ```javascript
 // Bad: Ambiguous service names
-const service1 = new Resource({
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+
+const ambiguousService1 = resourceFromAttributes({
   'service.name': 'api',  // Which API?
 });
 
-const service2 = new Resource({
+const ambiguousService2 = resourceFromAttributes({
   'service.name': 'api',  // Same name, different service!
 });
 
 // Good: Unique, descriptive names
-const service1 = new Resource({
+const checkoutService = resourceFromAttributes({
   'service.name': 'checkout-api',
 });
 
-const service2 = new Resource({
+const inventoryService = resourceFromAttributes({
   'service.name': 'inventory-api',
 });
 ```
@@ -74,7 +76,7 @@ service_names = [
 ]
 ```
 
-If you must rename a service, implement a transition period where telemetry is sent with both the old and new names, allowing time for dashboards and alerts to migrate.
+If you must rename a service, implement a transition period where telemetry uses the new `service.name` and carries the old name in a legacy resource attribute, allowing time for dashboards and alerts to migrate.
 
 ### Human Readability
 
@@ -82,14 +84,14 @@ Service names appear in traces, dashboards, alerts, and incident reports. Optimi
 
 ```go
 // Bad: Abbreviated or cryptic names
-badNames := []string{
+var badNames = []string{
     "pmt-svc",      // What does pmt mean?
     "svc-001",      // Meaningless number
     "usrmgmt",      // Missing vowels
 }
 
 // Good: Clear, readable names
-goodNames := []string{
+var goodNames = []string{
     "payment-service",
     "user-management",
     "order-processor",
@@ -139,14 +141,14 @@ const serviceNames = [
 ];
 
 // Configuration in OpenTelemetry
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 function createResourceForService(domain, component, type) {
   const serviceName = `${domain}-${component}-${type}`;
 
-  return new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
     // Additional attributes for flexibility
     'service.domain': domain,
     'service.component': component,
@@ -178,14 +180,13 @@ service_names = [
 
 # Implementation in Python
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
 
 def create_team_based_resource(team, service, service_type):
     """Create resource with team-based naming convention"""
     service_name = f"{team}-{service}-{service_type}"
 
     return Resource.create({
-        ResourceAttributes.SERVICE_NAME: service_name,
+        "service.name": service_name,
         # Store components as separate attributes for querying
         "team": team,
         "service.component": service,
@@ -209,8 +210,11 @@ This pattern embeds environment information in the service name:
 package main
 
 import (
+    "fmt"
+
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // WARNING: This pattern is generally NOT recommended
@@ -223,18 +227,21 @@ func createResource(product, service, environment string) *resource.Resource {
     return resource.NewWithAttributes(
         semconv.SchemaURL,
         semconv.ServiceName(serviceName),
-        semconv.DeploymentEnvironment(environment),  // Environment as attribute
+        semconv.DeploymentEnvironmentName(environment),  // Environment as attribute
         attribute.String("product", product),
     )
 }
 
-// Usage
-res := createResource("ecommerce", "checkout-api", "production")
-// Results in service.name = "ecommerce-checkout-api"
-// and deployment.environment = "production"
+func main() {
+    // Usage
+    res := createResource("ecommerce", "checkout-api", "production")
+    _ = res
+    // Results in service.name = "ecommerce-checkout-api"
+    // and deployment.environment.name = "production"
+}
 ```
 
-Actually, embedding environment in service names is an anti-pattern. Use the `deployment.environment` resource attribute instead. This keeps service names stable across environments and enables environment-based filtering without name manipulation.
+Actually, embedding environment in service names is an anti-pattern. Use the `deployment.environment.name` resource attribute instead. This keeps service names stable across environments and enables environment-based filtering without name manipulation.
 
 ### Pattern 4: Namespace-Service
 
@@ -253,7 +260,6 @@ service_names = [
 
 # Implementation
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
 
 def create_namespaced_resource(namespace_parts, service_type):
     """
@@ -265,8 +271,8 @@ def create_namespaced_resource(namespace_parts, service_type):
     service_name = f"{namespace}.{service_type}"
 
     return Resource.create({
-        ResourceAttributes.SERVICE_NAME: service_name,
-        ResourceAttributes.SERVICE_NAMESPACE: namespace,
+        "service.name": service_name,
+        "service.namespace": namespace,
         "service.type": service_type,
     })
 
@@ -281,6 +287,9 @@ This pattern works well for large organizations with multiple products and deep 
 The type suffix describes the service's technical role. Standardize these across your organization:
 
 ```javascript
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+
 // Standard service type suffixes
 const serviceTypes = {
   // API services
@@ -314,8 +323,8 @@ function createServiceResource(domain, component, type) {
     throw new Error(`Unknown service type: ${type}. Valid types: ${Object.keys(serviceTypes).join(', ')}`);
   }
 
-  return new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: `${domain}-${component}-${type}`,
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: `${domain}-${component}-${type}`,
     'service.domain': domain,
     'service.component': component,
     'service.type': type,
@@ -364,19 +373,21 @@ The sidecar has its own service name but includes an attribute linking it to the
 For services serving multiple tenants, keep tenant information in attributes, not the service name:
 
 ```python
+from opentelemetry.sdk.resources import Resource
+
 # Bad: Tenant in service name
 bad_resources = [
     Resource.create({
-        ResourceAttributes.SERVICE_NAME: "api-tenant-abc",  # Don't do this
+        "service.name": "api-tenant-abc",  # Don't do this
     }),
     Resource.create({
-        ResourceAttributes.SERVICE_NAME: "api-tenant-xyz",  # Don't do this
+        "service.name": "api-tenant-xyz",  # Don't do this
     }),
 ]
 
 # Good: Tenant as attribute
 good_resource = Resource.create({
-    ResourceAttributes.SERVICE_NAME: "multi-tenant-api",
+    "service.name": "multi-tenant-api",
     "tenant.id": "abc",  # Tenant as attribute, not in name
 })
 
@@ -398,26 +409,43 @@ This keeps service names manageable while maintaining tenant visibility in telem
 For services with multiple API versions running simultaneously:
 
 ```go
+package main
+
+import (
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/sdk/resource"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+    "go.opentelemetry.io/otel/trace"
+)
+
 // Bad: Version in service name
 // Don't create separate services for each API version
-badResource1 := resource.NewWithAttributes(
-    semconv.ServiceName("payment-api-v1"),  // Don't do this
-)
-badResource2 := resource.NewWithAttributes(
-    semconv.ServiceName("payment-api-v2"),  // Don't do this
-)
+func createVersionedResources(span trace.Span) {
+    badResource1 := resource.NewWithAttributes(
+        semconv.SchemaURL,
+        semconv.ServiceName("payment-api-v1"),  // Don't do this
+    )
+    badResource2 := resource.NewWithAttributes(
+        semconv.SchemaURL,
+        semconv.ServiceName("payment-api-v2"),  // Don't do this
+    )
+    _ = badResource1
+    _ = badResource2
 
-// Good: Version as attribute
-goodResource := resource.NewWithAttributes(
-    semconv.ServiceName("payment-api"),
-    attribute.String("api.version", "v2"),  // Version as attribute
-)
+    // Good: Version as attribute
+    goodResource := resource.NewWithAttributes(
+        semconv.SchemaURL,
+        semconv.ServiceName("payment-api"),
+        attribute.String("api.version", "v2"),  // Version as attribute
+    )
+    _ = goodResource
 
-// Add version to spans for per-endpoint visibility
-span.SetAttributes(
-    attribute.String("http.route", "/v2/payments"),
-    attribute.String("api.version", "v2"),
-)
+    // Add version to spans for per-endpoint visibility
+    span.SetAttributes(
+        attribute.String("http.route", "/v2/payments"),
+        attribute.String("api.version", "v2"),
+    )
+}
 ```
 
 If versions are truly separate deployments with different teams, separate service names might make sense. But for most cases, use attributes.
@@ -468,8 +496,8 @@ Build shared libraries that enforce conventions:
 
 ```javascript
 // shared-otel-config package
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 const VALID_DOMAINS = ['payment', 'order', 'inventory', 'notification', 'user'];
 const VALID_TYPES = ['api', 'worker', 'service', 'consumer'];
@@ -499,9 +527,9 @@ function createServiceResource(domain, component, type, version) {
   const serviceName = `${domain}-${component}-${type}`;
 
   // Create resource with standard attributes
-  return new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]: version,
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: version,
     'service.domain': domain,
     'service.component': component,
     'service.type': type,
@@ -520,15 +548,13 @@ If you're fixing existing inconsistent naming, migrate gradually:
 ```python
 # Migration helper that supports old and new names
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
-
 def create_migrating_resource(new_service_name, old_service_name=None):
     """
     Create resource during naming migration.
-    Includes both old and new names during transition period.
+    Uses the new service.name and carries the old name during the transition period.
     """
     attrs = {
-        ResourceAttributes.SERVICE_NAME: new_service_name,
+        "service.name": new_service_name,
     }
 
     # During migration, include old name for continuity
