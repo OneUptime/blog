@@ -8,19 +8,27 @@ Description: Instrument direct messaging systems covering encryption, delivery, 
 
 Direct messaging is a core feature of any social platform. Users expect messages to be delivered instantly, encrypted for privacy, and accompanied by delivery and read receipts. The backend handles message encryption, routing through WebSocket connections or push fallback, persistent storage, and receipt tracking. Each of these steps introduces latency and potential failure points. OpenTelemetry gives you the tracing and metrics to keep messaging fast and reliable.
 
-## Setting Up Tracing
+## Setting Up Tracing and Metrics
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("messaging.direct")
 meter = metrics.get_meter("messaging.direct")
@@ -61,8 +69,8 @@ def send_message(sender_id: str, recipient_id: str, content: str, conversation_i
                 message_id, conversation_id, sender_id, recipient_id,
                 encrypted.ciphertext
             )
-            persist_span.set_attribute("db.system", "cassandra")
-            persist_span.set_attribute("db.operation", "INSERT")
+            persist_span.set_attribute("db.system.name", "cassandra")
+            persist_span.set_attribute("db.operation.name", "INSERT")
             persist_span.set_attribute("persist.success", store_result.success)
 
         # Deliver the message to the recipient
@@ -141,7 +149,7 @@ def process_read_receipt(reader_id: str, message_id: str, conversation_id: str):
             update_span.set_attribute("read.latency_seconds", round(read_latency))
 
             mark_message_read(message_id, reader_id)
-            update_span.set_attribute("db.operation", "UPDATE")
+            update_span.set_attribute("db.operation.name", "UPDATE")
 
         # Notify the sender that their message was read
         with tracer.start_as_current_span("messaging.read_receipt.notify_sender") as notify_span:
