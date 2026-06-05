@@ -25,7 +25,7 @@ const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-htt
 
 // Create an OTLP exporter pointing to your collector
 const exporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
+  url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
 const meterProvider = new MeterProvider({
@@ -40,9 +40,9 @@ const meterProvider = new MeterProvider({
 const meter = meterProvider.getMeter('perf-regression-tests');
 
 // Create histograms for tracking key performance indicators
-const requestLatency = meter.createHistogram('http.request.duration', {
-  description: 'HTTP request latency in milliseconds',
-  unit: 'ms',
+const requestLatency = meter.createHistogram('http.server.request.duration', {
+  description: 'Duration of HTTP server requests',
+  unit: 's',
 });
 
 const throughputCounter = meter.createCounter('http.requests.total', {
@@ -65,18 +65,20 @@ async function measureEndpoint(name, requestFn) {
 
   try {
     await requestFn();
-    const duration = Date.now() - startTime;
+    const durationMs = Date.now() - startTime;
+    const durationSeconds = durationMs / 1000;
 
     // Record the latency with the endpoint name as an attribute
-    requestLatency.record(duration, {
+    requestLatency.record(durationSeconds, {
       'http.route': name,
       'deployment.environment': process.env.CI_ENVIRONMENT || 'ci',
       'git.commit.sha': process.env.GIT_COMMIT_SHA || 'unknown',
+      'git.ref': process.env.GIT_REF || 'unknown',
     });
 
     throughputCounter.add(1, { 'http.route': name, 'http.status_code': 200 });
 
-    return duration;
+    return durationMs;
   } catch (err) {
     throughputCounter.add(1, { 'http.route': name, 'http.status_code': 500 });
     throw err;
@@ -116,15 +118,18 @@ import sys
 import os
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
-COMMIT_SHA = os.environ.get("GIT_COMMIT_SHA", "unknown")
-BASELINE_BRANCH = os.environ.get("BASELINE_BRANCH", "main")
+CURRENT_LABEL_SELECTOR = os.environ.get(
+    "CURRENT_LABEL_SELECTOR",
+    f'git_commit_sha="{os.environ.get("GIT_COMMIT_SHA", "unknown")}"',
+)
+BASELINE_LABEL_SELECTOR = os.environ.get("BASELINE_LABEL_SELECTOR", 'git_ref="main"')
 
 # Thresholds: if current P95 exceeds baseline P95 by this percentage, fail
 REGRESSION_THRESHOLD_PERCENT = 15
 
-def get_p95_latency(commit_sha):
-    """Fetch the P95 latency for a given commit from Prometheus."""
-    query = f'histogram_quantile(0.95, sum(rate(http_request_duration_bucket{{git_commit_sha="{commit_sha}"}}[5m])) by (le, http_route))'
+def get_p95_latency(label_selector):
+    """Fetch the P95 latency for a Prometheus label selector."""
+    query = f'histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{{{label_selector}}}[5m])) by (le, http_route))'
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
     data = resp.json()
     results = {}
@@ -135,14 +140,14 @@ def get_p95_latency(commit_sha):
     return results
 
 def main():
-    current = get_p95_latency(COMMIT_SHA)
-    baseline = get_p95_latency(BASELINE_BRANCH)
+    current = get_p95_latency(CURRENT_LABEL_SELECTOR)
+    baseline = get_p95_latency(BASELINE_LABEL_SELECTOR)
 
     regressions = []
     for route, current_p95 in current.items():
         baseline_p95 = baseline.get(route)
         if baseline_p95 is None:
-            print(f"[NEW] {route}: {current_p95:.2f}ms (no baseline)")
+            print(f"[NEW] {route}: {current_p95 * 1000:.2f}ms (no baseline)")
             continue
 
         change_pct = ((current_p95 - baseline_p95) / baseline_p95) * 100
@@ -151,7 +156,7 @@ def main():
         if status == "FAIL":
             regressions.append((route, baseline_p95, current_p95, change_pct))
 
-        print(f"[{status}] {route}: {baseline_p95:.2f}ms -> {current_p95:.2f}ms ({change_pct:+.1f}%)")
+        print(f"[{status}] {route}: {baseline_p95 * 1000:.2f}ms -> {current_p95 * 1000:.2f}ms ({change_pct:+.1f}%)")
 
     if regressions:
         print(f"\nFound {len(regressions)} performance regression(s)!")
@@ -176,19 +181,20 @@ perf-regression-check:
     - uses: actions/checkout@v4
 
     - name: Start OpenTelemetry Collector
-      run: docker-compose up -d otel-collector prometheus
+      run: docker compose up -d otel-collector prometheus
 
     - name: Run performance tests
       env:
         GIT_COMMIT_SHA: ${{ github.sha }}
-        OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318/v1/metrics
+        GIT_REF: ${{ github.ref_name }}
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://localhost:4318/v1/metrics
       run: npm run perf-test
 
     - name: Compare against baseline
       env:
         PROMETHEUS_URL: http://localhost:9090
         GIT_COMMIT_SHA: ${{ github.sha }}
-      run: python compare_perf_metrics.py
+      run: python3 compare_perf_metrics.py
 ```
 
 ## Tips for Reliable Regression Detection
