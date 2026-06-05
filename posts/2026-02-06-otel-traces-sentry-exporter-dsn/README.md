@@ -4,20 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Sentry, Trace, Error Tracking
 
-Description: Configure the OpenTelemetry Collector to export traces to Sentry using the Sentry exporter with DSN-based authentication.
+Description: Configure the OpenTelemetry Collector to export traces to Sentry using the Sentry exporter with API-token authentication and project routing.
 
-Sentry is primarily known for error tracking, but it also supports distributed tracing. The OpenTelemetry Collector has a dedicated Sentry exporter that converts OpenTelemetry spans into Sentry transactions and sends them using a DSN (Data Source Name). This lets you use OpenTelemetry instrumentation across your services while viewing traces in the Sentry performance monitoring UI.
+Sentry is primarily known for error tracking, but it also supports distributed tracing. The OpenTelemetry Collector has a dedicated Sentry exporter that forwards OpenTelemetry traces to Sentry's native OTLP ingestion endpoints. This lets you use OpenTelemetry instrumentation across your services while viewing traces in the Sentry performance monitoring UI.
 
 ## What the Sentry Exporter Does
 
-The Sentry exporter translates OpenTelemetry span data into Sentry's transaction format. It maps span attributes to Sentry tags, preserves the trace hierarchy, and uses the Sentry DSN for routing and authentication. Error spans are automatically linked to Sentry issues when possible.
+The Sentry exporter forwards OTLP trace data to Sentry without transforming the payload. It routes telemetry to Sentry projects based on a resource attribute, using `service.name` by default, and uses the Sentry Management API to discover the right OTLP ingestion endpoint for each project.
 
-## Getting Your Sentry DSN
+## Getting Your Sentry Auth Token
 
-In Sentry, navigate to Settings > Projects > [Your Project] > Client Keys (DSN). Copy the DSN string. It looks like:
+Create a Sentry authentication token with access to the Sentry Management API. Basic exporter functionality requires `project:read` and `org:read`. If you want the exporter to create missing projects automatically, the token also needs `project:write`.
+
+You also need your Sentry organization slug and one or more Sentry project slugs. By default, the exporter uses the OpenTelemetry `service.name` resource attribute as the Sentry project slug. If your service names do not match project slugs, configure an explicit mapping.
 
 ```text
-https://examplePublicKey@o0.ingest.sentry.io/0
+SENTRY_AUTH_TOKEN=sntrys_YOUR_TOKEN_HERE
 ```
 
 ## Collector Configuration
@@ -46,11 +48,16 @@ processors:
 
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    # Optional: set the Sentry environment
-    environment: "production"
-    # Optional: include OpenTelemetry span attributes as Sentry tags
-    insecure_skip_verify: false
+    url: "https://sentry.io"
+    org_slug: "my-organization"
+    auth_token: "${env:SENTRY_AUTH_TOKEN}"
+    routing:
+      project_from_attribute: "service.name"
+      attribute_to_project_mapping:
+        api-service: "backend-api"
+    http:
+      tls:
+        insecure_skip_verify: false
 
 service:
   pipelines:
@@ -60,17 +67,17 @@ service:
       exporters: [sentry]
 ```
 
-That is the minimal configuration. The `dsn` field is the only required setting for the Sentry exporter.
+The required exporter settings are `url`, `org_slug`, and `auth_token`. The routing block is optional, but it is useful when your OpenTelemetry service names do not exactly match Sentry project slugs.
 
 ## How Spans Map to Sentry Transactions
 
-Sentry has a concept of "transactions" which represent top-level operations, and "spans" within those transactions. The mapping from OpenTelemetry works like this:
+Sentry has a concept of "transactions" which represent top-level operations, and "spans" within those transactions. The Sentry exporter sends OTLP traces as-is to Sentry's OTLP ingestion endpoint, so the important OpenTelemetry model still applies:
 
-- Root spans (spans with no parent) become Sentry transactions
-- Child spans become Sentry spans within the parent transaction
-- `span.name` becomes the Sentry transaction/span description
-- `span.status` maps to Sentry's status codes
-- Span attributes become Sentry tags
+- Root spans represent the top-level operation in a trace
+- Child spans represent nested work within that trace
+- `span.name` describes the operation
+- `span.status` records whether the operation completed successfully
+- Span attributes carry structured context for the operation
 
 Here is what an instrumented application looks like:
 
@@ -96,14 +103,14 @@ trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer("api-service")
 
-# This root span becomes a Sentry transaction
+# This root span represents the top-level operation
 def handle_request(request):
     with tracer.start_as_current_span("HTTP GET /api/users") as span:
         span.set_attribute("http.method", "GET")
         span.set_attribute("http.url", "/api/users")
         span.set_attribute("http.status_code", 200)
 
-        # This child span becomes a Sentry span within the transaction
+        # This child span represents nested work within the trace
         with tracer.start_as_current_span("db.query") as db_span:
             db_span.set_attribute("db.system", "postgresql")
             db_span.set_attribute("db.statement", "SELECT * FROM users")
@@ -112,7 +119,7 @@ def handle_request(request):
         return users
 ```
 
-In Sentry's Performance tab, you will see "HTTP GET /api/users" as a transaction with a "db.query" child span.
+In Sentry's Performance tab, you will see "HTTP GET /api/users" as the top-level operation with a "db.query" child span.
 
 ## Combining Sentry with Other Backends
 
@@ -121,8 +128,12 @@ A common pattern is exporting traces to both Sentry (for error tracking integrat
 ```yaml
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
+    url: "https://sentry.io"
+    org_slug: "my-organization"
+    auth_token: "${env:SENTRY_AUTH_TOKEN}"
+    routing:
+      attribute_to_project_mapping:
+        api-service: "backend-api"
 
   otlp/jaeger:
     endpoint: jaeger-collector:4317
@@ -137,27 +148,27 @@ service:
       exporters: [sentry, otlp/jaeger]
 ```
 
-This sends all traces to both Sentry and Jaeger. Sentry gives you error-centric trace views, while Jaeger gives you full distributed trace exploration.
+This sends all traces to both Sentry and Jaeger. Sentry gives you trace views connected to Sentry projects, while Jaeger gives you full distributed trace exploration.
 
 ## Handling Error Spans
 
-When a span has an error status, the Sentry exporter creates both a transaction and an associated Sentry event. To properly mark errors:
+When a span has an error status, Sentry can display that status as part of the trace. To properly mark errors:
 
 ```python
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 with tracer.start_as_current_span("process_payment") as span:
     try:
         result = charge_card(amount)
     except PaymentError as e:
-        # Set span status to ERROR so Sentry captures it
-        span.set_status(StatusCode.ERROR, str(e))
+        # Set span status to ERROR
+        span.set_status(Status(StatusCode.ERROR, str(e)))
         # Record the exception as a span event
         span.record_exception(e)
         raise
 ```
 
-The `record_exception` call adds the stack trace as a span event, which the Sentry exporter converts into a proper Sentry exception with full traceback.
+The `record_exception` call adds exception details as a span event. If you also use a Sentry SDK for application error events, use Sentry's OpenTelemetry integration settings so errors and traces stay connected.
 
 ## Sampling Configuration
 
@@ -185,9 +196,9 @@ This keeps all error traces (which are most useful in Sentry) while sampling 10%
 
 If traces do not appear in Sentry, check these common issues:
 
-1. **Invalid DSN**: Verify the DSN format and that the project exists
-2. **Network connectivity**: Ensure the Collector can reach `ingest.sentry.io` on port 443
-3. **Missing service.name**: Sentry groups transactions by service, so this attribute should always be set
+1. **Invalid auth token or scopes**: Verify the token and required `org:read` and `project:read` scopes
+2. **Network connectivity**: Ensure the Collector can reach the Sentry API and the Sentry OTLP ingest host on port 443
+3. **Missing service.name**: The exporter routes by `service.name` by default, so resources without that attribute are dropped
 4. **Batch timeout**: If you send very few traces, increase the batch timeout or decrease the batch size to see results faster
 
 Enable Collector debug logging to see the export requests and any error responses from Sentry.
