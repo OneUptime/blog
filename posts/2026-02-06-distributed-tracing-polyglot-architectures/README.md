@@ -27,7 +27,7 @@ sequenceDiagram
     participant Orders as Order Service (Python)
     participant Notify as Notification (Node.js)
 
-    Gateway->>Auth: GET /auth (traceparent: 00-abc123...)
+    Gateway->>Auth: GET /auth (traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-...)
     Auth->>Gateway: 200 OK
     Gateway->>Orders: POST /orders (traceparent: 00-abc123...)
     Orders->>Notify: POST /notify (traceparent: 00-abc123...)
@@ -35,7 +35,7 @@ sequenceDiagram
     Orders->>Gateway: 201 Created
 ```
 
-The `traceparent` header carries the trace ID (`abc123...`) across every service boundary. Each service creates its own spans as children of the incoming span, building a complete trace tree.
+The `traceparent` header carries the trace ID (`4bf92f3577b34da6a3ce929d0e0e4736` in this example) across every service boundary, along with the caller's span ID and trace flags. Each service creates its own spans as children of the incoming span, building a complete trace tree.
 
 ---
 
@@ -78,7 +78,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
         semconv.SchemaURL,
         semconv.ServiceName("api-gateway"),
         semconv.ServiceVersion("1.5.0"),
-        attribute.String("deployment.environment", "production"),
+        attribute.String("deployment.environment.name", "production"),
     )
 
     tp := sdktrace.NewTracerProvider(
@@ -100,7 +100,7 @@ func main() {
 
     // Wrap the HTTP handler with OpenTelemetry instrumentation
     // This automatically creates spans for incoming requests
-    // and propagates context to outgoing requests
+    // and extracts context from incoming requests
     handler := http.HandlerFunc(handleRequest)
     wrappedHandler := otelhttp.NewHandler(handler, "gateway")
 
@@ -122,7 +122,11 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
     // Call the auth service - trace context is automatically injected
     authReq, _ := http.NewRequestWithContext(ctx, "GET", "http://auth-service:8081/verify", nil)
+    authReq.Header.Set("Authorization", r.Header.Get("Authorization"))
     authResp, err := client.Do(authReq)
+    if authResp != nil {
+        defer authResp.Body.Close()
+    }
     authSpan.End()
 
     if err != nil || authResp.StatusCode != 200 {
@@ -133,7 +137,10 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
     // Call the order service - same trace, new span
     ctx, orderSpan := tracer.Start(ctx, "orders.create")
     orderReq, _ := http.NewRequestWithContext(ctx, "POST", "http://order-service:8082/orders", r.Body)
-    _, err = client.Do(orderReq)
+    orderResp, err := client.Do(orderReq)
+    if orderResp != nil {
+        defer orderResp.Body.Close()
+    }
     orderSpan.End()
 
     if err != nil {
@@ -165,7 +172,9 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootApplication
 @RestController
@@ -195,7 +204,7 @@ public class AuthApplication {
 
             if (!valid) {
                 span.setAttribute("auth.failure_reason", "expired");
-                return "invalid";
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid token");
             }
             return "valid";
         } finally {
@@ -219,6 +228,7 @@ For Java, the easiest approach is using the OpenTelemetry Java agent, which auto
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=auth-service \
   -Dotel.exporter.otlp.endpoint=http://otel-collector:4317 \
+  -Dotel.exporter.otlp.protocol=grpc \
   -Dotel.propagators=tracecontext \
   -jar auth-service.jar
 ```
@@ -243,15 +253,14 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.propagators.textmap import set_global_textmap
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Configure the tracer provider
 resource = Resource.create({
     "service.name": "order-service",
     "service.version": "3.2.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 provider = TracerProvider(resource=resource)
@@ -320,17 +329,17 @@ The notification service completes the trace chain:
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 
 // Initialize OpenTelemetry before importing other modules
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'notification-service',
-    'service.version': '1.0.0',
-    'deployment.environment': 'production',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': 'production',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://otel-collector:4317',
@@ -415,7 +424,7 @@ All four services contribute spans to the same trace, linked by the trace ID pro
 
 ## Common Pitfalls and Solutions
 
-1. **Mismatched propagators**: If one service uses W3C TraceContext and another uses B3 (Zipkin format), traces will break at that boundary. Standardize on `tracecontext` everywhere, or configure the Collector to translate between formats.
+1. **Mismatched propagators**: If one service uses W3C TraceContext and another uses B3 (Zipkin format), traces will break at that boundary. Standardize on `tracecontext` everywhere, or temporarily configure services to extract all formats they need during a migration.
 
 2. **Async message queues**: HTTP propagation works automatically, but message queues (Kafka, RabbitMQ) need manual context injection into message headers. Each language has instrumentation libraries for popular queues.
 
@@ -423,6 +432,6 @@ All four services contribute spans to the same trace, linked by the trace ID pro
 
 4. **Clock skew**: Spans from different hosts may have slightly different timestamps due to clock drift. Use NTP on all hosts and keep clocks synchronized within a few milliseconds.
 
-5. **Sampling inconsistencies**: If one service samples at 10% and another at 100%, you get broken traces where some spans are missing. Use head-based sampling at the entry point and propagate the sampling decision downstream.
+5. **Sampling inconsistencies**: If one service samples at 10% and another at 100%, you get broken traces where some spans are missing. Use head-based sampling at the entry point and parent-based sampling downstream so services honor the propagated sampling decision.
 
 Polyglot tracing with OpenTelemetry works because the wire protocol (W3C TraceContext) and data model (spans, attributes, events) are standardized across all languages. The SDKs handle the details. You just need to make sure every service is configured to use the same propagator and sends data to the same Collector.
