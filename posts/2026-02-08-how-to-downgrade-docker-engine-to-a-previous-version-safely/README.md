@@ -15,7 +15,7 @@ Sometimes a Docker update breaks things. A new version might introduce a bug tha
 Common reasons for downgrading Docker:
 
 - A new release introduces a regression that affects your containers
-- Kubernetes or another orchestrator requires a specific Docker version
+- A legacy Kubernetes setup using Docker through cri-dockerd, or another orchestrator, requires a specific Docker version
 - A breaking change in the Docker API affects your CI/CD pipeline
 - Storage driver changes cause data incompatibility
 - A new version has a known security vulnerability (rare, but it happens)
@@ -38,8 +38,8 @@ Write down the exact version string. You will need it if you want to upgrade bac
 Docker occasionally changes internal data formats between major versions. Downgrading across major version boundaries (for example, from 27.x to 25.x) can cause data loss.
 
 ```bash
-# Check the storage driver and data directory
-docker info | grep -E "Storage Driver|Docker Root Dir"
+# Check the storage driver, image store, and data directory
+docker info | grep -E "Storage Driver|Docker Root Dir|containerd"
 ```
 
 ### Back Up Docker Data
@@ -47,9 +47,12 @@ docker info | grep -E "Storage Driver|Docker Root Dir"
 Always back up before a downgrade.
 
 ```bash
-# Back up the entire Docker data directory
+# Back up Docker data directories
 sudo systemctl stop docker
+sudo systemctl stop docker.socket
+sudo systemctl stop containerd
 sudo cp -a /var/lib/docker /var/lib/docker.backup
+sudo cp -a /var/lib/containerd /var/lib/containerd.backup
 sudo systemctl start docker
 ```
 
@@ -99,7 +102,7 @@ Pick the version you want to downgrade to.
 
 ```bash
 # Stop all running containers gracefully
-docker stop $(docker ps -q)
+docker ps -q | xargs -r docker stop
 
 # Stop the Docker daemon
 sudo systemctl stop docker
@@ -117,7 +120,9 @@ TARGET_VERSION="5:27.3.1-1~ubuntu.24.04~noble"
 sudo apt-get install -y --allow-downgrades \
   docker-ce=$TARGET_VERSION \
   docker-ce-cli=$TARGET_VERSION \
-  containerd.io
+  containerd.io \
+  docker-buildx-plugin \
+  docker-compose-plugin
 ```
 
 The `--allow-downgrades` flag tells apt it is okay to install an older version than what is currently installed.
@@ -146,7 +151,7 @@ Prevent apt from automatically upgrading Docker back to the problematic version.
 
 ```bash
 # Hold Docker packages at the current version
-sudo apt-mark hold docker-ce docker-ce-cli containerd.io
+sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 To check which packages are held:
@@ -160,7 +165,7 @@ When you are ready to upgrade again, unhold the packages.
 
 ```bash
 # Remove the hold
-sudo apt-mark unhold docker-ce docker-ce-cli containerd.io
+sudo apt-mark unhold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ## Downgrading on CentOS / RHEL / Rocky Linux / Fedora
@@ -176,7 +181,7 @@ dnf list docker-ce --showduplicates | sort -r
 
 ```bash
 # Stop containers and the daemon
-docker stop $(docker ps -q)
+docker ps -q | xargs -r docker stop
 sudo systemctl stop docker
 sudo systemctl stop docker.socket
 sudo systemctl stop containerd
@@ -189,15 +194,15 @@ sudo systemctl stop containerd
 TARGET_VERSION="27.3.1"
 
 # Downgrade Docker
-sudo dnf downgrade -y docker-ce-3:${TARGET_VERSION}-1.el9 docker-ce-cli-1:${TARGET_VERSION}-1.el9
+sudo dnf downgrade -y docker-ce-3:${TARGET_VERSION}-1.el9 docker-ce-cli-1:${TARGET_VERSION}-1.el9 containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 If `dnf downgrade` does not work (some versions skip the downgrade path), remove and reinstall.
 
 ```bash
 # Alternative: remove and reinstall a specific version
-sudo dnf remove -y docker-ce docker-ce-cli
-sudo dnf install -y docker-ce-3:${TARGET_VERSION}-1.el9 docker-ce-cli-1:${TARGET_VERSION}-1.el9 containerd.io
+sudo dnf remove -y docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
+sudo dnf install -y docker-ce-3:${TARGET_VERSION}-1.el9 docker-ce-cli-1:${TARGET_VERSION}-1.el9 containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ### Step 4: Start and Verify
@@ -217,14 +222,14 @@ docker version
 sudo dnf install -y python3-dnf-plugin-versionlock
 
 # Lock Docker packages
-sudo dnf versionlock add docker-ce docker-ce-cli containerd.io
+sudo dnf versionlock add docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 To unlock later:
 
 ```bash
 # Remove version locks
-sudo dnf versionlock delete docker-ce docker-ce-cli containerd.io
+sudo dnf versionlock delete docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ## Handling Data Compatibility Issues
@@ -242,24 +247,31 @@ If you see storage driver errors, you have two options:
 
 1. **Change the storage driver** in `/etc/docker/daemon.json` to one supported by the older version. This means losing existing images and containers (they stay on disk but become inaccessible).
 
-2. **Restore from backup** if you backed up `/var/lib/docker` before the original upgrade.
+2. **Restore from backup** if you backed up Docker's data directories before the original upgrade.
 
 ```bash
 # Restore Docker data from backup
 sudo systemctl stop docker
+sudo systemctl stop docker.socket
+sudo systemctl stop containerd
 sudo rm -rf /var/lib/docker
+sudo rm -rf /var/lib/containerd
 sudo mv /var/lib/docker.backup /var/lib/docker
+sudo mv /var/lib/containerd.backup /var/lib/containerd
 sudo systemctl start docker
 ```
 
-### Database Migration Issues
+### Metadata Migration Issues
 
-Docker uses an internal database for tracking containers, images, and layers. Some version transitions modify this database schema. If a newer version migrated the database forward, the older version may not be able to read it.
+Docker and containerd keep metadata for tracking containers, images, and layers. Some version transitions can modify this metadata. If a newer version migrated it forward, the older version may not be able to read it.
 
 ```bash
 # If Docker fails to start due to database issues, start fresh
 sudo systemctl stop docker
+sudo systemctl stop docker.socket
+sudo systemctl stop containerd
 sudo rm -rf /var/lib/docker
+sudo rm -rf /var/lib/containerd
 sudo systemctl start docker
 
 # Then reimport your images
@@ -297,7 +309,7 @@ To avoid surprise upgrades in the future, set up notifications for Docker versio
 
 ```bash
 # Create a simple version check script
-cat <<'SCRIPT' > /usr/local/bin/docker-version-check.sh
+sudo tee /usr/local/bin/docker-version-check.sh >/dev/null <<'SCRIPT'
 #!/bin/bash
 EXPECTED="27.3.1"
 CURRENT=$(docker version --format '{{.Server.Version}}')
@@ -307,7 +319,7 @@ if [ "$CURRENT" != "$EXPECTED" ]; then
 fi
 SCRIPT
 
-chmod +x /usr/local/bin/docker-version-check.sh
+sudo chmod +x /usr/local/bin/docker-version-check.sh
 
 # Run it daily via cron
 (crontab -l 2>/dev/null; echo "0 8 * * * /usr/local/bin/docker-version-check.sh") | crontab -
@@ -340,4 +352,4 @@ sudo systemctl start docker
 
 ## Summary
 
-Downgrading Docker is a straightforward process: stop the daemon, install the older version with `--allow-downgrades` (apt) or `dnf downgrade`, and restart. The critical step that most guides skip is data backup. Docker's internal data format can change between versions, and a downgrade without backup risks making your images and volumes inaccessible. Always back up `/var/lib/docker` before upgrading, and pin your Docker version to prevent automatic upgrades from surprising you.
+Downgrading Docker is a straightforward process: stop the daemon, install the older version with `--allow-downgrades` (apt) or `dnf downgrade`, and restart. The critical step that most guides skip is data backup. Docker's internal data format can change between versions, and a downgrade without backup risks making your images and volumes inaccessible. Always back up Docker's data directories before upgrading, and pin your Docker version to prevent automatic upgrades from surprising you.
