@@ -45,7 +45,6 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -118,12 +117,14 @@ With the tracer provider configured, add the otelfiber middleware to your Fiber 
 package main
 
 import (
+    "context"
     "log"
+    "time"
 
+    "github.com/gofiber/contrib/otelfiber/v2"
     "github.com/gofiber/fiber/v2"
     "github.com/gofiber/fiber/v2/middleware/logger"
     "github.com/gofiber/fiber/v2/middleware/recover"
-    "github.com/gofiber/contrib/otelfiber/v2"
 )
 
 func main() {
@@ -193,9 +194,9 @@ The middleware captures:
 - **Status Code**: HTTP response status
 - **URL Path**: Full request path
 - **User Agent**: Client user agent string
-- **Request/Response Size**: Content length
+- **Request/Response Size Metrics**: Content length, when metrics are enabled
 - **Trace Context**: Propagated from upstream services
-- **Errors**: Panic recovery and error responses
+- **Errors**: Returned handler errors and error responses
 
 ## Implementing Fiber Handlers with Context
 
@@ -216,8 +217,8 @@ type User struct {
 // getUsers retrieves all users
 // The span is already active in the request context
 func getUsers(c *fiber.Ctx) error {
-    // Extract standard context from Fiber context
-    ctx := c.Context()
+    // Extract the trace-aware standard context from Fiber's user context
+    ctx := c.UserContext()
 
     // Fetch users from database with trace propagation
     users, err := fetchUsersFromDatabase(ctx)
@@ -235,7 +236,7 @@ func getUsers(c *fiber.Ctx) error {
 
 // getUser retrieves a single user by ID
 func getUser(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
 
     // Extract route parameter
     userID := c.Params("id")
@@ -252,7 +253,7 @@ func getUser(c *fiber.Ctx) error {
 
 // createUser creates a new user
 func createUser(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
 
     var user User
     if err := c.BodyParser(&user); err != nil {
@@ -272,7 +273,7 @@ func createUser(c *fiber.Ctx) error {
 
 // updateUser updates an existing user
 func updateUser(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
     userID := c.Params("id")
 
     var updates User
@@ -295,7 +296,7 @@ func updateUser(c *fiber.Ctx) error {
 
 // deleteUser removes a user by ID
 func deleteUser(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
     userID := c.Params("id")
 
     if err := deleteUserFromDatabase(ctx, userID); err != nil {
@@ -317,6 +318,8 @@ The otelfiber package provides several configuration options to customize tracin
 ```go
 import (
     "github.com/gofiber/contrib/otelfiber/v2"
+    "github.com/gofiber/fiber/v2"
+    "go.opentelemetry.io/otel/attribute"
 )
 
 func setupFiberWithCustomConfig() *fiber.App {
@@ -332,7 +335,7 @@ func setupFiberWithCustomConfig() *fiber.App {
         }),
         // Customize span naming
         otelfiber.WithSpanNameFormatter(func(ctx *fiber.Ctx) string {
-            // Default format is "HTTP {METHOD} {PATH}"
+            // The default formatter uses route path information
             return ctx.Method() + " " + ctx.Route().Path
         }),
         // Add custom attributes to spans
@@ -354,13 +357,14 @@ When errors occur, record them in the active span to maintain visibility into fa
 
 ```go
 import (
+    "github.com/gofiber/fiber/v2"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
 
 // riskyHandler performs an operation that might fail
 func riskyHandler(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
 
     // Get the current span from context
     span := trace.SpanFromContext(ctx)
@@ -387,13 +391,16 @@ Add custom spans to track specific operations within your handlers.
 
 ```go
 import (
+    "github.com/gofiber/fiber/v2"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // processOrder handles order processing with multiple traced operations
 func processOrder(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
 
     var order Order
     if err := c.BodyParser(&order); err != nil {
@@ -456,7 +463,7 @@ func processOrder(c *fiber.Ctx) error {
 
 ## Integrating with Database Operations
 
-Pass the extracted context to database operations to create child spans.
+Pass the extracted context to database operations so instrumented database libraries can associate their spans with the current request. The standard `database/sql` package uses the context for cancellation, deadlines, and driver calls; it does not create OpenTelemetry spans by itself.
 
 ```go
 import (
@@ -468,14 +475,14 @@ type OrderRepository struct {
     db *sql.DB
 }
 
-// Save creates an order with trace propagation
+// Save creates an order with request context propagation
 func (r *OrderRepository) Save(ctx context.Context, order *Order) error {
     query := `
         INSERT INTO orders (id, product_id, quantity, amount, status)
         VALUES (?, ?, ?, ?, ?)
     `
 
-    // Use ExecContext to propagate trace context
+    // Use ExecContext to pass cancellation, deadlines, and trace context to instrumented drivers
     _, err := r.db.ExecContext(ctx, query,
         order.ID,
         order.ProductID,
@@ -487,7 +494,7 @@ func (r *OrderRepository) Save(ctx context.Context, order *Order) error {
     return err
 }
 
-// FindByID retrieves an order by ID with trace propagation
+// FindByID retrieves an order by ID with request context propagation
 func (r *OrderRepository) FindByID(ctx context.Context, orderID string) (*Order, error) {
     query := `
         SELECT id, product_id, quantity, amount, status
@@ -519,10 +526,13 @@ When calling external services, use an instrumented HTTP client to propagate tra
 ```go
 import (
     "bytes"
+    "context"
     "encoding/json"
-    "io"
+    "fmt"
     "net/http"
+    "time"
 
+    "github.com/gofiber/fiber/v2"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -581,7 +591,7 @@ func (c *ExternalServiceClient) SendNotification(ctx context.Context, userID str
 
 // Handler that uses the external service client
 func sendUserNotification(c *fiber.Ctx) error {
-    ctx := c.Context()
+    ctx := c.UserContext()
 
     var request struct {
         UserID  string `json:"user_id"`
@@ -616,8 +626,12 @@ Fiber's group feature works seamlessly with otelfiber middleware.
 
 ```go
 func setupRoutesWithGroups(app *fiber.App) {
-    // Add global middleware
-    app.Use(otelfiber.Middleware())
+    // Add global middleware, skipping health checks
+    app.Use(otelfiber.Middleware(
+        otelfiber.WithNext(func(c *fiber.Ctx) bool {
+            return c.Path() == "/health"
+        }),
+    ))
 
     // Health check endpoint (not traced)
     app.Get("/health", func(c *fiber.Ctx) error {
@@ -764,7 +778,6 @@ func main() {
     })
 
     app.Get("/users/:id", func(c *fiber.Ctx) error {
-        id := c.Params("id")
         user := User{ID: 1, Name: "Alice", Email: "alice@example.com"}
         return c.JSON(user)
     })
