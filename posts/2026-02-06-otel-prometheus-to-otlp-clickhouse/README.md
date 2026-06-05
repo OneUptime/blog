@@ -36,11 +36,11 @@ receivers:
               action: keep
               regex: true
             # Use the port from the annotation
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
               target_label: __address__
-              regex: (.+)
-              replacement: "${1}:${2}"
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: "$$1:$$2"
             # Use the path from the annotation (default /metrics)
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
               action: replace
@@ -58,18 +58,6 @@ processors:
     check_interval: 1s
     limit_mib: 512
 
-  # Convert resource attributes from Prometheus format to OTLP conventions
-  transform/prom_to_otlp:
-    metric_statements:
-      - context: resource
-        statements:
-          # Map Prometheus job label to OTLP service.name
-          - set(attributes["service.name"], attributes["job"])
-            where attributes["job"] != nil
-          # Map instance to service.instance.id
-          - set(attributes["service.instance.id"], attributes["instance"])
-            where attributes["instance"] != nil
-
   batch:
     send_batch_size: 1024
     timeout: 10s
@@ -80,10 +68,20 @@ exporters:
     database: "otel"
     username: "otel_writer"
     password: "${CLICKHOUSE_PASSWORD}"
-    ttl_days: 90
+    ttl: 2160h
     # Table creation settings
     create_schema: true
-    metrics_table_name: "otel_metrics"
+    metrics_tables:
+      gauge:
+        name: "otel_metrics_gauge"
+      sum:
+        name: "otel_metrics_sum"
+      summary:
+        name: "otel_metrics_summary"
+      histogram:
+        name: "otel_metrics_histogram"
+      exponential_histogram:
+        name: "otel_metrics_exp_histogram"
     # Compression for efficient storage
     compress: lz4
 
@@ -91,7 +89,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [memory_limiter, transform/prom_to_otlp, batch]
+      processors: [memory_limiter, batch]
       exporters: [clickhouse]
 ```
 
@@ -103,7 +101,8 @@ Prometheus has counters, gauges, histograms, and summaries. The collector conver
 |-----------|------|
 | Counter | Sum (monotonic) |
 | Gauge | Gauge |
-| Histogram | ExponentialHistogram or Histogram |
+| Histogram | Histogram |
+| Native histogram | ExponentialHistogram |
 | Summary | Summary |
 
 For histograms, you might want to control the conversion:
@@ -112,9 +111,13 @@ For histograms, you might want to control the conversion:
 receivers:
   prometheus:
     config:
+      global:
+        scrape_protocols: [PrometheusProto, OpenMetricsText1.0.0, OpenMetricsText0.0.1, PrometheusText0.0.4]
+        scrape_native_histograms: true
       scrape_configs:
         - job_name: "app"
           scrape_interval: 15s
+          always_scrape_classic_histograms: true
           static_configs:
             - targets: ["app.default.svc:8080"]
 ```
@@ -139,47 +142,58 @@ processors:
           - "node_memory_.*"
           - "node_disk_.*"
 
-  # Drop high-cardinality labels that bloat ClickHouse
-  metricstransform:
-    transforms:
-      - include: ".*"
-        match_type: regexp
-        action: update
-        operations:
-          - action: delete_label_value
-            label: "le"     # Histogram bucket boundaries
-          - action: delete_label_value
-            label: "quantile"  # Summary quantiles
+  # Drop high-cardinality attributes that bloat ClickHouse
+  transform/drop_high_cardinality:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "pod_uid")
+          - delete_key(attributes, "container_id")
 ```
 
 ## ClickHouse Schema
 
-The ClickHouse exporter creates tables automatically, but here is what the schema looks like if you want to create it manually:
+The ClickHouse exporter creates tables automatically. Current versions create separate tables for each OTLP metric data type, such as `otel_metrics_gauge`, `otel_metrics_sum`, `otel_metrics_summary`, `otel_metrics_histogram`, and `otel_metrics_exp_histogram`. Here is what the sum metrics table looks like if you want to create it manually:
 
 ```sql
--- ClickHouse table for OTLP metrics
-CREATE TABLE otel.otel_metrics
+-- ClickHouse table for OTLP sum metrics
+CREATE TABLE otel.otel_metrics_sum
 (
-    ResourceAttributes Map(LowCardinality(String), String),
-    ResourceSchemaUrl  LowCardinality(String),
-    ScopeName          LowCardinality(String),
-    ScopeVersion       LowCardinality(String),
-    ScopeAttributes    Map(LowCardinality(String), String),
-    MetricName         LowCardinality(String),
-    MetricDescription  String,
-    MetricUnit         LowCardinality(String),
-    Attributes         Map(LowCardinality(String), String),
-    StartTimeUnix      DateTime64(9),
-    TimeUnix           DateTime64(9),
-    Value              Float64,
-    Flags              UInt32,
-    -- Partitioning for efficient queries
-    INDEX idx_metric_name MetricName TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_service ResourceAttributes['service.name'] TYPE bloom_filter GRANULARITY 4
+    ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ResourceSchemaUrl  String CODEC(ZSTD(1)),
+    ScopeName          String CODEC(ZSTD(1)),
+    ScopeVersion       String CODEC(ZSTD(1)),
+    ScopeAttributes    Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+    ScopeSchemaUrl     String CODEC(ZSTD(1)),
+    ServiceName        LowCardinality(String) CODEC(ZSTD(1)),
+    MetricName         String CODEC(ZSTD(1)),
+    MetricDescription  String CODEC(ZSTD(1)),
+    MetricUnit         String CODEC(ZSTD(1)),
+    Attributes         Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    StartTimeUnix      DateTime64(9) CODEC(Delta, ZSTD(1)),
+    TimeUnix           DateTime64(9) CODEC(Delta, ZSTD(1)),
+    Value              Float64 CODEC(ZSTD(1)),
+    Flags              UInt32 CODEC(ZSTD(1)),
+    Exemplars Nested (
+        FilteredAttributes Map(LowCardinality(String), String),
+        TimeUnix DateTime64(9),
+        Value Float64,
+        SpanId String,
+        TraceId String
+    ) CODEC(ZSTD(1)),
+    AggregationTemporality Int32 CODEC(ZSTD(1)),
+    IsMonotonic Boolean CODEC(Delta, ZSTD(1)),
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(TimeUnix)
-ORDER BY (MetricName, ResourceAttributes, TimeUnix)
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 TTL toDateTime(TimeUnix) + INTERVAL 90 DAY;
 ```
 
@@ -190,10 +204,10 @@ Once metrics are in ClickHouse, you can query them with SQL:
 ```sql
 -- Average request duration by service over the last hour
 SELECT
-    ResourceAttributes['service.name'] AS service,
-    avg(Value) AS avg_duration_seconds
-FROM otel.otel_metrics
-WHERE MetricName = 'http_request_duration_seconds_sum'
+    ServiceName AS service,
+    sum(Sum) / sum(Count) AS avg_duration_seconds
+FROM otel.otel_metrics_histogram
+WHERE MetricName = 'http_request_duration_seconds'
   AND TimeUnix > now() - INTERVAL 1 HOUR
 GROUP BY service
 ORDER BY avg_duration_seconds DESC;
@@ -201,8 +215,8 @@ ORDER BY avg_duration_seconds DESC;
 -- Request rate by status code
 SELECT
     Attributes['status_code'] AS status,
-    count() / 3600 AS requests_per_second
-FROM otel.otel_metrics
+    (max(Value) - min(Value)) / 3600 AS requests_per_second
+FROM otel.otel_metrics_sum
 WHERE MetricName = 'http_requests_total'
   AND TimeUnix > now() - INTERVAL 1 HOUR
 GROUP BY status;
@@ -218,8 +232,8 @@ exporters:
     endpoint: "tcp://clickhouse.database.svc:9000"
     database: "otel"
 
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
@@ -227,8 +241,8 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [memory_limiter, transform/prom_to_otlp, batch]
-      exporters: [clickhouse, otlp/oneuptime]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouse, otlphttp/oneuptime]
 ```
 
 ## Wrapping Up
