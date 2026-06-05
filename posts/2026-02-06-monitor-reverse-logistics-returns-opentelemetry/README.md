@@ -12,15 +12,27 @@ Returns processing is one of the most expensive operations in e-commerce logisti
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+resource = Resource.create({SERVICE_NAME: "returns-processing"})
+
+tracer_provider = TracerProvider(resource=resource)
+tracer_provider.add_span_processor(BatchSpanProcessor(
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(tracer_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
+meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+metrics.set_meter_provider(meter_provider)
 
 tracer = trace.get_tracer("returns.processing")
 meter = metrics.get_meter("returns.processing")
@@ -168,7 +180,7 @@ def route_to_disposition(rma_number: str, inspection_results: list):
 
 ```python
 returns_processing_time = meter.create_histogram(
-    "returns.processing_time_hours",
+    "returns.processing_time",
     description="Time from return receipt to refund issued",
     unit="h"
 )
@@ -179,9 +191,9 @@ disposition_counter = meter.create_counter(
 )
 
 refund_amount = meter.create_histogram(
-    "returns.refund.amount_usd",
+    "returns.refund.amount",
     description="Refund amounts issued",
-    unit="usd"
+    unit="{USD}"
 )
 
 return_rate = meter.create_counter(
