@@ -18,7 +18,7 @@ W3C Baggage is a companion specification to W3C Trace Context. While Trace Conte
 baggage: userId=12345,tenantId=acme-corp,region=us-east-1
 ```
 
-Each entry is a key-value pair separated by commas. Values can include optional metadata properties delimited by semicolons. The entire header has a size limit of 8192 bytes, and each entry is capped at 4096 bytes.
+Each entry is a key-value pair separated by commas. Values can include optional metadata properties delimited by semicolons. The W3C specification requires platforms to propagate baggage when the resulting baggage string has 64 entries or fewer and is 8192 bytes or less. If baggage exceeds those limits, platforms may drop entries until the baggage is within limits.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ Here are some practical use cases:
 
 ## Enabling Baggage Propagation
 
-By default, OpenTelemetry SDKs include both the W3C Trace Context propagator and the W3C Baggage propagator. But it is worth understanding how to configure them explicitly, especially when you need to combine them with other propagators.
+By default, OpenTelemetry Python includes both the W3C Trace Context propagator and the W3C Baggage propagator. But it is worth understanding how to configure them explicitly, especially when you need to combine them with other propagators.
 
 ```python
 from opentelemetry import trace, baggage
@@ -52,7 +52,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 # Set up tracing
@@ -77,11 +77,13 @@ The `CompositePropagator` wraps multiple propagators so that both trace context 
 Baggage in OpenTelemetry is managed through the context API. You set baggage entries on the current context, and the propagator takes care of serializing them into HTTP headers on outgoing requests.
 
 ```python
-from opentelemetry import baggage, context
+from opentelemetry import trace, baggage, context
 from opentelemetry.propagate import inject
 
+tracer = trace.get_tracer(__name__)
+
 # Set baggage entries on the current context
-# Each call returns a new context token (contexts are immutable)
+# Each call returns a new context (contexts are immutable)
 ctx = baggage.set_baggage("userId", "user-42")
 ctx = baggage.set_baggage("tenantId", "acme-corp", context=ctx)
 ctx = baggage.set_baggage("region", "us-east-1", context=ctx)
@@ -90,16 +92,18 @@ ctx = baggage.set_baggage("region", "us-east-1", context=ctx)
 token = context.attach(ctx)
 
 try:
-    # Now when we inject headers, baggage will be included
-    headers = {}
-    inject(headers)
+    # Start a span so trace context is current too
+    with tracer.start_as_current_span("outgoing-request"):
+        # Now when we inject headers, baggage and trace context will be included
+        headers = {}
+        inject(headers)
 
-    print("Propagated headers:")
-    for key, value in headers.items():
-        print(f"  {key}: {value}")
-    # Output includes:
-    #   baggage: userId=user-42,tenantId=acme-corp,region=us-east-1
-    #   traceparent: 00-...
+        print("Propagated headers:")
+        for key, value in headers.items():
+            print(f"  {key}: {value}")
+        # Output includes:
+        #   baggage: userId=user-42,tenantId=acme-corp,region=us-east-1
+        #   traceparent: 00-...
 finally:
     # Always detach when done to restore the previous context
     context.detach(token)
@@ -198,7 +202,7 @@ app = Flask(__name__)
 def extract_baggage():
     """Extract baggage from incoming request headers."""
     # Extract the full context (trace + baggage) from request headers
-    ctx = extract(dict(request.headers))
+    ctx = extract({key.lower(): value for key, value in request.headers.items()})
 
     # Store specific baggage values for easy access in handlers
     g.tenant_id = baggage.get_baggage("tenantId", context=ctx)
@@ -250,7 +254,7 @@ def validate_tenant_baggage(ctx):
 
 ## Size Limits and Performance
 
-The W3C Baggage specification limits the total header size to 8192 bytes and individual entries to 4096 bytes. In practice you should aim to keep baggage small. Every byte of baggage is copied to every downstream request, so large values multiply across your service graph.
+The W3C Baggage specification requires platforms to propagate baggage when the resulting baggage string has 64 entries or fewer and is 8192 bytes or less. In practice you should aim to keep baggage small. Every byte of baggage is copied to every downstream request, so large values multiply across your service graph.
 
 If you have 50 services in a request chain and each request carries 4KB of baggage, that is 200KB of overhead just for context propagation. Keep baggage entries short. Use IDs rather than full objects, and limit the number of entries to what is genuinely needed.
 
