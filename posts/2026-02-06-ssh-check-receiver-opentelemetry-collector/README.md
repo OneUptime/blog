@@ -12,7 +12,7 @@ The SSH Check receiver in the OpenTelemetry Collector enables you to perform syn
 
 By deploying the SSH Check receiver, you can monitor SSH connectivity to critical infrastructure, track connection latency, optionally verify SFTP availability, and generate metrics for uptime monitoring - all within your existing OpenTelemetry pipeline.
 
-> **Important note:** The SSH Check receiver monitors **SSH and SFTP connectivity only**. It does **not** support remote command execution or output validation. If you need to run commands on remote servers, consider using the OpenTelemetry Collector's script-based processors or deploying OpenTelemetry agents directly on target hosts.
+> **Important note:** The SSH Check receiver monitors **SSH and SFTP connectivity only**. It does **not** support remote command execution or output validation. If you need to run commands on remote servers, consider using purpose-built automation tools or deploying OpenTelemetry agents directly on target hosts.
 
 ---
 
@@ -57,7 +57,7 @@ graph LR
 
 This architecture allows you to monitor SSH accessibility from within your infrastructure, ensuring you have visibility into server connectivity.
 
-> **Note:** Each `sshcheck` receiver instance monitors a **single endpoint**. To monitor multiple servers, define multiple named receiver instances (e.g., `sshcheck/server1`, `sshcheck/server2`).
+> **Note:** Each `ssh_check` receiver instance monitors a **single endpoint**. To monitor multiple servers, define multiple named receiver instances (e.g., `ssh_check/server1`, `ssh_check/server2`). The older `sshcheck` component type is still accepted as a deprecated alias.
 
 ---
 
@@ -109,7 +109,7 @@ Here is a minimal working configuration for monitoring a single SSH endpoint:
 
 receivers:
   # SSH Check receiver performs synthetic monitoring of an SSH endpoint
-  sshcheck:
+  ssh_check:
     # SSH server to monitor (host:port format)
     endpoint: server1.example.com:22
 
@@ -128,14 +128,14 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # SERVICE: Wire receivers to exporters
 service:
   pipelines:
     # Metrics pipeline: receive from SSH Check, export to OneUptime
     metrics:
-      receivers: [sshcheck]
+      receivers: [ssh_check]
       exporters: [otlphttp]
 ```
 
@@ -150,34 +150,34 @@ service:
 
 ## Monitoring Multiple SSH Servers
 
-Since each `sshcheck` receiver instance monitors a single endpoint, use **named receiver instances** to monitor multiple servers:
+Since each `ssh_check` receiver instance monitors a single endpoint, use **named receiver instances** to monitor multiple servers:
 
 ```yaml
 receivers:
   # Monitor web server SSH connectivity
-  sshcheck/web-server:
+  ssh_check/web-server:
     endpoint: web-server-01.internal:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
     collection_interval: 60s
 
   # Monitor database server SSH connectivity
-  sshcheck/db-server:
+  ssh_check/db-server:
     endpoint: db-server-01.internal:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
     collection_interval: 60s
 
   # Monitor external server with password auth
-  sshcheck/external-server:
+  ssh_check/external-server:
     endpoint: external-server.example.com:2222
     username: monitoring
-    password: ${SSH_PASSWORD_EXTERNAL}
+    password: ${env:SSH_PASSWORD_EXTERNAL}
     collection_interval: 120s
     timeout: 20s
 
   # Monitor SFTP server (with SFTP check enabled)
-  sshcheck/sftp-server:
+  ssh_check/sftp-server:
     endpoint: sftp.example.com:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
@@ -188,20 +188,20 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     metrics:
       receivers:
-        - sshcheck/web-server
-        - sshcheck/db-server
-        - sshcheck/external-server
-        - sshcheck/sftp-server
+        - ssh_check/web-server
+        - ssh_check/db-server
+        - ssh_check/external-server
+        - ssh_check/sftp-server
       exporters: [otlphttp]
 ```
 
-Each named instance (`sshcheck/web-server`, `sshcheck/db-server`, etc.) independently monitors its configured endpoint and reports metrics separately.
+Each named instance (`ssh_check/web-server`, `ssh_check/db-server`, etc.) independently monitors its configured endpoint and reports metrics separately.
 
 ---
 
@@ -212,7 +212,7 @@ For production deployments, add proper secret management, SFTP checks, processor
 ```yaml
 receivers:
   # Production web server monitoring
-  sshcheck/web-prod:
+  ssh_check/web-prod:
     endpoint: web-server-01.internal:22
     username: monitoring
     key_file: /etc/otel/ssh_monitoring_key
@@ -221,7 +221,7 @@ receivers:
     known_hosts: /etc/otel/known_hosts
 
   # Production database server monitoring
-  sshcheck/db-prod:
+  ssh_check/db-prod:
     endpoint: db-server-01.internal:22
     username: monitoring
     key_file: /etc/otel/ssh_monitoring_key
@@ -230,7 +230,7 @@ receivers:
     known_hosts: /etc/otel/known_hosts
 
   # SFTP server monitoring with SFTP checks
-  sshcheck/sftp-prod:
+  ssh_check/sftp-prod:
     endpoint: sftp.internal:22
     username: monitoring
     key_file: /etc/otel/ssh_monitoring_key
@@ -266,7 +266,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -281,14 +281,14 @@ service:
     logs:
       level: info
     metrics:
-      address: localhost:8888
+      level: basic
 
   pipelines:
     metrics:
       receivers:
-        - sshcheck/web-prod
-        - sshcheck/db-prod
-        - sshcheck/sftp-prod
+        - ssh_check/web-prod
+        - ssh_check/db-prod
+        - ssh_check/sftp-prod
       processors: [memory_limiter, resource, batch]
       exporters: [otlphttp]
 ```
@@ -311,7 +311,7 @@ The SSH Check receiver can optionally verify SFTP connectivity in addition to SS
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: sftp.example.com:22
     username: monitoring
     key_file: /path/to/private_key
@@ -323,7 +323,7 @@ receivers:
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: sftp.example.com:22
     username: monitoring
     key_file: /path/to/private_key
@@ -347,7 +347,7 @@ Individual metrics can be enabled or disabled using the `metrics` section. By de
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: server.example.com:22
     username: monitoring
     key_file: /path/to/key
@@ -427,7 +427,7 @@ chmod 644 /etc/ssh/keys/monitoring_key.pub
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: server1.example.com:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
@@ -439,11 +439,11 @@ When both `password` and `key_file` are set, the password is treated as the pass
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: server1.example.com:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key_encrypted
-    password: ${SSH_KEY_PASSPHRASE}
+    password: ${env:SSH_KEY_PASSPHRASE}
 ```
 
 **Secure password storage (if SSH keys are not possible):**
@@ -452,11 +452,11 @@ Use environment variables and secrets management:
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: server1.example.com:22
     username: monitoring
     # Password from environment variable
-    password: ${SSH_PASSWORD}
+    password: ${env:SSH_PASSWORD}
 ```
 
 ```bash
@@ -569,7 +569,7 @@ Always enable host key verification in production to prevent man-in-the-middle a
 
 ```yaml
 receivers:
-  sshcheck:
+  ssh_check:
     endpoint: server.example.com:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
@@ -618,13 +618,13 @@ For monitoring many servers, distribute checks across multiple Collector instanc
 
 ```yaml
 receivers:
-  sshcheck/server1:
+  ssh_check/server1:
     endpoint: server1.internal:22
     username: monitoring
     key_file: /etc/otel/ssh_key
     collection_interval: 120s
 
-  sshcheck/server2:
+  ssh_check/server2:
     endpoint: server2.internal:22
     username: monitoring
     key_file: /etc/otel/ssh_key
@@ -635,10 +635,16 @@ processors:
     limit_mib: 512
     spike_limit_mib: 128
 
+exporters:
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
+
 service:
   pipelines:
     metrics:
-      receivers: [sshcheck/server1, sshcheck/server2]
+      receivers: [ssh_check/server1, ssh_check/server2]
       processors: [memory_limiter]
       exporters: [otlphttp]
 ```
@@ -652,7 +658,7 @@ The SSH Check receiver works well alongside other receivers for comprehensive mo
 ```yaml
 receivers:
   # SSH connectivity checks
-  sshcheck/web:
+  ssh_check/web:
     endpoint: server1.internal:22
     username: monitoring
     key_file: /etc/ssh/keys/monitoring_key
@@ -678,13 +684,13 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     # SSH synthetic checks
     metrics/ssh:
-      receivers: [sshcheck/web]
+      receivers: [ssh_check/web]
       processors: [batch]
       exporters: [otlphttp]
 
@@ -775,17 +781,36 @@ Enable debug logging to see detailed information about connection attempts and e
 OneUptime provides native support for OpenTelemetry metrics, making it ideal for SSH check monitoring:
 
 ```yaml
+receivers:
+  ssh_check/web:
+    endpoint: web-server-01.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_monitoring_key
+
+  ssh_check/db:
+    endpoint: db-server-01.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_monitoring_key
+
+processors:
+  resource:
+    attributes:
+      - key: monitoring.type
+        value: synthetic-ssh
+        action: upsert
+  batch:
+
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
 
 service:
   pipelines:
     metrics:
-      receivers: [sshcheck/web, sshcheck/db]
+      receivers: [ssh_check/web, ssh_check/db]
       processors: [resource, batch]
       exporters: [otlphttp]
 ```
@@ -814,6 +839,6 @@ For more information on OpenTelemetry Collector receivers and infrastructure mon
 
 The SSH Check receiver transforms the OpenTelemetry Collector into an SSH connectivity monitor, enabling proactive infrastructure monitoring without deploying agents on every server. By periodically establishing SSH connections, it provides early warning of connectivity issues, authentication failures, and network problems.
 
-Configure checks with appropriate intervals and timeouts, use SSH keys for authentication, enable SFTP checks where needed, and export metrics to backends like OneUptime for visualization and alerting. For monitoring multiple servers, use named receiver instances (`sshcheck/server1`, `sshcheck/server2`, etc.) to check each endpoint independently.
+Configure checks with appropriate intervals and timeouts, use SSH keys for authentication, enable SFTP checks where needed, and export metrics to backends like OneUptime for visualization and alerting. For monitoring multiple servers, use named receiver instances (`ssh_check/server1`, `ssh_check/server2`, etc.) to check each endpoint independently.
 
 Whether you are monitoring server accessibility, verifying SFTP service availability, or tracking SSH connection performance, the SSH Check receiver provides a lightweight and reliable approach to infrastructure observability within your existing OpenTelemetry pipeline.
