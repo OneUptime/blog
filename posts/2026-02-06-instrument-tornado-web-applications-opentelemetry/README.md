@@ -47,6 +47,7 @@ Here's a complete example of a Tornado application instrumented with OpenTelemet
 
 ```python
 import tornado.ioloop
+import tornado.escape
 import tornado.web
 import asyncio
 from opentelemetry import trace
@@ -97,8 +98,12 @@ class MainHandler(tornado.web.RequestHandler):
 class UserHandler(tornado.web.RequestHandler):
     """Handler for user-related operations"""
 
-    async def get(self, user_id):
+    async def get(self, user_id=None):
         """Fetch user details with custom span tracking"""
+        if user_id is None:
+            self.set_status(400)
+            self.write({"error": "User ID is required"})
+            return
 
         # Create custom span for database operation
         with tracer.start_as_current_span("fetch-user-from-db") as span:
@@ -312,20 +317,26 @@ if __name__ == "__main__":
 
 ## Advanced Request Filtering
 
-You can configure which requests to trace based on URL patterns or other criteria.
+You can configure which requests to trace based on URL patterns and use hooks to add attributes to inbound requests.
 
 ```python
 from opentelemetry.instrumentation.tornado import TornadoInstrumentor
 
-def client_request_hook(span, handler):
+# Exclude noisy endpoints before the application starts:
+# export OTEL_PYTHON_TORNADO_EXCLUDED_URLS="/health,/metrics"
+
+def server_request_hook(span, handler):
     """
-    Hook called when processing requests.
+    Hook called when processing inbound requests.
     Add custom attributes based on request context.
     """
+    if not span or not span.is_recording():
+        return
+
     # Add request metadata
     request = handler.request
 
-    span.set_attribute("http.route", handler.request.path)
+    span.set_attribute("http.route", request.path)
     span.set_attribute("http.client_ip", request.remote_ip)
 
     # Add custom business context from headers
@@ -337,23 +348,9 @@ def client_request_hook(span, handler):
     api_version = request.headers.get("X-API-Version", "v1")
     span.set_attribute("api.version", api_version)
 
-def client_response_hook(span, handler):
-    """
-    Hook called after response is sent.
-    Add response-specific attributes.
-    """
-    # Add response status
-    span.set_attribute("http.status_code", handler.get_status())
-
-    # Track response size if available
-    if hasattr(handler, "_write_buffer"):
-        response_size = sum(len(chunk) for chunk in handler._write_buffer)
-        span.set_attribute("http.response_content_length", response_size)
-
 # Instrument with custom hooks
 TornadoInstrumentor().instrument(
-    client_request_hook=client_request_hook,
-    client_response_hook=client_response_hook
+    server_request_hook=server_request_hook
 )
 ```
 
@@ -437,39 +434,24 @@ class ProxyHandler(tornado.web.RequestHandler):
 
 ## Middleware Pattern for Global Instrumentation
 
-Create reusable middleware for consistent instrumentation across handlers.
+Create a reusable base handler for consistent instrumentation across handlers.
 
 ```python
-class TracingMiddleware:
-    """Middleware for adding consistent tracing to all requests"""
+class TracingRequestHandler(tornado.web.RequestHandler):
+    """Base handler for adding consistent tracing to all requests"""
 
-    def __init__(self, application):
-        self.application = application
+    def prepare(self):
+        """Add common attributes before each request handler method"""
+        current_span = trace.get_current_span()
 
-    def __call__(self, request):
-        """Process request with tracing context"""
+        # Add standard attributes
+        current_span.set_attribute("http.method", self.request.method)
+        current_span.set_attribute("http.target", self.request.path)
+        current_span.set_attribute("http.host", self.request.host)
 
-        handler = self.application(request)
-
-        # Wrap handler execution with span
-        original_prepare = handler.prepare
-
-        def traced_prepare():
-            current_span = trace.get_current_span()
-
-            # Add standard attributes
-            current_span.set_attribute("http.method", request.method)
-            current_span.set_attribute("http.target", request.path)
-            current_span.set_attribute("http.host", request.host)
-
-            # Add custom business attributes
-            current_span.set_attribute("service.handler",
-                                      handler.__class__.__name__)
-
-            return original_prepare()
-
-        handler.prepare = traced_prepare
-        return handler
+        # Add custom business attributes
+        current_span.set_attribute("service.handler",
+                                  self.__class__.__name__)
 ```
 
 ## Performance Monitoring
