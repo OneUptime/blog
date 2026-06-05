@@ -42,7 +42,7 @@ Create a dedicated module for navigation tracing that works independently of you
 
 ```javascript
 // src/navigation-tracer.js
-import { trace, SpanStatusCode, context } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 // Get a tracer dedicated to navigation events
 const tracer = trace.getTracer('spa-navigation', '1.0.0');
@@ -210,6 +210,7 @@ import {
   startNavigation,
   endNavigation,
   markRouteComponentMounted,
+  getNavigationSpan,
 } from '../navigation-tracer';
 
 const router = createRouter({
@@ -272,41 +273,43 @@ export async function tracedPageFetch(url, options = {}) {
   const parentContext = navigationSpan
     ? trace.setSpan(context.active(), navigationSpan)
     : context.active();
+  const method = (options.method || 'GET').toUpperCase();
+  const fullUrl = new URL(url, window.location.href).href;
 
   // Create a child span under the navigation span
   return context.with(parentContext, async () => {
     const span = tracer.startSpan('page_data.fetch', {
       attributes: {
-        'http.url': url,
-        'http.method': options.method || 'GET',
+        'url.full': fullUrl,
+        'http.request.method': method,
       },
-    });
+    }, parentContext);
 
     try {
       const response = await fetch(url, options);
 
       // Record response metadata
-      span.setAttribute('http.status_code', response.status);
+      span.setAttribute('http.response.status_code', response.status);
       span.setAttribute(
-        'http.response_content_length',
+        'http.response.body.size',
         parseInt(response.headers.get('content-length') || '0', 10)
       );
 
-      if (!response.ok) {
+      if (response.status >= 400) {
+        span.setAttribute('error.type', String(response.status));
         span.setStatus({
           code: SpanStatusCode.ERROR,
           message: `HTTP ${response.status}`,
         });
-      } else {
-        span.setStatus({ code: SpanStatusCode.OK });
       }
 
       return response;
     } catch (error) {
       span.recordException(error);
+      span.setAttribute('error.type', error instanceof Error ? error.name : 'Error');
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
       });
       throw error;
     } finally {
@@ -350,7 +353,7 @@ export function markPageReady() {
 }
 ```
 
-The double `requestAnimationFrame` pattern is a common technique for waiting until the browser has actually painted new content to the screen. A single rAF fires before the paint, while the second one fires after the next frame, confirming the paint happened.
+The double `requestAnimationFrame` pattern is a common technique for giving the browser a chance to paint updated content before ending the span. A single rAF callback runs before the next repaint; scheduling a second rAF moves the callback to the following frame.
 
 Use this in your page components:
 
