@@ -40,7 +40,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func main() {
@@ -80,7 +80,7 @@ func initTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceNameKey.String("my-service"),
+            semconv.ServiceName("my-service"),
         ),
     )
     if err != nil {
@@ -101,7 +101,7 @@ This pattern ensures the tracer provider shuts down when `main()` returns. The t
 
 ## Handling Multiple Providers
 
-Production applications use traces, metrics, and logs. Coordinate shutdown across all providers:
+Production applications often use traces and metrics together. Coordinate shutdown across all providers:
 
 ```go
 package telemetry
@@ -117,6 +117,7 @@ import (
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // TelemetryShutdown manages shutdown for all OpenTelemetry providers
@@ -225,7 +226,7 @@ func initMeterProvider(ctx context.Context, res *resource.Resource) (*metric.Met
 func createResource(ctx context.Context, serviceName string) (*resource.Resource, error) {
     return resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceNameKey.String(serviceName),
+            semconv.ServiceName(serviceName),
         ),
     )
 }
@@ -419,6 +420,7 @@ package worker
 
 import (
     "context"
+    "fmt"
     "log"
     "sync"
     "time"
@@ -593,15 +595,15 @@ func main() {
         log.Fatal(err)
     }
 
-    // Setup panic recovery that ensures shutdown
+    // Setup shutdown and panic recovery
     defer func() {
+        shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        defer cancel()
+
         if r := recover(); r != nil {
             log.Printf("Panic recovered: %v", r)
 
             // Still attempt graceful shutdown
-            shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-            defer cancel()
-
             if err := shutdown.Shutdown(shutdownCtx); err != nil {
                 log.Printf("Shutdown error after panic: %v", err)
             }
@@ -609,12 +611,6 @@ func main() {
             // Re-panic after cleanup
             panic(r)
         }
-    }()
-
-    // Normal shutdown path
-    defer func() {
-        shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-        defer cancel()
 
         if err := shutdown.Shutdown(shutdownCtx); err != nil {
             log.Printf("Shutdown error: %v", err)
