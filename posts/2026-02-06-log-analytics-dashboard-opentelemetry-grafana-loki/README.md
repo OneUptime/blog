@@ -17,7 +17,7 @@ The data flow is straightforward: applications emit logs via the OpenTelemetry S
 ```mermaid
 graph LR
     A[App - OTel SDK] -->|OTLP| B[OTel Collector]
-    B -->|Loki Exporter| C[Grafana Loki]
+    B -->|OTLP HTTP Exporter| C[Grafana Loki]
     C --> D[Grafana Dashboard]
     B -->|Also exports| E[Traces - Tempo]
     B -->|Also exports| F[Metrics - Prometheus]
@@ -31,7 +31,6 @@ Configure your application to emit structured logs through the OpenTelemetry log
 # logging_setup.py
 
 import logging
-from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -42,7 +41,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "order-service",
     "service.version": "1.4.2",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Set up the OTel log provider
@@ -74,9 +73,9 @@ def process_order(order_id, user_id):
     )
 ```
 
-## Collector Configuration with Loki Exporter
+## Collector Configuration with OTLP HTTP Exporter
 
-The Collector receives logs via OTLP and forwards them to Loki. The key configuration detail is mapping OpenTelemetry resource attributes and log attributes to Loki labels. Be selective - Loki performs best with a small number of high-cardinality labels.
+The Collector receives logs via OTLP and forwards them to Loki's native OTLP endpoint. Loki maps selected OpenTelemetry resource attributes to index labels and stores the rest as structured metadata. Be selective with any extra labels - Loki performs best with a small number of low-cardinality labels.
 
 ```yaml
 # otel-collector-loki.yaml
@@ -101,34 +100,31 @@ processors:
 
   resource:
     attributes:
-      # Add a static attribute for environment identification
-      - key: cluster
+      # Add a static resource attribute for cluster identification
+      - key: k8s.cluster.name
         value: "us-east-prod"
         action: upsert
 
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    # Map OTel attributes to Loki labels
-    # Only promote low-cardinality attributes to labels
-    default_labels_enabled:
-      exporter: false
-      job: true
-    labels:
-      attributes:
-        severity: ""
-        service.name: "service"
-        deployment.environment: "env"
-        k8s.namespace.name: "namespace"
-      resource:
-        cluster: ""
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
+```
+
+If you run Loki 3.0 or later, structured metadata is enabled by default. If you need severity as an index label for dashboard grouping or retention selectors, enable it deliberately in Loki because it can increase stream cardinality.
+
+```yaml
+# loki-config.yaml
+limits_config:
+  allow_structured_metadata: true
+  otlp_config:
+    severity_text_as_label: true
 ```
 
 ## Grafana Dashboard Queries
@@ -139,8 +135,8 @@ Log volume over time, grouped by severity. This is your primary health indicator
 
 ```logql
 # Log volume by severity level over time
-sum by (severity) (
-  count_over_time({service="order-service"} [5m])
+sum by (severity_text) (
+  count_over_time({service_name="order-service"} [5m])
 )
 ```
 
@@ -148,9 +144,9 @@ Error rate as a percentage of total logs. A spike here usually means something b
 
 ```logql
 # Error rate percentage
-sum(count_over_time({service="order-service", severity="ERROR"} [5m]))
+sum(count_over_time({service_name="order-service", severity_text="ERROR"} [5m]))
 /
-sum(count_over_time({service="order-service"} [5m]))
+sum(count_over_time({service_name="order-service"} [5m]))
 * 100
 ```
 
@@ -159,8 +155,8 @@ Top error messages for quick triage. This shows which errors appear most frequen
 ```logql
 # Top 10 most frequent error messages
 topk(10,
-  sum by (body) (
-    count_over_time({service="order-service", severity="ERROR"} [1h])
+  sum by (message) (
+    count_over_time({service_name="order-service", severity_text="ERROR"} | regexp "(?P<message>.+)" [1h])
   )
 )
 ```
@@ -169,7 +165,7 @@ Logs correlated with a specific trace. This is where the OTel integration shines
 
 ```logql
 # Find all logs associated with a specific trace
-{service="order-service"} | json | trace_id = "abc123def456"
+{service_name="order-service"} | trace_id = "abc123def456"
 ```
 
 ## Dashboard Layout
@@ -197,15 +193,16 @@ datasources:
     url: http://loki:3100
     jsonData:
       derivedFields:
-        # Extract trace_id from log lines and link to Tempo
+        # Extract trace_id from structured metadata and link to Tempo
         - datasourceUid: tempo-datasource-uid
-          matcherRegex: '"trace_id":"(\w+)"'
+          matcherType: label
+          matcherRegex: "trace_id"
           name: TraceID
           url: "$${__value.raw}"
 ```
 
-Once this is configured, every log line that contains a `trace_id` gets a clickable link in Grafana that opens the corresponding trace. This makes it trivial to go from "order-service is logging errors" to "here is the exact request that failed, across all services it touched."
+Once this is configured, every log line that has `trace_id` as structured metadata gets a clickable link in Grafana that opens the corresponding trace. This makes it trivial to go from "order-service is logging errors" to "here is the exact request that failed, across all services it touched."
 
 ## Retention and Cost Considerations
 
-Loki's label-based indexing keeps storage costs manageable, but you should still configure retention policies. A common setup is to keep ERROR and FATAL logs for 90 days, WARNING for 30 days, and INFO/DEBUG for 7 days. You can implement this using Loki's per-tenant retention or by running separate Loki instances with different retention policies per severity label.
+Loki's label-based indexing keeps storage costs manageable, but you should still configure retention policies. A common setup is to keep ERROR and FATAL logs for 90 days, WARNING for 30 days, and INFO/DEBUG for 7 days. You can implement this using Loki's per-tenant or per-stream retention when severity is an index label, or by running separate Loki tenants or instances with different retention policies.
