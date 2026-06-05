@@ -30,15 +30,15 @@ Each dependency has specific version requirements that must align across the ent
 
 ## Version Compatibility Matrix
 
-As of early 2026, these versions work well together:
+As of early 2026, this is a known-compatible set for the examples below:
 
-- OpenTelemetry C++: 1.14.x or later
+- OpenTelemetry C++: 1.14.x or 1.15.x when using `WITH_ABSEIL`; 1.16.x and later use an internal Abseil for OpenTelemetry C++ itself
 - Abseil: 20240116.x (LTS branch)
-- Protobuf: 3.21.x or 4.25.x
-- gRPC: 1.60.x or later
+- Protobuf: 25.3 for the source-build example, or 3.21.x for older gRPC/OpenTelemetry combinations
+- gRPC: 1.62.x for the source-build example
 - CMake: 3.20 or later
 
-Using versions outside these ranges can cause compilation failures or runtime crashes.
+Mixing untested versions can cause compilation failures or runtime crashes.
 
 ## Strategy 1: Using System-Installed Dependencies
 
@@ -73,12 +73,13 @@ cmake .. \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
   -DWITH_OTLP_HTTP=ON \
-  -DWITH_ABSEIL=ON \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 
 cmake --build . -j$(nproc)
 sudo cmake --install .
 ```
+
+For OpenTelemetry C++ 1.14.x or 1.15.x with external Abseil, add `-DWITH_ABSEIL=ON`. In OpenTelemetry C++ 1.16.x and later, `WITH_ABSEIL` is no longer used.
 
 ## Strategy 2: Building Dependencies from Source
 
@@ -167,9 +168,9 @@ sudo cmake --install .
 
 Setting providers to "package" ensures gRPC uses your installed dependencies.
 
-## Strategy 3: Using OpenTelemetry's Bundled Dependencies
+## Strategy 3: Using OpenTelemetry's Default Dependency Resolution
 
-Let OpenTelemetry build all dependencies from its submodules:
+Let OpenTelemetry use its default CMake dependency resolution:
 
 ```bash
 cd opentelemetry-cpp
@@ -181,14 +182,13 @@ cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
-  -DWITH_ABSEIL=OFF \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 
 cmake --build . -j$(nproc)
 sudo cmake --install .
 ```
 
-With `WITH_ABSEIL=OFF`, OpenTelemetry builds Abseil from the bundled submodule. This approach guarantees compatibility but increases build time significantly.
+In OpenTelemetry C++ 1.16.x and later, `WITH_ABSEIL` is no longer used; OpenTelemetry C++ uses an internal Abseil for its own implementation. You still need compatible gRPC and Protobuf packages for the OTLP gRPC exporter.
 
 ## Strategy 4: Using vcpkg Package Manager
 
@@ -201,7 +201,7 @@ cd vcpkg
 ./bootstrap-vcpkg.sh
 
 # Install dependencies
-./vcpkg install abseil protobuf grpc opentelemetry-cpp
+./vcpkg install abseil protobuf grpc "opentelemetry-cpp[otlp-grpc,otlp-http]"
 
 # Use in your project
 cmake -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake ..
@@ -286,7 +286,11 @@ cmake --build . && cmake --install .
 
 # Build Protobuf
 cd protobuf/build
-cmake .. -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
+cmake .. \
+  -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+  -DCMAKE_PREFIX_PATH=$INSTALL_PREFIX \
+  -Dprotobuf_ABSL_PROVIDER=package \
+  -Dprotobuf_BUILD_TESTS=OFF
 cmake --build . && cmake --install .
 
 # Build gRPC
@@ -294,6 +298,8 @@ cd grpc/build
 cmake .. \
   -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
   -DCMAKE_PREFIX_PATH=$INSTALL_PREFIX \
+  -DgRPC_INSTALL=ON \
+  -DgRPC_BUILD_TESTS=OFF \
   -DgRPC_ABSL_PROVIDER=package \
   -DgRPC_PROTOBUF_PROVIDER=package
 cmake --build . && cmake --install .
@@ -302,7 +308,9 @@ cmake --build . && cmake --install .
 cd opentelemetry-cpp/build
 cmake .. \
   -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
-  -DCMAKE_PREFIX_PATH=$INSTALL_PREFIX
+  -DCMAKE_PREFIX_PATH=$INSTALL_PREFIX \
+  -DWITH_OTLP_GRPC=ON \
+  -DWITH_OTLP_HTTP=ON
 cmake --build . && cmake --install .
 ```
 
@@ -385,12 +393,15 @@ Use Docker to manage dependencies consistently:
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
+    autoconf \
     build-essential \
     cmake \
     git \
+    libtool \
     wget \
     libcurl4-openssl-dev \
-    libssl-dev
+    libssl-dev \
+    pkg-config
 
 # Install specific versions of dependencies
 WORKDIR /deps
@@ -406,14 +417,18 @@ RUN git clone https://github.com/abseil/abseil-cpp.git && \
 RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v25.3/protobuf-25.3.tar.gz && \
     tar -xzf protobuf-25.3.tar.gz && cd protobuf-25.3 && \
     mkdir build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -Dprotobuf_ABSL_PROVIDER=package && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+             -Dprotobuf_ABSL_PROVIDER=package \
+             -Dprotobuf_BUILD_TESTS=OFF && \
     make -j$(nproc) && make install
 
 # gRPC
-RUN git clone -b v1.62.0 https://github.com/grpc/grpc && \
-    cd grpc && git submodule update --init && \
+RUN git clone --recurse-submodules -b v1.62.0 https://github.com/grpc/grpc && \
+    cd grpc && \
     mkdir build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+             -DgRPC_INSTALL=ON \
+             -DgRPC_BUILD_TESTS=OFF \
              -DgRPC_ABSL_PROVIDER=package \
              -DgRPC_PROTOBUF_PROVIDER=package && \
     make -j$(nproc) && make install
