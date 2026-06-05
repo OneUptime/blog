@@ -28,6 +28,7 @@ First, add the required packages to your Orleans project:
 dotnet add package Microsoft.Orleans.Server
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
@@ -212,9 +213,9 @@ public class OrderState
 }
 ```
 
-## Monitoring Grain Lifecycle Events
+## Monitoring Grain Call Events
 
-Grain activations and deactivations are critical to Orleans performance. Create a grain call filter to track lifecycle events:
+Grain method calls are critical to Orleans performance. Create a grain call filter to track call events:
 
 ```csharp
 using System.Diagnostics;
@@ -331,10 +332,14 @@ public class NotificationGrain : Grain, INotificationGrain
         await Task.Delay(100); // Simulate notification sending
     }
 
-    public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
+    public override async Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
     {
-        _subscription?.UnsubscribeAsync();
-        return base.OnDeactivateAsync(reason, cancellationToken);
+        if (_subscription is not null)
+        {
+            await _subscription.UnsubscribeAsync();
+        }
+
+        await base.OnDeactivateAsync(reason, cancellationToken);
     }
 }
 
