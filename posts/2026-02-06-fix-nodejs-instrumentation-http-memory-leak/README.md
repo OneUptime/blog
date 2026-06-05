@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Node.js, Memory Leak, HTTP Instrumentation
 
-Description: Diagnose and fix the known memory leak in OpenTelemetry HTTP instrumentation that affects Node.js 20 and later versions.
+Description: Diagnose and fix memory growth when using OpenTelemetry HTTP instrumentation on Node.js 20 and later versions.
 
-There is a known issue with `@opentelemetry/instrumentation-http` on Node.js 20+ where the instrumentation holds references to request and response objects longer than necessary, preventing garbage collection. Over time, this causes steadily growing memory usage that can lead to out-of-memory crashes in long-running applications.
+Some Node.js applications using `@opentelemetry/instrumentation-http` on Node.js 20+ have seen request-volume-related memory growth when older instrumentation versions, custom hooks, or exporter backlogs keep request and response data alive longer than expected. Over time, this can lead to steadily growing memory usage and out-of-memory crashes in long-running applications.
 
 ## Identifying the Leak
 
@@ -35,37 +35,36 @@ If `heapUsedMB` increases continuously without leveling off, you likely have a l
 
 ## Root Cause
 
-The issue stems from how `instrumentation-http` wraps the `http.request` and `http.Server` functions in Node.js 20+. Node.js 20 changed the internal handling of the `close` event on HTTP connections, and the instrumentation's event listeners that were supposed to clean up span references do not fire in all cases.
+The issue usually stems from how `instrumentation-http` wraps Node's `http` and `https` modules and how spans, hooks, and exporters interact with request lifecycles. The instrumentation creates spans around incoming and outgoing HTTP activity, and custom hooks receive Node HTTP request and response objects so they can add attributes.
 
-Specifically, when HTTP keep-alive connections are reused, the `close` event on the socket may not fire between requests, but the instrumentation creates a new span reference for each request that is tied to the socket's lifecycle.
+Specifically, heap snapshots often show retained `IncomingMessage` or `ServerResponse` objects when application code stores request or response objects outside the hook, attaches them to other long-lived objects, or allows span/export queues to grow under load. Keep-alive can make this harder to diagnose because sockets are intentionally reused across multiple requests.
 
 ## Fix 1: Update the Instrumentation Package
 
-The OpenTelemetry maintainers have addressed this issue in newer versions. Update to the latest version:
+OpenTelemetry HTTP instrumentation is actively maintained. Update to the latest version before applying workarounds:
 
 ```bash
 npm install @opentelemetry/instrumentation-http@latest
 npm install @opentelemetry/auto-instrumentations-node@latest
 ```
 
-Check the CHANGELOG for the fix:
+Check the installed version:
 
 ```bash
 npm info @opentelemetry/instrumentation-http version
 ```
 
-## Fix 2: Disable Keep-Alive in the Instrumentation
+## Fix 2: Disable the Affected HTTP Instrumentation Path
 
-If updating is not immediately possible, disable the keep-alive behavior that triggers the leak:
+If updating is not immediately possible, temporarily disable the affected incoming or outgoing HTTP spans while you confirm the leak source:
 
 ```javascript
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
 const httpInstrumentation = new HttpInstrumentation({
-  // Disable server-side keep-alive header tracking
-  serverName: undefined,
-  requireParentforOutgoingSpans: false,
-  requireParentforIncomingSpans: false,
+  // Set only the side that is leaking in your heap snapshots.
+  disableIncomingRequestInstrumentation: true,
+  // disableOutgoingRequestInstrumentation: true,
 });
 ```
 
@@ -78,17 +77,26 @@ const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
 const httpInstrumentation = new HttpInstrumentation({
   requestHook: (span, request) => {
-    // Only set lightweight attributes
-    span.setAttribute('http.request.id', request.headers['x-request-id'] || 'unknown');
+    const requestId =
+      request.headers?.['x-request-id'] || request.getHeader?.('x-request-id') || 'unknown';
+
+    // Only set lightweight attributes.
+    span.setAttribute('http.request.id', Array.isArray(requestId) ? requestId[0] : requestId);
     // Do NOT store the request object itself on the span
   },
   responseHook: (span, response) => {
-    span.setAttribute('http.response.content_length', response.getHeader('content-length') || 0);
+    const contentLength =
+      response.getHeader?.('content-length') || response.headers?.['content-length'] || 0;
+
+    span.setAttribute(
+      'http.response.content_length',
+      Array.isArray(contentLength) ? contentLength[0] : contentLength
+    );
   },
 });
 ```
 
-Avoid storing references to request or response objects in span attributes, as this prevents garbage collection.
+Avoid storing references to request or response objects in closures, global variables, span attributes, or other long-lived objects, as this prevents garbage collection. Span attributes should be strings, numbers, booleans, or arrays of those primitive values.
 
 ## Fix 4: Limit the Batch Processor Queue
 
@@ -104,7 +112,7 @@ const processor = new BatchSpanProcessor(exporter, {
 });
 ```
 
-A smaller queue means spans (and their references to request objects) are exported and released sooner.
+A smaller queue limits how many ended spans can wait in memory before export. It is not a root-cause fix for retained request objects, but it can reduce memory pressure while you upgrade or isolate the leak.
 
 ## Monitoring the Fix
 
@@ -128,11 +136,10 @@ Healthy memory usage should reach a plateau and stay there. If it continues grow
 ```javascript
 // Trigger a heap snapshot
 const v8 = require('v8');
-const fs = require('fs');
 
 app.get('/debug/heapdump', (req, res) => {
   const snapshotPath = `/tmp/heap-${Date.now()}.heapsnapshot`;
-  const stream = v8.writeHeapSnapshot(snapshotPath);
+  v8.writeHeapSnapshot(snapshotPath);
   res.json({ path: snapshotPath });
 });
 ```
@@ -141,4 +148,4 @@ Load the snapshot in Chrome DevTools (Memory tab) and look for retained objects 
 
 ## Summary
 
-The HTTP instrumentation memory leak on Node.js 20+ is caused by event listener lifecycle changes in Node's HTTP module. Update to the latest OpenTelemetry packages first. If the issue persists, constrain your batch processor queue and avoid storing large objects in span attributes. Always monitor heap usage in production to catch leaks early.
+HTTP instrumentation-related memory growth on Node.js 20+ is usually caused by older instrumentation versions, custom hooks, exporter backlogs, or application code retaining HTTP request and response objects. Update to the latest OpenTelemetry packages first. If the issue persists, temporarily disable the affected HTTP instrumentation path, constrain your batch processor queue, and avoid storing large objects in span attributes or long-lived closures. Always monitor heap usage in production to catch leaks early.
