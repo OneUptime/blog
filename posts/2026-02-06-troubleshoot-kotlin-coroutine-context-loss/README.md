@@ -16,14 +16,21 @@ class UserController(private val userService: UserService) {
 
     @GetMapping("/api/users/{id}")
     suspend fun getUser(@PathVariable id: String): User {
-        // This span is created on thread-1
+        // This span is made current on thread-1
         val span = tracer.spanBuilder("getUser").startSpan()
+        val scope = span.makeCurrent()
 
-        val user = userService.findById(id)  // Suspends...
-        // Resumes on thread-2 - the span context is lost!
+        return try {
+            val user = userService.findById(id)  // Suspends...
+            // Resumes on thread-2 - the current span context is lost!
 
-        span.end()  // This runs on thread-2 without the context
-        return user
+            val child = tracer.spanBuilder("loadPreferences").startSpan()
+            child.end()  // Created without getUser as the current parent
+            user
+        } finally {
+            scope.close()
+            span.end()
+        }
     }
 }
 ```
@@ -50,22 +57,20 @@ The OpenTelemetry Kotlin extension bridges coroutine context with OpenTelemetry 
 
 ```kotlin
 import io.opentelemetry.extension.kotlin.asContextElement
-import io.opentelemetry.api.trace.Span
+import io.opentelemetry.context.Context
 import kotlinx.coroutines.withContext
 
 @GetMapping("/api/users/{id}")
 suspend fun getUser(@PathVariable id: String): User {
     val span = tracer.spanBuilder("getUser").startSpan()
-    val scope = span.makeCurrent()
 
     return try {
         // Pass the OTel context as a coroutine context element
-        withContext(span.asContextElement()) {
+        withContext(Context.current().with(span).asContextElement()) {
             val user = userService.findById(id)
             user
         }
     } finally {
-        scope.close()
         span.end()
     }
 }
@@ -75,7 +80,7 @@ The `asContextElement()` function creates a coroutine context element that carri
 
 ## Fix 2: Use the OpenTelemetry Java Agent
 
-The OpenTelemetry Java agent (1.28+) includes automatic Kotlin coroutine context propagation:
+The OpenTelemetry Java agent includes automatic Kotlin coroutine context propagation:
 
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
@@ -92,6 +97,7 @@ Build a utility function that handles context propagation:
 ```kotlin
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.context.Context
 import io.opentelemetry.extension.kotlin.asContextElement
 import kotlinx.coroutines.withContext
 
@@ -104,7 +110,7 @@ suspend fun <T> withTracing(
         attributes.forEach { (key, value) -> setAttribute(key, value) }
     }.startSpan()
 
-    return withContext(span.asContextElement()) {
+    return withContext(Context.current().with(span).asContextElement()) {
         try {
             val result = block(span)
             result
