@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Webhook, Event Ingestion
 
-Description: Configure the OpenTelemetry Collector webhook receiver to accept external event data via HTTP and convert it into logs and traces.
+Description: Configure the OpenTelemetry Collector webhook receiver to accept external event data via HTTP and convert it into logs.
 
 Many external services send notifications through webhooks, including GitHub, Stripe, PagerDuty, and countless others. The OpenTelemetry Collector can act as a webhook endpoint, receiving these events and converting them into structured telemetry data. This gives you a single pipeline for all your observability data, whether it originates from your own services or from external systems.
 
 ## The Webhook Receiver
 
-The OpenTelemetry Collector has a `webhookevent` receiver that listens for HTTP POST requests and converts the incoming payloads into log records. This is part of the `opentelemetry-collector-contrib` distribution.
+The OpenTelemetry Collector has a `webhook_event` receiver that listens for HTTP POST requests and converts the incoming payloads into log records. This is part of the `opentelemetry-collector-contrib` distribution.
 
 ## Basic Configuration
 
@@ -20,7 +20,7 @@ Here is a minimal Collector configuration that sets up a webhook endpoint:
 # otel-collector-config.yaml
 
 receivers:
-  webhookevent:
+  webhook_event:
     # Listen on port 8088 for incoming webhooks
     endpoint: 0.0.0.0:8088
     # Path where the webhook will be available
@@ -38,8 +38,8 @@ exporters:
     tls:
       insecure: true
 
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 processors:
   batch:
@@ -49,9 +49,9 @@ processors:
 service:
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       processors: [batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 ## Handling Multiple Webhook Sources
@@ -60,21 +60,21 @@ If you need to accept webhooks from different sources, you can configure multipl
 
 ```yaml
 receivers:
-  webhookevent/github:
+  webhook_event/github:
     endpoint: 0.0.0.0:8088
     path: /webhooks/github
     required_header:
       key: "X-Hub-Signature-256"
-      value: ""  # Any non-empty value accepted
+      value: "expected-github-secret"
 
-  webhookevent/stripe:
+  webhook_event/stripe:
     endpoint: 0.0.0.0:8088
     path: /webhooks/stripe
     required_header:
       key: "Stripe-Signature"
-      value: ""
+      value: "expected-stripe-secret"
 
-  webhookevent/generic:
+  webhook_event/generic:
     endpoint: 0.0.0.0:8089
     path: /events/ingest
 
@@ -103,17 +103,17 @@ exporters:
 service:
   pipelines:
     logs/github:
-      receivers: [webhookevent/github]
+      receivers: [webhook_event/github]
       processors: [attributes/github, batch]
       exporters: [otlp]
 
     logs/stripe:
-      receivers: [webhookevent/stripe]
+      receivers: [webhook_event/stripe]
       processors: [attributes/stripe, batch]
       exporters: [otlp]
 
     logs/generic:
-      receivers: [webhookevent/generic]
+      receivers: [webhook_event/generic]
       processors: [batch]
       exporters: [otlp]
 ```
@@ -125,13 +125,14 @@ Raw webhook payloads often need enrichment before they are useful. You can use t
 ```yaml
 processors:
   transform:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Parse the JSON body and extract useful fields
           - set(attributes["event.type"], ParseJSON(body)["action"])
             where IsString(body)
-          - set(attributes["event.repository"], ParseJSON(body)["repository"]["full_name"])
+          - set(attributes["event.service"], ParseJSON(body)["service"])
             where IsString(body)
           - set(severity_text, "INFO")
 
@@ -165,9 +166,15 @@ curl -X POST http://localhost:8088/events \
 
 ## Adding Health Checks
 
-You should also configure a health check endpoint so that webhook senders can verify the receiver is alive:
+The webhook receiver has its own health endpoint. You can also configure the Collector health check extension for infrastructure probes:
 
 ```yaml
+receivers:
+  webhook_event:
+    endpoint: 0.0.0.0:8088
+    path: /events
+    health_path: /health_check
+
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -177,7 +184,7 @@ service:
   extensions: [health_check]
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       processors: [batch]
       exporters: [otlp]
 ```
@@ -188,7 +195,7 @@ In production, you should put the Collector behind a reverse proxy like nginx or
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8088
     path: /events
     tls:
@@ -220,7 +227,6 @@ server {
 Here is a complete Docker Compose setup for running the Collector with webhook ingestion:
 
 ```yaml
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
