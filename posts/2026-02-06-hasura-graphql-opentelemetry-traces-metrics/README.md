@@ -6,22 +6,33 @@ Tags: OpenTelemetry, Hasura, GraphQL, Database Performance
 
 Description: Configure Hasura GraphQL Engine to export OpenTelemetry traces and metrics for monitoring query performance and database health.
 
-Hasura generates GraphQL APIs directly from your database schema. This is convenient, but it also means that every GraphQL query translates to SQL under the hood, and bad queries can hammer your database without you realizing it. Hasura has built-in OpenTelemetry support that lets you trace the full lifecycle from GraphQL operation to SQL execution.
+Hasura generates GraphQL APIs directly from your database schema. This is convenient, but it also means that GraphQL queries against tracked database sources translate to SQL under the hood, and bad queries can hammer your database without you realizing it. Hasura has built-in OpenTelemetry support that lets you trace the full lifecycle from GraphQL operation to SQL execution.
 
 ## Enabling OpenTelemetry in Hasura
 
-Hasura supports OpenTelemetry export natively. Configure it through environment variables or the metadata API:
+Hasura supports OpenTelemetry export natively in Hasura Cloud and self-hosted Enterprise. Traces are supported in GraphQL Engine v2.18.0 and above, metrics in v2.31.0 and above, and logs in v2.35.0 and above. Configure it through the Console, the CLI metadata file, or the metadata API:
 
-```bash
-# Environment variables for Hasura Docker setup
-
-HASURA_GRAPHQL_ENABLED_APIS=metadata,graphql
-HASURA_GRAPHQL_ENABLE_TELEMETRY=false
-
-# OpenTelemetry configuration
-HASURA_GRAPHQL_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
-HASURA_GRAPHQL_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics
-HASURA_GRAPHQL_OTEL_STATUS=enabled
+```yaml
+# metadata/opentelemetry.yaml
+status: enabled
+data_types:
+  - traces
+  - metrics
+  - logs
+exporter_otlp:
+  otlp_traces_endpoint: http://otel-collector:4318/v1/traces
+  otlp_metrics_endpoint: http://otel-collector:4318/v1/metrics
+  otlp_logs_endpoint: http://otel-collector:4318/v1/logs
+  protocol: http/protobuf
+  traces_propagators:
+    - tracecontext
+  resource_attributes:
+    - name: service.name
+      value: hasura-engine
+    - name: deployment.environment
+      value: production
+batch_span_processor:
+  max_export_batch_size: 512
 ```
 
 Or use the metadata API for more control:
@@ -39,14 +50,14 @@ curl -X POST http://localhost:8080/v1/metadata \
         "otlp_metrics_endpoint": "http://otel-collector:4318/v1/metrics",
         "otlp_logs_endpoint": "http://otel-collector:4318/v1/logs",
         "protocol": "http/protobuf",
+        "traces_propagators": ["tracecontext"],
         "resource_attributes": [
           { "name": "service.name", "value": "hasura-engine" },
           { "name": "deployment.environment", "value": "production" }
         ]
       },
       "batch_span_processor": {
-        "max_export_batch_size": 512,
-        "schedule_delay_millis": 5000
+        "max_export_batch_size": 512
       }
     }
   }'
@@ -56,10 +67,10 @@ curl -X POST http://localhost:8080/v1/metadata \
 
 Once enabled, Hasura exports detailed spans for each GraphQL operation:
 
-- **HTTP request span**: The top-level span for the incoming HTTP request
-- **GraphQL operation span**: Parsing, validation, and execution of the GraphQL operation
-- **SQL generation span**: Time spent converting the GraphQL query to SQL
-- **Database execution span**: Time spent executing the SQL query against PostgreSQL
+- **HTTP request span**: For example, the `/v1/graphql` span for the incoming GraphQL request
+- **GraphQL operation span**: Parsing, planning, and execution of the GraphQL operation
+- **Execution plan span**: Time spent resolving the GraphQL query execution plan
+- **Database execution span**: Time spent executing the generated SQL query against PostgreSQL
 
 Each span carries attributes like:
 
@@ -67,13 +78,13 @@ Each span carries attributes like:
 graphql.operation.name: "GetUserOrders"
 graphql.operation.type: "query"
 db.system: "postgresql"
-db.statement: "SELECT ... FROM orders WHERE user_id = $1"
-http.status_code: 200
+db.query: "SELECT ... FROM orders WHERE user_id = $1"
+request_id: "..."
 ```
 
 ## Tracking Slow Queries
 
-Create an OpenTelemetry Collector pipeline that flags slow database queries:
+Create an OpenTelemetry Collector pipeline that keeps slow Hasura traces:
 
 ```yaml
 # otel-collector-config.yaml
@@ -84,20 +95,15 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Filter processor to identify slow spans
-  filter/slow-queries:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: db.system
-            value: "postgresql"
-        # Only keep spans longer than 500ms
-      exclude:
-        match_type: regexp
-        span_names:
-          - ".*"
-        # This is a simplified example; use span duration in practice
+  # Tail sampling can keep complete traces after duration is known
+  tail_sampling/slow-traces:
+    decision_wait: 10s
+    num_traces: 50000
+    policies:
+      - name: hasura-slow-traces
+        type: latency
+        latency:
+          threshold_ms: 500
 
   attributes/enrich:
     actions:
@@ -113,7 +119,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/enrich]
+      processors: [tail_sampling/slow-traces, attributes/enrich]
       exporters: [otlp]
 ```
 
@@ -124,8 +130,8 @@ Hasura exports several useful metrics. Here are the key ones to dashboard:
 ```typescript
 // These metrics come from Hasura automatically when OTEL is enabled
 
-// 1. GraphQL request duration
-// hasura_graphql_request_duration_seconds - histogram
+// 1. GraphQL execution time
+// hasura_graphql_execution_time_seconds - histogram
 // Use this for latency SLOs
 
 // 2. Active subscriptions
@@ -133,12 +139,13 @@ Hasura exports several useful metrics. Here are the key ones to dashboard:
 // Watch for unexpected growth
 
 // 3. PostgreSQL connection pool
-// hasura_postgres_connections - gauge by status (active, idle, waiting)
-// Alert when waiting connections exceed a threshold
+// hasura_postgres_connections - gauge by source_name, conn_info, and role
+// hasura_postgres_pool_wait_time - histogram
+// Alert when pool wait time exceeds a threshold
 
 // 4. Event trigger processing
-// hasura_event_trigger_processed_total - counter
-// hasura_event_trigger_processing_time - histogram
+// hasura_event_processed_total - counter
+// hasura_event_processing_time_seconds - histogram
 ```
 
 ## Custom Instrumentation for Actions and Remote Schemas
@@ -193,19 +200,19 @@ Hasura subscriptions use live queries that poll the database. This can be expens
 
 -- Key attributes to filter on:
 -- graphql.operation.type = "subscription"
--- hasura.subscription.poller_id
--- db.statement (the generated SQL)
+-- db.query (the generated SQL)
+-- operation_name and parameterized_query_hash metric labels
 ```
 
 Build alerts around subscription metrics:
 
 ```yaml
 # Alert when subscription polling is slow
-# hasura_subscription_poll_duration_seconds P99 > 1s
+# hasura_subscription_total_time_seconds P99 > 1s
 - alert: HasuraSubscriptionPollSlow
   expr: |
     histogram_quantile(0.99,
-      rate(hasura_subscription_poll_duration_seconds_bucket[5m])
+      rate(hasura_subscription_total_time_seconds_bucket[5m])
     ) > 1
   labels:
     severity: warning
@@ -221,15 +228,17 @@ Hasura maintains a connection pool to PostgreSQL. Monitor it to prevent connecti
 # Alert when connection pool is nearly exhausted
 - alert: HasuraConnectionPoolExhausted
   expr: |
-    hasura_postgres_connections{status="waiting"} > 5
+    histogram_quantile(0.99,
+      rate(hasura_postgres_pool_wait_time_bucket[5m])
+    ) > 1
   labels:
     severity: critical
   annotations:
-    summary: "Hasura has waiting database connections - pool may be exhausted"
+    summary: "Hasura PostgreSQL pool wait time is high - pool may be exhausted"
 ```
 
 ## Putting It Together
 
 With OpenTelemetry enabled, your Hasura traces show the full path from GraphQL to SQL. You can identify which GraphQL operations generate the most expensive SQL, which subscriptions poll too frequently, and when your database connection pool is under pressure.
 
-The most valuable insight is usually the SQL generation step. Hasura sometimes generates suboptimal queries for complex relationships. The trace gives you the exact SQL statement and its duration, so you can decide whether to add database indexes, restructure your relationships, or use Hasura's query optimization hints.
+The most valuable insight is usually the database execution span. Hasura sometimes generates suboptimal queries for complex relationships. The trace gives you the generated SQL query and its duration, so you can decide whether to add database indexes, restructure your relationships, or use Hasura's query optimization hints.
