@@ -64,6 +64,7 @@ class CallQualityMonitor {
     this.userId = userId;
     this.previousStats = null;
     this.previousCodec = null;
+    this.currentRTT = 0;
     this.interval = null;
   }
 
@@ -96,6 +97,18 @@ class CallQualityMonitor {
           'ucaas.media_type': 'audio',
           'ucaas.direction': 'inbound',
         });
+
+        const codec = report.codecId ? stats.get(report.codecId) : null;
+        if (codec?.mimeType) {
+          if (this.previousCodec && this.previousCodec !== codec.mimeType) {
+            codecCounter.add(1, {
+              ...commonAttrs,
+              'ucaas.codec.from': this.previousCodec,
+              'ucaas.codec.to': codec.mimeType,
+            });
+          }
+          this.previousCodec = codec.mimeType;
+        }
 
         // Calculate packet loss percentage
         if (this.previousStats) {
@@ -131,28 +144,23 @@ class CallQualityMonitor {
           });
         }
       }
-
-      // Detect codec changes
-      if (report.type === 'codec') {
-        if (this.previousCodec && this.previousCodec !== report.mimeType) {
-          codecCounter.add(1, {
-            ...commonAttrs,
-            'ucaas.codec.from': this.previousCodec,
-            'ucaas.codec.to': report.mimeType,
-          });
-        }
-        this.previousCodec = report.mimeType;
-      }
     });
 
     this.previousStats = stats;
   }
 }
 
+function detectPlatform() {
+  if (typeof navigator === 'undefined') {
+    return 'unknown';
+  }
+  return navigator.userAgentData?.platform || navigator.platform || 'unknown';
+}
+
 // Simplified MOS estimation based on ITU-T G.107 E-model
 function calculateMOS(jitterMs, packetLossPercent, rttMs) {
   // Effective latency
-  const effectiveLatency = rttMs + (jitterMs * 2) + 10;
+  const effectiveLatency = (rttMs ?? 0) + (jitterMs * 2) + 10;
 
   // R-factor calculation (simplified)
   let r;
@@ -186,7 +194,7 @@ from opentelemetry import metrics
 
 meter = metrics.get_meter("ucaas.sbc")
 
-# Active call gauge
+# Active call UpDownCounter
 active_calls = meter.create_up_down_counter(
     "ucaas.sbc.active_calls",
     description="Number of active calls through the SBC",

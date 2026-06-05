@@ -28,8 +28,9 @@ const traceExporter = new OTLPTraceExporter({
   url: "https://otel-collector.example.com/v1/traces",
 });
 
-const tracerProvider = new WebTracerProvider();
-tracerProvider.addSpanProcessor(new BatchSpanProcessor(traceExporter));
+const tracerProvider = new WebTracerProvider({
+  spanProcessors: [new BatchSpanProcessor(traceExporter)],
+});
 tracerProvider.register();
 
 // Set up metrics
@@ -55,9 +56,9 @@ const meter = metrics.getMeter("video.player.metrics", "1.0.0");
 ## Defining Player Metrics
 
 ```javascript
-// Histogram for time to first frame (start-up time)
+// Histogram for time until playback starts (start-up time)
 const startupTime = meter.createHistogram("player.startup.time", {
-  description: "Time from play intent to first frame rendered",
+  description: "Time from play intent to the playing event",
   unit: "ms",
 });
 
@@ -85,28 +86,31 @@ const playbackErrors = meter.createCounter("player.errors", {
 
 ## Measuring Video Start-Up Time
 
-Start-up time is the interval between the user clicking play and the first video frame appearing on screen. This includes DNS resolution, connection setup, manifest download, initial segment download, and decoder initialization.
+Start-up time is the interval between the user clicking play and the browser reporting that playback is ready to start. Depending on preload behavior and when the media request begins, this may include DNS resolution, connection setup, manifest download, initial segment download, and decoder initialization.
 
 ```javascript
 class VideoPlayerMonitor {
   constructor(videoElement, contentId) {
     this.video = videoElement;
     this.contentId = contentId;
-    this.sessionId = generateSessionId();
+    this.sessionId = crypto.randomUUID();
     this.playIntentTime = null;
-    this.firstFrameTime = null;
+    this.playbackStartTime = null;
     this.isBuffering = false;
     this.bufferStartTime = null;
     this.totalRebufferTime = 0;
     this.rebufferEvents = 0;
     this.watchStartTime = null;
 
-    this.commonAttrs = {
+    this.metricAttrs = {
       "content.id": contentId,
-      "session.id": this.sessionId,
       "player.type": this.detectPlayerType(),
       "device.type": this.detectDeviceType(),
       "connection.type": navigator.connection?.effectiveType || "unknown",
+    };
+    this.spanAttrs = {
+      ...this.metricAttrs,
+      "session.id": this.sessionId,
     };
 
     this.attachListeners();
@@ -117,17 +121,17 @@ class VideoPlayerMonitor {
     this.video.addEventListener("play", () => {
       this.playIntentTime = performance.now();
       this.playSpan = tracer.startSpan("player.startup", {
-        attributes: this.commonAttrs,
+        attributes: this.spanAttrs,
       });
     });
 
-    // First frame is rendered and playback begins
+    // Playback starts or resumes after a delay
     this.video.addEventListener("playing", () => {
-      if (this.playIntentTime && !this.firstFrameTime) {
-        this.firstFrameTime = performance.now();
-        const startup = this.firstFrameTime - this.playIntentTime;
+      if (this.playIntentTime !== null && !this.playbackStartTime) {
+        this.playbackStartTime = performance.now();
+        const startup = this.playbackStartTime - this.playIntentTime;
 
-        startupTime.record(startup, this.commonAttrs);
+        startupTime.record(startup, this.metricAttrs);
 
         if (this.playSpan) {
           this.playSpan.setAttribute("startup.duration_ms", startup);
@@ -146,7 +150,7 @@ class VideoPlayerMonitor {
     // Player is waiting for data (rebuffering)
     this.video.addEventListener("waiting", () => {
       // Only count as rebuffering if we have already started playing
-      if (this.firstFrameTime && !this.isBuffering) {
+      if (this.playbackStartTime !== null && !this.isBuffering) {
         this.startRebuffer();
       }
     });
@@ -162,7 +166,7 @@ class VideoPlayerMonitor {
     this.video.addEventListener("error", () => {
       const error = this.video.error;
       playbackErrors.add(1, {
-        ...this.commonAttrs,
+        ...this.metricAttrs,
         "error.code": error ? error.code : 0,
         "error.message": error ? error.message : "unknown",
       });
@@ -183,21 +187,21 @@ class VideoPlayerMonitor {
     this.bufferStartTime = performance.now();
     this.currentBufferSpan = tracer.startSpan("player.rebuffer", {
       attributes: {
-        ...this.commonAttrs,
+        ...this.spanAttrs,
         "rebuffer.playback_position_s": this.video.currentTime,
       },
     });
   }
 
   endRebuffer() {
-    if (!this.bufferStartTime) return;
+    if (this.bufferStartTime === null) return;
 
     const duration = performance.now() - this.bufferStartTime;
     this.totalRebufferTime += duration;
     this.rebufferEvents++;
 
-    rebufferCount.add(1, this.commonAttrs);
-    rebufferDuration.record(duration, this.commonAttrs);
+    rebufferCount.add(1, this.metricAttrs);
+    rebufferDuration.record(duration, this.metricAttrs);
 
     if (this.currentBufferSpan) {
       this.currentBufferSpan.setAttribute("rebuffer.duration_ms", duration);
@@ -218,7 +222,7 @@ class VideoPlayerMonitor {
     if (watchTime <= 0) return;
 
     const ratio = this.totalRebufferTime / watchTime;
-    rebufferRatio.record(ratio, this.commonAttrs);
+    rebufferRatio.record(ratio, this.metricAttrs);
   }
 
   detectPlayerType() {
@@ -267,7 +271,7 @@ setInterval(() => {
     for (let i = 0; i < buffered.length; i++) {
       if (buffered.start(i) <= currentTime && currentTime <= buffered.end(i)) {
         const bufferAhead = buffered.end(i) - currentTime;
-        bufferHealth.record(bufferAhead, monitor.commonAttrs);
+        bufferHealth.record(bufferAhead, monitor.metricAttrs);
         break;
       }
     }
