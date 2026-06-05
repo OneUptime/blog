@@ -19,9 +19,12 @@ First, add the required dependencies to your `Cargo.toml`:
 ```toml
 [dependencies]
 actix-web = "4.5"
+futures-util = "0.3"
 opentelemetry = { version = "0.22", features = ["trace"] }
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.15", features = ["tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tracing = "0.1"
 tracing-opentelemetry = "0.23"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -173,14 +176,18 @@ Now wire up the middleware in your Actix-web application:
 ```rust
 use actix_web::{web, App, HttpResponse, HttpServer};
 use opentelemetry::global;
+use opentelemetry::KeyValue;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
 use opentelemetry_sdk::Resource;
-use opentelemetry::KeyValue;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Configure W3C Trace Context propagation for incoming traceparent headers
+    global::set_text_map_propagator(TraceContextPropagator::new());
+
     // Initialize the OpenTelemetry tracer
-    let tracer = opentelemetry_otlp::new_pipeline()
+    let _tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(opentelemetry_otlp::new_exporter().tonic())
         .with_trace_config(
@@ -194,9 +201,6 @@ async fn main() -> std::io::Result<()> {
         )
         .install_batch(opentelemetry_sdk::runtime::Tokio)
         .expect("Failed to initialize tracer");
-
-    // Set the global tracer provider
-    global::set_tracer_provider(tracer);
 
     HttpServer::new(|| {
         App::new()
@@ -235,9 +239,9 @@ The middleware automatically instruments every request, creating spans with prop
 You can add additional spans within your handlers to trace specific operations:
 
 ```rust
-use actix_web::{web, HttpResponse, HttpRequest};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use opentelemetry::{global, KeyValue};
 use opentelemetry::trace::{Tracer, TraceContextExt};
-use opentelemetry::global;
 
 async fn process_order(
     req: HttpRequest,
@@ -289,8 +293,9 @@ This pattern gives you fine-grained visibility into what happens during request 
 When spawning background tasks, you need to explicitly pass the tracing context:
 
 ```rust
-use actix_web::{web, HttpResponse, HttpRequest};
-use opentelemetry::Context;
+use actix_web::{HttpMessage, HttpRequest, HttpResponse};
+use opentelemetry::{global, Context};
+use opentelemetry::trace::{Tracer, TraceContextExt};
 
 async fn enqueue_job(req: HttpRequest) -> HttpResponse {
     // Capture the current context
@@ -303,10 +308,11 @@ async fn enqueue_job(req: HttpRequest) -> HttpResponse {
     actix_web::rt::spawn(async move {
         let tracer = global::tracer("actix-web");
         let span = tracer.start_with_context("background_job", &cx);
-        let _guard = cx.with_span(span);
+        let job_cx = cx.with_span(span);
 
         // Perform background work
         perform_heavy_computation().await;
+        job_cx.span().end();
     });
 
     HttpResponse::Accepted().body("Job enqueued")
@@ -320,7 +326,8 @@ Without explicit context propagation, your background spans won't be connected t
 When running in production, consider these configuration options:
 
 ```rust
-use opentelemetry_sdk::trace::{Sampler, SamplingDecision};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::{self, Sampler};
 
 // Sample only 10% of requests in production
 let sampler = Sampler::TraceIdRatioBased(0.1);
@@ -367,7 +374,7 @@ Each span captures timing, attributes, and the hierarchical relationship between
 
 If spans aren't appearing in your collector, verify that the tracer provider is properly initialized before starting the HTTP server. The global tracer provider must be set before creating the application.
 
-If context isn't propagating between services, ensure both services use compatible propagators. The default W3C Trace Context propagator works across most modern systems.
+If context isn't propagating between services, ensure both services use compatible propagators. The W3C Trace Context propagator works across most modern systems, but you still need to configure it explicitly with `global::set_text_map_propagator(TraceContextPropagator::new())`.
 
 For high-throughput services, monitor the batch span processor queue size. If spans are being dropped, increase the queue size or adjust batch parameters.
 
