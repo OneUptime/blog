@@ -23,9 +23,10 @@ When CloudEvents travel over HTTP, trace context naturally fits in HTTP headers:
 
 ```python
 import requests
-from opentelemetry import trace, context
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
-from cloudevents.http import CloudEvent, to_structured
+from opentelemetry import trace
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from cloudevents.conversion import to_structured
+from cloudevents.http import CloudEvent
 
 tracer = trace.get_tracer("cloudevents.http")
 propagator = TraceContextTextMapPropagator()
@@ -46,12 +47,12 @@ def send_cloud_event_http(event_data, target_url):
         # Inject trace context into HTTP headers
         propagator.inject(headers)
 
-        span.set_attribute("cloudevents.type", "com.example.sensor.reading")
-        span.set_attribute("messaging.system", "http")
-        span.set_attribute("messaging.destination", target_url)
+        span.set_attribute("cloudevents.event_type", "com.example.sensor.reading")
+        span.set_attribute("url.full", target_url)
+        span.set_attribute("http.request.method", "POST")
 
         response = requests.post(target_url, headers=headers, data=body)
-        span.set_attribute("http.status_code", response.status_code)
+        span.set_attribute("http.response.status_code", response.status_code)
 ```
 
 ## Kafka Transport: Trace Context in Record Headers
@@ -61,6 +62,7 @@ When forwarding CloudEvents to Kafka, put the trace context in Kafka record head
 ```python
 from confluent_kafka import Producer
 import json
+import uuid
 
 tracer_kafka = trace.get_tracer("cloudevents.kafka")
 
@@ -71,8 +73,9 @@ def send_cloud_event_kafka(event_data, topic):
         kind=trace.SpanKind.PRODUCER,
         attributes={
             "messaging.system": "kafka",
-            "messaging.destination": topic,
-            "messaging.operation": "publish",
+            "messaging.destination.name": topic,
+            "messaging.operation.name": "send",
+            "messaging.operation.type": "send",
         }
     ) as span:
         # Build the CloudEvent payload
@@ -84,7 +87,7 @@ def send_cloud_event_kafka(event_data, topic):
             "data": event_data,
         }
 
-        # Extract trace context into Kafka headers
+        # Inject trace context into Kafka headers
         kafka_headers = {}
         propagator.inject(kafka_headers)
 
@@ -99,8 +102,8 @@ def send_cloud_event_kafka(event_data, topic):
         )
         producer.flush()
 
-        span.set_attribute("messaging.kafka.topic", topic)
-        span.set_attribute("cloudevents.id", cloud_event["id"])
+        span.set_attribute("cloudevents.event_id", cloud_event["id"])
+        span.set_attribute("cloudevents.event_type", cloud_event["type"])
 ```
 
 ## Consuming from Kafka and Restoring Context
@@ -141,15 +144,16 @@ def consume_cloud_events_kafka(topic):
             kind=trace.SpanKind.CONSUMER,
             attributes={
                 "messaging.system": "kafka",
-                "messaging.destination": topic,
-                "messaging.operation": "receive",
-                "messaging.kafka.partition": msg.partition(),
+                "messaging.destination.name": topic,
+                "messaging.operation.name": "poll",
+                "messaging.operation.type": "receive",
+                "messaging.destination.partition.id": str(msg.partition()),
                 "messaging.kafka.offset": msg.offset(),
             }
         ) as span:
             event = json.loads(msg.value())
-            span.set_attribute("cloudevents.type", event.get("type", ""))
-            span.set_attribute("cloudevents.id", event.get("id", ""))
+            span.set_attribute("cloudevents.event_type", event.get("type", ""))
+            span.set_attribute("cloudevents.event_id", event.get("id", ""))
 
             # Process the event and potentially forward to MQTT
             forward_to_mqtt(event)
@@ -161,6 +165,9 @@ MQTT v5 supports user properties, which work well for carrying trace context:
 
 ```python
 import paho.mqtt.client as mqtt
+from paho.mqtt.enums import CallbackAPIVersion
+from paho.mqtt.packettypes import PacketTypes
+from paho.mqtt.properties import Properties
 
 mqtt_tracer = trace.get_tracer("cloudevents.mqtt")
 
@@ -171,20 +178,22 @@ def forward_to_mqtt(cloud_event):
         kind=trace.SpanKind.PRODUCER,
         attributes={
             "messaging.system": "mqtt",
-            "messaging.destination": "sensors/readings",
-            "messaging.operation": "publish",
+            "messaging.destination.name": "sensors/readings",
+            "messaging.operation.name": "publish",
+            "messaging.operation.type": "send",
         }
     ) as span:
-        # Extract trace context
+        # Inject trace context
         carrier = {}
         propagator.inject(carrier)
 
         # Build MQTT v5 properties with trace context
-        properties = mqtt.Properties(mqtt.PacketTypes.PUBLISH)
+        properties = Properties(PacketTypes.PUBLISH)
         for key, value in carrier.items():
             properties.UserProperty = (key, value)
 
         client = mqtt.Client(
+            callback_api_version=CallbackAPIVersion.VERSION2,
             client_id="event-forwarder",
             protocol=mqtt.MQTTv5
         )
@@ -198,7 +207,7 @@ def forward_to_mqtt(cloud_event):
             properties=properties
         )
 
-        span.set_attribute("cloudevents.id", cloud_event.get("id", ""))
+        span.set_attribute("cloudevents.event_id", cloud_event.get("id", ""))
         span.set_attribute("messaging.mqtt.qos", 1)
         client.disconnect()
 
@@ -218,8 +227,10 @@ def on_mqtt_message(client, userdata, msg):
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "mqtt",
-            "messaging.destination": msg.topic,
+            "messaging.destination.name": msg.topic,
             "messaging.mqtt.qos": msg.qos,
+            "messaging.operation.name": "receive",
+            "messaging.operation.type": "receive",
         }
     ):
         event = json.loads(msg.payload)
