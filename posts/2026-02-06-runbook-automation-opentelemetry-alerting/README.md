@@ -35,17 +35,18 @@ apiVersion: runbook/v1
 kind: AutomatedRunbook
 metadata:
   name: connection-pool-exhaustion
-  description: Restart connection pooler when pool utilization exceeds 95%
+  description: Restart connection pooler when a custom pool utilization metric exceeds 95%
   owner: platform-team
   last_reviewed: 2026-01-15
 
 trigger:
   # Match against OTel metric attributes
-  metric_name: "db.client.connections.usage"
+  metric_name: "app.db.connection_pool.utilization"
   condition: "value > 0.95"
   sustained_for: "2m"
   attributes:
-    db.system: "postgresql"
+    db.system.name: "postgresql"
+    k8s.namespace.name: "payments"
 
 actions:
   - name: log-start
@@ -54,19 +55,19 @@ actions:
 
   - name: restart-pooler
     type: command
-    command: "kubectl rollout restart deployment/pgbouncer -n {{namespace}}"
+    command: "kubectl rollout restart deployment/pgbouncer -n {{k8s.namespace.name}}"
     timeout: 60s
 
   - name: verify-recovery
     type: metric_check
-    metric_name: "db.client.connections.usage"
+    metric_name: "app.db.connection_pool.utilization"
     condition: "value < 0.7"
     wait_for: 120s
 
   - name: notify
     type: notification
     channel: "#platform-alerts"
-    message: "Auto-resolved connection pool exhaustion in {{namespace}}"
+    message: "Auto-resolved connection pool exhaustion in {{k8s.namespace.name}}"
 
 rollback:
   on_failure: page_oncall
@@ -79,6 +80,8 @@ The alert evaluator receives metrics from the OpenTelemetry Collector and checks
 
 ```python
 # Alert evaluator that matches OTel metrics to runbook triggers
+import operator
+import re
 import yaml
 import time
 from pathlib import Path
@@ -88,12 +91,12 @@ meter = metrics.get_meter("runbook.automation")
 
 # Track automation metrics
 runbook_executions = meter.create_counter(
-    "runbook.executions.total",
+    "runbook.executions",
     description="Number of automated runbook executions",
     unit="1"
 )
 runbook_success_rate = meter.create_counter(
-    "runbook.outcomes.total",
+    "runbook.outcomes",
     description="Outcomes of runbook executions",
     unit="1"
 )
@@ -126,7 +129,11 @@ class RunbookEvaluator:
 
             # Evaluate the condition
             if self._evaluate_condition(trigger["condition"], value):
-                key = f"{runbook['metadata']['name']}:{metric_name}"
+                key = (
+                    runbook["metadata"]["name"],
+                    metric_name,
+                    tuple(sorted(attributes.items())),
+                )
                 sustained = trigger.get("sustained_for", "0s")
 
                 if key not in self.active_conditions:
@@ -138,8 +145,38 @@ class RunbookEvaluator:
                     del self.active_conditions[key]
             else:
                 # Condition no longer met, reset tracking
-                key = f"{runbook['metadata']['name']}:{metric_name}"
+                key = (
+                    runbook["metadata"]["name"],
+                    metric_name,
+                    tuple(sorted(attributes.items())),
+                )
                 self.active_conditions.pop(key, None)
+
+    def _attributes_match(self, expected, actual):
+        return all(actual.get(key) == value for key, value in expected.items())
+
+    def _evaluate_condition(self, condition, value):
+        match = re.fullmatch(r"value\s*(<=|>=|<|>|==)\s*([0-9.]+)", condition)
+        if not match:
+            raise ValueError(f"Unsupported condition: {condition}")
+
+        operators = {
+            "<": operator.lt,
+            "<=": operator.le,
+            ">": operator.gt,
+            ">=": operator.ge,
+            "==": operator.eq,
+        }
+        return operators[match.group(1)](value, float(match.group(2)))
+
+    def _parse_duration(self, duration):
+        match = re.fullmatch(r"(\d+)(s|m|h)", duration)
+        if not match:
+            raise ValueError(f"Unsupported duration: {duration}")
+
+        value, unit = match.groups()
+        multipliers = {"s": 1, "m": 60, "h": 3600}
+        return int(value) * multipliers[unit]
 
     def _execute_runbook(self, runbook, context):
         name = runbook["metadata"]["name"]
@@ -183,10 +220,14 @@ exporters:
   # Primary storage
   otlp/storage:
     endpoint: "metrics-backend:4317"
+    tls:
+      insecure: true
 
   # Runbook evaluator service
   otlp/runbook:
     endpoint: "runbook-evaluator:4317"
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 1s
@@ -206,6 +247,8 @@ Automated remediation needs guardrails. Without them, a buggy runbook could make
 
 ```python
 # Safety guards for runbook automation
+import time
+
 class SafetyGuards:
     def __init__(self, max_executions_per_hour=3, cooldown_minutes=15):
         self.max_per_hour = max_executions_per_hour
