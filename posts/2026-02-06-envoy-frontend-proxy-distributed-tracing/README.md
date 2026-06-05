@@ -57,7 +57,7 @@ static_resources:
                           cluster_name: otel_collector
                         timeout: 0.500s
                       service_name: envoy-frontend
-                  # Trace 100% of requests (adjust for production)
+                  # Trace 100% of requests (reduce sampling and review tracer support status for production)
                   random_sampling:
                     value: 100
                 route_config:
@@ -168,13 +168,28 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
+    "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func initTracer() *sdktrace.TracerProvider {
-    exporter, _ := otlptracegrpc.New(context.Background())
+    res, err := resource.New(
+        context.Background(),
+        resource.WithFromEnv(),
+        resource.WithTelemetrySDK(),
+    )
+    if err != nil {
+        log.Printf("failed to create resource: %v", err)
+    }
+
+    exporter, err := otlptracegrpc.New(context.Background())
+    if err != nil {
+        log.Fatalf("failed to create OTLP trace exporter: %v", err)
+    }
+
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(res),
     )
     otel.SetTracerProvider(tp)
     // Set up W3C Trace Context propagation
@@ -224,13 +239,13 @@ services:
   user-svc:
     build: ./user-service
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=user-service
 
   order-svc:
     build: ./order-service
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=order-service
 
   otel-collector:
