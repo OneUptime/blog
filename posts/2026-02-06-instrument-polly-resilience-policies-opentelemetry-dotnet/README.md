@@ -8,13 +8,13 @@ Description: Learn how to instrument Polly resilience policies with OpenTelemetr
 
 Polly is the de facto standard for implementing resilience patterns in .NET applications. It handles retries, circuit breakers, timeouts, and fallbacks elegantly. However, without proper instrumentation, these resilience mechanisms operate as black boxes. You see the final outcome but miss the story of how many retries occurred, when circuit breakers opened, or why a fallback was triggered.
 
-OpenTelemetry instrumentation for Polly transforms these resilience policies into observable components. Every retry becomes a span, every circuit breaker state transition becomes an event, and every timeout becomes a recorded exception. This visibility is critical for understanding system behavior under stress and tuning policy parameters.
+Polly's telemetry support transforms these resilience policies into observable components. Retry attempts, circuit breaker state transitions, and timeouts are emitted as Polly telemetry events and metrics that OpenTelemetry can collect. You can also enrich the current trace span or create custom spans from a telemetry listener when you need trace-level detail. This visibility is critical for understanding system behavior under stress and tuning policy parameters.
 
 ## Understanding Polly's Architecture
 
 Polly v8+ uses a pipeline-based architecture where policies wrap operations and handle different failure scenarios. Each policy in the pipeline gets an opportunity to handle results and exceptions. This architecture provides clean extension points for observability.
 
-The key insight is that Polly fires telemetry events at critical points: before and after executing operations, when retrying, when circuit breakers change state, and when timeouts occur. OpenTelemetry hooks into these events to create spans and record metrics.
+The key insight is that Polly fires telemetry events at critical points: before and after executing pipelines, when retrying, when circuit breakers change state, and when timeouts occur. Polly.Extensions turns these events into logs and metrics, and OpenTelemetry can export the metrics from Polly's `Polly` meter.
 
 ```mermaid
 graph LR
@@ -24,8 +24,8 @@ graph LR
     D --> E[Actual Operation]
     E --> F[Response]
 
-    B -.->|Telemetry| G[Timeout Span]
-    C -.->|Telemetry| H[Retry Spans]
+    B -.->|Telemetry| G[Timeout Events]
+    C -.->|Telemetry| H[Retry Events]
     D -.->|Telemetry| I[Circuit State Events]
 ```
 
@@ -34,14 +34,14 @@ graph LR
 Start by installing the required packages including Polly v8 with its telemetry support.
 
 ```xml
-<PackageReference Include="Microsoft.Extensions.Http.Polly" Version="8.0.0" />
-<PackageReference Include="Polly" Version="8.2.0" />
-<PackageReference Include="Polly.Core" Version="8.2.0" />
-<PackageReference Include="Polly.Extensions" Version="8.2.0" />
-<PackageReference Include="OpenTelemetry" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.0" />
+<PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
+<PackageReference Include="Polly" Version="8.6.6" />
+<PackageReference Include="Polly.Extensions" Version="8.6.6" />
+<PackageReference Include="OpenTelemetry" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
 ```
 
 Configure OpenTelemetry to listen to Polly's telemetry.
@@ -57,16 +57,19 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure OpenTelemetry
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
-        .AddService("payment-service", "1.0.0"))
+        .AddService(serviceName: "payment-service", serviceVersion: "1.0.0"))
     .WithTracing(tracing => tracing
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
-        .AddSource("Polly")
+        .AddSource("PaymentService.Resilience")
+        .AddSource("PaymentService.RateLimit")
         .AddOtlpExporter())
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddMeter("Polly")
+        .AddMeter("PaymentService.Resilience")
+        .AddMeter("PaymentService.CircuitBreaker")
         .AddOtlpExporter());
 
 var app = builder.Build();
@@ -102,7 +105,7 @@ namespace PaymentService.Resilience
                     UseJitter = true,
                     OnRetry = args =>
                     {
-                        // This will automatically create telemetry spans
+                        // Polly will emit an OnRetry telemetry event for this retry.
                         Console.WriteLine(
                             $"Retry attempt {args.AttemptNumber} after {args.RetryDelay}");
                         return default;
@@ -165,13 +168,14 @@ Create a custom telemetry listener to enrich spans with additional context.
 ```csharp
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Polly.Retry;
 using Polly.Telemetry;
+using Polly.Timeout;
 
 namespace PaymentService.Resilience
 {
     public class PollyTelemetryEnricher : TelemetryListener
     {
-        private readonly ActivitySource _activitySource;
         private readonly Meter _meter;
         private readonly Counter<long> _retryCounter;
         private readonly Counter<long> _circuitBreakerCounter;
@@ -179,7 +183,6 @@ namespace PaymentService.Resilience
 
         public PollyTelemetryEnricher()
         {
-            _activitySource = new ActivitySource("PaymentService.Resilience");
             _meter = new Meter("PaymentService.Resilience", "1.0.0");
 
             _retryCounter = _meter.CreateCounter<long>(
@@ -226,13 +229,13 @@ namespace PaymentService.Resilience
 
         private void HandleRetryEvent<TResult, TArgs>(in TelemetryEventArguments<TResult, TArgs> args)
         {
-            if (args.Arguments is RetryArguments retryArgs)
+            if (args.Arguments is OnRetryArguments<TResult> retryArgs)
             {
                 var tags = new TagList
                 {
                     { "pipeline", args.Source.PipelineName ?? "unnamed" },
                     { "attempt", retryArgs.AttemptNumber },
-                    { "exception_type", args.Outcome.Exception?.GetType().Name ?? "none" }
+                    { "exception_type", args.Outcome?.Exception?.GetType().Name ?? "none" }
                 };
 
                 _retryCounter.Add(1, tags);
@@ -244,7 +247,7 @@ namespace PaymentService.Resilience
                     {
                         { "attempt", retryArgs.AttemptNumber },
                         { "delay_ms", retryArgs.RetryDelay.TotalMilliseconds },
-                        { "exception", args.Outcome.Exception?.Message }
+                        { "exception", args.Outcome?.Exception?.Message }
                     }));
             }
         }
@@ -269,7 +272,7 @@ namespace PaymentService.Resilience
 
         private void HandleTimeoutEvent<TResult, TArgs>(in TelemetryEventArguments<TResult, TArgs> args)
         {
-            if (args.Arguments is TimeoutArguments timeoutArgs)
+            if (args.Arguments is OnTimeoutArguments timeoutArgs)
             {
                 Activity.Current?.AddEvent(new ActivityEvent(
                     "Timeout",
@@ -286,16 +289,18 @@ namespace PaymentService.Resilience
 Register the telemetry enricher with Polly.
 
 ```csharp
+using Polly.Telemetry;
+
 builder.Services.AddResiliencePipeline("http-pipeline", builder =>
 {
+    var telemetryOptions = new TelemetryOptions();
+    telemetryOptions.TelemetryListeners.Add(new PollyTelemetryEnricher());
+
     builder
         .AddRetry(/* options */)
         .AddCircuitBreaker(/* options */)
         .AddTimeout(/* options */)
-        .ConfigureTelemetry(telemetry =>
-        {
-            telemetry.TelemetryListeners.Add(new PollyTelemetryEnricher());
-        });
+        .ConfigureTelemetry(telemetryOptions);
 });
 ```
 
@@ -305,6 +310,9 @@ Use Polly resilience pipelines with HttpClient for automatic fault handling and 
 
 ```csharp
 using Microsoft.Extensions.Http.Resilience;
+using Polly;
+using Polly.CircuitBreaker;
+using Polly.Retry;
 
 namespace PaymentService.Http
 {
@@ -406,9 +414,11 @@ namespace PaymentService.Resilience
     {
         private readonly SemaphoreSlim _semaphore;
         private readonly ActivitySource _activitySource;
+        private readonly int _maxConcurrency;
 
         public RateLimitStrategy(int maxConcurrency)
         {
+            _maxConcurrency = maxConcurrency;
             _semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
             _activitySource = new ActivitySource("PaymentService.RateLimit");
         }
@@ -420,7 +430,7 @@ namespace PaymentService.Resilience
         {
             using var activity = _activitySource.StartActivity("RateLimit");
 
-            activity?.SetTag("rate_limit.max_concurrency", _semaphore.CurrentCount);
+            activity?.SetTag("rate_limit.max_concurrency", _maxConcurrency);
 
             var waitStarted = DateTime.UtcNow;
             await _semaphore.WaitAsync(context.CancellationToken);
@@ -607,19 +617,18 @@ Query your observability platform to understand resilience pattern effectiveness
 Example queries for understanding retry behavior:
 
 ```promql
-# Average retry attempts per request
+# Retry attempts per second by pipeline
 
-avg(polly_retry_attempts_total) by (pipeline)
+sum by (pipeline) (rate(polly_retry_attempts_total[5m]))
 
-# Circuit breaker open percentage
-(circuit_breaker_state{state="open"} /
- ignoring(state) group_left circuit_breaker_state) * 100
+# Circuits that are currently open
+max by (circuit) (circuit_breaker_state{state="open"})
 
 # P95 retry delay
-histogram_quantile(0.95, polly_retry_delay_seconds_bucket)
+histogram_quantile(0.95, sum by (le, pipeline) (rate(polly_retry_delay_seconds_bucket[5m])))
 
 # Timeout rate
-rate(polly_timeout_total[5m])
+sum by (pipeline_name) (rate(resilience_polly_strategy_events_total{event_name="OnTimeout"}[5m]))
 ```
 
 ## Best Practices for Production
