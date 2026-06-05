@@ -26,7 +26,7 @@ Each step may be handled by a different service, and some steps involve manual r
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -35,7 +35,7 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -51,7 +51,7 @@ meter = metrics.get_meter("claims-adjudication")
 
 ## Tracking Phase Durations for SLA Compliance
 
-Since claims processing spans hours or days, we do not keep spans open for that long. Instead, we record the timestamps when each phase starts and ends, then compute the duration.
+Since claims processing spans hours or days, we do not keep spans open for that long. Instead, we record the timestamps when each phase starts and ends, then compute the elapsed duration.
 
 ```python
 import time
@@ -86,12 +86,12 @@ sla_breaches = meter.create_counter(
 class ClaimPhaseTracker:
     """Tracks the progression of a claim through adjudication phases."""
 
-    # SLA definitions: max allowed hours per claim type
+    # Example SLA definitions: max allowed elapsed hours per claim type
     SLA_LIMITS = {
-        "auto_collision": 72,    # 3 business days
-        "homeowner_fire": 120,   # 5 business days
-        "health_routine": 48,    # 2 business days
-        "health_complex": 240,   # 10 business days
+        "auto_collision": 72,
+        "homeowner_fire": 120,
+        "health_routine": 48,
+        "health_complex": 240,
     }
 
     def record_phase_transition(self, claim_id, from_phase, to_phase, claim_type):
@@ -189,7 +189,7 @@ def validate_claim(claim_id):
 A significant portion of SLA time is often spent waiting in queues for manual review. Tracking this separately helps you staff appropriately.
 
 ```python
-# Gauge for claims waiting in each queue
+# UpDownCounter for claims waiting in each queue
 claims_in_queue = meter.create_up_down_counter(
     name="claims.queue_depth",
     description="Number of claims waiting in each processing queue"
