@@ -10,7 +10,7 @@ Distributed traces tell you which operation is slow. CPU profiles tell you why i
 
 ## OpenTelemetry Profiling Overview
 
-OpenTelemetry's profiling signal (still evolving as of early 2026) links CPU profiles to specific trace spans. The profiler continuously samples the call stack and tags each sample with the active span context, so you can later filter profiles by trace ID or span ID.
+OpenTelemetry's profiling signal (still evolving as of early 2026) supports associating profile samples with trace and span context. Grafana Pyroscope's span profiling bridge packages label CPU profile samples with the active span ID and add the `pyroscope.profile.id` attribute to linked spans, so Grafana can later jump from a trace span to the relevant profile.
 
 ## Setting Up Continuous Profiling in Go
 
@@ -22,7 +22,6 @@ package main
 
 import (
     "os"
-    "runtime"
 
     "github.com/grafana/pyroscope-go"
     otelpyroscope "github.com/grafana/otel-profiling-go"
@@ -30,9 +29,9 @@ import (
     "go.opentelemetry.io/otel/sdk/trace"
 )
 
-func initProfilingWithTraceCorrelation() {
+func initProfilingWithTraceCorrelation(traceExporter trace.SpanExporter) error {
     // Start the Pyroscope continuous profiler
-    pyroscope.Start(pyroscope.Config{
+    _, err := pyroscope.Start(pyroscope.Config{
         ApplicationName: "order-service",
         ServerAddress:   os.Getenv("PYROSCOPE_SERVER_URL"),
         Logger:          pyroscope.StandardLogger,
@@ -51,6 +50,9 @@ func initProfilingWithTraceCorrelation() {
             "version":  os.Getenv("APP_VERSION"),
         },
     })
+    if err != nil {
+        return err
+    }
 
     // Wrap the OTel tracer provider with Pyroscope's profiling integration
     // This links profile samples to active trace spans
@@ -58,14 +60,16 @@ func initProfilingWithTraceCorrelation() {
         trace.WithBatcher(traceExporter),
     )
 
-    // The Pyroscope wrapper intercepts span start/stop to tag profile samples
+    // The Pyroscope wrapper labels pprof samples with span_id and adds
+    // pyroscope.profile.id to linked spans.
     otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
+    return nil
 }
 ```
 
 ## Setting Up Continuous Profiling in Python
 
-For Python applications, use the `py-spy` profiler with OpenTelemetry integration:
+For Python applications, use the Pyroscope Python SDK with the `pyroscope-otel` OpenTelemetry integration:
 
 ```python
 # profiling_setup.py
@@ -87,8 +91,9 @@ def init_profiling():
         },
     )
 
-    # Create a tracer provider with the Pyroscope span processor
-    # This processor tags profile samples with span context
+    # Create a tracer provider with the Pyroscope span processor.
+    # This processor adds pyroscope.profile.id to root spans and tags
+    # profile samples with span_id.
     provider = TracerProvider()
     provider.add_span_processor(PyroscopeSpanProcessor())
     trace.set_tracer_provider(provider)
@@ -97,7 +102,7 @@ def init_profiling():
 
 tracer = init_profiling()
 
-# Now any span created with this tracer will have linked CPU profiles
+# Now root spans created with this tracer can have linked CPU profiles
 @tracer.start_as_current_span("process_order")
 def process_order(order):
     validate_order(order)   # CPU-heavy validation
@@ -125,7 +130,7 @@ def find_slow_spans(service_name, operation, min_duration_ms=500):
 
 def get_span_profile(span_id, start_time, end_time):
     """Fetch the CPU profile for a specific span's time window."""
-    resp = requests.get(f"{PYROSCOPE_URL}/api/v1/query", params={
+    resp = requests.get(f"{PYROSCOPE_URL}/pyroscope/render", params={
         "query": 'order-service.cpu{span_id="' + span_id + '"}',
         "from": start_time,
         "until": end_time,
@@ -140,21 +145,17 @@ def analyze_slow_spans():
         trace_id = span_info["traceID"]
         print(f"\nAnalyzing trace {trace_id}")
 
-        # Get detailed span info from Tempo
-        trace_resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}")
-        trace_data = trace_resp.json()
+        # Tempo TraceQL search returns matching spans in spanSets.
+        for span_set in span_info.get("spanSets", []):
+            for span in span_set.get("spans", []):
+                span_id = span["spanID"]
+                start = int(span["startTimeUnixNano"])
+                end = start + int(span["durationNanos"])
 
-        for batch in trace_data.get("batches", []):
-            for span in batch.get("scopeSpans", [{}])[0].get("spans", []):
-                if span.get("name") == "process_order":
-                    span_id = span["spanId"]
-                    start = span["startTimeUnixNano"]
-                    end = span["endTimeUnixNano"]
-
-                    profile = get_span_profile(span_id, start, end)
-                    print(f"  Span {span_id}: top CPU consumers:")
-                    for frame in profile.get("flamebearer", {}).get("names", [])[:5]:
-                        print(f"    - {frame}")
+                profile = get_span_profile(span_id, str(start), str(end))
+                print(f"  Span {span_id}: top CPU consumers:")
+                for frame in profile.get("flamebearer", {}).get("names", [])[:5]:
+                    print(f"    - {frame}")
 
 if __name__ == "__main__":
     analyze_slow_spans()
@@ -174,7 +175,8 @@ Panel 2: CPU Flame Graph (Pyroscope data source)
   Visualization: Flame Graph
 
 Panel 3: Top Functions by CPU Time
-  Query: topk(10, order-service.cpu{span_id="$selected_span_id"})
+  Query: order-service.cpu{span_id="$selected_span_id"}
+  Visualization: Table / Top functions
 ```
 
 Use Grafana's drill-down feature so clicking a slow span in Panel 1 automatically updates the profile panels.
@@ -193,9 +195,9 @@ This is far more efficient than traditional profiling because you are only looki
 
 ## When Profiling Overhead Matters
 
-Continuous profiling does add some overhead. CPU profiling at 100Hz sampling rate typically adds 1-3% overhead. For most production services this is acceptable, but for latency-critical paths you might want to sample less aggressively.
+Continuous profiling does add some overhead. Go's CPU profiler samples at 100Hz, and the real overhead depends on the runtime, workload, enabled profile types, and upload interval. For most production services this is acceptable, but latency-critical services should measure the overhead in their own environment.
 
-You can also enable profiling only for a percentage of requests using a head-based sampler that decides at the start of each trace whether to enable profiling for that request.
+You can also limit span-profile correlation by sampling traces, or run the profiler only on a subset of instances when you need to reduce overhead further.
 
 ## Wrapping Up
 
