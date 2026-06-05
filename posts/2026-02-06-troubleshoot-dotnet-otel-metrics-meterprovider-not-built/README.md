@@ -21,22 +21,12 @@ When a `Meter` instrument has no subscriber, calls to `Add()` or `Record()` are 
 ## The Broken Configuration
 
 ```csharp
-// Program.cs - the wrong way
-var builder = WebApplication.CreateBuilder(args);
+// Program.cs - the wrong way in a non-hosted application
+var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+    .AddMeter("MyApp")
+    .AddOtlpExporter();
 
-// Configuring metrics but not adding it to the service pipeline
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(metrics =>
-    {
-        metrics
-            .AddMeter("MyApp")
-            .AddAspNetCoreInstrumentation()
-            .AddOtlpExporter();
-    });
-// Notice: WithTracing is called but WithMetrics configuration
-// might be silently failing due to a missing reader
-
-var app = builder.Build();
+// Missing: var meterProvider = meterProviderBuilder.Build();
 ```
 
 A common variation is forgetting to add an exporter or reader:
