@@ -26,11 +26,12 @@ graph LR
     B -->|OTLP gRPC| C[Uptrace]
     C -->|Storage| D[ClickHouse]
     C -->|Metadata| E[PostgreSQL]
-    F[Browser] -->|HTTP| C
+    C -->|Cache| F[Redis]
+    G[Browser] -->|HTTP| C
     style C fill:#4a9eff,stroke:#333,stroke-width:2px
 ```
 
-Applications send telemetry to the OpenTelemetry Collector, which processes and forwards data to Uptrace over OTLP. Uptrace stores span and metric data in ClickHouse and uses PostgreSQL for metadata like project configurations and user accounts.
+Applications send telemetry to the OpenTelemetry Collector, which processes and forwards data to Uptrace over OTLP. Uptrace stores span and metric data in ClickHouse, uses PostgreSQL for metadata like project configurations and user accounts, and uses Redis for caching and session storage.
 
 ## Deploying Uptrace with Docker Compose
 
@@ -41,14 +42,14 @@ Create a `docker-compose.yml` file with the following configuration:
 ```yaml
 # Docker Compose file for Uptrace with all dependencies
 
-version: "3"
-
 services:
   # ClickHouse serves as the primary storage engine for telemetry data
   clickhouse:
-    image: clickhouse/clickhouse-server:23.7
+    image: clickhouse/clickhouse-server:26.3
     restart: on-failure
     environment:
+      CLICKHOUSE_USER: uptrace
+      CLICKHOUSE_PASSWORD: uptrace
       CLICKHOUSE_DB: uptrace
     # Health check ensures ClickHouse is ready before Uptrace starts
     healthcheck:
@@ -64,38 +65,63 @@ services:
 
   # PostgreSQL stores project metadata and user accounts
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     restart: on-failure
     environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
       POSTGRES_USER: uptrace
       POSTGRES_PASSWORD: uptrace
       POSTGRES_DB: uptrace
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U uptrace"]
+      test: ["CMD-SHELL", "pg_isready -U uptrace -d uptrace"]
       interval: 1s
       timeout: 1s
       retries: 30
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
 
+  # Redis is used for caching and session storage
+  redis:
+    image: redis:6.2.2-alpine
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+
   # Uptrace is the main observability server
   uptrace:
-    image: uptrace/uptrace:1.7
+    image: uptrace/uptrace:2.0.3
     restart: on-failure
     volumes:
-      - ./uptrace.yml:/etc/uptrace/uptrace.yml
+      - ./uptrace.yml:/etc/uptrace/config.yml
     ports:
       # Web UI
-      - "14318:14318"
+      - "14318:80"
       # OTLP gRPC endpoint for receiving telemetry
-      - "14317:14317"
+      - "14317:4317"
     depends_on:
       clickhouse:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # OpenTelemetry Collector receives telemetry from applications
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    restart: on-failure
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - uptrace
 
 volumes:
   ch_data:
@@ -110,12 +136,36 @@ Next, create the `uptrace.yml` configuration file. This defines how Uptrace conn
 # Uptrace server configuration
 # This file controls OTLP ingestion, storage, and project settings
 
+# Core service settings
+service:
+  env: development
+  secret: "change_me"
+
+# Site URL for generating links in the web UI
+site:
+  url: "http://localhost:14318"
+  ingest_url: "http://localhost:14318?grpc=14317"
+
+# OTLP listener configuration
+listen:
+  # HTTP endpoint for receiving telemetry and serving the web UI
+  http:
+    addr: ":80"
+  # gRPC endpoint for receiving telemetry
+  grpc:
+    addr: ":4317"
+
 # ClickHouse connection for telemetry storage
-ch:
-  addr: clickhouse:9000
-  user: default
-  password: ""
-  database: uptrace
+ch_cluster:
+  cluster: uptrace1
+  replicated: false
+  distributed: false
+  shards:
+    - replicas:
+        - addr: clickhouse:9000
+          user: uptrace
+          password: uptrace
+          database: uptrace
 
 # PostgreSQL connection for metadata
 pg:
@@ -124,43 +174,54 @@ pg:
   password: uptrace
   database: uptrace
 
+# Redis connection for caching and session storage
+redis_cache:
+  addrs:
+    1: redis:6379
+  username: ""
+  password: ""
+  db: 0
+
 # Retention settings control how long data is kept
 # Adjust based on your storage capacity
-ch_schema:
-  # How many days to keep spans
-  spans:
-    storage_policy: "default"
-    ttl_delete: "30 DAY"
-  # How many days to keep metrics
-  metrics:
-    storage_policy: "default"
-    ttl_delete: "90 DAY"
+ch:
+  retention:
+    ttl:
+      traces: 30 DAY
+      metrics: 90 DAY
+      logs: 30 DAY
 
 # Projects organize telemetry data from different services
 # Each project gets its own DSN (connection string)
-projects:
-  # The first project is created automatically
-  - id: 1
-    name: "My Project"
-    # This token is used by the OpenTelemetry Collector to authenticate
-    token: "project1_secret_token"
-    pinned_attrs:
-      - service.name
-      - host.name
-      - deployment.environment
-
-# OTLP listener configuration
-listen:
-  # gRPC endpoint for receiving telemetry
-  grpc:
-    addr: ":14317"
-  # HTTP endpoint for receiving telemetry and serving the web UI
-  http:
-    addr: ":14318"
-
-# Site URL for generating links in the web UI
-site:
-  addr: "http://localhost:14318"
+seed_data:
+  update: true
+  users:
+    - key: user1
+      name: Admin
+      email: admin@uptrace.local
+      password: admin
+      email_confirmed: true
+  orgs:
+    - key: org1
+      name: Org1
+  org_users:
+    - key: org_user1
+      org_key: org1
+      user_key: user1
+      role: owner
+  projects:
+    - key: project1
+      name: "My Project"
+      org_key: org1
+  project_tokens:
+    - key: project_token1
+      project_key: project1
+      token: "project1_secret_token"
+  project_users:
+    - key: project_user1
+      project_key: project1
+      org_user_key: org_user1
+      perm_level: admin
 ```
 
 Start all services with Docker Compose:
@@ -208,15 +269,15 @@ processors:
 exporters:
   # OTLP exporter configured to send data to Uptrace
   otlp/uptrace:
-    endpoint: localhost:14317
+    endpoint: uptrace:4317
     tls:
       # Disable TLS for local development
       # Enable TLS in production
       insecure: true
     headers:
       # The uptrace-dsn header authenticates the connection
-      # Format: http://project_token@host:port/project_id
-      uptrace-dsn: "http://project1_secret_token@localhost:14317/1"
+      # Format: http://project_token@host:port?grpc=grpc_port
+      uptrace-dsn: "http://project1_secret_token@localhost:14318?grpc=14317"
 
 service:
   pipelines:
@@ -243,7 +304,7 @@ The critical piece here is the `uptrace-dsn` header. This tells Uptrace which pr
 
 ## Instrumenting a Python Application
 
-Let us instrument a simple Python Flask application to send traces and metrics to our Uptrace setup.
+Let us instrument a simple Python Flask application to send traces to our Uptrace setup.
 
 First, install the required packages:
 
@@ -324,7 +385,7 @@ ClickHouse is the bottleneck for most deployments. Give it enough memory and fas
 
 Enable TLS on the OTLP endpoints. In the Uptrace configuration, add TLS certificate paths under the listen section. Update the Collector exporter to use secure connections.
 
-Set up data retention policies carefully. Traces typically need shorter retention than metrics because they are much larger. The `ttl_delete` settings in the ClickHouse schema control how long data is kept.
+Set up data retention policies carefully. Traces typically need shorter retention than metrics because they are much larger. The retention TTL settings under the `ch` configuration control how long data is kept.
 
 Back up PostgreSQL regularly since it contains your project configurations, dashboards, and alert rules. ClickHouse data can be rebuilt from incoming telemetry, but metadata cannot.
 
