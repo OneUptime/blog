@@ -64,20 +64,20 @@ If CoreDNS pods are not healthy, your entire cluster's DNS will be broken, not j
 
 ## Common Cause 3: gRPC DNS Resolver Caching
 
-The gRPC library used by many OTLP exporters has its own DNS resolver that behaves differently from standard HTTP clients. It resolves the hostname once at connection time and caches the result. If the Collector pod gets rescheduled and gets a new IP, the exporter might still try to reach the old IP.
+The gRPC library used by many OTLP exporters has its own name resolver and connection management behavior that differs from standard HTTP clients. For a normal Kubernetes Service, DNS returns the stable Service IP, so Collector pod rescheduling does not change the address the client dials. But if you use a headless Service or another DNS name that returns backend IPs directly, the client needs to use the DNS resolver and a load balancing policy that can consume multiple addresses.
 
 ```go
-// In Go, you can force the gRPC client to use the DNS resolver
-// with a re-resolution interval
 import "google.golang.org/grpc"
 
-conn, err := grpc.Dial(
+// In Go, explicitly use the DNS resolver and round_robin for names
+// that can return multiple backend addresses.
+conn, err := grpc.NewClient(
     "dns:///otel-collector.observability.svc.cluster.local:4317",
     grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin":{}}]}`),
 )
 ```
 
-Note the `dns:///` prefix - this tells gRPC to use its built-in DNS resolver, which periodically re-resolves the hostname.
+Note the `dns:///` prefix - this tells gRPC to use its built-in DNS resolver. The `round_robin` service config lets the client rotate through multiple resolved addresses instead of repeatedly using only the first one.
 
 ## Common Cause 4: ndots Configuration
 
@@ -147,7 +147,7 @@ Here is a quick checklist to run through when you hit DNS issues:
 kubectl get svc -A | grep otel-collector
 
 # 2. Test DNS from the failing pod's namespace
-kubectl run dns-test --image=busybox --rm -it --restart=Never -- nslookup otel-collector.observability.svc.cluster.local
+kubectl run dns-test -n <app-namespace> --image=busybox --rm -it --restart=Never -- nslookup otel-collector.observability.svc.cluster.local
 
 # 3. Check if CoreDNS is healthy
 kubectl get pods -n kube-system -l k8s-app=kube-dns
