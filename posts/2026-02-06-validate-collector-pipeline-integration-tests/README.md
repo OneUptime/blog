@@ -27,7 +27,6 @@ Create a simple HTTP server that captures OTLP data:
 import json
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from google.protobuf.json_format import MessageToDict
 
 class OTLPHandler(BaseHTTPRequestHandler):
     received_traces = []
@@ -100,10 +99,10 @@ processors:
 
   # Filter out health check spans
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
 
   # Add environment attribute to all spans
   resource:
@@ -112,13 +111,11 @@ processors:
         value: production
         action: upsert
 
-  # Rename a span attribute
+  # Copy a span attribute to the current semantic convention name
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          - set(attributes["http.request.method"], attributes["http.method"])
-            where attributes["http.method"] != nil
+      - 'set(span.attributes["http.request.method"], span.attributes["http.method"]) where span.attributes["http.method"] != nil'
 
 exporters:
   otlphttp:
@@ -126,7 +123,12 @@ exporters:
     tls:
       insecure: true
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
@@ -346,7 +348,7 @@ jobs:
       - name: Install collector
         run: |
           curl -L -o otelcol-contrib.tar.gz \
-            "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz"
+            "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_linux_amd64.tar.gz"
           tar xzf otelcol-contrib.tar.gz
           sudo mv otelcol-contrib /usr/local/bin/
 
