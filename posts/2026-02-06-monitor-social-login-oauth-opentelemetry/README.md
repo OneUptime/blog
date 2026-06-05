@@ -15,12 +15,20 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("auth.social_login")
 meter = metrics.get_meter("auth.social_login")
