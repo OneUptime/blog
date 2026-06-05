@@ -28,7 +28,7 @@ graph LR
     J --> K[Load Event]
 ```
 
-OpenTelemetry's Document Load Instrumentation reads the Navigation Timing API and creates spans that represent each of these phases. This means you get sub-millisecond timing breakdowns without writing any custom performance measurement code.
+OpenTelemetry's Document Load Instrumentation reads the Navigation Timing API, creates spans for the document load, document fetch, and resource fetches, and records the network phases as span events. This means you get sub-millisecond timing breakdowns without writing any custom performance measurement code.
 
 ## Setting Up Document Load Instrumentation
 
@@ -39,32 +39,35 @@ Install and configure the document load instrumentation to capture page load tim
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
-
-const provider = new WebTracerProvider({
-  resource: new Resource({
-    'service.name': 'my-web-app',
-    'service.version': '1.0.0',
-  }),
-});
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Configure the exporter to send to your OTel Collector
 const exporter = new OTLPTraceExporter({
   url: 'https://otel-collector.example.com/v1/traces',
 });
 
-// Batch spans for efficient export
-provider.addSpanProcessor(
-  new BatchSpanProcessor(exporter, {
-    maxQueueSize: 100,
-    maxExportBatchSize: 50,
-    scheduledDelayMillis: 5000,
-  })
-);
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-web-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+  }),
+  // Batch spans for efficient export
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 50,
+      scheduledDelayMillis: 5000,
+    }),
+  ],
+});
 
 provider.register();
 
@@ -96,7 +99,7 @@ registerInstrumentations({
 export default provider;
 ```
 
-Once this runs, the `DocumentLoadInstrumentation` creates a trace with spans for the document fetch, DNS resolution, TCP connection, and resource loading. The `FetchInstrumentation` and `XMLHttpRequestInstrumentation` capture every subsequent network request your application makes.
+Once this runs, the `DocumentLoadInstrumentation` creates a trace with spans for the document load, document fetch, and resource loading, with DNS, TCP, TLS, request, and response timing recorded as span events. The `FetchInstrumentation` and `XMLHttpRequestInstrumentation` capture subsequent network requests your application makes.
 
 ## Understanding the Document Load Trace
 
@@ -109,38 +112,36 @@ graph TD
     A --> D["resourceFetch: app.js"]
     A --> E["resourceFetch: vendor.js"]
     A --> F["resourceFetch: logo.png"]
-    B --> G[DNS lookup span]
-    B --> H[TCP connect span]
-    B --> I[TLS handshake span]
-    B --> J[HTTP request/response span]
+    B -. event .-> G[domainLookupStart / domainLookupEnd]
+    B -. event .-> H[connectStart / connectEnd]
+    B -. event .-> I[secureConnectionStart]
+    B -. event .-> J[requestStart / responseStart / responseEnd]
 ```
 
-The parent `documentLoad` span covers the entire page load from navigation start to the load event. Child spans break down the document fetch into network phases, and separate child spans appear for each resource loaded by the page (CSS files, JavaScript bundles, images, fonts).
+The parent `documentLoad` span covers the entire page load from navigation start to the load event. Child spans represent the document fetch and each resource loaded by the page (CSS files, JavaScript bundles, images, fonts), while network phases such as DNS lookup and TCP connection are recorded as events on the fetch spans.
 
-Each span includes timing attributes derived from the Performance Timing API:
+The document and resource fetch spans include timing events derived from the Navigation Timing and Resource Timing APIs:
 
 ```javascript
-// These attributes are automatically set by the document load instrumentation
-// You don't need to write this code, but understanding the attributes
+// These events are automatically added by the document load instrumentation.
+// You don't need to write this code, but understanding the event names
 // helps when querying your traces:
 {
-  // Navigation timing phases (in milliseconds)
+  // HTTP attributes
   'http.url': 'https://example.com/dashboard',
-  'http.method': 'GET',
-  'http.status_code': 200,
 
-  // Performance timing entries
-  'performance.timing.fetchStart': 1234567890,
-  'performance.timing.domainLookupStart': 1234567891,
-  'performance.timing.domainLookupEnd': 1234567895,
-  'performance.timing.connectStart': 1234567895,
-  'performance.timing.connectEnd': 1234567900,
-  'performance.timing.requestStart': 1234567901,
-  'performance.timing.responseStart': 1234567950,
-  'performance.timing.responseEnd': 1234567980,
-  'performance.timing.domInteractive': 1234568100,
-  'performance.timing.domContentLoadedEventEnd': 1234568150,
-  'performance.timing.loadEventEnd': 1234568300,
+  // Network timing events
+  events: [
+    { name: 'fetchStart', time: 12.3 },
+    { name: 'domainLookupStart', time: 12.4 },
+    { name: 'domainLookupEnd', time: 15.8 },
+    { name: 'connectStart', time: 15.8 },
+    { name: 'secureConnectionStart', time: 18.2 },
+    { name: 'connectEnd', time: 27.1 },
+    { name: 'requestStart', time: 27.5 },
+    { name: 'responseStart', time: 86.4 },
+    { name: 'responseEnd', time: 113.9 },
+  ],
 }
 ```
 
@@ -156,7 +157,9 @@ const tracer = trace.getTracer('page-load-custom', '1.0.0');
 
 // Measure the time from navigation start to your app being ready
 export function measureAppReadiness() {
-  const navigationStart = performance.timing.navigationStart;
+  const navEntry = performance.getEntriesByType('navigation')[0];
+  const navigationStart =
+    performance.timeOrigin + (navEntry?.startTime || 0);
 
   // Create a span that represents app initialization
   const span = tracer.startSpan('app.initialization', {
@@ -177,7 +180,13 @@ export function measureAppReadiness() {
 
     // Add any custom metadata about the initial state
     Object.entries(metadata).forEach(([key, value]) => {
-      span.setAttribute(`app.${key}`, value);
+      if (
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        span.setAttribute(`app.${key}`, value);
+      }
     });
 
     span.setStatus({ code: SpanStatusCode.OK });
@@ -197,7 +206,7 @@ The fetch and XHR instrumentations capture every network request automatically, 
 
 ```javascript
 // src/utils/api-client.js
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('api-client', '1.0.0');
 
@@ -287,7 +296,7 @@ Modern web applications often load data from multiple endpoints simultaneously. 
 
 ```javascript
 // src/pages/DashboardLoader.js
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { apiCall } from '../utils/api-client';
 
 const tracer = trace.getTracer('dashboard', '1.0.0');
@@ -365,23 +374,26 @@ const tracer = trace.getTracer('resilient-fetch', '1.0.0');
 
 // Fetch with timeout and retry, fully instrumented
 export async function resilientFetch(url, options = {}) {
-  const maxRetries = options.retries || 3;
-  const timeoutMs = options.timeout || 10000;
+  const {
+    maxAttempts = 3,
+    timeout = 10000,
+    ...fetchOptions
+  } = options;
 
   return tracer.startActiveSpan(
     'resilient_fetch',
     {
       attributes: {
         'http.url': url,
-        'http.method': options.method || 'GET',
-        'fetch.max_retries': maxRetries,
-        'fetch.timeout_ms': timeoutMs,
+        'http.method': fetchOptions.method || 'GET',
+        'fetch.max_attempts': maxAttempts,
+        'fetch.timeout_ms': timeout,
       },
     },
     async (parentSpan) => {
       let lastError = null;
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         // Create a child span for each attempt
         const attemptSpan = tracer.startSpan('fetch_attempt', {
           attributes: {
@@ -395,15 +407,18 @@ export async function resilientFetch(url, options = {}) {
           const controller = new AbortController();
           const timeoutId = setTimeout(
             () => controller.abort(),
-            timeoutMs
+            timeout
           );
 
-          const response = await fetch(url, {
-            ...options,
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
+          let response;
+          try {
+            response = await fetch(url, {
+              ...fetchOptions,
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
 
           attemptSpan.setAttribute('http.status_code', response.status);
           attemptSpan.setStatus({ code: SpanStatusCode.OK });
@@ -436,7 +451,7 @@ export async function resilientFetch(url, options = {}) {
           });
 
           // Wait before retrying with exponential backoff
-          if (attempt < maxRetries) {
+          if (attempt < maxAttempts) {
             const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
@@ -444,12 +459,12 @@ export async function resilientFetch(url, options = {}) {
       }
 
       // All retries exhausted
-      parentSpan.setAttribute('fetch.total_attempts', maxRetries);
+      parentSpan.setAttribute('fetch.total_attempts', maxAttempts);
       parentSpan.setAttribute('fetch.exhausted_retries', true);
       parentSpan.recordException(lastError);
       parentSpan.setStatus({
         code: SpanStatusCode.ERROR,
-        message: `Failed after ${maxRetries} attempts`,
+        message: `Failed after ${maxAttempts} attempts`,
       });
       parentSpan.end();
 
@@ -491,7 +506,9 @@ export function reportPerformanceSummary() {
       const span = tracer.startSpan('performance.summary', {
         attributes: {
           // Page load metrics
-          'page.ttfb_ms': navEntry?.responseStart || 0,
+          'page.ttfb_ms': navEntry
+            ? navEntry.responseStart - navEntry.requestStart
+            : 0,
           'page.dom_interactive_ms': navEntry?.domInteractive || 0,
           'page.dom_complete_ms': navEntry?.domComplete || 0,
           'page.load_event_ms': navEntry?.loadEventEnd || 0,
