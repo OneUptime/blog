@@ -114,6 +114,7 @@ processors:
         type: latency
         latency:
           threshold_ms: 1000
+          upper_threshold_ms: 5000
 
       # Tier 3: Keep 10% of traces between 500ms and 1s
       # Provides baseline visibility into borderline cases
@@ -125,6 +126,7 @@ processors:
               type: latency
               latency:
                 threshold_ms: 500
+                upper_threshold_ms: 1000
             - name: probabilistic-filter
               type: probabilistic
               probabilistic:
@@ -137,7 +139,7 @@ processors:
           sampling_percentage: 1
 ```
 
-The `and` policy type combines sub-policies. Both sub-policies must evaluate to "keep" for the trace to be kept. In Tier 3, this means a trace must both exceed 500ms AND win the 10% probabilistic lottery. This composite policy structure gives you fine-grained control without sending excessive data to your backend.
+The `and` policy type combines sub-policies. Both sub-policies must evaluate to "keep" for the trace to be kept. In Tier 3, this means a trace must both fall between 500ms and 1s AND win the 10% probabilistic lottery. This composite policy structure gives you fine-grained control without sending excessive data to your backend.
 
 ## Combining Latency with Error Sampling
 
@@ -211,7 +213,7 @@ def handle_request(request):
         return result
 ```
 
-By tagging spans with `request.is_slow`, you give the collector's tail sampling processor something to filter on using an `attribute` policy. This combines the application's knowledge about what counts as "slow" for its specific context with the collector's ability to make trace-wide sampling decisions.
+By tagging spans with `request.is_slow`, you give the collector's tail sampling processor something to filter on using a `boolean_attribute` policy. This combines the application's knowledge about what counts as "slow" for its specific context with the collector's ability to make trace-wide sampling decisions.
 
 ## Scaling Tail Sampling with Load Balancing
 
@@ -307,8 +309,8 @@ Tail sampling is not free. Every span for every trace must be held in memory unt
 Monitor these collector metrics to ensure your tail sampling setup is healthy:
 
 - `otelcol_processor_tail_sampling_count_traces_sampled`: How many traces were kept vs dropped
-- `otelcol_processor_tail_sampling_sampling_decision_latency`: How long decisions take
-- `otelcol_processor_tail_sampling_count_traces_dropped`: Traces dropped due to memory pressure
+- `otelcol_processor_tail_sampling_sampling_decision_timer_latency`: How long the sampling decision timer takes
+- `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early`: Traces dropped before the configured wait time
 
 If you see traces being dropped, increase `num_traces` or add more collector instances behind the load balancer.
 
