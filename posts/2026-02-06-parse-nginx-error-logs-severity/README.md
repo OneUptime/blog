@@ -16,7 +16,7 @@ NGINX error log lines follow this structure:
 2026/02/06 14:23:45 [error] 1234#5678: *9012 connect() failed (111: Connection refused) while connecting to upstream, client: 172.16.0.1, server: api.example.com, request: "GET /api/health HTTP/1.1", upstream: "http://127.0.0.1:8080/api/health", host: "api.example.com"
 ```
 
-The fields are: timestamp, severity level in brackets, worker process ID, connection ID, error message, and a set of key-value context fields.
+The fields are: timestamp, severity level in brackets, worker process ID, thread ID, connection ID, error message, and a set of key-value context fields.
 
 ## Parsing the Error Log
 
@@ -28,44 +28,46 @@ receivers:
     start_at: end
     operators:
       # Step 1: Parse the main structure
-      - type: regex_parser
+      - id: parse_nginx_error
+        type: regex_parser
         regex: '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?:\*(?P<connection_id>\d+) )?(?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "2006/01/02 15:04:05"
         severity:
           parse_from: attributes.severity
           mapping:
-            fatal: emerg
-            fatal2: alert
-            fatal3: crit
+            fatal: ["emerg", "alert", "crit"]
             error: error
             warn: warn
-            info: notice
-            info2: info
+            info: ["notice", "info"]
             debug: debug
+          overwrite_text: true
 
       # Step 2: Extract client IP from the message if present
-      - type: regex_parser
+      - id: extract_client_addr
+        type: regex_parser
         parse_from: attributes.message
         regex: '.*client: (?P<client_addr>[0-9.]+).*'
+        if: 'attributes.message matches "client: "'
         on_error: send
-        # Do not overwrite the original message
-        preserve_to: attributes.message
 
       # Step 3: Extract upstream address if present
-      - type: regex_parser
+      - id: extract_upstream_addr
+        type: regex_parser
         parse_from: attributes.message
         regex: '.*upstream: "(?P<upstream_addr>[^"]+)".*'
+        if: 'attributes.message matches "upstream: "'
         on_error: send
-        preserve_to: attributes.message
 
       # Step 4: Extract the request line if present
-      - type: regex_parser
+      - id: extract_request
+        type: regex_parser
         parse_from: attributes.message
         regex: '.*request: "(?P<request_method>[A-Z]+) (?P<request_uri>[^\s]+) (?P<request_protocol>[^"]+)".*'
+        if: 'attributes.message matches "request: "'
         on_error: send
-        preserve_to: attributes.message
 
       # Step 5: Clean up intermediate fields
       - type: remove
@@ -103,6 +105,7 @@ receivers:
         regex: '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?:\*(?P<connection_id>\d+) )?(?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "2006/01/02 15:04:05"
       - type: severity_parser
         parse_from: attributes.severity
@@ -112,6 +115,7 @@ receivers:
           warn: "warn"
           info: ["notice", "info"]
           debug: "debug"
+        overwrite_text: true
       # Move the parsed message to the log body
       - type: move
         from: attributes.message
@@ -131,9 +135,9 @@ processors:
 
   # Filter out debug-level logs in production
   filter/drop-debug:
-    logs:
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+    error_mode: ignore
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 
   batch:
     timeout: 5s
@@ -171,18 +175,24 @@ operators:
     type: add
     field: attributes["nginx.error.category"]
     value: "upstream"
+    output: parsed_error
   - id: ssl_errors
     type: add
     field: attributes["nginx.error.category"]
     value: "ssl"
+    output: parsed_error
   - id: permission_errors
     type: add
     field: attributes["nginx.error.category"]
     value: "permission"
+    output: parsed_error
   - id: other_errors
     type: add
     field: attributes["nginx.error.category"]
     value: "other"
+    output: parsed_error
+  - id: parsed_error
+    type: noop
 ```
 
 ## Combining Access and Error Logs
