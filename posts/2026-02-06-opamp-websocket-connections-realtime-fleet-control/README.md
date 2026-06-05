@@ -26,30 +26,32 @@ Configure your OpAMP server to accept WebSocket connections:
 package main
 
 import (
+    "context"
     "log"
     "net/http"
 
+    "github.com/open-telemetry/opamp-go/protobufs"
     "github.com/open-telemetry/opamp-go/server"
     "github.com/open-telemetry/opamp-go/server/types"
 )
 
 func main() {
-    opampServer := server.New(&serverLogger{})
+    opampServer := server.New(nil)
 
     settings := server.StartSettings{
         ListenEndpoint: "0.0.0.0:4320",
         Settings: server.Settings{
-            Callbacks: server.CallbacksStruct{
-                OnConnectingFunc: func(r *http.Request) types.ConnectionResponse {
+            Callbacks: types.Callbacks{
+                OnConnecting: func(r *http.Request) types.ConnectionResponse {
                     // Validate the connecting agent
                     agentID := r.Header.Get("X-Agent-ID")
                     log.Printf("WebSocket connection from agent: %s", agentID)
 
                     return types.ConnectionResponse{
                         Accept:         true,
-                        ConnectionCallbacks: server.ConnectionCallbacksStruct{
-                            OnMessageFunc: handleAgentMessage,
-                            OnConnectionCloseFunc: func(conn types.Connection) {
+                        ConnectionCallbacks: types.ConnectionCallbacks{
+                            OnMessage: handleAgentMessage,
+                            OnConnectionClose: func(conn types.Connection) {
                                 log.Printf("Agent disconnected")
                             },
                         },
@@ -65,6 +67,13 @@ func main() {
 
     log.Println("OpAMP WebSocket server running on :4320")
     select {}
+}
+
+func handleAgentMessage(ctx context.Context, conn types.Connection, msg *protobufs.AgentToServer) *protobufs.ServerToAgent {
+    log.Printf("Received message from agent")
+    return &protobufs.ServerToAgent{
+        InstanceUid: msg.InstanceUid,
+    }
 }
 ```
 
@@ -111,7 +120,9 @@ server:
 
 agent:
   executable: /usr/local/bin/otelcol-contrib
-  storage_dir: /var/lib/opamp-supervisor
+
+storage:
+  directory: /var/lib/opamp-supervisor
 
 capabilities:
   reports_effective_config: true
@@ -124,21 +135,12 @@ capabilities:
 Network blips happen. The supervisor handles reconnection automatically, but you should understand the behavior:
 
 ```yaml
-# supervisor.yaml - connection resilience settings
+# supervisor.yaml
 server:
   endpoint: wss://opamp-server.internal:4320/v1/opamp
-
-  # Reconnection settings
-  retry:
-    # Initial delay before first reconnection attempt
-    initial_interval: 5s
-    # Maximum delay between reconnection attempts
-    max_interval: 60s
-    # Multiplier applied to the interval after each failed attempt
-    multiplier: 1.5
 ```
 
-The backoff pattern works like this: first retry after 5 seconds, then 7.5 seconds, then 11.25 seconds, and so on up to the 60-second maximum. This prevents a thundering herd problem where all agents reconnect simultaneously after a server restart.
+The OpAMP specification says that if a WebSocket connection breaks unexpectedly, the client should reconnect and use exponential backoff with jitter when retries fail. If the server is overloaded, it can also send an OpAMP `UNAVAILABLE` error response with retry information, or return HTTP 503 or 429 with a `Retry-After` header before the WebSocket upgrade completes. This prevents a thundering herd problem where all agents reconnect simultaneously after a server restart.
 
 ## Handling Connection State on the Server
 
@@ -196,7 +198,7 @@ func (ct *ConnectionTracker) GetConnectedAgents() []string {
 
 ## Load Balancing WebSocket Connections
 
-When running multiple OpAMP server instances behind a load balancer, use sticky sessions. WebSocket connections are stateful, so an agent must always connect to the same server instance:
+When running multiple OpAMP server instances behind a load balancer, use sticky sessions if each server instance keeps connection state locally. WebSocket connections are stateful, so routing an agent back to the same server instance keeps server-side connection tracking simple:
 
 ```nginx
 # nginx.conf
