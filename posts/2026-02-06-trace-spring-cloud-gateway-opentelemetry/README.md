@@ -25,6 +25,18 @@ Add the required dependencies to your gateway project:
 
 ```xml
 <!-- pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-bom</artifactId>
+            <version>1.60.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring Cloud Gateway -->
     <dependency>
@@ -36,14 +48,6 @@ Add the required dependencies to your gateway project:
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.35.0</version>
-    </dependency>
-
-    <!-- OpenTelemetry instrumentation annotations -->
-    <dependency>
-        <groupId>io.opentelemetry.instrumentation</groupId>
-        <artifactId>opentelemetry-instrumentation-annotations</artifactId>
-        <version>2.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -81,29 +85,28 @@ spring:
               args:
                 redis-rate-limiter.replenishRate: 10
                 redis-rate-limiter.burstCapacity: 20
+```
 
-# OpenTelemetry configuration
-otel:
-  service:
-    name: api-gateway
-  traces:
-    sampler:
-      probability: 1.0
-  exporter:
-    otlp:
-      endpoint: http://localhost:4317
+Configure the OpenTelemetry Java agent with environment variables or system properties:
+
+```bash
+export OTEL_SERVICE_NAME=api-gateway
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_TRACES_SAMPLER=parentbased_always_on
 ```
 
 The automatic instrumentation creates spans for incoming HTTP requests and outgoing calls to backend services. However, gateway-specific logic like custom filters and routing decisions need manual instrumentation.
 
 ## Automatic Instrumentation Behavior
 
-The OpenTelemetry Java agent creates spans at several points in the gateway lifecycle:
+The OpenTelemetry Java agent creates spans at the HTTP boundaries of the gateway lifecycle:
 
 1. **Server span** - Created when the gateway receives a request
 2. **Client span** - Created when the gateway calls a backend service
-3. **Route matching** - Internal routing logic is traced
-4. **Filter execution** - Built-in filters are automatically instrumented
+3. **Route metadata** - Spring Cloud Gateway instrumentation can add route information such as `http.route`
+4. **Custom gateway logic** - Route matching internals and individual gateway filters generally need manual instrumentation if you want separate spans or events
 
 Understanding this flow helps you identify where custom instrumentation adds value:
 
@@ -130,17 +133,17 @@ sequenceDiagram
 
 ## Creating Custom Gateway Filters with Tracing
 
-Custom filters often contain business logic that should be traced separately. Create filters that add span annotations and attributes for better observability.
+Custom filters often contain business logic that should be traced separately. Create filters that add span events and attributes for better observability.
 
 ```java
 package com.company.gateway.filters;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.route.Route;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -153,21 +156,15 @@ import reactor.core.publisher.Mono;
 @Component
 public class TracingEnrichmentFilter implements GlobalFilter, Ordered {
 
-    private final Tracer tracer;
-
-    public TracingEnrichmentFilter(Tracer tracer) {
-        this.tracer = tracer;
-    }
-
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         // Get current span from context
         Span currentSpan = Span.current();
 
         // Add gateway-specific attributes
-        String routeId = exchange.getAttribute("org.springframework.cloud.gateway.support.ServerWebExchangeUtils.gatewayPredicateRouteAttr");
-        if (routeId != null) {
-            currentSpan.setAttribute("gateway.route.id", routeId);
+        Route route = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
+        if (route != null) {
+            currentSpan.setAttribute("gateway.route.id", route.getId());
         }
 
         // Add request metadata
@@ -231,11 +228,9 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.Scope;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
 /**
  * Custom gateway filter factory that creates a child span for route-specific processing.
@@ -257,20 +252,19 @@ public class RouteTracingGatewayFilterFactory
         return (exchange, chain) -> {
             // Create a new span for this route's processing
             Span span = tracer.spanBuilder("gateway.route." + config.getRouteName())
+                .setParent(Context.current())
                 .setSpanKind(SpanKind.INTERNAL)
                 .startSpan();
 
             span.setAttribute("route.name", config.getRouteName());
             span.setAttribute("route.processing", true);
 
-            // Make the span current for downstream processing
-            try (Scope scope = span.makeCurrent()) {
-                return chain.filter(exchange)
-                    .doFinally(signalType -> {
-                        span.setAttribute("signal.type", signalType.toString());
-                        span.end();
-                    });
-            }
+            return chain.filter(exchange)
+                .doOnError(span::recordException)
+                .doFinally(signalType -> {
+                    span.setAttribute("signal.type", signalType.toString());
+                    span.end();
+                });
         };
     }
 
@@ -316,8 +310,6 @@ When using service discovery with load balancing, trace which backend instance h
 package com.company.gateway.filters;
 
 import io.opentelemetry.api.trace.Span;
-import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
@@ -337,12 +329,13 @@ public class LoadBalancerTracingFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        Span span = Span.current();
+
         return chain.filter(exchange).then(Mono.fromRunnable(() -> {
             // Get the URI after load balancer resolution
             URI uri = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR);
 
             if (uri != null) {
-                Span span = Span.current();
                 span.setAttribute("lb.resolved.host", uri.getHost());
                 span.setAttribute("lb.resolved.port", uri.getPort());
                 span.setAttribute("lb.resolved.uri", uri.toString());
@@ -351,7 +344,7 @@ public class LoadBalancerTracingFilter implements GlobalFilter, Ordered {
             // Check if load balancer was used
             Object lbAttr = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_LOADBALANCER_RESPONSE_ATTR);
             if (lbAttr != null) {
-                Span.current().setAttribute("lb.used", true);
+                span.setAttribute("lb.used", true);
             }
         }));
     }
@@ -367,7 +360,7 @@ This filter records which backend instance was selected, helping diagnose issues
 
 ## Tracing Circuit Breaker and Retry Logic
 
-Spring Cloud Gateway integrates with Resilience4j for circuit breakers and retries. These resilience patterns should be visible in traces.
+Spring Cloud Gateway integrates with Spring Cloud CircuitBreaker, which supports Resilience4j. Add `spring-cloud-starter-circuitbreaker-reactor-resilience4j` to enable the gateway `CircuitBreaker` filter. These resilience patterns should be visible in traces.
 
 ```yaml
 spring:
@@ -382,7 +375,7 @@ spring:
             - StripPrefix=2
             - name: CircuitBreaker
               args:
-                name: flakyServiceCircuitBreaker
+                name: flaky-serviceCircuitBreaker
                 fallbackUri: forward:/fallback/flaky
             - name: Retry
               args:
@@ -405,6 +398,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.opentelemetry.api.trace.Span;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.route.Route;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -426,7 +421,8 @@ public class CircuitBreakerTracingFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         // Attempt to find circuit breaker for this route
-        String routeId = exchange.getAttribute("org.springframework.cloud.gateway.support.ServerWebExchangeUtils.gatewayPredicateRouteAttr");
+        Route route = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
+        String routeId = route != null ? route.getId() : null;
 
         if (routeId != null) {
             try {
@@ -492,7 +488,7 @@ The complete trace for a gateway request shows the full flow:
 ```mermaid
 graph TB
     A[Client Request] --> B[Gateway Server Span]
-    B --> C[TracingEnrichmentFilter Span]
+    B --> C[TracingEnrichmentFilter Attributes and Events]
     B --> D[RouteTracing Span]
     B --> E[LoadBalancer Resolution]
     E --> F[Backend Client Span]
@@ -521,14 +517,12 @@ Gateway tracing adds minimal overhead, but consider these optimizations:
 
 Configure appropriate sampling:
 
-```yaml
-otel:
-  traces:
-    sampler:
-      # Sample 10% of requests in production
-      probability: 0.1
-      # Always sample errors
-      parent_based: true
+```bash
+# Sample 10% of root requests in production while respecting upstream decisions.
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
 ```
+
+If you need to keep all error traces, use tail sampling in the OpenTelemetry Collector or your tracing backend, because head sampling decisions are made before the request outcome is known.
 
 Spring Cloud Gateway tracing with OpenTelemetry provides comprehensive visibility into your API gateway. By combining automatic instrumentation with strategic custom spans, you gain insights into routing decisions, filter execution, load balancing, and resilience patterns. This observability foundation makes debugging distributed systems significantly easier and helps identify performance bottlenecks before they impact users.
