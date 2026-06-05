@@ -27,7 +27,9 @@ app = Flask(__name__)
 # Set up the tracer provider with OTLP export
 
 provider = TracerProvider()
-processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="localhost:4317"))
+processor = BatchSpanProcessor(
+    OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+)
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
 
@@ -69,9 +71,9 @@ def search_patient():
 def query_patient_index(family, given):
     """Query the patient database index."""
     with tracer.start_as_current_span("db.patient_index.query") as span:
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.operation", "SELECT")
-        span.set_attribute("db.table", "patient_index")
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.operation.name", "SELECT")
+        span.set_attribute("db.collection.name", "patient_index")
 
         # Simulate database query - replace with actual DB call
         # Note: we do NOT log the actual search values since they are PHI
@@ -99,10 +101,10 @@ def patient_everything(patient_id):
         span.set_attribute("fhir.interaction", "operation")
         span.set_attribute("fhir.operation", "$everything")
 
-        # Fetch resources from different backend stores in parallel
+        # Fetch resources from different backend stores
         resources = []
 
-        # Each of these creates a child span automatically
+        # Each call creates a child span inside fetch_resources
         conditions = fetch_resources("Condition", patient_id)
         medications = fetch_resources("MedicationRequest", patient_id)
         observations = fetch_resources("Observation", patient_id)
