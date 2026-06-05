@@ -20,7 +20,7 @@ sequenceDiagram
     participant Instr as Requests Instrumentation
     participant Lib as Requests Library
     participant Server as Remote Server
-    participant Collector as OTLP Collector
+    participant Exporter as SDK Exporter
 
     App->>Instr: requests.get(url)
     Instr->>Instr: Create span
@@ -31,7 +31,7 @@ sequenceDiagram
     Lib->>Instr: Response object
     Instr->>Instr: Add response attributes
     Instr->>Instr: End span
-    Instr->>Collector: Export span
+    Instr->>Exporter: Span is exported
     Instr->>App: Return response
 ```
 
@@ -189,8 +189,8 @@ def fetch_weather_data(city):
 
 def compare_multiple_apis(city):
     """
-    Fetch data from multiple weather APIs to demonstrate parallel tracing.
-    Shows how automatic instrumentation handles concurrent requests.
+    Fetch data from multiple weather APIs to demonstrate multiple outbound request spans.
+    Shows how automatic instrumentation handles each request.
     """
     with tracer.start_as_current_span("compare-weather-apis") as span:
         span.set_attribute("comparison.city", city)
@@ -333,37 +333,21 @@ Exclude certain URLs from tracing to reduce noise from health checks or other hi
 
 ```python
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from urllib.parse import urlparse
 
-def excluded_urls_filter(url):
-    """
-    Return True if URL should be excluded from tracing.
-    Used to filter out health checks, metrics endpoints, etc.
-    """
-    parsed = urlparse(url)
-
-    # Exclude health check endpoints
-    if parsed.path in ["/health", "/healthz", "/ping", "/ready"]:
-        return True
-
-    # Exclude metrics endpoints
-    if parsed.path.startswith("/metrics"):
-        return True
-
-    # Exclude static assets
-    if any(parsed.path.endswith(ext) for ext in [".js", ".css", ".png", ".jpg"]):
-        return True
-
-    # Exclude specific domains
-    excluded_domains = ["localhost", "127.0.0.1", "internal-metrics.example.com"]
-    if parsed.hostname in excluded_domains:
-        return True
-
-    return False
+excluded_urls = ",".join([
+    r".*/health$",
+    r".*/healthz$",
+    r".*/ping$",
+    r".*/ready$",
+    r".*/metrics.*",
+    r".*\.(js|css|png|jpg)$",
+    r"http://(localhost|127\.0\.0\.1)(:.*)?/.*",
+    r"https://internal-metrics\.example\.com/.*",
+])
 
 # Instrument with URL filtering
 RequestsInstrumentor().instrument(
-    excluded_urls=excluded_urls_filter
+    excluded_urls=excluded_urls
 )
 ```
 
@@ -399,7 +383,7 @@ class APIClient:
         })
 
         # All session requests are automatically traced
-        self.session.timeout = 10
+        self.timeout = 10
 
     def get_user(self, user_id):
         """Fetch user by ID - automatically traced"""
@@ -407,7 +391,10 @@ class APIClient:
             span.set_attribute("user.id", user_id)
 
             # Session request is automatically traced
-            response = self.session.get(f"{self.base_url}/users/{user_id}")
+            response = self.session.get(
+                f"{self.base_url}/users/{user_id}",
+                timeout=self.timeout
+            )
             response.raise_for_status()
 
             user_data = response.json()
@@ -423,7 +410,8 @@ class APIClient:
             # POST request through session - automatically traced
             response = self.session.post(
                 f"{self.base_url}/users",
-                json=user_data
+                json=user_data,
+                timeout=self.timeout
             )
             response.raise_for_status()
 
@@ -440,7 +428,10 @@ class APIClient:
             results = []
             for user_id in user_ids:
                 # Each request creates its own child span automatically
-                response = self.session.get(f"{self.base_url}/users/{user_id}")
+                response = self.session.get(
+                    f"{self.base_url}/users/{user_id}",
+                    timeout=self.timeout
+                )
                 if response.status_code == 200:
                     results.append(response.json())
 
@@ -470,7 +461,7 @@ Combine instrumentation with retry logic for resilient applications.
 ```python
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 from opentelemetry import trace
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
@@ -480,14 +471,14 @@ tracer = trace.get_tracer(__name__)
 def create_session_with_retries():
     """
     Create a requests session with automatic retry logic.
-    All retries are automatically traced as separate spans.
+    The session request is traced as a span; add custom attempt spans if you need per-attempt visibility.
     """
     session = requests.Session()
 
     # Configure retry strategy
     retry_strategy = Retry(
         total=3,  # Maximum number of retries
-        backoff_factor=1,  # Wait 1, 2, 4 seconds between retries
+        backoff_factor=1,  # Apply exponential backoff between retries
         status_forcelist=[429, 500, 502, 503, 504],  # Retry on these status codes
         allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]  # Methods to retry
     )
@@ -510,32 +501,33 @@ def resilient_api_call(url, max_attempts=3):
 
         session = create_session_with_retries()
 
-        for attempt in range(1, max_attempts + 1):
-            with tracer.start_as_current_span(f"attempt-{attempt}") as attempt_span:
-                attempt_span.set_attribute("attempt.number", attempt)
+        try:
+            for attempt in range(1, max_attempts + 1):
+                with tracer.start_as_current_span(f"attempt-{attempt}") as attempt_span:
+                    attempt_span.set_attribute("attempt.number", attempt)
 
-                try:
-                    response = session.get(url, timeout=5)
-                    response.raise_for_status()
+                    try:
+                        response = session.get(url, timeout=5)
+                        response.raise_for_status()
 
-                    attempt_span.set_attribute("attempt.success", True)
-                    span.set_attribute("successful_attempt", attempt)
+                        attempt_span.set_attribute("attempt.success", True)
+                        span.set_attribute("successful_attempt", attempt)
 
-                    return response.json()
+                        return response.json()
 
-                except requests.exceptions.RequestException as e:
-                    attempt_span.record_exception(e)
-                    attempt_span.set_attribute("attempt.success", False)
-                    attempt_span.set_attribute("error.type", type(e).__name__)
+                    except requests.exceptions.RequestException as e:
+                        attempt_span.record_exception(e)
+                        attempt_span.set_attribute("attempt.success", False)
+                        attempt_span.set_attribute("error.type", type(e).__name__)
 
-                    if attempt == max_attempts:
-                        span.set_status(
-                            trace.Status(trace.StatusCode.ERROR,
-                                       f"Failed after {max_attempts} attempts")
-                        )
-                        raise
-
-        session.close()
+                        if attempt == max_attempts:
+                            span.set_status(
+                                trace.Status(trace.StatusCode.ERROR,
+                                           f"Failed after {max_attempts} attempts")
+                            )
+                            raise
+        finally:
+            session.close()
 ```
 
 ## Context Propagation
@@ -546,6 +538,9 @@ OpenTelemetry automatically propagates trace context through HTTP headers follow
 import requests
 from opentelemetry import trace
 from opentelemetry.propagate import inject
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
+RequestsInstrumentor().instrument()
 
 tracer = trace.get_tracer(__name__)
 
