@@ -153,15 +153,8 @@ Pass proxy settings as build arguments:
 # Dockerfile with proxy-aware package installation
 FROM ubuntu:22.04
 
-# These ARGs will be set during build
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG NO_PROXY
-
-# Set environment variables for the package manager
-ENV http_proxy=${HTTP_PROXY}
-ENV https_proxy=${HTTPS_PROXY}
-ENV no_proxy=${NO_PROXY}
+# Proxy build args such as HTTP_PROXY and HTTPS_PROXY are predefined by Docker.
+# Do not persist proxy values with ENV.
 
 RUN apt-get update && apt-get install -y curl
 ```
@@ -175,18 +168,21 @@ docker build \
   -t myimage .
 ```
 
-Alternatively, configure the proxy at the Docker daemon level so it applies to all builds:
+Alternatively, configure proxy defaults in the Docker client configuration so they apply to new builds and containers:
 
 ```json
 {
-    "dns": ["8.8.8.8", "8.8.4.4"],
     "proxies": {
-        "http-proxy": "http://proxy.company.com:8080",
-        "https-proxy": "http://proxy.company.com:8080",
-        "no-proxy": "localhost,127.0.0.1,.company.com"
+        "default": {
+            "httpProxy": "http://proxy.company.com:8080",
+            "httpsProxy": "http://proxy.company.com:8080",
+            "noProxy": "localhost,127.0.0.1,.company.com"
+        }
     }
 }
 ```
+
+This configuration goes in `~/.docker/config.json`. Docker daemon proxy settings in `/etc/docker/daemon.json` are for the daemon itself, such as pulling images, not for package managers running inside `RUN` instructions.
 
 ## Fix 5: Firewall and iptables Issues
 
@@ -272,4 +268,4 @@ docker build --progress=plain --no-cache -t dns-debug .
 
 ## Summary
 
-DNS failures during Docker builds happen because build containers get their DNS from the Docker daemon, not from your shell or host configuration. The most reliable fix is adding `"dns": ["8.8.8.8", "8.8.4.4"]` to `/etc/docker/daemon.json`. For corporate environments, also configure proxy settings at the daemon level. If you need a quick workaround, `docker build --network=host` will use your host's DNS directly. Always test your DNS configuration after changes by running a simple build that fetches packages from the internet.
+DNS failures during Docker builds happen because build containers get their DNS from the Docker daemon, not from your shell or host configuration. The most reliable fix is adding `"dns": ["8.8.8.8", "8.8.4.4"]` to `/etc/docker/daemon.json`. For corporate environments, configure Docker client proxy settings or pass proxy build arguments. If you need a quick workaround, `docker build --network=host` will use your host's DNS directly. Always test your DNS configuration after changes by running a simple build that fetches packages from the internet.
