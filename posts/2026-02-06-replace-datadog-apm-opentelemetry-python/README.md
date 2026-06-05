@@ -52,10 +52,10 @@ Start by removing all Datadog-related Python packages from your project:
 
 pip uninstall ddtrace
 
-# Remove the Datadog API client if you used it for custom metrics
+# Remove the Datadog Python client if you used it for DogStatsD custom metrics
 pip uninstall datadog
 
-# Remove DogStatsD client if installed separately
+# Remove the Datadog API client if you used it to submit metrics through the Datadog API
 pip uninstall datadog-api-client
 
 # Clean up any Datadog-related entries from requirements.txt
@@ -339,6 +339,7 @@ Datadog custom metrics typically use the DogStatsD client. Replace these with Op
 
 # AFTER: OpenTelemetry Metrics API
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 # Get a Meter instance (replaces the statsd client)
 meter = metrics.get_meter("myapp.orders", "1.0.0")
@@ -359,10 +360,10 @@ processing_time = meter.create_histogram(
 
 # Create an observable gauge (replaces statsd.gauge)
 # OpenTelemetry gauges use a callback pattern for async observation
-def get_queue_size(options):
+def get_queue_size(options: CallbackOptions):
     # This callback is called periodically by the SDK
     current_size = get_current_queue_size()
-    options.observe(current_size, {"queue.name": "orders"})
+    yield Observation(current_size, {"queue.name": "orders"})
 
 queue_gauge = meter.create_observable_gauge(
     name="orders.queue_size",
