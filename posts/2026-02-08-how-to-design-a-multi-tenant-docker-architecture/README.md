@@ -38,8 +38,6 @@ Docker Compose for a shared multi-tenant application:
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   app:
     image: my-saas-app:latest
@@ -50,7 +48,6 @@ services:
       REDIS_URL: redis://redis:6379
       TENANT_MODE: shared
     deploy:
-      replicas: 3
       resources:
         limits:
           memory: 512M
@@ -108,8 +105,6 @@ A step up in isolation gives each tenant their own database while sharing the ap
 Docker Compose with a per-tenant database provisioning approach:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: my-saas-app:latest
@@ -158,6 +153,9 @@ GRANT ALL PRIVILEGES ON DATABASE tenant_acme TO acme_user;
 
 CREATE USER globex_user WITH PASSWORD 'globex_secret';
 GRANT ALL PRIVILEGES ON DATABASE tenant_globex TO globex_user;
+
+CREATE USER initech_user WITH PASSWORD 'initech_secret';
+GRANT ALL PRIVILEGES ON DATABASE tenant_initech TO initech_user;
 ```
 
 A script to dynamically provision new tenants:
@@ -168,19 +166,24 @@ A script to dynamically provision new tenants:
 # Creates a new database and user for a tenant
 
 TENANT_ID="$1"
-DB_PASSWORD=$(openssl rand -base64 24)
+DB_PASSWORD=$(openssl rand -hex 24)
 
 if [ -z "$TENANT_ID" ]; then
   echo "Usage: ./provision-tenant.sh <tenant_id>"
   exit 1
 fi
 
+if [[ ! "$TENANT_ID" =~ ^[a-z0-9]+$ ]]; then
+  echo "Tenant ID must contain only lowercase letters and numbers"
+  exit 1
+fi
+
 # Create the database and user inside the running Postgres container
-docker compose exec db psql -U postgres -c "
+docker compose exec -T db psql -U postgres <<SQL
   CREATE DATABASE tenant_${TENANT_ID};
   CREATE USER ${TENANT_ID}_user WITH PASSWORD '${DB_PASSWORD}';
   GRANT ALL PRIVILEGES ON DATABASE tenant_${TENANT_ID} TO ${TENANT_ID}_user;
-"
+SQL
 
 # Store connection info in Redis
 docker compose exec redis redis-cli SET "tenant:${TENANT_ID}:db_url" \
@@ -194,15 +197,13 @@ echo "Tenant ${TENANT_ID} provisioned successfully"
 
 ## Model 3: Separate Container Stacks Per Tenant
 
-For maximum isolation while sharing hardware, deploy a complete container stack per tenant.
+For stronger isolation while sharing hardware, deploy a complete container stack per tenant.
 
 A template Compose file for tenant-specific stacks:
 
 ```yaml
 # docker-compose.tenant.yml
 # Template for per-tenant deployment
-version: "3.8"
-
 services:
   app:
     image: my-saas-app:latest
@@ -219,6 +220,7 @@ services:
           cpus: "${CPU_LIMIT:-0.5}"
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=proxy-net"
       - "traefik.http.routers.${TENANT_ID}.rule=Host(`${TENANT_ID}.myapp.com`)"
       - "traefik.http.services.${TENANT_ID}.loadbalancer.server.port=3000"
 
@@ -257,6 +259,11 @@ if [ -z "$TENANT_ID" ]; then
   exit 1
 fi
 
+if [[ ! "$TENANT_ID" =~ ^[a-z0-9]+$ ]]; then
+  echo "Tenant ID must contain only lowercase letters and numbers"
+  exit 1
+fi
+
 # Set resource limits based on plan
 case "$PLAN" in
   basic)
@@ -274,7 +281,7 @@ case "$PLAN" in
 esac
 
 export TENANT_ID
-export DB_PASSWORD=$(openssl rand -base64 24)
+export DB_PASSWORD=$(openssl rand -hex 24)
 
 echo "Deploying stack for tenant: $TENANT_ID (plan: $PLAN)"
 
@@ -293,8 +300,6 @@ Use Traefik as a reverse proxy to route requests to the correct tenant stack:
 
 ```yaml
 # docker-compose.proxy.yml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -373,6 +378,7 @@ case "$ACTION" in
 
   backup)
     echo "Backing up tenant $TENANT_ID"
+    mkdir -p backups
     docker compose -p "tenant-${TENANT_ID}" exec -T db \
       pg_dump -U postgres "$TENANT_ID" | gzip > "backups/${TENANT_ID}_$(date +%Y%m%d).sql.gz"
     ;;
@@ -399,9 +405,9 @@ esac
 | Factor | Shared | Separate DB | Separate Stack |
 |--------|--------|-------------|----------------|
 | Cost per tenant | Lowest | Medium | Highest |
-| Data isolation | Application-level | Database-level | Full |
-| Resource isolation | None | None | Full |
-| Noisy neighbor risk | High | Medium | None |
+| Data isolation | Application-level | Database-level | Strong |
+| Resource isolation | None | None | Strong |
+| Noisy neighbor risk | High | Medium | Low |
 | Deployment complexity | Simple | Medium | Complex |
 | Custom config per tenant | Limited | Moderate | Full |
 | Best for | Small tenants | Mid-market | Enterprise |
