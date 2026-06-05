@@ -6,11 +6,11 @@ Tags: OpenTelemetry, OTTL, Merge_maps, Transform Processor
 
 Description: Use the OTTL merge_maps function in the transform processor to combine resource attributes with span attributes for enriched telemetry.
 
-The `merge_maps` function in OTTL copies attributes from one map into another. This is useful when you want to promote resource-level attributes down to the span level, combine attributes from different sources, or flatten nested attribute structures. It operates on maps (key-value collections) and supports different merge strategies for handling key conflicts.
+The `merge_maps` function in OTTL copies attributes from one map into another. This is useful when you want to promote resource-level attributes down to the span level or combine attributes from different sources. It operates on maps (key-value collections) and supports different merge strategies for handling key conflicts.
 
 ## Why Merge Resource Attributes into Spans
 
-Resource attributes describe the entity that produced the telemetry (service name, host, cloud region). Span attributes describe the specific operation. Some backends and query languages work better when all relevant attributes are on the span itself rather than split between resource and span. Merging them makes queries simpler.
+Resource attributes describe the entity for which telemetry is produced (service name, host, cloud region). Span attributes describe the specific operation. Some backends and query languages work better when all relevant attributes are on the span itself rather than split between resource and span. Merging them makes queries simpler.
 
 ## Basic merge_maps Syntax
 
@@ -33,7 +33,7 @@ processors:
         statements:
           # Copy all resource attributes into span attributes
           # Using "insert" strategy: do not overwrite existing span attributes
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(span.attributes, resource.attributes, "insert")
 ```
 
 After this transform, every span will carry attributes like `service.name`, `host.name`, `cloud.region`, etc., in addition to its own span-level attributes.
@@ -49,10 +49,10 @@ processors:
       - context: span
         statements:
           # Copy only specific resource attributes
-          - set(attributes["service.name"], resource.attributes["service.name"])
-          - set(attributes["service.version"], resource.attributes["service.version"])
-          - set(attributes["deployment.environment"], resource.attributes["deployment.environment"])
-          - set(attributes["k8s.namespace.name"], resource.attributes["k8s.namespace.name"])
+          - set(span.attributes["service.name"], resource.attributes["service.name"])
+          - set(span.attributes["service.version"], resource.attributes["service.version"])
+          - set(span.attributes["deployment.environment"], resource.attributes["deployment.environment"])
+          - set(span.attributes["k8s.namespace.name"], resource.attributes["k8s.namespace.name"])
 ```
 
 ## Merge Strategies in Practice
@@ -67,7 +67,7 @@ processors:
         statements:
           # Only add resource attributes that the span does not already have
           # If the span has "host.name" set, the resource's "host.name" is skipped
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(span.attributes, resource.attributes, "insert")
 ```
 
 Use case: Enrich spans with resource context without losing span-specific values.
@@ -81,7 +81,7 @@ processors:
       - context: span
         statements:
           # Resource attributes override span attributes for matching keys
-          - merge_maps(attributes, resource.attributes, "upsert")
+          - merge_maps(span.attributes, resource.attributes, "upsert")
 ```
 
 Use case: Ensure resource metadata (like correct service name) takes precedence over any span-level values.
@@ -96,7 +96,7 @@ processors:
         statements:
           # Only update span attributes that already exist with resource values
           # Does not add new keys to the span
-          - merge_maps(attributes, resource.attributes, "update")
+          - merge_maps(span.attributes, resource.attributes, "update")
 ```
 
 Use case: Refresh values that the span already tracks without adding extra attributes.
@@ -112,7 +112,7 @@ processors:
       - context: span
         statements:
           # Create a map of default attributes and merge into span
-          - merge_maps(attributes, {"default.region": "us-east-1", "default.tier": "standard"}, "insert")
+          - merge_maps(span.attributes, {"default.region": "us-east-1", "default.tier": "standard"}, "insert")
 ```
 
 ## Combining Multiple Merges
@@ -124,13 +124,13 @@ processors:
       - context: span
         statements:
           # Step 1: Merge resource attributes (insert only)
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(span.attributes, resource.attributes, "insert")
 
           # Step 2: Add computed attributes
-          - set(attributes["span.full_name"], Concat([resource.attributes["service.name"], ".", name], ""))
+          - set(span.attributes["span.full_name"], Concat([resource.attributes["service.name"], ".", span.name], ""))
 
           # Step 3: Merge a static map of defaults (insert only)
-          - merge_maps(attributes, {"monitoring.team": "platform", "alert.priority": "medium"}, "insert")
+          - merge_maps(span.attributes, {"monitoring.team": "platform", "alert.priority": "medium"}, "insert")
 ```
 
 ## Working with Logs
@@ -144,7 +144,7 @@ processors:
       - context: log
         statements:
           # Merge resource attributes into log attributes
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(log.attributes, resource.attributes, "insert")
 
           # Useful for backends that query log attributes
           # but do not have easy access to resource attributes
@@ -165,13 +165,13 @@ processors:
       - context: span
         statements:
           # Merge resource context into spans (safe: insert only)
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(span.attributes, resource.attributes, "insert")
 
     log_statements:
       - context: log
         statements:
           # Merge resource context into logs
-          - merge_maps(attributes, resource.attributes, "insert")
+          - merge_maps(log.attributes, resource.attributes, "insert")
 
   batch:
     send_batch_size: 512
@@ -206,9 +206,9 @@ To minimize the impact:
 2. **Apply conditions** to limit which spans get enriched:
 
 ```yaml
-- merge_maps(attributes, resource.attributes, "insert") where name != "health_check"
+- merge_maps(span.attributes, resource.attributes, "insert") where span.name != "health_check"
 ```
 
-3. **Consider your backend's capabilities.** Many modern backends (like Honeycomb and Jaeger) can join resource and span attributes at query time, making Collector-side merging unnecessary.
+3. **Consider your backend's capabilities.** Many modern backends expose resource attributes alongside span data, making Collector-side merging unnecessary for some query patterns.
 
 The `merge_maps` function is a straightforward way to reshape your telemetry data in the Collector. It bridges the gap between how OpenTelemetry structures data (resource + span attributes) and how some backends or query patterns expect it (flat attribute sets on each span).
