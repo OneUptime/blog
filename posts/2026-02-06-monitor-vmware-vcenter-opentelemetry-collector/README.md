@@ -47,7 +47,7 @@ The receiver collects metrics at multiple levels: cluster, host, virtual machine
 
 Before configuring the collector, you need:
 
-- vCenter Server 6.7 or later (7.x recommended)
+- vCenter Server or ESXi 7.0 or 8
 - A read-only vCenter user account for the collector
 - Network access from the collector to the vCenter API (port 443)
 
@@ -93,6 +93,8 @@ receivers:
       vcenter.vm.cpu.usage:
         enabled: true
       vcenter.vm.cpu.utilization:
+        enabled: true
+      vcenter.vm.cpu.readiness:
         enabled: true
       vcenter.vm.memory.usage:
         enabled: true
@@ -155,29 +157,25 @@ processors:
         value: "production-dc1"
         action: upsert
 
-  # Filter out powered-off VMs to reduce metric volume
-  filter:
-    metrics:
-      metric:
-        - 'resource.attributes["vcenter.vm.power_state"] == "poweredOff"'
-
 exporters:
-  otlp:
-    endpoint: "https://otel-ingest.oneuptime.com:4317"
+  otlphttp:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      Authorization: "Bearer YOUR_ONEUPTIME_TOKEN"
+      Content-Type: "application/json"
+      x-oneuptime-token: "YOUR_ONEUPTIME_TOKEN"
 
 service:
   pipelines:
     metrics:
       receivers: [vcenter]
-      processors: [resource, filter, batch]
-      exporters: [otlp]
+      processors: [resource, batch]
+      exporters: [otlphttp]
 ```
 
 The collection interval is set to 5 minutes to align with vCenter's default statistics collection level. vCenter collects real-time statistics every 20 seconds but only retains historical statistics at 5-minute intervals by default. If you need higher resolution, you can adjust vCenter's statistics level, but be aware that level 3 and 4 generate significantly more data.
 
-The filter processor drops metrics from powered-off VMs, which is a practical optimization. In many environments, a significant number of VMs are powered off (templates, decommissioned servers, testing VMs), and collecting metrics for them adds noise without value.
+For large environments, reduce metric volume by disabling metrics you do not actively use. The vCenter receiver exposes VM power state on VM count metrics, but not as a resource attribute on every per-VM metric, so powered-off VMs cannot be filtered reliably with a simple resource-attribute filter.
 
 ## Critical Metrics to Monitor
 
@@ -187,7 +185,7 @@ The filter processor drops metrics from powered-off VMs, which is a practical op
 
 `vcenter.vm.cpu.usage` shows CPU usage per VM. Compare this with the VM's allocated vCPU count to understand whether the VM is CPU-constrained.
 
-The most important CPU metric is actually CPU ready time, which indicates how long a VM waited to be scheduled on a physical CPU. Unfortunately, this is not always exposed directly by the receiver, but you can infer it from the gap between allocated and used CPU.
+The most important CPU contention metric is `vcenter.vm.cpu.readiness`, which reports the percentage of time that the VM was ready to run but could not be scheduled on a physical CPU.
 
 ### Memory Pressure
 
@@ -228,6 +226,7 @@ Row 2: Host Health
 
 Row 3: VM Performance (top consumers)
 - Top 10 VMs by CPU usage
+- Top 10 VMs by CPU readiness
 - Top 10 VMs by memory usage
 - VMs with memory ballooning > 0
 - VMs with memory swap > 0
@@ -247,6 +246,12 @@ Row 4: Storage
   for: 15m
   severity: warning
   description: "ESXi host {{ host.name }} CPU utilization above 85%"
+
+- alert: VMCPUReadinessHigh
+  condition: vcenter.vm.cpu.readiness > 10
+  for: 10m
+  severity: warning
+  description: "VM {{ vm.name }} has high CPU readiness"
 
 - alert: VMMemoryBallooning
   condition: vcenter.vm.memory.ballooned > 0
@@ -293,12 +298,40 @@ receivers:
     password: "${env:VCENTER_DC2_PASSWORD}"
     collection_interval: 5m
 
+processors:
+  resource/dc1:
+    attributes:
+      - key: vcenter.instance
+        value: "dc1"
+        action: upsert
+
+  resource/dc2:
+    attributes:
+      - key: vcenter.instance
+        value: "dc2"
+        action: upsert
+
+  batch: {}
+
+exporters:
+  otlphttp:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
+    headers:
+      Content-Type: "application/json"
+      x-oneuptime-token: "YOUR_ONEUPTIME_TOKEN"
+
 service:
   pipelines:
-    metrics:
-      receivers: [vcenter/dc1, vcenter/dc2]
-      processors: [resource, filter, batch]
-      exporters: [otlp]
+    metrics/dc1:
+      receivers: [vcenter/dc1]
+      processors: [resource/dc1, batch]
+      exporters: [otlphttp]
+
+    metrics/dc2:
+      receivers: [vcenter/dc2]
+      processors: [resource/dc2, batch]
+      exporters: [otlphttp]
 ```
 
 Use the resource processor to tag metrics with the data center or environment name so you can filter and compare them in your dashboards.
