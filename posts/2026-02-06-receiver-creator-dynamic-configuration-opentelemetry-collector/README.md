@@ -46,18 +46,18 @@ receivers:
       # Template for creating receivers when endpoints match
       prometheus:
         # Rule determines which endpoints trigger receiver creation
-        rule: type == "pod" && labels["prometheus.io/scrape"] == "true"
+        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
         config:
-          # Receiver configuration with templated values from endpoint
+          # Receiver configuration with dynamic values from endpoint
           scrape_configs:
-            - job_name: '{{.Name}}'
+            - job_name: '`name`'
               scrape_interval: 30s
               static_configs:
-                - targets: ['{{.Target}}']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 8080`']
               metric_relabel_configs:
                 - source_labels: [__name__]
                   target_label: service
-                  replacement: '{{.Name}}'
+                  replacement: '`name`'
 ```
 
 ## Observers
@@ -96,12 +96,12 @@ receivers:
               scrape_interval: 30s
               # Use port from annotation, default to 8080
               static_configs:
-                - targets: ['{{.Target}}:{{default "8080" (index .Annotations "prometheus.io/port")}}']
-              metrics_path: '{{default "/metrics" (index .Annotations "prometheus.io/path")}}'
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 8080`']
+              metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
               relabel_configs:
                 - source_labels: [__address__]
                   target_label: __address__
-                  replacement: '{{.PodIP}}:{{default "8080" (index .Annotations "prometheus.io/port")}}'
+                  replacement: '`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 8080`'
 ```
 
 ### Host Observer
@@ -111,7 +111,7 @@ The host observer discovers endpoints on the local host by scanning ports.
 ```yaml
 extensions:
   host_observer:
-    # List of ports to scan for services
+    # How often to look for changes in listening endpoints
     refresh_interval: 60s
 
 receivers:
@@ -123,7 +123,6 @@ receivers:
       redis:
         rule: type == "port" && port == 6379
         config:
-          endpoint: '{{.Target}}'
           collection_interval: 10s
           password: ${env:REDIS_PASSWORD}
 
@@ -131,7 +130,6 @@ receivers:
       postgresql:
         rule: type == "port" && port == 5432
         config:
-          endpoint: '{{.Target}}'
           username: ${env:POSTGRES_USER}
           password: ${env:POSTGRES_PASSWORD}
           databases: [postgres]
@@ -147,6 +145,7 @@ extensions:
     endpoint: unix:///var/run/docker.sock
     timeout: 5s
     excluded_images: ["excluded-image-*"]
+    include_all_containers: true
 
 receivers:
   receiver_creator:
@@ -160,16 +159,16 @@ receivers:
           scrape_configs:
             - job_name: 'docker-containers'
               static_configs:
-                - targets: ['{{.Host}}:{{index .Labels "monitoring.port"}}']
+                - targets: ['`host`:`labels["monitoring.port"]`']
               metric_relabel_configs:
                 - source_labels: [__name__]
                   target_label: container_name
-                  replacement: '{{.Name}}'
+                  replacement: '`name`'
 ```
 
 ## Endpoint Rules
 
-Rules determine which discovered endpoints should trigger receiver creation. Rules use the Common Expression Language (CEL) for flexible matching.
+Rules determine which discovered endpoints should trigger receiver creation. Rules use expr expressions for flexible matching.
 
 ### Basic Rule Syntax
 
@@ -186,12 +185,12 @@ receivers:
 
       # Match by label
       prometheus/annotated:
-        rule: labels["app"] == "myapp"
+        rule: type == "pod" && labels["app"] == "myapp"
         config: {}
 
       # Match by annotation
       prometheus/scrape:
-        rule: annotations["prometheus.io/scrape"] == "true"
+        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
         config: {}
 
       # Complex conditions with AND
@@ -201,7 +200,7 @@ receivers:
 
       # Complex conditions with OR
       prometheus/multi:
-        rule: labels["app"] == "frontend" || labels["app"] == "backend"
+        rule: type == "pod" && (labels["app"] == "frontend" || labels["app"] == "backend")
         config: {}
 ```
 
@@ -217,13 +216,13 @@ receivers:
     receivers:
       prometheus:
         # Available variables for Kubernetes pods:
-        # - type: "pod", "service", "node"
+        # - type: "pod"
         # - name: pod name
         # - namespace: pod namespace
         # - uid: pod UID
         # - labels: map of labels
         # - annotations: map of annotations
-        # - podIP: pod IP address
+        # - endpoint: pod endpoint address
         rule: |
           type == "pod" &&
           namespace == "production" &&
@@ -231,9 +230,9 @@ receivers:
           annotations["prometheus.io/scrape"] == "true"
         config:
           scrape_configs:
-            - job_name: 'pod-{{.Namespace}}-{{.Name}}'
+            - job_name: 'pod-`namespace`-`name`'
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 ```
 
 Resource Attributes
@@ -248,13 +247,9 @@ receivers:
     # Define resource attributes for all receivers
     resource_attributes:
       # Static attributes
-      deployment.environment: production
-      service.namespace: observability
-
-      # Attributes from endpoint metadata
-      k8s.pod.name: '`name`'
-      k8s.namespace.name: '`namespace`'
-      k8s.pod.uid: '`uid`'
+      pod:
+        deployment.environment: production
+        service.namespace: observability
 
     receivers:
       prometheus:
@@ -271,9 +266,9 @@ receivers:
 
         config:
           scrape_configs:
-            - job_name: '{{.Name}}'
+            - job_name: '`name`'
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 ```
 
 ## Advanced Configuration Examples
@@ -297,10 +292,10 @@ receivers:
           k8s.namespace.name: '`namespace`'
         config:
           scrape_configs:
-            - job_name: 'prod-{{.Name}}'
+            - job_name: 'prod-`name`'
               scrape_interval: 60s
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 
       # Development pods - more frequent scraping
       prometheus/development:
@@ -311,10 +306,10 @@ receivers:
           k8s.namespace.name: '`namespace`'
         config:
           scrape_configs:
-            - job_name: 'dev-{{.Name}}'
+            - job_name: 'dev-`name`'
               scrape_interval: 15s
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 ```
 
 ### Service-Specific Receivers
@@ -331,10 +326,10 @@ receivers:
       redis:
         rule: type == "pod" && labels["app"] == "redis"
         resource_attributes:
-          service.name: redis-{{.Name}}
+          service.name: '`"redis-" + name`'
           k8s.pod.name: '`name`'
         config:
-          endpoint: '{{.PodIP}}:6379'
+          endpoint: '`endpoint`:6379'
           collection_interval: 30s
           password: ${env:REDIS_PASSWORD}
 
@@ -342,10 +337,10 @@ receivers:
       postgresql:
         rule: type == "pod" && labels["app"] == "postgresql"
         resource_attributes:
-          service.name: postgresql-{{.Name}}
+          service.name: '`"postgresql-" + name`'
           k8s.pod.name: '`name`'
         config:
-          endpoint: '{{.PodIP}}:5432'
+          endpoint: '`endpoint`:5432'
           username: ${env:POSTGRES_USER}
           password: ${env:POSTGRES_PASSWORD}
           databases: [postgres]
@@ -358,9 +353,9 @@ receivers:
           k8s.pod.name: '`name`'
         config:
           scrape_configs:
-            - job_name: '{{.Name}}'
+            - job_name: '`name`'
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 ```
 
 ### Conditional Configuration
@@ -377,31 +372,19 @@ receivers:
         rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
         config:
           scrape_configs:
-            - job_name: '{{.Name}}'
+            - job_name: '`name`'
               # Adjust scrape interval based on annotation
-              scrape_interval: '{{default "30s" (index .Annotations "prometheus.io/interval")}}'
+              scrape_interval: '`"prometheus.io/interval" in annotations ? annotations["prometheus.io/interval"] : "30s"`'
 
               # Use custom metrics path if specified
-              metrics_path: '{{default "/metrics" (index .Annotations "prometheus.io/path")}}'
+              metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
 
               # Use custom port if specified, otherwise default to 8080
               static_configs:
-                - targets: ['{{.PodIP}}:{{default "8080" (index .Annotations "prometheus.io/port")}}']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 8080`']
 
               # Add scheme from annotation
-              scheme: '{{default "http" (index .Annotations "prometheus.io/scheme")}}'
-
-              # Add TLS config if enabled
-              {{if eq (index .Annotations "prometheus.io/tls") "true"}}
-              tls_config:
-                insecure_skip_verify: false
-              {{end}}
-
-              # Add bearer token if specified
-              {{if index .Annotations "prometheus.io/bearer_token"}}
-              authorization:
-                credentials: '{{index .Annotations "prometheus.io/bearer_token"}}'
-              {{end}}
+              scheme: '`"prometheus.io/scheme" in annotations ? annotations["prometheus.io/scheme"] : "http"`'
 ```
 
 ## Complete Configuration Example
@@ -422,14 +405,15 @@ extensions:
     refresh_interval: 60s
 
 receivers:
-  receiver_creator:
-    # Watch both Kubernetes and host endpoints
-    watch_observers: [k8s_observer, host_observer]
+  receiver_creator/k8s:
+    # Watch Kubernetes endpoints
+    watch_observers: [k8s_observer]
 
     # Global resource attributes
     resource_attributes:
-      collector.name: ${env:HOSTNAME}
-      cluster.name: ${env:CLUSTER_NAME}
+      pod:
+        collector.name: ${env:HOSTNAME}
+        cluster.name: ${env:CLUSTER_NAME}
 
     receivers:
       # Prometheus scraping for Kubernetes pods
@@ -448,49 +432,79 @@ receivers:
 
         config:
           scrape_configs:
-            - job_name: 'k8s-{{.Namespace}}-{{.Name}}'
-              scrape_interval: '{{default "30s" (index .Annotations "prometheus.io/interval")}}'
-              metrics_path: '{{default "/metrics" (index .Annotations "prometheus.io/path")}}'
+            - job_name: 'k8s-`namespace`-`name`'
+              scrape_interval: '`"prometheus.io/interval" in annotations ? annotations["prometheus.io/interval"] : "30s"`'
+              metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
               static_configs:
-                - targets: ['{{.PodIP}}:{{default "8080" (index .Annotations "prometheus.io/port")}}']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 8080`']
 
-              relabel_configs:
-                # Keep pod and namespace labels
-                - source_labels: [__meta_kubernetes_pod_name]
-                  target_label: pod
-                - source_labels: [__meta_kubernetes_namespace]
-                  target_label: namespace
-
-      # Redis receiver for Redis instances
-      redis/discovered:
-        rule: (type == "pod" && labels["app"] == "redis") || (type == "port" && port == 6379)
+      # Redis receiver for Redis pods
+      redis/k8s:
+        rule: type == "pod" && labels["app"] == "redis"
 
         resource_attributes:
           service.name: redis
           db.system: redis
 
         config:
-          endpoint: '{{if .PodIP}}{{.PodIP}}{{else}}{{.Target}}{{end}}:6379'
+          endpoint: '`endpoint`:6379'
           collection_interval: 30s
           password: ${env:REDIS_PASSWORD}
           metrics:
             redis.uptime:
               enabled: true
-            redis.connected_clients:
+            redis.clients.connected:
               enabled: true
             redis.memory.used:
               enabled: true
 
-      # PostgreSQL receiver
-      postgresql/discovered:
-        rule: (type == "pod" && labels["app"] == "postgresql") || (type == "port" && port == 5432)
+      # PostgreSQL receiver for PostgreSQL pods
+      postgresql/k8s:
+        rule: type == "pod" && labels["app"] == "postgresql"
 
         resource_attributes:
           service.name: postgresql
           db.system: postgresql
 
         config:
-          endpoint: '{{if .PodIP}}{{.PodIP}}{{else}}{{.Target}}{{end}}:5432'
+          endpoint: '`endpoint`:5432'
+          username: ${env:POSTGRES_USER}
+          password: ${env:POSTGRES_PASSWORD}
+          databases: [postgres]
+          collection_interval: 60s
+
+  receiver_creator/host:
+    # Watch host endpoints
+    watch_observers: [host_observer]
+
+    # Global resource attributes
+    resource_attributes:
+      port:
+        collector.name: ${env:HOSTNAME}
+        cluster.name: ${env:CLUSTER_NAME}
+
+    receivers:
+      # Redis receiver for host-discovered Redis instances
+      redis/host:
+        rule: type == "port" && port == 6379
+
+        resource_attributes:
+          service.name: redis
+          db.system: redis
+
+        config:
+          collection_interval: 30s
+          password: ${env:REDIS_PASSWORD}
+
+      # PostgreSQL receiver for host-discovered PostgreSQL instances
+      postgresql/host:
+        rule: type == "port" && port == 5432
+
+        resource_attributes:
+          service.name: postgresql
+          db.system: postgresql
+
+        config:
           username: ${env:POSTGRES_USER}
           password: ${env:POSTGRES_PASSWORD}
           databases: [postgres]
@@ -519,7 +533,7 @@ service:
 
   pipelines:
     metrics:
-      receivers: [receiver_creator]
+      receivers: [receiver_creator/k8s, receiver_creator/host]
       processors: [resourcedetection, batch]
       exporters: [otlp]
 ```
@@ -605,11 +619,11 @@ receivers:
 
         config:
           scrape_configs:
-            - job_name: '{{.Name}}'
+            - job_name: '`name`'
               # Increase scrape interval to reduce load
               scrape_interval: 60s
               static_configs:
-                - targets: ['{{.PodIP}}:{{index .Annotations "prometheus.io/port"}}']
+                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
 ```
 
 ### Use Batch Processing
@@ -636,7 +650,7 @@ service:
 | Component | Purpose |
 |-----------|---------|
 | **Observers** | Discover endpoints (Kubernetes, Docker, host) |
-| **Rules** | Match endpoints using CEL expressions |
+| **Rules** | Match endpoints using expr expressions |
 | **Templates** | Define receiver configuration with variables |
 | **Resource Attributes** | Add metadata to collected telemetry |
 | **Watch Observers** | List of observers to monitor |
