@@ -30,23 +30,28 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 import time
 
 # Initialize tracing
 
-provider = TracerProvider()
+resource = Resource.create({SERVICE_NAME: "qc-inspection-pipeline"})
+
+provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+    )
 )
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("qc-inspection-pipeline")
 
 # Initialize metrics
 reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="http://otel-collector:4317"),
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True),
     export_interval_millis=5000
 )
-metrics.set_meter_provider(MeterProvider(metric_readers=[reader]))
+metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
 meter = metrics.get_meter("qc-inspection-pipeline")
 
 # Pipeline metrics
