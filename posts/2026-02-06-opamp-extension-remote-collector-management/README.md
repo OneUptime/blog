@@ -6,29 +6,29 @@ Tags: OpenTelemetry, Collector, Extension, OpAMP, Remote Management, Operation, 
 
 Description: Learn how to configure the OpAMP extension in OpenTelemetry Collector for centralized remote management, dynamic configuration updates, and automated fleet operations at scale.
 
-Managing OpenTelemetry Collectors at scale across distributed infrastructure presents significant operational challenges. The OpAMP (Open Agent Management Protocol) extension addresses these challenges by enabling centralized remote management, dynamic configuration updates, and automated operations for collector fleets.
+Managing OpenTelemetry Collectors at scale across distributed infrastructure presents significant operational challenges. The OpAMP (Open Agent Management Protocol) extension helps address these challenges by connecting collectors to an OpAMP control plane for status reporting and remote management workflows.
 
 ## What is OpAMP?
 
 OpAMP is an open standard protocol designed for remote management of telemetry agents, including OpenTelemetry Collectors. It provides bidirectional communication between a central management server and distributed collectors, enabling capabilities like configuration management, package delivery, health monitoring, and remote diagnostics.
 
-The protocol defines a client-server architecture where collectors act as OpAMP clients that connect to an OpAMP server. The server can push configuration changes, query collector status, and coordinate fleet-wide operations without requiring manual intervention or redeployment.
+The protocol defines a client-server architecture where collectors or supervisors act as OpAMP clients that connect to an OpAMP server. The server can query agent status and coordinate fleet-wide operations without requiring manual intervention on each instance.
 
 ## Why Use OpAMP?
 
 Traditional collector deployment requires configuration files baked into container images or mounted from configuration management systems. This approach becomes cumbersome at scale. OpAMP provides several advantages:
 
-**Centralized configuration management**: Update collector configurations from a central location without touching individual instances.
+**Centralized configuration management**: Use an OpAMP control plane to coordinate collector configuration workflows from a central location.
 
-**Dynamic updates**: Apply configuration changes without restarting collectors, minimizing service disruption.
+**Dynamic updates**: When using the OpAMP Supervisor, apply remote configuration sent by the server and restart the managed collector when needed.
 
-**Package management**: Distribute and update collector binaries, plugins, and dependencies remotely.
+**Package management**: The OpAMP protocol defines package update messages; support depends on the client implementation.
 
-**Health monitoring**: Receive real-time status updates from all collectors in your fleet.
+**Health monitoring**: Receive status updates from collectors or supervisors in your fleet.
 
-**Selective targeting**: Apply changes to specific collectors based on attributes like environment, region, or service.
+**Selective targeting**: Apply changes to specific collectors based on attributes like environment, region, or service when your OpAMP server supports that targeting model.
 
-**Audit trail**: Track all configuration changes and their distribution across your fleet.
+**Audit trail**: Track all configuration changes and their distribution across your fleet in the management plane.
 
 ## Basic OpAMP Configuration
 
@@ -38,27 +38,11 @@ Here's a minimal configuration to enable the OpAMP extension:
 # collector-config.yaml
 
 extensions:
-  # Configure OpAMP client extension
+  # Configure OpAMP client extension.
   opamp:
-    # OpAMP server endpoint
     server:
-      # WebSocket endpoint for OpAMP protocol
       ws:
         endpoint: "ws://opamp-server:4320/v1/opamp"
-
-        # TLS configuration (recommended for production)
-        tls:
-          insecure: true
-
-    # Unique identifier for this collector instance
-    instance_id: "collector-${HOSTNAME}"
-
-    # Capabilities this collector supports
-    capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
 
 receivers:
   otlp:
@@ -73,7 +57,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -82,10 +66,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration connects the collector to an OpAMP server and enables core management capabilities. The collector can now receive configuration updates, report health status, and be managed remotely.
+This configuration connects the collector to an OpAMP server. By default, the extension reports health, effective configuration, and available components. If `instance_uid` is omitted, the extension generates one on startup.
 
 ## Secure Connection with TLS
 
@@ -97,32 +81,19 @@ extensions:
     server:
       ws:
         endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
-
-        # TLS configuration
         tls:
-          # Disable insecure mode
-          insecure: false
-
-          # CA certificate to verify server
           ca_file: "/etc/certs/opamp-ca.pem"
-
-          # Client certificate for mutual TLS
           cert_file: "/etc/certs/collector-client.pem"
           key_file: "/etc/certs/collector-client-key.pem"
-
-          # Server name for verification
           server_name_override: "opamp-server.example.com"
 
-    # Collector identification
-    instance_id: "collector-${HOSTNAME}-${POD_NAME}"
+    # Optional stable identifier. Must be a UUIDv7 in canonical form.
+    instance_uid: "018f2e08-90d3-7bda-9f15-8f5dbddb3c42"
 
-    # Capabilities
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
-      - accepts_packages
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 
 receivers:
   otlp:
@@ -135,7 +106,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -144,37 +115,29 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Mutual TLS ensures both the server and client authenticate each other, providing strong security for management operations.
 
 ## HTTP Connection Alternative
 
-In addition to WebSocket, OpAMP supports HTTP for environments where WebSocket connections are problematic:
+In addition to WebSocket, the Collector OpAMP extension supports HTTP polling for environments where WebSocket connections are problematic:
 
 ```yaml
 extensions:
   opamp:
     server:
-      # HTTP polling instead of WebSocket
       http:
         endpoint: "https://opamp-server.example.com:4320/v1/opamp"
-
-        # Polling interval
         polling_interval: 30s
-
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    instance_id: "collector-${HOSTNAME}"
-
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 
 receivers:
   otlp:
@@ -187,7 +150,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -196,10 +159,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-HTTP polling is less efficient than WebSocket but works in restrictive network environments. Adjust the polling_interval based on how quickly you need configuration changes to propagate.
+HTTP polling is less efficient than WebSocket but works in restrictive network environments. Adjust the `polling_interval` based on how quickly you need server-side state changes to propagate.
 
 ## OpAMP Communication Flow
 
@@ -212,16 +175,11 @@ sequenceDiagram
     participant S as OpAMP Server
 
     C->>O: Initialize extension
-    O->>S: Connect via WebSocket
+    O->>S: Connect via WebSocket or HTTP polling
     S->>O: Connection established
 
     O->>S: Send status report
-    Note over O,S: Instance ID, health, capabilities
-
-    S->>O: Push new configuration
-    O->>O: Validate configuration
-    O->>C: Apply configuration
-    C->>O: Configuration applied
+    Note over O,S: Instance UID, health, capabilities
 
     O->>S: Report effective config
     S->>O: Acknowledge
@@ -231,16 +189,13 @@ sequenceDiagram
         Note over S: Monitor fleet health
     end
 
-    S->>O: Request package update
-    O->>O: Download package
-    O->>C: Update collector binary
-    C->>O: Update complete
-    O->>S: Report package status
+    S->>O: Send supported server message
+    O->>S: Report updated status
 ```
 
 ## Instance Identification and Metadata
 
-Provide rich metadata to help identify and target collectors:
+Provide metadata to help identify and target collectors:
 
 ```yaml
 extensions:
@@ -249,36 +204,23 @@ extensions:
       ws:
         endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    # Unique instance identifier
-    instance_id: "collector-${HOSTNAME}-${POD_NAME}"
+    # Optional stable identifier. Must be a UUIDv7 in canonical form.
+    instance_uid: "018f2e08-90d3-7bda-9f15-8f5dbddb3c42"
 
-    # Descriptive attributes for this collector
-    identity:
-      service_name: "otel-collector"
-      service_version: "0.98.0"
-      service_instance_id: "${HOSTNAME}"
-
-    # Resource attributes for targeting
-    resource_attributes:
-      - key: "environment"
-        value: "production"
-      - key: "region"
-        value: "us-east-1"
-      - key: "cluster"
-        value: "prod-cluster-1"
-      - key: "role"
-        value: "gateway"
+    agent_description:
+      include_resource_attributes: true
+      non_identifying_attributes:
+        environment: "production"
+        region: "us-east-1"
+        cluster: "prod-cluster-1"
+        role: "gateway"
 
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
-      - accepts_packages
-      - reports_package_statuses
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 
 receivers:
   otlp:
@@ -291,7 +233,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -300,81 +242,45 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-These attributes enable the OpAMP server to target specific collectors for configuration updates. For example, you can update only production collectors in us-east-1 or all collectors with the "gateway" role.
+These attributes enable the OpAMP server to target specific collectors for management operations. For example, you can update only production collectors in `us-east-1` or all collectors with the `gateway` role if your server implements that targeting logic.
 
 ## Remote Configuration Management
 
-Enable the collector to accept and apply remote configuration updates:
+The Collector OpAMP extension does not expose `remote_config`, backup, rollback, or package-update settings in the collector configuration. For remote configuration of a collector process, use the OpAMP Supervisor:
 
 ```yaml
-extensions:
-  opamp:
-    server:
-      ws:
-        endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
-        tls:
-          insecure: false
-          ca_file: "/etc/certs/opamp-ca.pem"
+# supervisor.yaml
+server:
+  endpoint: wss://opamp-server.example.com:4320/v1/opamp
+  tls:
+    ca_file: "/etc/certs/opamp-ca.pem"
+    cert_file: "/etc/certs/collector-client.pem"
+    key_file: "/etc/certs/collector-client-key.pem"
 
-    instance_id: "collector-${HOSTNAME}"
+capabilities:
+  accepts_remote_config: true
+  reports_effective_config: true
+  reports_own_metrics: false
+  reports_own_logs: true
+  reports_own_traces: false
+  reports_health: true
+  reports_remote_config: true
 
-    # Configuration management settings
-    remote_config:
-      # Enable remote configuration
-      enabled: true
+agent:
+  executable: /usr/local/bin/otelcol-contrib
 
-      # Strategy for applying configuration
-      # Options: immediate, on_restart, manual
-      apply_strategy: "immediate"
-
-      # Backup current config before applying new one
-      backup_config: true
-      backup_dir: "/var/lib/otelcol/backups"
-
-      # Validate configuration before applying
-      validate_before_apply: true
-
-      # Rollback on failure
-      auto_rollback: true
-      rollback_timeout: 30s
-
-    capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: detailed
-
-service:
-  extensions: [opamp]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+storage:
+  directory: /var/lib/opampsupervisor
 ```
 
-This configuration enables safe remote configuration updates with validation, backup, and automatic rollback on failure. The collector applies new configurations immediately but can revert if issues are detected.
+This configuration enables the supervisor to receive remote configuration from the OpAMP server, compose the effective collector configuration, run the collector process, and report configuration status back to the server.
 
 ## Package Management
 
-Enable remote package delivery and updates:
+Package management is part of the OpAMP protocol, but the OpenTelemetry OpAMP Supervisor does not currently implement the `accepts_packages` capability. Do not add a `packages` block to the Collector `opamp` extension configuration; it is not a supported field.
 
 ```yaml
 extensions:
@@ -383,73 +289,19 @@ extensions:
       ws:
         endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    instance_id: "collector-${HOSTNAME}"
-
-    # Package management configuration
-    packages:
-      # Enable package management
-      enabled: true
-
-      # Directory for downloaded packages
-      download_dir: "/var/lib/otelcol/packages"
-
-      # Executable path for self-update
-      executable_path: "/usr/local/bin/otelcol"
-
-      # Verification settings
-      verify_signature: true
-      public_key_file: "/etc/certs/package-signing-key.pub"
-
-      # Update strategy
-      # Options: immediate, scheduled, manual
-      update_strategy: "scheduled"
-
-      # Schedule for updates (cron format)
-      update_schedule: "0 2 * * *"  # 2 AM daily
-
-      # Restart behavior after update
-      auto_restart: true
-      restart_delay: 10s
-
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
-      - accepts_packages
-      - reports_package_statuses
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: detailed
-
-service:
-  extensions: [opamp]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 ```
 
-Package management enables the OpAMP server to remotely update collector binaries, plugins, and other artifacts. Updates are cryptographically verified and applied according to the configured schedule.
+If you need binary or plugin rollout workflows, handle them through your deployment platform or a vendor/server implementation that explicitly documents package support.
 
 ## Health Reporting
 
-Configure detailed health reporting to the OpAMP server:
+Configure health reporting by enabling the supported `reports_health` capability:
 
 ```yaml
 extensions:
@@ -458,40 +310,12 @@ extensions:
       ws:
         endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    instance_id: "collector-${HOSTNAME}"
-
-    # Health reporting configuration
-    health:
-      # Enable health reporting
-      enabled: true
-
-      # Report interval
-      report_interval: 30s
-
-      # Include metrics in health reports
-      include_metrics: true
-
-      # Metrics to include
-      metrics:
-        - "otelcol_process_uptime"
-        - "otelcol_process_runtime_heap_alloc_bytes"
-        - "otelcol_receiver_accepted_spans"
-        - "otelcol_exporter_sent_spans"
-        - "otelcol_exporter_send_failed_spans"
-
-      # Include collector logs in health reports
-      include_logs: true
-      log_level: "info"
-      max_log_entries: 100
-
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 
 receivers:
   otlp:
@@ -504,7 +328,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -513,10 +337,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-Health reports provide visibility into collector operation, enabling the OpAMP server to detect issues, track performance, and trigger automated responses to problems.
+Health reports provide visibility into collector operation, enabling the OpAMP server to detect issues and track fleet status.
 
 ## Fleet Management Architecture
 
@@ -524,20 +348,17 @@ Here's how OpAMP enables centralized management of collector fleets:
 
 ```mermaid
 graph TB
-    S[OpAMP Server] -->|Configuration| G1[Gateway Collector 1]
-    S -->|Configuration| G2[Gateway Collector 2]
-    S -->|Configuration| A1[Agent Collector 1]
-    S -->|Configuration| A2[Agent Collector 2]
-    S -->|Configuration| A3[Agent Collector 3]
+    S[OpAMP Server] -->|Remote config via Supervisor| G1[Gateway Collector 1]
+    S -->|Remote config via Supervisor| G2[Gateway Collector 2]
+    S -->|Remote config via Supervisor| A1[Agent Collector 1]
+    S -->|Remote config via Supervisor| A2[Agent Collector 2]
+    S -->|Remote config via Supervisor| A3[Agent Collector 3]
 
     G1 -->|Health Status| S
     G2 -->|Health Status| S
     A1 -->|Health Status| S
     A2 -->|Health Status| S
     A3 -->|Health Status| S
-
-    S -->|Package Update| G1
-    S -->|Package Update| G2
 
     U[Operations Team] -->|Manage| S
     D[Dashboard] -->|Visualize| S
@@ -548,7 +369,7 @@ graph TB
 
 ## Selective Configuration Updates
 
-Use resource attributes to target specific collector subsets:
+Use agent description attributes to target specific collector subsets:
 
 ```yaml
 extensions:
@@ -557,38 +378,20 @@ extensions:
       ws:
         endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    instance_id: "collector-${HOSTNAME}"
-
-    # Rich metadata for targeting
-    resource_attributes:
-      - key: "environment"
-        value: "${ENVIRONMENT}"
-      - key: "region"
-        value: "${REGION}"
-      - key: "cluster"
-        value: "${CLUSTER_NAME}"
-      - key: "tier"
-        value: "${TIER}"  # e.g., "edge", "aggregation", "central"
-      - key: "version"
-        value: "0.98.0"
-
-    remote_config:
-      enabled: true
-      apply_strategy: "immediate"
-
-      # Only accept configs matching these tags
-      config_tags:
-        - "stable"
-        - "production"
+    agent_description:
+      non_identifying_attributes:
+        environment: "${env:ENVIRONMENT}"
+        region: "${env:REGION}"
+        cluster: "${env:CLUSTER_NAME}"
+        tier: "${env:TIER}"
+        collector.version: "0.153.0"
 
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 
 receivers:
   otlp:
@@ -601,7 +404,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -610,88 +413,32 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 The OpAMP server can use these attributes to implement sophisticated deployment strategies like canary releases, regional rollouts, or environment-specific configurations.
 
 ## Connection Resilience
 
-Configure the OpAMP extension for reliable operation in unreliable networks:
+The Collector OpAMP extension handles connection management internally. The extension configuration does not expose custom `connection`, retry, keepalive, compression, or buffering blocks.
 
 ```yaml
 extensions:
   opamp:
     server:
-      ws:
-        endpoint: "wss://opamp-server.example.com:4320/v1/opamp"
+      http:
+        endpoint: "https://opamp-server.example.com:4320/v1/opamp"
+        polling_interval: 30s
         tls:
-          insecure: false
           ca_file: "/etc/certs/opamp-ca.pem"
 
-    instance_id: "collector-${HOSTNAME}"
-
-    # Connection resilience settings
-    connection:
-      # Initial connection timeout
-      timeout: 30s
-
-      # Retry configuration
-      retry:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 5m
-        multiplier: 2.0
-        max_elapsed_time: 0  # Retry indefinitely
-
-      # Keepalive settings
-      keepalive:
-        interval: 30s
-        timeout: 10s
-
-      # Compression
-      compression:
-        enabled: true
-        algorithm: "gzip"
-
-    # Buffering for when connection is unavailable
-    buffer:
-      enabled: true
-      max_buffer_size: 100
-      # Buffer health reports and status updates
-      buffer_health_reports: true
-      buffer_config_reports: true
-
     capabilities:
-      - reports_effective_config
-      - reports_health
-      - accepts_remote_config
-      - reports_remote_config
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: detailed
-
-service:
-  extensions: [opamp]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+      reports_effective_config: true
+      reports_health: true
+      reports_available_components: true
 ```
 
-These settings ensure the collector maintains operation during network issues and automatically reconnects to the OpAMP server when connectivity is restored.
+For unreliable networks, prefer TLS-protected WebSocket when possible, or use HTTP polling with an appropriate `polling_interval` for restrictive environments.
 
 ## Kubernetes Deployment
 
@@ -711,28 +458,18 @@ data:
           ws:
             endpoint: "wss://opamp-server.monitoring.svc.cluster.local:4320/v1/opamp"
             tls:
-              insecure: false
               ca_file: "/etc/certs/ca.pem"
 
-        instance_id: "collector-${POD_NAME}"
-
-        resource_attributes:
-          - key: "k8s.namespace.name"
-            value: "${POD_NAMESPACE}"
-          - key: "k8s.pod.name"
-            value: "${POD_NAME}"
-          - key: "k8s.node.name"
-            value: "${NODE_NAME}"
-
-        remote_config:
-          enabled: true
-          apply_strategy: "immediate"
+        agent_description:
+          non_identifying_attributes:
+            k8s.namespace.name: "${env:POD_NAMESPACE}"
+            k8s.pod.name: "${env:POD_NAME}"
+            k8s.node.name: "${env:NODE_NAME}"
 
         capabilities:
-          - reports_effective_config
-          - reports_health
-          - accepts_remote_config
-          - reports_remote_config
+          reports_effective_config: true
+          reports_health: true
+          reports_available_components: true
 
     receivers:
       otlp:
@@ -745,7 +482,7 @@ data:
         timeout: 10s
 
     exporters:
-      logging:
+      debug:
         verbosity: detailed
 
     service:
@@ -754,7 +491,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [logging]
+          exporters: [debug]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -772,7 +509,9 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:latest
+        image: otel/opentelemetry-collector-contrib:0.153.0
+        args:
+        - "--config=/etc/otel/config.yaml"
         env:
         - name: POD_NAME
           valueFrom:
@@ -802,19 +541,19 @@ spec:
 
 ## Best Practices
 
-**Use unique instance identifiers**: Include hostname, pod name, or other unique identifiers to distinguish collectors in your fleet.
+**Use stable instance identifiers carefully**: If you set `instance_uid`, use a UUIDv7 and keep it stable across restarts for the same collector instance. Otherwise, let the extension generate one.
 
 **Enable TLS with mutual authentication**: Protect management communications with strong encryption and authentication.
 
-**Implement gradual rollouts**: Use resource attributes to deploy configuration changes incrementally rather than fleet-wide.
+**Implement gradual rollouts**: Use agent description attributes and OpAMP server targeting to deploy changes incrementally rather than fleet-wide.
 
-**Monitor OpAMP connection health**: Track connection status and reconnection attempts to identify network issues.
+**Monitor OpAMP connection health**: Track connection status and reconnection behavior to identify network issues.
 
-**Backup configurations**: Enable configuration backups before applying remote updates to enable quick recovery.
+**Validate remote configurations**: When using the OpAMP Supervisor for remote configuration, validate collector config before rollout and maintain an out-of-band recovery path.
 
-**Use package verification**: Always verify package signatures to prevent deployment of compromised binaries.
+**Use deployment tooling for package rollout**: Do not assume package update support unless your OpAMP client and server explicitly document it.
 
-**Implement health reporting**: Enable comprehensive health reporting to detect and respond to collector issues quickly.
+**Implement health reporting**: Enable health reporting to detect and respond to collector issues quickly.
 
 **Test in staging**: Validate configuration changes in staging environments before deploying to production collectors.
 
@@ -824,14 +563,14 @@ spec:
 
 **TLS handshake failures**: Ensure CA certificates are properly configured and collector client certificates are valid.
 
-**Configuration not applied**: Check collector logs for validation errors. Verify the collector has the accepts_remote_config capability enabled.
+**Configuration not applied**: If you need remote configuration, verify that you are using the OpAMP Supervisor with `accepts_remote_config: true`; the in-process Collector extension does not apply remote config by itself.
 
-**Health reports not received**: Verify health reporting is enabled and the report_interval is appropriate. Check for network connectivity issues.
+**Health reports not received**: Verify the `reports_health` capability is enabled and check for network connectivity issues.
 
-**Package updates failing**: Ensure package verification settings match the server's signing configuration. Check file permissions on the download directory.
+**Package updates failing**: Verify that your OpAMP client and server support package management. The OpenTelemetry OpAMP Supervisor does not currently advertise `accepts_packages`.
 
 ## Conclusion
 
-The OpAMP extension transforms OpenTelemetry Collector operations by enabling centralized, automated fleet management. By implementing dynamic configuration updates, package management, and comprehensive health monitoring, OpAMP reduces operational overhead and improves reliability at scale.
+The OpAMP extension connects OpenTelemetry Collectors to a centralized management plane for status reporting and control-plane communication. For dynamic remote configuration of a running collector process, use the OpAMP Supervisor, which manages the collector process and reports configuration status back to the server.
 
 For related collector management topics, see guides on [Storage Extension](https://oneuptime.com/blog/post/2026-02-06-storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/2026-02-06-jaeger-remote-sampling-extension-opentelemetry-collector/view).
