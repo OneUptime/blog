@@ -240,7 +240,7 @@ class ImpactScoringProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 ## Exposing Impact Scores as Metrics
@@ -250,20 +250,9 @@ Export the impact scores as OpenTelemetry metrics so they show up in your dashbo
 ```python
 # impact_metrics.py
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
 meter = metrics.get_meter("error-impact")
-
-impact_score_gauge = meter.create_observable_gauge(
-    name="error.impact_score",
-    description="Composite impact score for each error type",
-    unit="score",
-)
-
-affected_users_gauge = meter.create_observable_gauge(
-    name="error.affected_users",
-    description="Number of unique users affected by each error type",
-    unit="users",
-)
 
 def register_impact_callbacks(scorer):
     """Register metric callbacks that read from the impact scorer."""
@@ -273,7 +262,7 @@ def register_impact_callbacks(scorer):
         observations = []
         for s in scores[:20]:  # Top 20 errors
             observations.append(
-                metrics.Observation(
+                Observation(
                     s.score,
                     {"error.type": s.error_type},
                 )
@@ -285,24 +274,24 @@ def register_impact_callbacks(scorer):
         observations = []
         for s in scores[:20]:
             observations.append(
-                metrics.Observation(
+                Observation(
                     s.affected_users,
                     {"error.type": s.error_type},
                 )
             )
         return observations
 
-    # Re-create gauges with callbacks
-    global impact_score_gauge, affected_users_gauge
-    impact_score_gauge = meter.create_observable_gauge(
+    meter.create_observable_gauge(
         name="error.impact_score",
         callbacks=[impact_callback],
         description="Composite impact score for each error type",
+        unit="1",
     )
-    affected_users_gauge = meter.create_observable_gauge(
+    meter.create_observable_gauge(
         name="error.affected_users",
         callbacks=[users_callback],
         description="Unique users affected by each error type",
+        unit="{user}",
     )
 ```
 
