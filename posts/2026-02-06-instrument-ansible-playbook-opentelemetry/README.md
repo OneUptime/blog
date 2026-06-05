@@ -10,7 +10,7 @@ Description: Learn how to instrument Ansible playbook execution with OpenTelemet
 
 Ansible playbooks are the backbone of infrastructure automation for many teams. They provision servers, deploy applications, configure networking, and orchestrate complex multi-step workflows. But when a playbook that used to finish in three minutes suddenly takes fifteen, figuring out which task or role is responsible can be a frustrating exercise in reading log output line by line.
 
-OpenTelemetry gives you a much better approach. By instrumenting your Ansible runs with distributed tracing, you can visualize every play, role, and task as spans in a trace. You get timing data, success and failure status, and the ability to correlate playbook execution with downstream services that Ansible might be touching.
+OpenTelemetry gives you a much better approach. By instrumenting your Ansible runs with distributed tracing, you can visualize every play and task as spans in a trace, with role information attached as span attributes when available. You get timing data, success and failure status, and the ability to correlate playbook execution with downstream services that Ansible might be touching.
 
 This guide walks through the practical steps of wiring up Ansible with OpenTelemetry, from callback plugins to the Collector, so you can stop guessing and start observing.
 
@@ -20,7 +20,7 @@ Ansible outputs task results sequentially to stdout, and while the built-in prof
 
 With OpenTelemetry tracing, you get:
 
-- A hierarchical span tree showing play, role, and task relationships
+- A hierarchical span tree showing play and task relationships
 - Precise duration measurements for every unit of work
 - Error attribution with task failure details attached to spans
 - Correlation with application deployments and service restarts
@@ -39,7 +39,7 @@ graph LR
     E --> F[Tracing Backend]
 ```
 
-Each playbook run becomes a root trace. Plays become child spans of the run. Roles become children of plays. Tasks become children of roles (or plays, if they are not inside a role). This hierarchy maps naturally to how Ansible actually executes work.
+Each playbook run becomes a root trace. Plays become child spans of the run. Host-specific task executions become children of plays, with role names attached as attributes where Ansible exposes them. This hierarchy maps naturally to how Ansible actually executes work.
 
 ## Building the Callback Plugin
 
@@ -68,7 +68,7 @@ DOCUMENTATION = """
     type: aggregate
     short_description: Emits OpenTelemetry traces for playbook execution
     description:
-        - Creates spans for plays, roles, and tasks during Ansible execution
+        - Creates spans for plays and host-specific tasks during Ansible execution
     requirements:
         - opentelemetry-api
         - opentelemetry-sdk
@@ -82,7 +82,6 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace.status import Status, StatusCode
 import os
-import time
 
 
 class CallbackModule(CallbackBase):
@@ -104,9 +103,10 @@ class CallbackModule(CallbackBase):
 
         self.tracer = trace.get_tracer("ansible.playbook")
         self.play_spans = {}
+        self.current_play_span = None
         self.task_spans = {}
         self.root_span = None
-        self.root_context = None
+        self._current_role = None
 
     def v2_playbook_on_start(self, playbook):
         # Create the root span for the entire playbook run
@@ -117,10 +117,12 @@ class CallbackModule(CallbackBase):
                 "ansible.type": "playbook",
             },
         )
-        self.root_context = trace.set_span_in_context(self.root_span)
 
     def v2_playbook_on_play_start(self, play):
         # Create a child span for each play within the playbook
+        if self.current_play_span:
+            self.current_play_span.end()
+
         play_name = play.get_name().strip()
         ctx = trace.set_span_in_context(self.root_span)
         span = self.tracer.start_span(
@@ -132,51 +134,84 @@ class CallbackModule(CallbackBase):
             },
         )
         self.play_spans[play._uuid] = span
+        self.current_play_span = span
 
     def v2_playbook_on_task_start(self, task, is_conditional):
-        # Create a child span for each task
-        play = task._parent._play
-        parent_span = self.play_spans.get(play._uuid, self.root_span)
+        # Keep role metadata for the host-specific task spans created below
+        role = getattr(task, "_role", None)
+        self._current_role = role.get_name() if role else None
+
+    def v2_runner_on_start(self, host, task):
+        # Create a child span for each host-specific task execution
+        play = getattr(getattr(task, "_parent", None), "_play", None)
+        parent_span = self.play_spans.get(play._uuid, self.root_span) if play else self.root_span
         ctx = trace.set_span_in_context(parent_span)
 
         task_name = task.get_name().strip()
+        host_name = host.get_name()
+        attributes = {
+            "ansible.task.name": task_name,
+            "ansible.task.action": task.action,
+            "ansible.task.host": host_name,
+            "ansible.type": "task",
+        }
+        if self._current_role:
+            attributes["ansible.task.role"] = self._current_role
+
         span = self.tracer.start_span(
-            name=f"task: {task_name}",
+            name=f"task: {task_name} [{host_name}]",
             context=ctx,
-            attributes={
-                "ansible.task.name": task_name,
-                "ansible.task.action": task.action,
-                "ansible.type": "task",
-            },
+            attributes=attributes,
         )
-        self.task_spans[task._uuid] = span
+        self.task_spans[(host_name, task._uuid)] = span
+
+    def _pop_task_span(self, result):
+        host_name = result._host.get_name()
+        task_uuid = result._task._uuid
+        return self.task_spans.pop((host_name, task_uuid), None)
 
     def v2_runner_on_ok(self, result, **kwargs):
         # Mark the task span as successful and record result details
-        task_uuid = result._task._uuid
-        span = self.task_spans.get(task_uuid)
+        span = self._pop_task_span(result)
         if span:
-            span.set_attribute("ansible.task.host", result._host.get_name())
             span.set_attribute("ansible.task.changed", result._result.get("changed", False))
             span.set_status(Status(StatusCode.OK))
             span.end()
 
     def v2_runner_on_failed(self, result, ignore_errors=False, **kwargs):
         # Mark the task span as failed and attach error details
-        task_uuid = result._task._uuid
-        span = self.task_spans.get(task_uuid)
+        span = self._pop_task_span(result)
         if span:
-            span.set_attribute("ansible.task.host", result._host.get_name())
             error_msg = result._result.get("msg", "Unknown error")
             span.set_status(Status(StatusCode.ERROR, error_msg))
             span.set_attribute("ansible.task.error", error_msg)
             span.set_attribute("ansible.task.ignore_errors", ignore_errors)
             span.end()
 
+    def v2_runner_on_skipped(self, result, **kwargs):
+        # Close skipped task spans so they do not remain open until final flush
+        span = self._pop_task_span(result)
+        if span:
+            span.set_attribute("ansible.task.skipped", True)
+            span.end()
+
+    def v2_runner_on_unreachable(self, result, **kwargs):
+        # Mark unreachable hosts as errors on their host-specific task spans
+        span = self._pop_task_span(result)
+        if span:
+            error_msg = result._result.get("msg", "Host unreachable")
+            span.set_status(Status(StatusCode.ERROR, error_msg))
+            span.set_attribute("ansible.task.error", error_msg)
+            span.set_attribute("ansible.task.unreachable", True)
+            span.end()
+
     def v2_playbook_on_stats(self, stats):
         # End all play spans and the root span when the playbook finishes
-        for play_uuid, span in self.play_spans.items():
+        for span in self.task_spans.values():
             span.end()
+
+        if self.current_play_span:
+            self.current_play_span.end()
 
         if self.root_span:
             # Attach summary stats as attributes on the root span
@@ -192,7 +227,7 @@ class CallbackModule(CallbackBase):
         trace.get_tracer_provider().force_flush()
 ```
 
-This plugin follows the Ansible callback lifecycle. The `v2_playbook_on_start` method fires once at the beginning and creates the root span. Each play and task gets its own child span, and the `v2_runner_on_ok` and `v2_runner_on_failed` handlers close task spans with appropriate status codes. Finally, `v2_playbook_on_stats` cleans everything up when the run completes.
+This plugin follows the Ansible callback lifecycle. The `v2_playbook_on_start` method fires once at the beginning and creates the root span. Each play gets its own child span, and each host-specific task execution gets a child span when `v2_runner_on_start` fires. The `v2_runner_on_ok` and `v2_runner_on_failed` handlers close task spans with appropriate status codes. Finally, `v2_playbook_on_stats` cleans everything up when the run completes.
 
 ## Configuring the Collector
 
@@ -262,28 +297,29 @@ Then set the environment variable for the Collector endpoint before running your
 
 ```bash
 # Set the OTLP endpoint to your collector
-export OTEL_EXPORTER_OTLP_ENDPOINT="collector.example.com:4317"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example.com:4317"
 
 # Run the playbook as usual
 ansible-playbook -i inventory.yml site.yml
 ```
 
-The playbook will execute normally, but now every play and task emits spans to your tracing backend.
+The playbook will execute normally, but now every play and host-specific task execution emits spans to your tracing backend.
 
-## Adding Role-Level Spans
+## Adding Role Attributes
 
-The basic plugin creates spans for plays and tasks. To get role-level visibility, you can hook into the `v2_playbook_on_include` event and track role boundaries:
+The basic plugin creates spans for plays and host-specific task executions. To improve role-level visibility, you can hook into the `v2_playbook_on_include` event and track role boundaries:
 
 ```python
 # Additional method for the CallbackModule class
-# Tracks role boundaries to create intermediate spans
+# Tracks role boundaries to annotate task spans
 
 def v2_playbook_on_include(self, included_file):
     # When a role or include is processed, record it as an attribute
     # on subsequent task spans so you can group tasks by role
     role_name = None
-    if included_file._role:
-        role_name = included_file._role.get_name()
+    role = getattr(included_file, "_role", None)
+    if role:
+        role_name = role.get_name()
 
     if role_name:
         # Store the current role so task spans can reference it
@@ -299,14 +335,14 @@ Once spans are flowing, you will start seeing traces like this in your backend:
 ```text
 playbook: site.yml                    [14.2s]
   play: Configure web servers         [8.7s]
-    task: Install nginx               [3.1s]
-    task: Copy nginx config           [0.4s]
-    task: Enable nginx service        [1.2s]
-    task: Deploy application          [4.0s]
+    task: Install nginx [web01]       [3.1s]
+    task: Copy nginx config [web01]   [0.4s]
+    task: Enable nginx service [web01] [1.2s]
+    task: Deploy application [web01]  [4.0s]
   play: Configure database servers    [5.5s]
-    task: Install PostgreSQL          [2.8s]
-    task: Configure pg_hba.conf       [0.3s]
-    task: Restart PostgreSQL          [2.4s]
+    task: Install PostgreSQL [db01]   [2.8s]
+    task: Configure pg_hba.conf [db01] [0.3s]
+    task: Restart PostgreSQL [db01]   [2.4s]
 ```
 
 This view immediately tells you that "Install nginx" and "Restart PostgreSQL" are the slowest tasks. Over time, you can track whether playbook durations are creeping up and identify which tasks are responsible.
