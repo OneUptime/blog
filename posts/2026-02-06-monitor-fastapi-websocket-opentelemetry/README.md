@@ -6,9 +6,9 @@ Tags: OpenTelemetry, FastAPI, WebSocket, Python, Real-Time, Monitoring
 
 Description: Discover how to instrument FastAPI WebSocket connections with OpenTelemetry for comprehensive monitoring of real-time bidirectional communication.
 
-WebSocket connections present unique monitoring challenges compared to traditional HTTP requests. They're long-lived, bidirectional, and can handle thousands of messages over a single connection. Standard HTTP instrumentation doesn't capture the full picture of WebSocket behavior, so you need specialized tracing strategies to understand connection lifecycle, message flow, and performance characteristics.
+WebSocket connections present unique monitoring challenges compared to traditional HTTP requests. They're long-lived, bidirectional, and can handle thousands of messages over a single connection. Standard instrumentation can capture the connection and low-level ASGI send/receive events, but it doesn't capture the full business-level picture of WebSocket behavior, so you need specialized tracing strategies to understand connection lifecycle, message flow, and performance characteristics.
 
-The FastAPI instrumentation from OpenTelemetry handles HTTP requests automatically, but WebSocket endpoints require manual instrumentation. You need to track connection establishment, individual message handling, errors, and graceful or abrupt disconnections.
+The FastAPI instrumentation from OpenTelemetry handles HTTP requests automatically and also wraps WebSocket ASGI scopes. For useful WebSocket monitoring, you still need manual instrumentation for connection establishment, individual message handling, errors, and graceful or abrupt disconnections.
 
 ## The WebSocket Monitoring Challenge
 
@@ -63,6 +63,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Optional
+import asyncio
 import json
 import time
 
@@ -103,19 +104,17 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         # Set attributes that describe the connection
         connection_span.set_attribute("client.id", client_id)
         connection_span.set_attribute("ws.protocol", "websocket")
-        connection_span.set_attribute("net.transport", "ip_tcp")
+        connection_span.set_attribute("network.transport", "tcp")
 
         # Track connection start time for custom metrics
         connection_start = time.time()
+        message_count = 0
 
         try:
             # Accept the WebSocket connection
             await websocket.accept()
             connection_span.add_event("connection_accepted")
             connection_span.set_attribute("connection.state", "active")
-
-            # Track message count
-            message_count = 0
 
             # Message handling loop
             while True:
@@ -125,8 +124,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                 # Create a child span for each message
                 with tracer.start_as_current_span(
-                    "websocket_message",
-                    kind=SpanKind.SERVER
+                    "websocket_message"
                 ) as message_span:
                     message_span.set_attribute("message.number", message_count)
                     message_span.set_attribute("message.direction", "inbound")
@@ -201,7 +199,7 @@ async def process_message(client_id: str, message_data: dict) -> dict:
             with tracer.start_as_current_span("fetch_data") as fetch_span:
                 fetch_span.set_attribute("data.type", message_data.get("data_type"))
                 # Simulate database query
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
                 data = {"result": "sample_data"}
 
             return {"type": "data_response", "data": data}
