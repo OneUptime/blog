@@ -70,8 +70,6 @@ tail_sampling:
       status_code:
         status_codes:
           - ERROR
-      # This policy alone is sufficient to keep a trace
-      decision: Sample
 
     # Always sample slow traces (> 5 seconds)
     - name: slow-traces
@@ -112,7 +110,7 @@ tail_sampling:
           - name: is-healthcheck
             type: string_attribute
             string_attribute:
-              key: http.target
+              key: url.path
               values: ["/health", "/healthz", "/ready"]
           - name: sample-1pct
             type: probabilistic
@@ -166,6 +164,18 @@ def build_config(environment):
         config["processors"] = {}
     config["processors"]["tail_sampling"] = sampling["tail_sampling"]
 
+    # Enable tail sampling in the traces pipeline
+    traces_pipeline = config.setdefault(
+        "service", {}
+    ).setdefault(
+        "pipelines", {}
+    ).setdefault(
+        "traces", {}
+    )
+    processors = traces_pipeline.setdefault("processors", [])
+    if "tail_sampling" not in processors:
+        processors.append("tail_sampling")
+
     return config
 
 if __name__ == "__main__":
@@ -186,6 +196,15 @@ import pytest
 def load_sampling_config():
     with open("sampling/tail-sampling.yaml") as f:
         return yaml.safe_load(f)
+
+def iter_policies(policies):
+    """Yield top-level policies and nested policies."""
+    for policy in policies:
+        yield policy
+        if policy.get("type") == "and":
+            yield from iter_policies(
+                policy["and"].get("and_sub_policy", [])
+            )
 
 def test_error_traces_always_sampled():
     """Error traces must always be sampled."""
@@ -210,7 +229,8 @@ def test_decision_wait_reasonable():
 def test_no_zero_percent_sampling():
     """No policy should sample at 0%."""
     config = load_sampling_config()
-    for policy in config["tail_sampling"]["policies"]:
+    policies = config["tail_sampling"]["policies"]
+    for policy in iter_policies(policies):
         if policy.get("type") == "probabilistic":
             pct = policy["probabilistic"]["sampling_percentage"]
             assert pct > 0, \
@@ -226,11 +246,14 @@ def test_critical_services_have_high_sampling():
     )
     assert payment_policy is not None, \
         "Payment service must have a dedicated sampling policy"
+    assert payment_policy.get("type") == "string_attribute"
+    assert payment_policy["string_attribute"]["key"] == "service.name"
+    assert "payment-service" in payment_policy["string_attribute"]["values"]
 
 def test_all_policies_have_names():
     """Every policy must have a descriptive name."""
     config = load_sampling_config()
-    for policy in config["tail_sampling"]["policies"]:
+    for policy in iter_policies(config["tail_sampling"]["policies"]):
         assert "name" in policy, "Policy missing name field"
         assert len(policy["name"]) > 3, \
             f"Policy name '{policy['name']}' is too short"
