@@ -23,6 +23,8 @@ A travel insurance transaction involves:
 ## Instrumenting the Quote Generation
 
 ```python
+import time
+
 from opentelemetry import trace, metrics
 from opentelemetry.trace import SpanKind
 
@@ -49,11 +51,10 @@ def generate_travel_insurance_quote(trip_details, travelers, coverage_options):
             "insurance.destination": trip_details.destination,
             "insurance.trip_duration_days": trip_details.duration_days,
             "insurance.traveler_count": len(travelers),
-            "insurance.departure_date": trip_details.departure_date,
+            "insurance.departure_date": trip_details.departure_date.isoformat(),
             "insurance.trip_cost": trip_details.total_cost,
         }
     ) as span:
-        import time
         start = time.time()
 
         # Step 1: Assess destination risk
@@ -164,8 +165,8 @@ def issue_policy(quote_id, payment_details, customer_info):
         with tracer.start_as_current_span("insurance.generate_policy") as gen_span:
             policy = create_policy_record(quote, customer_info, payment)
             gen_span.set_attribute("insurance.policy_number", policy.number)
-            gen_span.set_attribute("insurance.effective_date", policy.effective_date)
-            gen_span.set_attribute("insurance.expiry_date", policy.expiry_date)
+            gen_span.set_attribute("insurance.effective_date", policy.effective_date.isoformat())
+            gen_span.set_attribute("insurance.expiry_date", policy.expiry_date.isoformat())
 
         # Generate the policy PDF
         with tracer.start_as_current_span("insurance.generate_pdf") as pdf_span:
@@ -222,6 +223,7 @@ def initiate_claim(policy_number, claim_type, claim_details):
         span.set_attribute("insurance.deductible", coverage.deductible)
         span.set_attribute("insurance.max_payout", coverage.max_payout)
 
+        claim = None
         if coverage.covered:
             claim = create_claim_record(policy, claim_type, claim_details)
             span.set_attribute("insurance.claim_id", claim.id)
