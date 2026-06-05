@@ -8,7 +8,7 @@ Description: Learn how to use otelcol_exporter_send_failed_spans and related met
 
 ---
 
-Data loss in your observability pipeline is a silent killer. Missing spans mean incomplete traces, which leads to blind spots when troubleshooting production incidents. The OpenTelemetry Collector exposes metrics like `otelcol_exporter_send_failed_spans` that help you detect and diagnose data loss before it impacts your ability to debug issues.
+Data loss in your observability pipeline is a silent killer. Missing spans mean incomplete traces, which leads to blind spots when troubleshooting production incidents. The OpenTelemetry Collector exposes metrics like `otelcol_exporter_send_failed_spans` that help you detect export failures and diagnose data loss risks before they impact your ability to debug issues.
 
 This guide shows you how to interpret these metrics, correlate them with other signals, and systematically identify and fix the root causes of data loss.
 
@@ -16,23 +16,23 @@ This guide shows you how to interpret these metrics, correlate them with other s
 
 ## Understanding Export Failure Metrics
 
-The Collector exposes several metrics that indicate data loss:
+The Collector exposes several metrics that indicate export failures, backpressure, and data loss risks:
 
 **Primary Metrics:**
-- `otelcol_exporter_send_failed_spans` - Spans that failed to export
-- `otelcol_exporter_send_failed_metric_points` - Metric points that failed to export
-- `otelcol_exporter_send_failed_log_records` - Log records that failed to export
+- `otelcol_exporter_send_failed_spans` - Spans that failed to send to the destination
+- `otelcol_exporter_send_failed_metric_points` - Metric points that failed to send to the destination
+- `otelcol_exporter_send_failed_log_records` - Log records that failed to send to the destination
 
 **Supporting Metrics:**
 - `otelcol_exporter_enqueue_failed_spans` - Spans rejected due to full queue
 - `otelcol_receiver_refused_spans` - Spans refused at receiver (backpressure)
-- `otelcol_processor_dropped_spans` - Spans dropped by processors
+- `otelcol_processor_incoming_items` / `otelcol_processor_outgoing_items` - Items entering and leaving processors
 - `otelcol_exporter_queue_size` - Current queue depth
 - `otelcol_exporter_queue_capacity` - Maximum queue capacity
 
 These metrics have labels that help identify the failure point:
-- `exporter` - Which exporter failed (e.g., otlphttp, prometheus)
-- `service_name` - Which pipeline (traces, metrics, logs)
+- `exporter` - Which exporter failed (e.g., otlp_http, prometheus)
+- `service_name` - Which Collector service emitted the metric
 
 ---
 
@@ -53,14 +53,20 @@ service:
       encoding: json
 
     metrics:
-      # Expose metrics for Prometheus scraping
-      address: 0.0.0.0:8888
       level: detailed
 
-      # Also push metrics to your backend
+      # Expose metrics for Prometheus scraping and push them to your backend
       readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                # Keep the OTLP-style metric names used in this guide
+                without_type_suffix: true
+                without_units: true
         - periodic:
-            interval: 60000  # Export every 60 seconds
+            interval: 60s  # Export every 60 seconds
             exporter:
               otlp:
                 protocol: http/protobuf
@@ -77,20 +83,20 @@ Verify metrics are exposed:
 curl http://localhost:8888/metrics | grep send_failed
 
 # Look for these metrics
-# otelcol_exporter_send_failed_spans{exporter="otlphttp",service_name="traces"} 1234
-# otelcol_exporter_send_failed_metric_points{exporter="otlphttp",service_name="metrics"} 567
+# otelcol_exporter_send_failed_spans{exporter="otlp_http",service_name="otelcol"} 1234
+# otelcol_exporter_send_failed_metric_points{exporter="otlp_http",service_name="otelcol"} 567
 ```
 
 ---
 
 ## Diagnostic Queries
 
-### Calculate Data Loss Percentage
+### Calculate Export Failure Percentage
 
-The most important metric is your overall data loss rate:
+The most important early warning metric is your export failure rate. Send failures do not always mean permanent data loss, because retry and queueing can still deliver the data later.
 
 ```promql
-# Percentage of spans lost in the last 5 minutes
+# Export failures as a percentage of accepted spans in the last 5 minutes
 (
   sum(rate(otelcol_exporter_send_failed_spans[5m]))
   /
@@ -110,7 +116,7 @@ sum by (exporter) (
 )
 
 # Example output:
-# {exporter="otlphttp"} 45.2
+# {exporter="otlp_http"} 45.2
 # {exporter="jaeger"} 0.0
 ```
 
@@ -136,10 +142,30 @@ Understand where data is being lost:
 ```promql
 # Data loss by stage
 sum by (stage) (
-  rate(otelcol_receiver_refused_spans[5m]) or
-  rate(otelcol_processor_dropped_spans[5m]) or
-  rate(otelcol_exporter_enqueue_failed_spans[5m]) or
-  rate(otelcol_exporter_send_failed_spans[5m])
+  label_replace(
+    rate(otelcol_receiver_refused_spans[5m]),
+    "stage", "receiver_refused", "__name__", ".*"
+  )
+  or
+  label_replace(
+    clamp_min(
+      rate(otelcol_processor_incoming_items[5m])
+      -
+      rate(otelcol_processor_outgoing_items[5m]),
+      0
+    ),
+    "stage", "processor_not_forwarded", "processor", ".*"
+  )
+  or
+  label_replace(
+    rate(otelcol_exporter_enqueue_failed_spans[5m]),
+    "stage", "exporter_enqueue_failed", "__name__", ".*"
+  )
+  or
+  label_replace(
+    rate(otelcol_exporter_send_failed_spans[5m]),
+    "stage", "exporter_send_failed", "__name__", ".*"
+  )
 )
 ```
 
@@ -153,12 +179,10 @@ When the backend is down, rate-limited, or responding slowly, exports fail.
 
 **Diagnostic Queries:**
 ```promql
-# Export latency (should be <1 second)
-histogram_quantile(0.95,
-  rate(otelcol_exporter_send_latency_bucket[5m])
-) > 1000
+# Export requests stuck in flight
+otelcol_exporter_in_flight_requests > 0
 
-# Export timeout rate
+# Export failure rate
 rate(otelcol_exporter_send_failed_spans[5m]) > 0
 ```
 
@@ -178,7 +202,7 @@ kubectl logs -l app=opentelemetry-collector | grep -E "error|failed|timeout"
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -237,7 +261,7 @@ otelcol_exporter_queue_size >= otelcol_exporter_queue_capacity
 **Visualize Queue Behavior:**
 ```promql
 # Queue depth over time
-otelcol_exporter_queue_size{exporter="otlphttp"}
+otelcol_exporter_queue_size{exporter="otlp_http"}
 
 # If this looks like a sawtooth pattern hitting capacity,
 # you need a bigger queue or faster export
@@ -247,7 +271,7 @@ otelcol_exporter_queue_size{exporter="otlphttp"}
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -279,20 +303,25 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]  # Batch before export
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ### Cause 3: Memory Pressure
 
-The memory limiter processor drops data when memory usage is high.
+The memory limiter processor refuses data when memory usage is high. Receivers are expected to retry, but data can still be lost if the preceding component cannot retry long enough.
 
 **Diagnostic Queries:**
 ```promql
-# Spans dropped by memory limiter
-rate(otelcol_processor_dropped_spans{processor="memory_limiter"}[5m]) > 0
+# Items not forwarded by memory limiter
+clamp_min(
+  rate(otelcol_processor_incoming_items{processor="memory_limiter"}[5m])
+  -
+  rate(otelcol_processor_outgoing_items{processor="memory_limiter"}[5m]),
+  0
+) > 0
 
 # Memory usage
-process_runtime_go_mem_heap_alloc_bytes
+otelcol_process_runtime_heap_alloc_bytes
 ```
 
 **Check Collector Logs:**
@@ -335,7 +364,7 @@ service:
       receivers: [otlp]
       # Memory limiter MUST be first processor
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 **Increase Container Memory:**
@@ -378,11 +407,11 @@ rate(otelcol_exporter_send_failed_spans[1m])
 # If this is spiky (not constant), suspect network
 ```
 
-**Solution - Add Circuit Breaker and Retry:**
+**Solution - Add Retry and Connection Tuning:**
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -441,7 +470,7 @@ rate(otelcol_receiver_accepted_spans[5m])
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       # Ensure token is correctly set
@@ -494,9 +523,9 @@ spec:
 
 Create a comprehensive dashboard to track data loss:
 
-**Panel 1: Data Loss Rate**
+**Panel 1: Export Failure Rate**
 ```promql
-# Overall data loss percentage
+# Overall export failure percentage
 (
   sum(rate(otelcol_exporter_send_failed_spans[5m]))
   /
@@ -510,22 +539,27 @@ Create a comprehensive dashboard to track data loss:
 sum by (stage) (
   label_replace(
     rate(otelcol_receiver_refused_spans[5m]),
-    "stage", "receiver_refused", "", ""
+    "stage", "receiver_refused", "__name__", ".*"
   )
   or
   label_replace(
-    rate(otelcol_processor_dropped_spans[5m]),
-    "stage", "processor_dropped", "", ""
+    clamp_min(
+      rate(otelcol_processor_incoming_items[5m])
+      -
+      rate(otelcol_processor_outgoing_items[5m]),
+      0
+    ),
+    "stage", "processor_not_forwarded", "processor", ".*"
   )
   or
   label_replace(
     rate(otelcol_exporter_enqueue_failed_spans[5m]),
-    "stage", "exporter_enqueue_failed", "", ""
+    "stage", "exporter_enqueue_failed", "__name__", ".*"
   )
   or
   label_replace(
     rate(otelcol_exporter_send_failed_spans[5m]),
-    "stage", "exporter_send_failed", "", ""
+    "stage", "exporter_send_failed", "__name__", ".*"
   )
 )
 ```
@@ -552,13 +586,13 @@ sum(rate(otelcol_exporter_sent_spans[5m]))
 
 Set up alerts to catch data loss early:
 
-**Critical Alert: High Data Loss**
+**Critical Alert: High Export Failure Rate**
 ```yaml
 groups:
 - name: opentelemetry_collector_data_loss
   interval: 60s
   rules:
-  - alert: CollectorHighDataLoss
+  - alert: CollectorHighExportFailureRate
     expr: |
       (
         sum(rate(otelcol_exporter_send_failed_spans[5m]))
@@ -569,8 +603,8 @@ groups:
     labels:
       severity: critical
     annotations:
-      summary: "Collector losing more than 1% of spans"
-      description: "{{ $value | humanize }}% of spans are being lost"
+      summary: "Collector export failures exceed 1% of accepted spans"
+      description: "{{ $value | humanize }}% export failure rate for spans"
 ```
 
 **Warning Alert: Queue Near Capacity**
@@ -676,11 +710,11 @@ rate(otelcol_exporter_send_failed_spans[1m])
 # Block traffic to backend temporarily
 kubectl scale deployment backend --replicas=0
 
-# Queue should absorb load without data loss
+# Queue should absorb load without enqueue failures
 # After 5 minutes:
 kubectl scale deployment backend --replicas=3
 
-# Queue should drain, no send_failed spikes
+# Queue should drain after the backend recovers
 ```
 
 ---
@@ -726,15 +760,9 @@ processors:
     send_batch_size: 16384
     send_batch_max_size: 32768
 
-  # Add retry to processors
-  retry:
-    enabled: true
-    initial_interval: 100ms
-    max_interval: 10s
-
 exporters:
   # Primary exporter with maximum resilience
-  otlphttp/primary:
+  otlp_http/primary:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -760,7 +788,7 @@ exporters:
     max_idle_conns: 100
     idle_conn_timeout: 90s
 
-  # Fallback to file when primary fails
+  # Secondary local file copy for later recovery or inspection
   file/backup:
     path: /var/log/otelcol/backup.jsonl
     rotation:
@@ -775,11 +803,17 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
       readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
         - periodic:
-            interval: 60000
+            interval: 60s
             exporter:
               otlp:
                 protocol: http/protobuf
@@ -790,8 +824,8 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, retry, batch]
-      exporters: [otlphttp/primary, file/backup]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/primary, file/backup]
 ```
 
 ---
@@ -807,7 +841,7 @@ service:
 
 ## Summary
 
-The `otelcol_exporter_send_failed_spans` metric is your primary signal for data loss in OpenTelemetry Collector. Common causes include:
+The `otelcol_exporter_send_failed_spans` metric is your primary signal for export failures that can lead to data loss in OpenTelemetry Collector. Common causes include:
 
 1. Backend unavailable or rate-limiting
 2. Queue overflow from insufficient capacity
@@ -819,7 +853,7 @@ Fix data loss by:
 - Increasing queue size with persistent storage
 - Improving retry configuration
 - Scaling Collector resources
-- Adding fallback exporters
+- Adding secondary exporters for recovery or inspection
 - Monitoring metrics and setting up alerts
 
 Any data loss above 0.1% deserves investigation. Production systems should maintain 99.99% export success rate.
