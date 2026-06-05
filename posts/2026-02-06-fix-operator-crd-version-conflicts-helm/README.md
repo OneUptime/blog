@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Operator, CRD, Helm
 
 Description: Resolve CRD version conflicts that occur after upgrading the OpenTelemetry Operator Helm chart to a newer version.
 
-Upgrading the OpenTelemetry Operator via Helm should be straightforward, but CRD (Custom Resource Definition) version conflicts can turn it into a headache. Helm does not upgrade CRDs by default, which means your Operator binary expects one CRD schema while the cluster has an older one. This post walks through the problem and the cleanest solutions.
+Upgrading the OpenTelemetry Operator via Helm should be straightforward, but CRD (Custom Resource Definition) version conflicts can turn it into a headache. Helm does not upgrade CRDs installed from a chart's special `crds/` directory by default, and current OpenTelemetry Operator charts install templated CRDs that must be owned by the Helm release. If those CRDs are still unmanaged or were installed separately, your Operator binary can expect one CRD schema while the cluster has an older one. This post walks through the problem and the cleanest solutions.
 
 ## The Problem
 
-Helm has a well-known limitation: it installs CRDs on the first `helm install` but does not update them on subsequent `helm upgrade` calls. This is by design to prevent accidental data loss, but it causes version skew.
+Helm has a well-known limitation for CRDs in a chart's `crds/` directory: it installs them on the first `helm install` but does not update them on subsequent `helm upgrade` calls. In the OpenTelemetry Operator chart, this especially matters when upgrading from older chart versions where CRDs were not managed as Helm templates, or when you set `crds.create=false` and manage CRDs separately.
 
 ```bash
 # After upgrading the Operator Helm chart, you might see:
@@ -23,7 +23,7 @@ kubectl logs -n opentelemetry-operator-system deployment/opentelemetry-operator-
 # "the server could not find the requested resource (post opentelemetrycollectors.opentelemetry.io)"
 ```
 
-This happens because the new Operator expects `v1beta1` CRDs but the cluster still has `v1alpha1`.
+This can happen because the new Operator expects the `OpenTelemetryCollector` CRD to serve `v1beta1`, but the cluster still has an older CRD that only serves `v1alpha1`.
 
 ## Step 1: Check Current CRD Versions
 
@@ -43,15 +43,42 @@ kubectl get crd opentelemetrycollectors.opentelemetry.io \
 
 ## Step 2: Manually Upgrade the CRDs
 
-The safest approach is to apply the CRDs from the new Helm chart version manually:
+The safest approach depends on how the CRDs are currently managed. For OpenTelemetry Operator chart upgrades from old CRDs that are not yet owned by Helm, first add the Helm ownership metadata documented by the chart:
 
 ```bash
-# Option 1: Apply CRDs from the chart's crds/ directory
-helm pull open-telemetry/opentelemetry-operator --untar
-kubectl apply -f opentelemetry-operator/crds/
+# Option 1: Let the OpenTelemetry Operator chart manage existing CRDs
+RELEASE_NAME=opentelemetry-operator
+RELEASE_NAMESPACE=opentelemetry-operator-system
 
-# Option 2: Apply CRDs directly from the GitHub release
-kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.95.0/opentelemetry-operator-crds.yaml
+kubectl annotate crds \
+  instrumentations.opentelemetry.io \
+  opentelemetrycollectors.opentelemetry.io \
+  opampbridges.opentelemetry.io \
+  meta.helm.sh/release-name=${RELEASE_NAME} \
+  meta.helm.sh/release-namespace=${RELEASE_NAMESPACE} \
+  --overwrite
+
+kubectl label crds \
+  instrumentations.opentelemetry.io \
+  opentelemetrycollectors.opentelemetry.io \
+  opampbridges.opentelemetry.io \
+  app.kubernetes.io/managed-by=Helm \
+  --overwrite
+```
+
+If you intentionally keep CRDs outside Helm by setting `crds.create=false`, render the target chart version and apply the templated CRD manifests before the Helm upgrade:
+
+```bash
+# Option 2: Apply CRDs from the rendered chart output
+CHART_VERSION="0.58.0"  # Match your target Helm chart version
+RELEASE_NAME=opentelemetry-operator
+RELEASE_NAMESPACE=opentelemetry-operator-system
+
+helm template "$RELEASE_NAME" open-telemetry/opentelemetry-operator \
+  --version "$CHART_VERSION" \
+  --namespace "$RELEASE_NAMESPACE" \
+  --show-only templates/admission-webhooks/operator-webhook.yaml \
+  | kubectl apply --server-side -f -
 ```
 
 Verify the CRDs are updated:
@@ -80,16 +107,21 @@ To avoid this problem in the future, add a pre-upgrade step to your CI/CD pipeli
 #!/bin/bash
 # pre-upgrade-crds.sh
 
-CHART_VERSION="0.95.0"  # Match your target Helm chart version
+CHART_VERSION="0.58.0"  # Match your target Helm chart version
+RELEASE_NAME=opentelemetry-operator
+RELEASE_NAMESPACE=opentelemetry-operator-system
 
-# Pull the chart to get the CRDs
+# Pull the chart to render the templated CRDs with the release namespace
 helm pull open-telemetry/opentelemetry-operator \
   --version "$CHART_VERSION" \
   --untar \
   --untardir /tmp/otel-operator
 
 # Apply CRDs before upgrading
-kubectl apply --server-side -f /tmp/otel-operator/opentelemetry-operator/crds/
+helm template "$RELEASE_NAME" /tmp/otel-operator/opentelemetry-operator \
+  --namespace "$RELEASE_NAMESPACE" \
+  --show-only templates/admission-webhooks/operator-webhook.yaml \
+  | kubectl apply --server-side -f -
 
 # Clean up
 rm -rf /tmp/otel-operator
@@ -97,7 +129,7 @@ rm -rf /tmp/otel-operator
 # Now upgrade the chart
 helm upgrade opentelemetry-operator open-telemetry/opentelemetry-operator \
   --version "$CHART_VERSION" \
-  --namespace opentelemetry-operator-system \
+  --namespace "$RELEASE_NAMESPACE" \
   --wait
 ```
 
@@ -105,7 +137,7 @@ The `--server-side` flag with `kubectl apply` handles CRD updates more gracefull
 
 ## Handling Stored Version Migration
 
-After upgrading CRDs, you might need to migrate existing custom resources from the old version to the new one. The Operator should handle this automatically via conversion webhooks, but you can verify:
+After upgrading CRDs, existing custom resources can remain stored at the old storage version until they are rewritten. Kubernetes uses conversion webhooks to serve them through the requested API version, but you can verify:
 
 ```bash
 # List existing OpenTelemetryCollector resources
@@ -119,18 +151,33 @@ kubectl logs -n opentelemetry-operator-system \
   deployment/opentelemetry-operator-controller-manager | grep -i "convert\|migration"
 ```
 
+To fully migrate storage to `v1beta1`, update and re-apply your `OpenTelemetryCollector` manifests with `apiVersion: opentelemetry.io/v1beta1`, then patch the CRD status after all objects have been rewritten:
+
+```bash
+kubectl patch customresourcedefinitions opentelemetrycollectors.opentelemetry.io \
+  --subresource='status' \
+  --type='merge' \
+  -p '{"status":{"storedVersions":["v1beta1"]}}'
+```
+
 ## Fixing Stuck CRDs
 
 Sometimes CRDs get stuck in a bad state. If `kubectl apply` fails on the CRD:
 
 ```bash
-# Check for conflicts
-kubectl diff -f opentelemetry-operator/crds/
+# Check for conflicts using the same rendered chart output
+helm template "$RELEASE_NAME" /tmp/otel-operator/opentelemetry-operator \
+  --namespace "$RELEASE_NAMESPACE" \
+  --show-only templates/admission-webhooks/operator-webhook.yaml \
+  | kubectl diff -f -
 
 # Force replace the CRD (caution: this can cause brief disruption)
-kubectl replace -f opentelemetry-operator/crds/
+helm template "$RELEASE_NAME" /tmp/otel-operator/opentelemetry-operator \
+  --namespace "$RELEASE_NAMESPACE" \
+  --show-only templates/admission-webhooks/operator-webhook.yaml \
+  | kubectl replace -f -
 
-# If the CRD has a finalizer preventing updates
+# If the CRD is stuck deleting after you have backed up and removed its custom resources
 kubectl patch crd opentelemetrycollectors.opentelemetry.io \
   --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
 ```
@@ -145,7 +192,10 @@ helm rollback opentelemetry-operator 1 -n opentelemetry-operator-system
 
 # Restore old CRDs from the previous chart version
 helm pull open-telemetry/opentelemetry-operator --version "PREVIOUS_VERSION" --untar
-kubectl apply --server-side -f opentelemetry-operator/crds/
+helm template opentelemetry-operator ./opentelemetry-operator \
+  --namespace opentelemetry-operator-system \
+  --show-only templates/admission-webhooks/operator-webhook.yaml \
+  | kubectl apply --server-side -f -
 ```
 
 ## Best Practices
