@@ -32,7 +32,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -45,7 +45,7 @@ const serviceVersion = process.env.SERVICE_VERSION || '0.0.0';
 const environment = process.env.DEPLOYMENT_ENV || 'development';
 const collectorEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: serviceName,
   [ATTR_SERVICE_VERSION]: serviceVersion,
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
@@ -59,19 +59,24 @@ const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
     url: collectorEndpoint,
   }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: collectorEndpoint,
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: collectorEndpoint,
+      }),
+      exportIntervalMillis: 30000, // Export metrics every 30 seconds
     }),
-    exportIntervalMillis: 30000, // Export metrics every 30 seconds
-  }),
+  ],
   instrumentations: [
     getNodeAutoInstrumentations({
       // Disable fs instrumentation - too noisy for most services
       '@opentelemetry/instrumentation-fs': { enabled: false },
       // Configure HTTP instrumentation
       '@opentelemetry/instrumentation-http': {
-        ignoreIncomingPaths: ['/health', '/ready', '/metrics'],
+        ignoreIncomingRequestHook: (request) => {
+          const path = request.url?.split('?')[0];
+          return ['/health', '/ready', '/metrics'].includes(path || '');
+        },
       },
     }),
   ],
@@ -117,23 +122,24 @@ def setup_telemetry(app=None):
     resource = Resource.create({
         "service.name": os.getenv("OTEL_SERVICE_NAME", "unknown-service"),
         "service.version": os.getenv("SERVICE_VERSION", "0.0.0"),
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
+        "deployment.environment.name": os.getenv("DEPLOYMENT_ENV", "development"),
         "service.namespace": os.getenv("SERVICE_NAMESPACE", "default"),
         "service.team": os.getenv("SERVICE_TEAM", "unknown"),
     })
 
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+    insecure = endpoint.startswith("http://")
 
     # Traces setup
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=insecure))
     )
     trace.set_tracer_provider(tracer_provider)
 
     # Metrics setup
     metric_reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(endpoint=endpoint),
+        OTLPMetricExporter(endpoint=endpoint, insecure=insecure),
         export_interval_millis=30000,
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
