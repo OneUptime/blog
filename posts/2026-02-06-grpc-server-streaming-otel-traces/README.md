@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, gRPC, Server Streaming, Stream Metrics
 
-Description: Trace gRPC server streaming RPCs with OpenTelemetry capturing stream duration, message counts, and per-message timing data.
+Description: Trace gRPC server streaming RPCs with OpenTelemetry capturing stream duration, message counts, and time-to-first-message timing data.
 
-Server streaming RPCs are common in gRPC. The client sends one request and the server responds with a stream of messages. Think of it like subscribing to a real-time feed: stock prices, log tails, or search results that arrive incrementally. Tracing these streams means capturing the full duration, the number of messages sent, and optionally timing individual messages.
+Server streaming RPCs are common in gRPC. The client sends one request and the server responds with a stream of messages. Think of it like subscribing to a real-time feed: stock prices, log tails, or search results that arrive incrementally. Tracing these streams means capturing the full duration, the number of messages sent, and optionally timing stream milestones like the first message.
 
 ## The Proto Definition
 
@@ -41,6 +41,7 @@ import (
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
     "go.opentelemetry.io/otel/trace"
+    "google.golang.org/grpc/status"
     pb "example.com/stocks/proto"
 )
 
@@ -51,9 +52,9 @@ var (
 
 // Metrics specific to streaming
 var (
-    streamDuration    metric.Float64Histogram
+    streamDuration     metric.Float64Histogram
     streamMessagesSent metric.Int64Counter
-    streamActive      metric.Int64UpDownCounter
+    streamActive       metric.Int64UpDownCounter
 )
 
 func init() {
@@ -96,9 +97,8 @@ func (s *stockServer) WatchPrices(req *pb.WatchRequest, stream pb.StockService_W
     ctx, span := tracer.Start(ctx, "StockService.WatchPrices",
         trace.WithSpanKind(trace.SpanKindServer),
         trace.WithAttributes(
-            attribute.String("rpc.system", "grpc"),
-            attribute.String("rpc.service", "StockService"),
-            attribute.String("rpc.method", "WatchPrices"),
+            attribute.String("rpc.system.name", "grpc"),
+            attribute.String("rpc.method", "StockService/WatchPrices"),
             attribute.StringSlice("stock.symbols", req.Symbols),
             attribute.Int("stock.symbol_count", len(req.Symbols)),
         ),
@@ -107,10 +107,10 @@ func (s *stockServer) WatchPrices(req *pb.WatchRequest, stream pb.StockService_W
 
     // Track active streams
     streamActive.Add(ctx, 1, metric.WithAttributes(
-        attribute.String("rpc.method", "WatchPrices"),
+        attribute.String("rpc.method", "StockService/WatchPrices"),
     ))
     defer streamActive.Add(ctx, -1, metric.WithAttributes(
-        attribute.String("rpc.method", "WatchPrices"),
+        attribute.String("rpc.method", "StockService/WatchPrices"),
     ))
 
     streamStart := time.Now()
@@ -124,17 +124,20 @@ func (s *stockServer) WatchPrices(req *pb.WatchRequest, stream pb.StockService_W
         select {
         case <-ctx.Done():
             // Client disconnected or deadline exceeded
+            durationMs := float64(time.Since(streamStart).Milliseconds())
+            statusCode := status.FromContextError(ctx.Err()).Code().String()
             span.SetAttributes(
                 attribute.Int("rpc.grpc.messages_sent", messageCount),
-                attribute.Float64("stream.duration_ms",
-                    float64(time.Since(streamStart).Milliseconds())),
+                attribute.Float64("stream.duration_ms", durationMs),
                 attribute.String("stream.close_reason", "client_disconnect"),
+                attribute.String("rpc.response.status_code", statusCode),
+                attribute.String("error.type", statusCode),
             )
 
             streamDuration.Record(ctx,
-                float64(time.Since(streamStart).Milliseconds()),
+                durationMs,
                 metric.WithAttributes(
-                    attribute.String("rpc.method", "WatchPrices"),
+                    attribute.String("rpc.method", "StockService/WatchPrices"),
                     attribute.String("stream.close_reason", "client_disconnect"),
                 ),
             )
@@ -143,14 +146,17 @@ func (s *stockServer) WatchPrices(req *pb.WatchRequest, stream pb.StockService_W
         case update, ok := <-priceChan:
             if !ok {
                 // Channel closed, stream complete
+                durationMs := float64(time.Since(streamStart).Milliseconds())
                 span.SetAttributes(
                     attribute.Int("rpc.grpc.messages_sent", messageCount),
+                    attribute.Float64("stream.duration_ms", durationMs),
                     attribute.String("stream.close_reason", "source_closed"),
+                    attribute.String("rpc.response.status_code", "OK"),
                 )
                 streamDuration.Record(ctx,
-                    float64(time.Since(streamStart).Milliseconds()),
+                    durationMs,
                     metric.WithAttributes(
-                        attribute.String("rpc.method", "WatchPrices"),
+                        attribute.String("rpc.method", "StockService/WatchPrices"),
                         attribute.String("stream.close_reason", "source_closed"),
                     ),
                 )
@@ -164,13 +170,29 @@ func (s *stockServer) WatchPrices(req *pb.WatchRequest, stream pb.StockService_W
                 Timestamp: update.Timestamp,
             })
             if err != nil {
+                durationMs := float64(time.Since(streamStart).Milliseconds())
+                statusCode := status.Code(err).String()
                 span.RecordError(err)
+                span.SetAttributes(
+                    attribute.Int("rpc.grpc.messages_sent", messageCount),
+                    attribute.Float64("stream.duration_ms", durationMs),
+                    attribute.String("stream.close_reason", "send_error"),
+                    attribute.String("rpc.response.status_code", statusCode),
+                    attribute.String("error.type", statusCode),
+                )
+                streamDuration.Record(ctx,
+                    durationMs,
+                    metric.WithAttributes(
+                        attribute.String("rpc.method", "StockService/WatchPrices"),
+                        attribute.String("stream.close_reason", "send_error"),
+                    ),
+                )
                 return err
             }
 
             messageCount++
             streamMessagesSent.Add(ctx, 1, metric.WithAttributes(
-                attribute.String("rpc.method", "WatchPrices"),
+                attribute.String("rpc.method", "StockService/WatchPrices"),
                 attribute.String("stock.symbol", update.Symbol),
             ))
 
@@ -194,6 +216,8 @@ func watchPrices(client pb.StockServiceClient, symbols []string) error {
     ctx, span := tracer.Start(context.Background(), "WatchPrices.Client",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
+            attribute.String("rpc.system.name", "grpc"),
+            attribute.String("rpc.method", "StockService/WatchPrices"),
             attribute.StringSlice("stock.symbols", symbols),
         ),
     )
@@ -203,7 +227,12 @@ func watchPrices(client pb.StockServiceClient, symbols []string) error {
         Symbols: symbols,
     })
     if err != nil {
+        statusCode := status.Code(err).String()
         span.RecordError(err)
+        span.SetAttributes(
+            attribute.String("rpc.response.status_code", statusCode),
+            attribute.String("error.type", statusCode),
+        )
         return err
     }
 
@@ -214,15 +243,21 @@ func watchPrices(client pb.StockServiceClient, symbols []string) error {
     for {
         update, err := stream.Recv()
         if err != nil {
+            durationMs := float64(time.Since(streamStart).Milliseconds())
             span.SetAttributes(
                 attribute.Int("rpc.grpc.messages_received", messageCount),
-                attribute.Float64("stream.duration_ms",
-                    float64(time.Since(streamStart).Milliseconds())),
+                attribute.Float64("stream.duration_ms", durationMs),
             )
             if err == io.EOF {
+                span.SetAttributes(attribute.String("rpc.response.status_code", "OK"))
                 return nil
             }
+            statusCode := status.Code(err).String()
             span.RecordError(err)
+            span.SetAttributes(
+                attribute.String("rpc.response.status_code", statusCode),
+                attribute.String("error.type", statusCode),
+            )
             return err
         }
 
@@ -247,7 +282,9 @@ func watchPrices(client pb.StockServiceClient, symbols []string) error {
 ```promql
 # Average stream duration by method
 
-histogram_avg(grpc_server_stream_duration[5m])
+sum(rate(grpc_server_stream_duration_milliseconds_sum[5m])) by (rpc_method)
+/
+sum(rate(grpc_server_stream_duration_milliseconds_count[5m])) by (rpc_method)
 
 # Active streams right now
 grpc_server_stream_active
@@ -258,7 +295,7 @@ sum(rate(grpc_server_stream_messages_sent_total[1m])) by (rpc_method)
 # Messages per stream (are streams too chatty or too quiet?)
 sum(rate(grpc_server_stream_messages_sent_total[5m])) by (rpc_method)
 /
-sum(rate(grpc_server_stream_duration_count[5m])) by (rpc_method)
+sum(rate(grpc_server_stream_duration_milliseconds_count[5m])) by (rpc_method)
 ```
 
 Tracking stream duration and message counts tells you how your streaming RPCs behave over time. You can detect streams that run too long, identify symbols that generate excessive updates, and monitor how many concurrent streams your server is handling. This is the kind of visibility that prevents streaming-related resource exhaustion before it happens.
