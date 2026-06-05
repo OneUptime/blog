@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Fastify, Node.js, Auto-Instrumentation
 
-Description: Debug and fix Fastify instrumentation issues when getNodeAutoInstrumentations does not automatically instrument your Fastify app.
+Description: Debug and fix Fastify instrumentation issues when OpenTelemetry does not automatically instrument your Fastify app.
 
-Fastify is a popular alternative to Express for building Node.js APIs. While `getNodeAutoInstrumentations()` includes Fastify instrumentation, there are several reasons it may silently fail. This post walks through the common causes and their fixes.
+Fastify is a popular alternative to Express for building Node.js APIs. Older versions of `getNodeAutoInstrumentations()` included Fastify instrumentation, but current versions of `@opentelemetry/auto-instrumentations-node` removed it after deprecating it in favor of the official `@fastify/otel` package. If you still use `@opentelemetry/instrumentation-fastify`, there are several reasons it may silently fail. This post walks through the common causes and their fixes.
 
 ## Confirming the Problem
 
@@ -28,11 +28,11 @@ Look for these messages:
 @opentelemetry/instrumentation-fastify Module fastify has been loaded before instrumentation
 ```
 
-If you see neither message, the Fastify instrumentation package is not installed.
+If you see neither message, the Fastify instrumentation package may not be installed, registered, or enabled.
 
-## Cause 1: Missing the Fastify Instrumentation Package
+## Cause 1: Missing or Removed Fastify Instrumentation
 
-`getNodeAutoInstrumentations()` includes Fastify, but only if the package is installed:
+Current versions of `@opentelemetry/auto-instrumentations-node` no longer include Fastify instrumentation. Check whether you have the Fastify instrumentation package installed:
 
 ```bash
 npm ls @opentelemetry/instrumentation-fastify
@@ -44,7 +44,7 @@ If it is not listed, install it:
 npm install @opentelemetry/instrumentation-fastify
 ```
 
-The `@opentelemetry/auto-instrumentations-node` package lists Fastify instrumentation as an optional peer dependency. If installation skips optional dependencies, you need to install it explicitly.
+If it is missing, install it explicitly and register it yourself, or migrate to the official `@fastify/otel` package maintained by the Fastify authors.
 
 ## Cause 2: Fastify Version Mismatch
 
@@ -54,11 +54,11 @@ The Fastify instrumentation supports specific Fastify versions. Check compatibil
 # Check your Fastify version
 npm ls fastify
 
-# Check the supported range in the instrumentation package
-npm info @opentelemetry/instrumentation-fastify peerDependencies
+# Check the supported range in the instrumentation package README
+npm info @opentelemetry/instrumentation-fastify readme
 ```
 
-If your Fastify version is outside the supported range, the instrumentation quietly skips patching.
+At the time of writing, `@opentelemetry/instrumentation-fastify` supports Fastify versions `>=3.0.0 <6`. If your Fastify version is outside the supported range, the instrumentation quietly skips patching.
 
 ## Cause 3: Fastify Loaded Before SDK Initialization
 
@@ -78,9 +78,13 @@ const app = fastify();
 // tracing.js - loaded first via --require
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify');
 
 const sdk = new NodeSDK({
-  instrumentations: [getNodeAutoInstrumentations()],
+  instrumentations: [
+    getNodeAutoInstrumentations(),
+    new FastifyInstrumentation(),
+  ],
 });
 sdk.start();
 ```
@@ -91,7 +95,7 @@ node --require ./tracing.js app.js
 
 ## Cause 4: Disabled in Auto-Instrumentation Config
 
-`getNodeAutoInstrumentations` accepts a configuration object where specific instrumentations can be disabled:
+In versions of `@opentelemetry/auto-instrumentations-node` that still include Fastify, `getNodeAutoInstrumentations` accepts a configuration object where specific instrumentations can be disabled:
 
 ```javascript
 const instrumentations = getNodeAutoInstrumentations({
@@ -115,7 +119,7 @@ import Fastify from 'fastify';
 You need the ESM loader hook. See the ESM-specific fix:
 
 ```bash
-node --import ./tracing.mjs --import ./register.mjs app.mjs
+node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./tracing.mjs app.mjs
 ```
 
 ## Manual Fastify Instrumentation
@@ -132,7 +136,7 @@ const sdk = new NodeSDK({
     new HttpInstrumentation(),
     new FastifyInstrumentation({
       requestHook: (span, info) => {
-        span.setAttribute('fastify.route', info.request.routerPath);
+        span.setAttribute('fastify.route', info.request.routeOptions?.url || info.request.routerPath);
       },
     }),
   ],
@@ -140,7 +144,7 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-Note that `FastifyInstrumentation` depends on `HttpInstrumentation`. If HTTP instrumentation is not active, Fastify instrumentation produces no spans because the parent HTTP span is missing.
+Note that `FastifyInstrumentation` expects `HttpInstrumentation` to be active. If HTTP instrumentation is not active, Fastify spans may be disconnected from the inbound HTTP request span.
 
 ## Expected Spans from Fastify Instrumentation
 
@@ -169,12 +173,16 @@ Create a minimal test to verify spans are generated:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { InMemorySpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify');
 
 const exporter = new InMemorySpanExporter();
 
 const sdk = new NodeSDK({
-  spanProcessor: new SimpleSpanProcessor(exporter),
-  instrumentations: [getNodeAutoInstrumentations()],
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+  instrumentations: [
+    getNodeAutoInstrumentations(),
+    new FastifyInstrumentation(),
+  ],
 });
 sdk.start();
 
