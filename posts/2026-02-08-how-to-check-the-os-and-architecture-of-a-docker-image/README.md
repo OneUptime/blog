@@ -41,7 +41,7 @@ You can also extract more detailed platform information including the variant fi
 docker inspect --format 'OS: {{.Os}}, Arch: {{.Architecture}}, Variant: {{.Variant}}' nginx:latest
 ```
 
-For ARM images, the variant distinguishes between v6, v7, and v8 (which is arm64).
+For ARM images, the variant distinguishes between CPU variants such as v6, v7, and v8. The architecture field still tells you whether the image is `arm` or `arm64`.
 
 ## Method 2: docker image inspect with JSON
 
@@ -67,7 +67,8 @@ This returns clean JSON:
 This is the most powerful method because it works with remote images without downloading them. It also reveals all available platforms for multi-architecture images.
 
 ```bash
-# Enable experimental CLI features (needed for manifest inspect)
+# docker manifest inspect is still marked experimental in Docker's CLI reference.
+# Older Docker CLI versions may require enabling experimental CLI features.
 export DOCKER_CLI_EXPERIMENTAL=enabled
 
 # Inspect the manifest of a remote image
@@ -145,7 +146,7 @@ TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=r
 # Fetch the manifest list (fat manifest) which contains platform info
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json" \
   "https://registry-1.docker.io/v2/library/nginx/manifests/latest" | jq '.manifests[] | .platform'
 ```
 
