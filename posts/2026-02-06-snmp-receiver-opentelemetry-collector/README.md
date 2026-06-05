@@ -81,34 +81,49 @@ receivers:
     # Devices to monitor
     endpoint: udp://192.168.1.1:161
 
-    # SNMP version (1, 2c, or 3)
-    version: 2c
+    # SNMP version (v1, v2c, or v3)
+    version: v2c
 
     # Community string for v1/v2c
     community: public
 
+    attributes:
+      interface:
+        indexed_value_prefix: interface
+
     # Metrics to collect using OIDs
     metrics:
       # Interface traffic - incoming bytes
-      - oid: 1.3.6.1.2.1.2.2.1.10
-        name: if.in.octets
-        unit: bytes
-        gauge:
+      if.in.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.10
+            attributes:
+              - name: interface
 
       # Interface traffic - outgoing bytes
-      - oid: 1.3.6.1.2.1.2.2.1.16
-        name: if.out.octets
-        unit: bytes
-        gauge:
+      if.out.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.16
+            attributes:
+              - name: interface
 
       # System uptime
-      - oid: 1.3.6.1.2.1.1.3.0
-        name: system.uptime
-        unit: seconds
+      system.uptime:
+        unit: 10ms
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.2.1.1.3.0
 
 # exporters: Define where telemetry is sent
 exporters:
@@ -116,7 +131,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # service: Wire receivers and exporters into pipelines
 service:
@@ -147,91 +162,119 @@ receivers:
     endpoint: udp://core-switch-01.example.com:161
 
     # SNMP version 3 with security
-    version: 3
+    version: v3
 
     # SNMP v3 security configuration
-    security_level: authPriv  # Options: noAuthNoPriv, authNoPriv, authPriv
+    security_level: auth_priv  # Options: no_auth_no_priv, auth_no_priv, auth_priv
 
     # Authentication username
     user: monitoring
 
     # Authentication protocol and passphrase
     auth_type: SHA  # Options: MD5, SHA, SHA224, SHA256, SHA384, SHA512
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
 
     # Privacy (encryption) protocol and passphrase
-    privacy_type: AES  # Options: DES, AES, AES192, AES256, AES192C, AES256C
-    privacy_password: ${SNMP_PRIVACY_PASSWORD}
+    privacy_type: AES  # Options: DES, AES, AES192, AES256, AES192c, AES256c
+    privacy_password: ${env:SNMP_PRIVACY_PASSWORD}
 
     # Timeout for SNMP requests
     timeout: 10s
 
-    # Number of retries on timeout
-    retries: 3
-
     # Metrics to collect
+    resource_attributes:
+      # System description is a string, so collect it as a resource attribute
+      system.description:
+        scalar_oid: 1.3.6.1.2.1.1.1.0
+
+    attributes:
+      interface:
+        indexed_value_prefix: interface
+
     metrics:
       # System information
-      - oid: 1.3.6.1.2.1.1.1.0
-        name: system.description
-        unit: none
-        gauge:
-          value_type: string
-
-      - oid: 1.3.6.1.2.1.1.3.0
-        name: system.uptime
-        unit: hundredths_of_seconds
+      system.uptime:
+        unit: 10ms
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.2.1.1.3.0
+            resource_attributes:
+              - system.description
 
       # CPU utilization
-      - oid: 1.3.6.1.4.1.9.9.109.1.1.1.1.7.1
-        name: device.cpu.utilization
-        unit: percent
+      device.cpu.utilization:
+        unit: "%"
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.4.1.9.9.109.1.1.1.1.7.1
+            resource_attributes:
+              - system.description
 
       # Memory utilization
-      - oid: 1.3.6.1.4.1.9.9.48.1.1.1.5.1
-        name: device.memory.used
-        unit: bytes
+      device.memory.used:
+        unit: By
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.4.1.9.9.48.1.1.1.5.1
+            resource_attributes:
+              - system.description
 
-      - oid: 1.3.6.1.4.1.9.9.48.1.1.1.6.1
-        name: device.memory.free
-        unit: bytes
+      device.memory.free:
+        unit: By
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.4.1.9.9.48.1.1.1.6.1
+            resource_attributes:
+              - system.description
 
       # Interface metrics (table walk)
-      - oid: 1.3.6.1.2.1.2.2.1.10
-        name: if.in.octets
-        unit: bytes
-        gauge:
+      if.in.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-        indexed_value_prefix: interface
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.10
+            attributes:
+              - name: interface
 
-      - oid: 1.3.6.1.2.1.2.2.1.16
-        name: if.out.octets
-        unit: bytes
-        gauge:
+      if.out.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-        indexed_value_prefix: interface
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.16
+            attributes:
+              - name: interface
 
-      - oid: 1.3.6.1.2.1.2.2.1.14
-        name: if.in.errors
-        unit: errors
-        gauge:
+      if.in.errors:
+        unit: "{errors}"
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-        indexed_value_prefix: interface
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.14
+            attributes:
+              - name: interface
 
-      - oid: 1.3.6.1.2.1.2.2.1.20
-        name: if.out.errors
-        unit: errors
-        gauge:
+      if.out.errors:
+        unit: "{errors}"
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-        indexed_value_prefix: interface
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.20
+            attributes:
+              - name: interface
 
 # processors: Transform and enrich metrics
 processors:
@@ -269,7 +312,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     timeout: 30s
 
     # Retry configuration for reliability
@@ -305,84 +348,125 @@ receivers:
   snmp/core-switch:
     endpoint: udp://192.168.1.1:161
     collection_interval: 60s
-    version: 3
-    security_level: authPriv
+    version: v3
+    security_level: auth_priv
     user: monitoring
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIVACY_PASSWORD}
+    privacy_password: ${env:SNMP_PRIVACY_PASSWORD}
+    attributes:
+      interface:
+        indexed_value_prefix: interface
     metrics:
-      - oid: 1.3.6.1.2.1.2.2.1.10
-        name: if.in.octets
-        gauge:
+      if.in.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-      - oid: 1.3.6.1.2.1.2.2.1.16
-        name: if.out.octets
-        gauge:
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.10
+            attributes:
+              - name: interface
+      if.out.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.16
+            attributes:
+              - name: interface
 
   # Edge router
   snmp/edge-router:
     endpoint: udp://192.168.1.254:161
     collection_interval: 60s
-    version: 3
-    security_level: authPriv
+    version: v3
+    security_level: auth_priv
     user: monitoring
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIVACY_PASSWORD}
+    privacy_password: ${env:SNMP_PRIVACY_PASSWORD}
+    attributes:
+      interface:
+        indexed_value_prefix: interface
     metrics:
-      - oid: 1.3.6.1.2.1.2.2.1.10
-        name: if.in.octets
-        gauge:
+      if.in.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-      - oid: 1.3.6.1.2.1.2.2.1.16
-        name: if.out.octets
-        gauge:
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.10
+            attributes:
+              - name: interface
+      if.out.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.16
+            attributes:
+              - name: interface
 
   # Storage array
   snmp/storage:
     endpoint: udp://storage.example.com:161
     collection_interval: 120s
-    version: 3
-    security_level: authPriv
+    version: v3
+    security_level: auth_priv
     user: monitoring
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIVACY_PASSWORD}
+    privacy_password: ${env:SNMP_PRIVACY_PASSWORD}
+    attributes:
+      volume:
+        indexed_value_prefix: volume
     metrics:
-      - oid: 1.3.6.1.4.1.789.1.5.4.1.14
-        name: storage.volume.used
-        unit: bytes
+      storage.volume.used:
+        unit: By
         gauge:
           value_type: int
-      - oid: 1.3.6.1.4.1.789.1.5.4.1.15
-        name: storage.volume.available
-        unit: bytes
+        column_oids:
+          - oid: 1.3.6.1.4.1.789.1.5.4.1.14
+            attributes:
+              - name: volume
+      storage.volume.available:
+        unit: By
         gauge:
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.4.1.789.1.5.4.1.15
+            attributes:
+              - name: volume
 
   # UPS system
   snmp/ups:
     endpoint: udp://ups.example.com:161
     collection_interval: 30s
-    version: 2c
+    version: v2c
     community: public
     metrics:
-      - oid: 1.3.6.1.2.1.33.1.2.4.0
-        name: ups.battery.charge
-        unit: percent
+      ups.battery.charge:
+        unit: "%"
         gauge:
           value_type: int
-      - oid: 1.3.6.1.2.1.33.1.4.1.0
-        name: ups.output.voltage
-        unit: volts
+        scalar_oids:
+          - oid: 1.3.6.1.2.1.33.1.2.4.0
+      ups.output.voltage:
+        unit: V
         gauge:
           value_type: int
+        scalar_oids:
+          - oid: 1.3.6.1.2.1.33.1.4.1.0
 
 processors:
   # Tag core switch
@@ -390,32 +474,40 @@ processors:
     attributes:
       - key: device.name
         value: core-switch-01
+        action: upsert
       - key: device.type
         value: switch
+        action: upsert
 
   # Tag edge router
   resource/edge-router:
     attributes:
       - key: device.name
         value: edge-router-01
+        action: upsert
       - key: device.type
         value: router
+        action: upsert
 
   # Tag storage
   resource/storage:
     attributes:
       - key: device.name
         value: storage-array-01
+        action: upsert
       - key: device.type
         value: storage
+        action: upsert
 
   # Tag UPS
   resource/ups:
     attributes:
       - key: device.name
         value: ups-01
+        action: upsert
       - key: device.type
         value: ups
+        action: upsert
 
   batch:
     timeout: 10s
@@ -424,7 +516,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -496,34 +588,45 @@ For devices with multiple interfaces or components, use table walks:
 receivers:
   snmp:
     endpoint: udp://switch.example.com:161
-    version: 2c
+    version: v2c
     community: public
     collection_interval: 60s
+
+    attributes:
+      interface:
+        indexed_value_prefix: interface
+      interface.name:
+        oid: 1.3.6.1.2.1.2.2.1.2
 
     # Walk interface table
     metrics:
       # All interface metrics use table indexing
-      - oid: 1.3.6.1.2.1.2.2.1.10
-        name: if.in.octets
-        indexed_value_prefix: interface
-        gauge:
+      if.in.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.10
+            attributes:
+              - name: interface
+              - name: interface.name
 
-      - oid: 1.3.6.1.2.1.2.2.1.16
-        name: if.out.octets
-        indexed_value_prefix: interface
-        gauge:
+      if.out.octets:
+        unit: By
+        sum:
+          aggregation: cumulative
+          monotonic: true
           value_type: int
-
-      # Get interface names for labeling
-      - oid: 1.3.6.1.2.1.2.2.1.2
-        name: if.name
-        indexed_value_prefix: interface
-        gauge:
-          value_type: string
+        column_oids:
+          - oid: 1.3.6.1.2.1.2.2.1.16
+            attributes:
+              - name: interface
+              - name: interface.name
 ```
 
-The `indexed_value_prefix` parameter creates separate metrics for each table row (e.g., interface.1, interface.2).
+The `indexed_value_prefix` parameter creates attribute values for table rows (e.g., interface.1, interface.2), and column OIDs attach those attributes to each metric datapoint.
 
 ## Deployment Patterns
 
@@ -622,13 +725,12 @@ spec:
 
 **Timeout Errors**
 
-Increase timeout and retries:
+Increase the SNMP request timeout:
 
 ```yaml
 receivers:
   snmp:
     timeout: 30s
-    retries: 5
 ```
 
 Verify network connectivity:
@@ -687,7 +789,7 @@ cat /etc/snmp/snmpd.conf
 
 **High Cardinality**
 
-Limit interface monitoring to active interfaces:
+Avoid collecting high-cardinality metric families you do not need:
 
 ```yaml
 processors:
@@ -696,7 +798,7 @@ processors:
       exclude:
         match_type: regexp
         metric_names:
-          - "if\\..*\\.interface\\.0"  # Exclude null interface
+          - "if\\.(in|out)\\.errors"  # Drop interface error metrics if you only need traffic
 ```
 
 ## Vendor-Specific Considerations
@@ -752,8 +854,8 @@ OpenTelemetry integrates network infrastructure metrics with application traces 
 
 **Use SNMP v3** in production:
 ```yaml
-version: 3
-security_level: authPriv
+version: v3
+security_level: auth_priv
 ```
 
 **Choose appropriate collection intervals**:
@@ -763,10 +865,28 @@ security_level: authPriv
 
 **Limit OID collection** to relevant metrics:
 ```yaml
+attributes:
+  interface:
+    indexed_value_prefix: interface
+
 metrics:
   # Only collect metrics you'll actually use
-  - oid: 1.3.6.1.2.1.2.2.1.10  # Interface traffic
-  - oid: 1.3.6.1.2.1.1.3.0     # Uptime
+  if.in.octets:
+    unit: By
+    sum:
+      aggregation: cumulative
+      monotonic: true
+      value_type: int
+    column_oids:
+      - oid: 1.3.6.1.2.1.2.2.1.10  # Interface traffic
+        attributes:
+          - name: interface
+  system.uptime:
+    unit: 10ms
+    gauge:
+      value_type: int
+    scalar_oids:
+      - oid: 1.3.6.1.2.1.1.3.0     # Uptime
 ```
 
 **Use resource attributes** for device context:
@@ -776,10 +896,13 @@ processors:
     attributes:
       - key: device.name
         value: core-switch-01
+        action: upsert
       - key: device.type
         value: switch
+        action: upsert
       - key: device.vendor
         value: cisco
+        action: upsert
 ```
 
 **Protect credentials**:
@@ -807,8 +930,12 @@ service:
 metrics:
   # Cisco CPU utilization (5-minute average)
   # OID from CISCO-PROCESS-MIB
-  - oid: 1.3.6.1.4.1.9.9.109.1.1.1.1.7.1
-    name: device.cpu.utilization
+  device.cpu.utilization:
+    unit: "%"
+    gauge:
+      value_type: int
+    scalar_oids:
+      - oid: 1.3.6.1.4.1.9.9.109.1.1.1.1.7.1
 ```
 
 ## Related Resources
