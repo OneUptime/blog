@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Podman, Collector, Container
 
 Description: Run the OpenTelemetry Collector as a rootless Podman container with configuration file mounts and Podman API socket access for container monitoring.
 
-Podman is a daemonless container engine that runs containers without a central daemon process. Unlike Docker, Podman runs containers in rootless mode by default, which changes how you mount configuration files and access the container API socket. This post covers how to run the OpenTelemetry Collector in Podman with the right volume mounts and socket access.
+Podman is a daemonless container engine that runs containers without a central daemon process. Unlike Docker, Podman can run containers in rootless mode without a daemon, which changes how you mount configuration files and access the container API socket. This post covers how to run the OpenTelemetry Collector in Podman with the right volume mounts and socket access.
 
 ## Enabling the Podman API Socket
 
@@ -61,8 +61,8 @@ exporters:
     tls:
       insecure: false
 
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 extensions:
   health_check:
@@ -93,8 +93,10 @@ RUNTIME_DIR=$(echo $XDG_RUNTIME_DIR)
 
 podman run -d \
   --name otel-collector \
+  --user 0 \
+  --security-opt label=disable \
   -v ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:Z \
-  -v ${RUNTIME_DIR}/podman/podman.sock:/run/podman/podman.sock:Z \
+  -v ${RUNTIME_DIR}/podman/podman.sock:/run/podman/podman.sock \
   -p 4317:4317 \
   -p 4318:4318 \
   -p 13133:13133 \
@@ -102,7 +104,7 @@ podman run -d \
   --config /etc/otelcol-contrib/config.yaml
 ```
 
-Notice the `:Z` suffix on the volume mounts. This tells Podman to relabel the file for SELinux access. Without it, the Collector process inside the container cannot read the mounted files on SELinux-enforcing systems like Fedora or RHEL.
+Notice the `:Z` suffix on the config file mount. This tells Podman to relabel the file for SELinux access. The Podman API socket is different: Podman recommends `--security-opt label=disable` when accessing the socket from inside a container. The `--user 0` flag also matters for rootless Podman because the official Collector image runs as a non-root user, while the Podman socket is protected by Unix file permissions.
 
 ## Running the Collector in Rootful Mode
 
@@ -111,10 +113,12 @@ For rootful Podman (running as root), use the system socket:
 ```bash
 sudo podman run -d \
   --name otel-collector \
+  --security-opt label=disable \
   -v ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:Z \
-  -v /run/podman/podman.sock:/run/podman/podman.sock:Z \
+  -v /run/podman/podman.sock:/run/podman/podman.sock \
   -p 4317:4317 \
   -p 4318:4318 \
+  -p 13133:13133 \
   docker.io/otel/opentelemetry-collector-contrib:latest \
   --config /etc/otelcol-contrib/config.yaml
 ```
@@ -135,7 +139,10 @@ podman pod create \
 podman run -d \
   --pod observability-pod \
   --name otel-collector \
+  --user 0 \
+  --security-opt label=disable \
   -v ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:Z \
+  -v ${XDG_RUNTIME_DIR}/podman/podman.sock:/run/podman/podman.sock \
   docker.io/otel/opentelemetry-collector-contrib:latest \
   --config /etc/otelcol-contrib/config.yaml
 
@@ -165,7 +172,7 @@ systemctl --user enable --now otel-collector.service
 systemctl --user status otel-collector.service
 ```
 
-The `--new` flag creates a service that recreates the container on each start instead of just restarting the existing one. This ensures the container always starts with the latest image.
+The `--new` flag creates a service that recreates the container on each start instead of just restarting the existing one. Review the generated unit before using it in production. Podman now recommends Quadlet for new systemd-managed containers, and `podman run` only pulls the image if it is missing unless you configure a different pull policy.
 
 ## Verifying the Setup
 
@@ -196,8 +203,8 @@ ls -lZ otel-collector-config.yaml
 chcon -t container_file_t otel-collector-config.yaml
 ```
 
-The `:Z` volume mount flag should handle this automatically, but manual relabeling may be needed in some edge cases.
+The `:Z` volume mount flag should handle this automatically for the config file, but manual relabeling may be needed in some edge cases. For the Podman API socket, keep `--security-opt label=disable` on the Collector container instead of relabeling the socket.
 
 ## Summary
 
-Running the OpenTelemetry Collector in Podman requires a few adjustments compared to Docker. Use the Podman API socket instead of the Docker socket, add the `:Z` flag for SELinux volume mounts, and consider using Podman pods for co-located containers. The Docker-compatible API means most Collector receivers and configurations work without modification.
+Running the OpenTelemetry Collector in Podman requires a few adjustments compared to Docker. Use the Podman API socket instead of the Docker socket, add the `:Z` flag for regular SELinux volume mounts, disable SELinux separation for the Podman socket mount, and consider using Podman pods for co-located containers. The Docker-compatible API means Docker API based Collector receivers such as `docker_stats` can work with Podman when they can access the socket.
