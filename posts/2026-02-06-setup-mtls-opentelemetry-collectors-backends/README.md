@@ -117,6 +117,8 @@ exporters:
       # Ensure the server hostname matches the certificate SAN
       insecure: false
       insecure_skip_verify: false
+      # Reload certificate files periodically without restarting the collector
+      reload_interval: 1h
 
 processors:
   batch:
@@ -154,10 +156,16 @@ receivers:
           key_file: /etc/otel/certs/server.key
           # CA certificate used to verify client certificates
           client_ca_file: /etc/otel/certs/ca.crt
+          # Reload server certificates and the client CA without a restart
+          client_ca_file_reload: true
+          reload_interval: 1h
 
 exporters:
   otlp/downstream:
     endpoint: final-backend:4317
+
+processors:
+  batch:
 
 service:
   pipelines:
@@ -171,21 +179,22 @@ The key setting here is `client_ca_file`. When this is specified, the receiver w
 
 ### Jaeger Backend
 
-For Jaeger, configure mTLS on the OTLP receiver.
+For Jaeger v2, configure mTLS on the OTLP receiver using the same Collector-style YAML format.
 
 ```yaml
 # Jaeger collector configuration with mTLS
 # Place this in your Jaeger configuration file
-collector:
+receivers:
   otlp:
-    enabled: true
-    grpc:
-      host-port: ":4317"
-      tls:
-        enabled: true
-        cert: /etc/jaeger/certs/server.crt
-        key: /etc/jaeger/certs/server.key
-        client-ca: /etc/jaeger/certs/ca.crt
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /etc/jaeger/certs/server.crt
+          key_file: /etc/jaeger/certs/server.key
+          client_ca_file: /etc/jaeger/certs/ca.crt
+          client_ca_file_reload: true
+          reload_interval: 1h
 ```
 
 ### Grafana Tempo
@@ -204,15 +213,17 @@ distributor:
             cert_file: /etc/tempo/certs/server.crt
             key_file: /etc/tempo/certs/server.key
             client_ca_file: /etc/tempo/certs/ca.crt
+            client_ca_file_reload: true
+            reload_interval: 1h
 ```
 
 ## Step 4: Deploy Certificates in Kubernetes
 
-In Kubernetes, store your certificates as Secrets and mount them into the collector and backend pods.
+In Kubernetes, store your certificates as Secrets and mount the relevant Secret into each collector or backend pod.
 
 ```yaml
-# Kubernetes Secret containing the mTLS certificates
-# Create this secret before deploying the collector or backend
+# Kubernetes Secret containing the collector's mTLS client certificate
+# Create this secret before deploying the collector
 apiVersion: v1
 kind: Secret
 metadata:
@@ -264,7 +275,7 @@ spec:
 
 ## Step 5: Certificate Rotation
 
-Certificates expire. You need a rotation strategy that does not cause downtime. The OpenTelemetry Collector supports automatic certificate reloading since version 0.88.0. When the certificate files on disk change, the collector picks up the new ones without a restart.
+Certificates expire. You need a rotation strategy that does not cause downtime. The OpenTelemetry Collector supports certificate reloading when you configure `reload_interval`; server-side client CA reloads also require `client_ca_file_reload: true`. When the certificate files on disk change, the collector picks up the new ones without a restart on the next reload interval.
 
 Here is the flow for zero-downtime rotation:
 
