@@ -45,7 +45,7 @@ graph TB
 
 ## Setting Up the Kubernetes Cluster Receiver
 
-The OpenTelemetry Collector has a `k8s_cluster` receiver that collects resource quota and limit metrics directly from the Kubernetes API. This is the most straightforward approach.
+The OpenTelemetry Collector has a `k8s_cluster` receiver that collects resource quota, request, and limit metrics directly from the Kubernetes API. This is the most straightforward approach for cluster-level resource data. Run only one instance of this receiver for a cluster. If you also need live usage and request/limit utilization metrics from kubelets, run the `kubelet_stats` receiver separately as a DaemonSet so it can scrape every node.
 
 ```yaml
 # OpenTelemetry Collector configuration for Kubernetes resource monitoring
@@ -72,36 +72,12 @@ spec:
         allocatable_types_to_report:
           - cpu
           - memory
-          - storage
+          - ephemeral-storage
         resource_attributes:
           k8s.namespace.name:
             enabled: true
           k8s.node.name:
             enabled: true
-
-      # Also collect node-level resource usage from the kubelet
-      kubeletstats:
-        collection_interval: 30s
-        auth_type: serviceAccount
-        endpoint: "https://${env:K8S_NODE_NAME}:10250"
-        insecure_skip_verify: true
-        metric_groups:
-          - node
-          - pod
-          - container
-        extra_metadata_labels:
-          - container.id
-        metrics:
-          # Enable container-level resource usage metrics
-          k8s.container.cpu_request:
-            enabled: true
-          k8s.container.cpu_limit:
-            enabled: true
-          k8s.container.memory_request:
-            enabled: true
-          k8s.container.memory_limit:
-            enabled: true
-
     processors:
       batch:
         send_batch_size: 1024
@@ -123,9 +99,36 @@ spec:
     service:
       pipelines:
         metrics:
-          receivers: [k8s_cluster, kubeletstats]
+          receivers: [k8s_cluster]
           processors: [batch, resource]
           exporters: [otlp]
+```
+
+For kubelet usage and utilization metrics, deploy a separate DaemonSet collector with the current `kubelet_stats` receiver name:
+
+```yaml
+receivers:
+  kubelet_stats:
+    collection_interval: 30s
+    auth_type: serviceAccount
+    endpoint: "https://${env:K8S_NODE_NAME}:10250"
+    node: "${env:K8S_NODE_NAME}"
+    insecure_skip_verify: true
+    metric_groups:
+      - node
+      - pod
+      - container
+    extra_metadata_labels:
+      - container.id
+    metrics:
+      k8s.container.cpu_limit_utilization:
+        enabled: true
+      k8s.container.cpu_request_utilization:
+        enabled: true
+      k8s.container.memory_limit_utilization:
+        enabled: true
+      k8s.container.memory_request_utilization:
+        enabled: true
 ```
 
 ## RBAC for Resource Monitoring
@@ -159,9 +162,13 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch"]
-  # Need stats access for kubeletstats receiver
+  # Need stats access for kubelet_stats receiver
   - apiGroups: [""]
-    resources: ["nodes/stats", "nodes/proxy"]
+    resources: ["nodes/stats"]
+    verbs: ["get"]
+  # Needed when using extra_metadata_labels or request/limit utilization metrics
+  - apiGroups: [""]
+    resources: ["nodes/pods"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -180,10 +187,10 @@ subjects:
 
 ## Collecting Custom Quota Utilization Metrics
 
-The built-in receivers give you raw numbers. But what you really want is quota utilization percentage. You can compute this using the `transform` processor.
+The built-in receiver gives you raw quota numbers as `k8s.resource_quota.used` and `k8s.resource_quota.hard_limit`. What you usually want for alerting is a quota utilization percentage. Because those raw values arrive as separate metrics, calculate the ratio in your backend query language or emit it from a small custom exporter. Once you have a ratio metric, you can use the `transform` processor to tag it for easier alerting.
 
 ```yaml
-# Transform processor to calculate quota utilization percentages
+# Transform processor to tag quota utilization percentages
 processors:
   transform/quota:
     metric_statements:
@@ -191,14 +198,14 @@ processors:
         statements:
           # Tag metrics with a utilization category for easier alerting
           - set(attributes["quota.utilization.level"], "critical")
-            where resource.attributes["k8s.resourcequota.name"] != nil
-            and value_double > 0.9
+            where metric.name == "k8s.resourcequota.utilization"
+            and datapoint.value_double > 0.9
           - set(attributes["quota.utilization.level"], "warning")
-            where resource.attributes["k8s.resourcequota.name"] != nil
-            and value_double > 0.75 and value_double <= 0.9
+            where metric.name == "k8s.resourcequota.utilization"
+            and datapoint.value_double > 0.75 and datapoint.value_double <= 0.9
           - set(attributes["quota.utilization.level"], "healthy")
-            where resource.attributes["k8s.resourcequota.name"] != nil
-            and value_double <= 0.75
+            where metric.name == "k8s.resourcequota.utilization"
+            and datapoint.value_double <= 0.75
 ```
 
 For more detailed custom metrics, you can write a small exporter that queries the Kubernetes API and produces OpenTelemetry metrics.
@@ -211,6 +218,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
+from kubernetes.utils.quantity import parse_quantity
 import time
 
 # Load in-cluster Kubernetes config
@@ -265,8 +273,8 @@ def collect_quota_metrics():
                 used_value = quota.status.used.get(resource_name, "0")
 
                 # Parse quantity strings (e.g., "4", "8Gi", "16000m")
-                hard_num = parse_quantity(hard_value)
-                used_num = parse_quantity(used_value)
+                hard_num = float(parse_quantity(hard_value))
+                used_num = float(parse_quantity(used_value))
 
                 resource_attrs = {**attrs, "resource": resource_name}
 
@@ -277,21 +285,6 @@ def collect_quota_metrics():
                 if hard_num > 0:
                     utilization = used_num / hard_num
                     quota_utilization.set(utilization, resource_attrs)
-
-def parse_quantity(value):
-    """Parse Kubernetes quantity strings to float values."""
-    value = str(value)
-    if value.endswith("m"):
-        # Millicores - convert to cores
-        return float(value[:-1]) / 1000
-    elif value.endswith("Gi"):
-        return float(value[:-2]) * 1024 * 1024 * 1024
-    elif value.endswith("Mi"):
-        return float(value[:-2]) * 1024 * 1024
-    elif value.endswith("Ki"):
-        return float(value[:-2]) * 1024
-    else:
-        return float(value)
 
 # Main collection loop
 while True:
@@ -357,11 +350,11 @@ def collect_limitrange_metrics():
                 }
                 if "cpu" in limit.default:
                     default_cpu_limit.set(
-                        parse_quantity(limit.default["cpu"]), attrs
+                        float(parse_quantity(limit.default["cpu"])), attrs
                     )
                 if "memory" in limit.default:
                     default_memory_limit.set(
-                        parse_quantity(limit.default["memory"]), attrs
+                        float(parse_quantity(limit.default["memory"])), attrs
                     )
 ```
 
@@ -425,17 +418,17 @@ graph LR
     style C fill:#ff6b6b,color:#fff
 ```
 
-The kubeletstats receiver gives you actual usage. The k8s_cluster receiver gives you requests and limits. Compare them to find over-provisioned workloads.
+The `kubelet_stats` receiver gives you actual usage and request/limit utilization metrics. The `k8s_cluster` receiver gives you requests and limits. Compare them to find over-provisioned workloads.
 
 Key metrics to track and alert on:
 
 | Metric | Source | Alert When |
 |--------|--------|------------|
 | `k8s.resourcequota.utilization` | Custom script | > 80% |
-| `k8s.container.memory_limit_utilization` | kubeletstats | > 90% |
-| `k8s.container.cpu_limit_utilization` | kubeletstats | sustained > 95% |
+| `k8s.container.memory_limit_utilization` | kubelet_stats | > 90% |
+| `k8s.container.cpu_limit_utilization` | kubelet_stats | sustained > 95% |
 | `k8s.containers.without_limits` | Custom script | > 0 in production |
-| `k8s.node.allocatable` vs `k8s.pod.cpu.request` | k8s_cluster | node > 85% allocated |
+| `k8s.node.allocatable_cpu` vs `k8s.container.cpu_request` | k8s_cluster | node > 85% allocated |
 
 ## Setting Up Alerts
 
@@ -470,7 +463,7 @@ alerts:
 
   # Node is overcommitted
   - name: NodeOvercommitted
-    condition: (sum(k8s.pod.cpu.request) by (node) / k8s.node.allocatable.cpu) > 0.9
+    condition: (sum(k8s.container.cpu_request) by (node) / k8s.node.allocatable_cpu) > 0.9
     for: 15m
     severity: warning
     message: "Node {{ k8s.node.name }} CPU requests are at {{ value }}% of allocatable"
@@ -478,6 +471,6 @@ alerts:
 
 ## Summary
 
-Monitoring Kubernetes resource quotas and limits with OpenTelemetry gives you the data needed to prevent capacity disasters and optimize spending. The `k8s_cluster` receiver and `kubeletstats` receiver handle most of the heavy lifting. For quota utilization percentages and containers missing limits, a small custom metrics exporter fills in the gaps.
+Monitoring Kubernetes resource quotas and limits with OpenTelemetry gives you the data needed to prevent capacity disasters and optimize spending. The `k8s_cluster` receiver and `kubelet_stats` receiver handle most of the heavy lifting. For quota utilization percentages and containers missing limits, a small custom metrics exporter fills in the gaps.
 
 The most important thing is acting on the data. Set alerts for quota exhaustion before it blocks deployments. Track containers without limits and enforce them through policy. Compare requested resources to actual usage and right-size your workloads. The monitoring is only valuable when it drives action.
