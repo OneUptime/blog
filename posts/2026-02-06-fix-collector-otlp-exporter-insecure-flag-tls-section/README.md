@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, OTLP, TLS Configuration
 
-Description: Fix Collector configuration errors caused by the OTLP exporter insecure flag moving from a top-level field to the tls section.
+Description: Fix Collector configuration errors caused by OTLP exporter TLS settings being configured as top-level fields instead of under the tls section.
 
 You upgrade the Collector and your configuration that worked perfectly before now produces an error:
 
@@ -13,7 +13,7 @@ Error: failed to get config: 1 error(s) decoding:
   'exporters.otlp.insecure' has invalid keys: insecure
 ```
 
-The `insecure` flag for the OTLP exporter moved from a top-level field to a nested field under the `tls` section. This breaking change has tripped up many teams during upgrades.
+In current Collector configurations, the `insecure` flag for the OTLP exporter belongs under the `tls` section, not as a top-level exporter field. Older Collector client settings accepted TLS options as top-level fields, so this change has tripped up many teams during upgrades.
 
 ## What Changed
 
@@ -30,11 +30,13 @@ exporters:
 
 ```yaml
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     tls:
       insecure: true            # nested under tls section
 ```
+
+Current Collector releases use `otlp_grpc` for the OTLP gRPC exporter. The old `otlp` component ID is a deprecated alias in newer releases.
 
 The same change applies to the OTLP HTTP exporter:
 
@@ -48,11 +50,13 @@ exporters:
 
 # NEW
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: http://backend:4318
     tls:
       insecure: true
 ```
+
+Current Collector releases use `otlp_http` for the OTLP HTTP exporter. The old `otlphttp` component ID is a deprecated alias in newer releases.
 
 ## The Fix
 
@@ -60,7 +64,7 @@ Move `insecure` under the `tls` section:
 
 ```yaml
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     tls:
       insecure: true
@@ -80,7 +84,7 @@ exporters:
 
 # NEW
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     tls:
       insecure: false
@@ -91,7 +95,7 @@ exporters:
 
 ## Receivers Were Also Affected
 
-The same change applies to receivers that accept TLS connections:
+Old receiver configurations were also affected. Receiver server TLS settings that used `tls_settings` now belong under `tls`:
 
 ```yaml
 # OLD
@@ -115,7 +119,7 @@ receivers:
           key_file: /etc/ssl/server.key
 ```
 
-Note that `tls_settings` was also renamed to just `tls`.
+Note that this receiver-side `tls_settings` field was renamed to just `tls`.
 
 ## Checking All Affected Components
 
@@ -134,17 +138,17 @@ If you have multiple OTLP exporters, update all of them:
 
 ```yaml
 exporters:
-  otlp/traces:
+  otlp_grpc/traces:
     endpoint: tempo:4317
     tls:
       insecure: true
 
-  otlp/metrics:
+  otlp_grpc/metrics:
     endpoint: mimir:4317
     tls:
       insecure: true
 
-  otlp/logs:
+  otlp_grpc/logs:
     endpoint: loki:4317
     tls:
       insecure: true
@@ -163,7 +167,7 @@ exporters:
 
 # NEW
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: ${OTEL_BACKEND}
     tls:
       insecure: ${OTEL_INSECURE}
@@ -194,7 +198,7 @@ config:
 # NEW values.yaml
 config:
   exporters:
-    otlp:
+    otlp_grpc:
       endpoint: backend:4317
       tls:
         insecure: true
@@ -222,4 +226,4 @@ kubectl rollout restart deployment otel-collector
 
 ## Summary
 
-The `insecure` flag and other TLS settings moved from top-level exporter/receiver fields to a nested `tls` section. Additionally, `tls_settings` was renamed to `tls`. Search your config for all TLS-related fields and move them under the `tls` key. Validate the config before deploying. This is a one-time migration that affects all components using TLS.
+The `insecure` flag and other exporter TLS settings belong in a nested `tls` section. For receivers, `tls_settings` was renamed to `tls`. Search your config for all TLS-related fields and move them under the `tls` key. Validate the config before deploying. This is a one-time migration that affects components using TLS.
