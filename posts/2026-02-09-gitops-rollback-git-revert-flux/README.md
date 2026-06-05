@@ -62,7 +62,7 @@ Flux detects the change and applies the reverted state within minutes (or second
 When multiple related commits need rollback:
 
 ```bash
-# Revert a range of commits (oldest to newest)
+# Revert commits reachable from def5678 but not from abc1234
 git revert abc1234..def5678
 
 # Or revert multiple specific commits
@@ -104,7 +104,7 @@ For most rollbacks, use `-m 1` to keep the main branch state.
 
 ## Fast Rollback with Specific Version
 
-If you know the good commit, cherry-pick it:
+If you know the good commit, restore the affected path from it:
 
 ```bash
 # Find the last known good deployment
@@ -115,8 +115,9 @@ git log --oneline apps/production/frontend/
 # def5678 Update to v1.9.5 (good)
 # ghi9012 Update to v1.9.4
 
-# Create a revert that restores v1.9.5 state
-git checkout def5678 -- apps/production/frontend/
+# Restore v1.9.5 state for this path
+git restore --source=def5678 -- apps/production/frontend/
+git add apps/production/frontend/
 git commit -m "Rollback frontend to v1.9.5
 
 Restoring last known good version.
@@ -155,7 +156,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -166,6 +173,19 @@ Revert commit to restore:
 
 ```yaml
 # After revert (good)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
       containers:
       - name: api
         image: myapp:v1.9.5  # Working version
@@ -214,7 +234,7 @@ Integrate with monitoring for automatic rollbacks:
 
 ```yaml
 # Flux alert for failed deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: auto-rollback-trigger
@@ -227,7 +247,7 @@ spec:
   providerRef:
     name: webhook-rollback
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook-rollback
@@ -246,7 +266,7 @@ Always test rollback procedures in staging:
 ```bash
 # In staging environment
 # Deploy a known bad version
-git apply bad-config.patch
+git apply --index bad-config.patch
 git commit -m "Test: Deploy intentionally broken config"
 git push origin staging
 
@@ -269,14 +289,14 @@ Rollback specific components while keeping others:
 
 ```bash
 # Repository structure
-apps/
-├── frontend/
-├── backend/
-└── worker/
+# apps/
+# frontend/
+# backend/
+# worker/
 
-# Rollback only frontend
-git show abc1234:apps/frontend/ > /tmp/frontend-old
-cp -r /tmp/frontend-old apps/frontend/
+# Rollback only frontend to the state before abc1234
+git restore --source=abc1234^ -- apps/frontend/
+git add apps/frontend/
 git commit -m "Rollback frontend to pre-abc1234 state
 
 Keeping backend and worker at current versions."
@@ -299,7 +319,7 @@ jobs:
   check-breaking-changes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -324,7 +344,7 @@ jobs:
 
 Document clear rollback procedures for incidents:
 
-```markdown
+````markdown
 ## Emergency Rollback Procedure
 
 ### 1. Identify the Problem
@@ -354,7 +374,7 @@ On-call: <your-name>"
 
 ## Push immediately
 git push origin main
-```bash
+```
 
 ### 3. Verify Rollback
 ```bash
@@ -366,13 +386,13 @@ kubectl get pods -n production --watch
 
 ## Check metrics dashboard
 ## URL: https://grafana.company.com/rollback-dashboard
-```bash
+```
 
 ### 4. Post-Incident
 - Create post-mortem document
 - Update runbooks if needed
 - Review what made rollback necessary
-```text
+````
 
 ## Rollback Metrics
 
@@ -384,24 +404,25 @@ groups:
   - name: gitops_rollbacks
     interval: 30s
     rules:
-      - record: gitops:rollback:count
+      - record: gitops:reconcile_failure:count
         expr: |
           count_over_time(
-            flux_reconcile_condition{
+            gotk_reconcile_condition{
+              kind="Kustomization",
               type="Ready",
               status="False"
             }[5m]
           )
 
-      - record: gitops:rollback:duration
+      - record: gitops:reconcile:duration_seconds:p99
         expr: |
           histogram_quantile(0.99,
-            rate(flux_reconcile_duration_seconds_bucket[5m])
+            rate(gotk_reconcile_duration_seconds_bucket[5m])
           )
 ```
 
 Create dashboards showing:
-- Number of rollbacks per week
+- Reconciliation failures around rollback events
 - Average rollback duration
 - Most frequently rolled back components
 
