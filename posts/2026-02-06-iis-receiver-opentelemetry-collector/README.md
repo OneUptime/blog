@@ -19,13 +19,11 @@ The IIS receiver collects metrics from IIS by reading Windows Performance Counte
 Key metrics collected include:
 
 - Request rate and active connections
-- HTTP status code distributions
 - Request queue depth
-- Bytes sent and received
-- Cache hit rates
+- Bytes sent and received, reported through a direction attribute
 - Application pool status
-- Worker process metrics
-- Network I/O statistics
+- Application pool uptime
+- Rejected request counts
 
 The receiver converts these Windows-specific metrics into OpenTelemetry's standard format, enabling cross-platform observability and vendor-neutral backends.
 
@@ -131,11 +129,11 @@ receivers:
       # Request metrics
       iis.request.count:
         enabled: true
-      iis.request.duration:
-        enabled: true
       iis.request.queue.count:
         enabled: true
       iis.request.queue.age.max:
+        enabled: true
+      iis.request.rejected:
         enabled: true
 
       # Connection metrics
@@ -149,13 +147,17 @@ receivers:
       # Network metrics
       iis.network.io:
         enabled: true
-      iis.network.bytes_sent:
-        enabled: true
-      iis.network.bytes_recv:
+      iis.network.blocked:
         enabled: true
 
       # File metrics
       iis.network.file.count:
+        enabled: true
+
+      # Application pool metrics
+      iis.application_pool.state:
+        enabled: true
+      iis.application_pool.uptime:
         enabled: true
 
       # Thread metrics
@@ -200,11 +202,9 @@ processors:
 
   # Filter out noisy or low-value metrics if needed
   # filter/metrics:
-  #   metrics:
-  #     exclude:
-  #       match_type: regexp
-  #       metric_names:
-  #         - "iis\\.network\\.file\\..*"
+  #   error_mode: ignore
+  #   metric_conditions:
+  #     - IsMatch(metric.name, "iis\\.network\\.file\\..*")
 
 exporters:
   # Export to OneUptime with retry and queuing
@@ -248,7 +248,7 @@ receivers:
     collection_interval: 10s
 
 processors:
-  # The IIS receiver automatically includes site names as attributes
+  # The IIS receiver automatically includes iis.site as a resource attribute
   # Add additional context with resource processor
   resource:
     attributes:
@@ -258,21 +258,6 @@ processors:
       - key: host.name
         value: ${env:COMPUTERNAME}
         action: upsert
-
-  # Transform attributes to standardize naming
-  attributes:
-    actions:
-      # Rename IIS site attribute if needed
-      - key: iis.site
-        action: insert
-        from_attribute: site
-      # Add business-friendly names
-      - key: application
-        value: customer-portal
-        action: upsert
-        # Use match conditions for different sites
-        # from_attribute: site
-        # value: "Default Web Site"
 
 exporters:
   otlphttp:
@@ -284,11 +269,11 @@ service:
   pipelines:
     metrics:
       receivers: [iis]
-      processors: [resource, attributes]
+      processors: [resource]
       exporters: [otlphttp]
 ```
 
-The IIS receiver automatically includes the IIS site name in metric attributes, allowing you to filter and group by site in your observability backend.
+The IIS receiver automatically includes the IIS site name as the `iis.site` resource attribute, allowing you to filter and group by site in your observability backend.
 
 ## Monitoring Multiple IIS Servers
 
@@ -335,14 +320,9 @@ Deploy using configuration management tools like Ansible, Puppet, or DSC to main
 The IIS receiver exposes these critical metrics:
 
 **iis.request.count**
-- Total HTTP requests per second
+- Total HTTP requests, with request type recorded as an attribute
 - Primary indicator of traffic volume
-- Alert on sudden drops or spikes
-
-**iis.request.duration**
-- Request processing time in milliseconds
-- High values indicate slow application performance
-- Set percentile alerts (p95, p99)
+- Alert on sudden drops or spikes in derived request rates
 
 **iis.request.queue.count**
 - Requests waiting to be processed
@@ -360,19 +340,24 @@ The IIS receiver exposes these critical metrics:
 - Alert when approaching configured limits
 
 **iis.connection.attempt.count**
-- Connection attempts per second
+- Total connection attempts
 - Higher than request count is normal (keepalive)
-- Sudden drops may indicate network issues
+- Sudden drops in derived rates may indicate network issues
 
-**iis.network.bytes_sent**
-- Bytes sent per second
+**iis.network.io**
+- Total bytes sent and received, with direction recorded as an attribute
 - Useful for bandwidth planning
 - Correlate with request count for per-request size
 
-**iis.network.bytes_recv**
-- Bytes received per second
-- Track upload traffic
-- Alert on unusual patterns
+**iis.application_pool.state**
+- Current application pool status
+- Useful for detecting stopped or disabling application pools
+- Alert when production pools leave the running state
+
+**iis.application_pool.uptime**
+- Application pool uptime in milliseconds
+- Track restarts and recycling behavior
+- Alert on unexpected resets
 
 **iis.thread.active**
 - Active worker threads
@@ -386,28 +371,37 @@ The IIS receiver exposes these critical metrics:
 
 ## Application Pool Monitoring
 
-IIS application pools isolate applications and provide resource management. To monitor specific application pools, use the Windows Performance Counters receiver:
+IIS application pools isolate applications and provide resource management. The IIS receiver emits application pool state and uptime. For additional worker process counters, add the Windows Performance Counters receiver:
 
 ```yaml
 receivers:
   # Windows Performance Counters for detailed app pool metrics
   windowsperfcounters:
     collection_interval: 10s
+    metrics:
+      iis.worker_process.cpu.time:
+        description: Processor time used by IIS worker processes
+        unit: "%"
+        gauge:
+      iis.worker_process.working_set:
+        description: Working set for IIS worker processes
+        unit: By
+        gauge:
+      iis.worker_process.private_bytes:
+        description: Private bytes for IIS worker processes
+        unit: By
+        gauge:
     perfcounters:
-      # Application pool CPU usage
-      - object: "APP_POOL_WAS"
-        counters:
-          - name: "Current Application Pool State"
-          - name: "Current Application Pool Uptime"
-        instances: ["DefaultAppPool", "MyApplicationPool"]
-
       # Worker process metrics
       - object: "Process"
         counters:
           - name: "% Processor Time"
+            metric: iis.worker_process.cpu.time
           - name: "Working Set"
+            metric: iis.worker_process.working_set
           - name: "Private Bytes"
-        instances: ["w3wp*"]
+            metric: iis.worker_process.private_bytes
+        instances: ["w3wp"]
 
   # IIS receiver for web server metrics
   iis:
@@ -431,7 +425,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This combined approach provides both web server metrics and detailed application pool health data.
+This combined approach provides both web server metrics and detailed worker process data. On systems with multiple `w3wp` instances, prefer the `Process V2` counter category where available, or configure Windows to include process IDs in instance names.
 
 ## Deployment Patterns
 
@@ -465,11 +459,11 @@ Configuration OTelCollector {
         File CollectorConfig {
             Ensure = "Present"
             DestinationPath = "C:\Program Files\OpenTelemetry Collector\config.yaml"
-            Contents = Get-Content ".\collector-config.yaml"
+            Contents = Get-Content ".\collector-config.yaml" -Raw
         }
 
         Service OTelCollector {
-            Name = "otelcol"
+            Name = "otelcol-contrib"
             State = "Running"
             StartupType = "Automatic"
         }
@@ -515,18 +509,18 @@ For modernized IIS deployments using Windows containers:
 # Dockerfile for IIS with OpenTelemetry Collector
 FROM mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
 
-# Install OpenTelemetry Collector
+# Install OpenTelemetry Collector Contrib, which includes the IIS receiver
 RUN powershell -Command \
-    Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.100.0/otelcol_0.100.0_windows_amd64.msi" -OutFile otelcol.msi; \
-    Start-Process msiexec.exe -ArgumentList '/i', 'otelcol.msi', '/quiet' -Wait; \
-    Remove-Item otelcol.msi
+    Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_windows_x64.msi" -OutFile otelcol-contrib.msi; \
+    Start-Process msiexec.exe -ArgumentList '/i', 'otelcol-contrib.msi', '/quiet' -Wait; \
+    Remove-Item otelcol-contrib.msi
 
 # Copy collector configuration
 COPY config.yaml "C:\Program Files\OpenTelemetry Collector\config.yaml"
 
 # Start collector and IIS
 CMD powershell -Command \
-    Start-Service otelcol; \
+    Start-Service otelcol-contrib; \
     Start-Service W3SVC; \
     Wait-Event
 ```
@@ -551,8 +545,8 @@ Get-Counter -ListSet "Web Service"
 Ensure the Collector service runs with appropriate permissions:
 
 ```powershell
-# Run Collector as Local System or with Performance Monitor Users group membership
-sc.exe config otelcol obj= "LocalSystem"
+# Run Collector Contrib as Local System or with Performance Monitor Users group membership
+sc.exe config otelcol-contrib obj= "LocalSystem"
 
 # Or add service account to Performance Monitor Users
 net localgroup "Performance Monitor Users" "NT AUTHORITY\NETWORK SERVICE" /add
@@ -590,13 +584,13 @@ Check Windows Event Viewer:
 
 ```powershell
 # View Collector service events
-Get-EventLog -LogName Application -Source "OpenTelemetry Collector" -Newest 50
+Get-WinEvent -FilterHashtable @{LogName="Application"; ProviderName="otelcol-contrib"} -MaxEvents 50
 ```
 
 Validate configuration syntax:
 
 ```powershell
-& "C:\Program Files\OpenTelemetry Collector\otelcol.exe" --config config.yaml validate
+& "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" validate --config=config.yaml
 ```
 
 ## Windows Service Installation
@@ -605,8 +599,8 @@ Install the Collector as a Windows service for automatic startup:
 
 ```powershell
 # Download and install Collector
-$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.100.0/otelcol_0.100.0_windows_amd64.msi"
-$output = "otelcol.msi"
+$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_windows_x64.msi"
+$output = "otelcol-contrib.msi"
 Invoke-WebRequest -Uri $url -OutFile $output
 Start-Process msiexec.exe -ArgumentList "/i", $output, "/quiet" -Wait
 
@@ -614,21 +608,21 @@ Start-Process msiexec.exe -ArgumentList "/i", $output, "/quiet" -Wait
 Copy-Item config.yaml "C:\Program Files\OpenTelemetry Collector\config.yaml"
 
 # Start service
-Start-Service otelcol
+Start-Service otelcol-contrib
 
 # Set to start automatically
-Set-Service otelcol -StartupType Automatic
+Set-Service otelcol-contrib -StartupType Automatic
 
 # Verify status
-Get-Service otelcol
+Get-Service otelcol-contrib
 ```
 
 ## Integration with OneUptime
 
 Once metrics flow to OneUptime, you can:
 
-1. **Create dashboards** visualizing request rates, response times, and connection counts across all IIS servers
-2. **Set up alerts** for request queue buildup, high response times, or service restarts
+1. **Create dashboards** visualizing request rates, request queue age, and connection counts across all IIS servers
+2. **Set up alerts** for request queue buildup, high queue age, or service restarts
 3. **Correlate with application traces** to understand how IIS performance impacts user experience
 4. **Track capacity trends** for planning server scaling and resource allocation
 5. **Compare environments** to validate configuration changes before production deployment
@@ -658,15 +652,17 @@ processors:
 **Monitor application pools separately**:
 ```yaml
 receivers:
-  windowsperfcounters:
-    perfcounters:
-      - object: "APP_POOL_WAS"
-        instances: ["DefaultAppPool", "MyAppPool"]
+  iis:
+    metrics:
+      iis.application_pool.state:
+        enabled: true
+      iis.application_pool.uptime:
+        enabled: true
 ```
 
 **Deploy as Windows service**:
 ```powershell
-Set-Service otelcol -StartupType Automatic
+Set-Service otelcol-contrib -StartupType Automatic
 ```
 
 **Protect credentials** with environment variables:
@@ -683,6 +679,7 @@ service:
         - periodic:
             exporter:
               otlp:
+                protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
 ```
 
@@ -707,18 +704,14 @@ Set-ItemProperty "IIS:\AppPools\DefaultAppPool" -Name queueLength -Value 2000
 **High Thread Usage**: Adjust thread pool settings
 
 ```powershell
-# Edit applicationHost.config
-# <applicationPools>
-#   <add name="DefaultAppPool">
-#     <processModel maxWorkerThreads="100" minWorkerThreads="50"/>
-#   </add>
-# </applicationPools>
+# For ASP.NET applications, tune the .NET ThreadPool in application code or runtime settings.
+# IIS application pool processModel settings do not expose maxWorkerThreads/minWorkerThreads.
 ```
 
-**Connection Limits**: Increase connection limits
+**Connection Limits**: Increase the application concurrent request limit
 
 ```powershell
-Set-WebConfigurationProperty -PSPath "IIS:\Sites\Default Web Site" -Filter "system.webServer/serverRuntime" -Name "maxRequestEntityAllowed" -Value 4294967295
+Set-WebConfigurationProperty -PSPath "IIS:\Sites\Default Web Site" -Filter "system.webServer/serverRuntime" -Name "appConcurrentRequestLimit" -Value 10000
 ```
 
 ## Related Resources
