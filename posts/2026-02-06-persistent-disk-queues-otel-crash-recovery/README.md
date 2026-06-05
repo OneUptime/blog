@@ -40,6 +40,8 @@ receivers:
 exporters:
   otlp:
     endpoint: tempo.monitoring.svc:4317
+    tls:
+      insecure: true
     sending_queue:
       enabled: true
       # Reference the file_storage extension for persistence
@@ -110,7 +112,7 @@ extensions:
       on_start: true
       # Use a separate directory for compaction temp files
       directory: /tmp/otel-compact/traces
-      # Compact when more than 10MB can be reclaimed
+      # Mark compaction as needed after 10MiB, then compact after the storage drains below 5MiB
       on_rebound: true
       rebound_needed_threshold_mib: 10
       rebound_trigger_threshold_mib: 5
@@ -153,6 +155,8 @@ processors:
 exporters:
   otlp/traces:
     endpoint: tempo.monitoring.svc:4317
+    tls:
+      insecure: true
     sending_queue:
       enabled: true
       storage: file_storage/traces
@@ -171,8 +175,8 @@ exporters:
       queue_size: 20000
       num_consumers: 5
 
-  otlp/logs:
-    endpoint: loki.monitoring.svc:3100
+  otlphttp/logs:
+    endpoint: http://loki.monitoring.svc:3100/otlp
     sending_queue:
       enabled: true
       storage: file_storage/logs
@@ -193,7 +197,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch/logs]
-      exporters: [otlp/logs]
+      exporters: [otlphttp/logs]
 ```
 
 ## Kubernetes PVC for Queue Storage
@@ -203,20 +207,6 @@ The queue directory needs to persist across pod restarts. Use a PersistentVolume
 ```yaml
 # k8s-collector-with-pvc.yaml
 # Collector deployment with persistent volume for queue storage
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: otel-collector-queue
-  namespace: monitoring
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: gp3
-  resources:
-    requests:
-      # Size based on your throughput and buffer duration estimate
-      storage: 10Gi
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -235,7 +225,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           volumeMounts:
             - name: queue-storage
@@ -307,9 +297,15 @@ Verify that your persistent queue actually works by simulating a crash.
 # Tests that the persistent queue recovers data after a crash
 
 echo "Step 1: Check current queue depth"
-QUEUE_BEFORE=$(kubectl exec -n monitoring otel-collector-0 -- \
-  ls -la /var/otel/queue/traces/ | wc -l)
-echo "Queue files before: $QUEUE_BEFORE"
+kubectl port-forward -n monitoring pod/otel-collector-0 8888:8888 >/tmp/otel-pf.log 2>&1 &
+PF_PID=$!
+trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+sleep 2
+
+QUEUE_BEFORE=$(curl -fsS http://127.0.0.1:8888/metrics \
+  | awk '/otelcol_exporter_queue_size/ && /exporter="otlp\/traces"/ {print $NF; exit}')
+echo "Queue size before: ${QUEUE_BEFORE:-0}"
+kill "$PF_PID" 2>/dev/null || true
 
 echo "Step 2: Kill the collector pod (simulating crash)"
 kubectl delete pod -n monitoring otel-collector-0 --grace-period=0 --force
@@ -318,14 +314,22 @@ echo "Step 3: Wait for pod to restart"
 kubectl wait --for=condition=Ready pod/otel-collector-0 -n monitoring --timeout=60s
 
 echo "Step 4: Check queue depth after restart"
-QUEUE_AFTER=$(kubectl exec -n monitoring otel-collector-0 -- \
-  ls -la /var/otel/queue/traces/ | wc -l)
-echo "Queue files after restart: $QUEUE_AFTER"
+kubectl port-forward -n monitoring pod/otel-collector-0 8888:8888 >/tmp/otel-pf.log 2>&1 &
+PF_PID=$!
+sleep 2
 
-if [ "$QUEUE_AFTER" -ge "$QUEUE_BEFORE" ]; then
-  echo "PASS: Queue data survived the crash"
+QUEUE_AFTER=$(curl -fsS http://127.0.0.1:8888/metrics \
+  | awk '/otelcol_exporter_queue_size/ && /exporter="otlp\/traces"/ {print $NF; exit}')
+echo "Queue size after restart: ${QUEUE_AFTER:-0}"
+
+if [ -z "$QUEUE_BEFORE" ] || [ -z "$QUEUE_AFTER" ]; then
+  echo "WARNING: Could not read queue metrics - investigate"
+elif [ "$QUEUE_BEFORE" -gt 0 ] && [ "$QUEUE_AFTER" -gt 0 ]; then
+  echo "PASS: Queued data was visible after the crash"
+elif [ "$QUEUE_BEFORE" -gt 0 ] && [ "$QUEUE_AFTER" -eq 0 ]; then
+  echo "WARNING: Queue drained or data was lost after restart - verify delivery in the backend"
 else
-  echo "WARNING: Queue file count decreased - investigate"
+  echo "Queue was empty before the crash; rerun during an exporter outage to verify recovery"
 fi
 ```
 
