@@ -11,7 +11,7 @@ Telemetry data often contains attribute values that need cleanup or normalizatio
 ## replace_match vs replace_all_matches
 
 - **replace_match**: Operates on a single attribute. If the attribute value matches the pattern, it is replaced.
-- **replace_all_matches**: Operates on ALL attributes. Every attribute whose value matches the pattern gets replaced.
+- **replace_all_matches**: Operates on a map such as span or resource attributes. Every string value in the map whose entire value matches the pattern gets replaced.
 
 ## Basic replace_match Usage
 
@@ -19,14 +19,12 @@ Telemetry data often contains attribute values that need cleanup or normalizatio
 processors:
   transform/rewrite:
     trace_statements:
-      - context: span
-        statements:
-          # Replace a specific attribute value if it matches a glob pattern
-          # Pattern uses * for wildcard matching
-          - replace_match(attributes["http.url"], "*/session/*", "*/session/REDACTED")
+      # Replace a specific attribute value if it matches a glob pattern
+      # Pattern uses * for wildcard matching within a path segment
+      - replace_match(span.attributes["http.target"], "/session/*", "/session/REDACTED")
 ```
 
-The `replace_match` function uses glob-style patterns (not regex). The `*` matches any sequence of characters.
+The `replace_match` function uses Go `filepath.Match`-style patterns (not regex). The `*` matches any sequence of non-separator characters, and the pattern must match the whole string.
 
 ## Practical Examples
 
@@ -36,16 +34,15 @@ The `replace_match` function uses glob-style patterns (not regex). The `*` match
 processors:
   transform/redact_urls:
     trace_statements:
-      - context: span
-        statements:
-          # Remove session tokens from URLs
-          - replace_match(attributes["http.url"], "*?token=*", "/redacted-token-url")
+      # Replace query strings that contain a session token
+      - replace_match(span.attributes["url.query"], "*token=*", "token=REDACTED")
 
-          # Remove API keys from query strings
-          - replace_match(attributes["http.url"], "*api_key=*", "/redacted-api-key-url")
+      # Replace query strings that contain an API key
+      - replace_match(span.attributes["url.query"], "*api_key=*", "api_key=REDACTED")
 
-          # Normalize OAuth callback URLs
-          - replace_match(attributes["http.url"], "*/oauth/callback?code=*", "/oauth/callback?code=REDACTED")
+      # Normalize OAuth callback URLs
+      - replace_match(span.attributes["url.path"], "/oauth/callback", "/oauth/callback")
+      - replace_match(span.attributes["url.query"], "*code=*", "code=REDACTED")
 ```
 
 ### Normalizing Service Names
@@ -54,16 +51,14 @@ processors:
 processors:
   transform/normalize:
     trace_statements:
-      - context: span
-        statements:
-          # Standardize service version formats
-          # "v1.2.3" -> "1.2.3"
-          - replace_match(attributes["service.version"], "v*", "")
+      # Standardize service version formats
+      # "v1.2.3" -> "1.2.3"
+      - replace_pattern(resource.attributes["service.version"], "^v", "")
 
-          # Normalize environment names
-          - replace_match(attributes["deployment.environment"], "prod*", "production")
-          - replace_match(attributes["deployment.environment"], "stg*", "staging")
-          - replace_match(attributes["deployment.environment"], "dev*", "development")
+      # Normalize environment names
+      - replace_match(resource.attributes["deployment.environment"], "prod*", "production")
+      - replace_match(resource.attributes["deployment.environment"], "stg*", "staging")
+      - replace_match(resource.attributes["deployment.environment"], "dev*", "development")
 ```
 
 ### Cleaning Database Statements
@@ -72,13 +67,11 @@ processors:
 processors:
   transform/clean_db:
     trace_statements:
-      - context: span
-        statements:
-          # Replace actual values in SQL queries with placeholders
-          # This is a simple approach - for complex SQL, use the Collector's
-          # attributes processor or a custom processor
-          - replace_match(attributes["db.statement"], "WHERE id = *", "WHERE id = ?")
-          - replace_match(attributes["db.statement"], "VALUES (*)", "VALUES (?)")
+      # Replace simple SQL statement shapes with placeholders
+      # This is a simple approach - for complex SQL, use replace_pattern
+      # with carefully tested regexes or a custom processor
+      - replace_match(span.attributes["db.statement"], "SELECT * FROM users WHERE id = *", "SELECT * FROM users WHERE id = ?")
+      - replace_match(span.attributes["db.statement"], "INSERT INTO users VALUES (*)", "INSERT INTO users VALUES (?)")
 ```
 
 ## Using replace_all_matches
@@ -89,13 +82,11 @@ processors:
 processors:
   transform/global_redact:
     trace_statements:
-      - context: span
-        statements:
-          # Redact email addresses from ALL span attributes
-          # Any attribute value matching the pattern gets replaced
-          - replace_all_matches(attributes, "*@*.com", "REDACTED_EMAIL")
-          - replace_all_matches(attributes, "*@*.org", "REDACTED_EMAIL")
-          - replace_all_matches(attributes, "*@*.io", "REDACTED_EMAIL")
+      # Redact email-like values from ALL span attributes
+      # Any string attribute value whose full value matches the pattern gets replaced
+      - replace_all_matches(span.attributes, "*@*.com", "REDACTED_EMAIL")
+      - replace_all_matches(span.attributes, "*@*.org", "REDACTED_EMAIL")
+      - replace_all_matches(span.attributes, "*@*.io", "REDACTED_EMAIL")
 ```
 
 This is powerful but should be used carefully. It scans every attribute value on every span, which has a performance cost.
@@ -108,13 +99,11 @@ OTTL works on logs too:
 processors:
   transform/log_rewrite:
     log_statements:
-      - context: log
-        statements:
-          # Redact IP addresses from log bodies (glob pattern)
-          - replace_match(body, "*IP: *.*.*.*,*", "IP: REDACTED")
+      # Redact log bodies that contain an IP marker (glob pattern)
+      - replace_match(log.body, "IP: *.*.*.*, message=*", "IP: REDACTED")
 
-          # Clean up log source names
-          - replace_match(resource.attributes["log.source"], "/var/log/*/app.log", "app.log")
+      # Clean up log source names
+      - replace_match(resource.attributes["log.source"], "/var/log/*/app.log", "app.log")
 ```
 
 ## Full Configuration Example
@@ -129,24 +118,20 @@ receivers:
 processors:
   transform/rewrite:
     trace_statements:
-      - context: span
-        statements:
-          # Normalize URL paths by removing UUIDs
-          - replace_match(attributes["http.url"], "*/users/????????-????-????-????-????????????/*", "/users/{userId}/")
+      # Normalize URL paths by removing UUIDs
+      - replace_match(span.attributes["url.path"], "/users/????????-????-????-????-????????????/profile", "/users/{userId}/profile")
 
-          # Redact bearer tokens from recorded headers
-          - replace_match(attributes["http.request.header.authorization"], "Bearer *", "Bearer [REDACTED]")
+      # Redact bearer tokens from recorded headers
+      - replace_match(span.attributes["http.request.header.authorization"], "Bearer *", "Bearer [REDACTED]")
 
-          # Normalize database names across environments
-          - replace_match(attributes["db.name"], "*_staging", "app_db")
-          - replace_match(attributes["db.name"], "*_production", "app_db")
-          - replace_match(attributes["db.name"], "*_development", "app_db")
+      # Normalize database names across environments
+      - replace_match(span.attributes["db.name"], "*_staging", "app_db")
+      - replace_match(span.attributes["db.name"], "*_production", "app_db")
+      - replace_match(span.attributes["db.name"], "*_development", "app_db")
 
     log_statements:
-      - context: log
-        statements:
-          # Replace credit card-like patterns in log bodies
-          - replace_match(body, "*card_number=*", "card_number=[REDACTED]")
+      # Replace log bodies that contain a card_number field
+      - replace_match(log.body, "card_number=*", "card_number=[REDACTED]")
 
   batch:
     send_batch_size: 512
@@ -174,9 +159,9 @@ service:
 
 The `replace_match` function uses glob patterns, not regular expressions. This means:
 
-- `*` matches any sequence of characters
-- `?` matches a single character
-- No support for character classes like `[a-z]`
+- `*` matches any sequence of non-separator characters
+- `?` matches a single non-separator character
+- Character classes like `[a-z]` are supported by `filepath.Match`
 - No support for quantifiers like `{3,5}`
 - No capture groups
 
@@ -186,13 +171,11 @@ For more complex pattern matching, use the `replace_pattern` function which supp
 processors:
   transform/regex:
     trace_statements:
-      - context: span
-        statements:
-          # Use regex for more precise matching
-          - replace_pattern(attributes["http.url"], "/users/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/users/{userId}")
+      # Use regex for more precise matching
+      - replace_pattern(span.attributes["url.path"], "/users/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/users/{userId}")
 
-          # Remove numeric IDs from URL paths
-          - replace_pattern(attributes["http.url"], "/orders/[0-9]+", "/orders/{orderId}")
+      # Remove numeric IDs from URL paths
+      - replace_pattern(span.attributes["url.path"], "/orders/[0-9]+", "/orders/{orderId}")
 ```
 
 ## Performance Considerations
@@ -202,10 +185,10 @@ Pattern-based rewriting adds processing time to every span:
 1. **Be specific with conditions.** Add `where` clauses to limit which spans are processed:
 
 ```yaml
-- replace_match(attributes["http.url"], "*token=*", "/redacted") where attributes["http.url"] != nil
+- replace_match(span.attributes["url.query"], "token=*", "token=REDACTED") where span.attributes["url.query"] != nil
 ```
 
-2. **Order statements by frequency.** Put the most commonly matching patterns first to take advantage of short-circuit evaluation.
+2. **Use conditions to avoid unnecessary work.** Independent transform statements execute in order, so use `where` clauses when you want to skip statements that cannot apply.
 
 3. **Prefer replace_match over replace_all_matches.** Scanning a single known attribute is faster than scanning all attributes.
 
