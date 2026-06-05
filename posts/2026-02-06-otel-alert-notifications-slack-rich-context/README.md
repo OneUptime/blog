@@ -18,7 +18,7 @@ The alert flow goes from OpenTelemetry metrics through Prometheus for evaluation
 graph LR
     A[OTel Collector] --> B[Prometheus]
     B --> C[Alertmanager]
-    C --> D[Slack Webhook]
+    C --> D[Slack Webhooks]
     D --> E[#alerts-critical]
     D --> F[#alerts-warning]
     D --> G[#team-specific]
@@ -34,6 +34,8 @@ Before configuring Alertmanager, create a Slack app and incoming webhook:
 4. Copy the webhook URL
 
 You will get a URL like `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`.
+
+Slack incoming webhook URLs are tied to the channel selected when the webhook is created, so create a separate webhook for each target channel.
 
 ## Basic Alertmanager Slack Configuration
 
@@ -66,9 +68,9 @@ receivers:
 
 This works, but the notifications are plain and lack context. Here is how to make them useful.
 
-## Rich Slack Notifications with Block Kit
+## Rich Slack Notifications with Slack Attachments
 
-Alertmanager supports Slack's Block Kit for structured message formatting. You can include multiple sections with headers, fields, and action buttons.
+Alertmanager supports Slack attachment fields and action buttons for structured message formatting. You can include titles, fields, links, colors, and action buttons.
 
 ```yaml
 # alertmanager.yaml
@@ -86,22 +88,23 @@ route:
 
   routes:
     # Critical alerts go to the dedicated critical channel
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: slack-critical
       repeat_interval: 30m
+      continue: true
 
     # Warning alerts go to a separate channel
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warning
       repeat_interval: 2h
+      continue: true
 
     # Route team-specific alerts to team channels
-    - match:
-        team: payments
+    - matchers:
+        - team="payments"
       receiver: slack-payments-team
-      continue: true
 
 receivers:
   - name: slack-default
@@ -202,8 +205,8 @@ groups:
     rules:
       - alert: HighErrorRate
         expr: |
-          sum(rate(http_server_errors_total[5m])) by (service_name)
-          / sum(rate(http_server_request_duration_count[5m])) by (service_name)
+          sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name)
+          / sum(rate(http_server_request_duration_seconds_count[5m])) by (service_name)
           > 0.05
         for: 5m
         labels:
@@ -238,10 +241,10 @@ route:
 # Suppress lower-severity alerts when a higher-severity alert is firing
 # for the same service
 inhibit_rules:
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: [service_name]
 ```
 
