@@ -6,19 +6,19 @@ Tags: OpenTelemetry, Stability, Versioning, API, SDK, Maturity
 
 Description: A comprehensive explanation of OpenTelemetry's stability levels and how they affect your implementation decisions and production readiness.
 
-OpenTelemetry marks every feature with a stability level: Stable, Beta, or Alpha. These labels aren't just bureaucratic overhead. They tell you exactly what you can rely on in production and what might break in the next release.
+OpenTelemetry marks features and components with stability levels such as Stable, Development/Experimental, Beta, or Alpha depending on the part of the project. These labels aren't just bureaucratic overhead. They tell you exactly what you can rely on in production and what might break in the next release.
 
 Understanding these levels saves you from painful debugging sessions when an experimental feature changes its API or disappears entirely. After migrating multiple services to OpenTelemetry, I've learned to treat stability levels as critical information, not optional metadata.
 
 ## The Three Stability Levels Explained
 
-Stable means the feature is production-ready. The API won't change in breaking ways. You can depend on it for critical systems. If breaking changes become absolutely necessary, they'll only happen in a major version bump (like 1.x to 2.x), giving you plenty of warning.
+Stable means the feature is production-ready. The API won't change in breaking ways. You can depend on it for critical systems. If breaking changes become absolutely necessary, they'll only happen in a major version bump or a separately introduced replacement signal, giving you plenty of warning.
 
-Beta indicates functional completeness but reserves the right to change. The feature works as intended and has been tested, but based on real-world usage, the API might need adjustments. These changes are less frequent than Alpha, but they can happen in minor releases.
+Beta, where used, indicates functional completeness but reserves the right to change. The feature works as intended and has been tested, but based on real-world usage, the API might need adjustments. These changes are less frequent than Alpha, but they can happen in minor releases. In the core client specification, Development or Experimental status covers work that has not reached Stable yet.
 
-Alpha is experimental territory. The feature exists to gather feedback. The API can change dramatically or the feature might be removed entirely. Using Alpha features in production is risky unless you're prepared to adapt quickly.
+Alpha is experimental territory. The feature exists to gather feedback. The API can change dramatically or the feature might be removed entirely. Using Alpha or Development features in production is risky unless you're prepared to adapt quickly.
 
-The stability level applies to different components independently. The tracing API might be Stable while the metrics API is Beta and logs are Alpha. You need to check each component you use.
+The stability level applies to different components independently. One language SDK might list metrics as Stable while another still lists metrics as Development, and logs can have a different status again. You need to check each component you use.
 
 ## How Stability Levels Apply to Different Components
 
@@ -28,46 +28,45 @@ The API layer defines interfaces for creating traces, metrics, and logs. This is
 
 The SDK layer implements the API and handles data processing, sampling, and export. SDK stability affects how you configure and deploy OpenTelemetry, but usually not your application code.
 
-Instrumentation libraries auto-instrument frameworks and libraries. These have separate stability from the core SDK. Express.js instrumentation might be Stable while gRPC instrumentation is still Beta.
+Instrumentation libraries auto-instrument frameworks and libraries. These have separate stability from the core SDK. One instrumentation package might be Stable while another is still Beta, Development, or Experimental.
 
 Here's how to check stability in different languages:
 
 ```python
 # Python: Check the documentation or release notes
 
-# Most stable components are in main packages
+# Stable Python tracing components are in main API and SDK packages
 from opentelemetry import trace  # Stable API
 from opentelemetry.sdk.trace import TracerProvider  # Stable SDK
 
-# Beta components often have version suffixes
-from opentelemetry.sdk.metrics import MeterProvider  # Check docs for current status
+# Python metrics are listed as Stable on the OpenTelemetry status page
+from opentelemetry.sdk.metrics import MeterProvider  # Stable SDK
 ```
 
 ```javascript
 // Node.js: Check package.json or documentation
-// Stable components don't have version prefixes
 const { trace } = require('@opentelemetry/api');  // Stable
 
-// Experimental components are clearly marked
-const { metrics } = require('@opentelemetry/api');  // Check current status
+// JavaScript metrics are part of the stable API package
+const { metrics } = require('@opentelemetry/api');  // Stable
 ```
 
 ```go
-// Go: Import paths indicate stability
+// Go: Check the documentation or status page for stability
 import (
     "go.opentelemetry.io/otel"  // Stable
     "go.opentelemetry.io/otel/trace"  // Stable
-    "go.opentelemetry.io/otel/metric"  // Check docs for current status
+    "go.opentelemetry.io/otel/metric"  // Stable
 )
 ```
 
 ## Reading Stability Information from Documentation
 
-Every OpenTelemetry specification document includes stability markers. Look for badges or labels next to feature descriptions. The documentation repository maintains a status page listing every component's stability.
+OpenTelemetry specification documents include status markers for specifications and component areas. Look for badges or labels next to feature descriptions. The documentation repository maintains a status page listing component maturity.
 
 Language-specific documentation varies in how clearly it displays stability. Some implementations put stability badges prominently, others bury it in release notes. When in doubt, check the specification document for that signal type.
 
-The OpenTelemetry website maintains a status page showing the maturity of each signal (traces, metrics, logs) across all language implementations. This is your go-to reference when evaluating whether to adopt a feature.
+The OpenTelemetry website maintains a status page showing the maturity of each signal (traces, metrics, logs, and profiles) across language implementations. This is your go-to reference when evaluating whether to adopt a feature.
 
 ```mermaid
 graph LR
@@ -91,7 +90,7 @@ Stable features have undergone extensive testing and real-world validation. The 
 
 The tracing API reached Stable status first. Creating spans, adding attributes, and propagating context are all Stable operations. Any code you write using these APIs will continue to work across SDK updates.
 
-Span attributes follow defined semantic conventions. While new conventions get added, existing ones remain valid. If you instrument a HTTP server using the Stable conventions, those attributes won't suddenly become deprecated.
+Span attributes follow defined semantic conventions. While new conventions get added, stable semantic convention groups are not removed; if they are renamed or no longer recommended, they should be deprecated instead. If you instrument an HTTP server using Stable conventions, those attributes won't simply disappear.
 
 Context propagation is Stable across W3C Trace Context and Baggage. If you pass context between services using these standards, the mechanism won't change. This is crucial for distributed tracing in microservices.
 
@@ -128,9 +127,9 @@ span.end();
 
 Beta features are functionally complete but might see API refinements. The core functionality won't disappear, but method signatures or configuration options might change.
 
-Metrics reached Beta in most language implementations during 2023-2024. You can use metrics in production, but updates might require code changes. The data model is solid, but the SDK interfaces are still settling.
+Metrics reached Stable in many major language implementations, including Go, Java, JavaScript, .NET, PHP, and Python. Other languages can still be Beta or Development, so updates might require code changes if your language has not stabilized metrics yet. The data model is stable as part of OTLP.
 
-Logs signal support varies widely by language. Some implementations have Beta log support with working bridges to existing logging frameworks. Others are earlier in development. Check your specific language's status.
+Logs signal support varies widely by language. The log bridge API, SDK, and protocol are Stable in the specification, but some language implementations list logs as Stable while others are still Beta or Development. Check your specific language's status.
 
 When using Beta features, implement abstractions in your code. Instead of calling OpenTelemetry APIs directly throughout your application, create wrapper functions. This localizes changes when APIs evolve.
 
@@ -159,7 +158,7 @@ This pattern means API changes only affect your wrapper class, not every place y
 
 Alpha features are experimental. Use them to evaluate upcoming functionality or provide feedback to maintainers, but understand they can change radically.
 
-Profiling signal support is currently Alpha in several languages. The feature exists and you can experiment with it, but the API isn't finalized. If you implement profiling now, expect to rewrite it when the API stabilizes.
+Profiles are still in Development at the specification/protocol level. The feature exists for experimentation in parts of the ecosystem, but the API isn't finalized. If you implement profiles now, expect to revisit it when the API stabilizes.
 
 Some instrumentation libraries remain in Alpha because they instrument rapidly-evolving frameworks. The instrumentation works but needs frequent updates to track framework changes.
 
@@ -189,15 +188,15 @@ experimental_features:
 
 ## Stability Progression Timeline
 
-Features don't stay at one level forever. OpenTelemetry has a defined progression path from Alpha to Beta to Stable.
+Features don't stay at one level forever. OpenTelemetry has a defined progression path from early Development or Alpha/Beta states toward Stable.
 
-The specification defines requirements for each transition. Alpha to Beta requires implementation in at least two languages, documentation, and no major design concerns. Beta to Stable requires multiple production deployments, proven reliability, and community consensus.
+The specification defines requirements for stability. A signal must go through rigorous testing before it can transition to Stable, and the API must become Stable before the other components.
 
 Traces progressed fastest. The tracing specification and API reached Stable in 2021 across most languages. This reflects tracing's maturity as an observability signal.
 
-Metrics took longer. The data model went through several iterations before stabilizing. Different languages implemented metrics at different paces, with some reaching Stable in 2023 and others still in Beta as of 2026.
+Metrics took longer. The data model went through several iterations before stabilizing. Different languages implemented metrics at different paces, with many major implementations Stable by 2026 and others still in Beta or Development.
 
-Logs are the newest signal. The specification focuses on bridging existing logging frameworks rather than creating new APIs. This approach means logs support depends heavily on language-specific logging ecosystems.
+Logs are a newer signal than traces and metrics. The specification focuses on bridging existing logging frameworks rather than asking end users to call a log API directly. This approach means logs support depends heavily on language-specific logging ecosystems.
 
 ```mermaid
 timeline
@@ -211,8 +210,8 @@ timeline
          : Logs Alpha
     2023 : Metrics Stable (some languages)
          : Logs Beta (some languages)
-    2024-2026 : Metrics Stable (most languages)
-              : Logs progressing to Stable
+    2024-2026 : Metrics Stable (many major languages)
+              : Logs Stable in some languages, Beta or Development in others
 ```
 
 ## Impact on Production Deployment Decisions
@@ -221,7 +220,7 @@ Stability levels directly influence what you should deploy. For critical product
 
 For internal services or non-critical paths, Beta features are reasonable. You'll need to budget time for updates when APIs change, but you get access to newer functionality sooner.
 
-Alpha features belong in development and staging environments. Use them to learn, provide feedback, and prepare for eventual stability. Don't put them in production unless you have a specific reason and can absorb the maintenance burden.
+Alpha and Development features belong in development and staging environments. Use them to learn, provide feedback, and prepare for eventual stability. Don't put them in production unless you have a specific reason and can absorb the maintenance burden.
 
 Some organizations create tiered adoption policies:
 
@@ -246,7 +245,7 @@ class StabilityPolicy:
 
 ## Tracking Stability Changes
 
-Stability levels change over time. Subscribe to OpenTelemetry release announcements to know when Beta features become Stable or Alpha features graduate to Beta.
+Stability levels change over time. Subscribe to OpenTelemetry release announcements to know when Beta or Development features become Stable, or Alpha features graduate to Beta.
 
 The specification repository uses GitHub issues and pull requests to discuss stability changes. For features you depend on, watch the relevant specification PRs to see when stability might change.
 
@@ -266,9 +265,9 @@ Your observability backend matters too. Some vendors or tools support only Stabl
 
 ## Future Stability Expectations
 
-OpenTelemetry continues evolving. New signals like profiling and session replay are working through Alpha and Beta stages. Knowing the stability trajectory helps you plan adoption timing.
+OpenTelemetry continues evolving. Newer work such as profiles is still moving through Development. Knowing the stability trajectory helps you plan adoption timing.
 
-The project aims for API stability across major versions. Once something reaches Stable, it should remain compatible through the 1.x version line. This gives you confidence in long-term investments.
+The project aims for API stability across major versions. Once something reaches Stable, existing API calls must continue to compile and function across future minor versions of the same major version. This gives you confidence in long-term investments.
 
 SDK implementations have more flexibility to change. While they respect semantic versioning, SDK internals can evolve more freely than APIs. This separation lets implementations improve without breaking application code.
 
