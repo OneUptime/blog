@@ -104,9 +104,9 @@ def get_top_players(leaderboard_id, count=100):
 
         start = time.monotonic()
 
-        # Get top N from Redis sorted set (reverse order for highest first)
-        results = redis_client.zrevrange(
-            f"lb:{leaderboard_id}", 0, count - 1, withscores=True
+        # Get top N from Redis sorted set (descending order for highest first)
+        results = redis_client.zrange(
+            f"lb:{leaderboard_id}", 0, count - 1, desc=True, withscores=True
         )
 
         elapsed_ms = (time.monotonic() - start) * 1000
@@ -134,6 +134,12 @@ def get_rank_around_player(leaderboard_id, player_id, window=5):
         # Get the player's rank first
         rank = redis_client.zrevrank(f"lb:{leaderboard_id}", player_id)
         if rank is None:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            query_latency.record(elapsed_ms, {
+                "leaderboard.id": leaderboard_id,
+                "query.type": "around_me",
+            })
+            span.set_attribute("query.latency_ms", round(elapsed_ms, 2))
             span.set_attribute("player.ranked", False)
             return None
 
@@ -142,8 +148,8 @@ def get_rank_around_player(leaderboard_id, player_id, window=5):
         # Fetch players around that rank
         start_idx = max(0, rank - window)
         end_idx = rank + window
-        results = redis_client.zrevrange(
-            f"lb:{leaderboard_id}", start_idx, end_idx, withscores=True
+        results = redis_client.zrange(
+            f"lb:{leaderboard_id}", start_idx, end_idx, desc=True, withscores=True
         )
 
         elapsed_ms = (time.monotonic() - start) * 1000
@@ -195,13 +201,15 @@ def evaluate_achievements(player_id, event):
 
             # Check if the event advances this achievement
             new_progress = achievement.evaluate(event, player_progress)
+            was_complete = achievement.is_complete(player_progress)
+            is_complete = achievement.is_complete(new_progress)
 
             if new_progress != player_progress:
                 achievement_store.update_progress(
                     player_id, achievement.id, new_progress
                 )
 
-            if achievement.is_complete(new_progress):
+            if not was_complete and is_complete:
                 newly_unlocked.append(achievement)
                 achievement_unlocks.add(1, {
                     "achievement.id": achievement.id,
