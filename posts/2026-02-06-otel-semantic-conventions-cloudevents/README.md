@@ -19,7 +19,6 @@ The CloudEvents specification defines several required and optional context attr
 | type | `cloudevents.event_type` | Type of the event |
 | specversion | `cloudevents.event_spec_version` | CloudEvents spec version |
 | subject | `cloudevents.event_subject` | Subject of the event in context of the source |
-| datacontenttype | `cloudevents.event_data_content_type` | Content type of the data |
 
 ## Implementing a Helper Function
 
@@ -35,7 +34,7 @@ def set_cloudevent_attributes(span, cloud_event):
     This ensures every span that touches a CloudEvent has consistent,
     queryable attributes regardless of which service produced it.
     """
-    # Required CloudEvents attributes
+    # Core CloudEvents attributes
     span.set_attribute("cloudevents.event_id", cloud_event.get("id", ""))
     span.set_attribute("cloudevents.event_source", cloud_event.get("source", ""))
     span.set_attribute("cloudevents.event_type", cloud_event.get("type", ""))
@@ -47,24 +46,15 @@ def set_cloudevent_attributes(span, cloud_event):
     # Optional CloudEvents attributes (only set if present)
     if "subject" in cloud_event:
         span.set_attribute("cloudevents.event_subject", cloud_event["subject"])
-
-    if "datacontenttype" in cloud_event:
-        span.set_attribute(
-            "cloudevents.event_data_content_type",
-            cloud_event["datacontenttype"]
-        )
-
-    if "time" in cloud_event:
-        span.set_attribute("cloudevents.event_time", cloud_event["time"])
 ```
 
 ## Using the Helper in a Producer
 
 ```python
-from cloudevents.http import CloudEvent
-from cloudevents.conversion import to_json
+from cloudevents.core.bindings.http import to_structured_event
+from cloudevents.core.v1.event import CloudEvent
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 tracer = trace.get_tracer("order-service")
 
@@ -82,25 +72,17 @@ def publish_order_event(order_data, event_type):
             "specversion": "1.0",
             "subject": f"order/{order_data['order_id']}",
             "datacontenttype": "application/json",
-            "time": datetime.utcnow().isoformat() + "Z",
+            "time": datetime.now(timezone.utc),
         }, order_data)
 
         # Apply semantic conventions to the span
-        set_cloudevent_attributes(span, {
-            "id": event["id"],
-            "source": event["source"],
-            "type": event["type"],
-            "specversion": event["specversion"],
-            "subject": event["subject"],
-            "datacontenttype": event["datacontenttype"],
-            "time": event["time"],
-        })
+        set_cloudevent_attributes(span, event.get_attributes())
 
         # Also set messaging semantic conventions
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.operation", "publish")
+        span.set_attribute("messaging.operation.type", "send")
 
-        payload = to_json(event)
+        payload = to_structured_event(event).body
         send_to_broker(payload)
         return event
 ```
@@ -112,25 +94,23 @@ consumer_tracer = trace.get_tracer("fulfillment-service")
 
 def handle_incoming_event(raw_event):
     """Process an incoming CloudEvent with semantic convention attributes."""
-    from cloudevents.http import from_json
-    event = from_json(raw_event)
+    from cloudevents.core.bindings.http import HTTPMessage, from_http_event
+    event = from_http_event(HTTPMessage(
+        {"content-type": "application/cloudevents+json"},
+        raw_event,
+    ))
+    event_attributes = event.get_attributes()
 
     with consumer_tracer.start_as_current_span(
-        f"process {event['type']}",
+        f"process {event_attributes['type']}",
         kind=trace.SpanKind.CONSUMER,
     ) as span:
         # Apply the same semantic conventions on the consumer side
-        set_cloudevent_attributes(span, {
-            "id": event["id"],
-            "source": event["source"],
-            "type": event["type"],
-            "specversion": event["specversion"],
-            "subject": event.get("subject", ""),
-        })
+        set_cloudevent_attributes(span, event_attributes)
 
         # Add consumer-specific attributes
-        span.set_attribute("messaging.operation", "receive")
-        span.set_attribute("messaging.consumer.group", "fulfillment-group")
+        span.set_attribute("messaging.operation.type", "process")
+        span.set_attribute("messaging.consumer.group.name", "fulfillment-group")
 
         process_event(event)
 ```
@@ -140,7 +120,7 @@ def handle_incoming_event(raw_event):
 For Node.js services, here is the same pattern in TypeScript:
 
 ```typescript
-import { Span } from "@opentelemetry/api";
+import { Span, SpanKind, trace } from "@opentelemetry/api";
 import { CloudEvent } from "cloudevents";
 
 interface CloudEventAttributes {
@@ -149,8 +129,6 @@ interface CloudEventAttributes {
   type: string;
   specversion?: string;
   subject?: string;
-  datacontenttype?: string;
-  time?: string;
 }
 
 function setCloudEventAttributes(
@@ -167,15 +145,11 @@ function setCloudEventAttributes(
   if (event.subject) {
     span.setAttribute("cloudevents.event_subject", event.subject);
   }
-  if (event.datacontenttype) {
-    span.setAttribute("cloudevents.event_data_content_type", event.datacontenttype);
-  }
-  if (event.time) {
-    span.setAttribute("cloudevents.event_time", event.time);
-  }
 }
 
 // Usage in a producer
+const tracer = trace.getTracer("notification-service");
+
 function publishEvent(orderData: any): void {
   tracer.startActiveSpan("publish order.created", { kind: SpanKind.PRODUCER }, (span) => {
     const event = new CloudEvent({
