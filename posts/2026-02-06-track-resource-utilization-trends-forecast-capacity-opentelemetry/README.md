@@ -12,9 +12,9 @@ This post walks through setting up resource utilization collection, storing the 
 
 ## Collecting Resource Metrics with OpenTelemetry
 
-The OpenTelemetry Collector has a built-in `hostmetrics` receiver that captures CPU, memory, disk, and network utilization. Here is a collector configuration that grabs what we need.
+The OpenTelemetry Collector Contrib distribution has a `hostmetrics` receiver that captures CPU, memory, disk, and network utilization. Here is a collector configuration that grabs what we need.
 
-The following config sets up the hostmetrics receiver to scrape system metrics every 30 seconds and exports them to a Prometheus-compatible backend:
+The following config sets up the hostmetrics receiver to scrape system metrics every 30 seconds and exports them to a Prometheus-compatible remote write backend. If you are writing directly to Prometheus, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` is available:
 
 ```yaml
 # otel-collector-config.yaml
@@ -54,6 +54,8 @@ processors:
 exporters:
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
@@ -65,9 +67,9 @@ service:
 
 ## Adding Application-Level Resource Metrics
 
-System-level metrics are useful, but you also want to track application-specific resource consumption. Here is how to instrument a Python service to report its own memory and thread pool usage.
+System-level metrics are useful, but you also want to track application-specific resource consumption. Here is how to instrument a Python service to report its own process memory and thread pool usage.
 
-This Python snippet creates two custom metrics - one for tracking heap memory and another for active thread count:
+This Python snippet creates two custom metrics - one for tracking resident memory and another for active thread count:
 
 ```python
 from opentelemetry import metrics
@@ -91,7 +93,7 @@ def get_memory_usage(options):
     mem_info = process.memory_info()
     yield metrics.Observation(
         value=mem_info.rss / (1024 * 1024),  # Convert to MB
-        attributes={"metric_type": "heap_memory_mb"}
+        attributes={"metric_type": "rss_memory_mb"}
     )
 
 def get_thread_count(options):
@@ -101,9 +103,9 @@ def get_thread_count(options):
     )
 
 meter.create_observable_gauge(
-    name="app.memory.heap_mb",
+    name="app.memory.rss_mb",
     callbacks=[get_memory_usage],
-    description="Application heap memory usage in megabytes"
+    description="Application resident memory usage in megabytes"
 )
 
 meter.create_observable_gauge(
@@ -177,10 +179,19 @@ groups:
       # Alert when projected to hit 80% within 14 days
       - alert: CPUCapacityForecastWarning
         expr: |
-          (0.80 - avg(system_cpu_utilization{environment="production"}))
-          /
-          cpu:utilization:trend_slope_30d
-          < 14 * 24 * 3600
+          cpu:utilization:trend_slope_30d > 0
+          and
+          (
+            (0.80 - avg(system_cpu_utilization{environment="production"}))
+            /
+            cpu:utilization:trend_slope_30d
+          ) > 0
+          and
+          (
+            (0.80 - avg(system_cpu_utilization{environment="production"}))
+            /
+            cpu:utilization:trend_slope_30d
+          ) < 14 * 24 * 3600
         for: 6h
         labels:
           severity: warning
