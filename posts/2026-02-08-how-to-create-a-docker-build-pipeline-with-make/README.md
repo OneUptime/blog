@@ -10,7 +10,7 @@ Description: Use GNU Make to create a complete Docker build pipeline with build,
 
 Every Docker project reaches a point where the build process outgrows simple `docker build` commands. You need to run tests before building, tag images with git commit hashes, push to multiple registries, run security scans, and deploy to staging. Developers start writing shell scripts, then the scripts grow complex and fragile.
 
-GNU Make is a better tool for this job. It has been managing build dependencies since 1976, and it solves the exact problems that Docker build pipelines face: defining tasks, managing dependencies between tasks, and running only what has changed. Make is installed on virtually every Linux and macOS system, requires no additional dependencies, and has a straightforward syntax.
+GNU Make is a better tool for this job. It has been managing build dependencies since 1976, and it solves the exact problems that Docker build pipelines face: defining tasks, managing dependencies between tasks, and running only what has changed. GNU Make is installed on many Linux systems and is available on macOS as `gmake` through package managers such as Homebrew. It requires no additional project dependencies and has a straightforward syntax.
 
 ## Why Make for Docker
 
@@ -51,7 +51,7 @@ IMAGE := $(REGISTRY)/$(REPO)
 
 # Version tagging - use git commit hash and branch name
 GIT_SHA := $(shell git rev-parse --short HEAD)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's/\//-/g')
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's#[^A-Za-z0-9_.-]#-#g')
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 VERSION ?= $(GIT_SHA)
 
@@ -151,8 +151,8 @@ test-integration: build-test ## Run integration tests with docker-compose
 
 .PHONY: lint
 lint: ## Run linters on the source code
-	docker run --rm -v $(PWD):/app -w /app \
-		golangci/golangci-lint:latest golangci-lint run
+	docker run --rm -v $(PWD):/io \
+		ghcr.io/astral-sh/ruff:latest check src tests
 
 .PHONY: lint-dockerfile
 lint-dockerfile: ## Lint the Dockerfile with hadolint
@@ -236,7 +236,8 @@ clean: ## Remove built images and test artifacts
 
 .PHONY: clean-all
 clean-all: clean ## Remove all project images and prune dangling images
-	docker images $(IMAGE) -q | xargs -r docker rmi -f
+	@ids="$$(docker images $(IMAGE) -q)"; \
+	if [ -n "$$ids" ]; then docker rmi -f $$ids; fi
 	docker image prune -f
 	@echo "Deep cleaned"
 
@@ -270,7 +271,7 @@ make lint
 make scan
 
 # Full CI pipeline: test, scan, and push
-make push
+make test scan push
 
 # Deploy to staging (automatically runs tests and scans first)
 make deploy-staging
@@ -326,6 +327,9 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
