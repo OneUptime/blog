@@ -36,8 +36,12 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
 let provider;
@@ -52,15 +56,10 @@ export function initTracing(config = {}) {
   } = config;
 
   // Create resource with service information
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment,
-  });
-
-  // Initialize tracer provider
-  provider = new WebTracerProvider({
-    resource,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
   });
 
   // Configure exporter
@@ -68,8 +67,11 @@ export function initTracing(config = {}) {
     url: collectorUrl,
   });
 
-  // Add span processor
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+  // Initialize tracer provider
+  provider = new WebTracerProvider({
+    resource,
+    spanProcessors: [new BatchSpanProcessor(exporter)],
+  });
 
   // Register provider with context propagation
   provider.register({
@@ -90,16 +92,32 @@ export function initTracing(config = {}) {
 
         // Add custom attributes to fetch spans
         applyCustomAttributesOnSpan: (span, request, result) => {
+          const requestUrl = request instanceof Request
+            ? request.url
+            : result instanceof Response
+              ? result.url
+              : '';
+          const requestMethod = request instanceof Request
+            ? request.method
+            : request.method || 'GET';
+
+          if (!requestUrl) {
+            return;
+          }
+
           // Extract URL components
-          const url = new URL(request.url);
-          span.setAttribute('http.url.full', request.url);
-          span.setAttribute('http.url.scheme', url.protocol.replace(':', ''));
-          span.setAttribute('http.url.host', url.host);
-          span.setAttribute('http.url.path', url.pathname);
-          span.setAttribute('http.url.query', url.search);
+          const url = new URL(requestUrl);
+          span.setAttribute('url.full', requestUrl);
+          span.setAttribute('url.scheme', url.protocol.replace(':', ''));
+          span.setAttribute('server.address', url.hostname);
+          if (url.port) {
+            span.setAttribute('server.port', parseInt(url.port, 10));
+          }
+          span.setAttribute('url.path', url.pathname);
+          span.setAttribute('url.query', url.search);
 
           // Add request details
-          span.setAttribute('http.request.method', request.method);
+          span.setAttribute('http.request.method', requestMethod);
 
           // Add response details if available
           if (result instanceof Response) {
@@ -114,14 +132,14 @@ export function initTracing(config = {}) {
 
             const contentLength = result.headers.get('content-length');
             if (contentLength) {
-              span.setAttribute('http.response.content_length', parseInt(contentLength));
+              span.setAttribute('http.response.body.size', parseInt(contentLength, 10));
             }
           }
 
           // Add timing information from Performance API
           if (typeof PerformanceObserver !== 'undefined') {
             const entries = performance.getEntriesByType('resource');
-            const entry = entries.find(e => e.name === request.url);
+            const entry = entries.find(e => e.name === requestUrl);
 
             if (entry) {
               span.setAttribute('http.timing.dns', entry.domainLookupEnd - entry.domainLookupStart);
@@ -191,7 +209,7 @@ While automatic instrumentation is great, you often want more control. Create a 
 import { trace, context, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 import { getTracer } from '../utils/tracing';
 
-class APIClient {
+export class APIClient {
   constructor(baseURL, options = {}) {
     this.baseURL = baseURL;
     this.defaultOptions = options;
@@ -206,9 +224,9 @@ class APIClient {
     const span = this.tracer.startSpan(`HTTP ${method}`, {
       kind: SpanKind.CLIENT,
       attributes: {
-        'http.method': method,
-        'http.url': url,
-        'http.target': path,
+        'http.request.method': method,
+        'url.full': url,
+        'url.path': path,
         'api.endpoint': path,
       },
     });
@@ -248,7 +266,7 @@ class APIClient {
           });
 
           span.addEvent('http.error', {
-            'http.status_code': response.status,
+            'http.response.status_code': response.status,
             'http.status_text': response.statusText,
           });
         } else {
@@ -310,7 +328,7 @@ class APIClient {
   async parseResponse(response) {
     const span = this.tracer.startSpan('parse_response', {
       attributes: {
-        'http.status_code': response.status,
+        'http.response.status_code': response.status,
       },
     });
 
@@ -373,7 +391,7 @@ Use the instrumented API client in your Vue components:
 <script>
 import { ref, onMounted } from 'vue';
 import apiClient from '../api/client';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { context, trace, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../utils/tracing';
 
 export default {
@@ -391,21 +409,23 @@ export default {
       loading.value = true;
       error.value = null;
 
-      try {
-        // API call will automatically create child spans
-        const data = await apiClient.get('/users');
-        users.value = data;
+      await context.with(trace.setSpan(context.active(), span), async () => {
+        try {
+          // API call will automatically create child spans
+          const data = await apiClient.get('/users');
+          users.value = data;
 
-        span.setAttribute('users.count', data.length);
-        span.setStatus({ code: SpanStatusCode.OK });
-      } catch (err) {
-        error.value = err.message;
-        span.recordException(err);
-        span.setStatus({ code: SpanStatusCode.ERROR });
-      } finally {
-        loading.value = false;
-        span.end();
-      }
+          span.setAttribute('users.count', data.length);
+          span.setStatus({ code: SpanStatusCode.OK });
+        } catch (err) {
+          error.value = err.message;
+          span.recordException(err);
+          span.setStatus({ code: SpanStatusCode.ERROR });
+        } finally {
+          loading.value = false;
+          span.end();
+        }
+      });
     };
 
     const refresh = () => {
@@ -606,46 +626,49 @@ export async function withRetry(fn, options = {}) {
   let lastError;
   let attempt = 0;
 
-  return context.with(trace.setSpan(context.active(), span), async () => {
-    while (attempt < maxAttempts) {
-      attempt++;
-      span.addEvent('retry.attempt', { 'attempt': attempt });
+  try {
+    return await context.with(trace.setSpan(context.active(), span), async () => {
+      while (attempt < maxAttempts) {
+        attempt++;
+        span.addEvent('retry.attempt', { 'attempt': attempt });
 
-      try {
-        const result = await fn(attempt);
-        span.setAttribute('retry.success', true);
-        span.setAttribute('retry.attempts', attempt);
-        span.setStatus({ code: SpanStatusCode.OK });
-        return result;
-      } catch (error) {
-        lastError = error;
-        span.addEvent('retry.error', {
-          'attempt': attempt,
-          'error': error.message,
-        });
+        try {
+          const result = await fn(attempt);
+          span.setAttribute('retry.success', true);
+          span.setAttribute('retry.attempts', attempt);
+          span.setStatus({ code: SpanStatusCode.OK });
+          return result;
+        } catch (error) {
+          lastError = error;
+          span.addEvent('retry.error', {
+            'attempt': attempt,
+            'error': error.message,
+          });
 
-        // Check if we should retry
-        if (attempt >= maxAttempts || !shouldRetry(error)) {
-          break;
+          // Check if we should retry
+          if (attempt >= maxAttempts || !shouldRetry(error)) {
+            break;
+          }
+
+          // Calculate delay with exponential backoff
+          const delay = backoff ? delayMs * Math.pow(2, attempt - 1) : delayMs;
+          span.addEvent('retry.delay', { 'delay_ms': delay });
+
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
-
-        // Calculate delay with exponential backoff
-        const delay = backoff ? delayMs * Math.pow(2, attempt - 1) : delayMs;
-        span.addEvent('retry.delay', { 'delay_ms': delay });
-
-        await new Promise(resolve => setTimeout(resolve, delay));
       }
-    }
 
-    // All attempts failed
-    span.setAttribute('retry.success', false);
-    span.setAttribute('retry.attempts', attempt);
-    span.recordException(lastError);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+      // All attempts failed
+      span.setAttribute('retry.success', false);
+      span.setAttribute('retry.attempts', attempt);
+      span.recordException(lastError);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+
+      throw lastError;
+    });
+  } finally {
     span.end();
-
-    throw lastError;
-  });
+  }
 }
 ```
 
@@ -665,7 +688,17 @@ class RetryableAPIClient extends APIClient {
     };
 
     return withRetry(
-      () => super.request(method, path, options),
+      async () => {
+        const response = await super.request(method, path, options);
+
+        if (!response.ok) {
+          const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+          error.response = response;
+          throw error;
+        }
+
+        return response;
+      },
       {
         maxAttempts: 3,
         delayMs: 1000,
