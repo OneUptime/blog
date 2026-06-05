@@ -35,7 +35,8 @@ Install the OPA plugin:
 ```bash
 # Install the OPA Docker authorization plugin
 
-docker plugin install openpolicyagent/opa-docker-authz-v2:latest \
+docker plugin install --alias opa-docker-authz \
+  openpolicyagent/opa-docker-authz-v2:0.8 \
   opa-args="-policy-file /opa/policies/authz.rego"
 ```
 
@@ -50,51 +51,54 @@ package docker.authz
 default allow = false
 
 # Define the allowed image registries and repositories
-allowed_registries := {
+allowed_registries := [
     "ghcr.io/your-org",
     "your-registry.azurecr.io",
     "gcr.io/your-project"
-}
+]
 
 # Define specific allowed images from Docker Hub
-allowed_hub_images := {
+allowed_hub_images := [
     "nginx",
     "postgres",
     "redis",
     "node"
-}
+]
 
 # Allow container creation only for approved images
 allow {
     input.Method == "POST"
-    input.Path == "/containers/create"
+    input.PathArr[count(input.PathArr) - 2] == "containers"
+    input.PathArr[count(input.PathArr) - 1] == "create"
     image := input.Body.Image
     registry_allowed(image)
 }
 
 # Allow all non-container-creation requests
 allow {
-    input.Method != "POST"
+    not container_create_request
 }
 
-allow {
-    input.Path != "/containers/create"
+container_create_request {
+    input.Method == "POST"
+    input.PathArr[count(input.PathArr) - 2] == "containers"
+    input.PathArr[count(input.PathArr) - 1] == "create"
 }
 
 # Check if the image comes from an allowed registry
 registry_allowed(image) {
-    some registry in allowed_registries
+    registry := allowed_registries[_]
     startswith(image, registry)
 }
 
 # Check if the image is an allowed Docker Hub image
 registry_allowed(image) {
-    some img in allowed_hub_images
+    img := allowed_hub_images[_]
     image == img
 }
 
 registry_allowed(image) {
-    some img in allowed_hub_images
+    img := allowed_hub_images[_]
     startswith(image, concat("", [img, ":"]))
 }
 ```
@@ -103,7 +107,7 @@ Configure Docker to use the plugin:
 
 ```json
 {
-  "authorization-plugins": ["openpolicyagent/opa-docker-authz-v2"]
+  "authorization-plugins": ["opa-docker-authz"]
 }
 ```
 
@@ -166,7 +170,6 @@ Automate the process of pulling, scanning, and mirroring approved images:
 # Pulls approved images, scans them, and pushes to private registry
 
 REGISTRY="your-registry.example.com"
-SCAN_THRESHOLD="high"
 
 # List of approved images with pinned digests
 declare -A APPROVED_IMAGES=(
@@ -183,12 +186,11 @@ for name in "${!APPROVED_IMAGES[@]}"; do
     # Pull the image
     docker pull "$source_image"
 
-    # Scan for vulnerabilities
-    scan_result=$(docker scout cves "$source_image" --only-severity critical,high 2>&1)
-    critical_count=$(echo "$scan_result" | grep -c "critical")
-
-    if [ "$critical_count" -gt 0 ]; then
-        echo "BLOCKED: $name has critical vulnerabilities"
+    # Scan for critical vulnerabilities
+    if docker scout cves --only-severity critical --exit-code "$source_image"; then
+        :
+    else
+        echo "BLOCKED: $name has critical vulnerabilities or the scan failed"
         continue
     fi
 
@@ -201,7 +203,7 @@ done
 
 ## Approach 3: Kubernetes Admission Control
 
-If you run Docker containers through Kubernetes, admission controllers provide the most robust image allow list enforcement.
+If you run containerized workloads through Kubernetes, admission controllers provide the most robust image allow list enforcement.
 
 ### Using Kyverno for Image Policies
 
@@ -215,7 +217,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -225,14 +226,17 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
           Images must come from approved registries:
           ghcr.io/your-org, your-registry.azurecr.io
         pattern:
           spec:
-            containers:
+            "=(ephemeralContainers)":
               - image: "ghcr.io/your-org/* | your-registry.azurecr.io/*"
-            initContainers:
+            "=(initContainers)":
+              - image: "ghcr.io/your-org/* | your-registry.azurecr.io/*"
+            containers:
               - image: "ghcr.io/your-org/* | your-registry.azurecr.io/*"
 ```
 
@@ -260,7 +264,6 @@ kind: ClusterPolicy
 metadata:
   name: require-image-digests
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-digest
       match:
@@ -269,16 +272,21 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must use digests, not tags"
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - image: "*@sha256:*"
+            "=(initContainers)":
+              - image: "*@sha256:*"
             containers:
               - image: "*@sha256:*"
 ```
 
 ## Approach 4: CI/CD Pipeline Enforcement
 
-Catch disallowed images before they reach production by scanning Dockerfiles and Compose files in your CI pipeline:
+Catch disallowed images before they reach production by scanning Dockerfiles in your CI pipeline:
 
 ```bash
 #!/bin/bash
@@ -295,8 +303,14 @@ ALLOWED_BASES=(
 )
 
 # Extract FROM instructions from all Dockerfiles
-for dockerfile in $(find . -name "Dockerfile*" -type f); do
-    from_images=$(grep -i "^FROM" "$dockerfile" | awk '{print $2}' | grep -v "AS")
+while IFS= read -r -d '' dockerfile; do
+    from_images=$(awk '
+        toupper($1) == "FROM" {
+            i = 2
+            while ($i ~ /^--/) i++
+            print $i
+        }
+    ' "$dockerfile")
 
     while IFS= read -r image; do
         allowed=false
@@ -312,7 +326,7 @@ for dockerfile in $(find . -name "Dockerfile*" -type f); do
             exit 1
         fi
     done <<< "$from_images"
-done
+done < <(find . -name "Dockerfile*" -type f -print0)
 
 echo "All Dockerfiles use approved base images"
 ```
@@ -350,9 +364,10 @@ An allow list is only useful if it is maintained. Set up a process:
 #!/bin/bash
 # weekly-scan.sh
 for image in $(cat approved-images.txt); do
-    result=$(docker scout cves "$image" --only-severity critical 2>&1)
-    if echo "$result" | grep -q "critical"; then
-        echo "ALERT: $image has new critical vulnerabilities"
+    if docker scout cves --only-severity critical --exit-code "$image"; then
+        :
+    else
+        echo "ALERT: $image has new critical vulnerabilities or the scan failed"
         # Send notification to your team
     fi
 done
