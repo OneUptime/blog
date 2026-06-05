@@ -65,6 +65,8 @@ spec:
           ports:
             - containerPort: 4317
               name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
           resources:
             limits:
               cpu: "1"
@@ -87,6 +89,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -110,13 +114,13 @@ processors:
         value: namespace
         action: upsert
 
-  # Strip any pre-existing tenant attributes to prevent spoofing
+  # Strip any pre-existing span/log/metric tenant attributes to prevent spoofing
   attributes:
     actions:
       # Remove any client-supplied tenant attributes
       - key: tenant.name
         action: delete
-      # These get re-added by the resource processor above
+      # Trusted resource attributes get re-added by the resource processor above
 
 exporters:
   otlp/gateway:
@@ -179,6 +183,16 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # Allow the Collector to forward telemetry to the central gateway
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app: otel-gateway
+      ports:
+        - port: 4317
     # Allow egress to own namespace Collector
     - to:
         - podSelector:
@@ -277,4 +291,4 @@ WHERE resource_attributes['tenant.name'] = currentUser()
 
 ## Wrapping Up
 
-Namespace-based telemetry isolation gives you strong multi-tenant boundaries in Kubernetes. By combining per-namespace Collectors, mandatory attribute injection, network policies, and backend-level filtering, you ensure that tenants can only access their own telemetry data. The key is that tenant identity is injected by the Collector (not the application), making it impossible for applications to spoof their tenant identity.
+Namespace-based telemetry isolation gives you strong multi-tenant boundaries in Kubernetes. By combining per-namespace Collectors, mandatory attribute injection, network policies, and backend-level filtering, you ensure that tenants can only access their own telemetry data. The key is that tenant identity is injected by the Collector (not the application), preventing applications that must use their namespace Collector from spoofing their tenant identity.
