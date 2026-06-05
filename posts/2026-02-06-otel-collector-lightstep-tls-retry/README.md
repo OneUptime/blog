@@ -58,7 +58,6 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
-      storage: null
 
     # Timeout per export batch
     timeout: 30s
@@ -106,6 +105,14 @@ exporters:
 ## Advanced Retry Configuration
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  batch:
+
 exporters:
   otlp/lightstep:
     endpoint: "ingest.lightstep.com:443"
@@ -129,7 +136,7 @@ exporters:
       enabled: true
       # Number of parallel export workers
       num_consumers: 10
-      # Maximum items in the queue (traces or metric data points)
+      # Maximum batches in the queue
       queue_size: 10000
       # Use persistent storage to survive collector restarts
       storage: file_storage
@@ -138,6 +145,7 @@ extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
     timeout: 10s
+    create_directory: true
 
 service:
   extensions: [file_storage]
@@ -158,24 +166,31 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to watch:
 
 ```promql
 # Export failures (should be zero most of the time)
-rate(otelcol_exporter_send_failed_spans_total[5m])
+rate(otelcol_exporter_send_failed_spans[5m])
 
-# Queue utilization (approaching queue_size means you are losing data)
+# Queue utilization (approaching capacity means you are at risk of dropping data)
 otelcol_exporter_queue_size
 
-# Retry attempts
-rate(otelcol_exporter_send_retries_total[5m])
+# Export requests currently in flight, including retry backoff
+otelcol_exporter_in_flight_requests
 
 # Successful exports
-rate(otelcol_exporter_sent_spans_total[5m])
+rate(otelcol_exporter_sent_spans[5m])
 ```
 
 ## Load Balancing Multiple Collectors
@@ -194,6 +209,9 @@ spec:
     matchLabels:
       app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
