@@ -38,7 +38,7 @@ processors:
 # Exporters: Where telemetry is sent
 exporters:
   otlphttp:
-  logging:
+  debug:
 
 # Service: Wire components together and configure pipelines
 service:
@@ -67,10 +67,10 @@ The Collector has a `validate` command:
 
 ```bash
 # Validate configuration file
-otelcol --config=/etc/otelcol/config.yaml validate
+otelcol validate --config=/etc/otelcol/config.yaml
 
 # Expected output on success:
-# "Config validation passed"
+# No output and exit code 0
 
 # On error, you'll see specific issues:
 # Error: failed to validate config: ...
@@ -93,7 +93,7 @@ yq eval config.yaml
 # - Invalid characters
 ```
 
-### 3. Dry-run in Docker
+### 3. Validation in Docker
 
 Test configuration in isolation:
 
@@ -102,10 +102,10 @@ Test configuration in isolation:
 docker run --rm \
   -v $(pwd)/config.yaml:/etc/otelcol/config.yaml \
   otel/opentelemetry-collector-contrib:latest \
-  --config=/etc/otelcol/config.yaml
+  validate --config=/etc/otelcol/config.yaml
 
 # If config is invalid, Collector will exit with error
-# If valid, you'll see "Everything is ready. Begin running and processing data."
+# If valid, the command exits with status 0
 ```
 
 ---
@@ -208,7 +208,7 @@ exporters:
   otlphttp:
     # Missing required 'endpoint' field
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 ```
 
 **Error Message:**
@@ -222,7 +222,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp  # Required field
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 ```
 
 ### Error 4: Wrong Type for Field
@@ -341,10 +341,10 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      # Use ${VAR} syntax
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      # Use ${env:VAR} syntax
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
       # Can also provide default values
-      x-api-key: ${API_KEY:-default_value}
+      x-api-key: ${env:API_KEY:-default_value}
 ```
 
 ### Error 8: Processor Order Matters
@@ -484,6 +484,7 @@ extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
     timeout: 10s
+    create_directory: true
 
 # Receivers: Define how telemetry enters
 receivers:
@@ -518,7 +519,7 @@ processors:
   resource:
     attributes:
       - key: deployment.environment
-        value: ${ENVIRONMENT:-production}
+        value: ${env:ENVIRONMENT:-production}
         action: upsert
 
   # Remove sensitive data
@@ -543,7 +544,7 @@ exporters:
   otlphttp/primary:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
     timeout: 30s
 
@@ -561,8 +562,8 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-  # Debug logging exporter
-  logging:
+  # Debug exporter
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
@@ -586,18 +587,20 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
       # Export internal metrics
-      readers:
         - periodic:
             interval: 60000
             exporter:
               otlp:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
-                headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
   # Define pipelines
   pipelines:
@@ -605,7 +608,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, attributes/redact, batch]
-      exporters: [otlphttp/primary, logging]
+      exporters: [otlphttp/primary, debug]
 
     # Metrics pipeline
     metrics:
@@ -665,7 +668,7 @@ yq eval '.service.pipelines.*.processors' config.yaml
 **5. Environment Variables Set**
 ```bash
 # Extract required env vars
-grep -oE '\$\{[A-Z_]+\}' config.yaml | sort -u
+grep -oE '\$\{env:[A-Z_]+' config.yaml | sed 's/${env://' | sort -u
 
 # Verify they're set
 env | grep -E "ONEUPTIME_TOKEN|ENVIRONMENT"
@@ -674,14 +677,13 @@ env | grep -E "ONEUPTIME_TOKEN|ENVIRONMENT"
 **6. Collector Validation**
 ```bash
 # Final validation with Collector binary
-otelcol --config=config.yaml validate
+otelcol validate --config=config.yaml
 
 # Or in Docker
 docker run --rm \
   -v $(pwd)/config.yaml:/config.yaml \
   otel/opentelemetry-collector-contrib:latest \
-  --config=/config.yaml \
-  --dry-run
+  validate --config=/config.yaml
 ```
 
 ---
@@ -712,7 +714,7 @@ data:
       otlphttp:
         endpoint: https://oneuptime.com/otlp
         headers:
-          x-oneuptime-token: \${ONEUPTIME_TOKEN}
+          x-oneuptime-token: \${env:ONEUPTIME_TOKEN}
     service:
       pipelines:
         traces:
@@ -728,7 +730,7 @@ kubectl create configmap otel-collector-config \
   yq eval '.data."config.yaml"' - > /tmp/extracted-config.yaml
 
 # Validate extracted config
-otelcol --config=/tmp/extracted-config.yaml validate
+otelcol validate --config=/tmp/extracted-config.yaml
 ```
 
 ---
@@ -751,7 +753,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]  # Use logging exporter for debugging
+      exporters: [debug]  # Use debug exporter for troubleshooting
 ```
 
 Run Collector and examine output:
@@ -798,9 +800,11 @@ receivers:
 enabled: true
 enabled: false
 
-# Invalid (treated as strings)
+# Also valid in YAML, but lowercase is easier to read consistently
 enabled: True
 enabled: FALSE
+
+# Avoid legacy YAML booleans that can be parsed inconsistently by tools
 enabled: yes
 enabled: no
 ```
@@ -877,12 +881,11 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}/otel-config:/config \
             otel/opentelemetry-collector-contrib:latest \
-            --config=/config/config.yaml \
-            validate
+            validate --config=/config/config.yaml
 
       - name: Check for required env vars
         run: |
-          required_vars=$(grep -oE '\$\{[A-Z_]+\}' otel-config/config.yaml | sort -u)
+          required_vars=$(grep -oE '\$\{env:[A-Z_]+' otel-config/config.yaml | sed 's/${env://' | sort -u)
           echo "Config requires these environment variables:"
           echo "$required_vars"
 ```
