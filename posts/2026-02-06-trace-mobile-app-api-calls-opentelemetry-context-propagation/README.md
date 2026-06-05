@@ -67,11 +67,11 @@ class TracedNetworkClient {
             .startSpan()
 
         // Add HTTP semantic convention attributes
-        span.setAttribute(key: "http.method", value: method)
-        span.setAttribute(key: "http.url", value: url.absoluteString)
-        span.setAttribute(key: "http.scheme", value: url.scheme ?? "https")
-        span.setAttribute(key: "http.host", value: url.host ?? "")
-        span.setAttribute(key: "http.target", value: url.path)
+        span.setAttribute(key: "http.request.method", value: method)
+        span.setAttribute(key: "url.full", value: url.absoluteString)
+        span.setAttribute(key: "url.scheme", value: url.scheme ?? "https")
+        span.setAttribute(key: "server.address", value: url.host ?? "")
+        span.setAttribute(key: "url.path", value: url.path)
 
         // Create URL request
         var urlRequest = URLRequest(url: url)
@@ -84,12 +84,15 @@ class TracedNetworkClient {
         }
 
         // Inject trace context into request headers
-        let context = OpenTelemetryContext.current.withSpan(span)
         var carrier: [String: String] = [:]
 
-        propagator.inject(context: context, carrier: &carrier) { carrier, key, value in
-            carrier?[key] = value
+        struct HeaderSetter: Setter {
+            func set(carrier: inout [String: String], key: String, value: String) {
+                carrier[key] = value
+            }
         }
+
+        propagator.inject(spanContext: span.context, carrier: &carrier, setter: HeaderSetter())
 
         // Add propagated headers to the request
         carrier.forEach { key, value in
@@ -106,15 +109,15 @@ class TracedNetworkClient {
             }
 
             // Record response attributes
-            span.setAttribute(key: "http.status_code", value: httpResponse.statusCode)
-            span.setAttribute(key: "http.response_content_length", value: data.count)
+            span.setAttribute(key: "http.response.status_code", value: httpResponse.statusCode)
+            span.setAttribute(key: "http.response.body.size", value: data.count)
             span.setAttribute(key: "http.duration_ms", value: duration * 1000)
 
             // Set span status based on HTTP status code
             if (200..<400).contains(httpResponse.statusCode) {
-                span.setStatus(status: .ok)
+                span.status = .ok
             } else {
-                span.setStatus(status: .error(description: "HTTP \(httpResponse.statusCode)"))
+                span.status = .error(description: "HTTP \(httpResponse.statusCode)")
             }
 
             span.end()
@@ -124,7 +127,7 @@ class TracedNetworkClient {
             // Record error information
             span.setAttribute(key: "error", value: true)
             span.setAttribute(key: "error.message", value: error.localizedDescription)
-            span.setStatus(status: .error(description: error.localizedDescription))
+            span.status = .error(description: error.localizedDescription)
             span.end()
             throw error
         }
@@ -143,6 +146,7 @@ Build a higher-level API client that uses the traced network client and provides
 
 ```swift
 import Foundation
+import OpenTelemetryApi
 
 struct User: Codable {
     let id: String
@@ -297,8 +301,8 @@ class TracedNetworkClient(private val tracer: Tracer) {
             .startSpan()
 
         // Add HTTP semantic conventions
-        span.setAttribute("http.method", method)
-        span.setAttribute("http.url", url)
+        span.setAttribute("http.request.method", method)
+        span.setAttribute("url.full", url)
 
         val requestBuilder = Request.Builder()
             .url(url)
@@ -324,13 +328,15 @@ class TracedNetworkClient(private val tracer: Tracer) {
 
         return try {
             val startTime = System.currentTimeMillis()
-            val response = client.newCall(request).execute()
+            val response = span.makeCurrent().use {
+                client.newCall(request).execute()
+            }
             val duration = System.currentTimeMillis() - startTime
 
-            span.setAttribute("http.status_code", response.code)
+            span.setAttribute("http.response.status_code", response.code)
             span.setAttribute("http.duration_ms", duration)
 
-            if (response.isSuccessful) {
+            if (response.code < 400) {
                 span.setStatus(StatusCode.OK)
             } else {
                 span.setStatus(StatusCode.ERROR, "HTTP ${response.code}")
@@ -357,13 +363,19 @@ class TracedNetworkClient(private val tracer: Tracer) {
     // TextMapSetter for injecting headers into OkHttp request
     private object RequestHeaderSetter : TextMapSetter<Request.Builder> {
         override fun set(carrier: Request.Builder?, key: String, value: String) {
-            carrier?.addHeader(key, value)
+            carrier?.header(key, value)
         }
     }
 }
 
 // OkHttp interceptor for automatic tracing
 class TracingInterceptor(private val tracer: Tracer) : Interceptor {
+    private object RequestHeaderSetter : TextMapSetter<Request.Builder> {
+        override fun set(carrier: Request.Builder?, key: String, value: String) {
+            carrier?.header(key, value)
+        }
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
 
@@ -377,18 +389,29 @@ class TracingInterceptor(private val tracer: Tracer) : Interceptor {
             .setSpanKind(SpanKind.CLIENT)
             .startSpan()
 
-        span.setAttribute("http.method", request.method)
-        span.setAttribute("http.url", request.url.toString())
-        span.setAttribute("http.scheme", request.url.scheme)
-        span.setAttribute("http.host", request.url.host)
-        span.setAttribute("http.target", request.url.encodedPath)
+        span.setAttribute("http.request.method", request.method)
+        span.setAttribute("url.full", request.url.toString())
+        span.setAttribute("url.scheme", request.url.scheme)
+        span.setAttribute("server.address", request.url.host)
+        span.setAttribute("url.path", request.url.encodedPath)
+
+        val requestBuilder = request.newBuilder()
+        val context = Context.current().with(span)
+        val propagator = io.opentelemetry.api.GlobalOpenTelemetry
+            .getPropagators()
+            .textMapPropagator
+
+        propagator.inject(context, requestBuilder, RequestHeaderSetter)
+        val tracedRequest = requestBuilder.build()
 
         return try {
-            val response = chain.proceed(request)
+            val response = span.makeCurrent().use {
+                chain.proceed(tracedRequest)
+            }
 
-            span.setAttribute("http.status_code", response.code)
+            span.setAttribute("http.response.status_code", response.code)
             span.setStatus(
-                if (response.isSuccessful) StatusCode.OK
+                if (response.code < 400) StatusCode.OK
                 else StatusCode.ERROR
             )
 
@@ -413,6 +436,7 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import io.opentelemetry.extension.kotlin.asContextElement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -510,7 +534,7 @@ import 'package:opentelemetry/api.dart' as otel;
 
 class ContextPropagatingInterceptor extends Interceptor {
   final otel.Tracer tracer;
-  final otel.TextMapPropagator propagator;
+  final otel.TextMapPropagator<Map<String, String>> propagator;
 
   ContextPropagatingInterceptor(this.tracer)
       : propagator = otel.W3CTraceContextPropagator();
@@ -518,17 +542,18 @@ class ContextPropagatingInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     // Create span for the request
-    final span = tracer
-        .spanBuilder('HTTP ${options.method} ${options.path}')
-        .setSpanKind(otel.SpanKind.client)
-        .startSpan();
+    final span = tracer.startSpan(
+      'HTTP ${options.method} ${options.path}',
+      kind: otel.SpanKind.client,
+    );
 
     // Add HTTP attributes
-    span.setAttribute('http.method', options.method);
-    span.setAttribute('http.url', options.uri.toString());
-    span.setAttribute('http.scheme', options.uri.scheme);
-    span.setAttribute('http.host', options.uri.host);
-    span.setAttribute('http.target', options.uri.path);
+    span
+      ..setAttribute(otel.Attribute.fromString('http.request.method', options.method))
+      ..setAttribute(otel.Attribute.fromString('url.full', options.uri.toString()))
+      ..setAttribute(otel.Attribute.fromString('url.scheme', options.uri.scheme))
+      ..setAttribute(otel.Attribute.fromString('server.address', options.uri.host))
+      ..setAttribute(otel.Attribute.fromString('url.path', options.uri.path));
 
     // Store span for later use
     options.extra['otel_span'] = span;
@@ -551,7 +576,9 @@ class ContextPropagatingInterceptor extends Interceptor {
     final span = response.requestOptions.extra['otel_span'] as otel.Span?;
 
     if (span != null) {
-      span.setAttribute('http.status_code', response.statusCode ?? 0);
+      span.setAttribute(
+        otel.Attribute.fromInt('http.response.status_code', response.statusCode ?? 0),
+      );
 
       if (response.statusCode != null &&
           response.statusCode! >= 200 &&
@@ -579,7 +606,12 @@ class ContextPropagatingInterceptor extends Interceptor {
       span.setStatus(otel.StatusCode.error, err.message ?? 'Request failed');
 
       if (err.response != null) {
-        span.setAttribute('http.status_code', err.response!.statusCode ?? 0);
+        span.setAttribute(
+          otel.Attribute.fromInt(
+            'http.response.status_code',
+            err.response!.statusCode ?? 0,
+          ),
+        );
       }
 
       span.end();
@@ -652,6 +684,7 @@ Your backend services must be configured to extract and continue traces from mob
 // Backend service example (Node.js with Express)
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
@@ -661,12 +694,16 @@ provider.register({
   propagator: new W3CTraceContextPropagator(),
 });
 
+const tracer = trace.getTracer('user-service');
+
 registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
   ],
 });
+
+const express = require('express');
 
 // Express middleware automatically extracts trace context
 // from incoming requests and creates child spans
