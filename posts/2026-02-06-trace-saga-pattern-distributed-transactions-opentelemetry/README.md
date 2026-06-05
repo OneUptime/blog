@@ -230,7 +230,9 @@ def publish_saga_event(event_type, payload, broker_client):
         kind=SpanKind.PRODUCER,
         attributes={
             "messaging.system": "kafka",
-            "messaging.operation": "publish",
+            "messaging.operation.name": "publish",
+            "messaging.operation.type": "send",
+            "messaging.destination.name": f"saga.events.{event_type}",
             "saga.event.type": event_type,
             "saga.order_id": payload.get("order_id", "unknown"),
         }
@@ -245,14 +247,15 @@ def publish_saga_event(event_type, payload, broker_client):
             "payload": payload,
         }
         # Send the message with trace context in headers
+        topic = f"saga.events.{event_type}"
         broker_client.publish(
-            topic=f"saga.events.{event_type}",
+            topic=topic,
             value=json.dumps(message),
             headers=headers,  # Contains traceparent and tracestate
         )
 
 
-def handle_saga_event(message, headers, handler_fn):
+def handle_saga_event(message, headers, handler_fn, broker_client):
     """Process a saga event, extracting trace context from message headers."""
     # Extract the trace context from the incoming message headers
     # This reconnects us to the original saga trace
@@ -266,7 +269,8 @@ def handle_saga_event(message, headers, handler_fn):
         kind=SpanKind.CONSUMER,
         attributes={
             "messaging.system": "kafka",
-            "messaging.operation": "process",
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
             "saga.event.type": event_type,
             "saga.order_id": message.get("payload", {}).get("order_id", "unknown"),
         }
@@ -282,7 +286,7 @@ def handle_saga_event(message, headers, handler_fn):
             publish_saga_event(
                 f"{event_type}.failed",
                 {**message["payload"], "error": str(e)},
-                broker_client=None,  # Pass your broker client here
+                broker_client,
             )
             raise
 ```
