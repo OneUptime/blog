@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Configuration, HTTP Provider, Remote Configurati
 
 Description: Implement centralized remote configuration management for OpenTelemetry Collectors using HTTP providers to control fleet-wide deployments from a single source.
 
-The HTTP provider enables OpenTelemetry Collectors to fetch configuration from remote HTTP endpoints, allowing centralized management of collector fleets. This approach is essential for organizations managing hundreds or thousands of collector instances across distributed infrastructure.
+The HTTP and HTTPS providers enable OpenTelemetry Collectors to fetch configuration from remote endpoints, allowing centralized management of collector fleets. This approach is essential for organizations managing hundreds or thousands of collector instances across distributed infrastructure.
 
 ## Understanding HTTP Configuration Providers
 
-HTTP providers fetch configuration data from remote HTTP/HTTPS endpoints instead of local files. The collector polls these endpoints at regular intervals and applies configuration updates automatically.
+HTTP and HTTPS providers fetch configuration data from remote endpoints instead of local files. The collector reads the remote configuration when it starts; to apply a changed remote configuration, restart or roll the collector process.
 
 This architecture enables centralized control over distributed collector fleets:
 
@@ -26,38 +26,10 @@ graph TD
 
 ## Setting Up HTTP Provider
 
-Enable the HTTP provider in your collector configuration:
+Use an HTTP or HTTPS URI as the collector configuration source. The `http` provider handles `http://` URIs, and the `https` provider handles `https://` URIs:
 
 ```yaml
-# collector-config.yaml
-
-# Base configuration with HTTP provider
-providers:
-  http:
-    # Enable HTTP provider
-    enabled: true
-
-    # Configuration endpoint URL
-    endpoint: https://config.example.com/otel/config
-
-    # Poll interval for checking updates (default: 30s)
-    poll_interval: 30s
-
-    # Request timeout
-    timeout: 10s
-
-    # HTTP headers for authentication
-    headers:
-      Authorization: Bearer ${CONFIG_API_TOKEN}
-      X-Collector-ID: ${COLLECTOR_ID}
-
-    # TLS configuration for secure connections
-    tls:
-      insecure: false
-      cert_file: /etc/certs/client.crt
-      key_file: /etc/certs/client.key
-      ca_file: /etc/certs/ca.crt
-
+# The remote endpoint should return a valid Collector YAML configuration.
 receivers:
   otlp:
     protocols:
@@ -75,12 +47,12 @@ service:
       exporters: [debug]
 ```
 
-Start the collector with the HTTP provider feature enabled:
+Start the collector with the HTTP configuration URI:
 
 ```bash
 export CONFIG_API_TOKEN="your-api-token"
 export COLLECTOR_ID="collector-prod-us-east-1a"
-./otelcol --config collector-config.yaml --feature-gates=configprovider.Enable
+./otelcol --config "https://config.example.com/otel/config?collector_id=${COLLECTOR_ID}&token=${CONFIG_API_TOKEN}"
 ```
 
 ## Building a Configuration Server
@@ -92,7 +64,6 @@ Create a simple configuration server that serves collector configurations based 
 package main
 
 import (
-    "encoding/json"
     "log"
     "net/http"
     "os"
@@ -100,37 +71,19 @@ import (
     "strings"
 )
 
-// CollectorConfig represents the collector configuration
-type CollectorConfig struct {
-    Receivers  map[string]interface{} `json:"receivers"`
-    Processors map[string]interface{} `json:"processors"`
-    Exporters  map[string]interface{} `json:"exporters"`
-    Service    ServiceConfig          `json:"service"`
-}
-
-type ServiceConfig struct {
-    Pipelines map[string]Pipeline `json:"pipelines"`
-}
-
-type Pipeline struct {
-    Receivers  []string `json:"receivers"`
-    Processors []string `json:"processors"`
-    Exporters  []string `json:"exporters"`
-}
-
 // configHandler serves collector configuration
 func configHandler(w http.ResponseWriter, r *http.Request) {
     // Verify authentication
-    authHeader := r.Header.Get("Authorization")
-    if !validateToken(authHeader) {
+    token := r.URL.Query().Get("token")
+    if !validateToken(token) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
 
-    // Get collector ID from headers
-    collectorID := r.Header.Get("X-Collector-ID")
+    // Get collector ID from query parameters
+    collectorID := r.URL.Query().Get("collector_id")
     if collectorID == "" {
-        http.Error(w, "X-Collector-ID header required", http.StatusBadRequest)
+        http.Error(w, "collector_id query parameter required", http.StatusBadRequest)
         return
     }
 
@@ -146,25 +99,19 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Set response headers
-    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Content-Type", "application/x-yaml")
     w.Header().Set("X-Config-Version", getConfigVersion(configFile))
 
     // Return configuration
-    json.NewEncoder(w).Encode(config)
+    w.Write(config)
 
     log.Printf("Served config to %s (file: %s)", collectorID, configFile)
 }
 
 // validateToken verifies the authentication token
-func validateToken(authHeader string) bool {
-    // Extract token from "Bearer <token>"
-    parts := strings.Split(authHeader, " ")
-    if len(parts) != 2 || parts[0] != "Bearer" {
-        return false
-    }
-
+func validateToken(token string) bool {
     expectedToken := os.Getenv("CONFIG_API_TOKEN")
-    return parts[1] == expectedToken
+    return expectedToken != "" && token == expectedToken
 }
 
 // determineConfigFile selects configuration based on collector ID
@@ -176,25 +123,16 @@ func determineConfigFile(collectorID string) string {
         env := parts[1] // prod, staging, dev
 
         // Return environment-specific config
-        return filepath.Join("configs", env, "config.yaml")
+        return filepath.Join("/configs", env, "config.yaml")
     }
 
     // Default configuration
-    return "configs/default/config.yaml"
+    return "/configs/default/config.yaml"
 }
 
 // loadConfig reads configuration from file
-func loadConfig(filename string) (*CollectorConfig, error) {
-    data, err := os.ReadFile(filename)
-    if err != nil {
-        return nil, err
-    }
-
-    var config CollectorConfig
-    // In production, parse YAML properly
-    // For this example, assume JSON format
-    err = json.Unmarshal(data, &config)
-    return &config, err
+func loadConfig(filename string) ([]byte, error) {
+    return os.ReadFile(filename)
 }
 
 // getConfigVersion returns the configuration version
@@ -325,9 +263,10 @@ package main
 
 import (
     "bytes"
-    "encoding/json"
     "net/http"
+    "strings"
     "text/template"
+    "time"
 )
 
 // CollectorMetadata contains collector-specific information
@@ -342,7 +281,7 @@ type CollectorMetadata struct {
 // configTemplateHandler generates configuration from templates
 func configTemplateHandler(w http.ResponseWriter, r *http.Request) {
     // Authenticate request
-    if !validateToken(r.Header.Get("Authorization")) {
+    if !validateToken(r.URL.Query().Get("token")) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
@@ -373,7 +312,7 @@ func configTemplateHandler(w http.ResponseWriter, r *http.Request) {
 
 // extractMetadata parses collector metadata from request
 func extractMetadata(r *http.Request) CollectorMetadata {
-    collectorID := r.Header.Get("X-Collector-ID")
+    collectorID := r.URL.Query().Get("collector_id")
 
     // Parse collector ID to extract metadata
     // Format: collector-<env>-<region>-<zone>
@@ -386,6 +325,35 @@ func extractMetadata(r *http.Request) CollectorMetadata {
         Zone:        parts["zone"],
         ClusterName: parts["cluster"],
     }
+}
+
+func parseCollectorID(collectorID string) map[string]string {
+    parts := strings.Split(collectorID, "-")
+    result := map[string]string{
+        "env":     "dev",
+        "region":  "local",
+        "zone":    "local",
+        "cluster": "default",
+    }
+
+    if len(parts) > 1 {
+        result["env"] = parts[1]
+    }
+    if len(parts) > 2 {
+        result["region"] = parts[2]
+    }
+    if len(parts) > 3 {
+        result["zone"] = parts[3]
+    }
+    if len(parts) > 4 {
+        result["cluster"] = strings.Join(parts[4:], "-")
+    }
+
+    return result
+}
+
+func getTemplateVersion() string {
+    return time.Now().UTC().Format("20060102-150405")
 }
 ```
 
@@ -403,13 +371,13 @@ receivers:
 
 processors:
   batch:
-    {{- if eq .Environment "production" }}
+    {{ if eq .Environment "production" }}
     timeout: 30s
     send_batch_size: 1000
-    {{- else }}
+    {{ else }}
     timeout: 5s
     send_batch_size: 100
-    {{- end }}
+    {{ end }}
 
   resource:
     attributes:
@@ -430,7 +398,7 @@ processors:
         action: upsert
 
 exporters:
-  {{- if eq .Environment "production" }}
+  {{ if eq .Environment "production" }}
   otlp/tempo:
     endpoint: tempo-prod-{{ .Region }}.monitoring.svc:4317
     compression: gzip
@@ -439,7 +407,7 @@ exporters:
     endpoint: https://prometheus-{{ .Region }}.monitoring.svc/api/v1/write
     headers:
       X-Scope-OrgID: {{ .Environment }}
-  {{- else }}
+  {{ else }}
   debug:
     verbosity: detailed
 
@@ -447,26 +415,26 @@ exporters:
     endpoint: tempo-dev.monitoring.svc:4317
     tls:
       insecure: true
-  {{- end }}
+  {{ end }}
 
 service:
   telemetry:
     logs:
-      {{- if eq .Environment "production" }}
+      {{ if eq .Environment "production" }}
       level: warn
-      {{- else }}
+      {{ else }}
       level: debug
-      {{- end }}
+      {{ end }}
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      {{- if eq .Environment "production" }}
+      {{ if eq .Environment "production" }}
       exporters: [otlp/tempo]
-      {{- else }}
+      {{ else }}
       exporters: [debug, otlp/tempo]
-      {{- end }}
+      {{ end }}
 ```
 
 ## Configuration Versioning and Rollback
@@ -506,12 +474,12 @@ var store = &ConfigStore{
 
 // versionedConfigHandler serves configuration with version support
 func versionedConfigHandler(w http.ResponseWriter, r *http.Request) {
-    if !validateToken(r.Header.Get("Authorization")) {
+    if !validateToken(r.URL.Query().Get("token")) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
 
-    collectorID := r.Header.Get("X-Collector-ID")
+    collectorID := r.URL.Query().Get("collector_id")
     requestedVersion := r.URL.Query().Get("version")
 
     store.mu.RLock()
@@ -527,12 +495,21 @@ func versionedConfigHandler(w http.ResponseWriter, r *http.Request) {
 
     if requestedVersion != "" {
         // Serve specific version
-        version, _ := strconv.Atoi(requestedVersion)
+        version, err := strconv.Atoi(requestedVersion)
+        if err != nil {
+            http.Error(w, "Invalid version", http.StatusBadRequest)
+            return
+        }
         config = findVersion(versions, version)
     } else {
         // Serve current version
         currentVersion := store.current[collectorID]
         config = findVersion(versions, currentVersion)
+    }
+
+    if config.Version == 0 {
+        http.Error(w, "Version not found", http.StatusNotFound)
+        return
     }
 
     w.Header().Set("Content-Type", "application/json")
@@ -547,7 +524,7 @@ func rollbackHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if !validateToken(r.Header.Get("Authorization")) {
+    if !validateToken(r.URL.Query().Get("token")) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
@@ -645,6 +622,11 @@ spec:
       - name: configs
         configMap:
           name: collector-configs
+          items:
+          - key: prod.yaml
+            path: prod/config.yaml
+          - key: dev.yaml
+            path: dev/config.yaml
 
 ---
 apiVersion: v1
@@ -684,9 +666,12 @@ spec:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:latest
         args:
-          - --config=/etc/otel/config.yaml
-          - --feature-gates=configprovider.Enable
+          - --config=http://otel-config-server.observability.svc/otel/config?collector_id=$(COLLECTOR_ID)&token=$(CONFIG_API_TOKEN)
         env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: CONFIG_API_TOKEN
           valueFrom:
             secretKeyRef:
@@ -694,45 +679,23 @@ spec:
               key: api-token
         - name: COLLECTOR_ID
           value: "collector-prod-$(NODE_NAME)"
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        volumeMounts:
-        - name: config
-          mountPath: /etc/otel
-      volumes:
-      - name: config
-        configMap:
-          name: otel-collector-base-config
 ```
 
-Base configuration with HTTP provider:
+Example configuration content served by the HTTP provider:
 
 ```yaml
-# k8s-configmap.yaml
+# collector-configs.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: otel-collector-base-config
+  name: collector-configs
   namespace: observability
 data:
-  config.yaml: |
-    providers:
-      http:
-        enabled: true
-        endpoint: http://otel-config-server.observability.svc/otel/config
-        poll_interval: 30s
-        timeout: 10s
-        headers:
-          Authorization: Bearer ${CONFIG_API_TOKEN}
-          X-Collector-ID: ${COLLECTOR_ID}
-
-    # Minimal fallback configuration
+  prod.yaml: |
     receivers:
       otlp:
         protocols:
@@ -748,15 +711,31 @@ data:
         traces:
           receivers: [otlp]
           exporters: [debug]
+  dev.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    exporters:
+      debug:
+        verbosity: detailed
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [debug]
 ```
 
 ## Best Practices
 
-**Authentication**: Always use strong authentication tokens and TLS for securing configuration endpoints.
+**Authentication**: Always use strong authentication tokens and TLS for securing configuration endpoints. The built-in HTTP and HTTPS providers issue a GET request for the config URI, so use a trusted internal endpoint, service-mesh or proxy authentication, or signed short-lived URLs when you need stronger controls than query-string tokens.
 
 **Caching**: Implement caching in the configuration server to reduce database load and improve response times.
 
-**Fallback Configuration**: Include a minimal working configuration in case the HTTP provider fails to fetch remote config.
+**Fallback Configuration**: Keep a minimal working configuration available so collectors can be restarted with a local file if the HTTP provider cannot fetch remote config.
 
 **Version Control**: Store configuration files in Git and implement proper versioning for rollback capabilities.
 
@@ -768,4 +747,4 @@ For even more advanced centralized management, explore [OpAMP protocol for colle
 
 ## Conclusion
 
-The HTTP provider enables centralized configuration management for large-scale OpenTelemetry Collector deployments. By fetching configuration from remote endpoints, teams can manage thousands of collectors from a single control plane, implement sophisticated configuration policies, and respond quickly to changing requirements. Combined with proper authentication, versioning, and monitoring, the HTTP provider provides enterprise-grade configuration management capabilities.
+The HTTP and HTTPS providers enable centralized configuration management for large-scale OpenTelemetry Collector deployments. By fetching configuration from remote endpoints, teams can manage thousands of collectors from a single control plane, implement sophisticated configuration policies, and respond quickly to changing requirements. Combined with proper authentication, versioning, and monitoring, the providers can support enterprise-grade configuration management workflows.
