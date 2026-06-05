@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Baggage, Context Propagation, Multi-Tenant, Business Context
 
-Description: Use OpenTelemetry baggage to propagate business context like user ID and tenant ID across traces, metrics, and logs automatically.
+Description: Use OpenTelemetry baggage to propagate business context like user ID and tenant ID, then add it to traces, metrics, and logs.
 
 When you are debugging a problem for a specific customer, you need to filter all telemetry, traces, metrics, and logs, by their tenant ID. But if tenant ID is only set at the API gateway and your downstream services do not have it, you end up with incomplete context. OpenTelemetry Baggage solves this by propagating key-value pairs across service boundaries as part of the request context.
 
@@ -12,7 +12,7 @@ When you are debugging a problem for a specific customer, you need to filter all
 
 Baggage is a set of key-value pairs that travel alongside trace context through every service in a request chain. When Service A adds `tenant_id=acme-corp` to baggage, every downstream service (B, C, D) can read that value and attach it to their own telemetry.
 
-Baggage is not a telemetry signal itself. It is a propagation mechanism. You add values to baggage, and then use those values to enrich spans, metrics, and logs in each service along the request path.
+Baggage is not span, metric, or log data by itself. It is a propagation mechanism. You add values to baggage, and then use those values to enrich spans, metrics, and logs in each service along the request path.
 
 ## Setting Baggage at the Entry Point
 
@@ -24,7 +24,6 @@ Set baggage at the edge of your system, typically in an API gateway or the first
 # gateway.py
 
 from opentelemetry import baggage, context, trace
-from opentelemetry.baggage.propagation import BaggagePropagator
 
 tracer = trace.get_tracer("api-gateway")
 
@@ -34,8 +33,11 @@ def handle_request(request):
     tenant_id = request.headers.get("X-Tenant-ID")
 
     # Set baggage values in the current context
-    ctx = baggage.set_baggage("user.id", user_id)
-    ctx = baggage.set_baggage("tenant.id", tenant_id, context=ctx)
+    ctx = context.get_current()
+    if user_id:
+        ctx = baggage.set_baggage("user.id", user_id, context=ctx)
+    if tenant_id:
+        ctx = baggage.set_baggage("tenant.id", tenant_id, context=ctx)
     ctx = baggage.set_baggage("request.priority", "high", context=ctx)
 
     # Attach the context so it propagates to downstream calls
@@ -43,8 +45,10 @@ def handle_request(request):
     try:
         with tracer.start_as_current_span("handle_request") as span:
             # Add baggage values as span attributes too
-            span.set_attribute("user.id", user_id)
-            span.set_attribute("tenant.id", tenant_id)
+            if user_id:
+                span.set_attribute("user.id", user_id)
+            if tenant_id:
+                span.set_attribute("tenant.id", tenant_id)
 
             # Call downstream services - baggage is propagated automatically
             response = call_order_service(request)
@@ -58,8 +62,11 @@ def handle_request(request):
 ```java
 // ApiGatewayFilter.java
 import io.opentelemetry.api.baggage.Baggage;
+import io.opentelemetry.api.baggage.BaggageBuilder;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public class ApiGatewayFilter {
 
@@ -68,17 +75,26 @@ public class ApiGatewayFilter {
         String tenantId = request.getHeader("X-Tenant-ID");
 
         // Build baggage with business context
-        Baggage baggage = Baggage.builder()
-            .put("user.id", userId)
-            .put("tenant.id", tenantId)
+        BaggageBuilder baggageBuilder = Baggage.builder();
+        if (userId != null) {
+            baggageBuilder.put("user.id", userId);
+        }
+        if (tenantId != null) {
+            baggageBuilder.put("tenant.id", tenantId);
+        }
+        Baggage baggage = baggageBuilder
             .put("request.priority", "normal")
             .build();
 
         // Make baggage current so it propagates to downstream services
         try (Scope scope = baggage.makeCurrent()) {
             Span span = Span.current();
-            span.setAttribute("user.id", userId);
-            span.setAttribute("tenant.id", tenantId);
+            if (userId != null) {
+                span.setAttribute("user.id", userId);
+            }
+            if (tenantId != null) {
+                span.setAttribute("tenant.id", tenantId);
+            }
 
             // Downstream HTTP calls will carry baggage in headers
             orderServiceClient.processOrder(request);
@@ -106,8 +122,10 @@ def process_order(order):
         user_id = baggage.get_baggage("user.id")
 
         # Add to span attributes for this service too
-        span.set_attribute("tenant.id", tenant_id)
-        span.set_attribute("user.id", user_id)
+        if tenant_id:
+            span.set_attribute("tenant.id", tenant_id)
+        if user_id:
+            span.set_attribute("user.id", user_id)
 
         logger.info(
             "Processing order",
@@ -119,52 +137,23 @@ def process_order(order):
         return result
 ```
 
-## Automatic Baggage-to-Attribute Conversion
+## Copying Baggage to Attributes
 
-Manually reading baggage and setting attributes in every service is tedious. The OpenTelemetry Collector's Baggage Processor automates this:
+Manually reading baggage and setting attributes in every service is tedious, but it is the step that makes baggage searchable in telemetry backends. The OpenTelemetry Collector does not receive the original W3C baggage header in OTLP telemetry, so copy baggage to attributes in application code or in an in-process span/log processor before export:
 
-```yaml
-# collector-config.yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: "0.0.0.0:4317"
+```python
+from opentelemetry import baggage
 
-processors:
-  # Automatically converts baggage entries to span/log/metric attributes
-  baggage:
-    rules:
-      - baggage_key: "tenant.id"
-        attribute_key: "tenant.id"
-        action: "insert"
-      - baggage_key: "user.id"
-        attribute_key: "user.id"
-        action: "insert"
-      - baggage_key: "request.priority"
-        attribute_key: "request.priority"
-        action: "insert"
+BAGGAGE_ATTRIBUTE_KEYS = ("tenant.id", "user.id", "request.priority")
 
-  batch:
-    timeout: 5s
-
-exporters:
-  otlp:
-    endpoint: "http://backend:4317"
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [baggage, batch]
-      exporters: [otlp]
-    logs:
-      receivers: [otlp]
-      processors: [baggage, batch]
-      exporters: [otlp]
+def add_baggage_attributes(span):
+    for key in BAGGAGE_ATTRIBUTE_KEYS:
+        value = baggage.get_baggage(key)
+        if value is not None:
+            span.set_attribute(key, value)
 ```
 
-With this processor, every span and log record that passes through the collector gets `tenant.id` and `user.id` attributes added automatically from the baggage context.
+Call this helper when you create spans, and use the same keys when you enrich log records or metric measurements. After the values are present as telemetry attributes, the collector can process, filter, redact, or export them like any other span, log, or metric attribute.
 
 ## Enabling Baggage Propagation in Declarative Config
 
@@ -172,16 +161,17 @@ Make sure your SDK is configured to propagate baggage:
 
 ```yaml
 # otel-config.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 propagator:
   composite:
-    - tracecontext  # W3C trace context headers
-    - baggage       # W3C baggage headers
+    - tracecontext:  # W3C trace context headers
+    - baggage:       # W3C baggage headers
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
 ```
 
 This tells the SDK to both inject and extract baggage from HTTP headers. The W3C Baggage header format looks like this on the wire:
@@ -206,10 +196,11 @@ def process_order(order):
 
     # Include tenant_id as a metric attribute
     # Now you can query order rates per tenant
-    order_counter.add(1, {
-        "tenant.id": tenant_id,
-        "order.type": order.type,
-    })
+    attributes = {"order.type": order.type}
+    if tenant_id is not None:
+        attributes["tenant.id"] = tenant_id
+
+    order_counter.add(1, attributes)
 ```
 
 ## Security Considerations
@@ -222,15 +213,8 @@ Baggage is sent in HTTP headers, which means:
 
 3. **Downstream services can read it.** If you call third-party APIs, your baggage goes along for the ride unless you strip it. Be aware of what you are propagating.
 
-```yaml
-# Limit baggage size in your SDK config
-propagator:
-  composite: [tracecontext, baggage]
-  baggage:
-    max_entries: 10           # limit number of baggage entries
-    max_entry_length: 256     # limit each entry's value length
-```
+Validate and limit baggage in application code before adding it to the context. The W3C Baggage specification allows implementations to drop or truncate entries when the combined header is too large or entries are malformed, but portable SDK configuration for `max_entries` or `max_entry_length` is not part of the OpenTelemetry declarative configuration schema.
 
 ## Wrapping Up
 
-Baggage propagation is the mechanism that makes business context available everywhere in a distributed request, without every service needing direct access to the source of that context. Set it at the edge, read it anywhere downstream, and use the collector's Baggage Processor to automate the conversion to telemetry attributes. The result is traces, metrics, and logs that you can filter by tenant ID, user ID, or any other business dimension, across every service in the request chain.
+Baggage propagation is the mechanism that makes business context available everywhere in a distributed request, without every service needing direct access to the source of that context. Set it at the edge, read it anywhere downstream, and copy it to telemetry attributes where you create spans, metric measurements, and log records. The result is traces, metrics, and logs that you can filter by tenant ID, user ID, or any other business dimension, across every service in the request chain.
