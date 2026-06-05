@@ -21,17 +21,24 @@ Your instrumentation needs to account for these differences.
 ## Common Metrics Across All Protocols
 
 ```python
+import time
+from typing import Iterable
+
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 tracer = trace.get_tracer("livestream.infra", "1.0.0")
 meter = metrics.get_meter("livestream.infra.metrics", "1.0.0")
 
 # Viewer count (updated periodically)
+def observe_viewer_counts(options: CallbackOptions) -> Iterable[Observation]:
+    for stream_id, count in get_viewer_counts():
+        yield Observation(count, {"stream.id": stream_id})
 
 concurrent_viewers = meter.create_observable_gauge(
     name="livestream.viewers.concurrent",
     description="Number of concurrent viewers across all streams",
-    callbacks=[lambda result: report_viewer_counts(result)],
+    callbacks=[observe_viewer_counts],
 )
 
 # Ingest health
@@ -92,6 +99,10 @@ const pliCount = meter.createCounter("webrtc.pli.count", {
   description: "Picture Loss Indication packets sent",
 });
 
+const streamErrors = meter.createCounter("livestream.errors", {
+  description: "Streaming errors by type and protocol",
+});
+
 // Monitor each peer connection through the SFU
 function instrumentPeerConnection(peerId, streamId, connection) {
   const attrs = {
@@ -101,6 +112,7 @@ function instrumentPeerConnection(peerId, streamId, connection) {
   };
 
   const connectionStart = Date.now();
+  const previousStats = new Map();
 
   // Poll stats periodically from the peer connection
   const statsInterval = setInterval(async () => {
@@ -121,12 +133,17 @@ function instrumentPeerConnection(peerId, streamId, connection) {
         }
 
         // Track retransmission requests
-        if (report.nackCount) {
-          nackCount.add(report.nackCount, attrs);
+        const previous = previousStats.get(report.id) || { nackCount: 0, pliCount: 0 };
+        if (report.nackCount !== undefined && report.nackCount > previous.nackCount) {
+          nackCount.add(report.nackCount - previous.nackCount, attrs);
         }
-        if (report.pliCount) {
-          pliCount.add(report.pliCount, attrs);
+        if (report.pliCount !== undefined && report.pliCount > previous.pliCount) {
+          pliCount.add(report.pliCount - previous.pliCount, attrs);
         }
+        previousStats.set(report.id, {
+          nackCount: report.nackCount || previous.nackCount,
+          pliCount: report.pliCount || previous.pliCount,
+        });
       }
     });
   }, 5000);
@@ -140,7 +157,7 @@ function instrumentPeerConnection(peerId, streamId, connection) {
       connectionDuration.record(duration, attrs);
 
       if (connection.connectionState === "failed") {
-        stream_errors_counter.add(1, {
+        streamErrors.add(1, {
           ...attrs,
           "error.type": "connection_failed",
         });
@@ -238,10 +255,14 @@ During large events, auto-scaling needs data to make good decisions.
 
 ```python
 # Track capacity utilization
+def observe_encoder_utilization(options: CallbackOptions) -> Iterable[Observation]:
+    for encoder_id, utilization in get_encoder_utilization():
+        yield Observation(utilization, {"encoder.id": encoder_id})
+
 encoder_utilization = meter.create_observable_gauge(
     name="livestream.encoder.utilization",
     description="Percentage of encoder capacity in use",
-    callbacks=[lambda result: report_encoder_utilization(result)],
+    callbacks=[observe_encoder_utilization],
 )
 
 edge_bandwidth = meter.create_histogram(
