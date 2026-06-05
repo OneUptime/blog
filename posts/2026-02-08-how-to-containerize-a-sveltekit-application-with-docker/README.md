@@ -12,7 +12,7 @@ SvelteKit supports multiple deployment targets through adapters. For Docker depl
 
 ## Prerequisites: Configure the Node.js Adapter
 
-SvelteKit's default adapter targets static hosting. Switch to the Node.js adapter for Docker:
+If your project uses `adapter-auto` or `adapter-static`, switch to the Node.js adapter for Docker:
 
 ```bash
 # Install the Node.js adapter
@@ -34,9 +34,6 @@ const config = {
     adapter: adapter({
       // Output directory for the built server
       out: 'build',
-      // Listen on all interfaces inside Docker
-      host: '0.0.0.0',
-      port: 3000,
     }),
   },
 };
@@ -55,13 +52,13 @@ When you run `npm run build`, the adapter produces a `build/` directory containi
 
 ```dockerfile
 # Stage 1: Install dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # Stage 2: Build the SvelteKit application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -74,14 +71,14 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # Stage 3: Production runtime
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 # Create non-root user
-RUN addgroup --system --gid 1001 sveltekit
-RUN adduser --system --uid 1001 sveltekit
+RUN addgroup -S -g 1001 sveltekit
+RUN adduser -S -u 1001 -G sveltekit sveltekit
 
 # Copy the built application
 COPY --from=builder --chown=sveltekit:sveltekit /app/build ./build
@@ -104,9 +101,9 @@ CMD ["node", "build/index.js"]
 
 ## Why This Structure Works
 
-SvelteKit with `adapter-node` bundles most dependencies into the output. However, some packages that cannot be bundled (native modules, dynamic imports) need to be available in `node_modules`. Copying the pruned `node_modules` from the builder stage handles this.
+SvelteKit with `adapter-node` bundles development dependencies into the output with Rollup, while packages listed in `dependencies` are externalized and need to be available in production `node_modules`. Copying the pruned `node_modules` from the builder stage handles this.
 
-The build output in `build/index.js` is a self-contained Express-based server. It serves both the API routes (server endpoints) and the static client assets.
+The build output in `build/index.js` is a self-contained Node server. It serves both the API routes (server endpoints) and the static client assets. If you need a custom server, `build/handler.js` exports a handler that can be used with Express, Connect, Polka, or Node's built-in HTTP server.
 
 ## The .dockerignore File
 
@@ -173,7 +170,7 @@ docker run -d \
 For static (build-time) environment variables, pass them as build args:
 
 ```dockerfile
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 ARG PUBLIC_ANALYTICS_ID
 ENV PUBLIC_ANALYTICS_ID=$PUBLIC_ANALYTICS_ID
 WORKDIR /app
@@ -250,27 +247,26 @@ The `-- --host 0.0.0.0` argument makes Vite's dev server accessible from outside
 If your SvelteKit project uses Prisma:
 
 ```dockerfile
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
 RUN npx prisma generate
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 RUN npm prune --omit=dev
-# Regenerate Prisma client for production
-RUN npx prisma generate
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system sveltekit && adduser --system sveltekit --ingroup sveltekit
+RUN addgroup -S sveltekit && adduser -S -G sveltekit sveltekit
 
 COPY --from=builder --chown=sveltekit:sveltekit /app/build ./build
 COPY --from=builder --chown=sveltekit:sveltekit /app/node_modules ./node_modules
@@ -302,15 +298,26 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
 
 ## WebSocket Support
 
-If your SvelteKit application uses WebSockets (via the `handleWebsocket` hook or a custom server), make sure to configure the adapter:
+If your SvelteKit application uses WebSockets, install a WebSocket library and use a custom server to attach it alongside SvelteKit's handler:
+
+```bash
+npm install ws
+```
 
 ```javascript
-// svelte.config.js
-adapter: adapter({
-  out: 'build',
-  // Enable WebSocket support
-  envPrefix: '',
-})
+// server.js
+import { handler } from './build/handler.js';
+import { WebSocketServer } from 'ws';
+import { createServer } from 'node:http';
+
+const server = createServer(handler);
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (socket) => {
+  socket.send('connected');
+});
+
+server.listen(3000);
 ```
 
 ## Image Size
@@ -320,7 +327,7 @@ docker images myapp --format "{{.Size}}"
 # ~160MB with Alpine + multi-stage + pruned deps
 ```
 
-SvelteKit's build output is compact. The `adapter-node` bundles most code into the server output, so the `node_modules` in the production image contains only unbundled dependencies. Most SvelteKit applications produce Docker images between 140-200MB, making them among the smaller Node.js framework images.
+SvelteKit's build output is compact. The `adapter-node` bundles development dependencies into the server output, so the `node_modules` in the production image contains production dependencies. Most SvelteKit applications produce Docker images between 140-200MB, making them among the smaller Node.js framework images.
 
 ## Troubleshooting
 
