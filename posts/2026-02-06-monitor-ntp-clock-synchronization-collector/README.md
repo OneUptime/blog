@@ -53,12 +53,12 @@ graph TD
 
 ## Collecting NTP Metrics with the Host Metrics Receiver
 
-The OpenTelemetry Collector does not have a dedicated NTP receiver, but you can monitor NTP synchronization through a combination of approaches. The simplest is to use the host metrics receiver, which can report the system clock's offset from its NTP source on supported platforms.
+The OpenTelemetry Collector does not have a dedicated NTP receiver, but you can monitor NTP synchronization through a combination of approaches. The host metrics receiver is useful supplemental context for time monitoring because its `system` scraper reports host uptime, which can indicate recent reboots that might affect time sync. It does not report NTP offset or synchronization status directly.
 
-Here is the basic configuration:
+Here is the basic supplemental host metrics configuration:
 
 ```yaml
-# config.yaml - NTP monitoring with the OpenTelemetry Collector
+# config.yaml - supplemental host context for NTP monitoring
 
 receivers:
   hostmetrics:
@@ -96,17 +96,17 @@ service:
 
 ## Using a Script-Based Approach for Detailed NTP Metrics
 
-For comprehensive NTP monitoring, a script-based approach gives you the most detailed data. NTP daemons (ntpd, chronyd) expose detailed synchronization statistics through their command-line tools. We can parse this data and expose it as metrics.
+For comprehensive NTP monitoring, a script-based approach gives you the most detailed data. NTP daemons (ntpd, chronyd) expose detailed synchronization statistics through their command-line tools. We can parse this data and export it through the collector.
 
-Create a script that collects NTP statistics and writes them in a format the collector can consume:
+Create a script that collects NTP statistics and writes one JSON object per line in a format the collector can consume:
 
 ```bash
 #!/bin/bash
 # ntp_metrics.sh - Collect NTP synchronization metrics
 # This script works with both chrony and ntpd
 
-OUTPUT_DIR="/var/lib/otel/ntp-metrics"
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_FILE="/var/log/otel/ntp-metrics.jsonl"
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 # Determine which NTP daemon is running
 if command -v chronyc &> /dev/null && chronyc tracking &> /dev/null; then
@@ -127,8 +127,7 @@ if [ "$NTP_DAEMON" = "chrony" ]; then
 
     # Extract system clock offset in seconds
     # "System time" line shows offset from NTP time
-    OFFSET=$(echo "$TRACKING" | grep "System time" | awk '{print $4}')
-    OFFSET_DIRECTION=$(echo "$TRACKING" | grep "System time" | awk '{print $5}')
+    OFFSET=$(echo "$TRACKING" | awk '/System time/ { value=$4; if ($6 == "slow") value=-value; print value }')
 
     # Extract root delay (round-trip time to the reference)
     ROOT_DELAY=$(echo "$TRACKING" | grep "Root delay" | awk '{print $4}')
@@ -140,7 +139,7 @@ if [ "$NTP_DAEMON" = "chrony" ]; then
     STRATUM=$(echo "$TRACKING" | grep "Stratum" | awk '{print $3}')
 
     # Extract frequency error in ppm
-    FREQ_ERROR=$(echo "$TRACKING" | grep "Frequency" | awk '{print $3}')
+    FREQ_ERROR=$(echo "$TRACKING" | awk '/Frequency/ { value=$3; if ($5 == "slow") value=-value; print value }')
 
     # Check sync status
     LEAP_STATUS=$(echo "$TRACKING" | grep "Leap status" | awk '{print $4}')
@@ -150,20 +149,9 @@ if [ "$NTP_DAEMON" = "chrony" ]; then
         SYNCED=0
     fi
 
-    # Write metrics in a structured format
-    cat > "$OUTPUT_DIR/metrics.json" << EOF
-{
-  "timestamp": $TIMESTAMP,
-  "hostname": "$HOSTNAME",
-  "ntp_daemon": "chrony",
-  "synced": $SYNCED,
-  "offset_seconds": $OFFSET,
-  "root_delay_seconds": $ROOT_DELAY,
-  "root_dispersion_seconds": $ROOT_DISPERSION,
-  "stratum": $STRATUM,
-  "frequency_error_ppm": $FREQ_ERROR
-}
-EOF
+    # Write metrics as newline-delimited JSON so the filelog receiver can tail it
+    printf '{"timestamp":%s,"hostname":"%s","ntp_daemon":"chrony","synced":%s,"offset_seconds":%s,"root_delay_seconds":%s,"root_dispersion_seconds":%s,"stratum":%s,"frequency_error_ppm":%s}\n' \
+      "$TIMESTAMP" "$HOSTNAME" "$SYNCED" "$OFFSET" "$ROOT_DELAY" "$ROOT_DISPERSION" "$STRATUM" "$FREQ_ERROR" >> "$OUTPUT_FILE"
 
 elif [ "$NTP_DAEMON" = "ntpd" ]; then
     # Parse ntpq output for the active peer (marked with *)
@@ -184,17 +172,8 @@ elif [ "$NTP_DAEMON" = "ntpd" ]; then
         STRATUM=16
     fi
 
-    cat > "$OUTPUT_DIR/metrics.json" << EOF
-{
-  "timestamp": $TIMESTAMP,
-  "hostname": "$HOSTNAME",
-  "ntp_daemon": "ntpd",
-  "synced": $SYNCED,
-  "offset_seconds": $OFFSET,
-  "jitter_ms": $JITTER_MS,
-  "stratum": $STRATUM
-}
-EOF
+    printf '{"timestamp":%s,"hostname":"%s","ntp_daemon":"ntpd","synced":%s,"offset_seconds":%s,"jitter_ms":%s,"stratum":%s}\n' \
+      "$TIMESTAMP" "$HOSTNAME" "$SYNCED" "$OFFSET" "$JITTER_MS" "$STRATUM" >> "$OUTPUT_FILE"
 fi
 ```
 
@@ -211,9 +190,8 @@ Then configure the collector to read the metrics file:
 receivers:
   filelog/ntp:
     include:
-      - "/var/lib/otel/ntp-metrics/metrics.json"
-    start_at: beginning
-    # Re-read the file on each poll since it is overwritten
+      - "/var/log/otel/ntp-metrics.jsonl"
+    start_at: end
     poll_interval: 60s
     operators:
       - type: json_parser
@@ -240,7 +218,7 @@ service:
 
 ## Monitoring NTP with Prometheus Exposition
 
-If you prefer a metrics-based approach over log-based, you can use the `node_exporter` (which many teams already have deployed) and scrape its NTP metrics with the collector's Prometheus receiver:
+If you prefer a metrics-based approach over log-based, you can use the `node_exporter` (which many teams already have deployed) and scrape its time synchronization metrics with the collector's Prometheus receiver. The `timex` collector is enabled by default on Linux. The older `ntp` collector, which exposes `node_ntp_*` metrics, is deprecated and disabled by default, so enable it explicitly only if you still need those metrics:
 
 ```yaml
 receivers:
@@ -291,6 +269,7 @@ The `node_exporter` exposes several time-related metrics:
 #
 # node_ntp_stratum
 #   NTP stratum of the current time source
+#   Requires node_exporter's deprecated --collector.ntp collector
 #   Stratum 1 = directly connected to a reference clock
 #   Stratum 2 = one hop from a stratum 1 source
 #   Stratum 16 = unsynchronized
@@ -335,6 +314,7 @@ The `node_exporter` exposes several time-related metrics:
 
 - alert: NTPStratumHigh
   # NTP stratum is higher than expected
+  # Requires node_exporter's deprecated --collector.ntp collector
   condition: node_ntp_stratum > 4
   for: 10m
   severity: warning
@@ -354,7 +334,7 @@ The sync loss alert is critical because it means the clock will begin drifting i
 
 Containers share the host's clock, so NTP monitoring only needs to happen at the host level. However, if you are running containers in Kubernetes, you should still verify that every node has NTP configured and synchronized.
 
-Virtual machines add another layer of complexity. Hypervisors often provide their own time synchronization mechanism (VMware Tools, Hyper-V Integration Services, KVM guest agent). These can conflict with NTP if both are trying to adjust the clock. Best practice is to disable hypervisor time sync and rely solely on NTP, or to use the hypervisor as the primary time source and disable NTP.
+Virtual machines add another layer of complexity. Hypervisors often provide their own time synchronization mechanism (VMware Tools, Hyper-V Integration Services, KVM guest agent). Periodic hypervisor time sync can conflict with NTP if both are trying to adjust the clock. Best practice is to use one primary periodic time source: either disable periodic hypervisor time sync and rely on NTP, or use the hypervisor as the primary time source and disable NTP. VMware environments may still use one-off time synchronization during VM lifecycle events, so verify the exact host and guest settings for your platform.
 
 Check for VMware Tools time sync:
 
