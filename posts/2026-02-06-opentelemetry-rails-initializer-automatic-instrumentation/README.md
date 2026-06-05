@@ -41,7 +41,7 @@ require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use_all('OpenTelemetry::Instrumentation')
+  c.use_all
 end
 ```
 
@@ -60,26 +60,30 @@ require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   # Set service name from environment or use default
-  c.service_name = ENV.fetch('OTEL_SERVICE_NAME', "rails-app-#{Rails.env}")
+  service_name = ENV.fetch('OTEL_SERVICE_NAME', "rails-app-#{Rails.env}")
+  c.service_name = service_name
 
   # Different sampling rates per environment
-  if Rails.env.production?
-    # Sample 50% in production to manage volume
-    c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.5)
-  elsif Rails.env.staging?
-    # Sample 100% in staging for thorough testing
-    c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(1.0)
-  else
-    # Development: sample everything
-    c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(1.0)
-  end
+  sampler_rate = if Rails.env.production?
+                   # Sample 50% in production to manage volume
+                   '0.5'
+                 elsif Rails.env.staging?
+                   # Sample 100% in staging for thorough testing
+                   '1.0'
+                 else
+                   # Development: sample everything
+                   '1.0'
+                 end
+
+  ENV['OTEL_TRACES_SAMPLER'] ||= 'parentbased_traceidratio'
+  ENV['OTEL_TRACES_SAMPLER_ARG'] ||= sampler_rate
 
   # Enable all instrumentations
-  c.use_all('OpenTelemetry::Instrumentation')
+  c.use_all
 
   # Add environment-specific resource attributes
   c.resource = OpenTelemetry::SDK::Resources::Resource.create({
-    'service.name' => c.service_name,
+    'service.name' => service_name,
     'deployment.environment' => Rails.env,
     'service.version' => ENV.fetch('GIT_COMMIT', 'unknown')
   })
@@ -106,19 +110,16 @@ require 'opentelemetry/instrumentation/sidekiq'
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
-  # Rails instrumentation with route recognition
-  c.use 'OpenTelemetry::Instrumentation::Rails', {
-    enable_recognize_route: true,
-    # Include middleware names in span attributes
-    enable_middleware: true
+  # Rails instrumentation umbrella for Rails components
+  c.use 'OpenTelemetry::Instrumentation::Rails'
+
+  # ActionPack span naming using HTTP route conventions
+  c.use 'OpenTelemetry::Instrumentation::ActionPack', {
+    span_naming: :semconv
   }
 
-  # ActiveRecord with SQL obfuscation for security
-  c.use 'OpenTelemetry::Instrumentation::ActiveRecord', {
-    enable_sql_obfuscation: true,
-    # Capture full SQL statements (obfuscated)
-    db_statement: :include
-  }
+  # ActiveRecord model operation instrumentation
+  c.use 'OpenTelemetry::Instrumentation::ActiveRecord'
 
   # Net::HTTP for external API calls
   c.use 'OpenTelemetry::Instrumentation::Net::HTTP', {
@@ -137,7 +138,7 @@ OpenTelemetry::SDK.configure do |c|
 end
 ```
 
-Each instrumentation accepts different configuration options. The Rails instrumentation can track route matching, ActiveRecord can obfuscate SQL for security, and Net::HTTP can exclude specific hosts from tracing.
+Each instrumentation accepts different configuration options. ActionPack can use route-based span names, adapter-level database instrumentations such as Redis can control `db.statement` capture, and Net::HTTP can exclude specific hosts from tracing.
 
 ## Configuring Exporters and Processors
 
@@ -152,7 +153,7 @@ require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use_all('OpenTelemetry::Instrumentation')
+  c.use_all
 
   # Create OTLP exporter with custom configuration
   exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
@@ -168,9 +169,9 @@ OpenTelemetry::SDK.configure do |c|
   processor = OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
     exporter,
     max_queue_size: 2048,
-    schedule_delay_millis: 5000,      # Export every 5 seconds
+    schedule_delay: 5000,             # Export every 5 seconds
     max_export_batch_size: 512,       # Export up to 512 spans at once
-    export_timeout_millis: 30000      # 30 second export timeout
+    exporter_timeout: 30000           # 30 second export timeout
   )
 
   c.add_span_processor(processor)
@@ -189,10 +190,11 @@ Resource attributes help identify and filter traces in your observability platfo
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
+require 'socket'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use_all('OpenTelemetry::Instrumentation')
+  c.use_all
 
   # Rich resource attributes for trace filtering and analysis
   c.resource = OpenTelemetry::SDK::Resources::Resource.create({
@@ -228,9 +230,9 @@ end
 
 These attributes appear on every span from your application, making it easy to filter traces by environment, region, or deployment version.
 
-## Implementing Custom Samplers
+## Configuring Sampling
 
-Custom samplers give you precise control over which traces to record. Here's a sampler that always records errors but samples successful requests:
+The Ruby SDK supports built-in samplers through environment variables when you use `OpenTelemetry::SDK.configure`. Here's a configuration that samples 10% of root traces and respects parent sampling decisions:
 
 ```ruby
 # config/initializers/opentelemetry.rb
@@ -239,48 +241,16 @@ require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
 
-# Custom sampler that records all errors
-class ErrorAwareSampler
-  def initialize(base_sampler, error_paths = [])
-    @base_sampler = base_sampler
-    @error_paths = error_paths
-  end
-
-  def should_sample?(trace_id:, parent_context:, links:, name:, kind:, attributes:, **)
-    # Always sample if this is an error span
-    if attributes && attributes['http.status_code'].to_i >= 400
-      return OpenTelemetry::SDK::Trace::Samplers::Result.new(
-        decision: OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE
-      )
-    end
-
-    # Otherwise, defer to base sampler
-    @base_sampler.should_sample?(
-      trace_id: trace_id,
-      parent_context: parent_context,
-      links: links,
-      name: name,
-      kind: kind,
-      attributes: attributes
-    )
-  end
-
-  def description
-    "ErrorAwareSampler{base=#{@base_sampler.description}}"
-  end
-end
+ENV['OTEL_TRACES_SAMPLER'] ||= 'parentbased_traceidratio'
+ENV['OTEL_TRACES_SAMPLER_ARG'] ||= '0.1'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use_all('OpenTelemetry::Instrumentation')
-
-  # Use custom sampler that always records errors
-  base_sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
-  c.sampler = ErrorAwareSampler.new(base_sampler)
+  c.use_all
 end
 ```
 
-This sampler ensures you never miss error traces while keeping overall trace volume manageable through percentage-based sampling of successful requests.
+This keeps overall trace volume manageable through percentage-based sampling. If you need to retain all error traces, use tail sampling in the OpenTelemetry Collector, because head samplers run before a request's final status code is known.
 
 ## Propagation Configuration
 
@@ -295,10 +265,10 @@ require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use_all('OpenTelemetry::Instrumentation')
+  c.use_all
 
   # Configure context propagation formats
-  # Supports W3C Trace Context, Jaeger, and Zipkin formats
+  # Supports W3C Trace Context and W3C Baggage formats
   propagators = [
     OpenTelemetry::Trace::Propagation::TraceContext.text_map_propagator,
     OpenTelemetry::Baggage::Propagation.text_map_propagator
@@ -312,7 +282,7 @@ The W3C Trace Context format is the OpenTelemetry standard and works with all mo
 
 ## Handling Initialization Failures
 
-OpenTelemetry initialization can fail due to network issues or misconfiguration. Handle failures gracefully to prevent application startup problems:
+OpenTelemetry configuration and export can fail due to misconfiguration or network issues. Handle failures gracefully to prevent application startup problems:
 
 ```ruby
 # config/initializers/opentelemetry.rb
@@ -321,33 +291,30 @@ require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
 
-begin
-  OpenTelemetry::SDK.configure do |c|
-    c.service_name = 'rails-app'
-    c.use_all('OpenTelemetry::Instrumentation')
-
-    # Configure exporter with retry logic
-    exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
-      endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
-      timeout: 10
-    )
-
-    processor = OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(exporter)
-    c.add_span_processor(processor)
+OpenTelemetry::SDK.configure do |c|
+  c.error_handler = lambda do |exception:, message: nil|
+    Rails.logger.error "OpenTelemetry error: #{message}"
+    Rails.logger.error exception&.message
+    Rails.logger.error exception.backtrace.join("\n") if exception&.backtrace
   end
 
-  Rails.logger.info "OpenTelemetry initialized successfully"
-rescue StandardError => e
-  # Log error but don't crash the application
-  Rails.logger.error "Failed to initialize OpenTelemetry: #{e.message}"
-  Rails.logger.error e.backtrace.join("\n")
+  c.service_name = 'rails-app'
+  c.use_all
 
-  # Optionally send alert to monitoring system
-  # ExceptionNotifier.notify_exception(e) if defined?(ExceptionNotifier)
+  # Configure exporter
+  exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
+    endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
+    timeout: 10
+  )
+
+  processor = OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(exporter)
+  c.add_span_processor(processor)
 end
+
+Rails.logger.info "OpenTelemetry initialized successfully"
 ```
 
-This pattern logs initialization failures without preventing your application from starting, which is crucial for production deployments.
+This pattern logs OpenTelemetry configuration and export errors through the SDK error handler without preventing your application from starting, which is crucial for production deployments.
 
 ## Testing Your Configuration
 
@@ -373,12 +340,16 @@ RSpec.describe 'OpenTelemetry Configuration' do
   it 'enables Rails instrumentation' do
     tracer = OpenTelemetry.tracer_provider.tracer('test')
 
-    spans = []
+    exporter = OpenTelemetry::SDK::Trace::Export::InMemorySpanExporter.new
     span_processor = OpenTelemetry::SDK::Trace::Export::SimpleSpanProcessor.new(
-      OpenTelemetry::SDK::Trace::Export::InMemorySpanExporter.new(spans)
+      exporter
     )
+    OpenTelemetry.tracer_provider.add_span_processor(span_processor)
 
-    expect(tracer).not_to be_nil
+    tracer.in_span('test-span') {}
+    OpenTelemetry.tracer_provider.force_flush
+
+    expect(exporter.finished_spans.map(&:name)).to include('test-span')
   end
 end
 ```
@@ -402,5 +373,4 @@ config/initializers/zz_opentelemetry.rb
 
 For most applications, loading OpenTelemetry early ensures all subsequent initialization code is instrumented.
 
-Proper initializer configuration is the foundation of effective OpenTelemetry integration in Rails. With environment-specific settings, custom sampling, rich resource attributes, and error handling, your initializer becomes a robust observability foundation that adapts to different deployment scenarios while maintaining application stability.
-
+Proper initializer configuration is the foundation of effective OpenTelemetry integration in Rails. With environment-specific settings, sampling, rich resource attributes, and error handling, your initializer becomes a robust observability foundation that adapts to different deployment scenarios while maintaining application stability.
