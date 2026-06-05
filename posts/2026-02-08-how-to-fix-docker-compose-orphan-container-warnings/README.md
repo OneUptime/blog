@@ -41,7 +41,7 @@ Orphan containers appear in these situations:
 1. You removed a service from `docker-compose.yml`
 2. You renamed a service in `docker-compose.yml`
 3. You switched to a different `docker-compose.yml` file in the same directory
-4. You changed the project name (via `-p` flag or `COMPOSE_PROJECT_NAME`)
+4. You accidentally reused a project name with a different service set
 5. Multiple Compose files in the same directory use different service definitions
 
 ## Fix 1: Use the --remove-orphans Flag
@@ -87,7 +87,7 @@ docker ps -a --filter "label=com.docker.compose.project" \
 
 ## Fix 3: Set Project Name Explicitly
 
-Orphan container warnings often appear when the project name changes unexpectedly. Docker Compose derives the project name from the directory name by default. If you move your Compose file or run it from a different directory, the project name changes, and all previous containers become orphans.
+Unexpected project name changes can leave old Compose containers behind. Docker Compose derives the project name from the directory that contains the Compose file by default. If you move your Compose file or run it with a different project name, Compose treats it as a separate project, so the old containers are no longer managed by the new command.
 
 Lock down the project name in your Compose file:
 
@@ -144,7 +144,14 @@ docker compose up -d --remove-orphans
 
 ## Fix 5: Configure Default Behavior in Docker Compose
 
-If you always want orphans to be removed, you can set this in your Compose configuration. While there is no global flag for this, you can create a shell alias or wrapper:
+If you always want orphans to be removed, set the `COMPOSE_REMOVE_ORPHANS` environment variable:
+
+```bash
+# .env file in the same directory as docker-compose.yml
+COMPOSE_REMOVE_ORPHANS=true
+```
+
+You can also create a shell alias or wrapper:
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
@@ -222,7 +229,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ## Using Profiles to Avoid Orphans
 
-Docker Compose profiles let you define which services run in different scenarios without creating orphans:
+Docker Compose profiles let you define which services run in different scenarios without switching between separate Compose files:
 
 ```yaml
 # docker-compose.yml with profiles
@@ -262,7 +269,7 @@ docker compose --profile dev up -d
 # Start with monitoring profile
 docker compose --profile monitoring up -d
 
-# No orphan warnings because all services are in the same file
+# Service definitions stay in the same file, so you avoid switching between divergent Compose files
 ```
 
 ## Impact of Orphan Containers
