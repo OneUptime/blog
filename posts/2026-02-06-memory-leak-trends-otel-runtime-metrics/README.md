@@ -40,13 +40,15 @@ const runtimeInstrumentation = new RuntimeNodeInstrumentation({
 runtimeInstrumentation.setMeterProvider(meterProvider);
 
 // The instrumentation automatically collects:
-// - process.runtime.nodejs.memory.heap.total (heap size)
-// - process.runtime.nodejs.memory.heap.used (heap used)
-// - process.runtime.nodejs.memory.rss (resident set size)
-// - process.runtime.nodejs.memory.array_buffers (external memory)
-// - process.runtime.nodejs.event_loop.delay (event loop lag)
-// - process.runtime.nodejs.gc.duration (GC pause duration)
-// - process.runtime.nodejs.gc.count (GC runs)
+// - v8js.memory.heap.limit (maximum V8 heap size)
+// - v8js.memory.heap.used (heap used by V8 heap space)
+// - v8js.memory.heap.space.size (heap size by V8 heap space)
+// - v8js.memory.heap.space.available_size (available heap by V8 heap space)
+// - v8js.memory.heap.space.physical_size (committed heap by V8 heap space)
+// - nodejs.eventloop.delay.* (event loop delay statistics)
+// - nodejs.eventloop.utilization (event loop utilization)
+// - nodejs.eventloop.time (active and idle event loop time)
+// - v8js.gc.duration (GC pause duration)
 ```
 
 ### Python Runtime Metrics
@@ -70,8 +72,7 @@ def heap_callback(options):
 
 def gc_callback(options):
     # Report garbage collector statistics
-    for generation in range(3):
-        stats = gc.get_stats()[generation]
+    for generation, stats in enumerate(gc.get_stats()):
         yield metrics.Observation(
             stats["collections"],
             {"gc.generation": str(generation), "gc.stat": "collections"},
@@ -87,7 +88,6 @@ def gc_callback(options):
 
 def object_count_callback(options):
     """Track the number of live objects by type - helps identify what is leaking."""
-    import sys
     type_counts = {}
     for obj in gc.get_objects():
         type_name = type(obj).__name__
@@ -117,24 +117,27 @@ meter.create_observable_gauge(
 The simplest leak detection is checking if memory usage trends upward over time, even when adjusted for request volume:
 
 ```promql
+# These examples use the default OpenTelemetry-to-Prometheus translation,
+# where dots become underscores and unit suffixes are added.
+
 # Memory growth rate over the past 6 hours (bytes per second)
-deriv(process_runtime_nodejs_memory_heap_used[6h])
+deriv((sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes))[6h:5m])
 
 # If this is consistently positive, memory is growing
 
 # Memory per request (normalizes for traffic variation)
-process_runtime_nodejs_memory_heap_used
+sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes)
 /
-rate(http_requests_total[5m])
+scalar(sum(rate(http_requests_total[5m])))
 
 # If memory per request increases over time, that is a leak
 
 # GC reclamation efficiency
 # Healthy: GC reclaims most memory
 # Leaking: GC reclaims less and less over time
-rate(process_runtime_nodejs_gc_duration_seconds_sum[5m])
+sum without (v8js_gc_type) (rate(v8js_gc_duration_seconds_sum[5m]))
 /
-abs(delta(process_runtime_nodejs_memory_heap_used[5m]))
+clamp_min(abs(delta((sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes))[5m:1m])), 1)
 ```
 
 ## Building a Leak Detection Script
@@ -146,14 +149,21 @@ For more sophisticated detection, use a Python script that checks multiple signa
 import requests
 import numpy as np
 import sys
+import time
 
 PROMETHEUS_URL = "http://prometheus:9090"
+TIME_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+def duration_to_seconds(duration):
+    return int(duration[:-1]) * TIME_UNITS[duration[-1]]
 
 def query_range(query, duration="24h", step="5m"):
+    end = time.time()
+    start = end - duration_to_seconds(duration)
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query_range", params={
         "query": query,
-        "start": f"now()-{duration}",
-        "end": "now()",
+        "start": start,
+        "end": end,
         "step": step,
     })
     results = resp.json().get("data", {}).get("result", [])
@@ -192,27 +202,23 @@ def main():
     leaks_found = []
 
     # Check heap memory
-    heap_data = query_range('process_runtime_nodejs_memory_heap_used')
+    heap_data = query_range(
+        'sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes)'
+    )
     is_leak, confidence = detect_trend(np.array(heap_data), "Heap Used")
     if is_leak:
         leaks_found.append(("Heap Memory", confidence))
 
-    # Check RSS
-    rss_data = query_range('process_runtime_nodejs_memory_rss')
-    is_leak, confidence = detect_trend(np.array(rss_data), "RSS")
-    if is_leak:
-        leaks_found.append(("RSS", confidence))
-
     # Check memory per request ratio
     mem_per_req = query_range(
-        'process_runtime_nodejs_memory_heap_used / rate(http_requests_total[5m])'
+        'sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes) / scalar(sum(rate(http_requests_total[5m])))'
     )
     is_leak, confidence = detect_trend(np.array(mem_per_req), "Memory per Request")
     if is_leak:
         leaks_found.append(("Memory per Request", confidence))
 
     # Check GC frequency increase
-    gc_rate = query_range('rate(process_runtime_nodejs_gc_count_total[5m])')
+    gc_rate = query_range('sum without (v8js_gc_type) (rate(v8js_gc_duration_seconds_count[5m]))')
     is_leak, confidence = detect_trend(np.array(gc_rate), "GC Frequency")
     if is_leak:
         leaks_found.append(("GC Frequency", confidence))
@@ -239,7 +245,7 @@ groups:
     rules:
       - alert: MemoryLeakSuspected
         expr: |
-          deriv(process_runtime_nodejs_memory_heap_used[6h]) > 1048576
+          deriv((sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes))[6h:5m]) > 291
         for: 2h
         labels:
           severity: warning
@@ -248,9 +254,9 @@ groups:
 
       - alert: MemoryLeakConfirmed
         expr: |
-          deriv(process_runtime_nodejs_memory_heap_used[24h]) > 524288
+          deriv((sum without (v8js_heap_space_name) (v8js_memory_heap_used_bytes))[24h:5m]) > 146
           and
-          increase(process_runtime_nodejs_gc_count_total[1h]) > increase(process_runtime_nodejs_gc_count_total[1h] offset 6h) * 1.5
+          sum without (v8js_gc_type) (increase(v8js_gc_duration_seconds_count[1h])) > sum without (v8js_gc_type) (increase(v8js_gc_duration_seconds_count[1h] offset 6h)) * 1.5
         for: 6h
         labels:
           severity: critical
