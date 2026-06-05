@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Go, Metric, Cardinality
 
-Description: Identify and fix unbounded memory growth in Go applications caused by high cardinality OpenTelemetry metric attributes.
+Description: Identify and fix memory growth in Go applications caused by high cardinality OpenTelemetry metric attributes.
 
-Your Go application's memory usage keeps climbing. It does not crash immediately, but over hours or days, the RSS grows until the container gets OOM-killed. The culprit is often OpenTelemetry metrics with unbounded attribute cardinality.
+Your Go application's memory usage keeps climbing. It does not crash immediately, but over hours or days, the RSS grows until the container gets OOM-killed. The culprit is often OpenTelemetry metrics with unexpectedly high attribute cardinality, especially in older SDK versions or configurations without a cardinality limit.
 
 ## What Is Cardinality in Metrics
 
-Every unique combination of metric name and attribute values creates a separate time series. If you record a histogram with attributes `{method="GET", path="/users/123"}`, that is one series. Change the path to `/users/456`, and that is another series. If you have a million users, you get a million time series for that one metric.
+Every unique combination of metric name and attribute values creates a separate time series. If you record a histogram with attributes `{method="GET", path="/users/123"}`, that is one series. Change the path to `/users/456`, and that is another series. If you have a million users, you can get a million time series for that one metric unless the SDK or backend limits cardinality.
 
-Each series takes memory. The OpenTelemetry SDK stores aggregation state (counters, histogram buckets) for every unique attribute combination. With high cardinality, this memory adds up fast.
+Each series takes memory. The OpenTelemetry SDK stores aggregation state (counters, histogram buckets) for unique attribute combinations up to the configured cardinality limit. With high cardinality, this memory adds up fast.
 
 ## Identifying the Problem
 
@@ -47,7 +47,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 ## Measuring the Impact
 
-You can check how many unique attribute sets your meter is tracking by looking at the internal state. Add a simple monitoring endpoint:
+The Go SDK does not expose a public API for inspecting every aggregation state entry directly, but you can watch process memory while you reproduce the workload. Add a simple monitoring endpoint:
 
 ```go
 import "runtime"
@@ -61,7 +61,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-If `Alloc` keeps growing and never drops after GC, you likely have a cardinality leak.
+If `Alloc` keeps growing across repeated GC cycles, you likely have a cardinality problem.
 
 ## Fix 1: Normalize Dynamic Path Segments
 
@@ -134,22 +134,13 @@ provider := sdkmetric.NewMeterProvider(
 
 ## Fix 3: Set Cardinality Limits
 
-The Go SDK allows you to set a cardinality limit on metric streams. When the limit is reached, new attribute combinations are mapped to an overflow bucket:
+The Go SDK allows you to set a global cardinality limit on the `MeterProvider`. When the limit is reached, new attribute combinations are mapped to an overflow bucket:
 
 ```go
-overflowView := sdkmetric.NewView(
-    sdkmetric.Instrument{
-        Name: "http.server.request.duration",
-    },
-    sdkmetric.Stream{
-        // Limit to 1000 unique attribute combinations
-        CardinalityLimit: 1000,
-    },
-)
-
 provider := sdkmetric.NewMeterProvider(
     sdkmetric.WithReader(exporter),
-    sdkmetric.WithView(overflowView),
+    // Limit each instrument to 1000 metric data points per collection cycle
+    sdkmetric.WithCardinalityLimit(1000),
 )
 ```
 
@@ -173,4 +164,4 @@ func warnHighCardinality(attrs []attribute.KeyValue) {
 }
 ```
 
-Metric cardinality issues are easy to introduce and hard to notice until memory pressure builds up. Review your metric attributes regularly and use Views to enforce limits at the SDK level.
+Metric cardinality issues are easy to introduce and hard to notice until memory pressure builds up. Review your metric attributes regularly, use Views to filter risky attributes, and set SDK cardinality limits.
