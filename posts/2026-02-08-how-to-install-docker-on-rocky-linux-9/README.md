@@ -19,34 +19,34 @@ Rocky Linux 9 was created as a community-driven replacement for CentOS after Red
 
 ## Step 1: Remove Conflicting Packages
 
-Rocky Linux 9 includes Podman, Buildah, and related container tools by default. These conflict with Docker and must be removed.
+Rocky Linux 9 includes Podman and related container tools by default. Remove conflicting packages before installing Docker Engine.
 
 ```bash
-# Remove Podman, Buildah, and any old Docker packages
+# Remove Podman, runc, and any old Docker packages
 
-sudo dnf remove -y podman buildah docker docker-client docker-client-latest \
+sudo dnf remove -y podman runc docker docker-client docker-client-latest \
   docker-common docker-latest docker-latest-logrotate \
   docker-logrotate docker-engine
 ```
 
-If you need Podman later, you can reinstall it, but running both Docker and Podman simultaneously can cause unexpected behavior.
+If you need Podman later, you can reinstall it, but be careful about package conflicts and shared host firewall or networking behavior.
 
 ## Step 2: Install Required Utilities
 
-Install `yum-utils` to get the `yum-config-manager` command.
+Install `dnf-plugins-core` to get the `dnf config-manager` command.
 
 ```bash
-# Install yum-utils for repository management
-sudo dnf install -y yum-utils
+# Install dnf-plugins-core for repository management
+sudo dnf install -y dnf-plugins-core
 ```
 
 ## Step 3: Add Docker's Official Repository
 
-Docker maintains a CentOS-based RPM repository that works perfectly on Rocky Linux 9.
+Docker maintains a RHEL-based RPM repository that works on Rocky Linux 9.
 
 ```bash
 # Add the Docker CE stable repository
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 ```
 
 Verify that the repository was added.
@@ -107,7 +107,7 @@ Avoid typing `sudo` for every Docker command.
 
 ```bash
 # Create the docker group if it does not exist
-sudo groupadd docker
+sudo groupadd -f docker
 
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -181,12 +181,11 @@ The `default-address-pools` setting helps avoid IP address conflicts if your hos
 
 ## Firewall Configuration
 
-Rocky Linux 9 uses `firewalld`. Docker modifies iptables directly, so you may need to trust the Docker bridge interface.
+Rocky Linux 9 uses `firewalld`. Docker creates its own firewall rules and, when `firewalld` is running, creates a `docker` zone for Docker bridge interfaces such as `docker0`.
 
 ```bash
-# Add the docker0 interface to the trusted zone
-sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
-sudo firewall-cmd --reload
+# Check which firewalld zone owns the docker0 interface
+sudo firewall-cmd --get-zone-of-interface=docker0
 ```
 
 To expose a specific container port externally:
