@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTLP, GRPC Exporter, Retry Policies
 
 Description: Configure the OTLP gRPC exporter with retry policies, exponential backoff, and timeouts to ensure telemetry data reaches your backend reliably.
 
-The OTLP/gRPC exporter is the most common way to send telemetry from your application to an OpenTelemetry Collector or a backend that supports OTLP. But network failures happen, backends go down temporarily, and connections drop. Without proper retry configuration, you lose telemetry data during these windows. This post covers how to configure the exporter for production resilience.
+The OTLP/gRPC exporter is the most common way to send telemetry from your application to an OpenTelemetry Collector or a backend that supports OTLP. But network failures happen, backends go down temporarily, and connections drop. Without enough retry and buffering configuration, you can lose telemetry data during these windows. This post covers how to configure the exporter for production resilience.
 
 ## Default Behavior
 
@@ -14,7 +14,7 @@ By default, the OTLP/gRPC exporter will:
 - Connect to `localhost:4317`
 - Use a 10-second timeout per export
 - Retry on transient failures with limited attempts
-- Use TLS if configured, insecure otherwise
+- Use TLS by default in current Go exporters unless insecure mode is explicitly configured
 
 For production, you want to be explicit about every setting.
 
@@ -65,6 +65,9 @@ func createExporter() (trace.SpanExporter, error) {
             MaxElapsedTime: 30 * time.Second,
         }),
 
+        // Keep the exporter request size aligned with the Collector receiver limit
+        otlptracegrpc.WithMaxRequestSize(16*1024*1024), // 16MB
+
         // Additional gRPC dial options
         otlptracegrpc.WithDialOption(
             // Keep-alive to detect dead connections
@@ -73,11 +76,6 @@ func createExporter() (trace.SpanExporter, error) {
                 Timeout:             3 * time.Second,
                 PermitWithoutStream: true,
             }),
-
-            // Set the maximum message size (default is 4MB)
-            grpc.WithDefaultCallOptions(
-                grpc.MaxCallSendMsgSize(16*1024*1024), // 16MB
-            ),
         ),
 
         // Compression to reduce bandwidth
@@ -121,6 +119,7 @@ func createTracerProvider(exporter trace.SpanExporter) *trace.TracerProvider {
 ## Python Configuration
 
 ```python
+import grpc
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace import TracerProvider
@@ -129,7 +128,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 exporter = OTLPSpanExporter(
     # The gRPC endpoint
-    endpoint="otel-collector.prod.svc.cluster.local:4317",
+    endpoint="https://otel-collector.prod.svc.cluster.local:4317",
 
     # Timeout in seconds for each export
     timeout=30,
@@ -137,11 +136,11 @@ exporter = OTLPSpanExporter(
     # Headers for authentication
     headers=(("x-api-key", "your-api-key-here"),),
 
-    # Use TLS (set to True for insecure, False uses system certs)
+    # Use TLS (set insecure=True only for plaintext connections)
     insecure=False,
 
     # Compression
-    compression=Compression.Gzip,
+    compression=grpc.Compression.Gzip,
 )
 
 # Configure the batch processor
@@ -196,7 +195,7 @@ export OTEL_BSP_EXPORT_TIMEOUT=30000
 
 ## Collector-Side Configuration
 
-On the Collector side, configure the OTLP gRPC receiver to handle retries gracefully:
+On the Collector side, configure the OTLP gRPC receiver to accept the larger batches and keep connections healthy:
 
 ```yaml
 receivers:
@@ -219,17 +218,14 @@ receivers:
 
 ## Testing Retry Behavior
 
-You can verify your retry configuration by temporarily pointing the exporter at a non-existent endpoint and checking the logs:
+You can verify your retry configuration by temporarily pointing the exporter at a non-existent endpoint and checking the SDK logs:
 
 ```go
-// Use a debug logger to see retry attempts
-import "go.opentelemetry.io/otel/sdk/trace"
-
-// The exporter will log retry attempts at debug level
+// Configure your application's OpenTelemetry logger to emit SDK warnings.
 // Look for messages like:
-// "Transient error, retrying in 500ms..."
-// "Transient error, retrying in 1s..."
-// "Export failed after all retries"
+// "Transient error ... retrying in 500ms"
+// "Transient error ... retrying in 1s"
+// "Export failed after all retries" or a timeout/drop message
 ```
 
 Getting the retry and timeout configuration right means the difference between losing telemetry data during a brief network hiccup and seamlessly recovering. Set your initial interval low enough for quick recovery, your max elapsed time high enough to survive real outages, and your queue size large enough to buffer during retry windows.
