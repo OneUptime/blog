@@ -58,7 +58,7 @@ If your host is `aarch64` but the image was built for `amd64` (or the other way 
 
 ## Fix 1: Pull the Correct Platform
 
-Many popular images on Docker Hub are multi-platform, meaning they have variants for different architectures. Docker usually pulls the right one automatically, but sometimes it gets it wrong, especially when using tags from third-party registries.
+Many popular images on Docker Hub are multi-platform, meaning they have variants for different architectures. Docker usually pulls the right one automatically, but you may need to be explicit when a tag does not include your host platform or when you intentionally need a non-native variant.
 
 Force Docker to pull the correct platform:
 
@@ -100,7 +100,7 @@ Set up a buildx builder that supports multi-platform builds:
 # Create a new builder instance with multi-platform support
 docker buildx create --name multiplatform --driver docker-container --use
 
-# Bootstrap the builder (downloads QEMU emulators)
+# Bootstrap the builder
 docker buildx inspect --bootstrap
 ```
 
@@ -115,12 +115,12 @@ docker buildx build \
   .
 ```
 
-The `--push` flag is required for multi-platform builds because the resulting image is a manifest list (index) that references platform-specific images. Docker cannot store multi-platform images in the local daemon.
+The `--push` flag is the most portable output for multi-platform builds because the resulting image is a manifest list (index) that references platform-specific images. Docker's classic image store cannot load multi-platform images locally; use a registry or a Docker setup with the containerd image store when you need to keep a multi-platform image local.
 
 To load a single-platform image locally (for testing):
 
 ```bash
-# Build for the current platform and load into the local daemon
+# Build one platform and load it into the local daemon
 docker buildx build \
   --platform linux/arm64 \
   --tag myapp:v1.0 \
@@ -130,26 +130,26 @@ docker buildx build \
 
 ## Fix 3: Use QEMU Emulation
 
-When you absolutely need to run an image built for a different architecture, QEMU user-space emulation lets you do it. Performance takes a hit (roughly 5-10x slower), but it works.
+When you absolutely need to run an image built for a different architecture, QEMU user-space emulation lets you do it. Performance can be much slower than native execution, especially for CPU-heavy workloads, but it works.
 
 Install QEMU support:
 
 ```bash
 # Register QEMU binary handlers with the kernel (Linux)
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --privileged --rm tonistiigi/binfmt --install all
 
 # On Docker Desktop (macOS/Windows), QEMU is already included
 ```
 
-Now run images from any architecture:
+Now run supported non-native Linux images through emulation:
 
 ```bash
 # Run an ARM image on an AMD64 host
-docker run --platform linux/arm64 arm64v8/alpine uname -m
+docker run --platform linux/arm64 alpine uname -m
 # Output: aarch64
 
 # Run an AMD64 image on an ARM host
-docker run --platform linux/amd64 amd64/alpine uname -m
+docker run --platform linux/amd64 alpine uname -m
 # Output: x86_64
 ```
 
@@ -241,19 +241,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Build and push multi-platform image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
