@@ -26,14 +26,14 @@ Each step contributes to the total latency budget, which for real-time payments 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -75,7 +75,7 @@ def extract_features(transaction):
         start = time.monotonic()
         features = {}
 
-        # Pull from multiple data sources in parallel
+        # Pull from multiple data sources
         # Each source is traced individually
         sources = {
             "transaction_history": fetch_transaction_history,
@@ -218,6 +218,14 @@ def authorize_payment(transaction):
         fraud_decision = run_fraud_inference(features, transaction)
 
         if fraud_decision.outcome == "decline":
+            total_ms = (time.monotonic() - auth_start) * 1000
+            auth_latency.record(total_ms)
+
+            if total_ms > LATENCY_BUDGET_MS:
+                budget_exceeded_counter.add(1)
+                span.set_attribute("auth.budget_exceeded", True)
+
+            span.set_attribute("auth.total_ms", total_ms)
             span.set_attribute("auth.result", "declined_fraud")
             return {"approved": False, "reason": "fraud"}
 
