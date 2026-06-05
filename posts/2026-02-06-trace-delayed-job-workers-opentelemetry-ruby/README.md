@@ -64,6 +64,7 @@ gem 'opentelemetry-instrumentation-rails'
 gem 'opentelemetry-instrumentation-active_record'
 
 # Additional instrumentations as needed
+gem 'opentelemetry-instrumentation-all'
 gem 'opentelemetry-instrumentation-net-http'
 ```
 
@@ -97,7 +98,7 @@ OpenTelemetry::SDK.configure do |c|
   c.add_span_processor(
     OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
       OpenTelemetry::Exporter::OTLP::Exporter.new(
-        endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces')
+        endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'http://localhost:4318/v1/traces')
       )
     )
   )
@@ -128,15 +129,17 @@ module DelayedJobOpenTelemetryPlugin
       # Before a job is enqueued
       lifecycle.before(:enqueue) do |job|
         # Capture current trace context
-        current_context = OpenTelemetry::Context.current
         span = OpenTelemetry::Trace.current_span
 
         if span && span.context.valid?
-          # Serialize trace context into job payload
-          job.trace_context = {
+          payload = job.payload_object
+
+          # Serialize trace context into the payload object Delayed Job saves
+          payload.trace_context = {
             'traceparent' => format_traceparent(span.context),
             'tracestate' => span.context.tracestate.to_s
           }
+          job.payload_object = payload
 
           # Add event to parent span
           span.add_event('job_enqueued', attributes: {
@@ -153,61 +156,67 @@ module DelayedJobOpenTelemetryPlugin
         parent_context = extract_context(job)
 
         # Start a new span as child of the enqueuing span
-        tracer.in_span(
-          "delayed_job.execute",
-          with_parent: parent_context,
-          kind: :consumer,
-          attributes: {
-            'job.id' => job.id,
-            'job.class' => job.payload_object.class.name,
-            'job.queue' => job.queue || 'default',
-            'job.priority' => job.priority,
-            'job.attempts' => job.attempts,
-            'job.run_at' => job.run_at.to_s,
-            'messaging.system' => 'delayed_job',
-            'messaging.operation' => 'process'
-          }
-        ) do |span|
-          # Record queue time (how long job waited before execution)
-          if job.run_at && job.locked_at
-            queue_time_ms = ((job.locked_at - job.run_at) * 1000).round(2)
-            span.set_attribute('job.queue_time_ms', queue_time_ms)
-          end
+        OpenTelemetry::Context.with_current(parent_context) do
+          tracer.in_span(
+            "delayed_job.execute",
+            kind: :consumer,
+            attributes: {
+              'job.id' => job.id,
+              'job.class' => job.payload_object.class.name,
+              'job.queue' => job.queue || 'default',
+              'job.priority' => job.priority,
+              'job.attempts' => job.attempts,
+              'job.run_at' => job.run_at.to_s,
+              'messaging.system' => 'delayed_job',
+              'messaging.operation' => 'process'
+            }
+          ) do |span|
+            # Record queue time (how long job waited before execution)
+            if job.run_at && job.locked_at
+              queue_time_ms = ((job.locked_at - job.run_at) * 1000).round(2)
+              span.set_attribute('job.queue_time_ms', queue_time_ms)
+            end
 
-          begin
-            # Execute the job
-            result = block.call(job, *args)
+            begin
+              # Execute the job
+              result = block.call(job, *args)
 
-            span.set_attribute('job.success', true)
-            span.add_event('job_completed')
+              span.set_attribute('job.success', true)
+              span.add_event('job_completed')
 
-            result
-          rescue StandardError => e
-            # Record failure in span
-            span.record_exception(e)
-            span.set_attribute('job.success', false)
-            span.set_attribute('job.error', e.class.name)
+              result
+            rescue StandardError => e
+              # Record failure in span
+              span.record_exception(e)
+              span.set_attribute('job.success', false)
+              span.set_attribute('job.error', e.class.name)
 
-            span.add_event('job_failed', attributes: {
-              'error.type' => e.class.name,
-              'error.message' => e.message
-            })
+              span.add_event('job_failed', attributes: {
+                'error.type' => e.class.name,
+                'error.message' => e.message
+              })
 
-            # Re-raise so Delayed Job handles retries
-            raise
+              # Re-raise so Delayed Job handles retries
+              raise
+            end
           end
         end
       end
 
       # When a job fails permanently
       lifecycle.after(:failure) do |_worker, job|
-        span = OpenTelemetry::Trace.current_span
-        if span && span.recording?
-          span.set_attribute('job.max_attempts_reached', true)
-          span.add_event('job_permanently_failed', attributes: {
-            'job.attempts' => job.attempts,
-            'job.last_error' => job.last_error&.truncate(500)
-          })
+        parent_context = extract_context(job)
+
+        OpenTelemetry::Context.with_current(parent_context) do
+          tracer.in_span('delayed_job.failure', kind: :consumer) do |span|
+            span.set_attribute('job.id', job.id)
+            span.set_attribute('job.class', job.payload_object.class.name)
+            span.set_attribute('job.max_attempts_reached', true)
+            span.add_event('job_permanently_failed', attributes: {
+              'job.attempts' => job.attempts,
+              'job.last_error' => job.last_error&.truncate(500)
+            })
+          end
         end
       end
     end
@@ -439,48 +448,50 @@ Delayed Job automatically retries failed jobs. Trace each attempt to see pattern
 
 lifecycle.around(:invoke_job) do |job, *args, &block|
   parent_context = extract_context(job)
+  max_attempts = job.max_attempts || Delayed::Worker.max_attempts
 
-  tracer.in_span(
-    "delayed_job.execute",
-    with_parent: parent_context,
-    kind: :consumer,
-    attributes: {
-      'job.id' => job.id,
-      'job.class' => job.payload_object.class.name,
-      'job.attempts' => job.attempts,  # Current attempt number
-      'job.max_attempts' => Delayed::Worker.max_attempts
-    }
-  ) do |span|
-    # Tag retry attempts
-    if job.attempts > 0
-      span.set_attribute('job.is_retry', true)
-      span.add_event('job_retry', attributes: {
-        'retry.attempt' => job.attempts,
-        'retry.previous_error' => job.last_error&.split("\n")&.first&.truncate(200)
-      })
-    end
-
-    begin
-      block.call(job, *args)
-      span.set_attribute('job.success', true)
-    rescue StandardError => e
-      span.record_exception(e)
-      span.set_attribute('job.success', false)
-
-      # Check if this was the final attempt
-      if job.attempts >= Delayed::Worker.max_attempts - 1
-        span.set_attribute('job.will_retry', false)
-        span.add_event('job_max_retries_reached')
-      else
-        span.set_attribute('job.will_retry', true)
-        next_attempt = job.attempts + 1
-        span.add_event('job_will_retry', attributes: {
-          'retry.next_attempt' => next_attempt,
-          'retry.max_attempts' => Delayed::Worker.max_attempts
+  OpenTelemetry::Context.with_current(parent_context) do
+    tracer.in_span(
+      "delayed_job.execute",
+      kind: :consumer,
+      attributes: {
+        'job.id' => job.id,
+        'job.class' => job.payload_object.class.name,
+        'job.attempts' => job.attempts,  # Current attempt number
+        'job.max_attempts' => max_attempts
+      }
+    ) do |span|
+      # Tag retry attempts
+      if job.attempts > 0
+        span.set_attribute('job.is_retry', true)
+        span.add_event('job_retry', attributes: {
+          'retry.attempt' => job.attempts,
+          'retry.previous_error' => job.last_error&.split("\n")&.first&.truncate(200)
         })
       end
 
-      raise
+      begin
+        block.call(job, *args)
+        span.set_attribute('job.success', true)
+      rescue StandardError => e
+        span.record_exception(e)
+        span.set_attribute('job.success', false)
+
+        # Check if this was the final attempt
+        if job.attempts >= max_attempts - 1
+          span.set_attribute('job.will_retry', false)
+          span.add_event('job_max_retries_reached')
+        else
+          span.set_attribute('job.will_retry', true)
+          next_attempt = job.attempts + 1
+          span.add_event('job_will_retry', attributes: {
+            'retry.next_attempt' => next_attempt,
+            'retry.max_attempts' => max_attempts
+          })
+        end
+
+        raise
+      end
     end
   end
 end
@@ -540,7 +551,7 @@ Start worker processes with appropriate environment variables:
 # Set process type to distinguish workers from web processes
 export PROCESS_TYPE="worker"
 export OTEL_SERVICE_NAME="myapp-worker"
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector:4318/v1/traces"
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="http://collector:4318/v1/traces"
 
 # Start Delayed Job worker
 bundle exec rake jobs:work
