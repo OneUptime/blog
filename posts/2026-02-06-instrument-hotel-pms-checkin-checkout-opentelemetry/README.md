@@ -24,8 +24,10 @@ Each step talks to different subsystems, and any slowness is directly felt by th
 ## Instrumenting the Check-In Process
 
 ```python
+import time
+
 from opentelemetry import trace, metrics
-from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 tracer = trace.get_tracer("hotel.pms")
 meter = metrics.get_meter("hotel.pms")
@@ -47,22 +49,21 @@ def check_in_guest(confirmation_number, front_desk_agent_id):
         "pms.check_in",
         kind=SpanKind.SERVER,
         attributes={
-            "pms.confirmation_number": confirmation_number,
             "pms.agent_id": front_desk_agent_id,
             "pms.operation": "check_in",
         }
     ) as span:
-        import time
         start = time.time()
 
         # Step 1: Look up reservation
         with tracer.start_as_current_span("pms.lookup_reservation") as lookup_span:
             reservation = find_reservation(confirmation_number)
             if not reservation:
-                lookup_span.set_status(StatusCode.ERROR, "Reservation not found")
+                lookup_span.set_status(Status(StatusCode.ERROR, "Reservation not found"))
+                span.set_status(Status(StatusCode.ERROR, "Reservation not found"))
+                span.set_attribute("pms.checkin_result", "reservation_not_found")
                 return {"status": "error", "message": "Reservation not found"}
 
-            lookup_span.set_attribute("pms.guest_name", reservation.guest_name)
             lookup_span.set_attribute("pms.room_type", reservation.room_type)
             lookup_span.set_attribute("pms.nights", reservation.nights)
             lookup_span.set_attribute("pms.rate_code", reservation.rate_code)
@@ -76,7 +77,7 @@ def check_in_guest(confirmation_number, front_desk_agent_id):
         # Step 3: Assign room
         with tracer.start_as_current_span("pms.assign_room") as room_span:
             room = assign_room(reservation)
-            room_span.set_attribute("pms.assigned_room", room.room_number)
+            room_span.set_attribute("pms.room_assigned", True)
             room_span.set_attribute("pms.room_type_assigned", room.room_type)
             room_span.set_attribute("pms.floor", room.floor)
             room_span.set_attribute("pms.upgrade_given", room.room_type != reservation.room_type)
@@ -93,10 +94,10 @@ def check_in_guest(confirmation_number, front_desk_agent_id):
 
             auth_result = authorize_payment(reservation.payment_token, auth_amount)
             pay_span.set_attribute("pms.auth_status", auth_result.status)
-            pay_span.set_attribute("pms.auth_code", auth_result.auth_code)
 
             if auth_result.status != "approved":
-                pay_span.set_status(StatusCode.ERROR, "Payment authorization failed")
+                pay_span.set_status(Status(StatusCode.ERROR, "Payment authorization failed"))
+                span.set_status(Status(StatusCode.ERROR, "Payment authorization failed"))
                 span.set_attribute("pms.checkin_result", "payment_failed")
                 return {"status": "payment_failed"}
 
@@ -148,7 +149,6 @@ def check_out_guest(room_number, agent_id):
         "pms.check_out",
         kind=SpanKind.SERVER,
         attributes={
-            "pms.room_number": room_number,
             "pms.agent_id": agent_id,
             "pms.operation": "check_out",
         }
@@ -201,10 +201,16 @@ def check_out_guest(room_number, agent_id):
 Track how check-in/check-out performance varies throughout the day:
 
 ```python
+from opentelemetry.metrics import CallbackOptions, Observation
+
 # Observable gauge for current front desk queue
+
+def observe_front_desk_queue(options: CallbackOptions):
+    yield Observation(get_front_desk_queue_length(), {})
 
 desk_queue_length = meter.create_observable_gauge(
     "pms.front_desk_queue_length",
+    callbacks=[observe_front_desk_queue],
     description="Number of guests waiting for check-in or check-out",
 )
 
