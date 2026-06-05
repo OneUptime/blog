@@ -14,7 +14,7 @@ This guide covers every tool and technique for inspecting Docker image layers, f
 
 ## Understanding Image Layers
 
-A Docker image is not a single file. It is an ordered collection of filesystem diffs. When you write a Dockerfile with five instructions that modify the filesystem, the resulting image has five layers (plus the base image layers).
+A Docker image is not a single file. It is an ordered collection of filesystem diffs. When you write a Dockerfile with five instructions that create filesystem changes, the resulting image has five layers (plus the base image layers). Instructions that only change metadata still appear in the image history, but they do not create filesystem layers.
 
 Consider this Dockerfile:
 
@@ -30,7 +30,7 @@ Layers 1-4 each contain actual filesystem changes. Layer 5 only adds metadata (t
 
 ## Viewing Image History
 
-The `docker history` command shows the creation history of an image, one entry per layer.
+The `docker history` command shows the creation history of an image, including filesystem layers and metadata-only instructions.
 
 View the build history of an image:
 
@@ -50,7 +50,7 @@ docker history nginx:alpine
 # <missing>      3 days ago    RUN /bin/sh -c set -x &&...                    28.1MB
 ```
 
-The output shows what command created each layer and how much space it added.
+The output shows what command created each history entry and how much space it added.
 
 ## Full History Without Truncation
 
@@ -120,7 +120,7 @@ docker image inspect nginx:alpine --format "{{json .Config.Labels}}" | python3 -
 
 ## Viewing Layer Digests
 
-Each layer has a content-addressable digest. Comparing digests between images tells you which layers they share.
+Each filesystem layer has a content-addressable digest. The values in `.RootFS.Layers` are diff IDs for the image's uncompressed layers. Comparing these values between images tells you which local filesystem layers they share.
 
 List the layer digests:
 
@@ -200,11 +200,11 @@ jobs:
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             wagoodman/dive myapp:test --ci \
-            --highestImageEfficiency=0.95 \
-            --lowestImageEfficiency=0.90
+            --lowestEfficiency=0.95 \
+            --highestWastedBytes=20MB
 ```
 
-The `--ci` flag makes dive exit with a non-zero code if the image fails efficiency thresholds.
+The `--ci` flag makes dive exit with a non-zero code if the image fails the configured efficiency or wasted-space thresholds.
 
 ## Saving and Extracting Layers
 
@@ -219,7 +219,8 @@ docker save nginx:alpine -o nginx-alpine.tar
 # List the contents of the tar file
 tar tf nginx-alpine.tar
 
-# The tar contains a manifest.json and directories for each layer
+# The tar contains a manifest.json plus layer blobs or layer directories,
+# depending on the Docker version and image store
 # Extract it to examine
 mkdir image-layers
 tar xf nginx-alpine.tar -C image-layers/
@@ -227,8 +228,10 @@ tar xf nginx-alpine.tar -C image-layers/
 # View the manifest
 cat image-layers/manifest.json | python3 -m json.tool
 
-# Each layer is a tar file inside a directory
-# Extract a specific layer to see its files
+# In OCI-layout exports, layers are blobs under blobs/sha256/
+tar tf image-layers/blobs/sha256/6a0ac161...
+
+# In legacy Docker-layout exports, each layer is a layer.tar file inside a directory
 mkdir layer-contents
 tar xf image-layers/sha256-abc123.../layer.tar -C layer-contents/
 ls -la layer-contents/
@@ -239,21 +242,21 @@ ls -la layer-contents/
 Identify which files contribute most to image size:
 
 ```bash
-# Export the image and find large files
-docker save myapp:latest | tar -x --to-stdout | tar -tf - 2>/dev/null | head -50
+# Export the image and list archived blobs or layer files
+docker save myapp:latest -o myapp.tar
+tar tf myapp.tar | grep -E '(^blobs/sha256/|/layer\.tar$)' | head -50
 
 # Use dive's CI mode to report wasted space
 docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
     wagoodman/dive myapp:latest --ci --json dive-report.json 2>/dev/null
 
-# Manual approach: check size of files in each layer
-docker save myapp:latest -o myapp.tar
+# Manual approach: check size of archived blobs or layer files
 mkdir myapp-extracted
 tar xf myapp.tar -C myapp-extracted/
-for layer in myapp-extracted/*/layer.tar; do
+find myapp-extracted -type f \( -path '*/blobs/sha256/*' -o -name layer.tar \) | while read -r layer; do
     echo "=== $layer ==="
-    tar tzf "$layer" 2>/dev/null | head -5
+    tar tf "$layer" 2>/dev/null | head -5
     echo "Size: $(du -sh "$layer" | cut -f1)"
     echo ""
 done
@@ -276,8 +279,8 @@ docker run --rm myapp:latest find / -name "*.pem" -o -name "*.key" -o -name ".en
 docker image inspect myapp:latest --format "{{range .Config.Env}}{{.}}{{println}}{{end}}" | \
     grep -iE "password|secret|token|key"
 
-# Use tools like trufflehog or gitleaks on the exported image
-docker save myapp:latest | trufflehog docker --stdin 2>/dev/null
+# Use tools like trufflehog or gitleaks on the image
+trufflehog docker --image=docker://myapp:latest
 ```
 
 ## Comparing Image Versions
