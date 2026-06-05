@@ -23,7 +23,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                # Keep Prometheus counter names such as *_total.
+                without_type_suffix: false
     resource:
       # Tag metrics with the pipeline configuration for comparison
       service.name: "otel-collector"
@@ -75,8 +82,7 @@ for RATE in 1000 5000 10000 25000 50000; do
         --otlp-endpoint ${COLLECTOR_ENDPOINT} \
         --otlp-insecure \
         --rate ${RATE} \
-        --duration 5m \
-        --workers 4 &
+        --duration 5m &
 
     LOAD_PID=$!
     # Wait 3 minutes for metrics to stabilize
@@ -173,7 +179,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               # Based on benchmark: 30k spans/sec target
@@ -191,10 +197,10 @@ And align the `memory_limiter` processor with the container limit:
 processors:
   memory_limiter:
     check_interval: 1s
-    # Set to ~80% of container memory limit (900Mi)
-    limit_mib: 720
-    # Reserve buffer for GC and spikes
-    spike_limit_mib: 180
+    # Use ~80% of the container memory limit.
+    limit_percentage: 80
+    # Reserve buffer for GC and spikes.
+    spike_limit_percentage: 20
 ```
 
 ## Ongoing Right-Sizing
