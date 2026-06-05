@@ -46,7 +46,7 @@ receivers:
     storage: file_storage
     operators:
       - type: regex_parser
-        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?) (?P<severity>[A-Z]+) (?P<message>.*)'
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z) (?P<severity>[A-Z]+) (?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
           layout: "%Y-%m-%dT%H:%M:%S.%LZ"
@@ -68,14 +68,18 @@ extensions:
   # Persist file reading positions across restarts
   file_storage:
     directory: /var/lib/otel-collector/storage
+    create_directory: true
 
 processors:
-  # Tag logs with the source host
+  # Detect and attach the source host
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: ["os"]
+
+  # Tag logs with the collector tier
   resource:
     attributes:
-      - key: host.name
-        from_attribute: ""
-        action: upsert
       - key: collector.tier
         value: "agent"
         action: upsert
@@ -97,7 +101,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp, filelog/app, filelog/system]
-      processors: [resource, batch]
+      processors: [resourcedetection, resource, batch]
       exporters: [otlp]
 ```
 
@@ -123,7 +127,7 @@ receivers:
     protocol: rfc5424
 
   # Accept logs from Fluentd/Fluent Bit via Forward protocol
-  fluentforward:
+  fluent_forward:
     endpoint: 0.0.0.0:24224
 ```
 
@@ -142,13 +146,14 @@ receivers:
     udp:
       listen_address: 0.0.0.0:514
     protocol: rfc5424
-  fluentforward:
+  fluent_forward:
     endpoint: 0.0.0.0:24224
 
 processors:
   # Detect and attach resource information
   resourcedetection:
     detectors: [env, system]
+    override: false
 
   # Normalize attributes across different log sources
   # Different sources use different field names for the same concept
@@ -169,14 +174,12 @@ processors:
 
   # Filter out health check noise
   filter:
-    logs:
-      exclude:
-        match_type: regexp
-        bodies:
-          - ".*healthcheck.*"
-          - ".*health_check.*"
-          - ".*readiness.*"
-          - ".*liveness.*"
+    error_mode: ignore
+    log_conditions:
+      - IsMatch(log.body, ".*healthcheck.*")
+      - IsMatch(log.body, ".*health_check.*")
+      - IsMatch(log.body, ".*readiness.*")
+      - IsMatch(log.body, ".*liveness.*")
 
   # Memory limiter to prevent OOM under load
   memory_limiter:
@@ -206,7 +209,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [otlp, syslog, fluentforward]
+      receivers: [otlp, syslog, fluent_forward]
       processors: [memory_limiter, resourcedetection, attributes, filter, batch]
       exporters: [otlp]
 ```
@@ -227,6 +230,7 @@ For production deployments where log loss is unacceptable, add persistent queue 
 extensions:
   file_storage/queue:
     directory: /var/lib/otel-collector/queue
+    create_directory: true
     compaction:
       on_start: true
       directory: /tmp/otel-compaction
@@ -238,6 +242,9 @@ exporters:
       enabled: true
       storage: file_storage/queue
       queue_size: 50000
+
+service:
+  extensions: [file_storage/queue]
 ```
 
 ## Scaling the Gateway
