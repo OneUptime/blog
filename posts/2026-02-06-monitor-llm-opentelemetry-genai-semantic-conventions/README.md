@@ -19,12 +19,12 @@ OpenTelemetry introduced GenAI semantic conventions specifically for this purpos
 OpenTelemetry semantic conventions are agreed-upon attribute names and values that describe specific types of operations. The GenAI semantic conventions extend this to cover generative AI workloads. They standardize how you record things like:
 
 - The model being called (e.g., `gpt-4o`, `claude-sonnet-4-20250514`)
-- The type of operation (chat, embedding, text completion)
+- The type of operation (chat, embeddings, text completion)
 - Token counts for input and output
 - The system or provider being used
 - Request and response content
 
-The key namespace is `gen_ai.*`, and it includes attributes like `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, and `gen_ai.usage.output_tokens`.
+The key namespace is `gen_ai.*`, and it includes attributes like `gen_ai.provider.name`, `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, and `gen_ai.usage.output_tokens`.
 
 Here is how the data flow looks when monitoring an LLM application:
 
@@ -93,9 +93,10 @@ tracer = trace.get_tracer("llm-chat-service")
 
 def chat_completion(user_message: str, model: str = "gpt-4o") -> str:
     # Start a span using the GenAI semantic convention naming pattern
-    with tracer.start_as_current_span("gen_ai.chat") as span:
+    with tracer.start_as_current_span(f"chat {model}", kind=trace.SpanKind.CLIENT) as span:
         # Set standard GenAI attributes on the span
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.max_tokens", 1024)
         span.set_attribute("gen_ai.request.temperature", 0.7)
@@ -106,7 +107,7 @@ def chat_completion(user_message: str, model: str = "gpt-4o") -> str:
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": user_message}],
-                max_tokens=1024,
+                max_completion_tokens=1024,
                 temperature=0.7,
             )
 
@@ -121,6 +122,7 @@ def chat_completion(user_message: str, model: str = "gpt-4o") -> str:
 
         except Exception as e:
             # Record any errors that occur during the LLM call
+            span.set_attribute("error.type", type(e).__name__)
             span.set_status(trace.StatusCode.ERROR, str(e))
             span.record_exception(e)
             raise
@@ -130,25 +132,27 @@ This gives you full visibility into every LLM call: which model was used, how ma
 
 ---
 
-## Recording Prompt and Completion Events
+## Recording Prompt and Completion Content
 
-Beyond attributes, the GenAI semantic conventions also define span events for capturing the actual content of prompts and completions. This is useful for debugging but should be handled carefully in production due to privacy and data size concerns.
+Beyond the core attributes, the GenAI semantic conventions also define opt-in attributes for capturing the actual content of prompts and completions. This is useful for debugging but should be handled carefully in production due to privacy and data size concerns.
 
 ```python
+import json
 from opentelemetry import trace
 
 def chat_with_content_logging(user_message: str, model: str = "gpt-4o") -> str:
     tracer = trace.get_tracer("llm-chat-service")
 
-    with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "openai")
+    with tracer.start_as_current_span(f"chat {model}", kind=trace.SpanKind.CLIENT) as span:
+        span.set_attribute("gen_ai.operation.name", "chat")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
 
-        # Log the user prompt as a span event
+        # Log the user prompt as an opt-in span attribute
         # Use this in development/staging - consider disabling in production
-        span.add_event("gen_ai.content.prompt", attributes={
-            "gen_ai.prompt": user_message,
-        })
+        span.set_attribute("gen_ai.input.messages", json.dumps([
+            {"role": "user", "parts": [{"type": "text", "content": user_message}]}
+        ]))
 
         client = openai.OpenAI()
         response = client.chat.completions.create(
@@ -158,10 +162,10 @@ def chat_with_content_logging(user_message: str, model: str = "gpt-4o") -> str:
 
         result = response.choices[0].message.content
 
-        # Log the completion as a span event
-        span.add_event("gen_ai.content.completion", attributes={
-            "gen_ai.completion": result,
-        })
+        # Log the completion as an opt-in span attribute
+        span.set_attribute("gen_ai.output.messages", json.dumps([
+            {"role": "assistant", "parts": [{"type": "text", "content": result}]}
+        ]))
 
         # Record token usage
         span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
@@ -182,9 +186,10 @@ LLM applications often use embedding models for retrieval-augmented generation (
 def generate_embedding(text: str, model: str = "text-embedding-3-small") -> list:
     tracer = trace.get_tracer("llm-chat-service")
 
-    # Use gen_ai.embeddings as the span name for embedding operations
-    with tracer.start_as_current_span("gen_ai.embeddings") as span:
-        span.set_attribute("gen_ai.system", "openai")
+    # Use the GenAI span naming pattern for embedding operations
+    with tracer.start_as_current_span(f"embeddings {model}", kind=trace.SpanKind.CLIENT) as span:
+        span.set_attribute("gen_ai.operation.name", "embeddings")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
 
         client = openai.OpenAI()
@@ -212,23 +217,24 @@ from opentelemetry import metrics
 meter = metrics.get_meter("llm-chat-service")
 
 # Create histograms for tracking token usage distributions
-input_token_histogram = meter.create_histogram(
+token_usage_histogram = meter.create_histogram(
     name="gen_ai.client.token.usage",
     description="Number of tokens used per LLM request",
-    unit="tokens",
+    unit="{token}",
 )
 
 # Create a counter for total LLM requests by model
 request_counter = meter.create_counter(
-    name="gen_ai.client.operation.count",
+    name="llm.client.operation.count",
     description="Total number of GenAI operations",
 )
 
 def tracked_chat(user_message: str, model: str = "gpt-4o") -> str:
     tracer = trace.get_tracer("llm-chat-service")
 
-    with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "openai")
+    with tracer.start_as_current_span(f"chat {model}", kind=trace.SpanKind.CLIENT) as span:
+        span.set_attribute("gen_ai.operation.name", "chat")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
 
         client = openai.OpenAI()
@@ -240,9 +246,14 @@ def tracked_chat(user_message: str, model: str = "gpt-4o") -> str:
         input_tokens = response.usage.prompt_tokens
         output_tokens = response.usage.completion_tokens
 
-        # Record metrics with model and system labels for filtering
-        labels = {"gen_ai.system": "openai", "gen_ai.request.model": model}
-        input_token_histogram.record(input_tokens + output_tokens, labels)
+        # Record metrics with model and provider labels for filtering
+        labels = {
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "openai",
+            "gen_ai.request.model": model,
+        }
+        token_usage_histogram.record(input_tokens, {**labels, "gen_ai.token.type": "input"})
+        token_usage_histogram.record(output_tokens, {**labels, "gen_ai.token.type": "output"})
         request_counter.add(1, labels)
 
         span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
@@ -282,7 +293,7 @@ Once you have GenAI telemetry flowing, here are the key things to monitor:
 
 - **Token usage spikes**: A sudden increase in `gen_ai.usage.output_tokens` might indicate a prompt injection or runaway generation.
 - **Error rates by model**: Track the rate of spans with error status, grouped by `gen_ai.request.model`.
-- **Latency percentiles**: P50 and P99 latency for `gen_ai.chat` spans tells you if your LLM calls are getting slower.
+- **Latency percentiles**: P50 and P99 latency for spans with `gen_ai.operation.name` set to `chat` tells you if your LLM calls are getting slower.
 - **Finish reason distribution**: If you start seeing `length` instead of `stop` as the finish reason, your responses are getting truncated.
 - **Model version changes**: Track `gen_ai.response.model` to catch when providers silently update model versions.
 
@@ -292,6 +303,6 @@ Once you have GenAI telemetry flowing, here are the key things to monitor:
 
 The GenAI semantic conventions give you a vendor-neutral way to instrument LLM calls. Whether you're using OpenAI, Anthropic, Cohere, or a self-hosted model, the telemetry looks the same. This means your dashboards, alerts, and analysis tooling work across providers without modification.
 
-The conventions are still evolving as the OpenTelemetry community refines them, so keep an eye on the [OpenTelemetry Semantic Conventions repository](https://github.com/open-telemetry/semantic-conventions) for updates. But the core attributes covered here are stable enough to build your monitoring stack on today.
+The conventions are still evolving as the OpenTelemetry community refines them, so keep an eye on the [OpenTelemetry Semantic Conventions repository](https://github.com/open-telemetry/semantic-conventions) for updates and use `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` when your instrumentation supports the latest experimental GenAI conventions.
 
 Start with basic span instrumentation and token tracking. Then layer on content logging and custom metrics as your needs grow. The important thing is getting visibility into your LLM calls before something goes wrong in production, not after.
