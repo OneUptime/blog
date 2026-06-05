@@ -6,11 +6,11 @@ Tags: OpenTelemetry, PHP, Auto-Instrumentation, Extension, C Extension
 
 Description: Learn how to install and configure the OpenTelemetry PHP auto-instrumentation extension to automatically trace PHP applications without code changes.
 
-The OpenTelemetry PHP auto-instrumentation extension is a C extension that automatically instruments PHP applications without requiring code changes. It hooks into PHP's internal execution at the engine level, capturing function calls, database queries, HTTP requests, and framework operations. This approach provides comprehensive observability with minimal performance overhead and zero code modifications.
+The OpenTelemetry PHP auto-instrumentation extension is a C extension that enables automatic instrumentation hooks for PHP applications. It hooks into PHP's internal execution at the engine level so OpenTelemetry instrumentation libraries can wrap function and method calls. With the OpenTelemetry SDK and the right Composer auto-instrumentation packages installed, this approach provides observability with minimal application code changes.
 
 ## Why Use Auto-Instrumentation
 
-Manual instrumentation requires modifying application code to add tracing spans. This is time-consuming, error-prone, and requires maintenance as code evolves. The auto-instrumentation extension eliminates these issues by intercepting PHP function calls at runtime. You get immediate visibility into your application's behavior without touching a single line of application code.
+Manual instrumentation requires modifying application code to add tracing spans. This is time-consuming, error-prone, and requires maintenance as code evolves. The auto-instrumentation extension reduces these issues by letting instrumentation packages intercept PHP function calls at runtime. You get immediate visibility into supported libraries and frameworks without touching a single line of application code.
 
 ## Architecture Overview
 
@@ -35,7 +35,7 @@ graph TB
 
 ## Installing the Extension
 
-The extension requires PHP 8.0 or higher and is distributed through PECL. Installation varies by operating system.
+The extension requires PHP 8.0 or higher and is distributed through PECL. Installing the extension by itself does not generate traces; you also need Composer autoloading, the OpenTelemetry SDK, an exporter, and one or more auto-instrumentation packages. Installation varies by operating system.
 
 For Ubuntu/Debian:
 
@@ -43,14 +43,17 @@ For Ubuntu/Debian:
 # Install build dependencies
 
 sudo apt-get update
-sudo apt-get install php8.2-dev pkg-config build-essential
+sudo apt-get install php8.2-dev gcc make autoconf
 
 # Install the extension via PECL
-sudo pecl install opentelemetry-beta
+sudo pecl install opentelemetry
 
 # Enable the extension
 echo "extension=opentelemetry.so" | sudo tee /etc/php/8.2/mods-available/opentelemetry.ini
 sudo phpenmod opentelemetry
+
+# Install the SDK, exporter, and instrumentation packages your app needs
+composer require open-telemetry/sdk open-telemetry/exporter-otlp open-telemetry/opentelemetry-auto-pdo
 
 # Verify installation
 php -m | grep opentelemetry
@@ -60,13 +63,16 @@ For macOS with Homebrew:
 
 ```bash
 # Install PHP development tools
-brew install php@8.2
+brew install php@8.2 gcc make autoconf
 
 # Install the extension
-pecl install opentelemetry-beta
+pecl install opentelemetry
 
 # Add to php.ini
 echo "extension=opentelemetry.so" >> $(php -r "echo php_ini_loaded_file();")
+
+# Install the SDK, exporter, and instrumentation packages your app needs
+composer require open-telemetry/sdk open-telemetry/exporter-otlp open-telemetry/opentelemetry-auto-pdo
 
 # Verify installation
 php -m | grep opentelemetry
@@ -79,16 +85,21 @@ FROM php:8.2-fpm
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    pkg-config
+    gcc \
+    make \
+    autoconf
 
 # Install OpenTelemetry extension
-RUN pecl install opentelemetry-beta \
+RUN pecl install opentelemetry \
     && docker-php-ext-enable opentelemetry
 
 # Install Composer dependencies for SDK
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-RUN composer require open-telemetry/sdk open-telemetry/exporter-otlp
+RUN composer require \
+    open-telemetry/sdk \
+    open-telemetry/exporter-otlp \
+    open-telemetry/opentelemetry-auto-pdo \
+    open-telemetry/opentelemetry-auto-curl
 
 # Copy configuration
 COPY php-otel.ini /usr/local/etc/php/conf.d/
@@ -98,60 +109,63 @@ CMD ["php-fpm"]
 
 ## Configuring the Extension
 
-The extension uses php.ini directives for configuration. Create a configuration file `/etc/php/8.2/mods-available/opentelemetry.ini`:
+The PHP SDK can read OpenTelemetry environment variables from the environment or from a `php.ini` file. Create a configuration file such as `/etc/php/8.2/mods-available/opentelemetry.ini`:
 
 ```ini
 ; Enable the OpenTelemetry extension
 extension=opentelemetry.so
 
+; Enable SDK autoloading through Composer
+OTEL_PHP_AUTOLOAD_ENABLED="true"
+
+; Enable OTLP trace export over HTTP/protobuf
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
 ; Configure the exporter endpoint
-otel.exporter.otlp.endpoint=http://localhost:4318/v1/traces
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 ; Set service name
-otel.service.name=my-php-application
+OTEL_SERVICE_NAME=my-php-application
 
 ; Configure resource attributes
-otel.resource.attributes=deployment.environment=production,service.version=1.0.0
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,service.version=1.0.0
 
 ; Set sampling rate (1.0 = 100%, 0.1 = 10%)
-otel.traces.sampler=parentbased_traceidratio
-otel.traces.sampler.arg=1.0
+OTEL_TRACES_SAMPLER=parentbased_traceidratio
+OTEL_TRACES_SAMPLER_ARG=1.0
 
-; Enable specific instrumentation libraries
-otel.php.autoload_enabled=1
-otel.php.detect_variables=1
-
-; Configure which functions to instrument
-otel.php.excluded_urls=/health,/metrics,/status
+; Exclude requests whose URL matches these regular expressions
+OTEL_PHP_EXCLUDED_URLS=/health,/metrics,/status
 
 ; Set batch processor configuration
-otel.bsp.schedule.delay=5000
-otel.bsp.max.queue.size=2048
-otel.bsp.max.export.batch.size=512
-otel.bsp.export.timeout=30000
+OTEL_BSP_SCHEDULE_DELAY=5000
+OTEL_BSP_MAX_QUEUE_SIZE=2048
+OTEL_BSP_MAX_EXPORT_BATCH_SIZE=512
+OTEL_BSP_EXPORT_TIMEOUT=30000
 
-; Enable debug logging (disable in production)
-otel.log.level=info
+; Send PHP SDK internal logs to PHP's error_log
+OTEL_PHP_LOG_DESTINATION=error_log
 ```
 
 ## Auto-Instrumentation Capabilities
 
-The extension automatically instruments several common PHP operations without configuration.
+The extension provides the hook mechanism. The SDK and Composer auto-instrumentation packages create spans for supported libraries without application code changes.
 
 ### HTTP Server Requests
 
-Every incoming HTTP request automatically creates a root span:
+Installed server or framework instrumentation can create a root span for incoming HTTP requests:
 
 ```php
 <?php
-// No instrumentation code needed - extension handles this automatically
+// No instrumentation code needed when a matching instrumentation package is installed
 // Your existing application code works as-is
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo "Hello, World!";
 }
 
-// Extension automatically captures:
+// Instrumentation can capture:
 // - HTTP method, URL, headers
 // - Response status code
 // - Request duration
@@ -160,63 +174,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 ### Database Queries
 
-The extension hooks into PDO, MySQLi, and other database drivers:
+Install the matching database instrumentation package, such as `open-telemetry/opentelemetry-auto-pdo` or `open-telemetry/opentelemetry-auto-mysqli`, to trace database calls:
 
 ```php
 <?php
-// No instrumentation code needed
+// No instrumentation code needed when the PDO instrumentation package is installed
 $pdo = new PDO('mysql:host=localhost;dbname=test', 'user', 'pass');
 
-// This query is automatically traced
+// This query is traced by the PDO instrumentation package
 $stmt = $pdo->query('SELECT * FROM users WHERE active = 1');
 
-// Extension captures:
+// Instrumentation captures:
 // - Full SQL statement
 // - Query duration
 // - Database system (MySQL, PostgreSQL, etc.)
-// - Row count
+// - Query span relationships and selected database attributes
 ```
 
 ### HTTP Client Requests
 
-Outbound HTTP requests using cURL, file_get_contents, or Guzzle are automatically traced:
+Outbound HTTP requests can be traced by installing packages such as `open-telemetry/opentelemetry-auto-curl`, `open-telemetry/opentelemetry-auto-guzzle`, `open-telemetry/opentelemetry-auto-psr18`, or `open-telemetry/opentelemetry-auto-io`:
 
 ```php
 <?php
-// No instrumentation code needed
-// cURL requests automatically traced
+// No instrumentation code needed when the cURL instrumentation package is installed
 $ch = curl_init('https://api.example.com/users');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $response = curl_exec($ch);
 curl_close($ch);
 
-// Extension captures:
+// Instrumentation captures:
 // - Target URL
 // - HTTP method
 // - Response status
 // - Request duration
 // - Request/response sizes
 
-// file_get_contents also traced automatically
+// file_get_contents can be traced by the IO instrumentation package
 $data = file_get_contents('https://api.example.com/data');
 ```
 
 ### Framework Auto-Instrumentation
 
-The extension includes framework-specific instrumentation for Laravel, Symfony, WordPress, and others:
+Framework-specific instrumentation is provided by Composer packages for Laravel, Symfony, WordPress, and others:
 
 ```php
 <?php
-// Laravel route handlers automatically traced
+// Laravel route handlers are traced when open-telemetry/opentelemetry-auto-laravel is installed
 Route::get('/users/{id}', function ($id) {
     // Controller execution is traced
     $user = User::find($id);
 
-    // Eloquent queries automatically traced
+    // Eloquent queries are traced when database instrumentation is also installed
     return response()->json($user);
 });
 
-// Extension captures:
+// Instrumentation captures:
 // - Route name and parameters
 // - Controller class and method
 // - Database queries from Eloquent
@@ -225,24 +238,18 @@ Route::get('/users/{id}', function ($id) {
 
 ## Configuring Framework-Specific Instrumentation
 
-Enable specific framework hooks through php.ini:
+Install the Composer package for each framework you want to instrument:
+
+```bash
+composer require open-telemetry/opentelemetry-auto-laravel
+composer require open-telemetry/opentelemetry-auto-symfony
+composer require open-telemetry/opentelemetry-auto-wordpress
+```
+
+Disable specific installed instrumentations through runtime configuration when needed:
 
 ```ini
-; Laravel instrumentation
-otel.instrumentation.laravel.enabled=1
-otel.instrumentation.laravel.trace_db_queries=1
-otel.instrumentation.laravel.trace_views=1
-otel.instrumentation.laravel.trace_cache=1
-
-; Symfony instrumentation
-otel.instrumentation.symfony.enabled=1
-otel.instrumentation.symfony.trace_console=1
-otel.instrumentation.symfony.trace_http_client=1
-
-; WordPress instrumentation
-otel.instrumentation.wordpress.enabled=1
-otel.instrumentation.wordpress.trace_plugins=1
-otel.instrumentation.wordpress.trace_themes=1
+OTEL_PHP_DISABLED_INSTRUMENTATIONS=laravel,symfony,wordpress
 ```
 
 ## Custom Instrumentation Hooks
@@ -252,7 +259,8 @@ While auto-instrumentation covers common cases, you can add custom instrumentati
 ```php
 <?php
 // config/otel-hooks.php
-// This file is automatically loaded by the extension
+// Load Composer autoloading before registering hooks.
+require_once __DIR__ . '/../vendor/autoload.php';
 
 use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
@@ -270,13 +278,15 @@ use OpenTelemetry\API\Trace\SpanKind;
             ->setAttribute('payment.currency', $params[0]['currency'] ?? 'USD')
             ->startSpan();
 
-        // Store span for post hook
-        $processor->__otel_span = $span;
-        $span->activate();
+        // Store span and scope for post hook
+        $key = spl_object_id($processor);
+        $GLOBALS['payment_spans'][$key] = $span;
+        $GLOBALS['payment_scopes'][$key] = $span->activate();
     },
     post: function ($processor, array $params, $returnValue, ?Throwable $exception) {
-        if (isset($processor->__otel_span)) {
-            $span = $processor->__otel_span;
+        $key = spl_object_id($processor);
+        if (isset($GLOBALS['payment_spans'][$key])) {
+            $span = $GLOBALS['payment_spans'][$key];
 
             if ($exception) {
                 $span->recordException($exception);
@@ -285,8 +295,9 @@ use OpenTelemetry\API\Trace\SpanKind;
                 $span->setAttribute('payment.transaction_id', $returnValue['transaction_id'] ?? '');
             }
 
+            $GLOBALS['payment_scopes'][$key]?->detach();
             $span->end();
-            unset($processor->__otel_span);
+            unset($GLOBALS['payment_spans'][$key], $GLOBALS['payment_scopes'][$key]);
         }
     }
 );
@@ -299,21 +310,22 @@ use OpenTelemetry\API\Trace\SpanKind;
         $GLOBALS['calc_span'] = $tracer
             ->spanBuilder('calculation.' . $function)
             ->startSpan();
-        $GLOBALS['calc_span']->activate();
+        $GLOBALS['calc_scope'] = $GLOBALS['calc_span']->activate();
     },
     post: function ($object, array $params, $returnValue, ?Throwable $exception) {
         if (isset($GLOBALS['calc_span'])) {
+            $GLOBALS['calc_scope']?->detach();
             $GLOBALS['calc_span']->end();
-            unset($GLOBALS['calc_span']);
+            unset($GLOBALS['calc_span'], $GLOBALS['calc_scope']);
         }
     }
 );
 ```
 
-Load the hooks file through php.ini:
+Load the hooks file through PHP, for example with `auto_prepend_file`:
 
 ```ini
-otel.php.autoload_enabled=1
+OTEL_PHP_AUTOLOAD_ENABLED="true"
 auto_prepend_file=/path/to/config/otel-hooks.php
 ```
 
@@ -324,23 +336,27 @@ Configure the extension differently per environment using environment variables:
 ```bash
 # Production configuration
 export OTEL_SERVICE_NAME=api-production
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example.com:4318/v1/traces
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example.com:4318
 export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.1
-export OTEL_LOG_LEVEL=warning
+export OTEL_PHP_AUTOLOAD_ENABLED=true
+export OTEL_PHP_LOG_DESTINATION=error_log
 
 # Development configuration
 export OTEL_SERVICE_NAME=api-development
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_TRACES_SAMPLER=always_on
-export OTEL_LOG_LEVEL=debug
+export OTEL_PHP_AUTOLOAD_ENABLED=true
+export OTEL_PHP_LOG_DESTINATION=stderr
 ```
 
-Environment variables override php.ini settings, making deployment flexible.
+Environment variables are the usual deployment mechanism. The same `OTEL_*` names can also be placed in a `php.ini` file.
 
 ## Performance Considerations
 
-The C extension has minimal performance impact, typically adding less than 5% overhead. However, you can optimize further:
+The C extension is designed to be lightweight, but the actual overhead depends on the SDK configuration, exporter, installed instrumentation packages, and workload. You can optimize further:
 
 ### Selective Instrumentation
 
@@ -348,7 +364,7 @@ Disable instrumentation for specific paths:
 
 ```ini
 ; Don't trace health checks or static assets
-otel.php.excluded_urls=/health,/metrics,/_status,/static/*,/assets/*
+OTEL_PHP_EXCLUDED_URLS=/health,/metrics,/_status,/static/.*,assets/.*
 ```
 
 ### Sampling Strategy
@@ -357,12 +373,12 @@ Use intelligent sampling to reduce trace volume:
 
 ```ini
 ; Sample 10% of traces
-otel.traces.sampler=parentbased_traceidratio
-otel.traces.sampler.arg=0.1
+OTEL_TRACES_SAMPLER=parentbased_traceidratio
+OTEL_TRACES_SAMPLER_ARG=0.1
 
 ; Or use probability-based sampling
-otel.traces.sampler=parentbased_traceidratio
-otel.traces.sampler.arg=0.05
+OTEL_TRACES_SAMPLER=traceidratio
+OTEL_TRACES_SAMPLER_ARG=0.05
 ```
 
 ### Batch Processing
@@ -371,14 +387,14 @@ Optimize batch export settings for your traffic:
 
 ```ini
 ; High-traffic configuration
-otel.bsp.schedule.delay=1000
-otel.bsp.max.queue.size=4096
-otel.bsp.max.export.batch.size=1024
+OTEL_BSP_SCHEDULE_DELAY=1000
+OTEL_BSP_MAX_QUEUE_SIZE=4096
+OTEL_BSP_MAX_EXPORT_BATCH_SIZE=1024
 
 ; Low-traffic configuration
-otel.bsp.schedule.delay=5000
-otel.bsp.max.queue.size=512
-otel.bsp.max.export.batch.size=128
+OTEL_BSP_SCHEDULE_DELAY=5000
+OTEL_BSP_MAX_QUEUE_SIZE=512
+OTEL_BSP_MAX_EXPORT_BATCH_SIZE=128
 ```
 
 ## Troubleshooting
@@ -393,16 +409,17 @@ php -i | grep -A 20 opentelemetry
 ### Check Configuration
 
 ```bash
-php -r "var_dump(ini_get_all('otel'));"
+php --ri opentelemetry
+php -r "var_dump(getenv('OTEL_SERVICE_NAME'), getenv('OTEL_PHP_AUTOLOAD_ENABLED'));"
 ```
 
-### Enable Debug Logging
+### Send SDK Logs to stderr
 
 ```ini
-otel.log.level=debug
+OTEL_PHP_LOG_DESTINATION=stderr
 ```
 
-Check PHP error logs for OpenTelemetry debug output:
+Check PHP error logs for OpenTelemetry output:
 
 ```bash
 tail -f /var/log/php-fpm/error.log | grep -i otel
@@ -454,4 +471,4 @@ Many teams use a hybrid approach: auto-instrumentation for baseline observabilit
 
 ## Conclusion
 
-The OpenTelemetry PHP auto-instrumentation extension provides comprehensive observability without code changes. It hooks into PHP's execution engine to automatically capture HTTP requests, database queries, external API calls, and framework operations. The C extension adds minimal overhead while delivering detailed distributed traces. This makes it ideal for adding observability to existing applications or ensuring consistent instrumentation across multiple services without requiring development team training on manual instrumentation techniques.
+The OpenTelemetry PHP auto-instrumentation extension provides the hook mechanism needed for PHP zero-code instrumentation. Paired with the OpenTelemetry SDK, an exporter, Composer autoloading, and the relevant auto-instrumentation packages, it can capture HTTP requests, database queries, external API calls, and framework operations without application code changes. This makes it useful for adding observability to existing applications or ensuring consistent instrumentation across multiple services without requiring development team training on manual instrumentation techniques.
