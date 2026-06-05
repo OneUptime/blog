@@ -26,14 +26,14 @@ dependencies {
     // Core OpenTelemetry integration
     implementation("io.micronaut.tracing:micronaut-tracing-opentelemetry")
 
-    // OpenTelemetry API
-    implementation("io.opentelemetry:opentelemetry-api")
+    // HTTP server and client instrumentation
+    implementation("io.micronaut.tracing:micronaut-tracing-opentelemetry-http")
 
     // OTLP exporter for sending traces
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 
-    // Optional: Annotations for custom instrumentation
-    implementation("io.micronaut.tracing:micronaut-tracing-opentelemetry-annotation")
+    // Optional: OpenTelemetry @WithSpan/@SpanAttribute annotation processing
+    annotationProcessor("io.micronaut.tracing:micronaut-tracing-opentelemetry-annotation")
 }
 ```
 
@@ -47,10 +47,10 @@ For Maven users, add these dependencies to your `pom.xml`:
         <artifactId>micronaut-tracing-opentelemetry</artifactId>
     </dependency>
 
-    <!-- OpenTelemetry API -->
+    <!-- HTTP server and client instrumentation -->
     <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-api</artifactId>
+        <groupId>io.micronaut.tracing</groupId>
+        <artifactId>micronaut-tracing-opentelemetry-http</artifactId>
     </dependency>
 
     <!-- OTLP exporter -->
@@ -66,35 +66,23 @@ Configure OpenTelemetry in your `application.yml` file.
 ```yaml
 # application.yml
 
-tracing:
-  # Enable tracing
-  enabled: true
+# Service name that appears in traces
+otel.service.name: micronaut-demo-service
 
-opentelemetry:
-  # Service name that appears in traces
-  service-name: micronaut-demo-service
+# Resource attributes
+otel.resource.attributes: deployment.environment=production,service.version=1.0.0
 
-  # Resource attributes
-  resource-attributes:
-    deployment.environment: production
-    service.version: 1.0.0
+# OTLP exporter configuration
+otel.traces.exporter: otlp
+otel.exporter.otlp.endpoint: http://localhost:4317
 
-  # OTLP exporter configuration
-  exporter:
-    otlp:
-      enabled: true
-      endpoint: http://localhost:4317
+# Sampling configuration
+otel.traces.sampler: always_on
 
-  # Sampling configuration (1.0 = 100% of traces)
-  sampler:
-    probability: 1.0
-
-  # Span processor configuration
-  span-processor:
-    batch:
-      schedule-delay: 5000
-      max-queue-size: 2048
-      max-export-batch-size: 512
+# Batch span processor configuration
+otel.bsp.schedule.delay: 5000
+otel.bsp.max.queue.size: 2048
+otel.bsp.max.export.batch.size: 512
 ```
 
 ## Automatic HTTP Instrumentation
@@ -126,7 +114,7 @@ public class ProductController {
         return HttpResponse.ok(product);
     }
 
-    // POST endpoint - traces include request body size
+    // POST endpoint - automatically traced
     @Post
     public HttpResponse<Product> createProduct(@Body Product product) {
         Product created = productService.create(product);
@@ -153,10 +141,10 @@ public class ProductController {
 ```
 
 These endpoints are automatically instrumented. Each request creates a span with attributes like:
-- `http.method` (GET, POST, etc.)
+- `http.request.method` (GET, POST, etc.)
 - `http.route` (the matched route pattern)
-- `http.status_code` (response status)
-- `http.url` (full request URL)
+- `http.response.status_code` (response status)
+- `url.full` (full request URL, usually on client spans)
 
 ## Adding Custom Spans with Annotations
 
@@ -165,10 +153,13 @@ Use Micronaut's tracing annotations to create custom spans for specific methods.
 ```java
 package com.example.service;
 
-import io.micronaut.tracing.annotation.ContinueSpan;
 import io.micronaut.tracing.annotation.NewSpan;
 import io.micronaut.tracing.annotation.SpanTag;
+import io.opentelemetry.api.trace.Span;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+
+import java.math.BigDecimal;
 
 @Singleton
 public class ProductService {
@@ -189,7 +180,7 @@ public class ProductService {
         Product product = repository.findById(id).orElse(null);
 
         if (product != null) {
-            // These method calls will be child spans
+            // These method calls add details to the current span
             enrichWithInventory(product);
             enrichWithPricing(product);
         }
@@ -197,22 +188,21 @@ public class ProductService {
         return product;
     }
 
-    // Continue the current span (doesn't create a new one)
-    @ContinueSpan
-    private void enrichWithInventory(@SpanTag("product.id") Product product) {
+    private void enrichWithInventory(Product product) {
         int inventory = inventoryService.getInventoryCount(product.getId());
         product.setInventoryCount(inventory);
+        Span.current().setAttribute("product.inventory_count", inventory);
     }
 
-    @ContinueSpan
-    private void enrichWithPricing(@SpanTag("product.id") Product product) {
+    private void enrichWithPricing(Product product) {
         Price price = pricingService.getCurrentPrice(product.getId());
         product.setPrice(price);
+        Span.current().setAttribute("product.price", String.valueOf(price));
     }
 
     // Create a new span with custom name
     @NewSpan("create-product")
-    public Product create(@SpanTag("product.name") Product product) {
+    public Product create(Product product) {
         // Validate product
         validateProduct(product);
 
@@ -225,8 +215,7 @@ public class ProductService {
         return saved;
     }
 
-    @NewSpan("validate-product")
-    private void validateProduct(@SpanTag("product.name") Product product) {
+    private void validateProduct(Product product) {
         if (product.getName() == null || product.getName().isEmpty()) {
             throw new IllegalArgumentException("Product name is required");
         }
@@ -399,7 +388,13 @@ public class OrderService {
 
 ## Tracing Database Operations
 
-Micronaut automatically instruments JDBC operations when using Micronaut Data. For custom database operations, add manual spans.
+Micronaut can instrument JDBC operations when you add the OpenTelemetry JDBC instrumentation module. For custom database operations, add manual spans.
+
+```gradle
+dependencies {
+    implementation("io.micronaut.tracing:micronaut-tracing-opentelemetry-jdbc")
+}
+```
 
 ```java
 package com.example.repository;
@@ -415,7 +410,7 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends CrudRepository<Product, Long> {
 
-    // Automatically traced by Micronaut Data
+    // Repository method with an explicit custom span
     @NewSpan("find-product-by-id")
     Optional<Product> findById(@SpanTag("product.id") Long id);
 
@@ -439,6 +434,7 @@ For native queries or complex operations, use manual instrumentation:
 package com.example.repository;
 
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import jakarta.inject.Inject;
@@ -462,14 +458,15 @@ public class CustomProductRepository {
 
     public List<Product> findTopSellingProducts(int limit) {
         Span span = tracer.spanBuilder("find-top-selling-products")
-            .setAttribute("db.system", "postgresql")
-            .setAttribute("db.operation", "SELECT")
+            .setSpanKind(SpanKind.CLIENT)
+            .setAttribute("db.system.name", "postgresql")
+            .setAttribute("db.operation.name", "SELECT")
+            .setAttribute("db.query.summary", "SELECT products order_items")
             .startSpan();
 
         try (Scope scope = span.makeCurrent();
              Connection conn = dataSource.getConnection()) {
 
-            span.setAttribute("db.connection_string", conn.getMetaData().getURL());
             span.setAttribute("query.limit", limit);
 
             String sql = """
@@ -481,7 +478,7 @@ public class CustomProductRepository {
                 LIMIT ?
                 """;
 
-            span.setAttribute("db.statement", sql);
+            span.setAttribute("db.query.text", sql);
 
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setInt(1, limit);
@@ -495,7 +492,7 @@ public class CustomProductRepository {
                         rowCount++;
                     }
 
-                    span.setAttribute("db.rows_returned", rowCount);
+                    span.setAttribute("db.response.returned_rows", rowCount);
                     return products;
                 }
             }
@@ -646,49 +643,33 @@ Optimize OpenTelemetry settings for production workloads.
 
 ```yaml
 # application-prod.yml
-tracing:
-  enabled: true
+otel.service.name: ${SERVICE_NAME:micronaut-service}
+otel.resource.attributes: deployment.environment=${ENVIRONMENT:production},service.version=${APP_VERSION:unknown},service.namespace=${NAMESPACE:default},host.name=${HOSTNAME:unknown}
 
-opentelemetry:
-  service-name: ${SERVICE_NAME:micronaut-service}
+otel.traces.exporter: otlp
+otel.exporter.otlp.endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+# Use gRPC for better performance
+otel.exporter.otlp.protocol: grpc
+# Add timeout for resilience
+otel.exporter.otlp.timeout: 10000
+# Compression for network efficiency
+otel.exporter.otlp.compression: gzip
 
-  resource-attributes:
-    deployment.environment: ${ENVIRONMENT:production}
-    service.version: ${APP_VERSION:unknown}
-    service.namespace: ${NAMESPACE:default}
-    host.name: ${HOSTNAME:unknown}
+# Sampling strategy for high-throughput services
+otel.traces.sampler: parentbased_traceidratio
+otel.traces.sampler.arg: ${OTEL_TRACE_SAMPLE_RATE:0.1}
 
-  exporter:
-    otlp:
-      enabled: true
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
-      # Use gRPC for better performance
-      protocol: grpc
-      # Add timeout for resilience
-      timeout: 10s
-      # Compression for network efficiency
-      compression: gzip
+# Batch processor for efficiency
+otel.bsp.schedule.delay: 5000
+otel.bsp.max.queue.size: 2048
+otel.bsp.max.export.batch.size: 512
+otel.bsp.export.timeout: 30000
 
-  # Sampling strategy for high-throughput services
-  sampler:
-    # Use parent-based sampling with probability
-    type: parentbased_traceidratio
-    probability: ${OTEL_TRACE_SAMPLE_RATE:0.1}
-
-  # Batch processor for efficiency
-  span-processor:
-    batch:
-      schedule-delay: 5000
-      max-queue-size: 2048
-      max-export-batch-size: 512
-      export-timeout: 30000
-
-  # Limit span attributes to prevent excessive data
-  span-limits:
-    max-attributes: 128
-    max-events: 128
-    max-links: 128
-    max-attribute-length: 1024
+# Limit span attributes to prevent excessive data
+otel.span.attribute.count.limit: 128
+otel.span.event.count.limit: 128
+otel.span.link.count.limit: 128
+otel.span.attribute.value.length.limit: 1024
 ```
 
 Adding OpenTelemetry tracing to Micronaut applications provides comprehensive observability with minimal performance overhead. The combination of automatic instrumentation and flexible manual options gives you complete control over what gets traced. Start with the automatic instrumentation for immediate visibility, then add custom spans to capture business-specific metrics and operations that matter most to your application.
