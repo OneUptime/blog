@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Processor, GeoIP, Location, Observability, IP En
 
 Description: Learn how to configure the GeoIP Processor in OpenTelemetry Collector to enrich telemetry data with geographical location information based on IP addresses.
 
-IP addresses in your telemetry tell you where requests originate, but they don't tell you the geographic location, ISP, or network context. The GeoIP Processor solves this by enriching telemetry with location data derived from IP addresses. This enables geographic analysis, regional performance monitoring, and location-based alerting without modifying application code.
+IP addresses in your telemetry tell you where requests originate, but they don't tell you the geographic location or regional context. The GeoIP Processor solves this by enriching telemetry with location data derived from IP addresses. This enables geographic analysis, regional performance monitoring, and location-based alerting without modifying application code.
 
 ## What Is the GeoIP Processor?
 
-The GeoIP Processor looks up IP addresses in telemetry data and adds geographic attributes like country, city, latitude, longitude, and ASN (Autonomous System Number). It uses MaxMind GeoIP databases or compatible alternatives to perform these lookups and enriches traces, metrics, and logs with location context.
+The GeoIP Processor looks up IP addresses in telemetry data and adds geographic attributes like country, city, latitude, longitude, region, continent, postal code, and timezone. It uses a configured provider such as MaxMind GeoIP2-City or GeoLite2-City to perform these lookups and enriches traces, metrics, and logs with location context.
 
 This is useful when:
 
@@ -26,23 +26,22 @@ The GeoIP Processor enriches telemetry with location data based on IP attributes
 
 ```mermaid
 graph LR
-    A[Telemetry with IP: 203.0.113.42] -->|Extract IP| B[GeoIP Processor]
-    B -->|Lookup in GeoIP DB| C[MaxMind Database]
+    A[Telemetry with IP: 203.0.113.42] -->|Read configured IP attribute| B[GeoIP Processor]
+    B -->|Lookup in GeoIP DB| C[MaxMind City Database]
     C -->|Return geo data| B
-    B -->|Enriched with country=US, city=New York| D[Backend]
+    B -->|Enriched with geo.country.iso_code=US, geo.city_name=New York| D[Backend]
 
     style B fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-The processor reads IP addresses from configured attributes, looks them up in a local GeoIP database, and adds geographic attributes to the telemetry data.
+The processor reads IP addresses from configured attributes, looks them up in a local GeoIP database, and adds geographic attributes to the telemetry data. By default, the processor looks for `client.address` and `source.address` and writes the location attributes to resource attributes. Set `context: record` when the IP address is stored on spans, log records, or metric data points.
 
 ## Basic Configuration
 
-Here's a minimal GeoIP Processor configuration that enriches telemetry with country information:
+Here's a minimal GeoIP Processor configuration that enriches telemetry with location information:
 
 ```yaml
 # Configure receivers to accept telemetry
-
 receivers:
   otlp:
     protocols:
@@ -55,30 +54,18 @@ receivers:
 processors:
   # The geoip processor enriches telemetry with geographic data
   geoip:
-    # Path to MaxMind GeoIP database file
+    # Configure a MaxMind provider and point it to a City database
     # Download from https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
-    database_path: /etc/otel/GeoLite2-City.mmdb
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
 
-    # Specify which attribute contains the IP address to lookup
-    # This attribute should contain a valid IPv4 or IPv6 address
-    source:
-      attribute: client.address
+    # Look for IPs in record-level attributes such as span or log attributes
+    context: record
 
-    # Define which geographic attributes to add
-    # These will be added as new attributes to your telemetry
-    destination:
-      # Add country ISO code (e.g., "US", "GB", "JP")
-      country_code: geo.country_code
-
-      # Add country name (e.g., "United States", "United Kingdom")
-      country_name: geo.country_name
-
-      # Add city name (e.g., "New York", "London", "Tokyo")
-      city_name: geo.city_name
-
-      # Add latitude and longitude coordinates
-      latitude: geo.location.lat
-      longitude: geo.location.lon
+    # Specify which attributes contain the IP address to look up
+    # These attributes should contain a valid IPv4 or IPv6 address
+    attributes: [client.address]
 
   # Batch processor for efficient export
   batch:
@@ -108,9 +95,11 @@ service:
       exporters: [otlphttp]
 ```
 
+When the lookup succeeds, the processor adds supported GeoIP attributes such as `geo.country.iso_code`, `geo.country_name`, `geo.city_name`, `geo.region.iso_code`, `geo.region_name`, `geo.continent.code`, `geo.continent_name`, `geo.postal_code`, `geo.timezone`, `geo.location.lat`, and `geo.location.lon`.
+
 ## Setting Up GeoIP Databases
 
-The GeoIP Processor requires MaxMind GeoIP2 or GeoLite2 databases. Here's how to obtain and maintain them:
+The GeoIP Processor's MaxMind provider requires a MaxMind GeoIP2-City or GeoLite2-City database. Here's how to obtain and maintain one:
 
 ### Downloading GeoLite2 (Free)
 
@@ -120,20 +109,13 @@ MaxMind provides free GeoLite2 databases with basic location data:
 # Register for a free MaxMind account at https://www.maxmind.com/en/geolite2/signup
 # Get your license key from the account dashboard
 
-# Download GeoLite2-City database (includes country, city, location)
+# Download GeoLite2-City database (includes country, city, and location data)
 curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_LICENSE_KEY&suffix=tar.gz" \
   -o GeoLite2-City.tar.gz
 
 # Extract the database file
 tar -xzf GeoLite2-City.tar.gz
 mv GeoLite2-City_*/GeoLite2-City.mmdb /etc/otel/
-
-# Download GeoLite2-ASN database (includes ISP and network information)
-curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=YOUR_LICENSE_KEY&suffix=tar.gz" \
-  -o GeoLite2-ASN.tar.gz
-
-tar -xzf GeoLite2-ASN.tar.gz
-mv GeoLite2-ASN_*/GeoLite2-ASN.mmdb /etc/otel/
 ```
 
 ### Automating Database Updates
@@ -182,108 +164,67 @@ spec:
 
 ## Advanced Configuration
 
-### Multiple Database Lookups
-
-Use multiple databases to enrich telemetry with different geographic attributes:
-
-```yaml
-processors:
-  # City-level geographic data
-  geoip/city:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.address
-
-    destination:
-      country_code: geo.country_code
-      country_name: geo.country_name
-      city_name: geo.city_name
-      region_name: geo.region_name
-      postal_code: geo.postal_code
-      latitude: geo.location.lat
-      longitude: geo.location.lon
-      timezone: geo.timezone
-
-  # Network and ISP data
-  geoip/asn:
-    database_path: /etc/otel/GeoLite2-ASN.mmdb
-    source:
-      attribute: client.address
-
-    destination:
-      asn: geo.asn
-      organization: geo.organization
-```
-
 ### Multiple IP Sources
 
-Enrich telemetry with location data from different IP address fields:
-
-```yaml
-processors:
-  # Enrich based on client IP
-  geoip/client:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: http.client_ip
-
-    destination:
-      country_code: client.geo.country_code
-      city_name: client.geo.city_name
-
-  # Enrich based on server IP
-  geoip/server:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: server.address
-
-    destination:
-      country_code: server.geo.country_code
-      city_name: server.geo.city_name
-
-  # Enrich based on X-Forwarded-For header
-  geoip/forwarded:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      # Extract first IP from X-Forwarded-For header
-      attribute: http.request.header.x-forwarded-for
-
-    destination:
-      country_code: origin.geo.country_code
-      city_name: origin.geo.city_name
-```
-
-### Conditional Enrichment
-
-Only enrich telemetry that matches specific criteria:
+Enrich telemetry by checking more than one IP address field:
 
 ```yaml
 processors:
   geoip:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.address
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes:
+      - http.client_ip
+      - client.address
+      - source.address
+```
 
-    destination:
-      country_code: geo.country_code
-      city_name: geo.city_name
+The processor checks the configured attribute names for an IP address and writes the standard GeoIP attributes when the provider returns location data.
 
-    # Only enrich if the IP is not internal
-    # Skip enrichment for RFC1918 private addresses
-    skip_private: true
+### Resource-Level Enrichment
 
-    # Only enrich specific signal types
+If the IP address is stored as a resource attribute, use the default `resource` context:
+
+```yaml
+processors:
+  geoip:
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    attributes: [client.address, source.address]
+```
+
+### Conditional Enrichment
+
+Only enrich telemetry that reaches the GeoIP Processor by using separate pipelines or a filter processor before GeoIP. For example, this pipeline drops non-HTTP spans before enrichment:
+
+```yaml
+processors:
+  filter/http_only:
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["http.request.method"] == nil
+
+  geoip:
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address]
+
+service:
+  pipelines:
     traces:
-      enabled: true
-    metrics:
-      enabled: false
-    logs:
-      enabled: true
+      receivers: [otlp]
+      processors: [filter/http_only, geoip, batch]
+      exporters: [otlphttp]
 ```
 
 ## Production Configuration Example
 
-Here's a complete production-ready configuration with GeoIP enrichment, monitoring, and performance optimization:
+Here's a complete production-ready configuration with GeoIP enrichment and monitoring:
 
 ```yaml
 receivers:
@@ -301,97 +242,20 @@ processors:
     limit_mib: 1024
     spike_limit_mib: 256
 
-  # Extract IP from X-Forwarded-For header if present
+  # Extract a client IP from collector transport metadata if it is available
   attributes/extract_ip:
     actions:
-      # Copy X-Forwarded-For to a working attribute
-      - key: client.ip
-        from_attribute: http.request.header.x-forwarded-for
+      - key: client.address
+        from_context: client.address
         action: insert
-
-      # If X-Forwarded-For not present, use source address
-      - key: client.ip
-        from_attribute: net.sock.peer.addr
-        action: insert
-        # Only insert if client.ip doesn't exist
 
   # City-level geographic enrichment
   geoip/city:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.ip
-
-    destination:
-      country_code: geo.country_code
-      country_name: geo.country_name
-      city_name: geo.city_name
-      region_code: geo.region_code
-      region_name: geo.region_name
-      postal_code: geo.postal_code
-      latitude: geo.location.lat
-      longitude: geo.location.lon
-      timezone: geo.timezone
-      continent_code: geo.continent_code
-
-    # Skip private/internal IPs
-    skip_private: true
-
-    # Cache lookups for performance
-    cache:
-      enabled: true
-      max_size: 10000
-      ttl: 1h
-
-  # Network and ISP enrichment
-  geoip/asn:
-    database_path: /etc/otel/GeoLite2-ASN.mmdb
-    source:
-      attribute: client.ip
-
-    destination:
-      asn: geo.asn
-      organization: geo.organization
-
-    skip_private: true
-
-    cache:
-      enabled: true
-      max_size: 5000
-      ttl: 1h
-
-  # Add computed attributes based on geo data
-  attributes/geo_region:
-    actions:
-      # Add a region grouping for monitoring
-      - key: geo.region_group
-        value: "UNKNOWN"
-        action: insert
-
-      # North America
-      - key: geo.region_group
-        value: "NORTH_AMERICA"
-        action: update
-        # Activate when country is US, CA, or MX
-        conditions:
-          - key: geo.country_code
-            value: "(US|CA|MX)"
-            match_type: regexp
-
-      # Europe
-      - key: geo.region_group
-        value: "EUROPE"
-        action: update
-        conditions:
-          - key: geo.continent_code
-            value: "EU"
-
-      # Asia Pacific
-      - key: geo.region_group
-        value: "ASIA_PACIFIC"
-        action: update
-        conditions:
-          - key: geo.continent_code
-            value: "AS"
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address, source.address]
 
   # Resource processor adds deployment context
   resource:
@@ -419,9 +283,9 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-  # Debug logging
-  logging:
-    loglevel: info
+  # Debug exporter for validation
+  debug:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 50
 
@@ -435,8 +299,6 @@ service:
         - memory_limiter
         - attributes/extract_ip
         - geoip/city
-        - geoip/asn
-        - attributes/geo_region
         - resource
         - batch
       exporters: [otlphttp/primary]
@@ -447,8 +309,6 @@ service:
         - memory_limiter
         - attributes/extract_ip
         - geoip/city
-        - geoip/asn
-        - attributes/geo_region
         - resource
         - batch
       exporters: [otlphttp/primary]
@@ -506,28 +366,16 @@ data:
 
       attributes/extract_ip:
         actions:
-          - key: client.ip
-            from_attribute: http.request.header.x-forwarded-for
-            action: insert
-          - key: client.ip
-            from_attribute: net.sock.peer.addr
+          - key: client.address
+            from_context: client.address
             action: insert
 
       geoip/city:
-        database_path: /data/GeoLite2-City.mmdb
-        source:
-          attribute: client.ip
-        destination:
-          country_code: geo.country_code
-          country_name: geo.country_name
-          city_name: geo.city_name
-          latitude: geo.location.lat
-          longitude: geo.location.lon
-        skip_private: true
-        cache:
-          enabled: true
-          max_size: 10000
-          ttl: 1h
+        providers:
+          maxmind:
+            database_path: /data/GeoLite2-City.mmdb
+        context: record
+        attributes: [client.address, source.address]
 
       batch:
         timeout: 10s
@@ -540,6 +388,7 @@ data:
           x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
     service:
+      extensions: [health_check]
       pipelines:
         traces:
           receivers: [otlp]
@@ -549,6 +398,10 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, attributes/extract_ip, geoip/city, batch]
           exporters: [otlphttp]
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -591,7 +444,7 @@ spec:
 
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/collector.yaml"
         env:
@@ -600,8 +453,6 @@ spec:
             secretKeyRef:
               name: oneuptime-credentials
               key: token
-        - name: COLLECTOR_REGION
-          value: "us-east-1"
         volumeMounts:
         - name: config
           mountPath: /conf
@@ -612,6 +463,8 @@ spec:
           name: otlp-grpc
         - containerPort: 4318
           name: otlp-http
+        - containerPort: 13133
+          name: health
         resources:
           requests:
             memory: "1Gi"
@@ -660,13 +513,13 @@ Query traces by geographic region to identify performance issues:
 ```text
 # Find slow requests by country
 span.duration > 500ms
-GROUP BY geo.country_code
+GROUP BY geo.country.iso_code
 ORDER BY p95(duration) DESC
 
 # Compare latency across continents
 span.duration
 WHERE span.name = "GET /api/products"
-GROUP BY geo.continent_code
+GROUP BY geo.continent.code
 ```
 
 ### Geographic Traffic Distribution
@@ -677,13 +530,13 @@ Analyze traffic patterns by location:
 # Request volume by city
 COUNT(spans)
 WHERE span.kind = "server"
-GROUP BY geo.city_name, geo.country_code
+GROUP BY geo.city_name, geo.country.iso_code
 ORDER BY count DESC
 LIMIT 20
 
-# Top regions by error rate
+# Top continents by error rate
 COUNT(spans WHERE span.status = "error") / COUNT(spans)
-GROUP BY geo.region_group
+GROUP BY geo.continent.code
 ```
 
 ### Anomaly Detection by Location
@@ -696,7 +549,7 @@ alerts:
   - name: unusual_traffic_location
     query: |
       COUNT(spans)
-      WHERE geo.country_code NOT IN ("US", "CA", "GB", "DE", "FR")
+      WHERE geo.country.iso_code NOT IN ("US", "CA", "GB", "DE", "FR")
       AND span.name LIKE "/admin/%"
     threshold: 10
     window: 5m
@@ -709,9 +562,9 @@ To verify that the GeoIP Processor is working correctly:
 
 ```yaml
 exporters:
-  # Add logging exporter to see enriched data
-  logging:
-    loglevel: debug
+  # Add debug exporter to see enriched data
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -720,8 +573,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [attributes/extract_ip, geoip/city, batch]
-      # Include logging exporter for validation
-      exporters: [otlphttp, logging]
+      # Include debug exporter for validation
+      exporters: [otlphttp, debug]
 ```
 
 Check the Collector logs to verify geographic enrichment:
@@ -731,8 +584,8 @@ Check the Collector logs to verify geographic enrichment:
 kubectl logs -n observability deployment/otel-collector -f | grep "geo\."
 
 # Expected output showing enriched attributes:
-# client.ip=203.0.113.42
-# geo.country_code=US
+# client.address=203.0.113.42
+# geo.country.iso_code=US
 # geo.country_name=United States
 # geo.city_name=New York
 # geo.location.lat=40.7128
@@ -743,48 +596,24 @@ kubectl logs -n observability deployment/otel-collector -f | grep "geo\."
 
 The GeoIP Processor can impact performance with high-throughput telemetry. Optimize with these techniques:
 
-### Enable Caching
-
-Cache lookups to avoid repeated database queries:
-
-```yaml
-processors:
-  geoip:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.ip
-
-    destination:
-      country_code: geo.country_code
-
-    # Cache configuration
-    cache:
-      enabled: true
-      # Maximum number of cached entries
-      max_size: 50000
-      # How long to cache each lookup
-      ttl: 2h
-```
-
 ### Selective Enrichment
 
 Only enrich telemetry that needs geographic data:
 
 ```yaml
 processors:
-  # Only enrich HTTP server spans
+  # Drop non-HTTP spans before GeoIP enrichment
   filter/http_only:
-    traces:
-      span:
-        - 'attributes["span.kind"] == "server"'
-        - 'attributes["http.method"] != nil'
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["http.request.method"] == nil
 
   geoip:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.ip
-    destination:
-      country_code: geo.country_code
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address]
 
 service:
   pipelines:
@@ -792,6 +621,20 @@ service:
       receivers: [otlp]
       processors: [filter/http_only, geoip, batch]
       exporters: [otlphttp]
+```
+
+### Keep the Attribute List Focused
+
+Avoid checking unnecessary fields on every telemetry record:
+
+```yaml
+processors:
+  geoip:
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address]
 ```
 
 ## Troubleshooting
@@ -814,23 +657,19 @@ If IPs aren't being enriched:
 
 ```yaml
 processors:
-  # Add debug logging to see IP extraction
+  # Add a debug attribute to confirm that the source IP exists
   attributes/debug:
     actions:
       - key: debug.ip_source
-        from_attribute: client.ip
+        from_attribute: client.address
         action: insert
 
   geoip:
-    database_path: /etc/otel/GeoLite2-City.mmdb
-    source:
-      attribute: client.ip
-    destination:
-      country_code: geo.country_code
-
-    # Enable processor debug logging
-    debug:
-      enabled: true
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address]
 ```
 
 ## Privacy Considerations
@@ -839,29 +678,25 @@ When using the GeoIP Processor, consider privacy implications:
 
 1. **PII concerns**: IP addresses may be considered personally identifiable information in some jurisdictions
 2. **Data retention**: Define policies for how long enriched location data is retained
-3. **Precision control**: Consider using only country-level data instead of city-level for privacy
-4. **Internal traffic**: Use `skip_private: true` to avoid enriching internal IP addresses
+3. **Precision control**: Consider whether you need city-level coordinates or only country-level reporting
+4. **Internal traffic**: Use filtering or pipeline design to avoid enriching telemetry that only contains internal IP addresses
 
 Example privacy-focused configuration:
 
 ```yaml
 processors:
-  # Only enrich with country-level data
+  # Enrich with the standard GeoIP attributes
   geoip:
-    database_path: /etc/otel/GeoLite2-Country.mmdb
-    source:
-      attribute: client.ip
-
-    destination:
-      # Only add country, not city or precise location
-      country_code: geo.country_code
-
-    skip_private: true
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address]
 
   # Remove the source IP after enrichment
   attributes/remove_ip:
     actions:
-      - key: client.ip
+      - key: client.address
         action: delete
       - key: http.client_ip
         action: delete
@@ -869,10 +704,10 @@ processors:
 
 ## Best Practices
 
-1. **Update databases regularly**: GeoIP databases change frequently; automate updates weekly
-2. **Enable caching**: Reduce lookup latency and database load with aggressive caching
-3. **Skip private IPs**: Always set `skip_private: true` to avoid unnecessary lookups
-4. **Monitor cache hit rate**: Track cache effectiveness to optimize cache size and TTL
+1. **Update databases regularly**: GeoIP databases change frequently; automate updates weekly and comply with MaxMind's update requirements
+2. **Use the contrib distribution**: The GeoIP Processor is available in the OpenTelemetry Collector contrib distribution
+3. **Keep attribute lists focused**: Configure only the IP address fields you actually use
+4. **Choose the right context**: Use `context: record` for span, log record, and metric data point attributes; use the default resource context for resource attributes
 5. **Consider privacy**: Only enrich with the precision needed for your use case
 
 ## Related Resources
@@ -884,4 +719,4 @@ processors:
 
 The GeoIP Processor transforms IP addresses into actionable geographic context without modifying application code. By enriching telemetry with location data, you enable geographic performance analysis, regional SLO tracking, and location-based anomaly detection.
 
-Start with basic country enrichment, maintain up-to-date GeoIP databases, and enable caching for optimal performance. With the GeoIP Processor, you gain geographic visibility into your telemetry data, enabling better operational insights and more effective incident response across global deployments.
+Start with focused enrichment, maintain up-to-date GeoIP databases, and use filtering or separate pipelines to control where enrichment runs. With the GeoIP Processor, you gain geographic visibility into your telemetry data, enabling better operational insights and more effective incident response across global deployments.
