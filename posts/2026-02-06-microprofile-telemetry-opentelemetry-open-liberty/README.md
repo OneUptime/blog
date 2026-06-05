@@ -20,7 +20,7 @@ graph TB
     C --> E[Manual Instrumentation]
     D --> F[JAX-RS Tracing]
     D --> G[REST Client Tracing]
-    D --> H[CDI Integration]
+    E --> H[CDI @WithSpan]
     E --> I[Custom Spans]
     F --> J[OTLP Exporter]
     G --> J
@@ -29,7 +29,7 @@ graph TB
     J --> K[Observability Backend]
 ```
 
-The key advantage of MicroProfile Telemetry is that it provides automatic instrumentation for MicroProfile specifications including JAX-RS, REST Client, and CDI, while giving you full access to OpenTelemetry APIs for custom instrumentation.
+The key advantage of MicroProfile Telemetry is that it provides automatic instrumentation for Jakarta RESTful Web Services and MicroProfile REST Client, while giving you full access to OpenTelemetry APIs and annotations for custom instrumentation in CDI beans.
 
 ## Setting Up Open Liberty for MicroProfile Telemetry
 
@@ -61,20 +61,6 @@ Start by configuring your Open Liberty server to enable MicroProfile Telemetry. 
         <classloader delegation="parentLast" />
     </webApplication>
 
-    <!-- MicroProfile Telemetry configuration -->
-    <mpTelemetry>
-        <!-- Service name for identification in traces -->
-        <serviceName>liberty-microservice</serviceName>
-
-        <!-- OTLP exporter configuration -->
-        <exporter>
-            <otlp>
-                <endpoint>http://localhost:4317</endpoint>
-                <protocol>grpc</protocol>
-            </otlp>
-        </exporter>
-    </mpTelemetry>
-
     <!-- Optional: Configure logging for telemetry -->
     <logging traceSpecification="com.ibm.ws.microprofile.telemetry.*=all" />
 
@@ -95,19 +81,11 @@ Add the required dependencies to your `pom.xml`:
 </properties>
 
 <dependencies>
-    <!-- MicroProfile Telemetry API -->
-    <dependency>
-        <groupId>org.eclipse.microprofile.telemetry</groupId>
-        <artifactId>microprofile-telemetry-api</artifactId>
-        <version>1.1</version>
-        <scope>provided</scope>
-    </dependency>
-
     <!-- OpenTelemetry API (provided by MicroProfile Telemetry) -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.32.0</version>
+        <version>1.29.0</version>
         <scope>provided</scope>
     </dependency>
 
@@ -160,8 +138,6 @@ otel.resource.attributes=service.namespace=production,service.version=1.0.0,depl
 otel.exporter.otlp.endpoint=http://localhost:4317
 otel.exporter.otlp.protocol=grpc
 otel.traces.exporter=otlp
-otel.metrics.exporter=otlp
-otel.logs.exporter=otlp
 
 # Sampling configuration
 otel.traces.sampler=parentbased_traceidratio
@@ -654,7 +630,7 @@ otel.traces.sampler=parentbased_traceidratio
 otel.traces.sampler.arg=1.0
 ```
 
-For programmatic sampling, create a custom sampler:
+For custom sampling with MicroProfile Config, create a custom sampler:
 
 ```java
 package com.example.telemetry;
@@ -679,12 +655,12 @@ public class CustomSampler implements Sampler {
             Attributes attributes,
             List<LinkData> parentLinks) {
 
-        // Always sample errors
+        // Always sample operations whose span name indicates an error
         if (name.contains("error") || name.contains("exception")) {
             return SamplingResult.recordAndSample();
         }
 
-        // Sample admin operations
+        // Sample spans that are created with a user.role attribute
         String userRole = attributes.get(
             io.opentelemetry.api.common.AttributeKey.stringKey("user.role")
         );
@@ -705,6 +681,41 @@ public class CustomSampler implements Sampler {
         return "CustomSampler{error=always,admin=always,other=10%}";
     }
 }
+```
+
+Expose the sampler through the OpenTelemetry autoconfiguration SPI so MicroProfile Config can select it:
+
+```java
+package com.example.telemetry;
+
+import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
+import io.opentelemetry.sdk.autoconfigure.spi.traces.ConfigurableSamplerProvider;
+import io.opentelemetry.sdk.trace.samplers.Sampler;
+
+public class CustomSamplerProvider implements ConfigurableSamplerProvider {
+
+    @Override
+    public Sampler createSampler(ConfigProperties config) {
+        return new CustomSampler();
+    }
+
+    @Override
+    public String getName() {
+        return "custom";
+    }
+}
+```
+
+Create `src/main/resources/META-INF/services/io.opentelemetry.sdk.autoconfigure.spi.traces.ConfigurableSamplerProvider` with this content:
+
+```text
+com.example.telemetry.CustomSamplerProvider
+```
+
+Then select it in `microprofile-config.properties`:
+
+```properties
+otel.traces.sampler=custom
 ```
 
 ## Running and Testing
@@ -757,10 +768,6 @@ COPY --chown=1001:0 src/main/liberty/config/server.xml /config/
 
 # Copy application
 COPY --chown=1001:0 target/myapp.war /config/apps/
-
-# Copy MicroProfile config
-COPY --chown=1001:0 src/main/resources/META-INF/microprofile-config.properties \
-     /config/
 
 # Expose ports
 EXPOSE 9080 9443
