@@ -14,18 +14,18 @@ The SQL Server receiver is a specialized component of the OpenTelemetry Collecto
 
 The receiver monitors critical aspects of SQL Server including:
 
-- Database file sizes and growth rates
-- Connection pool usage and wait times
-- Lock statistics and deadlocks
+- Database counts and database status
+- User connection counts
+- Lock waits, lock timeouts, and deadlocks
 - Buffer cache hit ratios
 - Page life expectancy
-- Transaction log usage
-- Query execution statistics
-- Resource usage (CPU, memory, I/O)
+- Transaction log usage and growth metrics
+- Query sample and top query events
+- Resource usage such as CPU, memory, and I/O metrics
 
 ## How the SQL Server Receiver Works
 
-The receiver connects to SQL Server using standard database protocols and periodically queries system DMVs to collect metrics. These metrics are then converted to OpenTelemetry format and sent through the Collector pipeline:
+When configured for direct collection, the receiver connects to SQL Server using standard database protocols and periodically queries system DMVs to collect metrics. On Windows, it can also use Windows Performance Counters. These metrics are then converted to OpenTelemetry format and sent through the Collector pipeline:
 
 ```mermaid
 graph LR
@@ -36,7 +36,7 @@ graph LR
     D -->|Send Telemetry| E[OneUptime/Backend]
 ```
 
-The receiver handles authentication, connection pooling, metric parsing, and error handling automatically. You simply configure the connection details and which metrics to collect.
+The receiver handles authentication, metric parsing, and error handling automatically. You simply configure the connection details and which metrics to collect.
 
 ## Basic Configuration
 
@@ -48,16 +48,13 @@ Here's a minimal configuration to start monitoring a SQL Server instance:
 receivers:
   # SQL Server receiver for Microsoft SQL Server monitoring
   sqlserver:
-    # SQL Server instance connection string
-    # Format: sqlserver://username:password@hostname:port/instance
-    # For default instance, omit /instance
+    # SQL Server instance connection details
     server: "localhost"
     port: 1433
 
     # Authentication credentials
-    # Use SQL Server authentication or Windows authentication
     username: "monitor"
-    password: ${SQLSERVER_PASSWORD}
+    password: ${env:SQLSERVER_PASSWORD}
 
     # Collection interval - how often to scrape metrics
     collection_interval: 30s
@@ -67,7 +64,7 @@ receivers:
     metrics:
       sqlserver.database.count:
         enabled: true
-      sqlserver.database.state:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
 
 # Processors - transform collected metrics
@@ -83,7 +80,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # Service section - wire components into pipelines
 service:
@@ -95,11 +92,11 @@ service:
       exporters: [otlphttp]
 ```
 
-This basic configuration connects to a local SQL Server instance and begins collecting database count and state metrics. For production use, you'll want to enable many more metrics and add resilience features.
+This basic configuration connects to a local SQL Server instance and begins collecting database count and buffer cache hit ratio metrics. For production use, you'll want to enable more metrics and add resilience features.
 
-## Authentication Options
+## Connection Options
 
-SQL Server supports two authentication modes: SQL Server authentication and Windows authentication. Choose based on your environment:
+The receiver supports direct SQL Server connections and Windows Performance Counter based collection. Choose based on your environment:
 
 ### SQL Server Authentication
 
@@ -112,40 +109,43 @@ receivers:
     port: 1433
     # SQL Server login credentials
     username: "monitor_user"
-    password: ${SQLSERVER_PASSWORD}
-    # Optional: specify database to connect to (default: master)
-    database: "master"
+    password: ${env:SQLSERVER_PASSWORD}
 ```
 
-### Windows Authentication
-
-For Windows integrated security, use the current Windows user or a service account:
+For finer control over connection options, use a `datasource` connection string instead of `username`, `password`, `server`, and `port`:
 
 ```yaml
 receivers:
   sqlserver:
-    server: "sqlserver.internal.corp"
-    port: 1433
-    # Use Windows authentication instead of SQL auth
-    # The Collector process must run as a user with SQL Server access
-    # On Linux, use NTLM or Kerberos
-    # Leave username/password empty for Windows auth
-    use_windows_auth: true
+    datasource: "sqlserver://monitor_user:${env:SQLSERVER_PASSWORD}@sqlserver.example.com:1433?database=master"
+```
+
+### Windows Performance Counters
+
+For Windows Performance Counter based collection, run the Collector on Windows as a user with access to the counters:
+
+```yaml
+receivers:
+  sqlserver:
+    collection_interval: 30s
+    computer_name: "sqlserver.internal.corp"
+    instance_name: "MSSQLSERVER"
 ```
 
 ### Named Instances
 
-SQL Server supports multiple instances on the same host. To connect to a named instance:
+SQL Server supports multiple instances on the same host. For Windows named instances, specify the computer and instance names:
 
 ```yaml
 receivers:
   sqlserver:
-    # Named instance format: hostname\instancename
-    server: "sqlserver.example.com\\PRODUCTION"
-    # Named instances often use dynamic ports
-    # Omit port to use SQL Server Browser service
-    username: "monitor_user"
-    password: ${SQLSERVER_PASSWORD}
+    computer_name: "sqlserver.example.com"
+    instance_name: "PRODUCTION"
+    resource_attributes:
+      sqlserver.computer.name:
+        enabled: true
+      sqlserver.instance.name:
+        enabled: true
 ```
 
 ## Comprehensive Metrics Configuration
@@ -158,7 +158,7 @@ receivers:
     server: "prod-sql.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_PASSWORD}
+    password: ${env:SQLSERVER_PASSWORD}
     collection_interval: 30s
 
     # Enable comprehensive metric collection
@@ -166,104 +166,84 @@ receivers:
       # Database-level metrics
       sqlserver.database.count:
         enabled: true
-        description: "Total number of databases on the instance"
 
-      sqlserver.database.state:
+      sqlserver.database.io:
         enabled: true
-        description: "Database state (online, offline, restoring, etc.)"
 
-      sqlserver.database.size:
+      sqlserver.database.latency:
         enabled: true
-        description: "Database size in bytes including data and log files"
-
-      sqlserver.database.file.size:
-        enabled: true
-        description: "Individual database file sizes"
-
-      sqlserver.database.file.space_used:
-        enabled: true
-        description: "Used space in database files"
-
-      sqlserver.database.transactions:
-        enabled: true
-        description: "Transaction rate per database"
 
       sqlserver.database.operations:
         enabled: true
-        description: "Database I/O operations (reads, writes)"
 
       # Connection and session metrics
-      sqlserver.user.connections:
+      sqlserver.user.connection.count:
         enabled: true
-        description: "Number of user connections to the instance"
-
-      sqlserver.connection.count:
-        enabled: true
-        description: "Active connection count by database"
 
       # Lock and blocking metrics
-      sqlserver.lock.wait_time:
+      sqlserver.lock.wait.rate:
         enabled: true
-        description: "Time spent waiting for locks"
 
-      sqlserver.lock.count:
+      sqlserver.lock.wait.count:
         enabled: true
-        description: "Number of active locks by type"
 
       # Buffer cache and memory metrics
-      sqlserver.buffer.cache_hit_ratio:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
-        description: "Buffer cache hit ratio (higher is better, target >90%)"
 
-      sqlserver.buffer.page_life_expectancy:
+      sqlserver.page.life_expectancy:
         enabled: true
-        description: "Page life expectancy in seconds (target >300s)"
 
-      sqlserver.memory.target:
+      sqlserver.memory.usage:
         enabled: true
-        description: "Target memory for SQL Server"
 
-      sqlserver.memory.used:
+      sqlserver.memory.grants.pending.count:
         enabled: true
-        description: "Memory currently used by SQL Server"
 
       # Transaction log metrics
-      sqlserver.log.used:
+      sqlserver.transaction_log.usage:
         enabled: true
-        description: "Transaction log space used"
 
-      sqlserver.log.growth:
+      sqlserver.transaction_log.growth.count:
         enabled: true
-        description: "Transaction log growth events"
 
       # Performance counters
-      sqlserver.batch.requests:
+      sqlserver.batch.request.rate:
         enabled: true
-        description: "Batch requests per second"
 
-      sqlserver.batch.sql_compilations:
+      sqlserver.batch.sql_compilation.rate:
         enabled: true
-        description: "SQL compilations per second"
 
-      sqlserver.batch.sql_recompilations:
+      sqlserver.batch.sql_recompilation.rate:
         enabled: true
-        description: "SQL recompilations per second (target: minimize)"
 
       # Resource usage
-      sqlserver.resource.cpu.time:
+      sqlserver.cpu.count:
         enabled: true
-        description: "CPU time used by SQL Server"
 
-      sqlserver.resource.io.disk_read_bytes:
+      sqlserver.resource_pool.disk.operations:
         enabled: true
-        description: "Bytes read from disk"
 
-      sqlserver.resource.io.disk_write_bytes:
+      sqlserver.os.wait.duration:
         enabled: true
-        description: "Bytes written to disk"
+
+    events:
+      db.server.query_sample:
+        enabled: true
+      db.server.top_query:
+        enabled: true
+
+    top_query_collection:
+      lookback_time: 60s
+      max_query_sample_count: 1000
+      top_query_count: 250
+      collection_interval: 60s
+
+    query_sample_collection:
+      max_rows_per_query: 100
 ```
 
-This configuration provides visibility into all critical aspects of SQL Server performance. The metrics follow OpenTelemetry semantic conventions and include helpful descriptions.
+This configuration provides visibility into critical aspects of SQL Server performance. Some metrics are collected through Windows Performance Counters, while direct-connection metrics require the receiver to connect to SQL Server. The query sample and top query events are emitted as logs, so add the `sqlserver` receiver to a logs pipeline when you enable them.
 
 ## Multi-Instance Monitoring
 
@@ -276,16 +256,16 @@ receivers:
     server: "prod-sql.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_PROD_PASSWORD}
+    password: ${env:SQLSERVER_PROD_PASSWORD}
     collection_interval: 30s
     metrics:
       sqlserver.database.count:
         enabled: true
-      sqlserver.database.size:
+      sqlserver.database.io:
         enabled: true
-      sqlserver.buffer.cache_hit_ratio:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
-      sqlserver.user.connections:
+      sqlserver.user.connection.count:
         enabled: true
 
   # Staging SQL Server instance
@@ -293,12 +273,12 @@ receivers:
     server: "staging-sql.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_STAGING_PASSWORD}
+    password: ${env:SQLSERVER_STAGING_PASSWORD}
     collection_interval: 60s
     metrics:
       sqlserver.database.count:
         enabled: true
-      sqlserver.database.size:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
 
   # Reporting SQL Server instance
@@ -306,12 +286,12 @@ receivers:
     server: "reports-sql.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_REPORTING_PASSWORD}
+    password: ${env:SQLSERVER_REPORTING_PASSWORD}
     collection_interval: 120s
     metrics:
       sqlserver.database.count:
         enabled: true
-      sqlserver.user.connections:
+      sqlserver.user.connection.count:
         enabled: true
 
 # Add attributes to distinguish between instances
@@ -351,7 +331,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -384,33 +364,23 @@ receivers:
     server: "high-load-sql.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_PASSWORD}
+    password: ${env:SQLSERVER_PASSWORD}
 
     # Increase interval to reduce query load on busy servers
     collection_interval: 60s
 
-    # Configure connection pooling for efficiency
-    connection_pool:
-      max_lifetime: 5m
-      max_idle_time: 1m
-      max_open_connections: 3
-      max_idle_connections: 1
-
-    # Set query timeout to prevent hanging
-    timeout: 10s
-
     # Enable only essential metrics for high-load systems
     metrics:
       # Critical performance indicators only
-      sqlserver.buffer.cache_hit_ratio:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
-      sqlserver.database.size:
+      sqlserver.database.count:
         enabled: true
-      sqlserver.user.connections:
+      sqlserver.user.connection.count:
         enabled: true
-      sqlserver.lock.wait_time:
+      sqlserver.lock.wait.rate:
         enabled: true
-      sqlserver.resource.cpu.time:
+      sqlserver.cpu.count:
         enabled: true
 
 processors:
@@ -422,14 +392,11 @@ processors:
   # Filter out noisy metrics if needed
   filter/drop_low_value:
     metrics:
-      # Example: drop metrics for offline databases
+      # Example: drop a nonessential metric
       exclude:
         match_type: strict
         metric_names:
-          - sqlserver.database.state
-        resource_attributes:
-          - key: database.state
-            value: offline
+          - sqlserver.database.execution.errors
 
   batch:
     timeout: 30s
@@ -439,7 +406,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -456,7 +423,7 @@ service:
 
 ## Monitoring Availability Groups
 
-For SQL Server Always On Availability Groups, monitor replica health and synchronization:
+For SQL Server Always On Availability Groups, the receiver can collect replica throughput and the normal SQL Server metrics from the instance. Dedicated replica role, synchronization health, synchronization state, and synchronization lag metrics are not exposed by the SQL Server receiver.
 
 ```yaml
 receivers:
@@ -464,32 +431,19 @@ receivers:
     server: "ag-primary.internal"
     port: 1433
     username: "monitor"
-    password: ${SQLSERVER_PASSWORD}
+    password: ${env:SQLSERVER_PASSWORD}
     collection_interval: 30s
 
     metrics:
       # Standard database metrics
       sqlserver.database.count:
         enabled: true
-      sqlserver.database.state:
+      sqlserver.page.buffer_cache.hit_ratio:
         enabled: true
 
-      # Availability Group specific metrics
-      sqlserver.availability_group.replica.role:
+      # Replica throughput metric
+      sqlserver.replica.data.rate:
         enabled: true
-        description: "Replica role (primary, secondary)"
-
-      sqlserver.availability_group.replica.synchronization_health:
-        enabled: true
-        description: "Synchronization health status"
-
-      sqlserver.availability_group.replica.synchronization_state:
-        enabled: true
-        description: "Synchronization state (synchronized, synchronizing, etc.)"
-
-      sqlserver.availability_group.database.synchronization_lag:
-        enabled: true
-        description: "Synchronization lag in seconds"
 ```
 
 ## Security Best Practices
@@ -510,16 +464,14 @@ CREATE LOGIN monitor WITH PASSWORD = 'StrongPassword123!';
 USE master;
 CREATE USER monitor FOR LOGIN monitor;
 
--- Grant VIEW SERVER STATE permission for DMV access
+-- Allow the login to see databases
+GRANT VIEW ANY DATABASE TO monitor;
+
+-- Grant server-state permission for DMV access on SQL Server 2019 and earlier
 GRANT VIEW SERVER STATE TO monitor;
 
--- Grant VIEW DATABASE STATE for database-level metrics
-USE YourDatabase;
-CREATE USER monitor FOR LOGIN monitor;
-GRANT VIEW DATABASE STATE TO monitor;
-
--- For SQL Server 2016+, use the more granular permission
--- GRANT VIEW ANY DEFINITION TO monitor;
+-- On SQL Server 2022 and later, use this instead of VIEW SERVER STATE
+-- GRANT VIEW SERVER PERFORMANCE STATE TO monitor;
 ```
 
 ### Use Environment Variables for Credentials
@@ -532,8 +484,8 @@ receivers:
     server: "prod-sql.internal"
     port: 1433
     # Reference environment variables for credentials
-    username: ${SQL_MONITOR_USER}
-    password: ${SQL_MONITOR_PASSWORD}
+    username: ${env:SQL_MONITOR_USER}
+    password: ${env:SQL_MONITOR_PASSWORD}
 ```
 
 Set these in your deployment environment:
@@ -550,14 +502,7 @@ Always use TLS encryption for SQL Server connections:
 ```yaml
 receivers:
   sqlserver:
-    server: "prod-sql.internal"
-    port: 1433
-    username: "monitor"
-    password: ${SQLSERVER_PASSWORD}
-    # Enable TLS encryption
-    encrypt: true
-    # Verify server certificate (recommended for production)
-    trust_server_certificate: false
+    datasource: "sqlserver://monitor:${env:SQLSERVER_PASSWORD}@prod-sql.internal:1433?encrypt=true&TrustServerCertificate=false"
 ```
 
 ## Alerting on Critical Metrics
@@ -601,9 +546,9 @@ service:
 
 If some metrics aren't appearing:
 
-1. Verify the monitoring user has VIEW SERVER STATE permission
+1. Verify the monitoring user has VIEW SERVER STATE permission on SQL Server 2019 and earlier, or VIEW SERVER PERFORMANCE STATE on SQL Server 2022 and later
 2. Check SQL Server version supports the requested metrics
-3. Some metrics only appear when relevant (e.g., AG metrics on AG instances)
+3. Some metrics only appear when relevant or when the receiver is running in the required collection mode
 4. Review Collector logs for permission errors
 
 ### High Overhead
@@ -614,7 +559,7 @@ If monitoring causes performance impact:
 2. Disable non-essential metrics
 3. Ensure monitoring user has appropriate permissions (no table scans)
 4. Review DMV query performance in SQL Server
-5. Use connection pooling to avoid connection overhead
+5. Disable optional events such as query samples if they add too much overhead
 
 ## Monitoring the Receiver Itself
 
@@ -632,7 +577,7 @@ service:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
                 headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
+                  x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 ```
 
 Watch these internal metrics:
@@ -640,7 +585,7 @@ Watch these internal metrics:
 - `otelcol_receiver_accepted_metric_points`: Successful metric collection
 - `otelcol_receiver_refused_metric_points`: Collection failures
 - `otelcol_scraper_errored_metric_points`: Scraper errors
-- `otelcol_receiver_scraped_metric_points`: Total scraped metrics
+- `otelcol_scraper_scraped_metric_points`: Total scraped metrics
 
 ## Related Topics
 
