@@ -14,7 +14,7 @@ Simple Network Management Protocol (SNMP) has been the backbone of network devic
 
 The SNMP receiver is a contrib component for the OpenTelemetry Collector that polls SNMP-enabled devices on a schedule. It sends SNMP GET or WALK requests to device agents, reads the responses, maps OID values to OpenTelemetry metrics, and pushes them through your pipeline.
 
-The receiver supports both SNMPv2c and SNMPv3. Version 2c uses community strings for authentication, while version 3 adds username-based security with encryption. For production networks, SNMPv3 is strongly recommended.
+The receiver supports SNMPv1, SNMPv2c, and SNMPv3. Version 2c uses community strings for authentication, while version 3 adds username-based security with encryption. For production networks, SNMPv3 is strongly recommended.
 
 ```mermaid
 graph LR
@@ -45,10 +45,10 @@ Second, you need the OpenTelemetry Collector Contrib distribution. The SNMP rece
 # Download the contrib distribution
 
 # Replace the version with the latest available
-wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.98.0/otelcol-contrib_0.98.0_linux_amd64.tar.gz
+wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_linux_amd64.tar.gz
 
 # Extract and install
-tar -xzf otelcol-contrib_0.98.0_linux_amd64.tar.gz
+tar -xzf otelcol-contrib_0.153.0_linux_amd64.tar.gz
 sudo mv otelcol-contrib /usr/local/bin/
 ```
 
@@ -80,6 +80,11 @@ receivers:
     version: v2c
     community: public
 
+    # Define reusable SNMP attributes
+    attributes:
+      interface.name:
+        oid: "1.3.6.1.2.1.2.2.1.2"
+
     # Define which OIDs to collect as metrics
     metrics:
       # System uptime in hundredths of a second
@@ -101,7 +106,6 @@ receivers:
           - oid: "1.3.6.1.2.1.2.2.1.10"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
 
       # Interface bytes sent (per-interface counter)
       interface.bytes.sent:
@@ -114,7 +118,6 @@ receivers:
           - oid: "1.3.6.1.2.1.2.2.1.16"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
 
 # Processors for batching
 processors:
@@ -126,8 +129,10 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      Content-Type: application/json
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # Wire everything together
 service:
@@ -138,7 +143,7 @@ service:
       exporters: [otlphttp]
 ```
 
-There are two kinds of OID references in this configuration. A `scalar_oid` fetches a single value from the device, like system uptime. A `column_oid` walks a table and returns one value per row, which is perfect for per-interface metrics where each row represents a different network interface. The `attributes` block under a column OID maps another column in the same table to a label, so each metric point gets tagged with its interface name.
+There are two kinds of OID references in this configuration. A `scalar_oid` fetches a single value from the device, like system uptime. A `column_oid` walks a table and returns one value per row, which is perfect for per-interface metrics where each row represents a different network interface. The top-level `attributes` block defines reusable attribute OIDs, and the `attributes` block under a column OID references those definitions so each metric point gets tagged with its interface name.
 
 ## Secure Configuration with SNMPv3
 
@@ -155,9 +160,13 @@ receivers:
     security_level: auth_priv
     user: otel_monitor
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIV_PASSWORD}
+    privacy_password: ${env:SNMP_PRIV_PASSWORD}
+
+    attributes:
+      interface.name:
+        oid: "1.3.6.1.2.1.2.2.1.2"
 
     metrics:
       # CPU utilization percentage
@@ -186,14 +195,13 @@ receivers:
 
       # Interface operational status (1=up, 2=down, 3=testing)
       interface.oper_status:
-        unit: ""
+        unit: "1"
         gauge:
           value_type: int
         column_oids:
           - oid: "1.3.6.1.2.1.2.2.1.8"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
 
 processors:
   # Tag metrics with device identity
@@ -212,8 +220,10 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      Content-Type: application/json
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -239,9 +249,12 @@ receivers:
     security_level: auth_priv
     user: otel_monitor
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIV_PASSWORD}
+    privacy_password: ${env:SNMP_PRIV_PASSWORD}
+    attributes:
+      interface.name:
+        oid: "1.3.6.1.2.1.2.2.1.2"
     metrics:
       interface.bytes.received:
         unit: "bytes"
@@ -253,7 +266,6 @@ receivers:
           - oid: "1.3.6.1.2.1.2.2.1.10"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
       interface.bytes.sent:
         unit: "bytes"
         sum:
@@ -264,7 +276,6 @@ receivers:
           - oid: "1.3.6.1.2.1.2.2.1.16"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
 
   # Access switch
   snmp/access_switch:
@@ -274,9 +285,12 @@ receivers:
     security_level: auth_priv
     user: otel_monitor
     auth_type: SHA
-    auth_password: ${SNMP_AUTH_PASSWORD}
+    auth_password: ${env:SNMP_AUTH_PASSWORD}
     privacy_type: AES
-    privacy_password: ${SNMP_PRIV_PASSWORD}
+    privacy_password: ${env:SNMP_PRIV_PASSWORD}
+    attributes:
+      interface.name:
+        oid: "1.3.6.1.2.1.2.2.1.2"
     metrics:
       interface.bytes.received:
         unit: "bytes"
@@ -288,16 +302,14 @@ receivers:
           - oid: "1.3.6.1.2.1.2.2.1.10"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
       interface.oper_status:
-        unit: ""
+        unit: "1"
         gauge:
           value_type: int
         column_oids:
           - oid: "1.3.6.1.2.1.2.2.1.8"
             attributes:
               - name: interface.name
-                oid: "1.3.6.1.2.1.2.2.1.2"
 
 processors:
   # Label the core router
@@ -326,8 +338,10 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      Content-Type: application/json
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
