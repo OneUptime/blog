@@ -6,15 +6,15 @@ Tags: OpenTelemetry, Sumo Logic, Exporter, HTTP Source
 
 Description: Configure the OpenTelemetry Collector to export traces, metrics, and logs to Sumo Logic via the dedicated Sumo Logic exporter.
 
-Sumo Logic provides a dedicated exporter in the OpenTelemetry Collector contrib distribution. It uses HTTP Source URLs for authentication and data routing, which is the standard Sumo Logic ingestion pattern. Each signal type (traces, metrics, logs) gets its own HTTP Source URL, giving you fine-grained control over data routing and retention in Sumo Logic.
+Sumo Logic provides a dedicated exporter in the OpenTelemetry Collector contrib distribution for logs and metrics. It uses HTTP Source URLs for authentication and data routing, which is the standard Sumo Logic ingestion pattern. Traces are exported with the Collector's native OTLP/HTTP exporter to a Sumo Logic OTLP/HTTP Source.
 
 ## Setting Up HTTP Source URLs in Sumo Logic
 
 Before configuring the Collector, create HTTP Sources in Sumo Logic:
 
 1. Go to Manage Data > Collection > Add Source
-2. Select HTTP Logs & Metrics or HTTP Traces
-3. Create three sources: one for logs, one for metrics, one for traces
+2. Select HTTP Logs & Metrics for logs and metrics
+3. Select OTLP/HTTP for traces
 4. Copy each source URL
 
 Each URL contains an embedded authentication token, so no separate API key is needed.
@@ -60,19 +60,33 @@ processors:
 
 exporters:
   sumologic:
-    # Base endpoint for your Sumo Logic deployment
-    endpoint: https://endpoint1.collection.us2.sumologic.com
+    # HTTP Logs & Metrics Source URL
+    endpoint: "${SUMO_LOGS_METRICS_URL}"
 
-    # Separate source URLs per signal type
+    # Send logs and metrics in OTLP format
     log_format: otlp
     metric_format: otlp
-    traces_endpoint: "${SUMO_TRACES_URL}"
 
     # Compression reduces bandwidth
-    compress_encoding: gzip
+    compression: gzip
 
     # Client configuration
     max_request_body_size: 1048576  # 1MB
+
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+
+  otlphttp/sumo_traces:
+    # OTLP/HTTP Source URL; the exporter appends /v1/traces
+    endpoint: "${SUMO_OTLP_HTTP_SOURCE_URL}"
+    compression: gzip
 
     sending_queue:
       enabled: true
@@ -89,7 +103,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, sumologic, batch]
-      exporters: [sumologic]
+      exporters: [otlphttp/sumo_traces]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, sumologic, batch]
@@ -115,9 +129,9 @@ When enabled, it performs mappings like:
 - `cloud.account.id` becomes `AccountId`
 - `cloud.availability_zone` becomes `AvailabilityZone`
 - `cloud.region` becomes `Region`
-- `host.name` becomes `Host`
+- `host.name` becomes `host`
 
-This makes your data queryable using Sumo Logic's built-in field names without manual field extraction rules.
+This makes your logs and metrics queryable using Sumo Logic's built-in field names without manual field extraction rules. The Sumo Logic processor does not translate attributes for traces.
 
 ## Using Source Categories for Data Routing
 
@@ -152,23 +166,34 @@ package main
 
 import (
     "context"
+    "errors"
+    "net/url"
     "os"
+    "strings"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
     ctx := context.Background()
 
+    sourceURL := strings.TrimRight(os.Getenv("SUMO_OTLP_HTTP_SOURCE_URL"), "/")
+    if sourceURL == "" {
+        return nil, errors.New("SUMO_OTLP_HTTP_SOURCE_URL is required")
+    }
+
+    endpointURL, err := url.Parse(sourceURL + "/v1/traces")
+    if err != nil {
+        return nil, err
+    }
+
     // Create OTLP HTTP exporter pointed at Sumo Logic
     exporter, err := otlptracehttp.New(ctx,
-        otlptracehttp.WithEndpoint("endpoint1.collection.us2.sumologic.com"),
-        otlptracehttp.WithHeaders(map[string]string{
-            "X-Sumo-Fields": "_sourceCategory=prod/myapp/traces",
-        }),
+        otlptracehttp.WithEndpointURL(*endpointURL),
     )
     if err != nil {
         return nil, err
@@ -180,7 +205,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
         resource.NewWithAttributes(
             semconv.SchemaURL,
             semconv.ServiceName("my-service"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -208,6 +233,11 @@ func main() {
 
     doWork(ctx)
 }
+
+func doWork(ctx context.Context) {
+    _, span := otel.Tracer("my-service").Start(ctx, "do-work")
+    defer span.End()
+}
 ```
 
 ## Handling Multiple Environments
@@ -221,7 +251,7 @@ processors:
   resource:
     attributes:
       - key: _sourceCategory
-        value: "prod/${service.name}/otel"
+        value: "prod/checkout-service/otel"
         action: upsert
 
 # Staging Collector
@@ -229,7 +259,7 @@ processors:
   resource:
     attributes:
       - key: _sourceCategory
-        value: "staging/${service.name}/otel"
+        value: "staging/checkout-service/otel"
         action: upsert
 ```
 
