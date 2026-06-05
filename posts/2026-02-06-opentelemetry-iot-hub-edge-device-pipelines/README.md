@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, IoT, Edge Computing, Azure IoT Hub, MQTT, Telemetry Pipeline, Observability
+Tags: OpenTelemetry, IoT, Edge Computing, IoT Hub Gateway, MQTT, Telemetry Pipeline, Observability
 
 Description: Learn how to build an OpenTelemetry pipeline that connects IoT edge devices through hub gateways to a central observability backend with practical examples.
 
@@ -68,7 +68,10 @@ class DeviceTelemetry:
 
     def __init__(self, device_id: str, broker_host: str, broker_port: int = 1883):
         self.device_id = device_id
-        self.client = mqtt.Client(client_id=device_id)
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=device_id,
+        )
         self.client.connect(broker_host, broker_port)
         self.client.loop_start()
 
@@ -169,7 +172,7 @@ import json
 import paho.mqtt.client as mqtt
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -192,7 +195,7 @@ trace_exporter = OTLPSpanExporter(
     insecure=False,
 )
 trace_provider = TracerProvider(resource=resource)
-trace_provider.add_span_processor(BatchSpanExporter(trace_exporter))
+trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
 trace.set_tracer_provider(trace_provider)
 
 # Set up metrics exporter
@@ -218,10 +221,6 @@ device_reading_counter = meter.create_counter(
 device_latency_histogram = meter.create_histogram(
     "iot.device.message_latency_ms",
     description="Latency between device reading and gateway receipt",
-)
-device_health_gauge = meter.create_up_down_counter(
-    "iot.device.health.active",
-    description="Number of active healthy devices",
 )
 
 
@@ -262,7 +261,7 @@ def process_reading(payload: dict, topic: str):
     else:
         ctx = Context()
 
-    # Create a gateway processing span linked to the device span
+    # Create a gateway processing span as a child of the device context
     with tracer.start_as_current_span(
         "gateway.process_reading",
         context=ctx,
@@ -312,7 +311,10 @@ def process_health(payload: dict, topic: str):
 
 
 # Set up MQTT client and subscribe to device topics
-mqtt_client = mqtt.Client(client_id="edge-gateway-bridge")
+mqtt_client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id="edge-gateway-bridge",
+)
 mqtt_client.on_message = on_message
 mqtt_client.connect("localhost", 1883)
 
@@ -324,11 +326,11 @@ print("IoT Gateway Bridge started. Listening for device messages...")
 mqtt_client.loop_forever()
 ```
 
-This bridge service does the heavy lifting. It takes the lightweight trace context from MQTT messages, reconstructs proper OpenTelemetry span contexts, and creates linked spans that show the full journey from device through gateway to backend.
+This bridge service does the heavy lifting. It takes the lightweight trace context from MQTT messages, reconstructs proper OpenTelemetry span contexts, and creates gateway spans that are parented by the device-originated context.
 
 ## Collector Configuration on the Edge Gateway
 
-The edge gateway also runs an OpenTelemetry Collector that receives spans from the bridge service and forwards them to the central collector. This collector handles buffering during network outages and adds gateway-level metadata:
+The edge gateway also runs an OpenTelemetry Collector Contrib distribution that receives spans from the bridge service and forwards them to the central collector. This collector handles buffering during network outages and adds gateway-level metadata:
 
 ```yaml
 # gateway-collector-config.yaml
@@ -364,11 +366,9 @@ processors:
 
   # Filter out noisy health checks if they are too frequent
   filter:
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - "device.health_check_internal"
+    error_mode: ignore
+    trace_conditions:
+      - span.name == "device.health_check_internal"
 
 exporters:
   otlp:
@@ -416,7 +416,7 @@ The persistent queue with file storage is especially important for IoT gateways.
 
 ## Central Collector: Aggregation and Enrichment
 
-The central collector receives telemetry from all edge gateways and enriches it before sending it to your observability backend:
+The central collector receives telemetry from all edge gateways and enriches it before sending it to your observability backend. The `groupbyattrs` processor shown here is available in the OpenTelemetry Collector Contrib distribution:
 
 ```yaml
 # central-collector-config.yaml
@@ -474,6 +474,7 @@ Some IoT devices run on microcontrollers with only kilobytes of RAM. These canno
 # by observing their MQTT connection patterns and message timing
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("micro-device-observer")
 
@@ -499,7 +500,7 @@ def observe_device_message(device_id: str, topic: str, payload: bytes, arrival_t
                 span.set_attribute(f"reading.{key}", value)
         except Exception as e:
             span.set_attribute("parse.error", str(e))
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
 ```
 
 This pattern is called "proxy instrumentation." The gateway acts as an observability proxy for devices that cannot instrument themselves. You lose the precise timing from the device side, but you gain visibility into message flow, parsing errors, and gateway processing time.
