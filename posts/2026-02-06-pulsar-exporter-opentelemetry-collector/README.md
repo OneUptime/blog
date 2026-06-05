@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Exporter, Pulsar, Apache Pulsar, Streaming, Mess
 
 Description: Learn how to configure the Pulsar exporter in the OpenTelemetry Collector to stream telemetry data to Apache Pulsar for scalable, event-driven observability architectures.
 
-The Pulsar exporter enables the OpenTelemetry Collector to publish telemetry data to Apache Pulsar, a cloud-native distributed messaging and streaming platform. This integration is ideal for organizations building large-scale, event-driven observability systems that require multi-tenancy, geo-replication, and guaranteed message ordering.
+The Pulsar exporter enables the OpenTelemetry Collector to publish telemetry data to Apache Pulsar, a cloud-native distributed messaging and streaming platform. This integration is useful for organizations building large-scale, event-driven observability systems that require multi-tenancy, geo-replication, and explicit ordering controls.
 
 ## Understanding the Pulsar Exporter
 
-Apache Pulsar is a distributed pub-sub messaging system that provides features beyond traditional message brokers. It offers native support for multi-tenancy, geo-replication, tiered storage, and guaranteed message ordering. By exporting telemetry data to Pulsar, you can build scalable observability pipelines that handle massive data volumes while maintaining strong delivery guarantees.
+Apache Pulsar is a distributed pub-sub messaging system that provides features beyond traditional message brokers. It offers native support for multi-tenancy, geo-replication, tiered storage, and ordering guarantees within Pulsar's producer, topic, partition, and subscription model. By exporting telemetry data to Pulsar, you can build scalable observability pipelines that handle massive data volumes while maintaining strong delivery guarantees.
 
 The Pulsar exporter publishes traces, metrics, and logs to Pulsar topics. These topics can be consumed by multiple subscribers, processed by Pulsar Functions for real-time transformations, or stored in tiered storage for long-term retention. Pulsar's architecture makes it particularly suitable for multi-region deployments and scenarios requiring high throughput with low latency.
 
@@ -36,7 +36,7 @@ Apache Pulsar provides several features that make it well-suited for observabili
 
 **Geo-Replication**: Automatically replicate telemetry data across multiple data centers for disaster recovery and regional processing.
 
-**Message Ordering**: Maintain strict ordering guarantees per partition key, ensuring trace spans arrive in order for accurate correlation.
+**Message Ordering**: Maintain ordering within Pulsar's producer, topic, partition, and subscription semantics. For the Collector's Pulsar exporter, the Jaeger trace encodings key messages by trace ID.
 
 **Tiered Storage**: Automatically offload older telemetry data to object storage (S3, GCS, Azure Blob) for cost-effective long-term retention.
 
@@ -70,15 +70,13 @@ exporters:
     # Topic for traces
     topic: persistent://public/default/otel-traces
     # Message encoding format
-    encoding: json
-    # Producer name
-    producer_name: otel-collector-traces
+    encoding: otlp_json
     # Send timeout
     timeout: 30s
-    # Batching configuration
-    batching:
-      max_publish_delay: 10ms
-      max_messages: 1000
+    # Producer batching configuration
+    producer:
+      batching_max_publish_delay: 10ms
+      batching_max_messages: 1000
 
 service:
   pipelines:
@@ -111,29 +109,20 @@ exporters:
     endpoint: pulsar://pulsar.example.com:6650
     # Persistent topic with tenant and namespace
     topic: persistent://production/telemetry/traces
-    encoding: protobuf
-    producer_name: otel-traces-producer
-    # Topic properties
-    properties:
-      retention: "7d"
-      ttl: "24h"
+    encoding: otlp_proto
 
   # Metrics to persistent topic
   pulsar/metrics:
     endpoint: pulsar://pulsar.example.com:6650
     topic: persistent://production/telemetry/metrics
-    encoding: json
-    producer_name: otel-metrics-producer
-    properties:
-      retention: "30d"
+    encoding: otlp_json
 
   # Logs to non-persistent topic (low latency)
   pulsar/logs:
     endpoint: pulsar://pulsar.example.com:6650
     # Non-persistent topic for lower latency
     topic: non-persistent://production/telemetry/logs
-    encoding: json
-    producer_name: otel-logs-producer
+    encoding: otlp_json
 
 service:
   pipelines:
@@ -161,7 +150,7 @@ The tenant and namespace structure allows you to organize topics by environment 
 
 ## Secure Configuration with TLS
 
-For production deployments, secure the connection to Pulsar using TLS authentication:
+For production deployments, secure the connection to Pulsar using TLS encryption and authentication:
 
 ```yaml
 receivers:
@@ -179,27 +168,22 @@ exporters:
     # Use pulsar+ssl for TLS connections
     endpoint: pulsar+ssl://pulsar.example.com:6651
     topic: persistent://production/telemetry/traces
-    encoding: json
-    producer_name: otel-collector-prod
+    encoding: otlp_json
 
-    # TLS configuration
-    tls:
-      insecure: false
-      ca_file: /etc/ssl/certs/pulsar-ca.crt
-      cert_file: /etc/ssl/certs/client.crt
-      key_file: /etc/ssl/private/client.key
-      server_name_override: pulsar.example.com
+    # TLS trust configuration for the Pulsar client
+    tls_allow_insecure_connection: false
+    tls_trust_certs_file_path: /etc/ssl/certs/pulsar-ca.crt
 
     # Authentication configuration
-    authentication:
+    auth:
       # Token-based authentication
-      type: token
-      token: ${PULSAR_AUTH_TOKEN}
+      token:
+        token: ${PULSAR_AUTH_TOKEN}
 
     timeout: 30s
-    batching:
-      max_publish_delay: 10ms
-      max_messages: 1000
+    producer:
+      batching_max_publish_delay: 10ms
+      batching_max_messages: 1000
 
 service:
   pipelines:
@@ -209,7 +193,7 @@ service:
       exporters: [pulsar]
 ```
 
-TLS encryption protects telemetry data in transit. Pulsar supports multiple authentication mechanisms including tokens, mutual TLS, and OAuth2. Store authentication tokens in environment variables rather than configuration files.
+TLS encryption protects telemetry data in transit. The Collector's Pulsar exporter supports token, mutual TLS, OAuth2, and Athenz authentication under the `auth` setting. Store authentication tokens in environment variables rather than configuration files.
 
 ## Partitioned Topics for Scalability
 
@@ -223,13 +207,6 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Add partition key attribute
-  attributes:
-    actions:
-      - key: partition.key
-        from_attribute: service.name
-        action: upsert
-
   batch:
     timeout: 10s
 
@@ -238,92 +215,28 @@ exporters:
     endpoint: pulsar://pulsar.example.com:6650
     # Partitioned topic (must be created with partitions)
     topic: persistent://production/telemetry/traces
-    encoding: protobuf
-    producer_name: otel-collector
-
-    # Partitioning strategy
-    partitioning:
-      # Use attribute as partition key
-      key_attribute: partition.key
-      # Hash function for key distribution
-      hash_function: murmur3
-      # Number of partitions (must match topic configuration)
-      num_partitions: 16
-
-    # Routing mode
-    message_routing_mode: CustomPartition
+    encoding: otlp_proto
 
     timeout: 30s
-    batching:
-      max_publish_delay: 10ms
-      max_messages: 1000
+    producer:
+      hashing_scheme: murmur3_32hash
+      partitions_auto_discovery_interval: 1m
+      batching_max_publish_delay: 10ms
+      batching_max_messages: 1000
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes, batch]
+      processors: [batch]
       exporters: [pulsar]
 ```
 
-Partitioned topics distribute messages across multiple partitions based on a key. Using service name as the partition key ensures all telemetry from the same service goes to the same partition, maintaining ordering while allowing parallel processing across services.
+Partitioned topics distribute messages across multiple partitions. The Collector's Pulsar exporter can set the producer hashing scheme and auto-discovery interval for partitions, but it does not expose a configuration option to derive a Pulsar message key from an OpenTelemetry attribute. Create the partitioned topic in Pulsar before using it from the Collector.
 
 ## Message Ordering and Keys
 
-Configure message keys to guarantee ordering for related telemetry data:
-
-```yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  # Extract ordering key
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          # Use trace ID as ordering key to keep spans together
-          - set(attributes["ordering.key"], trace_id.string())
-
-  batch:
-    timeout: 10s
-
-exporters:
-  pulsar:
-    endpoint: pulsar://pulsar.example.com:6650
-    topic: persistent://production/telemetry/traces
-    encoding: protobuf
-    producer_name: otel-collector
-
-    # Message key for ordering
-    message_key_attribute: ordering.key
-
-    # Routing mode for ordered delivery
-    message_routing_mode: SinglePartition
-
-    # Message properties
-    properties:
-      source: otel-collector
-      version: 1.0.0
-
-    timeout: 30s
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [transform, batch]
-      exporters: [pulsar]
-```
-
-Messages with the same key are guaranteed to be delivered in order. For traces, using the trace ID as the key ensures all spans from a trace arrive in sequence, which is critical for proper trace reconstruction.
-
-## Schema Registry Integration
-
-Use Pulsar's schema registry to enforce data schemas and enable schema evolution:
+Use a trace encoding that keys exported spans by trace ID when ordering related trace data matters:
 
 ```yaml
 receivers:
@@ -340,29 +253,12 @@ exporters:
   pulsar:
     endpoint: pulsar://pulsar.example.com:6650
     topic: persistent://production/telemetry/traces
-    producer_name: otel-collector
+    # Jaeger trace encodings are keyed by trace ID by the exporter
+    encoding: jaeger_proto
 
-    # Schema configuration
-    schema:
-      # Schema type
-      type: protobuf
-      # Schema definition (inline or file path)
-      definition: |
-        syntax = "proto3";
-        message Span {
-          string trace_id = 1;
-          string span_id = 2;
-          string name = 3;
-          int64 start_time = 4;
-          int64 end_time = 5;
-          map<string, string> attributes = 6;
-        }
-      # Schema validation
-      validation: true
-      # Auto-update schema
-      auto_update: true
+    producer:
+      batch_builder_type: key_based
 
-    encoding: protobuf
     timeout: 30s
 
 service:
@@ -373,11 +269,43 @@ service:
       exporters: [pulsar]
 ```
 
-Schema registry ensures that all messages published to a topic conform to a defined schema. This prevents data quality issues and enables safe schema evolution. Pulsar supports Avro, JSON, and Protocol Buffers schemas.
+The Collector's Pulsar exporter does not expose a `message_key_attribute` option. For traces, the `jaeger_proto` and `jaeger_json` encodings key exported spans by trace ID. Use Pulsar's ordering and subscription semantics together with a single producer or key-based batching when strict per-key ordering matters.
+
+## Schema Registry Integration
+
+Use Pulsar's schema registry to enforce data schemas and enable schema evolution in producers and consumers that use Pulsar schemas. The Collector's Pulsar exporter does not expose schema registry settings directly; it publishes OTLP or Jaeger-encoded payloads:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 10s
+
+exporters:
+  pulsar:
+    endpoint: pulsar://pulsar.example.com:6650
+    topic: persistent://production/telemetry/traces
+    encoding: otlp_proto
+    timeout: 30s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [pulsar]
+```
+
+Schema registry ensures that schema-aware Pulsar producers publish messages that conform to a defined schema. This prevents data quality issues and enables safe schema evolution. Pulsar supports Avro, JSON, and Protocol Buffers schemas, but schema registration is managed through Pulsar clients and administration APIs rather than the Collector exporter configuration.
 
 ## Geo-Replication Configuration
 
-Configure geo-replication to replicate telemetry data across multiple Pulsar clusters:
+Configure geo-replication in Pulsar to replicate telemetry data across multiple Pulsar clusters. The Collector exporter should point at the local or preferred Pulsar cluster:
 
 ```yaml
 receivers:
@@ -394,26 +322,12 @@ exporters:
   pulsar:
     endpoint: pulsar://pulsar.us-west.example.com:6650
     topic: persistent://production/telemetry/traces
-    encoding: json
-    producer_name: otel-collector-us-west
-
-    # Replication configuration
-    replication:
-      enabled: true
-      # Replication clusters
-      clusters:
-        - us-west
-        - us-east
-        - eu-west
-      # Replication backlog quota
-      backlog_quota:
-        limit: 10GB
-        policy: producer_exception
+    encoding: otlp_json
 
     timeout: 30s
-    batching:
-      max_publish_delay: 10ms
-      max_messages: 1000
+    producer:
+      batching_max_publish_delay: 10ms
+      batching_max_messages: 1000
 
 service:
   pipelines:
@@ -423,7 +337,7 @@ service:
       exporters: [pulsar]
 ```
 
-Geo-replication automatically copies messages to configured clusters. This provides disaster recovery, enables regional data processing, and ensures telemetry data availability across geographic regions. Each cluster can process the data independently while maintaining consistency.
+Geo-replication automatically copies messages to configured clusters when it is enabled on the Pulsar tenant, namespace, and cluster configuration. This provides disaster recovery, enables regional data processing, and ensures telemetry data availability across geographic regions. Each cluster can process the data independently while maintaining consistency.
 
 ## Performance Optimization
 
@@ -449,28 +363,23 @@ exporters:
   pulsar:
     endpoint: pulsar://pulsar.example.com:6650
     topic: persistent://production/telemetry/traces
-    encoding: protobuf
-    producer_name: otel-collector
+    encoding: otlp_proto
 
     # Producer configuration
-    max_pending_messages: 10000
-    max_pending_messages_across_partitions: 50000
-    block_if_queue_full: true
+    producer:
+      max_pending_messages: 10000
+      disable_block_if_queue_full: false
 
-    # Batching configuration for throughput
-    batching:
-      max_publish_delay: 100ms
-      max_messages: 5000
-      max_bytes: 4194304  # 4MB
+      # Batching configuration for throughput
+      batching_max_publish_delay: 100ms
+      batching_max_messages: 5000
+      batching_max_size: 4194304  # 4MB
 
-    # Compression
-    compression:
-      type: ZSTD
-      level: 3
+      # Compression
+      compression_type: zstd
+      compression_level: better
 
-    # Connection pool
-    connection_pool:
-      max_connections_per_broker: 10
+    max_connections_per_broker: 10
 
     timeout: 60s
 
@@ -486,7 +395,7 @@ Larger batches and compression reduce network overhead and improve throughput. Z
 
 ## Dead Letter Queue Configuration
 
-Configure dead letter topics to handle messages that fail processing:
+Configure retries and the Collector sending queue to handle temporary publish failures:
 
 ```yaml
 receivers:
@@ -503,8 +412,7 @@ exporters:
   pulsar:
     endpoint: pulsar://pulsar.example.com:6650
     topic: persistent://production/telemetry/traces
-    encoding: json
-    producer_name: otel-collector
+    encoding: otlp_json
 
     # Retry configuration
     retry_on_failure:
@@ -512,17 +420,12 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-      # Max retries before sending to DLQ
-      max_retries: 5
 
-    # Dead letter queue configuration
-    dead_letter_queue:
-      # DLQ topic
-      topic: persistent://production/telemetry/traces-dlq
-      # Max redelivery attempts
-      max_redeliver_count: 3
-      # DLQ producer name
-      producer_name: otel-collector-dlq
+    # Queue batches while Pulsar is temporarily unavailable
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
 
     timeout: 30s
 
@@ -534,7 +437,7 @@ service:
       exporters: [pulsar]
 ```
 
-Dead letter queues capture messages that repeatedly fail processing. This prevents message loss and allows you to investigate and reprocess failed messages later. Monitor the DLQ topic to detect systematic processing issues.
+The Collector's Pulsar exporter does not have a dead letter queue setting. Dead letter topics are a Pulsar consumer-side feature for messages that fail after delivery to a subscriber. Use the exporter's retry and sending queue settings for temporary publish failures, and configure DLQs in downstream Pulsar consumers when reprocessing failed telemetry messages is required.
 
 ## Multi-Tenant Configuration
 
@@ -548,16 +451,6 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Add tenant and namespace from resource attributes
-  attributes:
-    actions:
-      - key: pulsar.tenant
-        from_attribute: deployment.environment
-        action: upsert
-      - key: pulsar.namespace
-        from_attribute: service.namespace
-        action: upsert
-
   batch:
     timeout: 10s
 
@@ -567,37 +460,35 @@ exporters:
     endpoint: pulsar://pulsar.example.com:6650
     # Topic in production tenant
     topic: persistent://production/applications/traces
-    encoding: json
-    producer_name: otel-collector-prod
-    authentication:
-      type: token
-      token: ${PULSAR_PROD_TOKEN}
+    encoding: otlp_json
+    auth:
+      token:
+        token: ${PULSAR_PROD_TOKEN}
 
   # Staging tenant
   pulsar/staging:
     endpoint: pulsar://pulsar.example.com:6650
     # Topic in staging tenant
     topic: persistent://staging/applications/traces
-    encoding: json
-    producer_name: otel-collector-staging
-    authentication:
-      type: token
-      token: ${PULSAR_STAGING_TOKEN}
+    encoding: otlp_json
+    auth:
+      token:
+        token: ${PULSAR_STAGING_TOKEN}
 
 service:
   pipelines:
     traces/production:
       receivers: [otlp]
-      processors: [attributes, batch]
+      processors: [batch]
       exporters: [pulsar/production]
 
     traces/staging:
       receivers: [otlp]
-      processors: [attributes, batch]
+      processors: [batch]
       exporters: [pulsar/staging]
 ```
 
-Multi-tenancy allows you to isolate data from different environments or teams using separate tenants and namespaces. Each tenant can have its own authentication, authorization, and resource quotas.
+Multi-tenancy allows you to isolate data from different environments or teams using separate tenants and namespaces. Each tenant can have its own authentication, authorization, and resource quotas. The exporter topic is static per exporter instance, so route data to the appropriate exporter with separate Collector deployments, receivers, or routing components when production and staging data should not be duplicated.
 
 ## Consumer Example
 
@@ -681,12 +572,7 @@ exporters:
   pulsar:
     endpoint: pulsar://pulsar.example.com:6650
     topic: persistent://production/telemetry/traces
-    encoding: json
-    producer_name: otel-collector
-
-  # Export collector metrics
-  prometheus:
-    endpoint: "0.0.0.0:8888"
+    encoding: otlp_json
 
 service:
   pipelines:
@@ -700,7 +586,12 @@ service:
       level: info
     metrics:
       level: detailed
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Monitor these key metrics:
@@ -724,11 +615,11 @@ Follow these best practices when using the Pulsar exporter:
 
 **Leverage Partitioning**: Use partitioned topics to distribute load across multiple brokers and improve scalability.
 
-**Implement Message Keys**: Use message keys to guarantee ordering for related telemetry data.
+**Understand Message Keys**: Use the Jaeger trace encodings when you need the exporter to key trace messages by trace ID, and rely on Pulsar producer, partition, and subscription semantics for ordering.
 
 **Monitor Producer Queues**: Track producer queue sizes to detect backpressure and processing bottlenecks.
 
-**Use Schema Registry**: Enforce data quality and enable schema evolution using Pulsar's schema registry.
+**Use Schema Registry Where Applicable**: Enforce data quality and enable schema evolution in schema-aware Pulsar producers and consumers.
 
 **Configure Geo-Replication**: Replicate critical telemetry data across regions for disaster recovery and regional processing.
 
@@ -738,6 +629,6 @@ The Pulsar exporter enables integration with streaming data architectures. For m
 
 ## Conclusion
 
-The Pulsar exporter enables powerful streaming observability architectures by publishing telemetry data to Apache Pulsar. Pulsar's advanced features including multi-tenancy, geo-replication, guaranteed ordering, and tiered storage make it ideal for large-scale, mission-critical observability systems.
+The Pulsar exporter enables powerful streaming observability architectures by publishing telemetry data to Apache Pulsar. Pulsar's advanced features including multi-tenancy, geo-replication, ordering guarantees, and tiered storage make it useful for large-scale, mission-critical observability systems.
 
 Configure the exporter based on your requirements, choosing appropriate topic structures, partitioning strategies, and reliability settings. With proper configuration and monitoring, the Pulsar exporter provides a robust foundation for building scalable, cloud-native observability pipelines that can handle massive data volumes across multiple regions while maintaining strong delivery guarantees.
