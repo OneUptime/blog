@@ -17,9 +17,9 @@ Before instrumenting, understand what you are monitoring:
 - **Ethernet/IP**: Common with Allen-Bradley/Rockwell PLCs
 - **Profinet**: Siemens ecosystem
 - **Modbus TCP**: Simple, widely supported
-- **EtherCAT**: High-speed motion control
+- **EtherCAT**: High-speed motion control, usually monitored through controller or vendor diagnostics
 
-Each has different latency characteristics and failure modes. The approach here works for any of them since we are measuring at the application layer.
+Each has different latency characteristics and failure modes. The approach here works for request/response protocols you can poll at the application layer. For deterministic fieldbus traffic such as EtherCAT cyclic process data, use protocol-specific diagnostics from the controller or vendor tooling instead.
 
 ## Building the Latency Monitor
 
@@ -66,9 +66,21 @@ plc_reachable = meter.create_gauge(
 
 ## Modbus TCP Latency Measurement
 
-Here is a concrete implementation for Modbus TCP, the most common protocol for basic PLC monitoring:
+Here is a concrete implementation for Modbus TCP, a widely supported protocol for basic PLC monitoring:
 
 ```python
+def recv_exact(sock, byte_count):
+    """Read exactly byte_count bytes from a TCP socket, unless the connection closes."""
+    chunks = []
+    remaining = byte_count
+    while remaining > 0:
+        chunk = sock.recv(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
 def measure_modbus_latency(plc_host, plc_port=502, register_address=0, unit_id=1):
     """
     Send a Modbus TCP read holding registers request and measure round-trip time.
@@ -97,25 +109,50 @@ def measure_modbus_latency(plc_host, plc_port=502, register_address=0, unit_id=1
     )
 
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2.0)  # 2 second timeout - generous for industrial networks
-
         # Measure the full round-trip: connect + send + receive
         start = time.monotonic()
-        sock.connect((plc_host, plc_port))
-        sock.sendall(request)
-        response = sock.recv(256)
+        with socket.create_connection((plc_host, plc_port), timeout=2.0) as sock:
+            sock.settimeout(2.0)  # 2 second timeout - generous for industrial networks
+            sock.sendall(request)
+
+            # Modbus TCP responses start with a 7-byte MBAP header.
+            header = recv_exact(sock, 7)
+            if len(header) == 7:
+                response_length = struct.unpack(">H", header[4:6])[0]
+                response = header + recv_exact(sock, response_length - 1)
+            else:
+                response = header
         end = time.monotonic()
 
         latency_ms = (end - start) * 1000
         plc_latency.record(latency_ms, attrs)
+        segment_latency.record(latency_ms, {
+            "plc.network_segment": attrs["plc.network_segment"],
+            "plc.protocol": attrs["plc.protocol"]
+        })
         plc_reachable.set(1, attrs)
 
         # Validate the response
         if len(response) < 9:
             plc_error_count.add(1, {**attrs, "error_type": "short_response"})
+            return None
 
-        sock.close()
+        response_transaction_id, protocol_id, length, response_unit_id = struct.unpack(">HHHB", response[:7])
+        function_code = response[7]
+
+        if response_transaction_id != transaction_id or protocol_id != 0 or response_unit_id != unit_id:
+            plc_error_count.add(1, {**attrs, "error_type": "invalid_header"})
+            return None
+
+        if function_code == (0x03 | 0x80):
+            exception_code = response[8]
+            plc_error_count.add(1, {**attrs, "error_type": f"modbus_exception_{exception_code}"})
+            return None
+
+        if function_code != 0x03 or len(response) < 11:
+            plc_error_count.add(1, {**attrs, "error_type": "invalid_response"})
+            return None
+
         return latency_ms
 
     except socket.timeout:
@@ -184,7 +221,7 @@ Group latency metrics by network segment to detect switch or cable issues:
 ```python
 segment_latency = meter.create_histogram(
     "plc.network.segment_latency_ms",
-    description="Average latency per network segment",
+    description="Latency measurements grouped by network segment",
     unit="ms"
 )
 
