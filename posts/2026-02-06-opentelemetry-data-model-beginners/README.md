@@ -29,19 +29,18 @@ A Resource describes the entity producing telemetry. Think of it as the ID card 
 ### Common Resource Attributes
 
 ```javascript
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'payment-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '2.3.1',
-  [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'production',
-  [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: 'pod-abc123',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
-  [SemanticResourceAttributes.HOST_NAME]: 'worker-node-5',
-  [SemanticResourceAttributes.CLOUD_PROVIDER]: 'aws',
-  [SemanticResourceAttributes.CLOUD_REGION]: 'us-east-1',
-  [SemanticResourceAttributes.CONTAINER_NAME]: 'payment-api',
+const resource = resourceFromAttributes({
+  'service.name': 'payment-service',
+  'service.version': '2.3.1',
+  'service.namespace': 'checkout',
+  'service.instance.id': 'pod-abc123',
+  'deployment.environment.name': 'production',
+  'host.name': 'worker-node-5',
+  'cloud.provider': 'aws',
+  'cloud.region': 'us-east-1',
+  'container.name': 'payment-api',
 });
 ```
 
@@ -52,7 +51,7 @@ Every span, metric, and log inherits these attributes. You don't repeat them on 
 Resources let you filter and group telemetry:
 - Show me all traces from `payment-service`
 - Compare error rates between `production` and `staging`
-- See latency by `cloud_region`
+- See latency by `cloud.region`
 
 Without resources, you'd need to add these attributes to every span and log, wasting bandwidth and storage.
 
@@ -103,13 +102,13 @@ Let's break down each component:
 ### Creating a Span with Full Context
 
 ```javascript
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-service', '1.0.0');
 
 async function processPayment(orderId, amount) {
   const span = tracer.startSpan('payment.process', {
-    kind: trace.SpanKind.INTERNAL,
+    kind: SpanKind.INTERNAL,
     attributes: {
       // Operation details
       'payment.order_id': orderId,
@@ -225,9 +224,9 @@ Attributes are key-value pairs that describe telemetry. They answer: what was th
 
 ```javascript
 // Good: standard attribute names
-span.setAttribute('http.method', 'POST');
+span.setAttribute('http.request.method', 'POST');
 span.setAttribute('http.route', '/api/users');
-span.setAttribute('http.status_code', 201);
+span.setAttribute('http.response.status_code', 201);
 
 // Bad: custom names that should use conventions
 span.setAttribute('method', 'POST');
@@ -253,8 +252,8 @@ span.setAttribute('timestamp', Date.now()); // always unique
 
 ```javascript
 span.setAttributes({
-  'http.method': 'GET',                    // string
-  'http.status_code': 200,                 // number
+  'http.request.method': 'GET',            // string
+  'http.response.status_code': 200,        // number
   'cache.hit': true,                       // boolean
   'db.query_parameters': ['123', 'active'], // array
 });
@@ -265,11 +264,11 @@ Resource vs Span Attributes
 **Resource attributes**: Describe the service itself. Same for all spans.
 - `service.name`
 - `service.version`
-- `deployment.environment`
+- `deployment.environment.name`
 
 **Span attributes**: Describe this specific operation. Different per span.
-- `http.method`
-- `db.statement`
+- `http.request.method`
+- `db.query.summary`
 - `payment.amount`
 
 Don't put service-level attributes on every span. That's what resources are for.
@@ -384,8 +383,8 @@ const span = tracer.startSpan('GET /users', {
 const span = tracer.startSpan('http.request', {
   kind: SpanKind.CLIENT,
   attributes: {
-    'http.url': 'https://api.partner.com/data',
-    'http.method': 'GET',
+    'url.full': 'https://api.partner.com/data',
+    'http.request.method': 'GET',
   }
 });
 await fetch('https://api.partner.com/data');
@@ -407,7 +406,9 @@ const span = tracer.startSpan('message.send', {
   kind: SpanKind.PRODUCER,
   attributes: {
     'messaging.system': 'rabbitmq',
-    'messaging.destination': 'orders.queue',
+    'messaging.destination.name': 'orders.queue',
+    'messaging.operation.name': 'send',
+    'messaging.operation.type': 'send',
   }
 });
 await queue.publish(message);
@@ -421,7 +422,9 @@ const span = tracer.startSpan('message.process', {
   kind: SpanKind.CONSUMER,
   attributes: {
     'messaging.system': 'rabbitmq',
-    'messaging.source': 'orders.queue',
+    'messaging.destination.name': 'orders.queue',
+    'messaging.operation.name': 'process',
+    'messaging.operation.type': 'process',
   }
 });
 processMessage(message);
@@ -439,7 +442,7 @@ When a request crosses service boundaries, trace context propagates via HTTP hea
 Service A makes a request:
 
 ```javascript
-// Service A - automatically injects trace context
+// Service A - HTTP instrumentation can automatically inject trace context
 const response = await fetch('http://service-b/api/data', {
   headers: {
     'X-Custom-Header': 'value',
@@ -447,7 +450,7 @@ const response = await fetch('http://service-b/api/data', {
 });
 ```
 
-OpenTelemetry automatically adds headers:
+With HTTP instrumentation enabled, OpenTelemetry adds headers:
 ```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: vendor1=value1,vendor2=value2
@@ -456,8 +459,8 @@ tracestate: vendor1=value1,vendor2=value2
 Service B receives the request:
 
 ```javascript
-// Service B - automatically extracts trace context
-app.get('/api/data', (req, res) => {
+// Service B - HTTP server instrumentation can automatically extract trace context
+app.get('/api/data', async (req, res) => {
   // This span is automatically linked to the parent trace
   const data = await getData();
   res.json(data);
@@ -483,6 +486,7 @@ Not all requests need tracing. Sampling decides which traces to keep.
 **Head sampling**: Decision made when the trace starts (at the root span).
 
 ```javascript
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
 const sdk = new NodeSDK({
@@ -516,7 +520,7 @@ Keep all error traces, all slow traces, and 5% of normal traces.
 
 ### Sampling Propagation
 
-The sampling decision propagates via trace context. If the root span is sampled, all child spans are sampled. If not sampled, child spans are not recorded.
+The sampling decision propagates via trace context. With a parent-based head sampler, if the root span is sampled, child spans follow that sampled decision. If not sampled, child spans are typically not recorded.
 
 This is indicated by the trace flags field in the `traceparent` header.
 
@@ -531,15 +535,15 @@ OpenTelemetry defines semantic conventions: standard names for common attributes
 'HTTP GET'
 
 // Required attributes
-'http.method': 'GET'
-'http.status_code': 200
+'http.request.method': 'GET'
+'http.response.status_code': 200
 
 // Recommended attributes
-'http.url': 'https://api.example.com/users/123'
-'http.target': '/users/123'
-'http.host': 'api.example.com'
-'http.scheme': 'https'
-'http.user_agent': 'curl/7.64.1'
+'url.full': 'https://api.example.com/users/123'
+'url.path': '/users/123'
+'server.address': 'api.example.com'
+'url.scheme': 'https'
+'user_agent.original': 'curl/7.64.1'
 ```
 
 ### Database Semantic Conventions
@@ -549,15 +553,15 @@ OpenTelemetry defines semantic conventions: standard names for common attributes
 'SELECT users'
 
 // Required attributes
-'db.system': 'postgresql'
-'db.statement': 'SELECT * FROM users WHERE id = $1'
+'db.system.name': 'postgresql'
+'db.operation.name': 'SELECT'
 
 // Recommended attributes
-'db.name': 'app_db'
-'db.user': 'app_readonly'
-'db.connection_string': 'postgresql://localhost:5432'
-'net.peer.name': 'db.example.com'
-'net.peer.port': 5432
+'db.namespace': 'app_db'
+'db.collection.name': 'users'
+'db.query.summary': 'SELECT users'
+'server.address': 'db.example.com'
+'server.port': 5432
 ```
 
 Using semantic conventions ensures your telemetry is compatible with dashboards, queries, and visualizations built by others.
@@ -634,7 +638,7 @@ async function checkInventory(items) {
       body: JSON.stringify(items),
     });
 
-    span.setAttribute('http.status_code', response.status);
+    span.setAttribute('http.response.status_code', response.status);
     const result = await response.json();
     span.end();
     return result;
@@ -689,7 +693,7 @@ async function processPayment(userId, amount) {
 This example demonstrates:
 - Proper span hierarchy (parent-child relationships)
 - Appropriate span kinds (INTERNAL, CLIENT)
-- Meaningful attributes with bounded cardinality
+- Meaningful attributes, while being mindful of cardinality
 - Events marking significant moments
 - Exception recording and status setting
 - Semantic convention usage
