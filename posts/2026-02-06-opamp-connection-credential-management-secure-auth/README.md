@@ -107,13 +107,15 @@ func configureTLS() *tls.Config {
 
 func main() {
     srv := server.New(&stdLogger{})
+    connCallbacks := types.ConnectionCallbacks{}
+    connCallbacks.SetDefaults()
 
     settings := server.StartSettings{
         ListenEndpoint: "0.0.0.0:4320",
         TLSConfig:      configureTLS(),
         Settings: server.Settings{
-            Callbacks: server.CallbacksStruct{
-                OnConnectingFunc: func(r *http.Request) types.ConnectionResponse {
+            Callbacks: types.Callbacks{
+                OnConnecting: func(r *http.Request) types.ConnectionResponse {
                     // Extract the client certificate CN for identification
                     if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
                         clientCN := r.TLS.PeerCertificates[0].Subject.CommonName
@@ -125,11 +127,17 @@ func main() {
                         // Verify the agent is in an allowed OU
                         if !isAllowedOU(clientOU) {
                             log.Printf("Rejected agent %s: unauthorized OU", clientCN)
-                            return types.ConnectionResponse{Accept: false}
+                            return types.ConnectionResponse{
+                                Accept: false,
+                                HTTPStatusCode: http.StatusUnauthorized,
+                            }
                         }
                     }
 
-                    return types.ConnectionResponse{Accept: true}
+                    return types.ConnectionResponse{
+                        Accept:              true,
+                        ConnectionCallbacks: connCallbacks,
+                    }
                 },
             },
         },
@@ -160,7 +168,9 @@ server:
 
 agent:
   executable: /usr/local/bin/otelcol-contrib
-  storage_dir: /var/lib/opamp-supervisor
+
+storage:
+  directory: /var/lib/opamp-supervisor
 ```
 
 ## Token-Based Authentication
@@ -180,10 +190,13 @@ server:
 Validate the token on the server:
 
 ```go
-OnConnectingFunc: func(r *http.Request) types.ConnectionResponse {
+OnConnecting: func(r *http.Request) types.ConnectionResponse {
     token := r.Header.Get("Authorization")
     if token == "" {
-        return types.ConnectionResponse{Accept: false}
+        return types.ConnectionResponse{
+            Accept: false,
+            HTTPStatusCode: http.StatusUnauthorized,
+        }
     }
 
     // Strip "Bearer " prefix
@@ -192,10 +205,16 @@ OnConnectingFunc: func(r *http.Request) types.ConnectionResponse {
     // Validate against your token store
     if !tokenStore.IsValid(token) {
         log.Printf("Rejected connection: invalid token")
-        return types.ConnectionResponse{Accept: false}
+        return types.ConnectionResponse{
+            Accept: false,
+            HTTPStatusCode: http.StatusUnauthorized,
+        }
     }
 
-    return types.ConnectionResponse{Accept: true}
+    return types.ConnectionResponse{
+        Accept:              true,
+        ConnectionCallbacks: connCallbacks,
+    }
 },
 ```
 
