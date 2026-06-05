@@ -10,7 +10,7 @@ Description: Learn how to trace GraphQL queries and mutations with OpenTelemetry
 
 GraphQL gives frontend teams incredible flexibility. They can ask for exactly the data they need, nest related resources, and batch requests. But from an observability standpoint, that flexibility creates real challenges. Every request hits the same `/graphql` endpoint, so traditional HTTP monitoring tells you almost nothing. You can't distinguish a lightweight `user { name }` query from a deeply nested `orders { items { product { reviews } } }` monster just by looking at the route.
 
-OpenTelemetry fixes this by letting you create spans for each resolver, track query complexity, and correlate GraphQL operations with downstream database calls and service requests. In this post, we'll walk through instrumenting a Node.js GraphQL server with OpenTelemetry so you can actually see what's happening inside your graph.
+OpenTelemetry fixes this by letting you create spans for GraphQL parse, validate, execute, and resolver work, then correlate those spans with downstream database calls and service requests. In this post, we'll walk through instrumenting a Node.js GraphQL server with OpenTelemetry so you can actually see what's happening inside your graph.
 
 ## Why GraphQL Needs Special Tracing
 
@@ -24,7 +24,7 @@ Here's what you actually want to know:
 - Did any resolver throw an error?
 - How deep is the query nesting?
 
-OpenTelemetry's GraphQL instrumentation library creates spans for each of these concerns, giving you a resolver-level breakdown of every operation.
+OpenTelemetry's GraphQL instrumentation library creates parse, validate, execute, and resolver spans, giving you a resolver-level breakdown of every operation. You can use its `depth` option to limit how far down the resolver tree it records spans.
 
 ```mermaid
 flowchart TD
@@ -62,12 +62,12 @@ Now create a tracing setup file. This needs to be loaded before any other applic
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { GraphQLInstrumentation } = require('@opentelemetry/instrumentation-graphql');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Create the SDK with GraphQL instrumentation enabled
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'graphql-api', // Name your service for trace identification
   }),
   traceExporter: new OTLPTraceExporter({
@@ -110,7 +110,7 @@ Each resolve span includes attributes like `graphql.field.name`, `graphql.field.
 
 ## Adding Custom Span Attributes
 
-The automatic instrumentation is a great start, but you'll often want to add business context. For example, tagging spans with the operation name, the authenticated user, or query complexity scores.
+The automatic instrumentation is a great start, but you'll often want to add business context. For example, tagging spans with the operation name, the authenticated user, or a query complexity score calculated by your GraphQL server.
 
 Here's how to add custom attributes inside a resolver:
 
@@ -191,11 +191,11 @@ const resolvers = {
 
 GraphQL's nested nature makes N+1 queries a constant threat. If you're using DataLoader (and you should be), you can trace batch loads to see how effectively your batching is working.
 
-This custom-instrumented DataLoader tracks batch sizes and cache hit rates:
+This custom-instrumented DataLoader tracks batch sizes and the keys included in each batch:
 
 ```javascript
 const DataLoader = require('dataloader');
-const { trace, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Create a tracer for manual span creation
 const tracer = trace.getTracer('graphql-dataloader');
@@ -210,11 +210,11 @@ function createTracedLoader(batchFn, name) {
 
       try {
         const results = await batchFn(keys);
-        span.setStatus({ code: 0 }); // OK
+        span.setStatus({ code: SpanStatusCode.OK });
         return results;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message }); // ERROR
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -251,9 +251,11 @@ const resolvers = {
         const span = tracer.startSpan('subscription.setup.orderUpdated');
         span.setAttribute('app.order.id', orderId);
 
-        // Extract the current context so we can propagate it to events
+        // Extract the setup span context so we can propagate it to events
         const carrier = {};
-        propagation.inject(context.active(), carrier);
+        context.with(trace.setSpan(context.active(), span), () => {
+          propagation.inject(context.active(), carrier);
+        });
 
         // Store the carrier in the subscription context for later use
         ctx.traceCarrier = carrier;
@@ -262,11 +264,15 @@ const resolvers = {
         return ctx.pubsub.asyncIterator(`ORDER_UPDATED_${orderId}`);
       },
       resolve: (payload, args, ctx) => {
-        // Each event delivery gets its own span linked to the original subscription
-        return tracer.startActiveSpan('subscription.event.orderUpdated', (span) => {
-          span.setAttribute('app.order.status', payload.status);
-          span.end();
-          return payload;
+        // Each event delivery gets its own span under the subscription setup context
+        const eventContext = propagation.extract(context.active(), ctx.traceCarrier || {});
+
+        return context.with(eventContext, () => {
+          return tracer.startActiveSpan('subscription.event.orderUpdated', (span) => {
+            span.setAttribute('app.order.status', payload.status);
+            span.end();
+            return payload;
+          });
         });
       },
     },
@@ -293,20 +299,21 @@ processors:
 
   # Filter out overly verbose parse/validate spans if needed
   filter:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["graphql.operation.type"] == "parse"'
+        - 'name == "graphql.parse" or name == "graphql.validate"'
 
 exporters:
-  otlp:
+  otlphttp:
     endpoint: "https://your-oneuptime-instance.com:4318"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
+      processors: [filter, batch]
+      exporters: [otlphttp]
 ```
 
 ## What to Look For in Your Traces
