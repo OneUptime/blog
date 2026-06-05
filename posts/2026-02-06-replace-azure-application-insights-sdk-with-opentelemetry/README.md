@@ -100,21 +100,19 @@ For Node.js, install the standard OpenTelemetry packages plus the Azure Monitor 
 # Node.js: Install OpenTelemetry packages with Azure Monitor exporter
 npm install @opentelemetry/sdk-node \
   @opentelemetry/api \
+  @opentelemetry/resources \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/exporter-trace-otlp-grpc \
   @azure/monitor-opentelemetry-exporter
 ```
 
-For Python, the process is similar.
+For Python, install the Azure Monitor OpenTelemetry distro plus OTLP support if you also want to export to another backend.
 
 ```bash
-# Python: Install OpenTelemetry packages with Azure Monitor exporter
-pip install opentelemetry-sdk \
-  opentelemetry-api \
-  opentelemetry-instrumentation-flask \
-  opentelemetry-instrumentation-django \
-  opentelemetry-exporter-otlp \
-  azure-monitor-opentelemetry-exporter
+# Python: Install Azure Monitor OpenTelemetry distro and OTLP exporter
+pip install azure-monitor-opentelemetry \
+  opentelemetry-exporter-otlp
 ```
 
 ## Step 3: Replace the SDK Initialization
@@ -146,6 +144,8 @@ builder.Services.AddOpenTelemetry()
         serviceName: "my-app",
         serviceVersion: "1.0.0"))
     .WithTracing(tracing => tracing
+        // Capture custom spans created from ActivitySource
+        .AddSource("MyApp.Orders")
         // Instrument incoming ASP.NET Core requests
         .AddAspNetCoreInstrumentation()
         // Instrument outgoing HTTP calls
@@ -162,6 +162,8 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
+        // Capture custom metrics created from Meter
+        .AddMeter("MyApp.Orders")
         .AddAzureMonitorMetricExporter(options =>
             options.ConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]));
 
@@ -176,7 +178,7 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { AzureMonitorTraceExporter } = require('@azure/monitor-opentelemetry-exporter');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 // Create Azure Monitor exporter using the connection string
@@ -190,7 +192,7 @@ const otlpExporter = new OTLPTraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-app',
     'service.version': '1.0.0',
   }),
@@ -216,8 +218,8 @@ The classic Application Insights SDK has specific methods like `TrackEvent`, `Tr
 |---|---|
 | `TrackRequest` | Automatic via HTTP instrumentation |
 | `TrackDependency` | Automatic via client instrumentation, or create a span |
-| `TrackException` | `span.RecordException()` + set error status |
-| `TrackEvent` | Span with `span.AddEvent()` or a Log record |
+| `TrackException` | `Activity.RecordException()` + set error status |
+| `TrackEvent` | Span with `Activity.AddEvent()` or a Log record |
 | `TrackMetric` | Meter API with Counter/Histogram |
 | `TrackTrace` | Log record via ILogger or OTel Logs API |
 
@@ -230,7 +232,8 @@ Here is how to translate common custom telemetry calls in .NET.
 //     new Dictionary<string, double> { { "orderValue", 99.99 } });
 
 // After: OpenTelemetry span with event
-using var activity = ActivitySource.StartActivity("ProcessOrder");
+using var activitySource = new ActivitySource("MyApp.Orders");
+using var activity = activitySource.StartActivity("ProcessOrder");
 activity?.SetTag("order.id", "123");
 activity?.SetTag("order.value", 99.99);
 // AddEvent is the closest equivalent to TrackEvent
@@ -284,10 +287,21 @@ processors:
         value: eastus
         action: upsert
 
+extensions:
+  azure_auth:
+    use_default: true
+    scopes:
+      - https://monitor.azure.com/.default
+
 exporters:
-  # Send to Azure Monitor using the connection string
-  azuremonitor:
-    connection_string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
+  # Send to Azure Monitor using the OTLP endpoints from the
+  # Application Insights OTLP Connection Info / Data Collection Rule setup
+  otlphttp/azuremonitor:
+    traces_endpoint: ${AZURE_MONITOR_OTLP_TRACES_ENDPOINT}
+    metrics_endpoint: ${AZURE_MONITOR_OTLP_METRICS_ENDPOINT}
+    logs_endpoint: ${AZURE_MONITOR_OTLP_LOGS_ENDPOINT}
+    auth:
+      authenticator: azure_auth
 
   # Also send to a generic OTLP backend
   otlp:
@@ -296,19 +310,20 @@ exporters:
       authorization: "Bearer ${API_KEY}"
 
 service:
+  extensions: [azure_auth]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [azuremonitor, otlp]
+      exporters: [otlphttp/azuremonitor, otlp]
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [azuremonitor, otlp]
+      exporters: [otlphttp/azuremonitor, otlp]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [azuremonitor, otlp]
+      exporters: [otlphttp/azuremonitor, otlp]
 ```
 
 ```mermaid
@@ -349,4 +364,4 @@ One thing to watch for: the classic SDK automatically collected certain Azure-sp
 
 ## Summary
 
-Migrating from Application Insights SDK to OpenTelemetry is a well-supported path that Microsoft actively encourages. The Azure Monitor OpenTelemetry Distro makes it particularly smooth for .NET applications. For other languages, the standard OpenTelemetry SDKs combined with the Azure Monitor exporter give you full compatibility. The biggest win is flexibility: once your instrumentation uses OpenTelemetry, you can send data anywhere without touching application code again.
+Migrating from Application Insights SDK to OpenTelemetry is a well-supported path that Microsoft actively encourages. The Azure Monitor OpenTelemetry Distro makes it particularly smooth for .NET applications. For other languages, the Microsoft-published OpenTelemetry distro and exporter packages give you Azure Monitor compatibility. The biggest win is flexibility: once your instrumentation uses OpenTelemetry, you can send data anywhere without touching application code again.
