@@ -48,8 +48,8 @@ The most reliable place to extract the tenant ID is in your API middleware, befo
 # Extract tenant ID and inject it into OpenTelemetry context
 
 from opentelemetry import trace, context, baggage
-from opentelemetry.trace import Span
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from starlette.requests import Request
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
@@ -70,7 +70,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             # No tenant context means something is wrong with auth
             return JSONResponse(status_code=401, content={"error": "Tenant not identified"})
 
-        # Get the current span (created by the OTLP HTTP instrumentation)
+        # Get the current span (created by the ASGI/Starlette instrumentation)
         span = trace.get_current_span()
 
         # Set tenant attributes on the current span
@@ -205,7 +205,7 @@ meter = metrics.get_meter("saas-platform", "2.0.0")
 request_latency = meter.create_histogram(
     name="http.server.request.duration",
     description="Request duration by tenant",
-    unit="ms",
+    unit="s",
 )
 
 # Active requests per tenant (for concurrency limiting)
@@ -227,16 +227,16 @@ storage_bytes = meter.create_histogram(
 )
 
 def record_request_metrics(tenant_id: str, tenant_plan: str, endpoint: str,
-                           method: str, status_code: int, duration_ms: float):
+                           method: str, status_code: int, duration_s: float):
     """Record per-tenant request metrics."""
     labels = {
         "tenant.id": tenant_id,
         "tenant.plan": tenant_plan,
         "http.route": endpoint,
-        "http.method": method,
-        "http.status_code": status_code,
+        "http.request.method": method,
+        "http.response.status_code": status_code,
     }
-    request_latency.record(duration_ms, labels)
+    request_latency.record(duration_s, labels)
 ```
 
 Be careful with metric cardinality here. If you have 10,000 tenants and 50 API endpoints, the combination creates 500,000 unique time series just for request latency. This can overwhelm your metrics backend. Consider these strategies to manage cardinality:
@@ -416,12 +416,12 @@ connectors:
   routing:
     table:
       # Enterprise tenants get dedicated observability
-      - statement: route()
+      - context: span
         condition: attributes["tenant.plan"] == "enterprise"
         pipelines: [traces/enterprise]
 
       # All other tenants share a backend
-      - statement: route()
+      - context: span
         condition: attributes["tenant.plan"] != "enterprise"
         pipelines: [traces/shared]
 
@@ -461,18 +461,18 @@ With tenant-tagged telemetry flowing into your backend, build SLA dashboards tha
 # Track availability as percentage of successful requests
 
 # Availability SLI
-sum(rate(http_server_request_duration_count{
+sum(rate(http_server_request_duration_seconds_count{
   tenant_id="$tenant",
-  http_status_code!~"5.."
+  http_response_status_code!~"5.."
 }[5m]))
 /
-sum(rate(http_server_request_duration_count{
+sum(rate(http_server_request_duration_seconds_count{
   tenant_id="$tenant"
 }[5m]))
 
 # Latency SLI (p99 under 500ms)
 histogram_quantile(0.99,
-  sum(rate(http_server_request_duration_bucket{
+  sum(rate(http_server_request_duration_seconds_bucket{
     tenant_id="$tenant"
   }[5m])) by (le)
 )
