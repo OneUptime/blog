@@ -151,6 +151,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "time"
 
     "github.com/nats-io/nats.go"
     "go.opentelemetry.io/otel"
@@ -188,8 +189,9 @@ func (p *Publisher) PublishOrder(ctx context.Context, subject string, order Orde
         trace.WithSpanKind(trace.SpanKindProducer),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
-            attribute.String("messaging.destination", subject),
-            attribute.String("messaging.operation", "publish"),
+            attribute.String("messaging.destination.name", subject),
+            attribute.String("messaging.operation.name", "publish"),
+            attribute.String("messaging.operation.type", "send"),
         ),
     )
     defer span.End()
@@ -232,7 +234,7 @@ func (p *Publisher) PublishOrder(ctx context.Context, subject string, order Orde
     }
 
     span.SetStatus(codes.Ok, "message published successfully")
-    span.SetAttributes(attribute.Int("message.size", len(payload)))
+    span.SetAttributes(attribute.Int("messaging.message.body.size", len(payload)))
 
     return nil
 }
@@ -243,8 +245,9 @@ func (p *Publisher) PublishWithReply(ctx context.Context, subject string, order 
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
-            attribute.String("messaging.destination", subject),
-            attribute.String("messaging.operation", "request"),
+            attribute.String("messaging.destination.name", subject),
+            attribute.String("messaging.operation.name", "request"),
+            attribute.String("messaging.operation.type", "send"),
         ),
     )
     defer span.End()
@@ -275,7 +278,7 @@ func (p *Publisher) PublishWithReply(ctx context.Context, subject string, order 
     }
 
     span.SetStatus(codes.Ok, "received reply")
-    span.SetAttributes(attribute.Int("reply.size", len(reply.Data)))
+    span.SetAttributes(attribute.Int("messaging.message.body.size", len(reply.Data)))
 
     return reply, nil
 }
@@ -346,9 +349,10 @@ func (c *Consumer) handleMessage(msg *nats.Msg, processor OrderProcessor) {
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
-            attribute.String("messaging.source", msg.Subject),
-            attribute.String("messaging.operation", "process"),
-            attribute.Int("message.size", len(msg.Data)),
+            attribute.String("messaging.destination.name", msg.Subject),
+            attribute.String("messaging.operation.name", "process"),
+            attribute.String("messaging.operation.type", "process"),
+            attribute.Int("messaging.message.body.size", len(msg.Data)),
         ),
     )
     defer span.End()
@@ -390,18 +394,21 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "log"
     "sync"
 
     "github.com/nats-io/nats.go"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
 
 // QueueConsumer handles messages with queue group semantics
 type QueueConsumer struct {
     nc         *nats.Conn
+    sub        *nats.Subscription
     tracer     trace.Tracer
     workerID   string
     wg         sync.WaitGroup
@@ -421,21 +428,22 @@ func NewQueueConsumer(nc *nats.Conn, serviceName, workerID string) *QueueConsume
 // SubscribeQueue subscribes to a subject with queue group
 func (qc *QueueConsumer) SubscribeQueue(subject, queueGroup string, processor OrderProcessor) error {
     // Queue subscription ensures load balancing across consumers
-    _, err := qc.nc.QueueSubscribe(subject, queueGroup, func(msg *nats.Msg) {
+    sub, err := qc.nc.QueueSubscribe(subject, queueGroup, func(msg *nats.Msg) {
         qc.wg.Add(1)
-        go qc.processMessage(msg, processor)
+        go qc.processMessage(msg, queueGroup, processor)
     })
 
     if err != nil {
         return err
     }
 
+    qc.sub = sub
     log.Printf("Worker %s joined queue group %s for subject %s", qc.workerID, queueGroup, subject)
     return nil
 }
 
 // processMessage handles individual messages with worker identification
-func (qc *QueueConsumer) processMessage(msg *nats.Msg, processor OrderProcessor) {
+func (qc *QueueConsumer) processMessage(msg *nats.Msg, queueGroup string, processor OrderProcessor) {
     defer qc.wg.Done()
 
     carrier := NewNATSMessageCarrier(msg)
@@ -445,9 +453,11 @@ func (qc *QueueConsumer) processMessage(msg *nats.Msg, processor OrderProcessor)
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
-            attribute.String("messaging.source", msg.Subject),
+            attribute.String("messaging.destination.name", msg.Subject),
+            attribute.String("messaging.operation.name", "process"),
+            attribute.String("messaging.operation.type", "process"),
             attribute.String("worker.id", qc.workerID),
-            attribute.String("messaging.consumer.group", "order-processors"),
+            attribute.String("messaging.consumer.group.name", queueGroup),
         ),
     )
     defer span.End()
@@ -469,6 +479,11 @@ func (qc *QueueConsumer) processMessage(msg *nats.Msg, processor OrderProcessor)
 // Shutdown gracefully stops the consumer
 func (qc *QueueConsumer) Shutdown(ctx context.Context) error {
     close(qc.shutdownCh)
+    if qc.sub != nil {
+        if err := qc.sub.Drain(); err != nil {
+            return err
+        }
+    }
 
     // Wait for all messages to finish processing
     done := make(chan struct{})
@@ -488,15 +503,15 @@ func (qc *QueueConsumer) Shutdown(ctx context.Context) error {
 
 ## JetStream Support for Persistent Messages
 
-NATS JetStream provides persistence and exactly-once delivery. Tracing works similarly but with additional stream metadata.
+NATS JetStream provides persistence and can support exactly-once semantics when you combine message deduplication with double acknowledgements. Tracing works similarly but with additional stream metadata.
 
 ```go
 package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
-    "time"
 
     "github.com/nats-io/nats.go"
     "go.opentelemetry.io/otel"
@@ -530,7 +545,9 @@ func (jsp *JetStreamPublisher) PublishOrder(ctx context.Context, subject string,
         trace.WithSpanKind(trace.SpanKindProducer),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats.jetstream"),
-            attribute.String("messaging.destination", subject),
+            attribute.String("messaging.destination.name", subject),
+            attribute.String("messaging.operation.name", "publish"),
+            attribute.String("messaging.operation.type", "send"),
         ),
     )
     defer span.End()
@@ -549,6 +566,7 @@ func (jsp *JetStreamPublisher) PublishOrder(ctx context.Context, subject string,
 
     carrier := NewNATSMessageCarrier(msg)
     otel.GetTextMapPropagator().Inject(ctx, carrier)
+    msg.Header.Set(nats.MsgIdHdr, order.OrderID)
 
     // Publish with acknowledgment
     ack, err := jsp.js.PublishMsg(msg)
@@ -609,7 +627,9 @@ func (jsc *JetStreamConsumer) handleJetStreamMessage(msg *nats.Msg, processor Or
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "nats.jetstream"),
-            attribute.String("messaging.source", msg.Subject),
+            attribute.String("messaging.destination.name", msg.Subject),
+            attribute.String("messaging.operation.name", "process"),
+            attribute.String("messaging.operation.type", "process"),
         ),
     )
     defer span.End()
@@ -639,8 +659,13 @@ func (jsc *JetStreamConsumer) handleJetStreamMessage(msg *nats.Msg, processor Or
         return
     }
 
+    if err := msg.AckSync(); err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, "acknowledgment failed")
+        return
+    }
+
     span.SetStatus(codes.Ok, "message processed")
-    msg.Ack()
 }
 ```
 
@@ -653,8 +678,11 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
+
+    "go.opentelemetry.io/otel"
 )
 
 // OrderProcessorImpl implements the OrderProcessor interface
