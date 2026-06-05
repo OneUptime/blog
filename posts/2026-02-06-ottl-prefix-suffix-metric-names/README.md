@@ -19,7 +19,7 @@ processors:
       - context: metric
         statements:
           # Add "myapp." prefix to all metric names
-          - set(name, Concat(["myapp", name], "."))
+          - set(metric.name, Concat(["myapp", metric.name], "."))
 ```
 
 After this transform, `http_requests_total` becomes `myapp.http_requests_total` and `db_query_duration` becomes `myapp.db_query_duration`.
@@ -35,8 +35,8 @@ processors:
       - context: metric
         statements:
           # Add environment suffix to metric names
-          - set(name, Concat([name, "production"], ".")) where resource.attributes["deployment.environment"] == "production"
-          - set(name, Concat([name, "staging"], ".")) where resource.attributes["deployment.environment"] == "staging"
+          - set(metric.name, Concat([metric.name, "production"], ".")) where resource.attributes["deployment.environment"] == "production"
+          - set(metric.name, Concat([metric.name, "staging"], ".")) where resource.attributes["deployment.environment"] == "staging"
 ```
 
 ## Conditional Prefix Based on Metric Properties
@@ -50,11 +50,11 @@ processors:
       - context: metric
         statements:
           # Prefix counter metrics with "counter."
-          - set(name, Concat(["counter", name], ".")) where type == METRIC_DATA_TYPE_SUM
+          - set(metric.name, Concat(["counter", metric.name], ".")) where metric.type == METRIC_DATA_TYPE_SUM
           # Prefix gauge metrics with "gauge."
-          - set(name, Concat(["gauge", name], ".")) where type == METRIC_DATA_TYPE_GAUGE
+          - set(metric.name, Concat(["gauge", metric.name], ".")) where metric.type == METRIC_DATA_TYPE_GAUGE
           # Prefix histogram metrics with "histogram."
-          - set(name, Concat(["histogram", name], ".")) where type == METRIC_DATA_TYPE_HISTOGRAM
+          - set(metric.name, Concat(["histogram", metric.name], ".")) where metric.type == METRIC_DATA_TYPE_HISTOGRAM
 ```
 
 ## Renaming Attributes Across All Metrics
@@ -68,16 +68,16 @@ processors:
       - context: datapoint
         statements:
           # Rename "host" to "server.address" across all metrics
-          - set(attributes["server.address"], attributes["host"]) where attributes["host"] != nil
-          - delete_key(attributes, "host") where attributes["server.address"] != nil
+          - set(datapoint.attributes["server.address"], datapoint.attributes["host"]) where datapoint.attributes["host"] != nil
+          - delete_key(datapoint.attributes, "host") where datapoint.attributes["server.address"] != nil
 
           # Rename "method" to "http.request.method"
-          - set(attributes["http.request.method"], attributes["method"]) where attributes["method"] != nil
-          - delete_key(attributes, "method") where attributes["http.request.method"] != nil
+          - set(datapoint.attributes["http.request.method"], datapoint.attributes["method"]) where datapoint.attributes["method"] != nil
+          - delete_key(datapoint.attributes, "method") where datapoint.attributes["http.request.method"] != nil
 
           # Rename "status_code" to "http.response.status_code"
-          - set(attributes["http.response.status_code"], attributes["status_code"]) where attributes["status_code"] != nil
-          - delete_key(attributes, "status_code") where attributes["http.response.status_code"] != nil
+          - set(datapoint.attributes["http.response.status_code"], datapoint.attributes["status_code"]) where datapoint.attributes["status_code"] != nil
+          - delete_key(datapoint.attributes, "status_code") where datapoint.attributes["http.response.status_code"] != nil
 ```
 
 ## Complete Configuration Example
@@ -99,21 +99,21 @@ processors:
       - context: metric
         statements:
           # Add service prefix to all metric names
-          - set(name, Concat(["svc", name], "."))
+          - set(metric.name, Concat(["svc", metric.name], "."))
           # Remove unwanted prefix if present
-          - replace_pattern(name, "^svc\\.go_", "svc.runtime.go.")
+          - replace_pattern(metric.name, "^svc\\.go_", "svc.runtime.go.")
           # Fix unit naming
-          - set(unit, "s") where unit == "seconds"
-          - set(unit, "By") where unit == "bytes"
+          - set(metric.unit, "s") where metric.unit == "seconds"
+          - set(metric.unit, "By") where metric.unit == "bytes"
 
       # Datapoint-level attribute renaming
       - context: datapoint
         statements:
           # Standardize common attribute names
-          - set(attributes["service.instance.id"], attributes["instance"]) where attributes["instance"] != nil
-          - delete_key(attributes, "instance") where attributes["service.instance.id"] != nil
-          - set(attributes["service.name"], attributes["job"]) where attributes["job"] != nil
-          - delete_key(attributes, "job") where attributes["service.name"] != nil
+          - set(datapoint.attributes["service.instance.id"], datapoint.attributes["instance"]) where datapoint.attributes["instance"] != nil
+          - delete_key(datapoint.attributes, "instance") where datapoint.attributes["service.instance.id"] != nil
+          - set(datapoint.attributes["service.name"], datapoint.attributes["job"]) where datapoint.attributes["job"] != nil
+          - delete_key(datapoint.attributes, "job") where datapoint.attributes["service.name"] != nil
 
   batch:
     timeout: 5s
@@ -142,11 +142,11 @@ processors:
         statements:
           # Convert snake_case to dot notation
           # http_server_request_duration -> http.server.request.duration
-          - replace_pattern(name, "_", ".")
+          - replace_pattern(metric.name, "_", ".")
 
           # Replace specific patterns
-          - replace_pattern(name, "^process\\.", "runtime.process.")
-          - replace_pattern(name, "^go\\.", "runtime.go.")
+          - replace_pattern(metric.name, "^process\\.", "runtime.process.")
+          - replace_pattern(metric.name, "^go\\.", "runtime.go.")
 ```
 
 ## Renaming Resource Attributes for Metrics
@@ -160,10 +160,10 @@ processors:
       - context: resource
         statements:
           # Rename Prometheus job/instance to OTel conventions
-          - set(attributes["service.name"], attributes["job"]) where attributes["job"] != nil
-          - delete_key(attributes, "job") where attributes["service.name"] != nil
-          - set(attributes["service.instance.id"], attributes["instance"]) where attributes["instance"] != nil
-          - delete_key(attributes, "instance") where attributes["service.instance.id"] != nil
+          - set(resource.attributes["service.name"], resource.attributes["job"]) where resource.attributes["job"] != nil
+          - delete_key(resource.attributes, "job") where resource.attributes["service.name"] != nil
+          - set(resource.attributes["service.instance.id"], resource.attributes["instance"]) where resource.attributes["instance"] != nil
+          - delete_key(resource.attributes, "instance") where resource.attributes["service.instance.id"] != nil
 ```
 
 ## Combining Prefix Addition with Attribute Extraction
@@ -177,7 +177,7 @@ processors:
       - context: metric
         statements:
           # Use the service name as a metric prefix
-          - set(name, Concat([resource.attributes["service.name"], name], ".")) where resource.attributes["service.name"] != nil
+          - set(metric.name, Concat([resource.attributes["service.name"], metric.name], ".")) where resource.attributes["service.name"] != nil
 ```
 
 This turns `http_requests_total` from service "checkout" into `checkout.http_requests_total`.
