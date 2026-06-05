@@ -18,8 +18,8 @@ NRDOT bundles the upstream OTel Collector with these additions:
 
 - Pre-configured OTLP exporter pointed at New Relic endpoints
 - Host metrics collection with New Relic-compatible attribute mapping
-- Supervised mode that pulls configuration from New Relic's control plane
-- Opinionated defaults for batching, retry, and memory limits
+- A New Relic-supported collector binary with a curated set of receivers, processors, exporters, and extensions
+- Opinionated configuration examples for common host, Kubernetes, and data-processing use cases
 
 ```mermaid
 flowchart LR
@@ -46,8 +46,9 @@ New Relic provides an installer script:
 curl -Ls https://download.newrelic.com/install/newrelic-cli/scripts/install.sh | bash
 
 # Or download the collector package directly
+export collector_version="1.15.1"
 curl -L -o nrdot-collector.deb \
-  https://download.newrelic.com/otel/nrdot-collector/releases/latest/nrdot-collector_amd64.deb
+  "https://github.com/newrelic/nrdot-collector-releases/releases/download/${collector_version}/nrdot-collector_${collector_version}_linux_amd64.deb"
 sudo dpkg -i nrdot-collector.deb
 ```
 
@@ -60,7 +61,7 @@ Run NRDOT in a container:
 docker run -d \
   --name nrdot-collector \
   -e NEW_RELIC_LICENSE_KEY=your-license-key \
-  -e NEW_RELIC_OTLP_ENDPOINT=https://otlp.nr-data.net \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net \
   -p 4317:4317 \
   -p 4318:4318 \
   -v ./nrdot-config.yaml:/etc/otelcol/config.yaml \
@@ -78,9 +79,10 @@ helm repo add newrelic https://helm-charts.newrelic.com
 helm repo update
 
 # Install NRDOT on your cluster
-helm install nrdot-collector newrelic/nrdot-collector \
+helm upgrade nr-k8s-otel-collector newrelic/nr-k8s-otel-collector \
   --namespace monitoring \
   --create-namespace \
+  --install \
   --set licenseKey=your-license-key \
   --set cluster=my-cluster-name
 ```
@@ -444,10 +446,10 @@ Since New Relic accepts standard OTLP, you can use the upstream collector just a
 |---------|-------|-------------------|
 | Pre-configured NR endpoints | Yes | Manual |
 | Host monitoring recipes | Included | Manual setup |
-| Supervised mode | Yes | No |
-| Config pulled from NR | Yes (supervised) | No |
+| New Relic-supported distribution | Yes | No |
+| New Relic-focused default configuration | Yes | Manual |
 | New Relic support | Yes | Community |
-| Non-NR exporters | Full contrib set | Full contrib set |
+| Component set | Curated NRDOT bundle | Depends on the upstream distribution you choose |
 | Delta temporality conversion | Pre-configured | Manual |
 
 ## When to Use NRDOT
@@ -456,7 +458,7 @@ Choose NRDOT when:
 
 - New Relic is your primary observability platform
 - You want pre-configured host monitoring that maps to New Relic's Infrastructure UI
-- You want supervised mode where New Relic manages the config remotely
+- You want New Relic's supported collector distribution and default configurations
 - You need New Relic support for the collector
 
-Since New Relic accepts OTLP natively, using the upstream collector is also a perfectly valid approach. You just need to configure the OTLP exporter with the right endpoint and API key header. NRDOT mainly saves you from that manual configuration and adds the supervised mode feature.
+Since New Relic accepts OTLP natively, using the upstream collector is also a perfectly valid approach. You just need to configure the OTLP exporter with the right endpoint and API key header. NRDOT mainly saves you from that manual configuration and provides a New Relic-supported collector distribution.
