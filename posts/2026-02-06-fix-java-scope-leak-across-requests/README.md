@@ -75,14 +75,14 @@ try (Scope scope = span.makeCurrent()) {
 
 ## Detecting Scope Leaks
 
-The OpenTelemetry SDK can detect scope leaks if you enable leak detection:
+OpenTelemetry Java context storage can detect scope leaks if you enable strict context before OpenTelemetry context storage is initialized:
 
 ```java
 // Enable during development
 System.setProperty("io.opentelemetry.context.enableStrictContext", "true");
 ```
 
-With strict context enabled, unclosed scopes throw an error:
+With strict context enabled, unclosed scopes can throw an error when strict context storage checks for leaks:
 
 ```text
 java.lang.AssertionError: Thread [main] opened a scope of SpanContext{...}
@@ -97,7 +97,8 @@ java.lang.AssertionError: Thread [main] opened a scope of SpanContext{...}
 ```java
 // BROKEN - scope never closed
 @Override
-public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) {
+public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+        throws IOException, ServletException {
     Span span = tracer.spanBuilder("filter").startSpan();
     span.makeCurrent();  // Returns scope, but it's ignored!
     chain.doFilter(request, response);
