@@ -8,18 +8,18 @@ Description: Safely migrate Docker storage drivers without losing container data
 
 ---
 
-Docker storage drivers control how image layers and container writable layers are stored on disk. Migrating from one storage driver to another is something most teams only do once, but getting it wrong means losing all your images, containers, and potentially your data. The Docker daemon will not read data written by a different storage driver, so a careless switch wipes out everything.
+Docker storage drivers control how image layers and container writable layers are stored on disk. Migrating from one storage driver to another is something most teams only do once, but getting it wrong means losing access to all your images, containers, and potentially your data. The Docker daemon will not read image and container layers written by a different storage driver, so a careless switch makes those objects inaccessible until you switch back.
 
 This guide walks through the safe migration process, with proper backups at every step.
 
 ## Understanding Docker Storage Drivers
 
-Docker supports several storage drivers:
+Docker Engine on Linux supports several classic storage drivers:
 
 - **overlay2** - The default and recommended driver for most Linux systems
 - **btrfs** - Uses Btrfs filesystem features for thin provisioning
 - **zfs** - Leverages ZFS copy-on-write filesystem
-- **devicemapper** - Uses device mapper thin provisioning (deprecated)
+- **devicemapper** - Uses device mapper thin provisioning (deprecated and removed in Docker Engine 25.0)
 - **vfs** - Simple directory copy, no copy-on-write (slowest, but most compatible)
 
 Check your current storage driver:
@@ -86,7 +86,7 @@ fi
 FILESYSTEM=$(df -T "$DOCKER_ROOT" | tail -1 | awk '{print $2}')
 echo "Filesystem type: $FILESYSTEM"
 if [ "$FILESYSTEM" = "xfs" ]; then
-    FTYPE=$(xfs_info "$DOCKER_ROOT" 2>/dev/null | grep ftype | awk '{print $NF}')
+    FTYPE=$(xfs_info "$DOCKER_ROOT" 2>/dev/null | grep -o 'ftype=[0-9]' | cut -d= -f2)
     if [ "$FTYPE" != "1" ]; then
         echo "WARNING: XFS filesystem does not have ftype=1. overlay2 requires ftype=1."
     fi
@@ -95,7 +95,7 @@ fi
 
 ## Step 1: Back Up Everything
 
-This is the most critical step. Back up images, volumes, and container configurations.
+This is the most critical step. Back up images, volumes, and container configurations. If an application stores important data in a container writable layer instead of a Docker volume or bind mount, move that data to persistent storage or export it before proceeding.
 
 ```bash
 #!/bin/bash
@@ -104,6 +104,9 @@ This is the most critical step. Back up images, volumes, and container configura
 
 BACKUP_DIR="/opt/docker-migration-backup"
 mkdir -p "$BACKUP_DIR"/{images,volumes,configs}
+
+DOCKER_ROOT=$(docker info --format '{{.DockerRootDir}}')
+echo "$DOCKER_ROOT" > "${BACKUP_DIR}/docker-root"
 
 echo "=== Backing up Docker data ==="
 echo "Backup directory: $BACKUP_DIR"
@@ -119,7 +122,7 @@ done
 
 # Save all images in a single archive as a fallback
 echo "  Creating combined archive..."
-ALL_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | tr '\n' ' ')
+ALL_IMAGES=$(docker images -q | sort -u | tr '\n' ' ')
 if [ -n "$ALL_IMAGES" ]; then
     docker save $ALL_IMAGES | gzip > "${BACKUP_DIR}/images/all-images.tar.gz"
 fi
@@ -160,11 +163,14 @@ echo "Location: $BACKUP_DIR"
 
 ```bash
 # Stop all running containers gracefully
-docker stop $(docker ps -q) 2>/dev/null
+RUNNING_CONTAINERS=$(docker ps -q)
+if [ -n "$RUNNING_CONTAINERS" ]; then
+    docker stop $RUNNING_CONTAINERS
+fi
 
 # Stop the Docker daemon
-sudo systemctl stop docker
 sudo systemctl stop docker.socket
+sudo systemctl stop docker
 
 # Verify Docker is fully stopped
 sudo systemctl status docker
@@ -176,7 +182,8 @@ Do not delete the old data. Rename it so you can recover if something goes wrong
 
 ```bash
 # Rename the existing Docker data directory
-DOCKER_ROOT=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo "/var/lib/docker")
+BACKUP_DIR="/opt/docker-migration-backup"
+DOCKER_ROOT=$(cat "${BACKUP_DIR}/docker-root" 2>/dev/null || echo "/var/lib/docker")
 sudo mv "$DOCKER_ROOT" "${DOCKER_ROOT}.bak-$(date +%Y%m%d)"
 
 # Create a fresh data directory
@@ -192,9 +199,6 @@ Edit the Docker daemon configuration to use the new driver:
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
     "storage-driver": "overlay2",
-    "storage-opts": [
-        "overlay2.override_kernel_check=true"
-    ],
     "log-driver": "json-file",
     "log-opts": {
         "max-size": "50m",
@@ -378,23 +382,28 @@ If the migration fails, roll back to the original storage driver:
 # rollback-migration.sh
 # Rolls back to the previous storage driver if the migration fails
 
-DOCKER_ROOT="/var/lib/docker"
-BACKUP_DATE=$(ls -d ${DOCKER_ROOT}.bak-* 2>/dev/null | head -1 | sed 's/.*bak-//')
+BACKUP_DIR="/opt/docker-migration-backup"
+DOCKER_ROOT=$(cat "${BACKUP_DIR}/docker-root" 2>/dev/null || echo "/var/lib/docker")
+OLD_DOCKER_ROOT=$(ls -dt "${DOCKER_ROOT}".bak-* 2>/dev/null | head -1)
 
 echo "=== Rolling back storage driver migration ==="
 
+if [ -z "$OLD_DOCKER_ROOT" ]; then
+    echo "No backup Docker root found for rollback"
+    exit 1
+fi
+
 # Stop Docker
-sudo systemctl stop docker
 sudo systemctl stop docker.socket
+sudo systemctl stop docker
 
 # Remove the new (failed) data directory
 sudo rm -rf "$DOCKER_ROOT"
 
 # Restore the original data directory
-sudo mv "${DOCKER_ROOT}.bak-${BACKUP_DATE}" "$DOCKER_ROOT"
+sudo mv "$OLD_DOCKER_ROOT" "$DOCKER_ROOT"
 
 # Restore the original daemon.json
-BACKUP_DIR="/opt/docker-migration-backup"
 if [ -f "${BACKUP_DIR}/daemon.json" ]; then
     sudo cp "${BACKUP_DIR}/daemon.json" /etc/docker/daemon.json
 else
@@ -418,8 +427,9 @@ Once you have verified the migration is successful and everything is working cor
 
 ```bash
 # Remove the old Docker data directory (only after thorough verification)
-DOCKER_ROOT="/var/lib/docker"
-OLD_DIR=$(ls -d ${DOCKER_ROOT}.bak-* 2>/dev/null)
+BACKUP_DIR="/opt/docker-migration-backup"
+DOCKER_ROOT=$(cat "${BACKUP_DIR}/docker-root" 2>/dev/null || echo "/var/lib/docker")
+OLD_DIR=$(ls -d "${DOCKER_ROOT}".bak-* 2>/dev/null)
 
 if [ -n "$OLD_DIR" ]; then
     echo "Old Docker data directory: $OLD_DIR"
