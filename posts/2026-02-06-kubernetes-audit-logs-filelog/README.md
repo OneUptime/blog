@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Kubernetes, Audit Log, Security, Filelog Receiver
 
 Description: Parse Kubernetes API server audit logs in JSON format using the OpenTelemetry filelog receiver and extract request metadata.
 
-Kubernetes audit logs record every request made to the API server. They are essential for security monitoring, compliance, and debugging access issues. These logs are JSON-formatted and contain detailed request metadata including the user, resource, verb, and response status. Parsing them with the filelog receiver turns them into structured OpenTelemetry logs you can query and alert on.
+Kubernetes audit logs can record requests made to the API server based on the audit policy you configure. They are essential for security monitoring, compliance, and debugging access issues. These logs are JSON-formatted and contain detailed request metadata including the user, resource, verb, and response status. Parsing them with the filelog receiver turns them into structured OpenTelemetry logs you can query and alert on.
 
 ## Kubernetes Audit Log Format
 
@@ -51,9 +51,10 @@ receivers:
     operators:
       # Parse the JSON audit log entry
       - type: json_parser
+        parse_ints: true
         timestamp:
           parse_from: attributes.stageTimestamp
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+          layout: "%Y-%m-%dT%H:%M:%S.%fZ"
 
       # Extract key fields into well-named attributes
       - type: move
@@ -74,9 +75,9 @@ receivers:
 
       # Extract user information
       - type: move
-        from: attributes["user.username"]
+        from: attributes.user.username
         to: attributes["k8s.audit.user"]
-        if: 'attributes["user.username"] != nil'
+        if: 'attributes.user.username != nil'
       - type: move
         from: attributes.userAgent
         to: attributes["user_agent.original"]
@@ -84,28 +85,28 @@ receivers:
 
       # Extract object reference
       - type: move
-        from: attributes["objectRef.resource"]
+        from: attributes.objectRef.resource
         to: attributes["k8s.audit.resource"]
-        if: 'attributes["objectRef.resource"] != nil'
+        if: 'attributes.objectRef.resource != nil'
       - type: move
-        from: attributes["objectRef.namespace"]
+        from: attributes.objectRef.namespace
         to: attributes["k8s.audit.namespace"]
-        if: 'attributes["objectRef.namespace"] != nil'
+        if: 'attributes.objectRef.namespace != nil'
 
       # Extract response status
       - type: move
-        from: attributes["responseStatus.code"]
+        from: attributes.responseStatus.code
         to: attributes["k8s.audit.response_code"]
-        if: 'attributes["responseStatus.code"] != nil'
+        if: 'attributes.responseStatus.code != nil'
 
       # Set severity based on response code
       - type: severity_parser
         parse_from: attributes["k8s.audit.response_code"]
         if: 'attributes["k8s.audit.response_code"] != nil'
         mapping:
-          error: ["401", "403", "500", "502", "503"]
-          warn: ["404", "409", "429"]
-          info: ["200", "201", "204"]
+          error: [401, 403, 5xx]
+          warn: [404, 409, 429]
+          info: 2xx
 
       # Clean up nested objects we have already extracted from
       - type: remove
@@ -131,9 +132,10 @@ receivers:
     start_at: end
     operators:
       - type: json_parser
+        parse_ints: true
         timestamp:
           parse_from: attributes.stageTimestamp
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+          layout: "%Y-%m-%dT%H:%M:%S.%fZ"
       - type: move
         from: attributes.verb
         to: attributes["k8s.audit.verb"]
@@ -141,21 +143,21 @@ receivers:
         from: attributes.requestURI
         to: attributes["k8s.audit.request_uri"]
       - type: move
-        from: attributes["user.username"]
+        from: attributes.user.username
         to: attributes["k8s.audit.user"]
-        if: 'attributes["user.username"] != nil'
+        if: 'attributes.user.username != nil'
       - type: move
-        from: attributes["objectRef.resource"]
+        from: attributes.objectRef.resource
         to: attributes["k8s.audit.resource"]
-        if: 'attributes["objectRef.resource"] != nil'
+        if: 'attributes.objectRef.resource != nil'
       - type: move
-        from: attributes["objectRef.namespace"]
+        from: attributes.objectRef.namespace
         to: attributes["k8s.audit.namespace"]
-        if: 'attributes["objectRef.namespace"] != nil'
+        if: 'attributes.objectRef.namespace != nil'
       - type: move
-        from: attributes["responseStatus.code"]
+        from: attributes.responseStatus.code
         to: attributes["k8s.audit.response_code"]
-        if: 'attributes["responseStatus.code"] != nil'
+        if: 'attributes.responseStatus.code != nil'
 
 processors:
   resource:
@@ -169,16 +171,12 @@ processors:
 
   # Filter out noisy audit events
   filter/reduce-noise:
-    logs:
-      exclude:
-        match_type: regexp
-        record_attributes:
-          # Drop health check audit logs
-          - key: k8s.audit.request_uri
-            value: "^/healthz|^/readyz|^/livez"
-          # Drop watch events (very high volume)
-          - key: k8s.audit.verb
-            value: "^watch$"
+    error_mode: ignore
+    log_conditions:
+      # Drop health check audit logs
+      - IsMatch(String(log.attributes["k8s.audit.request_uri"]), "^/(healthz|readyz|livez)")
+      # Drop watch events (very high volume)
+      - log.attributes["k8s.audit.verb"] == "watch"
 
   batch:
     timeout: 5s
@@ -202,16 +200,10 @@ For security monitoring, you probably care most about specific audit events. Fil
 ```yaml
 processors:
   filter/security-events:
-    logs:
-      include:
-        match_type: regexp
-        record_attributes:
-          # Keep only authentication/authorization events
-          - key: k8s.audit.verb
-            value: "^(create|delete|patch|update)$"
-          # Keep failed requests
-          - key: k8s.audit.response_code
-            value: "^(401|403|500)$"
+    error_mode: ignore
+    log_conditions:
+      # Drop events unless they are mutating requests or failed requests
+      - not IsMatch(String(log.attributes["k8s.audit.verb"]), "^(create|delete|patch|update)$") and not IsMatch(String(log.attributes["k8s.audit.response_code"]), "^(401|403|500)$")
 ```
 
 ## Monitoring for Privilege Escalation
@@ -225,10 +217,10 @@ processors:
       - context: log
         statements:
           # Flag ClusterRole and ClusterRoleBinding changes
-          - set(attributes["security.alert"], "privilege_change") where attributes["k8s.audit.resource"] == "clusterroles" and attributes["k8s.audit.verb"] == "create"
-          - set(attributes["security.alert"], "privilege_change") where attributes["k8s.audit.resource"] == "clusterrolebindings" and attributes["k8s.audit.verb"] == "create"
+          - set(log.attributes["security.alert"], "privilege_change") where log.attributes["k8s.audit.resource"] == "clusterroles" and log.attributes["k8s.audit.verb"] == "create"
+          - set(log.attributes["security.alert"], "privilege_change") where log.attributes["k8s.audit.resource"] == "clusterrolebindings" and log.attributes["k8s.audit.verb"] == "create"
           # Flag secret access
-          - set(attributes["security.alert"], "secret_access") where attributes["k8s.audit.resource"] == "secrets" and attributes["k8s.audit.verb"] == "get"
+          - set(log.attributes["security.alert"], "secret_access") where log.attributes["k8s.audit.resource"] == "secrets" and log.attributes["k8s.audit.verb"] == "get"
 ```
 
 ## Configuring the Kubernetes Audit Policy
@@ -241,7 +233,7 @@ To keep audit log volume manageable, configure the audit policy on your API serv
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log authentication failures at RequestResponse level
+  # Log anonymous requests at RequestResponse level
   - level: RequestResponse
     users: ["system:anonymous"]
   # Log secret access at Metadata level
@@ -249,7 +241,7 @@ rules:
     resources:
       - group: ""
         resources: ["secrets"]
-  # Log everything else at Request level
+  # Log other core API resources at Request level
   - level: Request
     resources:
       - group: ""
