@@ -56,6 +56,8 @@ Before instrumenting WebSockets, you need the base OpenTelemetry setup in the br
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
   @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/exporter-metrics-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
@@ -67,14 +69,18 @@ Then initialize the tracer provider in your application entry point:
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
-import { trace } from '@opentelemetry/api';
+import { metrics, trace } from '@opentelemetry/api';
 
 // Create a resource that identifies your application
-const resource = new Resource({
-  [ATTR_SERVICE_NAME]: 'my-frontend-app',
-});
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-frontend-app',
+  }),
+);
 
 // Configure the OTLP exporter to send traces to your backend
 const exporter = new OTLPTraceExporter({
@@ -82,9 +88,25 @@ const exporter = new OTLPTraceExporter({
 });
 
 // Set up the tracer provider with batch processing
-const provider = new WebTracerProvider({ resource });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 provider.register();
+
+// Set up metrics export so calls to metrics.getMeter() produce data
+const metricExporter = new OTLPMetricExporter({
+  url: 'https://otel-collector.example.com/v1/metrics',
+});
+const meterProvider = new MeterProvider({
+  resource,
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+    }),
+  ],
+});
+metrics.setGlobalMeterProvider(meterProvider);
 
 // Export a helper to get a named tracer
 export function getTracer(name = 'websocket-instrumentation') {
@@ -100,10 +122,26 @@ The core idea is to wrap the native WebSocket constructor with a version that em
 
 ```javascript
 // src/instrumented-websocket.js
-import { SpanStatusCode, SpanKind, context, trace } from '@opentelemetry/api';
+import { SpanStatusCode, SpanKind } from '@opentelemetry/api';
 import { getTracer } from './tracing';
 
 const tracer = getTracer();
+
+function getMessageSize(data) {
+  if (typeof data === 'string') {
+    return new TextEncoder().encode(data).byteLength;
+  }
+  if (data instanceof Blob) {
+    return data.size;
+  }
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength;
+  }
+  return 0;
+}
 
 export class InstrumentedWebSocket {
   constructor(url, protocols) {
@@ -111,6 +149,7 @@ export class InstrumentedWebSocket {
     this.messagesSent = 0;
     this.messagesReceived = 0;
     this.connectTime = null;
+    this.connectSpanEnded = false;
 
     // Start a span for the connection handshake
     this.connectSpan = tracer.startSpan('ws.connect', {
@@ -122,11 +161,18 @@ export class InstrumentedWebSocket {
     });
 
     // Create the actual WebSocket connection
-    this.ws = new WebSocket(url, protocols);
+    this.ws = protocols === undefined ? new WebSocket(url) : new WebSocket(url, protocols);
     this.connectTime = performance.now();
 
     // Attach lifecycle event handlers
     this._attachHandlers();
+  }
+
+  _endConnectSpan(status) {
+    if (this.connectSpanEnded) return;
+    this.connectSpan.setStatus(status);
+    this.connectSpan.end();
+    this.connectSpanEnded = true;
   }
 
   _attachHandlers() {
@@ -134,8 +180,7 @@ export class InstrumentedWebSocket {
     this.ws.onopen = (event) => {
       const elapsed = performance.now() - this.connectTime;
       this.connectSpan.setAttribute('ws.connect_duration_ms', elapsed);
-      this.connectSpan.setStatus({ code: SpanStatusCode.OK });
-      this.connectSpan.end();
+      this._endConnectSpan({ code: SpanStatusCode.OK });
 
       // Start a long-running session span
       this.sessionSpan = tracer.startSpan('ws.session', {
@@ -151,11 +196,10 @@ export class InstrumentedWebSocket {
 
     // Track connection errors
     this.ws.onerror = (event) => {
-      this.connectSpan.setStatus({
+      this._endConnectSpan({
         code: SpanStatusCode.ERROR,
         message: 'WebSocket connection error',
       });
-      this.connectSpan.end();
 
       if (this._onerror) this._onerror(event);
     };
@@ -167,7 +211,7 @@ export class InstrumentedWebSocket {
         kind: SpanKind.CLIENT,
         attributes: {
           'ws.url': this.url,
-          'ws.message_size': event.data.length || 0,
+          'ws.message_size': getMessageSize(event.data),
           'ws.messages_received_total': this.messagesReceived,
         },
       });
@@ -207,7 +251,7 @@ export class InstrumentedWebSocket {
       kind: SpanKind.CLIENT,
       attributes: {
         'ws.url': this.url,
-        'ws.message_size': data.length || 0,
+        'ws.message_size': getMessageSize(data),
         'ws.messages_sent_total': this.messagesSent,
       },
     });
@@ -262,7 +306,7 @@ ws.onerror = () => {
 };
 ```
 
-This is a drop-in replacement. The instrumented version captures all the telemetry in the background while your application code stays clean.
+For code that uses `onopen`, `onmessage`, `onclose`, `onerror`, `send`, and `close`, this can replace the native WebSocket directly. If your application reads other WebSocket properties such as `readyState`, `protocol`, or `bufferedAmount`, proxy those properties on the wrapper as well.
 
 ## Tracking Reconnection Attempts
 
@@ -272,7 +316,6 @@ Real applications need reconnection logic. You can track reconnection attempts a
 // src/resilient-websocket.js
 import { InstrumentedWebSocket } from './instrumented-websocket';
 import { getTracer } from './tracing';
-import { SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = getTracer();
 
@@ -318,7 +361,7 @@ export class ResilientWebSocket {
 }
 ```
 
-The exponential backoff delay is recorded as a span attribute. This helps you understand whether your reconnection strategy is working well or if users are stuck in long retry loops.
+The increasing backoff delay is recorded as a span attribute. This helps you understand whether your reconnection strategy is working well or if users are stuck in long retry loops.
 
 ## Adding Metrics for Aggregate Analysis
 
@@ -354,7 +397,12 @@ export function recordConnectionOpened(url) {
 
 export function recordMessageSent(url, sizeBytes) {
   messageCounter.add(1, { 'ws.url': url, 'ws.direction': 'sent' });
-  messageSizeHistogram.record(sizeBytes, { 'ws.url': url });
+  messageSizeHistogram.record(sizeBytes, { 'ws.url': url, 'ws.direction': 'sent' });
+}
+
+export function recordMessageReceived(url, sizeBytes) {
+  messageCounter.add(1, { 'ws.url': url, 'ws.direction': 'received' });
+  messageSizeHistogram.record(sizeBytes, { 'ws.url': url, 'ws.direction': 'received' });
 }
 
 export function recordConnectionClosed(url, durationMs, closeCode) {
