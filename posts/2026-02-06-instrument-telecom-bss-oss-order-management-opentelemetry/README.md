@@ -27,7 +27,6 @@ A typical telecom BSS/OSS order flow touches these systems:
 
 from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode, SpanKind
-from opentelemetry.context import attach, detach
 import time
 
 tracer = trace.get_tracer("bss.order_management")
@@ -137,10 +136,14 @@ class OrderTracer:
                 with tracer.start_as_current_span(
                     f"bss.inventory.allocate.{spec.resource_type}"
                 ) as alloc_span:
-                    alloc_span.set_attributes({
+                    allocation_attributes = {
                         "bss.resource_type": spec.resource_type,
-                        "bss.location": self.order_data.get("service_address"),
-                    })
+                    }
+                    service_address = self.order_data.get("service_address")
+                    if service_address:
+                        allocation_attributes["bss.location"] = service_address
+
+                    alloc_span.set_attributes(allocation_attributes)
 
                     resource = allocate_resource(spec)
 
@@ -244,7 +247,8 @@ class OrderTracer:
             span.set_attributes({
                 "bss.billing.account_id": billing_result.account_id,
                 "bss.billing.plan_id": billing_result.plan_id,
-                "bss.billing.effective_date": billing_result.effective_date,
+                "bss.billing.effective_date":
+                    str(billing_result.effective_date),
             })
 
             elapsed = (time.time() - start) * 1000
