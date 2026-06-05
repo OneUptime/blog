@@ -17,8 +17,7 @@ Baggage is a set of key-value pairs that propagates alongside trace context thro
 When a user enters the checkout flow, the experiment service determines their variant and sets it as baggage.
 
 ```python
-from opentelemetry import baggage, trace, context
-from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry import baggage, trace
 
 tracer = trace.get_tracer("checkout.experiment")
 
@@ -54,6 +53,7 @@ Make sure your HTTP client middleware attaches baggage headers. The W3C Baggage 
 ```python
 import requests
 from opentelemetry.context import attach, detach
+from opentelemetry.propagate import inject
 
 class CheckoutOrchestrator:
     def process_checkout(self, user_id: str, cart: dict):
@@ -96,6 +96,13 @@ class CheckoutOrchestrator:
             )
 
             return self._finalize_order(cart, inventory, tax, fraud)
+
+    def _call_service(self, url: str, payload: dict):
+        headers = {}
+        inject(headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response.raise_for_status()
+        return response.json()
 ```
 
 ## Reading Baggage in Downstream Services
@@ -103,8 +110,11 @@ class CheckoutOrchestrator:
 Each downstream service reads the experiment baggage and attaches it to its own telemetry. This way, you can slice metrics by variant in every service.
 
 ```python
-from opentelemetry import baggage, metrics
+import time
 
+from opentelemetry import baggage, metrics, trace
+
+tracer = trace.get_tracer("payment.service")
 meter = metrics.get_meter("payment.service")
 
 payment_duration = meter.create_histogram(
@@ -157,7 +167,7 @@ With variant labels on both traces and metrics across all services, you can buil
 CONVERSION_QUERY = """
 SELECT
     attributes['experiment.variant'] as variant,
-    countIf(name = 'checkout.process' AND status = 'OK') as successes,
+    countIf(name = 'checkout.process' AND status != 'ERROR') as successes,
     count(name = 'checkout.process') as attempts,
     successes / attempts as conversion_rate
 FROM spans
