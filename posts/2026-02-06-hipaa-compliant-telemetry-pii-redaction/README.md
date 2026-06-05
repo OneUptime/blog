@@ -6,7 +6,7 @@ Tags: OpenTelemetry, HIPAA, PII Redaction, Healthcare
 
 Description: Build HIPAA-compliant OpenTelemetry pipelines that automatically redact PHI from traces, logs, and metrics before export.
 
-If you work in healthcare or handle Protected Health Information (PHI), shipping telemetry data to an observability backend requires careful thought. HIPAA does not ban you from using observability tools, but it does require that PHI is either removed or encrypted before it leaves your controlled environment. OpenTelemetry gives you the pipeline primitives to do exactly that.
+If you work in healthcare or handle Protected Health Information (PHI), shipping telemetry data to an observability backend requires careful thought. HIPAA does not ban you from using observability tools, but it does require appropriate safeguards for electronic PHI, including transmission security and access controls. Removing PHI before export, or encrypting it when encryption is appropriate for your risk assessment, is a strong way to reduce exposure. OpenTelemetry gives you the pipeline primitives to do exactly that.
 
 This post covers how to configure OpenTelemetry Collectors and SDK-level instrumentation to strip PHI from your telemetry data before it reaches any external backend.
 
@@ -23,15 +23,15 @@ The HIPAA Security Rule (45 CFR 164.312) requires technical safeguards for any s
 
 ## SDK-Level Redaction with Span Processors
 
-The best place to redact PHI is at the source, before data ever leaves the application process. You can write a custom SpanProcessor that scrubs sensitive attributes.
+The best place to redact PHI is at the source, before data ever leaves the application process. You can write a custom SpanProcessor that scrubs sensitive attributes set when a span starts, and use the same scrubber whenever your application adds custom attributes.
 
 Here is a Python example that redacts known PHI attribute patterns:
 
 ```python
 # Custom SpanProcessor that redacts PHI attributes before export
 
-from opentelemetry.sdk.trace import SpanProcessor
 import re
+from opentelemetry.sdk.trace import SpanProcessor
 
 # Patterns that match common PHI fields
 PHI_ATTRIBUTE_PATTERNS = [
@@ -45,13 +45,32 @@ PHI_ATTRIBUTE_PATTERNS = [
 
 REDACTED = "[REDACTED-PHI]"
 
+def redact_value(value):
+    """Scan string values for SSN and MRN patterns."""
+    if isinstance(value, str):
+        # Redact SSN patterns (xxx-xx-xxxx)
+        value = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", REDACTED, value)
+        # Redact MRN patterns (common 8-10 digit format)
+        value = re.sub(r"\bMRN\d{8,10}\b", REDACTED, value)
+    return value
+
+
+def clean_attribute(key, value):
+    if any(p.search(key) for p in PHI_ATTRIBUTE_PATTERNS):
+        return REDACTED
+    return redact_value(value)
+
+
 class PHIRedactionProcessor(SpanProcessor):
     def on_start(self, span, parent_context=None):
-        pass
+        if not span.is_recording():
+            return
+
+        for key, value in dict(span.attributes or {}).items():
+            span.set_attribute(key, clean_attribute(key, value))
 
     def on_end(self, span):
-        # SpanProcessor.on_end receives a ReadableSpan,
-        # so we redact during on_start or use a custom exporter wrapper.
+        # on_end receives a ReadableSpan, which is read-only in the Python SDK.
         pass
 
     def force_flush(self, timeout_millis=None):
@@ -61,36 +80,9 @@ class PHIRedactionProcessor(SpanProcessor):
         pass
 
 
-class PHIRedactingExporter:
-    """Wraps any SpanExporter to redact PHI before export."""
-
-    def __init__(self, delegate_exporter):
-        self._delegate = delegate_exporter
-
-    def export(self, spans):
-        redacted_spans = []
-        for span in spans:
-            # Build a new attributes dict with PHI redacted
-            clean_attrs = {}
-            for key, value in span.attributes.items():
-                if any(p.search(key) for p in PHI_ATTRIBUTE_PATTERNS):
-                    clean_attrs[key] = REDACTED
-                else:
-                    clean_attrs[key] = self._redact_value(value)
-            # Create modified span data (implementation depends on your SDK version)
-            redacted_spans.append(
-                span._replace(attributes=clean_attrs)
-            )
-        return self._delegate.export(redacted_spans)
-
-    def _redact_value(self, value):
-        """Scan string values for SSN and MRN patterns."""
-        if isinstance(value, str):
-            # Redact SSN patterns (xxx-xx-xxxx)
-            value = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", REDACTED, value)
-            # Redact MRN patterns (common 8-10 digit format)
-            value = re.sub(r"\bMRN\d{8,10}\b", REDACTED, value)
-        return value
+def set_safe_attribute(span, key, value):
+    """Use this instead of span.set_attribute for application-owned attributes."""
+    span.set_attribute(key, clean_attribute(key, value))
 ```
 
 ## Collector-Level Redaction with the Transform Processor
@@ -110,44 +102,32 @@ receivers:
 processors:
   # Redact known PHI attributes
   transform/redact_phi:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Replace patient IDs in URL paths
-          - replace_pattern(attributes["url.path"],
-              "/patients/[0-9]+",
-              "/patients/[REDACTED]")
-          # Scrub SSN patterns from all string attributes
-          - replace_pattern(attributes["db.statement"],
-              "[0-9]{3}-[0-9]{2}-[0-9]{4}",
-              "[REDACTED-SSN]")
-          # Remove specific PHI attributes entirely
-          - delete_key(attributes, "patient.name")
-          - delete_key(attributes, "patient.dob")
-          - delete_key(attributes, "patient.ssn")
+      # Replace patient IDs in URL paths
+      - replace_pattern(span.attributes["url.path"], "/patients/[0-9]+", "/patients/[REDACTED]")
+      # Scrub SSN patterns from database query text
+      - replace_pattern(span.attributes["db.query.text"], "[0-9]{3}-[0-9]{2}-[0-9]{4}", "[REDACTED-SSN]")
+      - replace_pattern(span.attributes["db.statement"], "[0-9]{3}-[0-9]{2}-[0-9]{4}", "[REDACTED-SSN]")
+      # Remove specific PHI attributes entirely
+      - delete_key(span.attributes, "patient.name")
+      - delete_key(span.attributes, "patient.dob")
+      - delete_key(span.attributes, "patient.ssn")
 
     log_statements:
-      - context: log
-        statements:
-          # Redact PHI from log bodies
-          - replace_pattern(body,
-              "SSN:\\s*[0-9]{3}-[0-9]{2}-[0-9]{4}",
-              "SSN: [REDACTED]")
-          - replace_pattern(body,
-              "DOB:\\s*[0-9]{4}-[0-9]{2}-[0-9]{2}",
-              "DOB: [REDACTED]")
+      # Redact PHI from log bodies
+      - replace_pattern(log.body, "SSN:\\s*[0-9]{3}-[0-9]{2}-[0-9]{4}", "SSN: [REDACTED]")
+      - replace_pattern(log.body, "DOB:\\s*[0-9]{4}-[0-9]{2}-[0-9]{2}", "DOB: [REDACTED]")
 
   # Enforce an attribute allowlist - only permit known-safe attributes
-  attributes/allowlist:
-    actions:
-      - key: http.method
-        action: update
-      - key: http.status_code
-        action: update
-      - key: service.name
-        action: update
-      # Everything not explicitly listed gets dropped
-      # by using the filter processor downstream
+  transform/allowlist:
+    error_mode: ignore
+    trace_statements:
+      - keep_keys(span.attributes, ["http.method", "http.request.method", "http.status_code", "http.response.status_code", "http.route"])
+      - keep_keys(resource.attributes, ["service.name"])
+    log_statements:
+      - keep_keys(log.attributes, ["http.method", "http.request.method", "http.status_code", "http.response.status_code", "http.route"])
+      - keep_keys(resource.attributes, ["service.name"])
 
   batch:
     timeout: 10s
@@ -163,11 +143,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/redact_phi, batch]
+      processors: [transform/redact_phi, transform/allowlist, batch]
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [transform/redact_phi, batch]
+      processors: [transform/redact_phi, transform/allowlist, batch]
       exporters: [otlp]
 ```
 
@@ -175,22 +155,16 @@ service:
 
 One of the most common PHI leaks is patient identifiers embedded in REST API paths. Use the `http.route` attribute instead of `http.url` or `url.path` wherever possible, since the route template (`/patients/{id}/records`) does not contain actual identifiers.
 
-Configure your HTTP instrumentation to prefer route templates:
+Configure your HTTP instrumentation so Flask can emit route templates:
 
 ```python
-# Configure Flask instrumentation to use route templates
+from flask import Flask
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-# The url_filter hook lets you clean URLs before they become span attributes
-def sanitize_url(url):
-    """Replace path segments that look like IDs with placeholders."""
-    import re
-    # Replace numeric path segments
-    return re.sub(r"/\d+", "/{id}", url)
+app = Flask(__name__)
 
-FlaskInstrumentor().instrument(
-    url_filter=sanitize_url,
-)
+# Flask instrumentation sets the http.route span attribute from the matched route.
+FlaskInstrumentor().instrument_app(app)
 ```
 
 ## Validating That Redaction Actually Works
