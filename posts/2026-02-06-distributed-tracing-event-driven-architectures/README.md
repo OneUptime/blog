@@ -62,7 +62,9 @@ def publish_order_created(order, publisher):
     with tracer.start_as_current_span("order.publish.OrderCreated") as span:
         # Add event metadata to the span for debugging
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.destination", "orders.created")
+        span.set_attribute("messaging.destination.name", "orders.created")
+        span.set_attribute("messaging.operation.name", "send")
+        span.set_attribute("messaging.operation.type", "send")
         span.set_attribute("app.order.id", order["id"])
 
         # Inject the current trace context into a carrier dict
@@ -88,7 +90,7 @@ tracer = trace.get_tracer("inventory-service")
 def handle_order_created(message):
     """Process an event, continuing the trace from the producer."""
     # Extract the trace context from the incoming message headers
-    # This creates a context linked to the producer's span
+    # This returns a context containing the producer's span context
     ctx = extract(carrier=message.headers)
 
     # Start a new span as a child of the extracted context
@@ -98,8 +100,10 @@ def handle_order_created(message):
         kind=trace.SpanKind.CONSUMER,
     ) as span:
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.source", "orders.created")
-        span.set_attribute("messaging.message_id", message.id)
+        span.set_attribute("messaging.destination.name", "orders.created")
+        span.set_attribute("messaging.operation.name", "process")
+        span.set_attribute("messaging.operation.type", "process")
+        span.set_attribute("messaging.message.id", message.id)
 
         # Your business logic here
         reserve_inventory(message.value)
@@ -135,6 +139,8 @@ def publish_event(topic: str, key: str, event: dict):
         # Set semantic convention attributes for messaging
         span.set_attribute("messaging.system", "kafka")
         span.set_attribute("messaging.destination.name", topic)
+        span.set_attribute("messaging.operation.name", "send")
+        span.set_attribute("messaging.operation.type", "send")
         span.set_attribute("messaging.kafka.message.key", key)
 
         # Inject trace context into headers
@@ -198,9 +204,11 @@ def process_messages():
             kind=trace.SpanKind.CONSUMER,
         ) as span:
             span.set_attribute("messaging.system", "kafka")
-            span.set_attribute("messaging.source.name", msg.topic())
-            span.set_attribute("messaging.kafka.consumer.group", "inventory-service")
-            span.set_attribute("messaging.kafka.partition", msg.partition())
+            span.set_attribute("messaging.destination.name", msg.topic())
+            span.set_attribute("messaging.operation.name", "process")
+            span.set_attribute("messaging.operation.type", "process")
+            span.set_attribute("messaging.consumer.group.name", "inventory-service")
+            span.set_attribute("messaging.destination.partition.id", str(msg.partition()))
             span.set_attribute("messaging.kafka.offset", msg.offset())
 
             # Process the event
@@ -257,6 +265,8 @@ def process_batch(messages):
     ) as span:
         span.set_attribute("messaging.batch.message_count", len(messages))
         span.set_attribute("messaging.system", "kafka")
+        span.set_attribute("messaging.operation.name", "process")
+        span.set_attribute("messaging.operation.type", "process")
 
         # Process the entire batch
         for msg in messages:
@@ -265,7 +275,7 @@ def process_batch(messages):
 
 ## Tracing Through RabbitMQ
 
-RabbitMQ also supports message headers, and the pattern is identical. If you're using the `pika` library in Python, here's how to inject and extract context:
+RabbitMQ also supports message headers, and the pattern is identical. If you're using the `pika` library in Python, here's how to inject context:
 
 ```python
 # rabbitmq_producer.py
@@ -283,8 +293,10 @@ def publish_to_rabbitmq(exchange: str, routing_key: str, event: dict):
         kind=trace.SpanKind.PRODUCER,
     ) as span:
         span.set_attribute("messaging.system", "rabbitmq")
-        span.set_attribute("messaging.destination.name", exchange)
-        span.set_attribute("messaging.rabbitmq.routing_key", routing_key)
+        span.set_attribute("messaging.destination.name", f"{exchange}:{routing_key}")
+        span.set_attribute("messaging.operation.name", "publish")
+        span.set_attribute("messaging.operation.type", "send")
+        span.set_attribute("messaging.rabbitmq.destination.routing_key", routing_key)
 
         # Inject trace context into a headers dict
         trace_headers = {}
