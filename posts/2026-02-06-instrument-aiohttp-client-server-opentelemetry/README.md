@@ -129,12 +129,21 @@ async def error_handler(request):
 
         return web.Response(status=500, text="Internal Server Error")
 
+async def create_user_handler(request):
+    """Endpoint that accepts a JSON payload and returns the created user"""
+    payload = await request.json()
+    current_span = trace.get_current_span()
+    current_span.set_attribute("user.email", payload.get("email", "unknown"))
+
+    return web.json_response({"status": "created", "user": payload}, status=201)
+
 # Create and configure the aiohttp application
 app = web.Application()
 app.router.add_get('/hello/{name}', hello_handler)
 app.router.add_get('/hello', hello_handler)
 app.router.add_get('/data', fetch_data_handler)
 app.router.add_get('/error', error_handler)
+app.router.add_post('/users', create_user_handler)
 
 # Instrument the aiohttp server before running
 AioHttpServerInstrumentor().instrument()
@@ -175,6 +184,12 @@ AioHttpClientInstrumentor().instrument()
 
 tracer = trace.get_tracer(__name__)
 
+async def fetch_url(session, url):
+    """Fetch a URL and consume the response body so the connection is released"""
+    async with session.get(url) as response:
+        await response.text()
+        return response.status
+
 async def make_http_requests():
     """Demonstrate instrumented HTTP client requests"""
 
@@ -196,9 +211,9 @@ async def make_http_requests():
             span.set_attribute("request.count", 3)
 
             tasks = [
-                session.get('http://localhost:8080/hello/Bob'),
-                session.get('http://localhost:8080/data'),
-                session.get('http://localhost:8080/hello/Charlie')
+                fetch_url(session, 'http://localhost:8080/hello/Bob'),
+                fetch_url(session, 'http://localhost:8080/data'),
+                fetch_url(session, 'http://localhost:8080/hello/Charlie')
             ]
 
             # Execute requests concurrently
@@ -232,20 +247,19 @@ if __name__ == '__main__':
 
 ## Configuring Custom Span Attributes
 
-You can customize the instrumentation to add specific attributes or filter requests.
+You can customize the instrumentation to add specific attributes or normalize request URLs.
 
 ```python
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
-from opentelemetry.trace import SpanKind
 
 def request_hook(span, params):
     """
     Hook called before request is sent.
     Allows adding custom attributes based on request parameters.
     """
-    # params contains: method, url, headers, etc.
-    if params.get("url"):
-        url = str(params["url"])
+    # params is an aiohttp.TraceRequestStartParams object.
+    if span and span.is_recording():
+        url = str(params.url)
         span.set_attribute("http.target", url)
 
         # Add custom attributes based on URL patterns
@@ -261,9 +275,10 @@ def response_hook(span, params):
     Hook called after response is received.
     Allows adding attributes based on response data.
     """
-    # params contains: response object
-    response = params.get("response")
-    if response:
+    # params is an aiohttp.TraceRequestEndParams or
+    # aiohttp.TraceRequestExceptionParams object.
+    response = getattr(params, "response", None)
+    if span and span.is_recording() and response:
         # Add custom response attributes
         span.set_attribute("response.content_type",
                           response.headers.get("Content-Type", "unknown"))
@@ -282,41 +297,42 @@ AioHttpClientInstrumentor().instrument(
 
 ## Server-Side Request Filtering
 
-For the server, you can filter which requests to trace based on URL patterns.
+For the server, you can filter which requests to trace based on URL patterns with the instrumentation's excluded URL environment variables. Add custom server attributes with regular aiohttp middleware.
 
 ```python
+import os
+from aiohttp import web
 from opentelemetry.instrumentation.aiohttp_server import AioHttpServerInstrumentor
+from opentelemetry import trace
 
-def server_request_hook(span, request):
+# Skip health check endpoints and static assets
+os.environ["OTEL_PYTHON_AIOHTTP_SERVER_EXCLUDED_URLS"] = (
+    "^/health$,^/healthz$,^/ping$,^/static/.*"
+)
+
+@web.middleware
+async def server_attribute_middleware(request, handler):
     """Add custom attributes to server spans"""
-    # Add request metadata
-    span.set_attribute("http.user_agent", request.headers.get("User-Agent", "unknown"))
-    span.set_attribute("http.client_ip", request.remote)
+    response = await handler(request)
+    span = trace.get_current_span()
 
-    # Add business context
-    if "X-User-ID" in request.headers:
-        span.set_attribute("user.id", request.headers["X-User-ID"])
+    if span and span.is_recording():
+        # Add request metadata
+        span.set_attribute("http.user_agent", request.headers.get("User-Agent", "unknown"))
+        span.set_attribute("http.client_ip", request.remote or "unknown")
 
-def should_trace(request):
-    """
-    Determine if request should be traced.
-    Return False to skip tracing for this request.
-    """
-    # Skip health check endpoints
-    if request.path in ["/health", "/healthz", "/ping"]:
-        return False
+        # Add business context
+        if "X-User-ID" in request.headers:
+            span.set_attribute("user.id", request.headers["X-User-ID"])
 
-    # Skip static assets
-    if request.path.startswith("/static/"):
-        return False
-
-    return True
+    return response
 
 # Instrument with filtering and hooks
 AioHttpServerInstrumentor().instrument(
-    server_request_hook=server_request_hook,
     tracer_provider=trace.get_tracer_provider()
 )
+
+app = web.Application(middlewares=[server_attribute_middleware])
 ```
 
 ## Complete Microservices Example
