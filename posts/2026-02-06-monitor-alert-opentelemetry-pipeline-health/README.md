@@ -54,15 +54,23 @@ Enable detailed internal metrics in your collector configuration:
 service:
   telemetry:
     metrics:
-      # Expose internal metrics on this address
-      address: 0.0.0.0:8888
       # Use "detailed" level to get per-component metrics
       # "normal" gives you basics, "detailed" gives you everything
       level: detailed
+      # Expose internal metrics on this address
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
+                # Keep the metric names used in the queries below
+                without_type_suffix: true
+                without_units: true
     logs:
       # Set log level to warn in production to avoid noise
       # Switch to debug temporarily when troubleshooting
-      level: warn
+      level: WARN
       # Structured logging makes it easier to parse
       encoding: json
 ```
@@ -90,13 +98,18 @@ rate(otelcol_receiver_refused_spans[5m])
 These tell you if data is being processed correctly:
 
 ```promql
-# Spans dropped by processors (memory limiter, filter, etc.)
-# This is a direct measure of data loss within the pipeline
-rate(otelcol_processor_dropped_spans[5m])
+# Processor input minus output, grouped by processor
+# A sustained positive value can indicate filtering or processor-side drops
+sum by (processor, instance) (rate(otelcol_processor_incoming_items[5m]))
+-
+sum by (processor, instance) (rate(otelcol_processor_outgoing_items[5m]))
 
-# Batch processor metrics -- how many spans are in each batch
+# Batch processor metrics -- how many items are in each sent batch
 # Small batch sizes mean you are not batching efficiently
-otelcol_processor_batch_batch_size_trigger_send{trigger="size"}
+otelcol_processor_batch_batch_send_size
+
+# Number of times batches were sent because they hit the configured size
+rate(otelcol_processor_batch_batch_size_trigger_send[5m])
 ```
 
 ### Exporter Metrics
@@ -115,9 +128,13 @@ rate(otelcol_exporter_send_failed_spans[5m])
 # Above 80% means you are close to dropping data
 otelcol_exporter_queue_size / otelcol_exporter_queue_capacity * 100
 
-# Number of in-flight exports
+# Number of queued export batches
 # High values indicate the backend is slow
 otelcol_exporter_queue_size
+
+# Number of export requests currently in flight
+# High values can indicate the backend is slow or retrying
+otelcol_exporter_in_flight_requests
 ```
 
 Resource Metrics
@@ -131,8 +148,9 @@ rate(otelcol_process_cpu_seconds[5m])
 # Collector memory usage in bytes
 otelcol_process_memory_rss
 
-# Go runtime metrics that indicate GC pressure
-go_gc_duration_seconds{quantile="0.99"}
+# Go runtime heap allocation metrics
+otelcol_process_runtime_heap_alloc_bytes
+rate(otelcol_process_runtime_total_alloc_bytes[5m])
 ```
 
 ## Setting Up Prometheus Scraping
@@ -156,6 +174,11 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
         replacement: ${1}:8888
+      # Keep Kubernetes labels needed for alert joins
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
 
   # Scrape gateway collectors running as StatefulSet/Deployment
   - job_name: 'otel-gateway'
@@ -168,6 +191,10 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
         replacement: ${1}:8888
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
 ```
 
 ## Alert Rules
@@ -242,19 +269,27 @@ groups:
       # Alert when data is being dropped by processors
       - alert: CollectorDroppingData
         expr: >
-          rate(otelcol_processor_dropped_spans[5m]) > 0
+          (
+            sum by (processor, instance) (rate(otelcol_processor_incoming_items[5m]))
+            -
+            sum by (processor, instance) (rate(otelcol_processor_outgoing_items[5m]))
+          ) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Collector {{ $labels.instance }} is dropping spans"
-          description: "{{ $value }} spans/sec are being dropped. Check memory limiter settings and collector resource usage."
+          summary: "Collector {{ $labels.instance }} processor output is lower than input"
+          description: "{{ $value }} items/sec are not leaving processor {{ $labels.processor }}. Check filter and memory limiter settings and collector resource usage."
 
       # Alert on high export failure rate (but not complete failure)
       - alert: CollectorExportPartialFailure
         expr: >
           rate(otelcol_exporter_send_failed_spans[5m]) /
-          (rate(otelcol_exporter_send_failed_spans[5m]) + rate(otelcol_exporter_sent_spans[5m]))
+          clamp_min(
+            rate(otelcol_exporter_send_failed_spans[5m]) +
+            rate(otelcol_exporter_sent_spans[5m]),
+            1
+          )
           > 0.05
         for: 10m
         labels:
@@ -266,7 +301,8 @@ groups:
       - alert: CollectorHighMemory
         expr: >
           otelcol_process_memory_rss /
-          on(pod) kube_pod_container_resource_limits{resource="memory"}
+          on(namespace, pod) group_left
+          kube_pod_container_resource_limits{resource="memory", container="collector"}
           > 0.85
         for: 10m
         labels:
@@ -299,7 +335,7 @@ groups:
       # without a restart (useful for tracking deployment cadence)
       - alert: CollectorLongUptime
         expr: >
-          (time() - otelcol_process_uptime) > 30 * 24 * 3600
+          otelcol_process_uptime > 30 * 24 * 3600
         labels:
           severity: info
         annotations:
@@ -338,14 +374,12 @@ spec:
           restartPolicy: OnFailure
 ```
 
-Then set up a query that checks if the synthetic traces are arriving at your backend:
+Then set up a backend-specific query that checks if the synthetic traces are arriving at your tracing backend. For example, in Grafana Tempo TraceQL:
 
-```promql
+```traceql
 # Track the arrival of synthetic probe traces
-# If this goes to zero, the pipeline is broken end-to-end
-count_over_time(
-  {service_name="pipeline-health-probe"}[5m]
-)
+# If this returns no traces, the pipeline is broken end-to-end
+{ resource.service.name = "pipeline-health-probe" }
 ```
 
 ## Grafana Dashboard
@@ -376,7 +410,7 @@ flowchart TD
         subgraph "Row 4: Resources"
             RS1["CPU Usage\n(per collector)"]
             RS2["Memory Usage\n(per collector)"]
-            RS3["GC Pauses\n(per collector)"]
+            RS3["Runtime Heap\n(per collector)"]
         end
     end
 ```
@@ -399,8 +433,8 @@ Here is a Grafana dashboard JSON snippet for the most important panels:
           "legendFormat": "Failed"
         },
         {
-          "expr": "sum(rate(otelcol_processor_dropped_spans[5m]))",
-          "legendFormat": "Dropped"
+          "expr": "sum(rate(otelcol_processor_incoming_items[5m])) - sum(rate(otelcol_processor_outgoing_items[5m]))",
+          "legendFormat": "Processor input-output delta"
         }
       ]
     },
@@ -450,7 +484,11 @@ For executive dashboards or SLO tracking, you can compute a composite pipeline h
   # Export success rate (weighted 50%)
   (1 - clamp_max(
     sum(rate(otelcol_exporter_send_failed_spans[5m])) /
-    sum(rate(otelcol_exporter_sent_spans[5m])),
+    clamp_min(
+      sum(rate(otelcol_exporter_send_failed_spans[5m])) +
+      sum(rate(otelcol_exporter_sent_spans[5m])),
+      1
+    ),
     1
   )) * 50
 
