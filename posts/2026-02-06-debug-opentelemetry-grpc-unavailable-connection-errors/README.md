@@ -151,6 +151,7 @@ If your collector is configured like this, your SDK must use TLS too:
 
 ```python
 # Python: Configure TLS to match the collector
+from grpc import ssl_channel_credentials
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # When collector uses TLS, do NOT set insecure=True
@@ -178,7 +179,7 @@ receivers:
 And then set insecure mode in your SDK:
 
 ```bash
-# Environment variable approach works across all SDKs
+# Environment variable approach for SDKs that support standard OTLP env vars
 export OTEL_EXPORTER_OTLP_INSECURE=true
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 ```
@@ -192,14 +193,13 @@ In containerized environments, DNS resolution is a common source of "Unavailable
 docker exec -it my-app-container nslookup otel-collector
 
 # In Kubernetes, test from a debug pod
-kubectl run -it --rm debug --image=busybox -- nslookup otel-collector.observability.svc.cluster.local
+kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup otel-collector.observability.svc.cluster.local
 ```
 
 In Docker Compose, services can reach each other by service name, but only if they share a network:
 
 ```yaml
 # docker-compose.yml: Both services must be on the same network
-version: '3.8'
 services:
   app:
     build: .
@@ -292,7 +292,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 exporter = OTLPSpanExporter(endpoint="http://collector:4318/v1/traces")
 ```
 
-Note that the HTTP exporter requires a path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) while the gRPC exporter does not.
+Note that when you configure a signal-specific HTTP exporter endpoint directly, you should include the path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) while the gRPC exporter does not need one.
 
 ## Systematic Debugging Checklist
 
@@ -329,9 +329,6 @@ If the checklist does not reveal the issue, enable debug logging in your SDK to 
 # Environment variable to enable debug logging (works for most SDKs)
 export OTEL_LOG_LEVEL=debug
 
-# For Python specifically
-export OTEL_PYTHON_LOG_LEVEL=debug
-
 # For the collector itself
 # In config.yaml:
 ```
@@ -345,7 +342,7 @@ service:
       encoding: console
 ```
 
-The debug logs will show you the exact connection attempts, DNS lookups, TLS handshakes, and error details that help pinpoint the root cause.
+The debug logs can show you more detail about connection attempts, exporter failures, collector errors, and related clues that help pinpoint the root cause.
 
 ## Conclusion
 
