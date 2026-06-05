@@ -75,7 +75,7 @@ otel-portal/
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const serviceName = process.env.OTEL_SERVICE_NAME;
@@ -83,7 +83,7 @@ if (!serviceName) {
   console.warn('[tracing] OTEL_SERVICE_NAME is not set. Traces will use "unknown-service".');
 }
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': serviceName || 'unknown-service',
   'service.version': process.env.SERVICE_VERSION || 'unknown',
   'deployment.environment': process.env.NODE_ENV || 'development',
@@ -128,12 +128,12 @@ console.log(`[tracing] Initialized for service: ${serviceName || 'unknown-servic
 {
   "// NOTE": "Add these dependencies to your existing package.json",
   "dependencies": {
-    "@opentelemetry/api": "^1.8.0",
-    "@opentelemetry/sdk-node": "^0.49.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.49.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.43.0",
-    "@opentelemetry/resources": "^1.22.0",
-    "@opentelemetry/sdk-trace-base": "^1.22.0"
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/sdk-trace-base": "^2.7.1"
   }
 }
 ```
@@ -261,8 +261,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-      - run: cd templates/node/basic-express && npm install
-      - run: cd templates/node/basic-express && node -e "require('./tracing')"
+      - run: cd templates/node/basic-express && cp package.json.template package.json && npm install
+      - run: cd templates/node/basic-express && OTEL_SERVICE_NAME=template-test OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:9 timeout 20s node -e "require('./tracing'); setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100)"
 ```
 
 This ensures templates do not break when dependencies are updated.
