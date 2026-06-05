@@ -42,13 +42,13 @@ Before configuring any SDK, you need certificates. For production, use your orga
 # Generate a CA (Certificate Authority) key and certificate.
 
 # This CA will sign both the server and client certificates.
-openssl genrsa -out ca.key 4096
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out ca.key
 openssl req -new -x509 -days 365 -key ca.key -out ca.crt \
   -subj "/CN=OTel CA/O=MyCompany"
 
 # Generate the server certificate for the collector.
 # The CN and SAN must match the hostname clients use to connect.
-openssl genrsa -out server.key 4096
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out server.key
 openssl req -new -key server.key -out server.csr \
   -subj "/CN=otel-collector.observability.svc"
 
@@ -59,7 +59,7 @@ openssl x509 -req -days 365 -in server.csr -CA ca.crt -CAkey ca.key \
 
 # Generate a client certificate for mTLS.
 # Each application or team can have its own client certificate.
-openssl genrsa -out client.key 4096
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out client.key
 openssl req -new -key client.key -out client.csr \
   -subj "/CN=my-application/O=MyCompany"
 
@@ -111,13 +111,14 @@ import (
     "crypto/x509"
     "os"
 
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "google.golang.org/grpc/credentials"
 )
 
 // createTLSExporter sets up an OTLP gRPC exporter with mTLS.
 // Both the server certificate is verified and a client certificate is presented.
-func createTLSExporter(ctx context.Context) (*otlptracegrpc.Exporter, error) {
+func createTLSExporter(ctx context.Context) (*otlptrace.Exporter, error) {
     // Load the CA certificate to verify the collector's identity
     caCert, err := os.ReadFile("/etc/otel/certs/ca.crt")
     if err != nil {
@@ -169,28 +170,26 @@ If you are configuring the SDK programmatically instead of using the agent:
 
 ```java
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 // Build a gRPC span exporter with mTLS support.
 // This configures both server verification and client certificate presentation.
-public OtlpGrpcSpanExporter createSecureExporter() throws Exception {
-    SslContext sslContext = SslContextBuilder.forClient()
-        // Trust the CA that signed the collector's certificate
-        .trustManager(new File("/etc/otel/certs/ca.crt"))
-        // Present client certificate for mTLS
-        .keyManager(
-            new File("/etc/otel/certs/client.crt"),
-            new File("/etc/otel/certs/client.key")
-        )
-        .build();
+public class TelemetryExporter {
+    public OtlpGrpcSpanExporter createSecureExporter() throws Exception {
+        byte[] trustedCertificates = Files.readAllBytes(Paths.get("/etc/otel/certs/ca.crt"));
+        byte[] clientKey = Files.readAllBytes(Paths.get("/etc/otel/certs/client.key"));
+        byte[] clientCertificate = Files.readAllBytes(Paths.get("/etc/otel/certs/client.crt"));
 
-    return OtlpGrpcSpanExporter.builder()
-        .setEndpoint("https://otel-collector.observability.svc:4317")
-        .setSslContext(sslContext)
-        .build();
+        return OtlpGrpcSpanExporter.builder()
+            .setEndpoint("https://otel-collector.observability.svc:4317")
+            // Trust the CA that signed the collector's certificate
+            .setTrustedCertificates(trustedCertificates)
+            // Present client certificate for mTLS. The key must be PKCS#8 PEM.
+            .setClientTls(clientKey, clientCertificate)
+            .build();
+    }
 }
 ```
 
@@ -210,22 +209,11 @@ export OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE="/etc/otel/certs/client.crt"
 For programmatic configuration:
 
 ```python
-import ssl
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-
-# Create an SSL context with mTLS configuration.
-# The CA cert verifies the server, and the client cert/key authenticate us.
-ssl_context = ssl.create_default_context(
-    cafile="/etc/otel/certs/ca.crt"
-)
-ssl_context.load_cert_chain(
-    certfile="/etc/otel/certs/client.crt",
-    keyfile="/etc/otel/certs/client.key",
-)
-
-# Pass the SSL credentials to the gRPC exporter
 from grpc import ssl_channel_credentials
 
+# Pass SSL credentials to the gRPC exporter.
+# The CA cert verifies the server, and the client cert/key authenticate us.
 credentials = ssl_channel_credentials(
     root_certificates=open("/etc/otel/certs/ca.crt", "rb").read(),
     private_key=open("/etc/otel/certs/client.key", "rb").read(),
@@ -312,4 +300,4 @@ Common problems and their solutions when setting up TLS for OTLP export:
 
 ## Conclusion
 
-Securing OTLP export with TLS and mTLS is straightforward once you understand the certificate chain. Every OpenTelemetry SDK supports TLS configuration through environment variables, making it possible to use the same approach regardless of programming language. For production environments, mTLS adds a strong authentication layer that ensures only authorized applications can send telemetry to your collector. Combined with certificate automation through tools like cert-manager, you get a secure telemetry pipeline that requires minimal ongoing maintenance.
+Securing OTLP export with TLS and mTLS is straightforward once you understand the certificate chain. The standard OTLP exporter environment variables give you a consistent configuration model across SDKs that implement them, while programmatic configuration remains available when you need language-specific control. For production environments, mTLS adds a strong authentication layer that ensures only authorized applications can send telemetry to your collector. Combined with certificate automation through tools like cert-manager, you get a secure telemetry pipeline that requires minimal ongoing maintenance.
