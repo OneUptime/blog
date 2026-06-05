@@ -50,7 +50,7 @@ sdk.start();
 Authentication is the first thing a patient does, and it needs to be fast and reliable:
 
 ```javascript
-const { trace, metrics } = require('@opentelemetry/api');
+const { trace, metrics, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('patient-portal', '1.0.0');
 const meter = metrics.getMeter('patient-portal', '1.0.0');
@@ -68,51 +68,71 @@ const loginAttempts = meter.createCounter('portal.auth.login_attempts_total', {
 async function authenticatePatient(req, res) {
   const authMethod = req.body.method || 'password'; // password, mfa, sso
 
-  const span = tracer.startSpan('portal.auth.login');
-  span.setAttribute('portal.auth.method', authMethod);
+  return tracer.startActiveSpan('portal.auth.login', async (span) => {
+    span.setAttribute('portal.auth.method', authMethod);
 
-  const start = Date.now();
+    const start = Date.now();
 
-  try {
-    // Step 1: Validate credentials
-    const credSpan = tracer.startSpan('portal.auth.validate_credentials');
-    const credResult = await validateCredentials(req.body);
-    credSpan.setAttribute('portal.auth.valid', credResult.valid);
-    credSpan.end();
+    try {
+      // Step 1: Validate credentials
+      const credResult = await tracer.startActiveSpan(
+        'portal.auth.validate_credentials',
+        async (credSpan) => {
+          try {
+            const result = await validateCredentials(req.body);
+            credSpan.setAttribute('portal.auth.valid', result.valid);
+            return result;
+          } finally {
+            credSpan.end();
+          }
+        }
+      );
 
-    if (!credResult.valid) {
-      loginAttempts.add(1, { method: authMethod, result: 'invalid_credentials' });
-      span.setStatus({ code: 2, message: 'Invalid credentials' });
+      if (!credResult.valid) {
+        loginAttempts.add(1, { method: authMethod, result: 'invalid_credentials' });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Invalid credentials' });
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Step 2: MFA challenge if enabled
+      if (credResult.mfaRequired) {
+        await tracer.startActiveSpan('portal.auth.mfa_challenge', async (mfaSpan) => {
+          try {
+            mfaSpan.setAttribute('portal.auth.mfa_type', credResult.mfaType);
+            const mfaResult = await sendMfaChallenge(credResult.userId);
+            mfaSpan.setAttribute('portal.auth.mfa_sent', mfaResult.success);
+          } finally {
+            mfaSpan.end();
+          }
+        });
+      }
+
+      // Step 3: Generate session token
+      const token = await tracer.startActiveSpan(
+        'portal.auth.generate_token',
+        async (tokenSpan) => {
+          try {
+            return await generateSessionToken(credResult.userId);
+          } finally {
+            tokenSpan.end();
+          }
+        }
+      );
+
+      const duration = Date.now() - start;
+      loginLatency.record(duration, { method: authMethod, result: 'success' });
+      loginAttempts.add(1, { method: authMethod, result: 'success' });
+
+      return res.json({ token, mfaRequired: credResult.mfaRequired });
+    } catch (error) {
+      loginAttempts.add(1, { method: authMethod, result: 'error' });
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
       span.end();
-      return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    // Step 2: MFA challenge if enabled
-    if (credResult.mfaRequired) {
-      const mfaSpan = tracer.startSpan('portal.auth.mfa_challenge');
-      mfaSpan.setAttribute('portal.auth.mfa_type', credResult.mfaType);
-      const mfaResult = await sendMfaChallenge(credResult.userId);
-      mfaSpan.setAttribute('portal.auth.mfa_sent', mfaResult.success);
-      mfaSpan.end();
-    }
-
-    // Step 3: Generate session token
-    const tokenSpan = tracer.startSpan('portal.auth.generate_token');
-    const token = await generateSessionToken(credResult.userId);
-    tokenSpan.end();
-
-    const duration = Date.now() - start;
-    loginLatency.record(duration, { method: authMethod, result: 'success' });
-    loginAttempts.add(1, { method: authMethod, result: 'success' });
-
-    span.end();
-    return res.json({ token, mfaRequired: credResult.mfaRequired });
-  } catch (error) {
-    loginAttempts.add(1, { method: authMethod, result: 'error' });
-    span.setStatus({ code: 2, message: error.message });
-    span.end();
-    throw error;
-  }
+  });
 }
 ```
 
@@ -122,60 +142,79 @@ Loading lab results is one of the most common patient portal actions and often o
 
 ```javascript
 async function getLabResults(req, res) {
-  const span = tracer.startSpan('portal.lab_results.fetch');
-  span.setAttribute('portal.endpoint', '/api/lab-results');
-  span.setAttribute('portal.request.date_range', req.query.dateRange || 'recent');
+  return tracer.startActiveSpan('portal.lab_results.fetch', async (span) => {
+    span.setAttribute('portal.endpoint', '/api/lab-results');
+    span.setAttribute('portal.request.date_range', req.query.dateRange || 'recent');
 
-  try {
-    // Step 1: Verify the patient has access to these results
-    const authzSpan = tracer.startSpan('portal.authz.check');
-    const authorized = await checkPatientAuthorization(
-      req.userId,
-      'lab_results',
-      'read'
-    );
-    authzSpan.setAttribute('portal.authz.granted', authorized);
-    authzSpan.end();
+    try {
+      // Step 1: Verify the patient has access to these results
+      const authorized = await tracer.startActiveSpan('portal.authz.check', async (authzSpan) => {
+        try {
+          const result = await checkPatientAuthorization(
+            req.userId,
+            'lab_results',
+            'read'
+          );
+          authzSpan.setAttribute('portal.authz.granted', result);
+          return result;
+        } finally {
+          authzSpan.end();
+        }
+      });
 
-    if (!authorized) {
-      span.setStatus({ code: 2, message: 'Unauthorized' });
+      if (!authorized) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Unauthorized' });
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Step 2: Query the FHIR server for Observation resources
+      const observations = await tracer.startActiveSpan(
+        'portal.fhir.query_observations',
+        async (fhirSpan) => {
+          try {
+            fhirSpan.setAttribute('fhir.resource_type', 'Observation');
+            fhirSpan.setAttribute('fhir.category', 'laboratory');
+
+            const result = await fhirClient.search({
+              resourceType: 'Observation',
+              searchParams: {
+                patient: req.userId,
+                category: 'laboratory',
+                _sort: '-date',
+                _count: 50,
+              },
+            });
+
+            fhirSpan.setAttribute('fhir.result_count', result.entry?.length || 0);
+            return result;
+          } finally {
+            fhirSpan.end();
+          }
+        }
+      );
+
+      // Step 3: Transform FHIR resources into portal-friendly format
+      const formatted = tracer.startActiveSpan('portal.transform.lab_results', (transformSpan) => {
+        try {
+          const result = transformLabResults(observations);
+          transformSpan.setAttribute('portal.transform.output_count', result.length);
+          return result;
+        } finally {
+          transformSpan.end();
+        }
+      });
+
+      span.setAttribute('portal.response.result_count', formatted.length);
+
+      return res.json({ results: formatted });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
       span.end();
-      return res.status(403).json({ error: 'Access denied' });
     }
-
-    // Step 2: Query the FHIR server for Observation resources
-    const fhirSpan = tracer.startSpan('portal.fhir.query_observations');
-    fhirSpan.setAttribute('fhir.resource_type', 'Observation');
-    fhirSpan.setAttribute('fhir.category', 'laboratory');
-
-    const observations = await fhirClient.search({
-      resourceType: 'Observation',
-      searchParams: {
-        patient: req.userId,
-        category: 'laboratory',
-        _sort: '-date',
-        _count: 50,
-      },
-    });
-
-    fhirSpan.setAttribute('fhir.result_count', observations.entry?.length || 0);
-    fhirSpan.end();
-
-    // Step 3: Transform FHIR resources into portal-friendly format
-    const transformSpan = tracer.startSpan('portal.transform.lab_results');
-    const formatted = transformLabResults(observations);
-    transformSpan.setAttribute('portal.transform.output_count', formatted.length);
-    transformSpan.end();
-
-    span.setAttribute('portal.response.result_count', formatted.length);
-    span.end();
-
-    return res.json({ results: formatted });
-  } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
-    span.end();
-    throw error;
-  }
+  });
 }
 ```
 
@@ -185,37 +224,47 @@ Appointment scheduling involves checking availability, which often requires real
 
 ```javascript
 async function searchAvailableSlots(req, res) {
-  const span = tracer.startSpan('portal.appointments.search_slots');
-  span.setAttribute('portal.endpoint', '/api/appointments/available');
-  span.setAttribute('portal.appointment.specialty', req.query.specialty);
-  span.setAttribute('portal.appointment.location', req.query.location || 'any');
+  return tracer.startActiveSpan('portal.appointments.search_slots', async (span) => {
+    span.setAttribute('portal.endpoint', '/api/appointments/available');
+    span.setAttribute('portal.appointment.specialty', req.query.specialty);
+    span.setAttribute('portal.appointment.location', req.query.location || 'any');
 
-  try {
-    // Query the scheduling system for available slots
-    const schedSpan = tracer.startSpan('portal.scheduling.query_availability');
-    schedSpan.setAttribute('scheduling.system', 'epic');
+    try {
+      // Query the scheduling system for available slots
+      const slots = await tracer.startActiveSpan(
+        'portal.scheduling.query_availability',
+        async (schedSpan) => {
+          try {
+            schedSpan.setAttribute('scheduling.system', 'epic');
 
-    const slots = await schedulingService.findAvailableSlots({
-      specialty: req.query.specialty,
-      location: req.query.location,
-      dateStart: req.query.startDate,
-      dateEnd: req.query.endDate,
-    });
+            const result = await schedulingService.findAvailableSlots({
+              specialty: req.query.specialty,
+              location: req.query.location,
+              dateStart: req.query.startDate,
+              dateEnd: req.query.endDate,
+            });
 
-    schedSpan.setAttribute('scheduling.slots_found', slots.length);
-    schedSpan.setAttribute('scheduling.providers_with_availability',
-      new Set(slots.map(s => s.providerId)).size);
-    schedSpan.end();
+            schedSpan.setAttribute('scheduling.slots_found', result.length);
+            schedSpan.setAttribute('scheduling.providers_with_availability',
+              new Set(result.map(s => s.providerId)).size);
+            return result;
+          } finally {
+            schedSpan.end();
+          }
+        }
+      );
 
-    span.setAttribute('portal.response.slots_count', slots.length);
-    span.end();
+      span.setAttribute('portal.response.slots_count', slots.length);
 
-    return res.json({ slots });
-  } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
-    span.end();
-    throw error;
-  }
+      return res.json({ slots });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 ```
 
@@ -226,6 +275,21 @@ Beyond server-side tracing, capture client-side performance in the patient's bro
 ```javascript
 // portal-client-metrics.js (runs in the patient's browser)
 import { metrics } from '@opentelemetry/api';
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+
+const meterProvider = new MeterProvider({
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: 'https://otel-gateway.example.com/v1/metrics',
+      }),
+      exportIntervalMillis: 15000,
+    }),
+  ],
+});
+
+metrics.setGlobalMeterProvider(meterProvider);
 
 const meter = metrics.getMeter('patient-portal-client');
 
