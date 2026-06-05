@@ -47,14 +47,14 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 delta_temporality_config = {
     # Counter instruments use delta
     metrics.Counter: AggregationTemporality.DELTA,
-    # UpDownCounter uses delta
-    metrics.UpDownCounter: AggregationTemporality.DELTA,
+    # UpDownCounter remains cumulative
+    metrics.UpDownCounter: AggregationTemporality.CUMULATIVE,
     # Histogram uses delta
     metrics.Histogram: AggregationTemporality.DELTA,
     # Observable counters use delta
     metrics.ObservableCounter: AggregationTemporality.DELTA,
-    metrics.ObservableUpDownCounter: AggregationTemporality.DELTA,
-    metrics.ObservableGauge: AggregationTemporality.DELTA,
+    metrics.ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+    metrics.ObservableGauge: AggregationTemporality.CUMULATIVE,
 }
 
 # Create exporter with delta temporality preference
@@ -107,9 +107,9 @@ mixed_config = {
     metrics.Histogram: AggregationTemporality.CUMULATIVE,
     # Gauges are naturally "last value" - temporality matters less
     metrics.ObservableGauge: AggregationTemporality.CUMULATIVE,
-    # UpDownCounters: delta for easier multi-instance aggregation
-    metrics.UpDownCounter: AggregationTemporality.DELTA,
-    metrics.ObservableUpDownCounter: AggregationTemporality.DELTA,
+    # UpDownCounters remain cumulative because they are non-monotonic sums
+    metrics.UpDownCounter: AggregationTemporality.CUMULATIVE,
+    metrics.ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
 }
 ```
 
@@ -123,7 +123,7 @@ import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 
 import java.time.Duration;
 
-// Delta temporality for all instruments
+// Delta-preferred temporality
 OtlpGrpcMetricExporter deltaExporter = OtlpGrpcMetricExporter.builder()
     .setEndpoint("http://collector:4317")
     .setAggregationTemporalitySelector(
@@ -197,7 +197,7 @@ func setupMetrics(ctx context.Context) (*metric.MeterProvider, error) {
 export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
 ```
 
-The `lowmemory` option uses delta for synchronous instruments and cumulative for asynchronous ones, which is a good default for memory-constrained environments.
+The `lowmemory` option uses delta for synchronous Counter and Histogram instruments, and cumulative for synchronous UpDownCounter, asynchronous Counter, and asynchronous UpDownCounter instruments, which is a good default for memory-constrained environments.
 
 ## Backend Compatibility Reference
 
@@ -216,13 +216,13 @@ The `lowmemory` option uses delta for synchronous instruments and cumulative for
 
 Use **cumulative** when:
 - Your backend is Prometheus or Prometheus-compatible
-- You need simple rate calculations (just divide by time)
+- You need Prometheus-style rate calculations with functions like `rate()` or `increase()`
 - You do not care about memory overhead from tracking cumulative state
 
 Use **delta** when:
 - Your backend prefers delta (Datadog, New Relic)
 - You run many instances and want easy cross-instance aggregation
-- You want lower memory usage in the SDK (delta resets each interval)
+- You want lower memory usage for synchronous counters and histograms in the SDK
 - You have short-lived processes where cumulative reset on restart causes issues
 
 The temporality choice is primarily driven by your backend's preference. Configure it once and the SDK handles the aggregation math internally.
