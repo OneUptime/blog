@@ -10,15 +10,14 @@ Running the OpenTelemetry Collector as a DaemonSet is the standard approach for 
 
 ## How Container Logs Work in Kubernetes
 
-Containers write to stdout/stderr, and the container runtime captures those streams and writes them to files on the node. The file location depends on the runtime:
+Containers write to stdout/stderr, and the container runtime captures those streams and writes them to files on the node. By default, the kubelet directs the runtime to write pod logs under `/var/log/pods`:
 
 ```text
-# Docker (older clusters)
+# Kubernetes pod log files
+/var/log/pods/<namespace>_<pod-name>_<pod-uid>/<container-name>/<restart-count>.log
 
+# Convenience symlinks
 /var/log/containers/<pod-name>_<namespace>_<container-name>-<container-id>.log
-
-# containerd / CRI-O (modern clusters)
-/var/log/pods/<namespace>_<pod-name>_<pod-uid>/<container-name>/0.log
 ```
 
 The `/var/log/containers/` path typically contains symlinks that point to the actual log files under `/var/log/pods/`.
@@ -35,7 +34,7 @@ receivers:
       - /var/log/containers/*.log
 ```
 
-The problem: on some setups, `/var/log/containers/` only exists as symlinks, and the filelog receiver might not follow them correctly. Or the symlinks might not exist for all pods.
+The problem: this can work in many clusters, but it depends on the `/var/log/containers/` symlinks and their targets being present inside the Collector container. If those links are missing, or if they point to paths that are not mounted into the Collector, logs can be missed.
 
 ## The Correct Configuration
 
@@ -48,25 +47,14 @@ receivers:
       - /var/log/pods/*/*/*.log
     # Exclude Collector's own logs to avoid feedback loops
     exclude:
-      - /var/log/pods/*/otel-collector*/*.log
+      - /var/log/pods/*/otel-collector/*.log
     start_at: end  # Only collect new logs, not historical
     include_file_path: true
     include_file_name: false
     operators:
-      # Parse the Kubernetes log format (containerd uses CRI format)
-      - type: regex_parser
+      # Parse Kubernetes container logs, including Docker, CRI-O, and containerd formats
+      - type: container
         id: container-parser
-        regex: '^(?P<time>[^ ]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-        timestamp:
-          parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-      # Move parsed fields to the right places
-      - type: move
-        from: attributes.log
-        to: body
-      - type: move
-        from: attributes.stream
-        to: attributes["log.iostream"]
 ```
 
 ## Mounting the Right Host Paths
@@ -80,7 +68,13 @@ metadata:
   name: otel-collector
   namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       serviceAccountName: otel-collector
       containers:
@@ -115,15 +109,15 @@ spec:
 
 ```bash
 # 1. Check what log files exist on the node
-kubectl debug node/my-node -it --image=busybox -- ls /var/log/pods/
+kubectl debug node/my-node -it --image=busybox -- ls /host/var/log/pods/
 
 # 2. Check if the expected pod's log directory exists
 kubectl debug node/my-node -it --image=busybox -- \
-  ls /var/log/pods/my-namespace_my-pod-name_uid/
+  ls /host/var/log/pods/my-namespace_my-pod-name_uid/
 
 # 3. Check the actual log file content
 kubectl debug node/my-node -it --image=busybox -- \
-  tail -5 /var/log/pods/my-namespace_my-pod-name_uid/my-container/0.log
+  tail -5 /host/var/log/pods/my-namespace_my-pod-name_uid/my-container/0.log
 
 # 4. Check the Collector's own logs for filelog receiver errors
 kubectl logs -n observability -l app=otel-collector --tail=100 | grep -i "filelog\|file_input"
@@ -131,12 +125,12 @@ kubectl logs -n observability -l app=otel-collector --tail=100 | grep -i "filelo
 
 ## Log Rotation Handling
 
-Kubernetes rotates container logs when they reach a size limit (usually 10MB). The rotated files get a numeric suffix:
+Kubernetes rotates container logs when they reach the kubelet `containerLogMaxSize` limit (10Mi by default). Rotated files keep the original log name with an added suffix:
 
 ```text
-0.log       # Current log file
-0.log.1     # Previous rotation
-0.log.2     # Older rotation
+0.log                      # Current log file
+0.log.20260206-120000      # Previous rotation
+0.log.20260206-121500.gz   # Older compressed rotation
 ```
 
 Make sure your include pattern captures rotated files if you need historical logs:
