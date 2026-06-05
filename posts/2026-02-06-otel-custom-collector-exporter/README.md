@@ -78,8 +78,12 @@ package myexporter
 
 import (
     "context"
+    "time"
 
     "go.opentelemetry.io/collector/component"
+    "go.opentelemetry.io/collector/config/configoptional"
+    "go.opentelemetry.io/collector/config/configretry"
+    "go.opentelemetry.io/collector/config/confighttp"
     "go.opentelemetry.io/collector/exporter"
     "go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -100,6 +104,7 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
     return &Config{
+        ClientConfig: confighttp.NewDefaultClientConfig(),
         MaxBatchSize: 100,
     }
 }
@@ -115,24 +120,25 @@ func createTracesExporter(
         return nil, err
     }
 
+    retryCfg := configretry.NewDefaultBackOffConfig()
+    retryCfg.InitialInterval = 5 * time.Second
+    retryCfg.MaxInterval = 30 * time.Second
+
+    queueCfg := exporterhelper.NewDefaultQueueConfig()
+    queueCfg.QueueSize = 1000
+
+    timeoutCfg := exporterhelper.NewDefaultTimeoutConfig()
+    timeoutCfg.Timeout = 30 * time.Second
+
     // Use exporterhelper for built-in retry, queue, and timeout support
     return exporterhelper.NewTraces(
         ctx,
         settings,
         cfg,
         exp.pushTraces,
-        exporterhelper.WithRetry(exporterhelper.RetrySettings{
-            Enabled:         true,
-            InitialInterval: 5 * time.Second,
-            MaxInterval:     30 * time.Second,
-        }),
-        exporterhelper.WithQueue(exporterhelper.QueueConfig{
-            Enabled:   true,
-            QueueSize: 1000,
-        }),
-        exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{
-            Timeout: 30 * time.Second,
-        }),
+        exporterhelper.WithRetry(retryCfg),
+        exporterhelper.WithQueue(configoptional.Some(queueCfg)),
+        exporterhelper.WithTimeout(timeoutCfg),
         exporterhelper.WithStart(exp.start),
         exporterhelper.WithShutdown(exp.shutdown),
     )
@@ -149,10 +155,15 @@ func createLogsExporter(
         return nil, err
     }
 
+    retryCfg := configretry.NewDefaultBackOffConfig()
+    queueCfg := exporterhelper.NewDefaultQueueConfig()
+
     return exporterhelper.NewLogs(
         ctx, settings, cfg, exp.pushLogs,
-        exporterhelper.WithRetry(exporterhelper.RetrySettings{Enabled: true}),
-        exporterhelper.WithQueue(exporterhelper.QueueConfig{Enabled: true}),
+        exporterhelper.WithRetry(retryCfg),
+        exporterhelper.WithQueue(configoptional.Some(queueCfg)),
+        exporterhelper.WithStart(exp.start),
+        exporterhelper.WithShutdown(exp.shutdown),
     )
 }
 ```
@@ -169,12 +180,12 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
-    "time"
 
     "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/exporter"
-    "go.opentelemetry.io/collector/pdata/ptrace"
+    "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/plog"
+    "go.opentelemetry.io/collector/pdata/ptrace"
     "go.uber.org/zap"
 )
 
@@ -192,22 +203,26 @@ type backendEvent struct {
 }
 
 type myExporter struct {
-    config *Config
-    logger *zap.Logger
-    client *http.Client
+    config   *Config
+    settings exporter.Settings
+    logger   *zap.Logger
+    client   *http.Client
 }
 
 func newMyExporter(settings exporter.Settings, cfg *Config) (*myExporter, error) {
     return &myExporter{
-        config: cfg,
-        logger: settings.Logger,
+        config:   cfg,
+        settings: settings,
+        logger:   settings.Logger,
     }, nil
 }
 
 func (e *myExporter) start(ctx context.Context, host component.Host) error {
-    e.client = &http.Client{
-        Timeout: 30 * time.Second,
+    client, err := e.config.ClientConfig.ToClient(ctx, host.GetExtensions(), e.settings.TelemetrySettings)
+    if err != nil {
+        return err
     }
+    e.client = client
     e.logger.Info("My exporter started",
         zap.String("endpoint", e.config.APIEndpoint))
     return nil
