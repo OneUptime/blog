@@ -26,7 +26,7 @@ The OCI image format uses standard OCI media types:
 - Config: `application/vnd.oci.image.config.v1+json`
 - Layer: `application/vnd.oci.image.layer.v1.tar+gzip`
 
-The layer content is identical in both formats. The difference is primarily in the manifest and configuration JSON structure and their media types.
+The layer filesystem content is compatible in both formats, and gzip-compressed layer blobs can often be reused as-is. The difference is primarily in the manifest and configuration JSON structure and their media types.
 
 ## Checking an Image's Format
 
@@ -95,12 +95,13 @@ Copy an image between registries while converting the format:
 ```bash
 # Pull from Docker Hub in Docker format, push to another registry in OCI format
 skopeo copy \
-    --dest-oci-accept-uncompressed-layers \
+    --format oci \
     docker://nginx:alpine \
     docker://myregistry.example.com/nginx:alpine
 
 # Convert a local Docker image to OCI format in a registry
 skopeo copy \
+    --format oci \
     docker-daemon:myapp:latest \
     docker://myregistry.example.com/myapp:latest
 ```
@@ -127,8 +128,10 @@ Build an image and output in OCI format:
 # Build and export as OCI tar
 docker buildx build --output type=oci,dest=myapp-oci.tar .
 
-# Build and export as OCI layout directory
-docker buildx build --output type=oci,dest=./myapp-oci .
+# Build and export as OCI layout directory by extracting the tar
+docker buildx build --output type=oci,dest=myapp-oci.tar .
+mkdir -p myapp-oci
+tar -C myapp-oci -xf myapp-oci.tar
 
 # Build and push to a registry in OCI format
 docker buildx build \
@@ -169,17 +172,21 @@ curl -sL https://github.com/google/go-containerregistry/releases/latest/download
     tar xz -C /usr/local/bin/ crane
 ```
 
-Use crane to convert and copy images:
+Use crane to pull an OCI layout and push it to a registry:
 
 ```bash
-# Copy an image (crane handles format conversion automatically)
+# Copy an image between registries
 crane copy nginx:alpine myregistry.example.com/nginx:alpine
 
-# Pull an image as a tarball
-crane pull nginx:alpine nginx.tar
+# Pull an image as an OCI layout tarball
+crane pull --format=oci nginx:alpine nginx-oci.tar
 
-# Push a tarball to a registry
-crane push nginx.tar myregistry.example.com/nginx:latest
+# Extract the OCI layout
+mkdir nginx-oci
+tar -C nginx-oci -xf nginx-oci.tar
+
+# Push the OCI layout directory to a registry
+crane push nginx-oci myregistry.example.com/nginx:latest
 
 # View the manifest to verify format
 crane manifest myregistry.example.com/nginx:alpine | python3 -m json.tool
@@ -270,7 +277,7 @@ tar tf nginx-oci.tar
 skopeo copy oci-archive:nginx-oci.tar docker-daemon:nginx-imported:alpine
 
 # Push an OCI archive to a registry
-skopeo copy oci-archive:nginx-oci.tar docker://myregistry.example.com/nginx:alpine
+skopeo copy --format oci oci-archive:nginx-oci.tar docker://myregistry.example.com/nginx:alpine
 ```
 
 ## Verifying OCI Compliance
@@ -319,7 +326,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to registry
         uses: docker/login-action@v3
@@ -329,7 +336,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push OCI image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
