@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Latency, Exporter, Troubleshooting
 
 Description: Diagnose and fix intermittent export deadline exceeded errors in the OpenTelemetry Collector caused by network latency.
 
-You are seeing sporadic "deadline exceeded" errors in your Collector logs, but the backend seems healthy and most exports succeed. The problem gets worse during peak traffic hours. This is almost always caused by network latency combined with an export timeout that is too tight for your environment.
+You are seeing sporadic "deadline exceeded" errors in your Collector logs, but the backend seems healthy and most exports succeed. The problem gets worse during peak traffic hours. This is often caused by network latency or backend response latency combined with an export timeout that is too tight for your environment.
 
 ## Understanding the Error
 
@@ -20,7 +20,7 @@ The OTLP exporter has a configurable timeout for each export request. When the b
    "dropped_items": 847}
 ```
 
-The default timeout for the OTLP exporter is 30 seconds. If your network path to the backend has variable latency, you might hit this limit during spikes.
+The default timeout for the `otlp` gRPC exporter is 5 seconds, while the `otlp_http` exporter has a 30 second HTTP request timeout. If your network path to the backend has variable latency, you might hit this limit during spikes.
 
 ## Measuring the Actual Latency
 
@@ -52,7 +52,7 @@ If the latency is genuinely high (for example, cross-region traffic), increase t
 exporters:
   otlp:
     endpoint: "otlp.backend.example.com:4317"
-    timeout: 60s  # Increase from default 30s
+    timeout: 60s  # Increase from the default 5s
     tls:
       insecure: false
 ```
@@ -61,14 +61,14 @@ For the HTTP exporter:
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://otlp.backend.example.com"
     timeout: 60s
 ```
 
 ## Fix 2: Reduce Batch Size
 
-Large batches take longer to serialize, transmit, and process. Reducing the batch size means each export request handles less data and completes faster:
+Large batches take longer to serialize, transmit, and process. Reducing the batch trigger size and setting a maximum batch size means each export request handles less data and completes faster:
 
 ```yaml
 processors:
@@ -82,7 +82,7 @@ This trades throughput for reliability. You will make more requests, but each on
 
 ## Fix 3: Enable Retry with Backoff
 
-Instead of dropping data on the first failure, configure retries:
+Instead of giving up quickly when failures persist, make sure retries are enabled and tune the backoff:
 
 ```yaml
 exporters:
@@ -98,7 +98,7 @@ exporters:
 
 ## Fix 4: Enable a Persistent Sending Queue
 
-A sending queue buffers data when exports are slow, preventing data loss:
+A sending queue buffers data when exports are slow, reducing the risk of data loss. Add persistent storage if you want queued batches to survive Collector restarts:
 
 ```yaml
 exporters:
@@ -119,11 +119,14 @@ extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
     timeout: 10s
+
+service:
+  extensions: [file_storage]
 ```
 
-## Fix 5: Use Compression
+## Fix 5: Check Compression
 
-Enabling compression reduces the amount of data sent over the wire, which helps when bandwidth is limited:
+Compression reduces the amount of data sent over the wire, which helps when bandwidth is limited. The built-in OTLP exporters enable gzip by default in current Collector releases, but you can set it explicitly:
 
 ```yaml
 exporters:
@@ -144,14 +147,19 @@ service:
   telemetry:
     metrics:
       level: detailed  # Enables exporter-level metrics
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Then query the metrics to understand your export latency distribution:
 
 ```promql
-# Average export duration
-rate(otelcol_exporter_send_duration_sum[5m]) / rate(otelcol_exporter_send_duration_count[5m])
+# Average gRPC export request duration
+sum(rate({"__name__"="rpc.client.call.duration_sum"}[5m])) / sum(rate({"__name__"="rpc.client.call.duration_count"}[5m]))
 
 # Export failure rate
 rate(otelcol_exporter_send_failed_spans_total[5m])
