@@ -36,29 +36,30 @@ metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 meter = metrics.get_meter("pharmacy-service", "1.0.0")
 
 interaction_check_latency = meter.create_histogram(
-    "pharmacy.interaction_check_latency_ms",
+    "pharmacy.interaction_check.duration",
     description="Drug interaction check response time",
-    unit="ms",
+    unit="s",
 )
 
 interactions_found = meter.create_counter(
-    "pharmacy.interactions_found_total",
+    "pharmacy.interactions_found",
     description="Total drug interactions found",
+    unit="{interaction}",
 )
 
 inventory_lookup_latency = meter.create_histogram(
-    "pharmacy.inventory_lookup_latency_ms",
+    "pharmacy.inventory_lookup.duration",
     description="Inventory lookup response time",
-    unit="ms",
+    unit="s",
 )
 
 
-def check_drug_interactions(new_drug_ndc, patient_medication_list):
+def check_drug_interactions(new_drug_ndc, patient_id_hash, patient_medication_list):
     """
     Check a new drug against the patient's current medication list
-    for drug-drug, drug-allergy, and drug-food interactions.
+    for drug-drug, drug-allergy, and therapeutic duplication issues.
     """
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("pharmacy.interaction_check") as span:
         span.set_attribute("pharmacy.drug_ndc", new_drug_ndc)
@@ -69,11 +70,11 @@ def check_drug_interactions(new_drug_ndc, patient_medication_list):
 
         # Drug-drug interaction check
         with tracer.start_as_current_span("pharmacy.interaction.drug_drug") as dd_span:
-            dd_start = time.time()
+            dd_start = time.perf_counter()
             drug_interactions = query_drug_drug_interactions(
                 new_drug_ndc, patient_medication_list
             )
-            dd_duration = (time.time() - dd_start) * 1000
+            dd_duration = (time.perf_counter() - dd_start) * 1000
             dd_span.set_attribute("pharmacy.dd_interactions_found", len(drug_interactions))
             dd_span.set_attribute("pharmacy.dd_check_duration_ms", dd_duration)
             dd_span.set_attribute("pharmacy.knowledge_base", "first_databank")
@@ -81,7 +82,7 @@ def check_drug_interactions(new_drug_ndc, patient_medication_list):
 
         # Drug-allergy interaction check
         with tracer.start_as_current_span("pharmacy.interaction.drug_allergy") as da_span:
-            patient_allergies = get_patient_allergies(patient_medication_list[0].get("patient_id"))
+            patient_allergies = get_patient_allergies(patient_id_hash)
             da_span.set_attribute("pharmacy.allergies_count", len(patient_allergies))
 
             allergy_interactions = check_drug_allergy_interactions(
@@ -111,8 +112,8 @@ def check_drug_interactions(new_drug_ndc, patient_medication_list):
             if count > 0:
                 interactions_found.add(count, {"severity": sev})
 
-        duration_ms = (time.time() - start) * 1000
-        interaction_check_latency.record(duration_ms, {
+        duration_ms = (time.perf_counter() - start) * 1000
+        interaction_check_latency.record(duration_ms / 1000, {
             "check_type": "full",
             "interactions_found": len(all_interactions) > 0,
         })
@@ -131,7 +132,7 @@ Pharmacy inventory operations include checking stock levels, processing incoming
 ```python
 def check_inventory(drug_ndc, pharmacy_location, quantity_needed):
     """Check if sufficient inventory exists at the specified pharmacy location."""
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("pharmacy.inventory.check") as span:
         span.set_attribute("pharmacy.drug_ndc", drug_ndc)
@@ -142,7 +143,7 @@ def check_inventory(drug_ndc, pharmacy_location, quantity_needed):
         with tracer.start_as_current_span("pharmacy.inventory.query_onhand") as oh_span:
             on_hand = query_inventory_level(drug_ndc, pharmacy_location)
             oh_span.set_attribute("pharmacy.quantity_on_hand", on_hand)
-            oh_span.set_attribute("db.system", "postgresql")
+            oh_span.set_attribute("db.system.name", "postgresql")
 
         # Check if there is enough to fill the prescription
         sufficient = on_hand >= quantity_needed
@@ -165,8 +166,8 @@ def check_inventory(drug_ndc, pharmacy_location, quantity_needed):
             expiring_soon = check_expiring_stock(drug_ndc, pharmacy_location, days=30)
             exp_span.set_attribute("pharmacy.lots_expiring_30d", len(expiring_soon))
 
-        duration_ms = (time.time() - start) * 1000
-        inventory_lookup_latency.record(duration_ms, {
+        duration_ms = (time.perf_counter() - start) * 1000
+        inventory_lookup_latency.record(duration_ms / 1000, {
             "location": pharmacy_location,
             "result": "sufficient" if sufficient else "insufficient",
         })
@@ -199,7 +200,7 @@ def process_fill_queue_item(prescription_id):
         with tracer.start_as_current_span("pharmacy.fill.interaction_check") as ic_span:
             med_list = get_patient_medication_profile(prescription["patient_id_hash"])
             interactions = check_drug_interactions(
-                prescription["drug_ndc"], med_list
+                prescription["drug_ndc"], prescription["patient_id_hash"], med_list
             )
             has_severe = interactions["severity_counts"].get("severe", 0) > 0
             ic_span.set_attribute("pharmacy.fill.has_severe_interaction", has_severe)
