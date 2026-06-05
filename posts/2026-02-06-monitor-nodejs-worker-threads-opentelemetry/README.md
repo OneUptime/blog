@@ -37,10 +37,11 @@ Install the required OpenTelemetry packages:
 ```bash
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
-            @opentelemetry/instrumentation \
+            @opentelemetry/auto-instrumentations-node \
             @opentelemetry/resources \
             @opentelemetry/semantic-conventions \
             @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/exporter-metrics-otlp-http \
             @opentelemetry/sdk-metrics
 ```
 
@@ -50,18 +51,19 @@ Create a shared initialization module that both main and worker threads will use
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
 // Configure exporters
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
 const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
+  url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
 /**
@@ -70,14 +72,16 @@ const metricExporter = new OTLPMetricExporter({
  */
 function initializeTracing(threadId = 'main') {
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'worker-app',
-      [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'worker-app',
+      [ATTR_SERVICE_VERSION]: '1.0.0',
       'thread.id': threadId,
       'thread.type': threadId === 'main' ? 'main' : 'worker',
     }),
     traceExporter,
-    metricExporter,
+    metricReader: new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+    }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
@@ -90,8 +94,8 @@ function initializeTracing(threadId = 'main') {
       .catch((error) => console.log('Error terminating tracing', error));
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('exit', shutdown);
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 
   return sdk;
 }
@@ -162,7 +166,6 @@ class InstrumentedWorkerPool {
     this.poolSize = options.poolSize || os.cpus().length;
     this.workers = [];
     this.taskQueue = [];
-    this.activeWorkers = new Map();
 
     this.initializeWorkers();
   }
@@ -199,6 +202,8 @@ class InstrumentedWorkerPool {
    */
   async executeTask(taskData, spanName = 'worker.task') {
     return tracer.startActiveSpan(spanName, async (span) => {
+      let workerInfo;
+
       try {
         span.setAttribute('task.type', taskData.type || 'unknown');
         span.setAttribute('worker.pool.size', this.poolSize);
@@ -208,13 +213,12 @@ class InstrumentedWorkerPool {
         const traceContext = serializeContext();
 
         // Find available worker or queue the task
-        const workerInfo = this.getAvailableWorker();
+        workerInfo = this.getAvailableWorker();
 
         if (!workerInfo) {
           span.addEvent('task_queued');
           // Wait for a worker to become available
-          await this.waitForWorker();
-          return this.executeTask(taskData, spanName);
+          workerInfo = await this.waitForWorker();
         }
 
         span.setAttribute('worker.id', workerInfo.id);
@@ -222,15 +226,13 @@ class InstrumentedWorkerPool {
 
         // Mark worker as busy
         workerInfo.busy = true;
+        workerInfo.startTime = Date.now();
 
         // Send task to worker with trace context
         const result = await this.sendTaskToWorker(workerInfo.worker, {
           task: taskData,
           traceContext,
         });
-
-        // Mark worker as available
-        workerInfo.busy = false;
 
         span.setAttribute('task.completed', true);
         span.setStatus({ code: SpanStatusCode.OK });
@@ -244,6 +246,10 @@ class InstrumentedWorkerPool {
         });
         throw error;
       } finally {
+        if (workerInfo) {
+          this.releaseWorker(workerInfo);
+        }
+
         span.end();
       }
     });
@@ -261,14 +267,23 @@ class InstrumentedWorkerPool {
    */
   waitForWorker() {
     return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        const available = this.getAvailableWorker();
-        if (available) {
-          clearInterval(checkInterval);
-          resolve(available);
-        }
-      }, 10);
+      this.taskQueue.push(resolve);
     });
+  }
+
+  /**
+   * Releases a worker or immediately assigns it to the next queued task
+   */
+  releaseWorker(workerInfo) {
+    const nextTask = this.taskQueue.shift();
+
+    if (nextTask) {
+      nextTask(workerInfo);
+      return;
+    }
+
+    workerInfo.busy = false;
+    delete workerInfo.startTime;
   }
 
   /**
@@ -279,6 +294,7 @@ class InstrumentedWorkerPool {
       const messageId = Math.random().toString(36).substring(7);
 
       const timeout = setTimeout(() => {
+        worker.off('message', handler);
         reject(new Error('Worker task timeout'));
       }, 30000);
 
@@ -341,13 +357,13 @@ Create a worker that receives tasks and maintains trace context:
 
 ```javascript
 // worker.js
-const { parentPort } = require('worker_threads');
+const { parentPort, threadId } = require('worker_threads');
 const { initializeTracing } = require('./tracing');
 const { withContext } = require('./context-utils');
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Initialize tracing for this worker
-const sdk = initializeTracing(`worker-${process.pid}`);
+initializeTracing(`worker-${threadId}`);
 const tracer = trace.getTracer('worker-task-executor', '1.0.0');
 
 /**
@@ -364,7 +380,7 @@ parentPort.on('message', async (message) => {
       await tracer.startActiveSpan('worker.execute', async (span) => {
         try {
           span.setAttribute('worker.task.type', task.type);
-          span.setAttribute('worker.pid', process.pid);
+          span.setAttribute('worker.thread_id', threadId);
           span.addEvent('worker_processing_started');
 
           // Execute the actual task
@@ -439,8 +455,9 @@ async function performCPUIntensiveWork(data) {
   span?.addEvent('cpu_work_started');
 
   // Simulate CPU-intensive work
+  const iterations = data.iterations || 1000000;
   let result = 0;
-  for (let i = 0; i < data.iterations || 1000000; i++) {
+  for (let i = 0; i < iterations; i++) {
     result += Math.sqrt(i);
   }
 
@@ -453,17 +470,20 @@ async function performCPUIntensiveWork(data) {
  */
 async function processData(data) {
   return tracer.startActiveSpan('worker.dataProcessing', async (span) => {
-    span.setAttribute('data.size', data.length);
+    try {
+      span.setAttribute('data.size', data.length);
 
-    // Process each item
-    const results = data.map(item => {
-      return item * 2; // Simple transformation
-    });
+      // Process each item
+      const results = data.map(item => {
+        return item * 2; // Simple transformation
+      });
 
-    span.setAttribute('results.count', results.length);
-    span.end();
+      span.setAttribute('results.count', results.length);
 
-    return results;
+      return results;
+    } finally {
+      span.end();
+    }
   });
 }
 
@@ -626,7 +646,7 @@ const carrier = serializeContext();
 console.log('Serialized context:', carrier);
 
 // In worker
-await withContext(carrier, () => {
+withContext(carrier, () => {
   const span = trace.getActiveSpan();
   console.log('Active span in worker:', span?.spanContext());
 });
@@ -639,7 +659,8 @@ Check that each worker initializes its own SDK:
 ```javascript
 // worker.js - MUST initialize tracing
 const { initializeTracing } = require('./tracing');
-initializeTracing(`worker-${process.pid}`);
+const { threadId } = require('worker_threads');
+initializeTracing(`worker-${threadId}`);
 ```
 
 ## Production Considerations
