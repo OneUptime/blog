@@ -10,9 +10,9 @@ Description: Learn how to enable and use Docker's experimental features in both 
 
 Docker ships with a set of experimental features that are not yet considered stable for general use. These features let you try out new functionality before it lands in a stable release. Some experimental features eventually become standard, while others are modified or removed based on community feedback.
 
-Experimental features exist in two places: the Docker CLI (client side) and the Docker daemon (server side). Each has its own toggle, and you may need to enable one or both depending on the feature you want to use.
+Experimental features exist in two places: the Docker CLI (client side) and the Docker daemon (server side). In current Docker releases, CLI experimental features are enabled by default. Daemon-side experimental features still have their own toggle, and you may need to enable the daemon setting depending on the feature you want to use.
 
-This guide covers how to enable experimental features on both sides, what features are available, and how to work with them safely.
+This guide covers the current CLI behavior, how to enable daemon-side experimental features, what features are available, and how to work with them safely.
 
 ## What Are Docker Experimental Features?
 
@@ -29,7 +29,7 @@ That said, experimental features often represent the future direction of Docker.
 
 Before making changes, check the current experimental status of your Docker installation.
 
-This command shows both client and server experimental status:
+This command shows the daemon experimental status in the Server section:
 
 ```bash
 # Check if experimental features are currently enabled
@@ -37,46 +37,44 @@ This command shows both client and server experimental status:
 docker version
 ```
 
-Look for the `Experimental` field in both the Client and Server sections. If you see `false` for both, experimental features are disabled.
+Look for the `Experimental` field in the Server section. In Docker 23.0 and later, Docker no longer prints an `Experimental` field for the client because CLI experimental features are enabled by default.
 
 You can also check with:
 
 ```bash
-# Quick check for experimental in a filtered view
-docker version --format '{{.Client.Experimental}}'
+# Quick check for daemon experimental mode
 docker version --format '{{.Server.Experimental}}'
 ```
 
 ## Enabling Experimental Features in the Docker CLI
 
-The Docker CLI has its own configuration file where you can enable experimental features. This is separate from the daemon configuration.
+Starting with Docker 20.10, experimental Docker CLI features are enabled by default and require no configuration. The old CLI-specific toggle is separate from the daemon configuration, but it is no longer functional in current Docker releases.
 
-### Method 1: Environment Variable
+### Legacy Method 1: Environment Variable
 
-The quickest way to enable CLI experimental features is through an environment variable:
+In older Docker CLI versions, you could enable CLI experimental features through an environment variable:
 
 ```bash
-# Enable experimental CLI features for the current session
+# Legacy Docker CLI versions only
 export DOCKER_CLI_EXPERIMENTAL=enabled
-
-# Verify it worked
-docker version --format '{{.Client.Experimental}}'
 ```
 
-To make this permanent, add the export to your shell profile:
+This environment variable was deprecated in Docker 19.03 and removed in Docker 23.0. Do not rely on it for current Docker installations.
+
+If you are using a legacy Docker CLI where this variable still works, you can make it permanent by adding the export to your shell profile:
 
 ```bash
-# Add to your shell profile for permanent activation
+# Legacy Docker CLI versions only
 echo 'export DOCKER_CLI_EXPERIMENTAL=enabled' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Method 2: CLI Configuration File
+### Legacy Method 2: CLI Configuration File
 
-You can also enable experimental features in the Docker CLI configuration file at `~/.docker/config.json`.
+Older Docker CLI versions also supported the `"experimental": "enabled"` field in the Docker CLI configuration file at `~/.docker/config.json`.
 
 ```bash
-# Create or update the Docker CLI config
+# Legacy Docker CLI versions only
 mkdir -p ~/.docker
 
 # If the file doesn't exist, create it with experimental enabled
@@ -87,14 +85,7 @@ cat > ~/.docker/config.json <<EOF
 EOF
 ```
 
-If you already have a `config.json` with other settings (like authentication credentials), edit the file and add the `"experimental": "enabled"` key to the existing JSON object. Be careful not to overwrite your existing settings.
-
-Check that the change took effect:
-
-```bash
-# Verify CLI experimental is enabled
-docker version --format '{{.Client.Experimental}}'
-```
+If you already have a `config.json` with other settings (like authentication credentials), edit the file and add the `"experimental": "enabled"` key to the existing JSON object. Be careful not to overwrite your existing settings. This field is deprecated and no longer functional in Docker 23.0 and later.
 
 ## Enabling Experimental Features in the Docker Daemon
 
@@ -148,9 +139,9 @@ The first empty `ExecStart=` line clears the default ExecStart before setting th
 
 ## Enabling Experimental Features in Docker Desktop
 
-If you are running Docker Desktop on macOS or Windows, the process is simpler. Open Docker Desktop, navigate to Settings (or Preferences), and look for the "Experimental features" toggle. Enable it and click "Apply & Restart."
+If you are running Docker Desktop on macOS or Windows, open Docker Desktop, navigate to Settings, and use the Docker Engine tab to edit the daemon JSON configuration. Add `"experimental": true` to the JSON object and apply the change.
 
-Docker Desktop manages both the CLI and daemon experimental flags through this single toggle.
+Docker Desktop also has a Beta features tab for Docker Desktop-specific preview functionality. That is separate from enabling the Docker Engine daemon's experimental mode.
 
 ## Notable Experimental Features
 
@@ -158,7 +149,7 @@ Here are some of the experimental features that have been available over the yea
 
 ### Squash Builds
 
-The `--squash` flag for `docker build` collapses all layers created during a build into a single layer. This reduces image size but eliminates the caching benefits of multiple layers.
+The `--squash` flag for `docker build` collapses the new layers created during a build into a single new layer. This can reduce image size in some cases, but the resulting image cannot take advantage of layer sharing with other images and may use more space or pull less efficiently.
 
 ```bash
 # Build an image with all layers squashed into one
@@ -186,40 +177,41 @@ sudo apt install -y criu
 
 ### BuildKit Features
 
-Some BuildKit features are first released as experimental. BuildKit itself has become the default builder, but specific features like inline cache metadata and remote cache backends started as experimental.
+Some BuildKit features are first released as experimental. BuildKit itself has become the default builder, but specific features, such as experimental Dockerfile build checks, may still require feature-specific opt-ins.
 
 ```bash
-# Use BuildKit with experimental features
-DOCKER_BUILDKIT=1 docker build --build-arg BUILDKIT_INLINE_CACHE=1 -t myapp .
+# Enable all experimental Dockerfile build checks for this build
+docker build --check --build-arg "BUILDKIT_DOCKERFILE_CHECK=experimental=all" .
 ```
 
 ### Containerd Image Store
 
-Docker has been working on switching to containerd for image storage. This experimental feature replaces Docker's built-in image storage with containerd's:
+Docker has been switching to containerd for image storage. The containerd image store is the default storage backend for fresh Docker Engine 29.0 and later installations. If you upgraded from an earlier version, you can enable it manually:
 
 ```bash
-# Enable containerd image store (experimental daemon feature)
+# Enable containerd image store
 {
-  "experimental": true,
   "features": {
     "containerd-snapshotter": true
   }
 }
 ```
 
+Docker Engine also has an experimental automatic migration feature for switching to the containerd image store under certain conditions. That feature uses `"containerd-migration": true`.
+
 ## Verifying Experimental Features Are Working
 
-After enabling experimental features, verify specific commands are available:
+After enabling experimental features, verify specific commands are available in your Docker version:
 
 ```bash
-# List all available commands - experimental ones should now appear
+# List all available commands
 docker --help
 
 # Try an experimental command (if available in your version)
 docker manifest inspect nginx:latest
 ```
 
-The `docker manifest` commands were experimental for a long time before becoming stable. Your version may have different experimental features available.
+The `docker manifest` command is still marked experimental in the Docker CLI reference. Your version may have different experimental features available.
 
 ## Disabling Experimental Features
 
@@ -228,16 +220,18 @@ To disable experimental features, reverse the steps above.
 For the CLI:
 
 ```bash
-# Unset the environment variable
+# Legacy Docker CLI versions only: unset the environment variable
 unset DOCKER_CLI_EXPERIMENTAL
 
-# Or update config.json
+# Or update config.json on legacy Docker CLI versions
 cat > ~/.docker/config.json <<EOF
 {
   "experimental": "disabled"
 }
 EOF
 ```
+
+In Docker 23.0 and later, the CLI environment variable and config field are no longer functional because CLI experimental features are enabled by default.
 
 For the daemon:
 
