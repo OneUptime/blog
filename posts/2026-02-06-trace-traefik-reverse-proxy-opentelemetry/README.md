@@ -48,9 +48,10 @@ Here's the static configuration file that enables OTLP trace export.
 
 # Traefik static configuration with OpenTelemetry tracing enabled
 
-# Enable the API dashboard for debugging
+# Enable the API dashboard for local debugging
 api:
   dashboard: true
+  insecure: true
 
 # Configure entrypoints
 entryPoints:
@@ -115,18 +116,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yaml:/etc/traefik/traefik.yaml:ro
       - ./dynamic:/etc/traefik/dynamic:ro
-    # Alternatively, use CLI arguments instead of a config file
-    command:
-      - "--api.dashboard=true"
-      - "--entrypoints.web.address=:80"
-      # Enable OpenTelemetry tracing via CLI flags
-      - "--tracing.serviceName=traefik-ingress"
-      - "--tracing.sampleRate=1.0"
-      - "--tracing.otlp.grpc.endpoint=otel-collector:4317"
-      - "--tracing.otlp.grpc.insecure=true"
-      # Docker provider
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
     depends_on:
       - otel-collector
     networks:
@@ -136,7 +125,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0
     volumes:
-      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - "4317:4317"   # gRPC OTLP
       - "4318:4318"   # HTTP OTLP
@@ -155,6 +144,7 @@ services:
     environment:
       # Configure the backend service to send traces to the same collector
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=api-service
     networks:
       - web
@@ -298,7 +288,7 @@ When you look at traces in your backend, you'll see spans like `Middleware rate-
 
 ## Kubernetes Ingress Setup
 
-If you're using Traefik as a Kubernetes ingress controller, the tracing configuration goes into the Helm values or the Traefik CRD.
+If you're using Traefik as a Kubernetes ingress controller, the tracing configuration goes into the Helm values or the static configuration for the Traefik deployment.
 
 Here's a Helm values file for deploying Traefik with OpenTelemetry in Kubernetes.
 
