@@ -17,26 +17,24 @@ First, set up OpenTelemetry in the browser:
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import { trace, context, propagation } from "@opentelemetry/api";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 
 // Set up the global propagator
 propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
-const provider = new WebTracerProvider({
-  resource: new Resource({
-    "service.name": "web-frontend",
-  }),
+const exporter = new OTLPTraceExporter({
+  url: "https://otel-collector.example.com/v1/traces",
 });
 
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: "https://otel-collector.example.com/v1/traces",
-    })
-  )
-);
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: "web-frontend",
+  }),
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 
 provider.register();
 
@@ -49,6 +47,7 @@ const tracer = trace.getTracer("grpc-web-client");
 import { grpc } from "@improbable-eng/grpc-web";
 import { OrderServiceClient } from "./generated/order_pb_service";
 import { GetOrderRequest } from "./generated/order_pb";
+import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 
 function createTracedGrpcWebClient() {
   const client = new OrderServiceClient("https://api.example.com");
@@ -57,7 +56,7 @@ function createTracedGrpcWebClient() {
     getOrder(orderId) {
       return tracer.startActiveSpan(
         "OrderService.GetOrder",
-        { kind: trace.SpanKind.CLIENT },
+        { kind: SpanKind.CLIENT },
         (span) => {
           return new Promise((resolve, reject) => {
             const request = new GetOrderRequest();
@@ -88,7 +87,7 @@ function createTracedGrpcWebClient() {
                   resolve(response.message);
                 } else {
                   span.setAttribute("rpc.grpc.status_code", response.status);
-                  span.setStatus({ code: trace.SpanStatusCode.ERROR });
+                  span.setStatus({ code: SpanStatusCode.ERROR });
                   span.end();
                   reject(new Error(response.statusMessage));
                 }
@@ -110,8 +109,8 @@ Connect-RPC has a cleaner integration story because it supports standard HTTP se
 // connect-client.ts
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { createClient } from "@connectrpc/connect";
-import { OrderService } from "./gen/order_connect";
-import { trace, context, propagation, SpanKind } from "@opentelemetry/api";
+import { OrderService } from "./gen/order_pb";
+import { trace, context, propagation, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("connect-rpc-client");
 
@@ -149,7 +148,7 @@ function createTracedTransport(baseUrl: string) {
             return response;
           } catch (err) {
             span.recordException(err as Error);
-            span.setStatus({ code: trace.SpanStatusCode.ERROR });
+            span.setStatus({ code: SpanStatusCode.ERROR });
             span.end();
             throw err;
           }
@@ -180,9 +179,10 @@ import (
 
     "connectrpc.com/connect"
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
-    orderv1 "example.com/gen/order/v1"
     "example.com/gen/order/v1/orderv1connect"
 )
 
@@ -236,6 +236,9 @@ If you use Envoy as the gRPC-Web proxy, configure it to pass through trace heade
 
 ```yaml
 http_filters:
+  - name: envoy.filters.http.cors
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
   - name: envoy.filters.http.grpc_web
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
@@ -243,14 +246,23 @@ http_filters:
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
-# Make sure these headers are not stripped
-
 route_config:
-  request_headers_to_add:
-    - header:
-        key: "x-request-id"
-        value: "%REQ(x-request-id)%"
-  # traceparent and tracestate are passed through by default
+  virtual_hosts:
+    - name: grpc_web
+      domains: ["api.example.com"]
+      routes:
+        - match:
+            prefix: "/"
+          route:
+            cluster: grpc_backend
+          typed_per_filter_config:
+            envoy.filters.http.cors:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+              allow_origin_string_match:
+                - exact: "https://app.example.com"
+              allow_methods: "POST,OPTIONS"
+              allow_headers: "content-type,x-grpc-web,grpc-timeout,traceparent,tracestate"
+              expose_headers: "grpc-status,grpc-message,trailer,traceparent,tracestate"
 ```
 
 By instrumenting both the browser client (gRPC-Web or Connect-RPC) and the backend server, you get a complete trace that starts from the user's click and follows the request through your entire service mesh. This end-to-end visibility is what makes debugging production issues in web applications manageable.
