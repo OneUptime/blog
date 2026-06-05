@@ -10,13 +10,13 @@ When implementing observability in your applications, one of the first decisions
 
 ## What is Native Instrumentation?
 
-Native instrumentation refers to adding telemetry directly into your application code using the OpenTelemetry SDK. You manually create spans, add attributes, record metrics, and emit logs at specific points in your code. This approach gives you complete control over what data gets collected and when.
+Native instrumentation refers to adding telemetry directly into your application code using the OpenTelemetry API, with the OpenTelemetry SDK configured in the application to process and export that telemetry. You manually create spans, add attributes, record metrics, and emit logs at specific points in your code. This approach gives you complete control over what data gets collected and when.
 
 Here's a basic example of native instrumentation in a Node.js application:
 
 ```javascript
-// Import the OpenTelemetry SDK components
-const { trace } = require('@opentelemetry/api');
+// Import the OpenTelemetry API components
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('my-application', '1.0.0');
 
 async function processOrder(orderId) {
@@ -83,7 +83,8 @@ const sdk = new NodeSDK({
       '@opentelemetry/instrumentation-http': {
         enabled: true,
         // Ignore health check endpoints
-        ignoreIncomingPaths: ['/health', '/readiness']
+        ignoreIncomingRequestHook: (req) =>
+          ['/health', '/readiness'].includes(req.url)
       },
       '@opentelemetry/instrumentation-express': {
         enabled: true
@@ -140,7 +141,7 @@ This business context makes traces far more valuable when debugging production i
 
 ### Performance Characteristics
 
-Instrumentation libraries add overhead to every instrumented operation. While this overhead is typically minimal (microseconds), it applies broadly across your application. Some libraries offer configuration options to reduce overhead by sampling or filtering spans.
+Instrumentation libraries add overhead to every instrumented operation. While this overhead is often small, it applies broadly across your application and depends on the library, workload, and configuration. Some libraries offer configuration options to reduce overhead by sampling or filtering spans.
 
 Native instrumentation has overhead only where you explicitly add it. You can optimize performance by instrumenting only critical paths and avoiding instrumentation in hot loops or high-throughput operations.
 
@@ -221,7 +222,6 @@ import (
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("order-service")
@@ -237,7 +237,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
     // Add native instrumentation for business operations
-    ctx, span := tracer.Start(ctx, "validate-order")
+    validateCtx, span := tracer.Start(ctx, "validate-order")
 
     // Capture business-specific attributes
     orderType := r.Header.Get("X-Order-Type")
@@ -247,7 +247,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
     )
 
     // Your validation logic here
-    valid := validateOrder(ctx, r)
+    valid := validateOrder(validateCtx, r)
     span.SetAttributes(attribute.Bool("validation.result", valid))
     span.End()
 
@@ -311,9 +311,9 @@ Instrumentation libraries can complicate local development because they generate
 ```javascript
 // Development-friendly configuration
 const sdk = new NodeSDK({
-  instrumentations: getNodeAutoInstrumentations(),
-  // Only enable in production
-  enabled: process.env.NODE_ENV === 'production'
+  // Only enable automatic instrumentation in production
+  instrumentations:
+    process.env.NODE_ENV === 'production' ? [getNodeAutoInstrumentations()] : []
 });
 ```
 
