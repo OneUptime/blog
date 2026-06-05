@@ -14,20 +14,20 @@ With container images, you bundle the OpenTelemetry SDK and all its dependencies
 
 ## Why Container Images Change the Instrumentation Approach
 
-When you use zip-based Lambda deployments, the OpenTelemetry Lambda layer provides the SDK, auto-instrumentation, and a collector sidecar. With container images, you need to provide all of these yourself.
+When you use zip-based Lambda deployments, Lambda layers can provide the SDK, auto-instrumentation, and collector extension. With container images, you need to provide all of these yourself.
 
 ```mermaid
 flowchart TD
     subgraph ZIP Deployment
         A[Function Code] --> B[Lambda Layer provides OTel]
-        B --> C[Built-in Collector Extension]
+        B --> C[Collector Extension]
     end
 
     subgraph Container Deployment
         D[Base Image] --> E[Install OTel SDK]
         E --> F[Copy Function Code]
         F --> G[Configure OTel in Code]
-        G --> H[Optional: Collector Sidecar]
+        G --> H[Optional: Collector Extension]
     end
 ```
 
@@ -258,11 +258,11 @@ For container images, you can include the OpenTelemetry Collector as a Lambda ex
 FROM public.ecr.aws/lambda/python:3.12 AS collector-stage
 
 # Download the OpenTelemetry Lambda collector extension
-RUN curl -L -o /tmp/collector.tar.gz \
-    https://github.com/open-telemetry/opentelemetry-lambda/releases/download/v0.10.0/opentelemetry-collector-layer-amd64.tar.gz \
+RUN curl -L -o /tmp/collector.zip \
+    https://github.com/open-telemetry/opentelemetry-lambda/releases/download/layer-collector%2F0.22.0/opentelemetry-collector-layer-amd64.zip \
     && mkdir -p /opt/extensions \
-    && tar -xzf /tmp/collector.tar.gz -C /opt/ \
-    && rm /tmp/collector.tar.gz
+    && python -m zipfile -e /tmp/collector.zip /opt/ \
+    && rm /tmp/collector.zip
 
 # Final image with both the function and the collector
 FROM public.ecr.aws/lambda/python:3.12
@@ -279,7 +279,10 @@ RUN pip install --no-cache-dir \
     opentelemetry-api==1.27.0 \
     opentelemetry-sdk==1.27.0 \
     opentelemetry-exporter-otlp-proto-http==1.27.0 \
-    opentelemetry-instrumentation-botocore==0.48b0
+    opentelemetry-instrumentation-botocore==0.48b0 \
+    opentelemetry-instrumentation-requests==0.48b0 \
+    opentelemetry-semantic-conventions==0.48b0 \
+    opentelemetry-propagator-aws-xray==1.0.2
 
 # Copy function code
 COPY app/ ${LAMBDA_TASK_ROOT}/
