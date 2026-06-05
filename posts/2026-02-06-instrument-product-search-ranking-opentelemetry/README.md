@@ -26,6 +26,8 @@ Each of these stages has different performance characteristics and failure modes
 ## Setting Up Instrumentation
 
 ```python
+import hashlib
+
 from opentelemetry import trace, metrics
 
 tracer = trace.get_tracer("ecommerce.search", "1.0.0")
@@ -67,11 +69,12 @@ zero_result_counter = meter.create_counter(
 import time
 
 async def search_products(query: str, user_id: str, filters: dict):
-    start = time.time()
+    start = time.perf_counter()
+    user_hash = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
 
     with tracer.start_as_current_span("search.execute") as root_span:
-        root_span.set_attribute("search.raw_query", query)
-        root_span.set_attribute("search.user_id", user_id)
+        root_span.set_attribute("search.query_length", len(query))
+        root_span.set_attribute("search.user_hash", user_hash)
         root_span.set_attribute("search.filter_count", len(filters))
 
         # Step 1: Parse and normalize the query
@@ -96,7 +99,10 @@ async def search_products(query: str, user_id: str, filters: dict):
         with tracer.start_as_current_span("search.score_and_rank") as rank_span:
             ranked = ranking_model.predict(features)
             rank_span.set_attribute("search.model_version", ranking_model.version)
-            rank_span.set_attribute("search.top_score", float(ranked[0].score))
+            rank_span.set_attribute(
+                "search.top_score",
+                float(ranked[0].score) if ranked else 0
+            )
             rank_span.set_attribute("search.score_spread",
                 float(ranked[0].score - ranked[-1].score) if ranked else 0)
 
@@ -109,13 +115,12 @@ async def search_products(query: str, user_id: str, filters: dict):
                 len(ranked) - len(results))
 
         # Record metrics
-        total_ms = (time.time() - start) * 1000
+        total_ms = (time.perf_counter() - start) * 1000
         search_latency.record(total_ms, {"search.intent": parsed.intent})
         search_result_count.record(len(results), {"search.intent": parsed.intent})
 
         if len(results) == 0:
             zero_result_counter.add(1, {
-                "search.raw_query": query,
                 "search.intent": parsed.intent
             })
             root_span.set_attribute("search.zero_results", True)
@@ -128,13 +133,13 @@ async def search_products(query: str, user_id: str, filters: dict):
 
 ## Measuring Result Quality After the Fact
 
-Relevance is not something you can fully measure at query time. You need to track what users do after they see results. This means instrumenting clicks and purchases downstream and linking them back to the original search span.
+Relevance is not something you can fully measure at query time. You need to track what users do after they see results. This means instrumenting clicks and purchases downstream and correlating them back to the original search trace.
 
 ```python
 def track_search_click(search_trace_id: str, product_id: str, position: int):
     """Called when a user clicks a search result."""
     with tracer.start_as_current_span("search.result_click") as span:
-        # Link back to the original search span
+        # Correlate back to the original search trace
         span.set_attribute("search.original_trace_id", search_trace_id)
         span.set_attribute("search.clicked_product_id", product_id)
         span.set_attribute("search.click_position", position)
