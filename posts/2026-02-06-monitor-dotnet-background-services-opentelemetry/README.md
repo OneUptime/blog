@@ -27,6 +27,8 @@ First, install the necessary OpenTelemetry packages for your .NET application:
 
 ```bash
 dotnet add package OpenTelemetry.Extensions.Hosting
+dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Instrumentation.Runtime
 dotnet add package OpenTelemetry.Exporter.Console
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
@@ -82,6 +84,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
 
 public class DataProcessingService : BackgroundService
 {
@@ -142,6 +145,11 @@ public class DataProcessingService : BackgroundService
             }
             catch (Exception ex)
             {
+                if (ex is OperationCanceledException && stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 _logger.LogError(ex, "Error during processing cycle");
 
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
@@ -188,6 +196,11 @@ public class DataProcessingService : BackgroundService
         catch (Exception ex)
         {
             stopwatch.Stop();
+            if (ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.RecordException(ex);
             throw;
@@ -206,7 +219,7 @@ public class DataProcessingService : BackgroundService
 
         try
         {
-            // Add baggage for correlation across service boundaries
+            // Add baggage for business context that should travel with the trace
             activity?.SetBaggage("item.id", item.Id);
 
             // Simulate processing work
@@ -225,6 +238,11 @@ public class DataProcessingService : BackgroundService
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.RecordException(ex);
             _logger.LogError(ex, "Failed to process item {ItemId}", item.Id);
@@ -286,6 +304,7 @@ Add health checks to monitor the status of your background services:
 
 ```csharp
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Diagnostics;
 
 public class BackgroundServiceHealthCheck : IHealthCheck
 {
@@ -348,16 +367,21 @@ builder.Services.AddHealthChecks()
 For background services that perform long-running operations, implement progress tracking:
 
 ```csharp
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Hosting;
+
 public class LongRunningService : BackgroundService
 {
     private readonly ActivitySource _activitySource;
+    private readonly Meter _meter;
     private readonly Counter<long> _progressCounter;
 
     public LongRunningService()
     {
         _activitySource = new ActivitySource("BackgroundService.LongRunning");
-        var meter = new Meter("BackgroundService.LongRunning");
-        _progressCounter = meter.CreateCounter<long>("operation.progress");
+        _meter = new Meter("BackgroundService.LongRunning");
+        _progressCounter = _meter.CreateCounter<long>("operation.progress");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -395,6 +419,13 @@ public class LongRunningService : BackgroundService
     {
         // Processing logic with automatic parent activity correlation
         await Task.Delay(100, cancellationToken);
+    }
+
+    public override void Dispose()
+    {
+        _activitySource.Dispose();
+        _meter.Dispose();
+        base.Dispose();
     }
 }
 ```
@@ -440,8 +471,8 @@ graph TD
 
 When background services don't appear in your telemetry backend, verify that your ActivitySource name matches what you configured in the OpenTelemetry setup. The wildcard pattern "BackgroundService.*" will match any source starting with that prefix.
 
-If metrics aren't being collected, ensure that your Meter is created before the OpenTelemetry SDK initializes, typically by registering it as a singleton service.
+If metrics aren't being collected, ensure that the Meter name is added to the OpenTelemetry configuration before the provider is built. The SDK only listens to meters that are explicitly added with `AddMeter`, including wildcard patterns such as `BackgroundService.*`.
 
-For missing correlation between background service operations and incoming requests, use baggage propagation to carry context across async boundaries and service calls.
+For missing correlation between background service operations and incoming requests, propagate the trace context from the request into the queued or scheduled work item and start the background activity with that context as its parent. Use baggage only for additional business context that should travel with the trace.
 
 Background services are the workhorses of modern applications, and OpenTelemetry gives you the visibility needed to keep them running smoothly. With proper instrumentation, you can track execution patterns, identify bottlenecks, and diagnose issues before they impact your users.
