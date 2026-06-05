@@ -67,40 +67,47 @@ receivers:
           layout: '%Y-%m-%dT%H:%M:%S%z'
 
       # Map to OpenTelemetry semantic conventions
-      - type: move
+      - id: move_request_method
+        type: move
         from: attributes.request_method
-        to: attributes["http.method"]
-      - type: move
+        to: attributes["http.request.method"]
+      - id: move_request_uri
+        type: move
         from: attributes.request_uri
-        to: attributes["http.url"]
-      - type: move
+        to: attributes["url.path"]
+      - id: move_status
+        type: move
         from: attributes.status
-        to: attributes["http.status_code"]
-      - type: move
+        to: attributes["http.response.status_code"]
+      - id: move_remote_addr
+        type: move
         from: attributes.remote_addr
-        to: attributes["net.peer.ip"]
-      - type: move
+        to: attributes["client.address"]
+      - id: move_body_bytes_sent
+        type: move
         from: attributes.body_bytes_sent
-        to: attributes["http.response_content_length"]
-      - type: move
+        to: attributes["http.response.body.size"]
+      - id: move_request_time
+        type: move
         from: attributes.request_time
         to: attributes["http.request_time_seconds"]
-      - type: move
+      - id: move_user_agent
+        type: move
         from: attributes.http_user_agent
-        to: attributes["http.user_agent"]
+        to: attributes["user_agent.original"]
 
       # Set the log body to a readable summary
       - type: add
         field: body
-        value: 'EXPR(attributes["http.method"] + " " + attributes["http.url"])'
+        value: 'EXPR(attributes["http.request.method"] + " " + attributes["url.path"])'
 
       # Set severity based on status code
       - type: severity_parser
-        parse_from: attributes["http.status_code"]
+        parse_from: attributes["http.response.status_code"]
         mapping:
-          info: [200, 201, 204, 301, 302, 304]
-          warn: [400, 401, 403, 404, 405]
-          error: [500, 502, 503, 504]
+          info: [2xx, 3xx]
+          warn: 4xx
+          error: 5xx
 
 processors:
   batch:
@@ -144,9 +151,9 @@ receivers:
         severity:
           parse_from: attributes.status
           mapping:
-            info: ["200", "201", "204", "301", "302"]
-            warn: ["400", "401", "403", "404"]
-            error: ["500", "502", "503", "504"]
+            info: [2xx, 3xx]
+            warn: 4xx
+            error: 5xx
 ```
 
 ## Parsing NGINX Error Logs
@@ -168,11 +175,8 @@ receivers:
         severity:
           parse_from: attributes.level
           mapping:
-            debug: debug
-            info: info
-            warn: warn
-            error: error
-            fatal: crit
+            info: notice
+            fatal: [crit, alert, emerg]
       - type: move
         from: attributes.message
         to: body
@@ -193,12 +197,14 @@ receivers:
         timestamp:
           parse_from: attributes.time_local
           layout: '%Y-%m-%dT%H:%M:%S%z'
-      - type: move
+      - id: move_request_method
+        type: move
         from: attributes.request_method
-        to: attributes["http.method"]
-      - type: move
+        to: attributes["http.request.method"]
+      - id: move_status
+        type: move
         from: attributes.status
-        to: attributes["http.status_code"]
+        to: attributes["http.response.status_code"]
       - type: add
         field: attributes["log.type"]
         value: "access"
@@ -215,6 +221,9 @@ receivers:
           layout: '%Y/%m/%d %H:%M:%S'
         severity:
           parse_from: attributes.level
+          mapping:
+            info: notice
+            fatal: [crit, alert, emerg]
       - type: move
         from: attributes.message
         to: body
