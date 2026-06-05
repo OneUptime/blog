@@ -46,7 +46,7 @@ The diagram shows the typical flow. The test runner sends a request that trigger
 
 You need a lightweight backend that can receive and store trace data during test runs. There are several approaches, each with trade-offs.
 
-The simplest option is to run a collector with a file exporter that writes spans to a JSON file. Your test code reads the file after the test scenario completes.
+The simplest option is to run a collector with a file exporter that writes spans to a JSON file. Your test code reads the file after the test scenario completes. If you want a queryable in-memory backend as well, the same collector can forward OTLP/HTTP JSON to that backend.
 
 ```yaml
 # collector-test-config.yaml
@@ -63,18 +63,25 @@ receivers:
 exporters:
   file:
     # Write all telemetry to a JSON file for test assertions
-    path: /tmp/test-traces.json
+    # Use a writable mounted directory when running the collector container
+    path: /file-exporter/test-traces.json
 
-  logging:
+  otlp_http/test:
+    # Forward JSON-encoded OTLP/HTTP to the in-memory test backend below
+    endpoint: http://trace-server:9999
+    encoding: json
+    compression: none
+
+  debug:
     # Also log spans to stdout for debugging test failures
-    loglevel: debug
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       # No processors, so spans are exported exactly as received
-      exporters: [file, logging]
+      exporters: [file, otlp_http/test, debug]
 ```
 
 A more robust approach is to use an in-memory OTLP server that exposes an API for querying received spans. Here is a minimal one in Node.js:
@@ -88,13 +95,35 @@ interface StoredSpan {
     spanId: string;
     parentSpanId: string;
     name: string;
-    attributes: Record<string, unknown>;
+    attributes: unknown[];
+    resourceAttributes: unknown[];
     // Store the raw span data for detailed assertions
     raw: unknown;
 }
 
 // In-memory storage for received spans
 const spans: StoredSpan[] = [];
+
+function getAttributeValue(attributes: unknown[], key: string): unknown {
+    for (const attr of attributes) {
+        if (
+            attr &&
+            typeof attr === "object" &&
+            "key" in attr &&
+            (attr as { key?: unknown }).key === key
+        ) {
+            const value = (attr as { value?: Record<string, unknown> }).value;
+            return (
+                value?.stringValue ??
+                value?.intValue ??
+                value?.doubleValue ??
+                value?.boolValue ??
+                value
+            );
+        }
+    }
+    return undefined;
+}
 
 // Simple HTTP server that accepts OTLP/HTTP JSON spans
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -105,30 +134,45 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
             // Parse the OTLP JSON payload and extract spans
             const payload = JSON.parse(body);
             for (const resourceSpan of payload.resourceSpans || []) {
+                const resourceAttributes =
+                    resourceSpan.resource?.attributes || [];
                 for (const scopeSpan of resourceSpan.scopeSpans || []) {
                     for (const span of scopeSpan.spans || []) {
+                        const spanAttributes = span.attributes || [];
                         spans.push({
                             traceId: span.traceId,
                             spanId: span.spanId,
                             parentSpanId: span.parentSpanId || "",
                             name: span.name,
-                            attributes: span.attributes || {},
+                            attributes: spanAttributes,
+                            resourceAttributes,
                             raw: span,
                         });
                     }
                 }
             }
-            res.writeHead(200);
+            res.writeHead(200, { "Content-Type": "application/json" });
             res.end("{}");
         });
     } else if (req.method === "GET" && req.url?.startsWith("/spans")) {
         // Endpoint for tests to query stored spans
         const url = new URL(req.url, `http://${req.headers.host}`);
         const traceId = url.searchParams.get("traceId");
+        const serviceName = url.searchParams.get("service.name");
 
-        const filtered = traceId
-            ? spans.filter((s) => s.traceId === traceId)
-            : spans;
+        const filtered = spans.filter((span) => {
+            if (traceId && span.traceId !== traceId) {
+                return false;
+            }
+            if (
+                serviceName &&
+                getAttributeValue(span.resourceAttributes, "service.name") !==
+                    serviceName
+            ) {
+                return false;
+            }
+            return true;
+        });
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(filtered));
@@ -156,22 +200,31 @@ For testing cross-service trace propagation, Docker Compose provides an isolated
 
 ```yaml
 # docker-compose.test.yaml
-version: "3.8"
 services:
+  # Queryable in-memory backend used by the tests
+  trace-server:
+    build: ./test-trace-server
+    ports:
+      - "9999:9999"
+
   # The OpenTelemetry Collector receives spans from both services
   collector:
     image: otel/opentelemetry-collector-contrib:latest
     volumes:
-      - ./collector-test-config.yaml:/etc/otelcol/config.yaml
+      - ./collector-test-config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./file-exporter:/file-exporter:rw
     ports:
       - "4317:4317"
       - "4318:4318"
+    depends_on:
+      - trace-server
 
   # Service A is the entry point that calls Service B
   service-a:
     build: ./service-a
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=service-a
       - SERVICE_B_URL=http://service-b:8080
     depends_on:
@@ -185,6 +238,7 @@ services:
     build: ./service-b
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=service-b
     depends_on:
       - collector
@@ -264,9 +318,14 @@ def test_trace_propagates_across_services():
     assert len(trace_ids) == 1, "All spans should belong to the same trace"
 
     # Verify we have spans from both services
-    span_names = [s["name"] for s in spans]
-    service_a_spans = [s for s in spans if "service-a" in str(s.get("raw", {}))]
-    service_b_spans = [s for s in spans if "service-b" in str(s.get("raw", {}))]
+    service_a_spans = requests.get(
+        f"{TRACE_SERVER_URL}/spans",
+        params={"traceId": trace_id, "service.name": "service-a"}
+    ).json()
+    service_b_spans = requests.get(
+        f"{TRACE_SERVER_URL}/spans",
+        params={"traceId": trace_id, "service.name": "service-b"}
+    ).json()
 
     assert len(service_a_spans) > 0, "Should have spans from service-a"
     assert len(service_b_spans) > 0, "Should have spans from service-b"
@@ -275,6 +334,7 @@ def test_parent_child_chain_is_complete():
     """Verify the span parent-child chain has no gaps."""
     response = requests.get(f"{GATEWAY_URL}/api/health")
     trace_id = response.headers.get("X-Trace-Id")
+    assert trace_id is not None, "Response should include X-Trace-Id header"
 
     spans = wait_for_spans(trace_id, expected_count=1, timeout=10.0)
 
@@ -307,10 +367,11 @@ def test_collector_redacts_sensitive_attributes():
     )
 
     trace_id = response.headers.get("X-Trace-Id")
+    assert trace_id is not None, "Response should include X-Trace-Id header"
     spans = wait_for_spans(trace_id, expected_count=1, timeout=10.0)
 
     for span in spans:
-        attrs = span.get("attributes", {})
+        attrs = span.get("attributes", [])
         # The collector should have removed SSN attributes
         for attr in attrs:
             attr_key = attr.get("key", "") if isinstance(attr, dict) else str(attr)
