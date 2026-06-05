@@ -31,7 +31,7 @@ import pytest
 from opentelemetry import trace, context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import StatusCode
 
@@ -199,13 +199,13 @@ class TestOrderEndpointInstrumentation:
         })
 
         harness.assert_span_has_attribute(
-            "POST /api/v1/orders", "http.method", "POST"
+            "POST /api/v1/orders", "http.request.method", "POST"
         )
         harness.assert_span_has_attribute(
             "POST /api/v1/orders", "http.route", "/api/v1/orders"
         )
         harness.assert_span_has_attribute(
-            "POST /api/v1/orders", "http.status_code", 201
+            "POST /api/v1/orders", "http.response.status_code", 201
         )
         harness.assert_span_has_attribute(
             "POST /api/v1/orders", "order.id"
@@ -242,7 +242,7 @@ class TestOrderEndpointInstrumentation:
             "POST /api/v1/orders", "validation"
         )
         harness.assert_span_has_attribute(
-            "POST /api/v1/orders", "http.status_code", 400
+            "POST /api/v1/orders", "http.response.status_code", 400
         )
 
     def test_context_propagation_to_downstream(self, client):
@@ -279,6 +279,12 @@ on:
       - 'tests/**'
       - 'requirements*.txt'
 
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
 jobs:
   validate-instrumentation:
     runs-on: ubuntu-latest
@@ -309,9 +315,9 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -348,16 +354,16 @@ jobs:
             --junitxml=test-results/snapshots.xml
 
       - name: Publish test results
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Instrumentation Test Results
           path: test-results/*.xml
-          reporter: java-junit
+          reporter: python-xunit
 
       - name: Comment on PR if tests fail
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.createComment({
