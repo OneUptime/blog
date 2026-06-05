@@ -126,9 +126,8 @@ def collect_pg_replication_lag(conn_params):
             state,
             -- Calculate lag in bytes using WAL positions
             pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes,
-            -- Calculate lag in seconds (available in PG 10+)
-            EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))
-                AS lag_seconds
+            -- Calculate replay lag in seconds (available in PG 10+)
+            EXTRACT(EPOCH FROM replay_lag) AS lag_seconds
         FROM pg_stat_replication
         ORDER BY client_addr;
     """)
@@ -193,7 +192,7 @@ GRANT pg_monitor TO replication_monitor;
 
 ## Monitoring MySQL / MariaDB Replication Lag
 
-MySQL and MariaDB expose replication status through the `SHOW REPLICA STATUS` command (or `SHOW SLAVE STATUS` on older versions). The key metric is `Seconds_Behind_Source`, which estimates how far the replica lags behind the primary.
+MySQL and MariaDB expose replication status through the `SHOW REPLICA STATUS` command (or `SHOW SLAVE STATUS` on older versions). The key metric is `Seconds_Behind_Source` in MySQL or `Seconds_Behind_Master` in MariaDB, which estimates how far the replica lags behind the primary.
 
 ```python
 # mysql_replication_monitor.py - Collect MySQL/MariaDB replication lag
@@ -250,10 +249,12 @@ relay_log_space = meter.create_gauge(
 def collect_mysql_replication_lag(replica_configs):
     """Connect to each replica and check its replication status."""
     for config in replica_configs:
-        replica_name = config.pop("replica_name", "unknown")
+        replica_name = config.get("replica_name", "unknown")
+        conn = None
 
         try:
-            conn = pymysql.connect(**config)
+            conn_params = {k: v for k, v in config.items() if k != "replica_name"}
+            conn = pymysql.connect(**conn_params)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             # SHOW REPLICA STATUS returns the replication state
@@ -267,12 +268,19 @@ def collect_mysql_replication_lag(replica_configs):
 
             attrs = {
                 "db.replica.name": replica_name,
-                "db.replica.source_host": status.get("Source_Host", "unknown"),
+                "db.replica.source_host": status.get(
+                    "Source_Host",
+                    status.get("Master_Host", "unknown")
+                ),
                 "db.system": "mysql",
             }
 
-            # Seconds_Behind_Source can be NULL if replication is broken
-            seconds_behind = status.get("Seconds_Behind_Source")
+            # MySQL 8.0.22+ uses Source field names; MariaDB still reports
+            # Seconds_Behind_Master in SHOW REPLICA STATUS.
+            seconds_behind = status.get(
+                "Seconds_Behind_Source",
+                status.get("Seconds_Behind_Master")
+            )
             if seconds_behind is not None:
                 lag_seconds.set(float(seconds_behind), attrs)
             else:
@@ -281,8 +289,10 @@ def collect_mysql_replication_lag(replica_configs):
 
             # Track thread status - both threads must be running for
             # healthy replication
-            io_running = 1.0 if status.get("Replica_IO_Running") == "Yes" else 0.0
-            sql_running = 1.0 if status.get("Replica_SQL_Running") == "Yes" else 0.0
+            io_status = status.get("Replica_IO_Running", status.get("Slave_IO_Running"))
+            sql_status = status.get("Replica_SQL_Running", status.get("Slave_SQL_Running"))
+            io_running = 1.0 if io_status == "Yes" else 0.0
+            sql_running = 1.0 if sql_status == "Yes" else 0.0
 
             io_thread_running.set(io_running, attrs)
             sql_thread_running.set(sql_running, attrs)
@@ -292,13 +302,12 @@ def collect_mysql_replication_lag(replica_configs):
             relay_log_space.set(float(relay_space), attrs)
 
             cursor.close()
-            conn.close()
 
         except Exception as e:
             print(f"Error checking replica {replica_name}: {e}")
         finally:
-            # Restore the replica_name for the next iteration
-            config["replica_name"] = replica_name
+            if conn:
+                conn.close()
 
 
 # Configure your replicas
@@ -484,17 +493,19 @@ processors:
 
 exporters:
   # Send to OneUptime for dashboards and alerting
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "Content-Type": "application/json"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp/oneuptime]
+      exporters: [otlphttp/oneuptime]
 ```
 
 ## Alerting on Replication Lag
@@ -515,7 +526,7 @@ Stick to consistent metric names across all database engines. This lets you buil
 
 ```text
 db.replication.lag_seconds       - Time lag (all engines)
-db.replication.lag_bytes         - Byte lag (PostgreSQL, MySQL)
+db.replication.lag_bytes         - Byte lag (PostgreSQL)
 db.replication.active            - Is replication running (1/0)
 db.replication.io_thread_running - IO thread status (MySQL only)
 db.replication.sql_thread_running - SQL thread status (MySQL only)
