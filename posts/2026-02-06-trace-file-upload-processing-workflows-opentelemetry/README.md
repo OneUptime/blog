@@ -58,7 +58,7 @@ resource = Resource.create({
 # Tracing setup
 trace_provider = TracerProvider(resource=resource)
 trace_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="grpc://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -76,7 +76,7 @@ meter = metrics.get_meter("file-processing-service", "1.5.0")
 upload_size = meter.create_histogram(
     "file.upload_size_bytes",
     description="Size of uploaded files",
-    unit="bytes",
+    unit="By",
 )
 
 upload_duration = meter.create_histogram(
@@ -268,7 +268,6 @@ After the upload is accepted, background workers pick up the file for processing
 
 ```python
 from opentelemetry.context import attach, detach
-from opentelemetry.trace.propagation import get_current_span
 import json
 
 def queue_file_processing(file_id, content_type, file_size):
@@ -278,7 +277,7 @@ def queue_file_processing(file_id, content_type, file_size):
 
         # Serialize the current trace context into the message
         carrier = {}
-        from opentelemetry.propagators import inject
+        from opentelemetry.propagate import inject
         inject(carrier)
 
         message = {
@@ -298,7 +297,7 @@ async def process_file_worker(message):
     file_id = data["file_id"]
 
     # Restore trace context from the message
-    from opentelemetry.propagators import extract
+    from opentelemetry.propagate import extract
     ctx = extract(data.get("trace_context", {}))
     token = attach(ctx)
 
