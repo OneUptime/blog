@@ -16,7 +16,7 @@ receivers:
     hosts:
       - endpoint: "mongodb-primary:27017"
     username: monitoring
-    password: "${MONGODB_PASSWORD}"
+    password: "${env:MONGODB_PASSWORD}"
     auth_source: admin
     collection_interval: 15s
     tls:
@@ -90,7 +90,7 @@ rs.status()
 ### Replication Lag
 
 ```text
-mongodb.replication.lag - Seconds behind the primary
+custom.mongodb.replication.lag - Seconds behind the primary
 ```
 
 You can also calculate lag from oplog timestamps:
@@ -116,7 +116,7 @@ var oplog = db.getSiblingDB("local").oplog.rs;
 var first = oplog.find().sort({$natural: 1}).limit(1).next();
 var last = oplog.find().sort({$natural: -1}).limit(1).next();
 
-var windowSeconds = (last.ts.getTime() - first.ts.getTime());
+var windowSeconds = last.ts.getHighBits() - first.ts.getHighBits();
 var windowHours = windowSeconds / 3600;
 print("Oplog window: " + windowHours.toFixed(1) + " hours");
 ```
@@ -134,10 +134,10 @@ print("Oplog used: " + (stats.size / 1024 / 1024) + " MB");
 ### Cache Usage
 
 ```text
-mongodb.cache.operations{type="read_into"}   - Pages read into cache
-mongodb.cache.operations{type="written_from"} - Pages written from cache (evictions)
-mongodb.memory.usage{type="resident"}         - Resident memory
-mongodb.memory.usage{type="virtual"}          - Virtual memory
+mongodb.cache.operations{type="hit"}  - Cache hits
+mongodb.cache.operations{type="miss"} - Cache misses
+mongodb.memory.usage{type="resident"} - Resident memory
+mongodb.memory.usage{type="virtual"}  - Virtual memory
 ```
 
 ### WiredTiger-Specific Metrics
@@ -158,7 +158,7 @@ print("Written from cache: " + wt["pages written from cache"]);
 ### Cache Hit Ratio
 
 ```text
-cache_hit_ratio = 1 - (pages_read_into_cache / (pages_read_into_cache + pages_found_in_cache))
+cache_hit_ratio = 1 - (pages_read_into_cache / pages_requested_from_cache)
 ```
 
 A ratio above 95% means most reads are served from memory.
@@ -185,33 +185,33 @@ The `clusterMonitor` role provides read-only access to monitoring data. The `rea
 # Replica set member down
 
 - alert: MongoDBReplicaDown
-  condition: mongodb.member.state != 1 and mongodb.member.state != 2 and mongodb.member.state != 7
+  condition: custom.mongodb.member.state != 1 and custom.mongodb.member.state != 2 and custom.mongodb.member.state != 7
   severity: critical
   message: "MongoDB replica set member {{ member }} is in state {{ state }}"
 
 # High replication lag
 - alert: MongoDBReplicationLag
-  condition: mongodb.replication.lag > 30
+  condition: custom.mongodb.replication.lag > 30
   for: 5m
   severity: warning
   message: "MongoDB secondary is {{ value }} seconds behind primary"
 
 # Oplog window too small
 - alert: MongoDBOplogWindowSmall
-  condition: oplog_window_hours < 12
+  condition: custom.mongodb.oplog.window.hours < 12
   severity: warning
   message: "Oplog window is only {{ value }} hours. Risk of requiring full resync."
 
 # WiredTiger cache pressure
 - alert: MongoDBCachePressure
-  condition: wiredtiger_cache_used / wiredtiger_cache_max > 0.9
+  condition: custom.mongodb.wiredtiger.cache.used / custom.mongodb.wiredtiger.cache.max > 0.9
   for: 10m
   severity: warning
   message: "WiredTiger cache is {{ value }}% utilized"
 
 # High connection count
 - alert: MongoDBHighConnections
-  condition: mongodb.connection.count > 5000
+  condition: mongodb.connection.count{type="active"} > 5000
   for: 5m
   severity: warning
   message: "{{ value }} active connections to MongoDB"
