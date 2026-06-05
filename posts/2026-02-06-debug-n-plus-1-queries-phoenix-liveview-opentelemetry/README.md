@@ -14,9 +14,9 @@ This guide demonstrates how to use OpenTelemetry to identify, analyze, and fix N
 
 LiveView applications are particularly susceptible to N+1 problems because:
 
-**Dynamic Rendering**: LiveView re-renders templates on state changes. If your template iterates over records and accesses associations, you trigger queries on every render.
+**Dynamic Rendering**: LiveView re-renders templates on state changes. If your template iterates over records and calls helpers that load related data for each row, you trigger queries on every render.
 
-**Event Handlers**: Handle functions often load data without preloading associations, causing N+1 queries when rendering the updated state.
+**Event Handlers**: Handle functions often load data without preloading associations or related values needed by render helpers, causing N+1 queries when rendering the updated state.
 
 **Multiple Clients**: With many concurrent users, N+1 problems multiply, creating database load that grows linearly with connection count.
 
@@ -40,32 +40,23 @@ With OpenTelemetry instrumentation in place, this pattern becomes immediately vi
 Before debugging N+1 queries, ensure both Phoenix and Ecto instrumentation are configured (covered in previous posts). Add custom instrumentation for LiveView lifecycle events:
 
 ```elixir
-defmodule MyAppWeb.TracedLiveView do
-  defmacro __using__(_opts) do
-    quote do
-      use Phoenix.LiveView
-      require OpenTelemetry.Tracer
+defmodule MyAppWeb.LiveTracing do
+  require OpenTelemetry.Tracer
 
-      # Override mount to add tracing
-      def mount(params, session, socket) do
-        OpenTelemetry.Tracer.with_span "#{__MODULE__}.mount" do
-          OpenTelemetry.Tracer.set_attributes(%{
-            "liveview.module" => to_string(__MODULE__),
-            "liveview.action" => socket.assigns.live_action
-          })
+  def trace_mount(module, socket, fun) do
+    OpenTelemetry.Tracer.with_span "#{inspect(module)}.mount" do
+      OpenTelemetry.Tracer.set_attributes(%{
+        "liveview.module" => inspect(module),
+        "liveview.action" => to_string(socket.assigns[:live_action] || "")
+      })
 
-          super(params, session, socket)
-        end
-      end
-
-      # Wrap handle_event with tracing
-      defoverridable mount: 3
+      fun.()
     end
   end
 end
 ```
 
-Use this module in your LiveViews to automatically create spans for mount and event handlers.
+Use this helper in your LiveViews to create spans around `mount/3`, and use the `handle_event/3` wrapper shown later for event handlers.
 
 ## Example N+1 Problem
 
@@ -79,10 +70,12 @@ defmodule MyAppWeb.PostLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    # Fetch posts WITHOUT preloading the author association
-    posts = Blog.list_posts()
+    MyAppWeb.LiveTracing.trace_mount(__MODULE__, socket, fn ->
+      # Fetch posts WITHOUT preloading the author association
+      posts = Blog.list_posts()
 
-    {:ok, assign(socket, posts: posts)}
+      {:ok, assign(socket, posts: posts)}
+    end)
   end
 
   @impl true
@@ -102,8 +95,8 @@ The template renders post authors:
   <%= for post <- @posts do %>
     <article>
       <h2><%= post.title %></h2>
-      <!-- This triggers a query for EACH post -->
-      <p class="author">By <%= post.author.name %></p>
+      <!-- This calls a helper that queries for EACH post -->
+      <p class="author">By <%= Blog.author_name(post.author_id) %></p>
       <div class="content"><%= post.excerpt %></div>
     </article>
   <% end %>
@@ -120,6 +113,10 @@ defmodule MyApp.Blog do
   # Returns posts WITHOUT author preloaded
   def list_posts do
     Repo.all(Post)
+  end
+
+  def author_name(author_id) do
+    Repo.get!(MyApp.Accounts.User, author_id).name
   end
 end
 ```
@@ -143,7 +140,7 @@ defmodule MyApp.Blog.Post do
 end
 ```
 
-When the template renders, accessing `post.author.name` triggers a database query for each post.
+When the template renders, calling `Blog.author_name/1` for each row triggers a database query for each post. Ecto does not lazy-load associations; accessing an unloaded association such as `post.author.name` would raise because the association contains `%Ecto.Association.NotLoaded{}`.
 
 ## Identifying N+1 in Traces
 
@@ -174,7 +171,7 @@ Key indicators of N+1 problems in traces:
 
 ## Analyzing the Trace
 
-When you examine the trace in your observability platform, look for these attributes in the Ecto spans:
+When you examine the trace in your observability platform, look for these attributes in the Ecto spans. If you use `opentelemetry_ecto`, SQL statements are only included when the `:db_statement` option is enabled or configured with a sanitizer function:
 
 ```text
 Span: my_app.repo.query
@@ -207,6 +204,12 @@ defmodule MyApp.Blog do
 end
 ```
 
+Then render the preloaded association:
+
+```heex
+<p class="author">By <%= post.author.name %></p>
+```
+
 After this change, the trace shows a different pattern:
 
 ```mermaid
@@ -228,19 +231,19 @@ The render span shows no child database query spans, confirming the N+1 is resol
 N+1 problems often span multiple association levels:
 
 ```elixir
-# Template accessing nested associations
+# Template calling helpers that load nested data
 
 <%= for post <- @posts do %>
   <h2><%= post.title %></h2>
-  <p>By <%= post.author.name %></p>
-  <!-- Access author's profile - another N+1 layer -->
-  <img src="<%= post.author.profile.avatar_url %>" />
-  <!-- Access post comments - another N+1 layer -->
+  <p>By <%= Blog.author_name(post.author_id) %></p>
+  <!-- Load author's profile - another N+1 layer -->
+  <img src="<%= Blog.profile_avatar_url(post.author_id) %>" />
+  <!-- Load post comments - another N+1 layer -->
   <div class="comments">
-    <%= for comment <- post.comments do %>
+    <%= for comment <- Blog.comments_for_post(post.id) do %>
       <p><%= comment.body %></p>
-      <!-- Access comment author - yet another N+1 layer -->
-      <span>- <%= comment.author.name %></span>
+      <!-- Load comment author - yet another N+1 layer -->
+      <span>- <%= Blog.author_name(comment.author_id) %></span>
     <% end %>
   </div>
 <% end %>
@@ -271,14 +274,14 @@ def list_posts_with_details do
 end
 ```
 
-After the fix, traces show just 4 queries total:
+After the fix, traces show just 5 queries total:
 1. SELECT posts
 2. SELECT authors for posts (IN clause)
 3. SELECT profiles for authors (IN clause)
 4. SELECT comments for posts (IN clause)
 5. SELECT authors for comments (IN clause)
 
-Actually 5 queries, but the point is it's constant regardless of collection sizes.
+The point is that the query count is constant regardless of collection sizes.
 
 ## LiveView Event Handlers
 
@@ -343,7 +346,7 @@ Add a development-only check that alerts you to N+1 patterns:
 if Mix.env() == :dev do
   defmodule MyApp.N1Detector do
     def setup do
-      # Attach a Telemetry handler that counts queries per request
+      # Attach a Telemetry handler that counts queries in the current process
       :telemetry.attach_many(
         "n1-detector",
         [
@@ -351,17 +354,18 @@ if Mix.env() == :dev do
           [:phoenix, :endpoint, :stop]
         ],
         &__MODULE__.handle_event/4,
-        %{queries: []}
+        %{}
       )
     end
 
-    def handle_event([:my_app, :repo, :query], _measurements, metadata, state) do
+    def handle_event([:my_app, :repo, :query], _measurements, metadata, _config) do
       # Track query patterns
       query_pattern =
         metadata.query
         |> String.replace(~r/\$\d+/, "?")  # Normalize parameters
 
-      updated_queries = [query_pattern | state.queries]
+      updated_queries = [query_pattern | Process.get(:n1_detector_queries, [])]
+      Process.put(:n1_detector_queries, updated_queries)
 
       # Check for repeated patterns
       query_counts = Enum.frequencies(updated_queries)
@@ -375,13 +379,11 @@ if Mix.env() == :dev do
           """)
         end
       end)
-
-      %{state | queries: updated_queries}
     end
 
-    def handle_event([:phoenix, :endpoint, :stop], _measurements, _metadata, _state) do
+    def handle_event([:phoenix, :endpoint, :stop], _measurements, _metadata, _config) do
       # Reset query counter after request completes
-      %{queries: []}
+      Process.delete(:n1_detector_queries)
     end
   end
 
@@ -396,13 +398,15 @@ This prints warnings during development when query patterns repeat more than a t
 For complex scenarios where preloading isn't sufficient, use query aggregation:
 
 ```elixir
+import Ecto.Query
+
 # Instead of loading all comments and rendering count
 def list_posts_with_comment_counts do
   from(p in Post,
     left_join: c in assoc(p, :comments),
     group_by: p.id,
     # Use aggregation to get count without loading comments
-    select: %{p | comment_count: count(c.id)}
+    select: %{post: p, comment_count: count(c.id)}
   )
   |> Repo.all()
 end
