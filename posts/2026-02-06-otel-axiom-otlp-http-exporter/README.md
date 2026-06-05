@@ -6,14 +6,14 @@ Tags: OpenTelemetry, Axiom, OTLP HTTP Exporter, Log Ingestion
 
 Description: Send OpenTelemetry traces and logs to Axiom using the OTLP HTTP exporter with dataset routing and API token authentication headers.
 
-Axiom is a log analytics and observability platform that natively supports OTLP. It accepts traces, logs, and metrics through standard OTLP endpoints with API token authentication. Each signal can be routed to a different Axiom dataset using the `X-Axiom-Dataset` header or the URL path.
+Axiom is a log analytics and observability platform that natively supports OTLP. It accepts traces, logs, and metrics through standard OTLP endpoints with API token authentication. Logs and traces can be routed to a different Axiom dataset using the `X-Axiom-Dataset` header; metrics use the `X-Axiom-Metrics-Dataset` header.
 
 ## Axiom OTLP Endpoints
 
 Axiom's OTLP HTTP endpoints:
 - Traces: `https://api.axiom.co/v1/traces`
 - Logs: `https://api.axiom.co/v1/logs`
-- General: `https://api.axiom.co/v1/traces` (accepts all signal types)
+- Metrics: `https://api.axiom.co/v1/metrics`
 
 Authentication uses the `Authorization: Bearer <token>` header with an API token.
 
@@ -69,6 +69,7 @@ _logs.set_logger_provider(logger_provider)
 # Bridge Python logging to OpenTelemetry logs
 import logging
 handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(handler)
 ```
 
@@ -79,7 +80,6 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -125,12 +125,12 @@ func initAxiomTracing() (*sdktrace.TracerProvider, error) {
 ## Node.js Setup
 
 ```javascript
-const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
-const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
+const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-proto");
 const { BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { Resource } = require("@opentelemetry/resources");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "web-frontend",
   "service.version": "3.0.0",
 });
@@ -143,9 +143,12 @@ const exporter = new OTLPTraceExporter({
   },
 });
 
-const provider = new NodeTracerProvider({ resource });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
+const sdk = new NodeSDK({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
+sdk.start();
 ```
 
 ## Sending Correlated Logs and Traces
