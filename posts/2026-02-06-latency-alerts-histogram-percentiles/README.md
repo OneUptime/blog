@@ -55,7 +55,7 @@ latency_view = View(
     aggregation=ExplicitBucketHistogramAggregation(boundaries=latency_buckets),
 )
 
-exporter = OTLPMetricExporter(endpoint="otel-collector:4317")
+exporter = OTLPMetricExporter(endpoint="http://otel-collector:4317")
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=15000)
 provider = MeterProvider(
     metric_readers=[reader],
@@ -115,6 +115,7 @@ processors:
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
+    namespace: otel
     resource_to_telemetry_conversion:
       enabled: true
     # Metric names will follow the pattern:
@@ -240,4 +241,4 @@ groups:
 
 The most common mistake is using default SDK buckets that are too coarse for your actual latency distribution. If your service responds in 10-50ms and your first bucket boundary is at 100ms, you lose all precision in the range that matters. Run a few hours of production traffic, examine the actual latency distribution using `histogram_quantile`, and adjust bucket boundaries accordingly.
 
-Also watch out for the `le="+Inf"` bucket. If a significant percentage of requests fall into the infinity bucket, your percentile calculations will be inaccurate because Prometheus linearly interpolates within buckets. Add explicit boundaries that cover your realistic worst-case latency.
+Also watch out for the `le="+Inf"` bucket. If the percentile you are calculating falls into the infinity bucket, Prometheus returns the upper bound of the second-highest bucket, so your percentile calculations will be capped and misleading. Add explicit boundaries that cover your realistic worst-case latency.
