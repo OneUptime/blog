@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Environment Variable, Zero-Code, Configuration, OTEL
 
 Description: Configure OpenTelemetry instrumentation without writing code using standardized environment variables for exporters, sampling, resources, and more.
 
-You can configure the entire OpenTelemetry SDK without touching a single line of application code. No imports, no initialization blocks, no if-else configuration logic. Just set environment variables, and the SDK reads them at startup.
+You can configure OpenTelemetry zero-code instrumentation without touching application code. No imports, no initialization blocks, no if-else configuration logic. Just set environment variables, and the SDK or agent reads them at startup.
 
 This approach is called "zero-code configuration," and it's incredibly powerful. It lets you change backends, adjust sampling rates, toggle debug logging, and modify resource attributes without redeploying your application. Change the environment, restart the process, done.
 
-This guide covers every environment variable that matters, what they do, and how to use them effectively. By the end, you'll be able to configure production-grade OpenTelemetry instrumentation through environment variables alone.
+This guide covers the environment variables that matter most, what they do, and how to use them effectively. By the end, you'll be able to configure production-grade OpenTelemetry instrumentation through environment variables alone.
 
 ## Why Environment Variables?
 
@@ -20,7 +20,7 @@ This guide covers every environment variable that matters, what they do, and how
 
 **Flexibility**: Ops teams can tune telemetry settings (sampling, export intervals, debug logging) without coordinating with developers.
 
-**Standardization**: OpenTelemetry defines a standard set of environment variables. They work across all languages (JavaScript, Python, Go, Java, .NET, etc.).
+**Standardization**: OpenTelemetry defines a standard set of environment variables. Many SDKs and agents support them across languages (JavaScript, Python, Go, Java, .NET, etc.), though exact support can vary by implementation.
 
 **12-Factor compliance**: The Twelve-Factor App methodology recommends environment-based configuration. OpenTelemetry follows this principle.
 
@@ -88,26 +88,27 @@ These variables control where and how telemetry is exported.
 
 ### OTEL_EXPORTER_OTLP_ENDPOINT
 
-The base URL for OTLP exports. The SDK appends signal-specific paths (`/v1/traces`, `/v1/metrics`, `/v1/logs`).
+The base URL for OTLP exports. With OTLP/HTTP, the SDK appends signal-specific paths (`/v1/traces`, `/v1/metrics`, `/v1/logs`).
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com/otlp
 ```
 
-The SDK will export to:
+With `http/protobuf`, the SDK will export to:
 - Traces: `https://oneuptime.com/otlp/v1/traces`
 - Metrics: `https://oneuptime.com/otlp/v1/metrics`
 - Logs: `https://oneuptime.com/otlp/v1/logs`
 
-For gRPC, use a `grpc://` URL:
+For gRPC, set the protocol to `grpc` and use the gRPC endpoint:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=grpc://oneuptime.com:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com:4317
 ```
 
 ### OTEL_EXPORTER_OTLP_HEADERS
 
-HTTP headers sent with every export request. Use this for authentication tokens.
+Headers or gRPC metadata sent with every export request. Use this for authentication tokens.
 
 ```bash
 export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your_token_here,x-custom-header=value"
@@ -148,7 +149,7 @@ export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://metrics-backend.com/v1/metric
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://logs-backend.com/v1/logs
 ```
 
-Useful when you want to send different signals to different backends (e.g., traces to Jaeger, metrics to Prometheus, logs to Loki).
+Useful when you want to send different signals to different OTLP-compatible backends or collectors.
 
 ### Signal-Specific Headers
 
@@ -173,17 +174,17 @@ If an export takes longer than this, it's considered failed and may be retried.
 
 ### OTEL_EXPORTER_OTLP_COMPRESSION
 
-Compression algorithm for exports. Always use `gzip` in production.
+Compression algorithm for exports. Use `gzip` in production when your SDK and backend support it.
 
 ```bash
 export OTEL_EXPORTER_OTLP_COMPRESSION=gzip
 ```
 
-Default: `none` (uncompressed)
+Default: not set (SDK-dependent; commonly uncompressed)
 
 Options: `none`, `gzip`
 
-Compression reduces bandwidth by 5-10x. There's no reason not to enable it.
+Compression can significantly reduce bandwidth, especially for high-volume services.
 
 ## Trace-Specific Configuration
 
@@ -197,7 +198,7 @@ export OTEL_TRACES_EXPORTER=otlp
 
 Default: `otlp`
 
-Options: `otlp`, `jaeger`, `zipkin`, `console`, `none`
+Options: `otlp`, `zipkin`, `console`, `none`
 
 Use `otlp` for modern backends. Use `console` for debugging (prints spans to stdout). Use `none` to disable trace export.
 
@@ -345,7 +346,7 @@ Default: `otlp`
 
 Options: `otlp`, `console`, `none`
 
-Most logging frameworks (Pino, Winston, Logback, Log4j) have OpenTelemetry integrations that automatically export logs via OTLP.
+Many logging frameworks (Pino, Winston, Logback, Log4j) have OpenTelemetry integrations that can emit logs through OpenTelemetry and export them via OTLP.
 
 ## Propagation Configuration
 
@@ -447,7 +448,7 @@ Many languages support auto-instrumentation that's configured entirely via envir
 Install the auto-instrumentation package:
 
 ```bash
-npm install @opentelemetry/auto-instrumentations-node
+npm install @opentelemetry/api @opentelemetry/auto-instrumentations-node
 ```
 
 Run your application with the auto-instrumentation registration:
@@ -464,6 +465,7 @@ Install the auto-instrumentation package:
 
 ```bash
 pip install opentelemetry-distro opentelemetry-exporter-otlp
+opentelemetry-bootstrap -a install
 ```
 
 Use the `opentelemetry-instrument` wrapper:
@@ -490,19 +492,25 @@ java -javaagent:opentelemetry-javaagent.jar -jar app.jar
 
 The agent reads environment variables and instruments JDBC, Servlets, Spring, Hibernate, etc.
 
-### Go (no auto-instrumentation)
+### Go auto-instrumentation and environment configuration
 
-Go doesn't have auto-instrumentation (due to language limitations). You must import and configure the SDK in code. But you can still use environment variables for configuration.
+Go supports zero-code instrumentation through OpenTelemetry eBPF instrumentation and the OpenTelemetry Operator for Kubernetes. If you're configuring the Go SDK in code, you can still read standard environment variables for resources, and the Go OTLP exporter packages read many OTLP exporter environment variables.
 
 ```go
 import (
-    "go.opentelemetry.io/otel"
+    "context"
+
     "go.opentelemetry.io/otel/sdk/resource"
 )
 
-// Use environment variables for configuration
-// The SDK reads OTEL_* variables automatically when you call resource.New()
-res, _ := resource.New(context.Background())
+func configureResource() (*resource.Resource, error) {
+    // resource.WithFromEnv() reads OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME.
+    return resource.New(
+        context.Background(),
+        resource.WithFromEnv(),
+        resource.WithTelemetrySDK(),
+    )
+}
 ```
 
 ## Kubernetes and Docker Configuration
@@ -702,7 +710,7 @@ env:
 
 **Setting OTEL_SERVICE_NAME after SDK initialization**: The SDK reads this variable during initialization. Changing it after won't affect telemetry. Restart the process.
 
-**Forgetting to enable compression**: Always set `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` in production. You'll save 5-10x bandwidth.
+**Forgetting to enable compression**: Set `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` in production when your SDK and backend support it. It can reduce bandwidth substantially.
 
 **Using JSON encoding in production**: `OTEL_EXPORTER_OTLP_PROTOCOL=http/json` is for debugging only. Use `http/protobuf` in production.
 
@@ -721,7 +729,7 @@ Environment variables are the cleanest way to configure OpenTelemetry. They sepa
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: Where to send telemetry
 - `OTEL_EXPORTER_OTLP_HEADERS`: Authentication tokens
 - `OTEL_RESOURCE_ATTRIBUTES`: Environment, version, region, team
-- `OTEL_EXPORTER_OTLP_COMPRESSION`: Always use `gzip`
+- `OTEL_EXPORTER_OTLP_COMPRESSION`: Use `gzip` where supported
 - `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`: Control trace volume
 
 **For debugging:**
