@@ -33,10 +33,10 @@ meter = metrics.get_meter("pricing.service")
 
 # Track conversion accuracy and performance
 
-conversion_duration = meter.create_histogram(
-    "currency.conversion.duration",
+rate_fetch_duration = meter.create_histogram(
+    "currency.rate_fetch.duration",
     unit="ms",
-    description="Time to convert between currencies"
+    description="Time to fetch an exchange rate from the provider"
 )
 
 rate_staleness = meter.create_histogram(
@@ -56,12 +56,11 @@ class CurrencyService:
             span.set_attribute("currency.amount", amount)
 
             # Get the exchange rate (from cache or external API)
-            rate, rate_age = self._get_rate(from_currency, to_currency)
+            rate, rate_age, rate_source = self._get_rate(from_currency, to_currency)
 
             span.set_attribute("currency.rate", rate)
             span.set_attribute("currency.rate_age_seconds", rate_age)
-            span.set_attribute("currency.rate_source",
-                             "cache" if rate_age < 300 else "api")
+            span.set_attribute("currency.rate_source", rate_source)
 
             rate_staleness.record(rate_age, {
                 "currency.pair": f"{from_currency}_{to_currency}"
@@ -80,20 +79,20 @@ class CurrencyService:
 
             if cached and cached["age"] < 300:  # 5-minute cache
                 span.set_attribute("cache.hit", True)
-                return cached["rate"], cached["age"]
+                return cached["rate"], cached["age"], "cache"
 
             span.set_attribute("cache.hit", False)
             start = time.time()
             rate = self._fetch_from_provider(from_curr, to_curr)
             duration = (time.time() - start) * 1000
 
-            conversion_duration.record(duration, {
+            rate_fetch_duration.record(duration, {
                 "currency.pair": pair,
                 "rate.source": "api"
             })
 
             self.rate_cache.set(pair, {"rate": rate, "age": 0})
-            return rate, 0
+            return rate, 0, "api"
 ```
 
 ## Instrumenting Tax Calculation
@@ -185,19 +184,20 @@ class PricingOrchestrator:
             span.set_attribute("pricing.base_usd", base_price)
 
             # Step 2: Convert currency
-            converted_price, rate = self.currency_svc.convert(
-                base_price * quantity, "USD", user_currency
+            converted_unit_price, rate = self.currency_svc.convert(
+                base_price, "USD", user_currency
             )
 
             # Step 3: Calculate tax
             tax_result = self.tax_svc.calculate_tax(
-                items=[{"product_id": product_id, "price": converted_price,
+                items=[{"product_id": product_id, "price": converted_unit_price,
                         "quantity": quantity, "category": self.catalog.get_category(product_id)}],
                 shipping_address=shipping_address,
                 currency=user_currency
             )
 
-            final_price = converted_price + tax_result["total_tax"]
+            subtotal = converted_unit_price * quantity
+            final_price = subtotal + tax_result["total_tax"]
             span.set_attribute("pricing.final_price", final_price)
             span.set_attribute("pricing.tax_included", tax_result["total_tax"])
 

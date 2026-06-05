@@ -271,7 +271,7 @@ output "dags_bucket" {
 }
 
 # Upload a DAG file (useful for bootstrapping)
-# dag_gcs_prefix is "gs://<bucket>/dags" — strip the scheme and take the
+# dag_gcs_prefix is "gs://<bucket>/dags" - strip the scheme and take the
 # first path segment to get just the bucket name.
 resource "google_storage_bucket_object" "sample_dag" {
   name = "dags/sample_dag.py"

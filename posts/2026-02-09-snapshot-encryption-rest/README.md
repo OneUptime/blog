@@ -25,9 +25,22 @@ Encryption adds minimal overhead while significantly improving security posture.
 
 ## AWS EBS Snapshot Encryption
 
-Configure encrypted snapshots for AWS EBS:
+For AWS EBS, snapshot encryption is inherited from the source EBS volume. Configure encryption on the `StorageClass` used by the PVC, then create snapshots with an EBS `VolumeSnapshotClass`:
 
 ```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-encrypted
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  # Enable encryption
+  encrypted: "true"
+
+  # Use a specific KMS key (optional)
+  kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+---
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
@@ -35,28 +48,35 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
-  # Enable encryption
-  encrypted: "true"
-
-  # Use specific KMS key (optional)
-  kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-
-  # Add tags for tracking
-  tagSpecification_1: "Name=Encryption|Value=Enabled"
-  tagSpecification_2: "Name=KMSKey|Value=prod-backup-key"
-  tagSpecification_3: "Name=Compliance|Value=Required"
+  # Add tags for tracking. Snapshot tags use key=value syntax.
+  tagSpecification_1: "Encryption=InheritedFromSourceVolume"
+  tagSpecification_2: "KMSKey=prod-backup-key"
+  tagSpecification_3: "Compliance=Required"
 ```
 
-Create encrypted snapshots:
+Create PVCs from the encrypted `StorageClass`:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ebs-encrypted
+  resources:
+    requests:
+      storage: 100Gi
+```
+
+Create snapshots from encrypted PVCs:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
   name: encrypted-snapshot
-  annotations:
-    encryption.snapshot.kubernetes.io/enabled: "true"
-    encryption.snapshot.kubernetes.io/key-id: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
 spec:
   volumeSnapshotClassName: ebs-encrypted-snapshots
   source:
@@ -83,9 +103,19 @@ aws ec2 describe-snapshots \
 
 ## Google Cloud Persistent Disk Encryption
 
-Configure GCP snapshot encryption:
+For Google Cloud Persistent Disk, snapshots are encrypted by default. To use a customer-managed encryption key, configure CMEK on the Persistent Disk `StorageClass`; snapshots created from those disks use the disk's encryption configuration.
 
 ```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-cmek
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  # Specify customer-managed encryption key (CMEK)
+  disk-encryption-kms-key: "projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/my-key"
+---
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
@@ -93,17 +123,11 @@ metadata:
 driver: pd.csi.storage.gke.io
 deletionPolicy: Retain
 parameters:
-  # Encryption is always enabled in GCP
-  # Specify customer-managed encryption key (CMEK)
-  disk-encryption-kms-key: "projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/my-key"
-
-  # Storage location
+  # Storage location for the snapshot
   storage-locations: us-central1
 
   # Labels for tracking
-  snapshot-labels: |
-    encryption=cmek
-    compliance=required
+  labels: "encryption=cmek,compliance=required"
 ```
 
 ## Azure Disk Snapshot Encryption
@@ -124,18 +148,15 @@ parameters:
   # Enable incremental snapshots
   incremental: "true"
 
-  # Use customer-managed keys
-  diskEncryptionSetID: "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/diskEncryptionSets/<des-name>"
-
   # Tags
-  tags: |
-    Encryption=CustomerManaged
-    Compliance=Required
+  tags: "Encryption=InheritedFromSourceDisk,Compliance=Required"
 ```
+
+For Azure Disk, customer-managed keys are configured on the disk `StorageClass` with `diskEncryptionSetID`. The Azure Disk CSI driver's `VolumeSnapshotClass` supports snapshot parameters such as `resourceGroup`, `incremental`, `location`, and `tags`; it does not use `diskEncryptionSetID` as a snapshot parameter.
 
 ## Key Rotation Strategy
 
-Implement automatic key rotation:
+Implement automatic key rotation for the KMS key itself. For AWS KMS, automatic rotation keeps the same key ID, so you do not need to patch Kubernetes snapshot classes:
 
 ```yaml
 apiVersion: batch/v1
@@ -153,33 +174,20 @@ spec:
           containers:
           - name: rotate-keys
             image: amazon/aws-cli:latest
+            env:
+            - name: KMS_KEY_ID
+              value: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               set -e
 
-              echo "=== Rotating Snapshot Encryption Keys ==="
+              echo "=== Enabling KMS Key Rotation ==="
 
-              # Create new KMS key version
-              NEW_KEY=$(aws kms create-key \
-                --description "Snapshot encryption key - $(date +%Y-%m)" \
-                --query 'KeyMetadata.KeyId' \
-                --output text)
+              aws kms enable-key-rotation --key-id "$KMS_KEY_ID"
 
-              echo "Created new key: $NEW_KEY"
-
-              # Update VolumeSnapshotClass
-              kubectl patch volumesnapshotclass ebs-encrypted-snapshots \
-                --type='json' \
-                -p="[{\"op\": \"replace\", \"path\": \"/parameters/kmsKeyId\", \"value\":\"$NEW_KEY\"}]"
-
-              # Tag old snapshots for re-encryption
-              kubectl annotate volumesnapshot --all \
-                encryption.snapshot.kubernetes.io/key-rotation-pending=true \
-                --overwrite
-
-              echo "✓ Key rotation initiated"
+              echo "Key rotation is enabled for $KMS_KEY_ID"
 ```
 
 ## Encryption Status Monitoring
@@ -193,41 +201,54 @@ Monitor encryption compliance:
 echo "=== Snapshot Encryption Status ==="
 echo
 
-# Check VolumeSnapshotClass encryption settings
-echo "VolumeSnapshotClass Encryption:"
-kubectl get volumesnapshotclass -o json | \
+# Check AWS EBS snapshots created by Kubernetes
+echo "AWS EBS Snapshot Encryption:"
+kubectl get volumesnapshot -A -o json | \
   jq -r '.items[] |
-    {
-      name: .metadata.name,
-      driver: .driver,
-      encrypted: .parameters.encrypted // "not specified"
-    } |
-    "\(.name)\t\(.driver)\t\(.encrypted)"' | \
-  column -t -s $'\t'
+    [.metadata.namespace, .metadata.name, .status.boundVolumeSnapshotContentName] |
+    @tsv' | \
+  while IFS=$'\t' read -r namespace snapshot content; do
+    [ -n "$content" ] || continue
+    snapshot_id=$(kubectl get volumesnapshotcontent "$content" \
+      -o jsonpath='{.status.snapshotHandle}')
+    [ -n "$snapshot_id" ] || continue
+    aws ec2 describe-snapshots \
+      --snapshot-ids "$snapshot_id" \
+      --query "Snapshots[0].[SnapshotId,Encrypted,KmsKeyId]" \
+      --output text | \
+      awk -v ns="$namespace" -v name="$snapshot" '{print ns "/" name "\t" $0}'
+  done | column -t -s $'\t'
 
 echo
 echo "Snapshots by Encryption Status:"
 
 # Count encrypted vs unencrypted snapshots
-ENCRYPTED=$(kubectl get volumesnapshot -o json | \
-  jq '[.items[] |
-    select(.metadata.annotations."encryption.snapshot.kubernetes.io/enabled" == "true")] |
-    length')
+TOTAL=0
+ENCRYPTED=0
 
-TOTAL=$(kubectl get volumesnapshot --no-headers | wc -l)
+while read -r snapshot_id; do
+  [ -n "$snapshot_id" ] || continue
+  TOTAL=$((TOTAL + 1))
+  IS_ENCRYPTED=$(aws ec2 describe-snapshots \
+    --snapshot-ids "$snapshot_id" \
+    --query 'Snapshots[0].Encrypted' \
+    --output text)
+  if [ "$IS_ENCRYPTED" = "True" ]; then
+    ENCRYPTED=$((ENCRYPTED + 1))
+  fi
+done <<EOF
+$(kubectl get volumesnapshotcontent -o json | jq -r '.items[].status.snapshotHandle // empty')
+EOF
+
 UNENCRYPTED=$((TOTAL - ENCRYPTED))
 
 echo "Encrypted: $ENCRYPTED"
 echo "Unencrypted: $UNENCRYPTED"
 echo "Total: $TOTAL"
 
-if [ $UNENCRYPTED -gt 0 ]; then
+if [ "$UNENCRYPTED" -gt 0 ]; then
   echo
-  echo "WARNING: Unencrypted snapshots found:"
-  kubectl get volumesnapshot -o json | \
-    jq -r '.items[] |
-      select(.metadata.annotations."encryption.snapshot.kubernetes.io/enabled" != "true") |
-      .metadata.name'
+  echo "WARNING: Unencrypted AWS EBS snapshots found. Review the source PVC StorageClass encryption settings."
 fi
 ```
 
@@ -250,7 +271,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: reporter
-            image: bitnami/kubectl:latest
+            image: public.ecr.aws/aws-cli/aws-cli:latest
             env:
             - name: SLACK_WEBHOOK
               valueFrom:
@@ -258,23 +279,38 @@ spec:
                   name: notification-secrets
                   key: slack-webhook
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               set -e
+
+              yum install -y jq curl
+              curl -fsSLo /usr/local/bin/kubectl \
+                "https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl"
+              chmod +x /usr/local/bin/kubectl
 
               echo "=== Encryption Compliance Report ==="
               REPORT_DATE=$(date +%Y-%m-%d)
 
               # Generate report
-              TOTAL=$(kubectl get volumesnapshot --no-headers | wc -l)
+              TOTAL=$(kubectl get volumesnapshot -A --no-headers | wc -l)
 
-              ENCRYPTED=$(kubectl get volumesnapshot -o json | \
-                jq '[.items[] |
-                  select(.metadata.annotations."encryption.snapshot.kubernetes.io/enabled" == "true")] |
-                  length')
+              ENCRYPTED=0
+              for SNAPSHOT_ID in $(kubectl get volumesnapshotcontent -o json | jq -r '.items[].status.snapshotHandle // empty'); do
+                IS_ENCRYPTED=$(aws ec2 describe-snapshots \
+                  --snapshot-ids "$SNAPSHOT_ID" \
+                  --query 'Snapshots[0].Encrypted' \
+                  --output text)
+                if [ "$IS_ENCRYPTED" = "True" ]; then
+                  ENCRYPTED=$((ENCRYPTED + 1))
+                fi
+              done
 
-              COMPLIANCE_RATE=$(( ENCRYPTED * 100 / TOTAL ))
+              if [ "$TOTAL" -eq 0 ]; then
+                COMPLIANCE_RATE=100
+              else
+                COMPLIANCE_RATE=$(( ENCRYPTED * 100 / TOTAL ))
+              fi
 
               # Generate detailed report
               cat > /tmp/report.txt <<EOF
@@ -288,58 +324,51 @@ spec:
               By Application:
               EOF
 
-              kubectl get volumesnapshot -o json | \
+              kubectl get volumesnapshot -A -o json | \
                 jq -r '.items[] |
                   {
-                    app: .metadata.labels.app,
-                    encrypted: (.metadata.annotations."encryption.snapshot.kubernetes.io/enabled" == "true")
+                    app: (.metadata.labels.app // "unknown"),
+                    name: (.metadata.namespace + "/" + .metadata.name)
                   }' | \
                 jq -s 'group_by(.app) |
                   .[] |
                   {
                     app: .[0].app,
-                    total: length,
-                    encrypted: ([.[] | select(.encrypted == true)] | length)
+                    total: length
                   }' | \
-                jq -r '"\(.app): \(.encrypted)/\(.total) encrypted"' >> /tmp/report.txt
+                jq -r '"\(.app): \(.total) snapshots"' >> /tmp/report.txt
 
               cat /tmp/report.txt
 
               # Send to Slack if compliance below threshold
-              if [ $COMPLIANCE_RATE -lt 100 ]; then
-                curl -X POST $SLACK_WEBHOOK \
+              if [ "$COMPLIANCE_RATE" -lt 100 ]; then
+                PAYLOAD=$(jq -n \
+                  --arg text "Snapshot Encryption Compliance: ${COMPLIANCE_RATE}%" \
+                  --arg report "$(cat /tmp/report.txt)" \
+                  '{text: $text, attachments: [{color: "warning", text: $report}]}')
+
+                curl -X POST "$SLACK_WEBHOOK" \
                   -H 'Content-Type: application/json' \
-                  -d "{
-                    \"text\": \"⚠️ Snapshot Encryption Compliance: ${COMPLIANCE_RATE}%\",
-                    \"attachments\": [{
-                      \"color\": \"warning\",
-                      \"text\": \"$(cat /tmp/report.txt)\"
-                    }]
-                  }"
+                  -d "$PAYLOAD"
               fi
 ```
 
 ## Cross-Region Encrypted Snapshots
 
-Replicate encrypted snapshots across regions:
+Kubernetes `VolumeSnapshotClass` does not perform cross-region EBS snapshot copies. To replicate encrypted EBS snapshots across regions, use the cloud provider snapshot copy API after the CSI snapshot is ready:
 
-```yaml
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshotClass
-metadata:
-  name: cross-region-encrypted
-driver: ebs.csi.aws.com
-deletionPolicy: Retain
-parameters:
-  encrypted: "true"
-  kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
+```bash
+SNAPSHOT_ID=$(kubectl get volumesnapshotcontent \
+  $(kubectl get volumesnapshot encrypted-snapshot \
+    -o jsonpath='{.status.boundVolumeSnapshotContentName}') \
+  -o jsonpath='{.status.snapshotHandle}')
 
-  # Copy to multiple regions with separate keys
-  copySnapshotToRegion: "us-west-2,eu-west-1"
-
-  # Specify destination region keys (if different)
-  destinationKmsKeyId-us-west-2: "arn:aws:kms:us-west-2:123456789012:key/yyyyy"
-  destinationKmsKeyId-eu-west-1: "arn:aws:kms:eu-west-1:123456789012:key/zzzzz"
+aws ec2 copy-snapshot \
+  --source-region us-east-1 \
+  --source-snapshot-id "$SNAPSHOT_ID" \
+  --region us-west-2 \
+  --encrypted \
+  --kms-key-id "arn:aws:kms:us-west-2:123456789012:key/yyyyy"
 ```
 
 ## Best Practices

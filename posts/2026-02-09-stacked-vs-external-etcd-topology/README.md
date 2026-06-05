@@ -101,9 +101,9 @@ Create kubeadm configuration for stacked etcd:
 ```yaml
 # kubeadm-stacked-config.yaml
 
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.28.0
+kubernetesVersion: stable
 controlPlaneEndpoint: "k8s-api-lb.example.com:6443"
 networking:
   podSubnet: "10.244.0.0/16"
@@ -114,7 +114,7 @@ apiServer:
   - "k8s-api-lb.example.com"
   - "10.0.0.100"
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
   advertiseAddress: "10.0.1.10"
@@ -155,9 +155,10 @@ kubectl get pods -n kube-system -l component=etcd
 
 # Check etcd cluster members
 kubectl exec -n kube-system etcd-control-plane-1 -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key \
+  --cert=/etc/kubernetes/pki/etcd/peer.crt \
+  --key=/etc/kubernetes/pki/etcd/peer.key \
   member list -w table
 ```
 
@@ -203,9 +204,9 @@ Create kubeadm configuration for external etcd:
 
 ```yaml
 # kubeadm-external-etcd-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.28.0
+kubernetesVersion: stable
 controlPlaneEndpoint: "k8s-api-lb.example.com:6443"
 etcd:
   external:
@@ -213,14 +214,14 @@ etcd:
     - https://10.0.2.10:2379
     - https://10.0.2.11:2379
     - https://10.0.2.12:2379
-    caFile: /etc/kubernetes/pki/etcd/ca.pem
-    certFile: /etc/kubernetes/pki/etcd/client.pem
-    keyFile: /etc/kubernetes/pki/etcd/client-key.pem
+    caFile: /etc/kubernetes/pki/etcd/ca.crt
+    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
   advertiseAddress: "10.0.1.10"
@@ -232,9 +233,9 @@ Copy etcd certificates to control plane nodes:
 ```bash
 # On each control plane node
 sudo mkdir -p /etc/kubernetes/pki/etcd
-sudo cp /path/to/etcd/ca.pem /etc/kubernetes/pki/etcd/ca.pem
-sudo cp /path/to/etcd/client.pem /etc/kubernetes/pki/etcd/client.pem
-sudo cp /path/to/etcd/client-key.pem /etc/kubernetes/pki/etcd/client-key.pem
+sudo cp /path/to/etcd/ca.crt /etc/kubernetes/pki/etcd/ca.crt
+sudo cp /path/to/etcd/apiserver-etcd-client.crt /etc/kubernetes/pki/apiserver-etcd-client.crt
+sudo cp /path/to/etcd/apiserver-etcd-client.key /etc/kubernetes/pki/apiserver-etcd-client.key
 ```
 
 Initialize cluster with external etcd:
@@ -268,7 +269,7 @@ etcd nodes (3):
 - RAM: 8GB each
 - Disk: 100GB SSD each
 
-Total: 6 nodes × 4 cores = 24 cores
+Total: 3 control plane nodes × 4 cores + 3 etcd nodes × 2-4 cores = 18-24 cores
        6 nodes × 8GB = 48GB RAM
 ```
 
@@ -280,19 +281,22 @@ Migrating from stacked to external etcd:
 # 1. Set up external etcd cluster
 # 2. Backup current etcd data from stacked cluster
 kubectl exec -n kube-system etcd-control-plane-1 -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key \
+  --cert=/etc/kubernetes/pki/etcd/peer.crt \
+  --key=/etc/kubernetes/pki/etcd/peer.key \
   snapshot save /tmp/snapshot.db
 
 # 3. Copy snapshot to external etcd
 kubectl cp kube-system/etcd-control-plane-1:/tmp/snapshot.db ./snapshot.db
 
-# 4. Restore snapshot to external etcd
-etcdctl snapshot restore snapshot.db \
+# 4. Restore snapshot to each external etcd member
+# Run once per member with that member's --name, --data-dir, and --initial-advertise-peer-urls.
+etcdutl snapshot restore snapshot.db \
   --data-dir=/var/lib/etcd-new \
   --name=etcd-1 \
   --initial-cluster=etcd-1=https://10.0.2.10:2380,etcd-2=https://10.0.2.11:2380,etcd-3=https://10.0.2.12:2380 \
+  --initial-cluster-token=etcd-cluster-1 \
   --initial-advertise-peer-urls=https://10.0.2.10:2380
 
 # 5. Reconfigure control plane to use external etcd
@@ -312,8 +316,9 @@ kubectl get pods -n kube-system -l component=etcd
 
 # Check etcd metrics
 kubectl port-forward -n kube-system etcd-control-plane-1 2379:2379
-curl -k --cert /etc/kubernetes/pki/etcd/server.crt \
-  --key /etc/kubernetes/pki/etcd/server.key \
+curl --cacert /etc/kubernetes/pki/etcd/ca.crt \
+  --cert /etc/kubernetes/pki/etcd/peer.crt \
+  --key /etc/kubernetes/pki/etcd/peer.key \
   https://localhost:2379/metrics
 ```
 

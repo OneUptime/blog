@@ -14,7 +14,7 @@ This guide will show you how to configure the Kubernetes scheduler for bin packi
 
 ## Understanding Bin Packing Strategy
 
-The default Kubernetes scheduler uses a balanced allocation strategy that spreads pods across nodes to maximize available resources on each node. This improves reliability but increases costs by keeping many nodes partially utilized.
+The default Kubernetes scheduler uses several scoring plugins. For node resources, `NodeResourcesFit` uses `LeastAllocated` by default, which favors nodes with more available requested CPU and memory, while `NodeResourcesBalancedAllocation` favors nodes that would have balanced CPU and memory usage after scheduling. This can keep many nodes partially utilized.
 
 Bin packing inverts this logic by preferring nodes with the least available resources after scheduling. This concentrates pods onto fewer nodes, allowing cluster autoscaler to remove unused nodes and reduce costs.
 
@@ -65,6 +65,52 @@ Deploy a custom scheduler using this configuration:
 
 ```yaml
 # bin-packing-scheduler.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bin-packing-scheduler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bin-packing-scheduler-as-kube-scheduler
+subjects:
+- kind: ServiceAccount
+  name: bin-packing-scheduler
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:kube-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bin-packing-scheduler-as-volume-scheduler
+subjects:
+- kind: ServiceAccount
+  name: bin-packing-scheduler
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:volume-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bin-packing-scheduler-extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: extension-apiserver-authentication-reader
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: bin-packing-scheduler
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,7 +126,7 @@ spec:
       labels:
         component: bin-packing-scheduler
     spec:
-      serviceAccountName: kube-scheduler
+      serviceAccountName: bin-packing-scheduler
       containers:
       - name: scheduler
         image: registry.k8s.io/kube-scheduler:v1.28.0
@@ -159,26 +205,22 @@ This packs CPU-intensive workloads more aggressively while allowing more memory 
 
 ## Combining with Cluster Autoscaler
 
-Bin packing works best with cluster autoscaler:
+Bin packing works best with cluster autoscaler. Configure scale-down behavior on the Cluster Autoscaler deployment with command-line flags:
 
 ```yaml
-# cluster-autoscaler-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-autoscaler-config
-  namespace: kube-system
-data:
-  config: |
-    {
-      "scaleDownEnabled": true,
-      "scaleDownDelayAfterAdd": "10m",
-      "scaleDownUnneededTime": "10m",
-      "scaleDownUtilizationThreshold": 0.5
-    }
+# cluster-autoscaler deployment args excerpt
+containers:
+- name: cluster-autoscaler
+  image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+  command:
+  - ./cluster-autoscaler
+  - --scale-down-enabled=true
+  - --scale-down-delay-after-add=10m
+  - --scale-down-unneeded-time=10m
+  - --scale-down-utilization-threshold=0.5
 ```
 
-The autoscaler removes nodes when utilization drops below 50%, working in tandem with bin packing to minimize node count.
+The autoscaler considers nodes for removal when requested CPU and memory are below the configured threshold and their movable pods can fit elsewhere. With the settings above, nodes below 50% requested-resource utilization can become scale-down candidates after they have been unneeded for 10 minutes.
 
 ## Hybrid Scheduling Strategy
 
@@ -309,7 +351,7 @@ echo "$(( ($NODES_BEFORE - $NODES_AFTER) * $COST_PER_NODE * 12 ))"
 Bin packing can cause fragmentation where nodes have small amounts of free resources insufficient for any pod:
 
 ```yaml
-# Add node affinity to drain fragmented nodes
+# Add node affinity to avoid manually marked fragmented nodes
 affinity:
   nodeAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
@@ -322,7 +364,7 @@ affinity:
           - fragmented
 ```
 
-Label fragmented nodes and use affinity to avoid them, allowing autoscaler to drain and remove them.
+Label fragmented nodes and use affinity to avoid placing new pods there, so those nodes can become scale-down candidates once existing pods move elsewhere.
 
 ## PriorityClass for Bin Packing
 
@@ -396,8 +438,8 @@ kubectl wait --for=condition=ready pod -l app=test --timeout=300s
 kubectl get pods -l app=test -o wide | \
   awk '{print $7}' | sort | uniq -c | sort -rn
 
-# Verify packing onto fewer nodes
-kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU-USED:.status.allocatable.cpu,PODS:.status.allocatable.pods
+# View allocatable capacity on the nodes
+kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU-ALLOCATABLE:.status.allocatable.cpu,PODS-ALLOCATABLE:.status.allocatable.pods
 ```
 
 ## Best Practices

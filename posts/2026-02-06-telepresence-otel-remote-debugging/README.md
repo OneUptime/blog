@@ -21,10 +21,10 @@ Install Telepresence on your machine:
 ```bash
 # macOS
 
-brew install datawire/blackbird/telepresence
+brew install telepresenceio/telepresence/telepresence-oss
 
 # Linux
-sudo curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence -o /usr/local/bin/telepresence
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 -o /usr/local/bin/telepresence
 sudo chmod a+x /usr/local/bin/telepresence
 ```
 
@@ -44,7 +44,7 @@ Let's say you want to debug `order-service` running in the `default` namespace:
 
 ```bash
 # List available services
-telepresence list
+kubectl get services
 
 # Intercept traffic for order-service
 telepresence intercept order-service --port 8080:8080
@@ -78,7 +78,7 @@ def setup_tracing():
     # thanks to Telepresence network bridging
     collector_endpoint = os.environ.get(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "otel-collector.observability.svc.cluster.local:4317"
+        "http://otel-collector.observability.svc.cluster.local:4317"
     )
 
     exporter = OTLPSpanExporter(
@@ -119,14 +119,14 @@ tracer = trace.get_tracer(__name__)
 def create_order():
     with tracer.start_as_current_span("create-order") as span:
         data = request.json
-        span.setAttribute("order.customer_id", data.get("customer_id"))
+        span.set_attribute("order.customer_id", data.get("customer_id"))
 
         # This call reaches the actual inventory-service in the cluster
         inventory = http_requests.get(
             "http://inventory-service:8080/api/check",
             params={"sku": data.get("sku")}
         )
-        span.setAttribute("inventory.available", inventory.json().get("available"))
+        span.set_attribute("inventory.available", inventory.json().get("available"))
 
         # Process the order locally with your debug code
         result = process_order(data)
@@ -166,7 +166,7 @@ Since the service runs locally, you can use any debugger. In VS Code, create a l
       "request": "launch",
       "program": "${workspaceFolder}/app.py",
       "env": {
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "otel-collector.observability.svc.cluster.local:4317"
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector.observability.svc.cluster.local:4317"
       }
     }
   ]

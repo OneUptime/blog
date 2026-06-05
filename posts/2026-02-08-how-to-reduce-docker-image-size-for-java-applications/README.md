@@ -108,10 +108,13 @@ FROM eclipse-temurin:21 AS jre-builder
 COPY --from=builder /app/target/*.jar /app.jar
 
 # Determine required modules
-RUN jdeps \
+RUN mkdir /deps && cd /deps && \
+    jar -xf /app.jar BOOT-INF/lib && \
+    jdeps \
     --ignore-missing-deps \
     --print-module-deps \
     --multi-release 21 \
+    --class-path 'BOOT-INF/lib/*' \
     /app.jar > /modules.txt && \
     echo "Modules needed: $(cat /modules.txt)"
 
@@ -121,7 +124,7 @@ RUN jlink \
     --strip-debug \
     --no-man-pages \
     --no-header-files \
-    --compress=zip-6 \
+    --compress=2 \
     --output /custom-jre
 
 # Stage 3: Minimal runtime with custom JRE
@@ -163,7 +166,10 @@ RUN mvn package -DskipTests -B
 FROM eclipse-temurin:21-alpine AS jre-builder
 COPY --from=builder /app/target/*.jar /app.jar
 
-RUN jdeps --ignore-missing-deps --print-module-deps --multi-release 21 \
+RUN mkdir /deps && cd /deps && \
+    jar -xf /app.jar BOOT-INF/lib && \
+    jdeps --ignore-missing-deps --print-module-deps --multi-release 21 \
+    --class-path 'BOOT-INF/lib/*' \
     /app.jar > /modules.txt
 
 RUN jlink \
@@ -171,7 +177,7 @@ RUN jlink \
     --strip-debug \
     --no-man-pages \
     --no-header-files \
-    --compress=zip-6 \
+    --compress=2 \
     --output /custom-jre
 
 # Alpine base with custom JRE
@@ -213,29 +219,29 @@ RUN mvn package -DskipTests -B
 FROM eclipse-temurin:21-jre-alpine AS extractor
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
-RUN java -Djarmode=layertools -jar app.jar extract
+RUN java -Djarmode=tools -jar app.jar extract --layers --destination extracted
 
 # Stage 3: Build final image with layers ordered by change frequency
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 # Dependencies layer - changes rarely, ~40-60MB
-COPY --from=extractor /app/dependencies/ ./
+COPY --from=extractor /app/extracted/dependencies/ ./
 
 # Spring Boot loader - almost never changes, ~0.5MB
-COPY --from=extractor /app/spring-boot-loader/ ./
+COPY --from=extractor /app/extracted/spring-boot-loader/ ./
 
 # Snapshot dependencies - changes occasionally
-COPY --from=extractor /app/snapshot-dependencies/ ./
+COPY --from=extractor /app/extracted/snapshot-dependencies/ ./
 
 # Application code - changes on every build, ~1-5MB
-COPY --from=extractor /app/application/ ./
+COPY --from=extractor /app/extracted/application/ ./
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 EXPOSE 8080
-CMD ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+CMD ["java", "-jar", "application.jar"]
 ```
 
 This does not reduce the total image size, but it dramatically improves rebuild and push times. When only your application code changes, Docker reuses the cached dependency layer and only transfers the thin application layer.
@@ -246,8 +252,8 @@ For the ultimate size reduction, compile your Java application to a native binar
 
 ```dockerfile
 # Stage 1: Build native image with GraalVM
-FROM ghcr.io/graalvm/graalvm-community:21 AS builder
-RUN gu install native-image
+FROM ghcr.io/graalvm/native-image-community:21 AS builder
+RUN microdnf install -y maven && microdnf clean all
 WORKDIR /app
 
 COPY pom.xml .
@@ -288,7 +294,7 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn package -DskipTests -B
 
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 COPY --from=builder /app/target/*.jar /app/app.jar
 EXPOSE 8080
 CMD ["app.jar"]

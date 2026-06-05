@@ -92,26 +92,26 @@ Some resources have subresources with separate permissions:
 
 ```bash
 # Check pod log access
-kubectl auth can-i get pods/log
+kubectl auth can-i get pods --subresource=log
 
 # Check pod exec permissions
-kubectl auth can-i create pods/exec
+kubectl auth can-i create pods --subresource=exec
 
 # Check pod port-forward access
-kubectl auth can-i create pods/portforward
+kubectl auth can-i create pods --subresource=portforward
 
 # Check deployment scale permissions
-kubectl auth can-i update deployments/scale
+kubectl auth can-i update deployments --subresource=scale
 
 # Check service proxy access
-kubectl auth can-i get services/proxy
+kubectl auth can-i get services --subresource=proxy
 ```
 
 Users might have access to resources but not their subresources, or vice versa.
 
 ## All Namespace Checks
 
-Verify cluster-wide permissions:
+Verify permissions across all namespaces or for cluster-scoped resources:
 
 ```bash
 # Can I list pods across all namespaces?
@@ -127,7 +127,7 @@ kubectl auth can-i get nodes
 kubectl auth can-i create clusterroles
 ```
 
-These check permissions that span the entire cluster rather than single namespaces.
+These check permissions across all namespaces for namespaced resources, or cluster-scoped permissions for resources like namespaces, nodes, and cluster roles.
 
 ## Using in Scripts for Safety
 
@@ -299,23 +299,29 @@ Run this before configuring CI/CD to ensure service accounts have necessary acce
 
 ## Listing All Permissions
 
-While can-i checks specific permissions, you can list all allowed actions:
+While can-i often checks specific permissions, you can also list allowed actions:
 
 ```bash
-# Install rbac-tool plugin for comprehensive listing
+# List all permissions for current user in the current namespace
+kubectl auth can-i --list
+
+# List all permissions for current user in a namespace
+kubectl auth can-i --list --namespace=production
+
+# Install rbac-tool plugin for additional RBAC analysis
 kubectl krew install rbac-tool
 
-# List all permissions for current user
+# Look up roles and cluster roles attached to users or service accounts
 kubectl rbac-tool lookup
 
-# List permissions for service account
+# Look up roles and cluster roles attached to a service account
 kubectl rbac-tool lookup system:serviceaccount:default:my-app
 
-# Get permission matrix
+# Generate an RBAC graph
 kubectl rbac-tool viz
 ```
 
-This provides a complete view of granted permissions. See https://oneuptime.com/blog/post/2026-02-09-kubectl-plugins-krew-package-manager/view for information on installing kubectl plugins.
+This provides a broader view of granted permissions and role bindings. See https://oneuptime.com/blog/post/2026-02-09-kubectl-plugins-krew-package-manager/view for information on installing kubectl plugins.
 
 ## Checking Custom Resource Permissions
 
@@ -336,7 +342,7 @@ This validates permissions for operators and custom controllers.
 
 ## Permission Checks in Admission Controllers
 
-Admission webhooks can use can-i logic to enforce permission-based policies:
+Admission webhooks can use the SubjectAccessReview API, the same authorization API behind can-i-style checks, to enforce permission-based policies:
 
 ```bash
 # Check if pod's service account can access required secrets
@@ -345,7 +351,7 @@ SECRET_NAME="database-password"
 
 if ! kubectl auth can-i get secrets/$SECRET_NAME --as=$POD_SA -n default; then
     echo "Pod's service account cannot access required secret"
-    # Admission webhook would reject the pod
+    # Admission webhook would use SubjectAccessReview and reject the pod
 fi
 ```
 
@@ -420,11 +426,12 @@ kubectl get clusterrolebindings
 # Describe specific role
 kubectl describe role developer -n production
 
-# Check which service account is in use
-kubectl config view --minify | grep service-account
+# Check which kubeconfig context and user are in use
+kubectl config current-context
+kubectl config view --minify -o jsonpath='{.contexts[0].context.user}'
 ```
 
-Verbose output reveals which RBAC rules are evaluated.
+Verbose output can show request details and API server responses.
 
 ## Temporary Permission Testing
 

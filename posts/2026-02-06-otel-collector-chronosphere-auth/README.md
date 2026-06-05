@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Chronosphere, Service Account Auth
 
-Description: Set up the OpenTelemetry Collector to export to Chronosphere using service account authentication with endpoint routing per signal type.
+Description: Set up the OpenTelemetry Collector to export to Chronosphere using service account authentication with exporter routing per signal type.
 
-Chronosphere uses service accounts for machine-to-machine authentication. When configuring the OpenTelemetry Collector to send data to Chronosphere, you authenticate using a service account token and route different signal types to their appropriate ingestion endpoints.
+Chronosphere uses service accounts for machine-to-machine authentication. When configuring the OpenTelemetry Collector to send data to Chronosphere, you authenticate using a service account token and can route different signal types through separate exporter instances.
 
 ## Basic Collector Configuration
 
@@ -39,27 +39,37 @@ processors:
   resource:
     attributes:
       - key: chronosphere.tenant
-        value: "${CHRONOSPHERE_TENANT}"
+        value: "${env:CHRONOSPHERE_TENANT}"
         action: upsert
       - key: deployment.environment
         value: "production"
         action: upsert
 
+  # Chronosphere requires service.instance.id on OTLP metrics
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+    override: false
+
+  resource/service-instance:
+    attributes:
+      - key: service.instance.id
+        from_attribute: host.name
+        action: insert
+
   # Filter to reduce cardinality
   filter/metrics:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          # Exclude high-cardinality internal metrics
-          - "go_.*"
-          - "process_.*"
+    error_mode: ignore
+    metric_conditions:
+      # Exclude high-cardinality internal metrics
+      - 'IsMatch(metric.name, "^go_.*")'
+      - 'IsMatch(metric.name, "^process_.*")'
 
 exporters:
   otlp/chronosphere:
-    endpoint: "${CHRONOSPHERE_TENANT}.chronosphere.io:443"
+    endpoint: "${env:CHRONOSPHERE_TENANT}.chronosphere.io:443"
     headers:
-      API-Token: "${CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
+      API-Token: "${env:CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
     compression: snappy
 
     retry_on_failure:
@@ -79,7 +89,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp, prometheus]
-      processors: [filter/metrics, resource, batch]
+      processors: [filter/metrics, resourcedetection, resource/service-instance, resource, batch]
       exporters: [otlp/chronosphere]
 
     traces:
@@ -96,8 +106,7 @@ Create a Chronosphere service account and retrieve the token:
 # Using the Chronosphere CLI (chronoctl)
 chronoctl service-accounts create \
   --name "otel-collector" \
-  --description "OpenTelemetry Collector ingestion" \
-  --permissions "metrics:write,traces:write"
+  --permission WRITE
 ```
 
 Store the token as a Kubernetes secret:
@@ -114,16 +123,16 @@ stringData:
   tenant: "your-company"
 ```
 
-## Multi-Endpoint Routing
+## Multi-Exporter Routing
 
-If Chronosphere provides separate endpoints for different signal types:
+If you want separate exporter instances for different signal types:
 
 ```yaml
 exporters:
   otlp/chronosphere-metrics:
-    endpoint: "${CHRONOSPHERE_TENANT}.chronosphere.io:443"
+    endpoint: "${env:CHRONOSPHERE_TENANT}.chronosphere.io:443"
     headers:
-      API-Token: "${CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
+      API-Token: "${env:CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
     compression: snappy
     retry_on_failure:
       enabled: true
@@ -131,9 +140,9 @@ exporters:
       max_interval: 30s
 
   otlp/chronosphere-traces:
-    endpoint: "${CHRONOSPHERE_TENANT}.chronosphere.io:443"
+    endpoint: "${env:CHRONOSPHERE_TENANT}.chronosphere.io:443"
     headers:
-      API-Token: "${CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
+      API-Token: "${env:CHRONOSPHERE_SERVICE_ACCOUNT_TOKEN}"
     compression: snappy
     retry_on_failure:
       enabled: true
@@ -144,7 +153,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp, prometheus]
-      processors: [filter/metrics, resource, batch]
+      processors: [filter/metrics, resourcedetection, resource/service-instance, resource, batch]
       exporters: [otlp/chronosphere-metrics]
 
     traces:
@@ -167,10 +176,6 @@ processors:
         action: delete
       - key: db.statement
         action: delete
-      # Replace with lower-cardinality versions
-      - key: http.route
-        from_attribute: http.url
-        action: upsert
 
   # Aggregate metrics to reduce cardinality
   metricstransform:
@@ -178,9 +183,10 @@ processors:
       - include: http_server_duration
         action: update
         operations:
-          # Remove high-cardinality labels
-          - action: delete_label_value
-            label: http.user_agent
+          # Keep only low-cardinality labels while aggregating data points
+          - action: aggregate_labels
+            label_set: [http.method, http.status_code, http.route]
+            aggregation_type: sum
 ```
 
 ## Kubernetes Deployment

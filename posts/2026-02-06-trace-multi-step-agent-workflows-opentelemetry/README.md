@@ -43,17 +43,19 @@ The loop between planning and observation can repeat many times. Your tracing ne
 
 ## Modeling Agent Sessions with OpenTelemetry
 
-OpenTelemetry doesn't have a built-in "session" concept, but you can model sessions using a combination of trace context, span links, and attributes. The approach I recommend is to use a session ID attribute on every span, plus a hierarchical span structure that mirrors the agent's execution.
+OpenTelemetry doesn't have a first-class "session" object in its trace model, but you can model sessions using a combination of trace context, span links, and attributes. The approach I recommend is to use a session ID attribute on every span, plus a hierarchical span structure that mirrors the agent's execution. For newer instrumentation, prefer the standard `session.id` semantic attribute when it fits your use case.
 
 ```python
 # pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 
 import uuid
 import time
+import os
+import json
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 # Configure the tracer for agent workflows
@@ -65,7 +67,10 @@ resource = Resource.create({
 
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="https://oneuptime.com/otlp"))
+    BatchSpanProcessor(OTLPSpanExporter(
+        endpoint="https://oneuptime.com/otlp/v1/traces",
+        headers={"x-oneuptime-token": os.getenv("ONEUPTIME_TOKEN", "YOUR_ONEUPTIME_TOKEN")}
+    ))
 )
 trace.set_tracer_provider(provider)
 
@@ -80,7 +85,11 @@ Create a session class that holds the trace context and provides methods for cre
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import StatusCode, SpanKind
+from opentelemetry.trace import StatusCode
+
+class AgentMaxStepsError(Exception):
+    """Raised when the agent reaches its configured step limit."""
+    pass
 
 class AgentSession:
     """
@@ -101,6 +110,7 @@ class AgentSession:
         # The root span covers the entire session
         with tracer.start_as_current_span("agent.session") as session_span:
             session_span.set_attribute("agent.session_id", self.session_id)
+            session_span.set_attribute("session.id", self.session_id)
             session_span.set_attribute("agent.task", self.task_description[:500])
             session_span.set_attribute("agent.model", agent.model_name)
             if self.user_id:
@@ -113,7 +123,7 @@ class AgentSession:
                 session_span.set_attribute("agent.total_steps", self.step_count)
                 session_span.set_attribute("agent.total_llm_tokens", self.total_llm_tokens)
                 session_span.set_attribute("agent.tools_used",
-                                         str(list(set(self.tool_calls))))
+                                         sorted(set(self.tool_calls)))
                 session_span.set_attribute("agent.status", "completed")
 
                 return result
@@ -154,6 +164,7 @@ class TracedAgent:
             # Each iteration of the agent loop is a separate span
             with tracer.start_as_current_span(f"agent.step") as step_span:
                 step_span.set_attribute("agent.session_id", session.session_id)
+                step_span.set_attribute("session.id", session.session_id)
                 step_span.set_attribute("agent.step_number", step_num + 1)
                 step_span.set_attribute("agent.messages_count", len(messages))
 
@@ -162,6 +173,8 @@ class TracedAgent:
 
                 # Phase 2: Check if the agent wants to use a tool
                 if llm_response.tool_calls:
+                    messages.append(llm_response.to_message())
+
                     for tool_call in llm_response.tool_calls:
                         # Phase 3: Execute the tool and observe the result
                         tool_result = self._execute_tool(
@@ -180,8 +193,6 @@ class TracedAgent:
                     })
                     return llm_response.content
 
-                messages.append(llm_response.to_message())
-
         raise AgentMaxStepsError(f"Agent exceeded {self.max_steps} steps")
 ```
 
@@ -196,6 +207,7 @@ The "think" phase is where the LLM processes the conversation history and decide
         """Ask the LLM to reason about the next action."""
         with tracer.start_as_current_span("agent.think") as span:
             span.set_attribute("agent.session_id", session.session_id)
+            span.set_attribute("session.id", session.session_id)
             span.set_attribute("agent.think.input_messages", len(messages))
 
             # Estimate input token count for cost tracking
@@ -224,7 +236,7 @@ The "think" phase is where the LLM processes the conversation history and decide
             if response.tool_calls:
                 tool_names = [tc.function.name for tc in response.tool_calls]
                 span.set_attribute("agent.think.action", "tool_call")
-                span.set_attribute("agent.think.tools_chosen", str(tool_names))
+                span.set_attribute("agent.think.tools_chosen", tool_names)
             else:
                 span.set_attribute("agent.think.action", "final_answer")
 
@@ -248,19 +260,25 @@ Tool calls are where agents interact with the outside world. Each tool invocatio
 
         with tracer.start_as_current_span("agent.tool_call") as span:
             span.set_attribute("agent.session_id", session.session_id)
+            span.set_attribute("session.id", session.session_id)
             span.set_attribute("agent.tool.name", tool_name)
-            # Be careful not to log sensitive arguments
-            span.set_attribute("agent.tool.args_length", len(str(tool_args)))
-
-            session.tool_calls.append(tool_name)
-
-            # Find and execute the matching tool
-            tool = next((t for t in self.tools if t.name == tool_name), None)
-            if not tool:
-                span.set_status(StatusCode.ERROR, f"Unknown tool: {tool_name}")
-                return f"Error: Unknown tool '{tool_name}'"
 
             try:
+                if isinstance(tool_args, str):
+                    tool_args = json.loads(tool_args)
+
+                # Be careful not to log sensitive arguments
+                span.set_attribute("agent.tool.args_length", len(str(tool_args)))
+
+                session.tool_calls.append(tool_name)
+
+                # Find and execute the matching tool
+                tool = next((t for t in self.tools if t.name == tool_name), None)
+                if not tool:
+                    span.set_status(StatusCode.ERROR, f"Unknown tool: {tool_name}")
+                    span.set_attribute("agent.tool.status", "error")
+                    return f"Error: Unknown tool '{tool_name}'"
+
                 start = time.perf_counter()
                 result = tool.execute(**tool_args)
                 elapsed_ms = (time.perf_counter() - start) * 1000
@@ -301,6 +319,7 @@ def execute_parallel_tools(self, tool_calls, session):
     with tracer.start_as_current_span("agent.parallel_tools") as span:
         span.set_attribute("agent.parallel.tool_count", len(tool_calls))
         span.set_attribute("agent.session_id", session.session_id)
+        span.set_attribute("session.id", session.session_id)
 
         # Capture the current context to propagate to worker threads
         ctx = otel_context.get_current()
@@ -311,7 +330,7 @@ def execute_parallel_tools(self, tool_calls, session):
             # This ensures spans appear as children of the parallel_tools span
             token = otel_context.attach(ctx)
             try:
-                return tool_call.function.name, self._execute_tool(
+                return tool_call.id, self._execute_tool(
                     tool_call, session, span
                 )
             finally:
@@ -324,8 +343,8 @@ def execute_parallel_tools(self, tool_calls, session):
                 for tc in tool_calls
             }
             for future in concurrent.futures.as_completed(futures):
-                name, result = future.result()
-                results[name] = result
+                tool_call_id, result = future.result()
+                results[tool_call_id] = result
 
         span.set_attribute("agent.parallel.completed", len(results))
         return results
@@ -385,6 +404,7 @@ def _handle_tool_error(self, error, tool_name, session, retry_count=0):
     """Trace the agent's error recovery process."""
     with tracer.start_as_current_span("agent.error_recovery") as span:
         span.set_attribute("agent.session_id", session.session_id)
+        span.set_attribute("session.id", session.session_id)
         span.set_attribute("agent.recovery.failed_tool", tool_name)
         span.set_attribute("agent.recovery.error", str(error))
         span.set_attribute("agent.recovery.retry_count", retry_count)

@@ -353,7 +353,7 @@ resource "google_project" "critical_project" {
 
 ## Practical Tips
 
-Project IDs are globally unique and permanent. Once a project ID is used, it cannot be reused — even after the project is deleted, the ID is permanently retired (the 30-day window is for project recovery, not ID reuse). Use a naming convention that includes a random suffix to avoid collisions.
+Project IDs are globally unique and permanent. Once a project ID is used, it cannot be reused - even after the project is deleted, the ID is permanently retired (the 30-day window is for project recovery, not ID reuse). Use a naming convention that includes a random suffix to avoid collisions.
 
 Some APIs take time to enable. If a resource creation fails immediately after enabling the API, add a time_sleep or use explicit depends_on.
 

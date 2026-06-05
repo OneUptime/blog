@@ -8,7 +8,7 @@ Description: A practical comparison of Ubuntu and Alpine as Docker base images, 
 
 ---
 
-Ubuntu and Alpine sit at opposite ends of the Docker base image spectrum. Ubuntu gives you a full-featured Linux distribution with thousands of packages, extensive documentation, and broad compatibility. Alpine gives you a 5MB image with a minimal footprint and almost nothing pre-installed. Choosing between them affects your image size, build process, debugging capabilities, and production reliability.
+Ubuntu and Alpine sit at opposite ends of the Docker base image spectrum. Ubuntu gives you a full-featured Linux distribution with thousands of packages, extensive documentation, and broad compatibility. Alpine gives you a very small image with a minimal footprint and almost nothing pre-installed. Choosing between them affects your image size, build process, debugging capabilities, and production reliability.
 
 This guide puts both options side by side with real-world examples so you can make the right call for your specific situation.
 
@@ -18,14 +18,14 @@ This guide puts both options side by side with real-world examples so you can ma
 # Compare base image sizes
 
 docker pull ubuntu:22.04
-docker pull alpine:3.19
+docker pull alpine:3.23
 
 docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
-# ubuntu:22.04    77.8MB
-# alpine:3.19     7.34MB
+# ubuntu:22.04    119MB
+# alpine:3.23     13.1MB
 ```
 
-That is a 10x difference in base image size. For a minimal application, Alpine produces dramatically smaller images. But the gap closes as you install packages and add your application code.
+That is roughly a 9x difference in base image size. For a minimal application, Alpine produces dramatically smaller images. But the gap closes as you install packages and add your application code.
 
 ## Package Ecosystems
 
@@ -35,11 +35,11 @@ Alpine's repository is smaller but covers most common software. Where it falls s
 
 ```bash
 # Search for a package on Ubuntu
-docker run --rm ubuntu:22.04 apt-cache search postgresql
+docker run --rm ubuntu:22.04 bash -c "apt-get update && apt-cache search postgresql"
 # Returns dozens of results including clients, extensions, and tools
 
 # Search for a package on Alpine
-docker run --rm alpine:3.19 apk search postgresql
+docker run --rm alpine:3.23 sh -c "apk update && apk search postgresql"
 # Returns the core packages but fewer extensions and variants
 ```
 
@@ -59,7 +59,7 @@ RUN apt-get update && \
 
 ```dockerfile
 # Alpine - apk is faster and simpler
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache \
     curl \
     ca-certificates \
@@ -87,7 +87,7 @@ docker run --rm ubuntu:22.04 ldd /bin/ls
 #   libselinux.so.1 => /lib/x86_64-linux-gnu/libselinux.so.1
 #   libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6  <-- glibc
 
-docker run --rm alpine:3.19 ldd /bin/ls
+docker run --rm alpine:3.23 ldd /bin/ls
 #   /lib/ld-musl-x86_64.so.1  <-- musl
 #   libc.musl-x86_64.so.1 => /lib/ld-musl-x86_64.so.1
 ```
@@ -102,7 +102,7 @@ docker run --rm -it ubuntu:22.04 bash
 # bash is available, strace, lsof, netstat can be installed quickly
 
 # Alpine uses ash shell by default, not bash
-docker run --rm -it alpine:3.19 sh
+docker run --rm -it alpine:3.23 sh
 # Limited shell, fewer built-in tools
 # Install bash if needed: apk add bash
 ```
@@ -124,7 +124,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ```dockerfile
 # Alpine equivalent - same tools, smaller image
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache \
     curl \
     net-tools \
@@ -163,30 +163,30 @@ Alpine wins here. Fewer packages means fewer potential vulnerabilities:
 ```bash
 # Count installed packages
 docker run --rm ubuntu:22.04 dpkg -l | wc -l
-# ~101 packages
+# ~106 packages
 
-docker run --rm alpine:3.19 apk list --installed | wc -l
-# ~15 packages
+docker run --rm alpine:3.23 apk list --installed | wc -l
+# ~16 packages
 ```
 
 ### Security Update Speed
 
 Ubuntu has Canonical's security team, which provides timely patches and long-term support. Ubuntu 22.04 LTS receives security updates until 2027 (2032 with ESM).
 
-Alpine relies on community maintainers. Updates are generally fast but the support window is shorter, typically 2 years per release.
+Alpine relies on community maintainers. Updates are generally fast but the support window is shorter. The main repository is typically supported for 2 years per release.
 
 ### CVE Scanning Results
 
 ```bash
 # Scan base images with Trivy
 trivy image ubuntu:22.04
-# LOW: 12, MEDIUM: 4, HIGH: 1, CRITICAL: 0
+# Results vary over time as CVE databases and base images change
 
-trivy image alpine:3.19
-# LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0
+trivy image alpine:3.23
+# Results vary over time as CVE databases and base images change
 ```
 
-Alpine's clean scan is compelling, but remember that you add packages on top of the base. The final vulnerability count depends on what you install.
+Alpine's clean scan history is compelling, but remember that you add packages on top of the base. The final vulnerability count depends on what you install.
 
 ## Runtime Performance
 
@@ -208,13 +208,13 @@ For typical web applications, you will not notice a difference.
 # Ubuntu for a Rails application
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ruby3.0 ruby3.0-dev \
+    ruby3.0 ruby3.0-dev ruby-bundler \
     build-essential libpq-dev \
     nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Gemfile Gemfile.lock ./
-RUN bundle install --without development test
+RUN bundle config set without 'development test' && bundle install
 COPY . .
 CMD ["rails", "server", "-b", "0.0.0.0"]
 ```
@@ -233,14 +233,14 @@ Some software is only packaged for Debian/Ubuntu. Elasticsearch's official packa
 
 ```dockerfile
 # Alpine for a Go service - a natural fit
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /app
 COPY go.* ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server .
 
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=build /server /server
 EXPOSE 8080
@@ -257,7 +257,7 @@ Containers that run scripts, cron jobs, or simple tools benefit from Alpine's mi
 
 ```dockerfile
 # Alpine for a cron job container
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl jq
 COPY backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh
@@ -276,7 +276,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -285,10 +285,10 @@ CMD ["node", "server.js"]
 
 ```dockerfile
 # Dockerfile.alpine
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3000
 CMD ["node", "server.js"]

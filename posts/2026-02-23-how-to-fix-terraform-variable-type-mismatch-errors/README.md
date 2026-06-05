@@ -150,7 +150,7 @@ tags = {
 }
 ```
 
-Note that Terraform will automatically convert `number` and `bool` values to strings when needed, so `{ Count = 3 }` against `map(string)` actually works (3 becomes "3"). The mismatch only fails when the value cannot be converted to the target type — like a list, object, or set.
+Note that Terraform will automatically convert `number` and `bool` values to strings when needed, so `{ Count = 3 }` against `map(string)` actually works (3 becomes "3"). The mismatch only fails when the value cannot be converted to the target type - like a list, object, or set.
 
 If you need mixed types, use an object:
 
@@ -342,7 +342,7 @@ list(object({
 "10.0.1.0/24"
 ```
 
-Note that `type()` is only available inside `terraform console` — you cannot use it in regular configuration files (outputs, locals, etc.). For debugging types outside the console, use `jsonencode()` to dump the value's structure:
+Note that `type()` is only available inside `terraform console` - you cannot use it in regular configuration files (outputs, locals, etc.). For debugging types outside the console, use `jsonencode()` to dump the value's structure:
 
 ```hcl
 output "debug_value" {

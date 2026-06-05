@@ -72,7 +72,6 @@ processors:
 
     # Hard limit at 75% of available memory
     # When this is exceeded, the collector forces garbage collection
-    # and refuses new data
     limit_mib: 1536
 
     # Spike allowance. The soft limit is limit_mib - spike_limit_mib.
@@ -306,7 +305,7 @@ The `queue_size` parameter directly impacts memory usage. With the default `requ
 
 ## Handling High-Cardinality Data
 
-High-cardinality attributes in processors can cause memory explosion. The attributes processor and transform processor hold mappings in memory:
+High-cardinality data can increase memory usage in queues, batches, and stateful processors. Remove unnecessary high-cardinality attributes before components that buffer or group telemetry:
 
 ```yaml
 processors:
@@ -448,9 +447,9 @@ service:
 Key metrics to monitor for memory issues:
 
 - `otelcol_process_memory_rss`: Resident set size (physical memory used)
-- `otelcol_processor_refused_spans`: Deprecated counter for spans rejected by the next component in the pipeline
+- `otelcol_processor_refused_spans`: Deprecated counter historically used for spans refused by processors such as `memory_limiter`
 - `otelcol_exporter_queue_size`: Current queue size for exporters when queue metrics are enabled
-- `otelcol_processor_batch_batch_size_trigger_send`: Batch sizes being sent
+- `otelcol_processor_batch_batch_send_size`: Batch sizes being sent
 
 For detailed guidance on using pprof for memory profiling, see https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
 

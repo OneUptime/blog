@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTTL, Span Events, Transform Processor
+Tags: OpenTelemetry, OTTL, Span Events, Transform Processor, Filter Processor
 
 Description: Use OTTL to selectively drop specific span events like verbose exception details while keeping the parent span and its attributes intact.
 
@@ -20,20 +20,17 @@ Each event has a name, a timestamp, and a set of attributes.
 
 ## Dropping Events by Name
 
-Use the `delete_matching_key` approach or the span event context in OTTL:
+Use the filter processor with the span event context in OTTL:
 
 ```yaml
 processors:
-  transform/drop_events:
-    trace_statements:
+  filter/drop_events:
+    error_mode: ignore
+    trace_conditions:
       - context: spanevent
-        statements:
+        conditions:
           # Drop exception events that have specific exception types
-          - delete_key(attributes, "exception.stacktrace") where name == "exception" and IsMatch(attributes["exception.type"], "(?i).*NotFound.*")
-
-          # Remove the stack trace from all exception events
-          # Keeps the exception type and message, just drops the trace
-          - delete_key(attributes, "exception.stacktrace") where name == "exception"
+          - name == "exception" and IsMatch(attributes["exception.type"], "(?i).*NotFound.*")
 ```
 
 ## Removing Specific Event Attributes
@@ -43,6 +40,7 @@ Sometimes you want to keep the event but remove bulky attributes:
 ```yaml
 processors:
   transform/trim_events:
+    error_mode: ignore
     trace_statements:
       - context: spanevent
         statements:
@@ -64,19 +62,14 @@ You might want to keep exception events for error spans but drop them for succes
 
 ```yaml
 processors:
-  transform/conditional_events:
-    trace_statements:
-      # First, at the span level, mark spans that should keep exceptions
-      - context: span
-        statements:
-          - set(attributes["_keep_exceptions"], true) where status.code == 2
-
-      # Then, at the event level, handle based on the span's marker
+  filter/conditional_events:
+    error_mode: ignore
+    trace_conditions:
       - context: spanevent
-        statements:
-          # Remove stack traces from exception events on non-error spans
+        conditions:
+          # Drop exception events on non-error spans
           # These are typically caught-and-handled exceptions
-          - delete_key(attributes, "exception.stacktrace") where name == "exception"
+          - name == "exception" and span.status.code != STATUS_CODE_ERROR
 ```
 
 ## Removing Verbose Log Events
@@ -85,33 +78,37 @@ Some instrumentation libraries attach log records as span events. These can be v
 
 ```yaml
 processors:
-  transform/drop_log_events:
+  filter/drop_log_events:
+    error_mode: ignore
+    trace_conditions:
+      - context: spanevent
+        conditions:
+          # Drop debug-level log events from spans
+          - IsMatch(name, "(?i)^log$") and attributes["log.severity"] == "DEBUG"
+
+  transform/trim_log_events:
+    error_mode: ignore
     trace_statements:
       - context: spanevent
         statements:
-          # Remove debug-level log events from spans
-          - delete_key(attributes, "log.message") where IsMatch(name, "(?i)^log$") and attributes["log.severity"] == "DEBUG"
-
           # Truncate info-level log event messages
-          - set(attributes["log.message"], Substring(attributes["log.message"], 0, 256)) where IsMatch(name, "(?i)^log$") and attributes["log.severity"] == "INFO" and Len(attributes["log.message"]) > 256
+          - set(attributes["log.message"], Substring(attributes["log.message"], 0, 256)) where IsMatch(name, "(?i)^log$") and attributes["log.severity"] == "INFO" and attributes["log.message"] != nil and Len(attributes["log.message"]) > 256
 ```
 
 ## Keeping Only the First N Events
 
-While OTTL does not have a direct "limit events count" function, you can truncate events at the span level:
+The `limit` function applies to maps such as attributes, not the span event list. To keep only the first N events, drop span events whose `event_index` is outside the range you want to keep:
 
 ```yaml
 processors:
-  transform/limit_events:
-    trace_statements:
-      - context: span
-        statements:
-          # Limit the number of events and links per span
-          # This uses the limit function if available
-          - limit(span_events, 10, [])
+  filter/limit_events:
+    error_mode: ignore
+    trace_conditions:
+      - context: spanevent
+        conditions:
+          # Keep the first 10 events and drop the rest
+          - event_index >= 10
 ```
-
-Note: The `limit` function availability depends on your Collector version. Check the OTTL function documentation for your specific version.
 
 ## Removing Events from Health Check Spans
 
@@ -119,20 +116,14 @@ Health check spans often have unnecessary events:
 
 ```yaml
 processors:
-  transform/clean_health_checks:
-    trace_statements:
+  filter/clean_health_checks:
+    error_mode: ignore
+    trace_conditions:
       - context: spanevent
-        statements:
-          # Remove all events from health check spans
+        conditions:
+          # Drop all events from health check spans
           # We do not need event details for health checks
-          - delete_key(attributes, "exception.stacktrace") where IsMatch(name, "(?i)^exception$")
-          - delete_key(attributes, "exception.message") where IsMatch(name, "(?i)^exception$")
-
-      - context: span
-        statements:
-          # Alternative: remove all events from health check spans
-          # by clearing the event list
-          - limit(span_events, 0, []) where IsMatch(name, "(?i).*(health|ready|alive).*")
+          - IsMatch(span.name, "(?i).*(health|ready|alive).*")
 ```
 
 ## Full Configuration
@@ -145,17 +136,20 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  filter/drop_events:
+    error_mode: ignore
+    trace_conditions:
+      - context: spanevent
+        conditions:
+          # Drop all events from noisy spans
+          - IsMatch(span.name, "(?i).*(health_check|ping|readiness).*")
+
+          # Keep the first 5 events on normal spans and drop the rest
+          - event_index >= 5
+
   transform/manage_events:
+    error_mode: ignore
     trace_statements:
-      # Span-level transformations
-      - context: span
-        statements:
-          # Remove all events from noisy spans
-          - limit(span_events, 0, []) where IsMatch(name, "(?i).*(health_check|ping|readiness).*")
-
-          # Limit events on normal spans to prevent overload
-          - limit(span_events, 5, []) where name != ""
-
       # Event-level transformations
       - context: spanevent
         statements:
@@ -184,7 +178,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/manage_events, batch]
+      processors: [filter/drop_events, transform/manage_events, batch]
       exporters: [otlp]
 ```
 

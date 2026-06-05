@@ -21,7 +21,7 @@ When you define multiple policies, selectPolicy determines the winner:
 
 - **Max**: Use the policy that allows the most change (most aggressive)
 - **Min**: Use the policy that allows the least change (most conservative)
-- **Disabled**: Ignore all policies and allow unlimited scaling
+- **Disabled**: Turn off scaling in that direction
 
 ## Using selectPolicy Max for Aggressive Scale-Up
 
@@ -176,18 +176,18 @@ spec:
 This configuration:
 
 - Responds quickly to traffic spikes (can double capacity in 20 seconds)
-- Scales down slowly and carefully (at most 5% every 90 seconds)
+- Scales down slowly and carefully (5% every 90 seconds, rounded up to at least one pod when a scale-down is allowed)
 - Prevents oscillation from rapid scale-down followed by immediate scale-up
 
 ## Using selectPolicy Disabled
 
-The Disabled policy ignores all rate limits and allows HPA to scale directly to the calculated desired replica count:
+The Disabled policy turns off scaling for the direction where it is configured. For example, you can allow scale-up but temporarily prevent scale-down:
 
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: unlimited-scaling-hpa
+  name: no-scaledown-hpa
   namespace: production
 spec:
   scaleTargetRef:
@@ -207,34 +207,34 @@ spec:
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 30
-      selectPolicy: Disabled  # No rate limiting
+      selectPolicy: Max
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
     scaleDown:
       stabilizationWindowSeconds: 60
-      selectPolicy: Disabled  # No rate limiting
+      selectPolicy: Disabled  # Do not scale down
 ```
 
-With Disabled, if queue depth suddenly spikes requiring 150 replicas, HPA scales from 10 to 150 immediately (subject only to maxReplicas and cluster capacity).
+With this configuration, if queue depth suddenly spikes, HPA can still scale up subject to maxReplicas and the scale-up policy. When queue depth drops, HPA will not scale the workload down while scaleDown.selectPolicy remains Disabled.
 
 Use Disabled carefully. It works well for:
 
-- Batch processing workloads with queue-based metrics
-- Development environments where fast iteration matters more than cost
-- Workloads with very long startup times where aggressive scaling compensates for startup delays
+- Temporarily preventing scale-down during a known traffic event
+- Maintenance windows where reducing capacity would be risky
+- Workloads with long startup times where you want to keep warmed capacity after a spike
 
 ## Time-Based Policy Selection
 
-Different selectPolicy values for different time periods using multiple HPA resources:
+Different selectPolicy values for different time periods by patching a single HPA resource:
 
 ```yaml
-# Daytime HPA - aggressive scaling
-
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: daytime-hpa
+  name: webapp-hpa
   namespace: production
-  annotations:
-    schedule: "0 6 * * *"  # Activate at 6 AM
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -256,39 +256,9 @@ spec:
       - type: Percent
         value: 100
         periodSeconds: 15
----
-# Nighttime HPA - conservative scaling
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nighttime-hpa
-  namespace: production
-  annotations:
-    schedule: "0 22 * * *"  # Activate at 10 PM
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: webapp
-  minReplicas: 3
-  maxReplicas: 30
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  behavior:
-    scaleUp:
-      selectPolicy: Min
-      policies:
-      - type: Pods
-        value: 2
-        periodSeconds: 60
 ```
 
-Use a CronJob to switch between them:
+Use a CronJob to switch the single HPA to the daytime policy:
 
 ```yaml
 apiVersion: batch/v1
@@ -310,14 +280,15 @@ spec:
             - /bin/sh
             - -c
             - |
-              kubectl delete hpa nighttime-hpa
-              kubectl apply -f /config/daytime-hpa.yaml
+              kubectl patch hpa webapp-hpa --type merge -p '{"spec":{"minReplicas":10,"maxReplicas":100,"metrics":[{"type":"Resource","resource":{"name":"cpu","target":{"type":"Utilization","averageUtilization":60}}}],"behavior":{"scaleUp":{"selectPolicy":"Max","policies":[{"type":"Percent","value":100,"periodSeconds":15}]}}}}'
           restartPolicy: OnFailure
 ```
 
-## Monitoring Policy Selection
+Create a matching 10 PM CronJob that patches the same HPA back to the nighttime minReplicas, maxReplicas, metric target, and behavior. Avoid running multiple HPA resources against the same workload at the same time because they will compete to update the same scale target.
 
-Track which policies are being selected:
+## Monitoring Scaling Decisions
+
+Track scaling decisions and compare them with your configured policies:
 
 ```bash
 # Watch HPA decisions
@@ -334,7 +305,6 @@ Events:
   Type    Reason             Age   Message
   ----    ------             ----  -------
   Normal  SuccessfulRescale  2m    New size: 20; reason: cpu resource utilization above target
-  Normal  SelectPolicy       2m    Selected scale-up policy: Percent (value: 50, period: 30s)
 ```
 
 Create alerts for rapid scaling:
@@ -361,7 +331,7 @@ groups:
 
 **Test policy interactions**: Load test your application to see how policies behave at different replica counts. A policy that works well at 10 replicas might be too aggressive at 100.
 
-**Use Disabled sparingly**: Unlimited scaling can cause cluster resource exhaustion or cost surprises. Reserve Disabled for workloads where you control the metric source (like a message queue) and can prevent unbounded growth.
+**Use Disabled sparingly**: Disabling scale-up can leave a workload under-provisioned, and disabling scale-down can cause cost surprises. Reserve Disabled for short-lived operational needs where you intentionally want to block scaling in one direction.
 
 **Document your choices**: Add annotations explaining why you chose specific policies:
 

@@ -195,11 +195,13 @@ Add circuit breaker logic to webhook code:
 
 ```go
 import (
-    "sync/atomic"
+    "fmt"
+    "sync"
     "time"
 )
 
 type CircuitBreaker struct {
+    mu           sync.Mutex
     failures     uint64
     lastFailure  time.Time
     threshold    uint64
@@ -231,10 +233,12 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 }
 
 func (cb *CircuitBreaker) IsOpen() bool {
-    failures := atomic.LoadUint64(&cb.failures)
-    if failures >= cb.threshold {
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+
+    if cb.failures >= cb.threshold {
         if time.Since(cb.lastFailure) > cb.resetTimeout {
-            atomic.StoreUint64(&cb.failures, 0)
+            cb.failures = 0
             return false
         }
         return true
@@ -243,12 +247,18 @@ func (cb *CircuitBreaker) IsOpen() bool {
 }
 
 func (cb *CircuitBreaker) RecordFailure() {
-    atomic.AddUint64(&cb.failures, 1)
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+
+    cb.failures++
     cb.lastFailure = time.Now()
 }
 
 func (cb *CircuitBreaker) RecordSuccess() {
-    atomic.StoreUint64(&cb.failures, 0)
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+
+    cb.failures = 0
 }
 
 // Use in webhook handler
@@ -342,17 +352,17 @@ func validatePod(pod *corev1.Pod) (allowed bool, message string) {
 }
 
 func validateExternal(ctx context.Context, pod *corev1.Pod) (bool, error) {
-    // Check circuit breaker
-    if externalAPICircuit.IsOpen() {
-        return false, fmt.Errorf("circuit breaker open")
-    }
-
-    // Call external API with context timeout
+    // Call external API with circuit breaker and context timeout
     result := make(chan bool, 1)
     errChan := make(chan error, 1)
 
     go func() {
-        valid, err := callExternalValidationAPI(pod)
+        var valid bool
+        err := externalAPICircuit.Call(func() error {
+            var err error
+            valid, err = callExternalValidationAPI(pod)
+            return err
+        })
         if err != nil {
             errChan <- err
             return

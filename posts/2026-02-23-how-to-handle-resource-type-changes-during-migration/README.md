@@ -19,7 +19,7 @@ Resource types change for several reasons. Providers may split a monolithic reso
 Terraform 1.1 introduced moved blocks for refactoring resource addresses without destroying and recreating resources. Originally limited to renames within the same resource type, Terraform 1.8 added support for cross-resource-type moves when the provider implements the required move handler:
 
 ```hcl
-# Renaming a resource address (same type) — supported since Terraform 1.1
+# Renaming a resource address (same type) - supported since Terraform 1.1
 
 moved {
   from = aws_s3_bucket.old_name
@@ -34,7 +34,7 @@ resource "aws_s3_bucket" "new_name" {
 For cross-resource-type moves (e.g., `aws_s3_bucket_object` to `aws_s3_object`), you need Terraform 1.8+ AND the provider must explicitly implement a move handler for that specific transition. Not every deprecated resource has a corresponding move handler, so always test before relying on this:
 
 ```hcl
-# Cross-type move — requires provider support
+# Cross-type move - requires provider support
 moved {
   from = aws_s3_bucket_object.file
   to   = aws_s3_object.file
@@ -142,7 +142,7 @@ import {
 
 ## Using terraform state mv
 
-For renames or transitions not supported by moved blocks, use the CLI. `terraform state mv` only changes the resource address in state — it does not transform attributes, so the source and target must have compatible schemas. Use it freely for same-type renames or for module re-organisation:
+For renames or transitions not supported by moved blocks, use the CLI. `terraform state mv` only changes the resource address in state - it does not transform attributes, so the source and target must have compatible schemas. Use it freely for same-type renames or for module re-organisation:
 
 ```bash
 # Rename a resource within the same type
@@ -151,7 +151,7 @@ terraform state mv \
   'aws_instance.web_primary'
 ```
 
-When the source and target are different resource types with different schemas (for example, `aws_elasticsearch_domain` to `aws_opensearch_domain`), `terraform state mv` alone is not safe — the next plan will show drift because the attribute layouts do not match. The reliable approach for incompatible schemas is:
+When the source and target are different resource types with different schemas (for example, `aws_elasticsearch_domain` to `aws_opensearch_domain`), `terraform state mv` alone is not safe - the next plan will show drift because the attribute layouts do not match. The reliable approach for incompatible schemas is:
 
 ```bash
 # 1. Remove the old resource from state (the underlying AWS resource is untouched)

@@ -13,11 +13,11 @@ The `kubeletstats` receiver in the OpenTelemetry Collector is designed to collec
 Every Kubernetes node runs a Kubelet API. The common ports are:
 
 ```text
-Port 10250 - Secure Kubelet API, requires authentication (default)
-Port 10255 - Read-only Kubelet API, no authentication (often disabled in production)
+Port 10250 - Secure Kubelet API, requires authentication and authorization (default)
+Port 10255 - Read-only Kubelet API, no authentication or authorization when enabled
 ```
 
-Many clusters disable port 10255 for security. If your receiver is configured to use the read-only port and it is disabled, you get no metrics.
+The Kubelet configuration `readOnlyPort` defaults to `0`, which disables port 10255. Many managed clusters also disable port 10255 for security. If your receiver is configured to use the read-only port and it is disabled, you get no metrics.
 
 ## Diagnosing the Problem
 
@@ -42,7 +42,7 @@ kubectl exec -it otel-collector-pod -n observability -- \
 # Test the authenticated port
 kubectl exec -it otel-collector-pod -n observability -- \
   sh -c 'curl -sk https://"$NODE_IP":10250/stats/summary \
-    --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
+    --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" | head -20'
 ```
 
 ## Fix 1: Use the Authenticated Port (10250)
@@ -141,7 +141,7 @@ receivers:
 
 ### GKE (Google Cloud)
 
-GKE is moving away from the insecure read-only port. Use port 10250 with `serviceAccount` auth:
+GKE serves the same kubelet endpoints on the authenticated port. New GKE clusters that run version 1.32 or later disable the read-only port by default:
 
 ```yaml
 receivers:
@@ -153,7 +153,15 @@ receivers:
 
 ### AKS (Azure)
 
-AKS typically works with the standard `serviceAccount` auth, but you might need to provide the kubelet server certificate as `ca_file` if you do not use `insecure_skip_verify`.
+AKS typically works with the standard `serviceAccount` auth, but the kubelet certificate may be issued from a different CA. If TLS verification fails, configure the kubelet CA instead of skipping verification:
+
+```yaml
+receivers:
+  kubeletstats:
+    auth_type: serviceAccount
+    endpoint: "https://${env:NODE_NAME}:10250"
+    ca_file: "/etc/kubernetes/certs/kubeletserver.crt"
+```
 
 ## Fix 4: Use Extra Metadata
 

@@ -93,7 +93,7 @@ new route53.TxtRecord(this, 'VerificationRecord', {
 
 ## Alias Records
 
-Alias records are Route 53's superpower. They work like CNAME records but at the zone apex (root domain), and they're free - no query charges. Use them whenever you're pointing to an AWS resource.
+Alias records are Route 53's superpower. They work like CNAME records but at the zone apex (root domain), and Route 53 doesn't charge for alias queries to supported AWS resources. Use them whenever you're pointing to an AWS resource that supports alias targets.
 
 ```typescript
 // Alias to CloudFront distribution
@@ -132,7 +132,7 @@ new route53.ARecord(this, 'ALBAlias', {
 // Alias to API Gateway
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 
-// Assuming you have an API Gateway rest API
+// Assuming restApi is a REST API with RestApiProps.domainName configured
 new route53.ARecord(this, 'ApiGatewayAlias', {
   zone: zone,
   target: route53.RecordTarget.fromAlias(
@@ -187,7 +187,7 @@ When you use routing policies (weighted, latency, failover), every record with t
 
 ## Latency-Based Routing
 
-Route users to the closest AWS region:
+Route users to the lowest-latency AWS region:
 
 ```typescript
 // Latency-based routing across regions

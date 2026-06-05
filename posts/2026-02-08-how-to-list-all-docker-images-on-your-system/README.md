@@ -19,7 +19,7 @@ The most straightforward way to list images is `docker images` or its equivalent
 List all tagged images on your system:
 
 ```bash
-# List all images (these two commands are identical)
+# List top-level images (these two commands are identical)
 
 docker images
 docker image ls
@@ -32,7 +32,7 @@ docker image ls
 # postgres            16        c3d4e5f6a1b2   2 weeks ago    432MB
 ```
 
-The output shows the repository name, tag, image ID (shortened), creation date, and compressed size.
+The output shows the repository name, tag, image ID (shortened), creation date, and image size.
 
 ## Listing All Images Including Intermediate Layers
 
@@ -52,7 +52,7 @@ docker images -a
 # nginx               alpine    f1e2d3c4b5a6   3 days ago     42MB
 ```
 
-The `<none>:<none>` entries are build layers that form the history of your tagged images. They are not usually useful to inspect directly but contribute to disk usage.
+The `<none>:<none>` entries can be intermediate layers or dangling images. They are not usually useful to inspect directly but contribute to disk usage.
 
 ## Filtering Images
 
@@ -60,7 +60,7 @@ Docker provides a powerful `--filter` flag for narrowing down the image list.
 
 ### Filter by Dangling Status
 
-Dangling images are images with no tag and no association with any tagged image. They typically result from rebuilding an image with the same tag.
+Dangling images are untagged images that are not referenced by another image. They typically result from rebuilding an image with the same tag.
 
 List only dangling images:
 
@@ -253,9 +253,8 @@ Common scripting patterns:
 # Count total number of images
 docker images -q | wc -l
 
-# Get total size of all images (approximate, does not account for shared layers)
-docker images --format "{{.Size}}" | paste -sd+ - | bc 2>/dev/null || \
-    echo "Use 'docker system df' for accurate totals"
+# Get total image disk usage, accounting for shared layers
+docker system df
 
 # Export the image list to a CSV file
 docker images --format "{{.Repository}},{{.Tag}},{{.ID}},{{.CreatedAt}},{{.Size}}" > images.csv

@@ -42,7 +42,7 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar myapp.jar
 ```
 
-This reduces span allocation by 90%, proportionally reducing GC pressure.
+This reduces recorded and exported span volume by about 90%, which reduces the related GC pressure.
 
 ## Fix 2: Limit Span Attributes
 
@@ -64,8 +64,8 @@ Some instrumentations create spans for every low-level operation:
 ```bash
 # Disable instrumentation for high-volume, low-value operations
 java -javaagent:opentelemetry-javaagent.jar \
+     -Dotel.instrumentation.jdbc.enabled=false \
      -Dotel.instrumentation.jdbc-datasource.enabled=false \
-     -Dotel.instrumentation.internal-class-loader.enabled=false \
      -Dotel.instrumentation.executors.enabled=false \
      -jar myapp.jar
 ```
@@ -74,17 +74,17 @@ JDBC instrumentation, in particular, can generate a span for every database quer
 
 ## Fix 4: Tune the Batch Span Processor
 
-A smaller batch processor queue means spans are exported and garbage-collected sooner:
+More frequent batch exports can reduce how long ended spans remain in the BatchSpanProcessor queue:
 
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
-     -Dotel.bsp.max.queue.size=2048 \
+     -Dotel.bsp.max.queue.size=1024 \
      -Dotel.bsp.schedule.delay=2000 \
      -Dotel.bsp.max.export.batch.size=512 \
      -jar myapp.jar
 ```
 
-More frequent exports (lower `schedule.delay`) keep the queue smaller, reducing the amount of live span data on the heap at any given time.
+More frequent exports (lower `schedule.delay`) can keep the queue smaller, reducing the amount of live span data on the heap at any given time. Make sure the exporter can keep up, because a full queue can drop spans.
 
 ## Fix 5: Increase Heap and Tune GC
 
@@ -139,15 +139,15 @@ Add these JVM metrics to your dashboard:
 ```
 
 Key metrics:
-- `process.runtime.jvm.gc.duration` - GC pause duration
-- `process.runtime.jvm.memory.usage` - Heap usage
-- `process.runtime.jvm.memory.committed` - Committed memory
+- `jvm.gc.duration` - GC pause duration
+- `jvm.memory.used` - Heap usage
+- `jvm.memory.committed` - Committed memory
 
 Create an alert for GC pauses exceeding your SLA:
 
 ```yaml
 alert: HighGCPause
-expr: rate(jvm_gc_pause_seconds_sum[5m]) / rate(jvm_gc_pause_seconds_count[5m]) > 0.1
+expr: rate(jvm_gc_duration_seconds_sum[5m]) / rate(jvm_gc_duration_seconds_count[5m]) > 0.1
 for: 10m
 ```
 

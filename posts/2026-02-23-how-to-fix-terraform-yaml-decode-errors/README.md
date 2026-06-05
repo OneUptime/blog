@@ -203,7 +203,7 @@ production:
   database: prod_db
 ```
 
-However, there are two limitations to be aware of. First, cyclic data structures (where a reference to a collection appears inside that collection) are not allowed and will produce an error. Second, anchors cannot be used as mapping keys — only as values:
+However, there are two limitations to be aware of. First, cyclic data structures (where a reference to a collection appears inside that collection) are not allowed and will produce an error. Second, anchors cannot be used as mapping keys - only as values:
 
 ```yaml
 # This will fail - aliases as keys

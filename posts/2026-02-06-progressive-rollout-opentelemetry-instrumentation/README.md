@@ -63,29 +63,29 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
-  logging:
+  debug:
     # Also log to stdout for easy debugging during pilot
-    loglevel: info
+    verbosity: basic
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
 ```
 
 ### Feature Flag Control
 
-Use a feature flag to control instrumentation without requiring redeployment:
+Use a feature flag to control instrumentation without changing application code or rebuilding the image:
 
 ```python
 # Use a feature flag to control whether telemetry is active.
-# This lets you turn instrumentation on and off without redeploying.
+# This lets you turn instrumentation on and off with a config change and restart.
 import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 def init_telemetry():
@@ -93,8 +93,8 @@ def init_telemetry():
     otel_enabled = os.getenv("OTEL_INSTRUMENTATION_ENABLED", "false").lower() == "true"
 
     if not otel_enabled:
-        # Use the no-op tracer provider (zero overhead)
-        trace.set_tracer_provider(trace.NoOpTracerProvider())
+        # Leave the default tracer provider in place so spans are non-recording
+        # unless another SDK provider has already been configured.
         return
 
     provider = TracerProvider()
@@ -151,6 +151,10 @@ metadata:
   name: order-service-canary
 spec:
   replicas: 1  # Start with 1 instrumented pod
+  selector:
+    matchLabels:
+      app: order-service
+      variant: canary
   template:
     metadata:
       labels:
@@ -172,6 +176,10 @@ metadata:
   name: order-service-stable
 spec:
   replicas: 4  # Original uninstrumented pods
+  selector:
+    matchLabels:
+      app: order-service
+      variant: stable
   template:
     metadata:
       labels:
@@ -194,11 +202,11 @@ Compare metrics between the canary and stable pods to detect any performance imp
 curl -G "http://prometheus:9090/api/v1/query" \
   --data-urlencode 'query=
     histogram_quantile(0.99,
-      rate(http_request_duration_seconds_bucket{app="order-service",variant="canary"}[5m])
+      sum by (le) (rate(http_request_duration_seconds_bucket{app="order-service",variant="canary"}[5m]))
     )
     /
     histogram_quantile(0.99,
-      rate(http_request_duration_seconds_bucket{app="order-service",variant="stable"}[5m])
+      sum by (le) (rate(http_request_duration_seconds_bucket{app="order-service",variant="stable"}[5m]))
     )'
 ```
 
@@ -264,6 +272,9 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+    env:
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: http/protobuf
 ```
 
 Teams opt in with a single annotation:
@@ -311,7 +322,8 @@ def get_rollout_status():
                 env_vars[env["name"]] = env.get("value", "")
 
         # Check for auto-instrumentation annotation or manual setup
-        has_auto = any("opentelemetry" in str(v) for v in annotations.values())
+        has_auto = any(k.startswith("instrumentation.opentelemetry.io/inject-") and v != "false"
+                       for k, v in annotations.items())
         has_manual = env_vars.get("OTEL_INSTRUMENTATION_ENABLED") == "true"
         has_sdk = "OTEL_SERVICE_NAME" in env_vars
 
@@ -321,7 +333,7 @@ def get_rollout_status():
     return {
         "total": total,
         "instrumented": instrumented,
-        "coverage": f"{100 * instrumented / total:.1f}%",
+        "coverage": f"{100 * instrumented / total:.1f}%" if total else "0.0%",
     }
 
 status = get_rollout_status()
@@ -371,9 +383,9 @@ groups:
       - alert: InstrumentationLatencyIncrease
         expr: |
           (
-            histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+            histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m])))
             /
-            histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m] offset 1h))
+            histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m] offset 1h)))
           ) > 1.1
         for: 10m
         labels:

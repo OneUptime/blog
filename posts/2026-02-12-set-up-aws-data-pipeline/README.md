@@ -8,9 +8,9 @@ Description: A practical guide to setting up AWS Data Pipeline for orchestrating
 
 ---
 
-AWS Data Pipeline is a web service for orchestrating data movement and transformation across AWS services and on-premises data sources. It lets you define data-driven workflows where activities run on a schedule or in response to events. While newer services like Step Functions and Glue have taken over many use cases, Data Pipeline still shines for straightforward data movement tasks like copying data between S3, RDS, DynamoDB, and Redshift.
+AWS Data Pipeline is a web service for orchestrating data movement and transformation across AWS services and on-premises data sources. It lets you define data-driven workflows where activities run on a schedule or on demand. AWS Data Pipeline is in maintenance mode and is no longer available to new customers, but existing customers can continue to use it as normal. While newer services like Step Functions and Glue have taken over many use cases, Data Pipeline can still be useful for existing straightforward data movement tasks like copying data between S3, RDS, DynamoDB, and Redshift.
 
-If you need to move data from RDS to S3 on a daily schedule, replicate DynamoDB tables across regions, or run EMR jobs on a cron, Data Pipeline handles it with minimal configuration.
+If you already use Data Pipeline and need to move data from RDS to S3 on a daily schedule, replicate DynamoDB tables across regions, or run EMR jobs on a cron, Data Pipeline handles it with minimal configuration.
 
 ## How Data Pipeline Works
 
@@ -47,7 +47,7 @@ cat > pipeline-trust.json << 'EOF'
   "Statement": [{
     "Effect": "Allow",
     "Principal": {
-      "Service": ["datapipeline.amazonaws.com", "elasticmapreduce.amazonaws.com"]
+      "Service": "datapipeline.amazonaws.com"
     },
     "Action": "sts:AssumeRole"
   }]
@@ -58,9 +58,15 @@ aws iam create-role \
   --role-name DataPipelineRole \
   --assume-role-policy-document file://pipeline-trust.json
 
+# Create pipeline-permissions.json from the AWS Data Pipeline role
+# policy example, then attach it. Replace 123456789012 with your account ID.
+aws iam create-policy \
+  --policy-name DataPipelineRolePolicy \
+  --policy-document file://pipeline-permissions.json
+
 aws iam attach-role-policy \
   --role-name DataPipelineRole \
-  --policy-arn arn:aws:iam::aws:policy/service-role/AWSDataPipelineRole
+  --policy-arn arn:aws:iam::123456789012:policy/DataPipelineRolePolicy
 
 # Create the resource (EC2) role
 cat > ec2-trust.json << 'EOF'
@@ -116,18 +122,18 @@ Now define the pipeline configuration.
       "id": "Default",
       "name": "Default",
       "schedule": {"ref": "DailySchedule"},
-      "failureAndRerunMode": "CASCADE",
+      "failureAndRerunMode": "cascade",
       "pipelineLogUri": "s3://my-pipeline-logs/rds-export/",
       "role": "DataPipelineRole",
-      "resourceRole": "DataPipelineResourceRole"
+      "resourceRole": "DataPipelineResourceRole",
+      "scheduleType": "cron"
     },
     {
       "id": "DailySchedule",
       "type": "Schedule",
       "name": "Run Daily at 2 AM",
       "period": "1 day",
-      "startAt": "FIRST_ACTIVATION_DATE_TIME",
-      "startDateTime": "2026-02-13T02:00:00"
+      "startDateTime": "2026-06-03T02:00:00"
     },
     {
       "id": "RdsDatabase",
@@ -150,7 +156,7 @@ Now define the pipeline configuration.
       "id": "S3Output",
       "type": "S3DataNode",
       "name": "S3 Export Location",
-      "directoryPath": "s3://my-data-lake/rds-exports/orders/#{format(@scheduledStartTime, 'yyyy-MM-dd')}/"
+      "directoryPath": "s3://my-data-lake/rds-exports/orders/#{format(@scheduledStartTime, 'YYYY-MM-dd')}/"
     },
     {
       "id": "CopyActivity",
@@ -167,7 +173,7 @@ Now define the pipeline configuration.
       "type": "Ec2Resource",
       "name": "Pipeline Worker",
       "instanceType": "m5.large",
-      "securityGroups": "sg-pipeline123",
+      "securityGroupIds": ["sg-pipeline123"],
       "subnetId": "subnet-private1",
       "terminateAfter": "2 hours"
     },
@@ -177,7 +183,7 @@ Now define the pipeline configuration.
       "name": "Success Alert",
       "topicArn": "arn:aws:sns:us-east-1:123456789012:pipeline-alerts",
       "subject": "RDS Export Completed",
-      "message": "Orders export to S3 completed successfully for #{@scheduledStartTime}"
+      "message": "Orders export to S3 completed successfully for #{node.@scheduledStartTime}"
     },
     {
       "id": "FailureNotification",
@@ -185,7 +191,7 @@ Now define the pipeline configuration.
       "name": "Failure Alert",
       "topicArn": "arn:aws:sns:us-east-1:123456789012:pipeline-alerts",
       "subject": "RDS Export FAILED",
-      "message": "Orders export to S3 FAILED for #{@scheduledStartTime}. Check logs."
+      "message": "Orders export to S3 FAILED for #{node.@scheduledStartTime}. Check logs."
     }
   ]
 }
@@ -194,13 +200,9 @@ Now define the pipeline configuration.
 Upload the definition and activate.
 
 ```bash
-# Put the pipeline definition
+# Put the pipeline definition. This also validates the definition;
+# confirm "errored" is false in the command output before activating.
 aws datapipeline put-pipeline-definition \
-  --pipeline-id df-1234567890 \
-  --pipeline-definition file://rds-export-pipeline.json
-
-# Validate the pipeline
-aws datapipeline validate-pipeline-definition \
   --pipeline-id df-1234567890 \
   --pipeline-definition file://rds-export-pipeline.json
 
@@ -221,15 +223,15 @@ Another common pattern is backing up DynamoDB tables to S3.
       "schedule": {"ref": "WeeklySchedule"},
       "pipelineLogUri": "s3://my-pipeline-logs/dynamo-backup/",
       "role": "DataPipelineRole",
-      "resourceRole": "DataPipelineResourceRole"
+      "resourceRole": "DataPipelineResourceRole",
+      "scheduleType": "cron"
     },
     {
       "id": "WeeklySchedule",
       "type": "Schedule",
       "name": "Weekly Sunday Backup",
       "period": "1 week",
-      "startAt": "FIRST_ACTIVATION_DATE_TIME",
-      "startDateTime": "2026-02-16T03:00:00"
+      "startDateTime": "2026-06-07T03:00:00"
     },
     {
       "id": "DynamoSource",
@@ -242,7 +244,7 @@ Another common pattern is backing up DynamoDB tables to S3.
       "id": "S3Backup",
       "type": "S3DataNode",
       "name": "S3 Backup Location",
-      "directoryPath": "s3://my-backups/dynamodb/users/#{format(@scheduledStartTime, 'yyyy-MM-dd')}/"
+      "directoryPath": "s3://my-backups/dynamodb/users/#{format(@scheduledStartTime, 'YYYY-MM-dd')}/"
     },
     {
       "id": "EmrCluster",
@@ -252,7 +254,7 @@ Another common pattern is backing up DynamoDB tables to S3.
       "coreInstanceType": "m5.xlarge",
       "masterInstanceType": "m5.xlarge",
       "releaseLabel": "emr-6.15.0",
-      "terminateAfter": "4 hours"
+      "terminateAfter": "4"
     },
     {
       "id": "BackupActivity",
@@ -279,13 +281,13 @@ aws datapipeline list-pipelines
 aws datapipeline describe-pipelines --pipeline-ids df-1234567890
 
 # List pipeline runs
-aws datapipeline list-runs --pipeline-id df-1234567890 --status RUNNING
+aws datapipeline list-runs --pipeline-id df-1234567890 --status running
 
 # Query specific objects in the pipeline
 aws datapipeline query-objects \
   --pipeline-id df-1234567890 \
   --sphere INSTANCE \
-  --query '{"selectors": [{"fieldName": "@status", "operator": {"type": "EQ", "values": ["FAILED"]}}]}'
+  --objects-query '{"selectors": [{"fieldName": "@status", "operator": {"type": "EQ", "values": ["FAILED"]}}]}'
 ```
 
 ## Setting Up Alerts
@@ -314,4 +316,4 @@ Data Pipeline is solid for its original use case, but know your alternatives:
 - **EventBridge + Lambda** - Better for event-driven, lightweight data movement
 - **MWAA (Managed Airflow)** - Better when you need full DAG capabilities
 
-Use Data Pipeline when you need simple, scheduled data movement between AWS services with built-in retry logic and notifications. It's been around since 2012, it's battle-tested, and it just works for the patterns it was designed for.
+For existing Data Pipeline workloads, use it when you need simple, scheduled data movement between AWS services with built-in retry logic and notifications. It's been around since 2012, it's battle-tested, and it just works for the patterns it was designed for.

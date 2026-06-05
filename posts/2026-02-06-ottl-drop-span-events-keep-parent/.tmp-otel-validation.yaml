@@ -1,0 +1,34 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  filter/drop_events:
+    error_mode: ignore
+    trace_conditions:
+      - context: spanevent
+        conditions:
+          - name == "exception" and IsMatch(attributes["exception.type"], "(?i).*NotFound.*")
+          - span.status.code != STATUS_CODE_ERROR
+          - event_index >= 5
+
+  transform/manage_events:
+    error_mode: ignore
+    trace_statements:
+      - context: spanevent
+        statements:
+          - delete_key(attributes, "exception.stacktrace") where name == "exception"
+          - set(attributes["exception.stacktrace"], Substring(attributes["exception.stacktrace"], 0, 2048)) where attributes["exception.stacktrace"] != nil and Len(attributes["exception.stacktrace"]) > 2048
+          - truncate_all(attributes, 512)
+
+exporters:
+  debug:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/drop_events, transform/manage_events]
+      exporters: [debug]

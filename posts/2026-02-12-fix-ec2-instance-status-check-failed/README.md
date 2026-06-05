@@ -8,7 +8,7 @@ Description: Diagnose and resolve EC2 system status check failures and instance 
 
 ---
 
-EC2 runs two status checks on every instance, and when either one fails, your instance is in trouble. Understanding the difference between the two checks is the key to fixing them.
+EC2 runs system and instance status checks on every running instance, and when either one fails, your instance is in trouble. EC2 also has an attached EBS status check for supported Nitro instances, but understanding the difference between system and instance checks is the key to fixing these failures.
 
 ```bash
 # Check the current status
@@ -70,15 +70,15 @@ Important: A reboot doesn't help for system check failures because the instance 
 
 Note that the public IP address will change after a stop/start (unless you're using an Elastic IP).
 
-### Option 2: Instance Store Instances
+### Option 2: Instance Store-Backed Instances
 
-If your instance uses instance store volumes (not EBS), you can't stop it - you can only terminate it. Data on instance store volumes is lost when the instance stops or terminates.
+If your instance has an instance store root volume, you can't stop it - you can only terminate it. Data on instance store volumes is lost when the instance stops or terminates.
 
 ```bash
-# Check if the instance has instance store volumes
+# Check the instance root device type
 aws ec2 describe-instances \
   --instance-ids i-1234567890abcdef0 \
-  --query "Reservations[0].Instances[0].BlockDeviceMappings[*].[DeviceName,Ebs.VolumeId]"
+  --query "Reservations[0].Instances[0].[RootDeviceType,RootDeviceName]"
 ```
 
 If it's instance store backed, your options are limited:
@@ -135,13 +135,19 @@ Fix by detaching the volume and running fsck from another instance.
 aws ec2 stop-instances --instance-ids i-1234567890abcdef0
 aws ec2 wait instance-stopped --instance-ids i-1234567890abcdef0
 
-# Detach the root volume
+# Find and detach the root volume
+ROOT_DEVICE=$(aws ec2 describe-instances \
+  --instance-ids i-1234567890abcdef0 \
+  --query "Reservations[0].Instances[0].RootDeviceName" \
+  --output text)
+
 ROOT_VOLUME=$(aws ec2 describe-instances \
   --instance-ids i-1234567890abcdef0 \
-  --query "Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId" \
+  --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$ROOT_DEVICE'].Ebs.VolumeId | [0]" \
   --output text)
 
 aws ec2 detach-volume --volume-id $ROOT_VOLUME
+aws ec2 wait volume-available --volume-ids $ROOT_VOLUME
 
 # Attach to a rescue instance
 aws ec2 attach-volume \
@@ -154,10 +160,11 @@ sudo fsck /dev/xvdf1
 
 # Reattach to original instance and start
 aws ec2 detach-volume --volume-id $ROOT_VOLUME
+aws ec2 wait volume-available --volume-ids $ROOT_VOLUME
 aws ec2 attach-volume \
   --volume-id $ROOT_VOLUME \
   --instance-id i-1234567890abcdef0 \
-  --device /dev/xvda
+  --device $ROOT_DEVICE
 
 aws ec2 start-instances --instance-ids i-1234567890abcdef0
 ```

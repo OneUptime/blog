@@ -305,7 +305,7 @@ func main() {
 }
 ```
 
-If you only have a Plugin Framework provider, you do not need the mux server — call `providerserver.Serve(ctx, provider.New(version), opts)` directly.
+If you only have a Plugin Framework provider, you do not need the mux server - call `providerserver.Serve(ctx, provider.New(version), opts)` directly.
 
 ### Terraform Version Constraints
 

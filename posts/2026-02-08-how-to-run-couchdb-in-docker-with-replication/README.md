@@ -37,6 +37,11 @@ Verify it is running by hitting the root endpoint.
 ```bash
 # CouchDB should respond with version info
 curl http://admin:password@localhost:5984/
+
+# Complete single-node setup by creating the system databases
+curl -X PUT http://admin:password@localhost:5984/_users
+curl -X PUT http://admin:password@localhost:5984/_replicator
+curl -X PUT http://admin:password@localhost:5984/_global_changes
 ```
 
 ## Docker Compose Setup
@@ -194,9 +199,17 @@ Start both nodes.
 docker compose -f docker-compose-replication.yml up -d
 ```
 
-Create the same database on both nodes, then set up continuous replication in both directions.
+Create the system databases and the same application database on both nodes, then set up continuous replication in both directions.
 
 ```bash
+# Create the system databases on both nodes
+curl -X PUT http://admin:s3curepass@localhost:5984/_users
+curl -X PUT http://admin:s3curepass@localhost:5984/_replicator
+curl -X PUT http://admin:s3curepass@localhost:5984/_global_changes
+curl -X PUT http://admin:s3curepass@localhost:5985/_users
+curl -X PUT http://admin:s3curepass@localhost:5985/_replicator
+curl -X PUT http://admin:s3curepass@localhost:5985/_global_changes
+
 # Create the database on both nodes
 curl -X PUT http://admin:s3curepass@localhost:5984/shared_db
 curl -X PUT http://admin:s3curepass@localhost:5985/shared_db
@@ -230,12 +243,13 @@ curl -X PUT http://admin:s3curepass@localhost:5984/shared_db/test-doc-001 \
   -H "Content-Type: application/json" \
   -d '{"message": "Written to primary", "timestamp": "2025-03-01T12:00:00Z"}'
 
-# Wait a moment for replication, then read from the replica
-sleep 2
-curl http://admin:s3curepass@localhost:5985/shared_db/test-doc-001
+# Wait for replication, then read from the replica
+until curl -fsS http://admin:s3curepass@localhost:5985/shared_db/test-doc-001; do
+  sleep 2
+done
 ```
 
-The document should appear on both nodes within seconds.
+The document should appear on both nodes after the replication scheduler starts.
 
 ## Handling Conflicts
 
@@ -249,8 +263,8 @@ curl http://admin:s3curepass@localhost:5984/shared_db/test-doc-001?conflicts=tru
 Resolve conflicts programmatically by fetching conflicting revisions and choosing which one to keep.
 
 ```bash
-# Get all revisions including conflicts
-curl http://admin:s3curepass@localhost:5984/shared_db/test-doc-001?revs_info=true
+# Get all current leaf revisions, including conflicting revisions
+curl 'http://admin:s3curepass@localhost:5984/shared_db/test-doc-001?open_revs=all'
 ```
 
 ## Monitoring Replication
@@ -261,8 +275,8 @@ Check the status of active replications.
 # View active replication tasks
 curl http://admin:s3curepass@localhost:5984/_active_tasks
 
-# Check the replicator database for replication document status
-curl http://admin:s3curepass@localhost:5984/_replicator/primary-to-replica
+# Check scheduler status for a replication document
+curl http://admin:s3curepass@localhost:5984/_scheduler/docs/_replicator/primary-to-replica
 ```
 
 ## Mango Queries

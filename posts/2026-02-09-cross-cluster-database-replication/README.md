@@ -64,7 +64,7 @@ spec:
           mountPath: /var/lib/postgresql/data
         - name: config
           mountPath: /docker-entrypoint-initdb.d
-        command:
+        args:
         - postgres
         - -c
         - wal_level=replica
@@ -160,12 +160,8 @@ spec:
           rm -rf /var/lib/postgresql/data/*
 
           PGPASSWORD=$POSTGRES_REPLICATION_PASSWORD \
-          pg_basebackup -h $PRIMARY_HOST -U replicator \
+          pg_basebackup -d "host=$PRIMARY_HOST port=5432 user=replicator password=$POSTGRES_REPLICATION_PASSWORD" \
             -D /var/lib/postgresql/data -P -Xs -R
-
-          # Configure standby
-          echo "standby_mode = 'on'" >> /var/lib/postgresql/data/postgresql.auto.conf
-          echo "primary_conninfo = 'host=$PRIMARY_HOST port=5432 user=replicator password=$POSTGRES_REPLICATION_PASSWORD'" >> /var/lib/postgresql/data/postgresql.auto.conf
 
         env:
         - name: PRIMARY_HOST
@@ -193,7 +189,7 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
-        command:
+        args:
         - postgres
         - -c
         - hot_standby=on
@@ -302,9 +298,24 @@ spec:
           storage: 100Gi
 ---
 apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-primary-external
+  namespace: database
+spec:
+  type: LoadBalancer
+  selector:
+    app: mysql
+    role: primary
+  ports:
+  - port: 3306
+    targetPort: 3306
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mysql-primary-config
+  namespace: database
 data:
   replication.cnf: |
     [mysqld]
@@ -318,11 +329,17 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mysql-replication-init
+  namespace: database
 data:
-  01-replication.sql: |
-    CREATE USER IF NOT EXISTS 'repl_user'@'%' IDENTIFIED BY 'replication_password';
+  01-replication.sh: |
+    #!/bin/bash
+    set -e
+
+    mysql --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
+    CREATE USER IF NOT EXISTS 'repl_user'@'%' IDENTIFIED BY '${MYSQL_REPLICATION_PASSWORD}';
     GRANT REPLICATION SLAVE ON *.* TO 'repl_user'@'%';
     FLUSH PRIVILEGES;
+    EOSQL
 ```
 
 Configure MySQL replica in Cluster B:
@@ -347,29 +364,11 @@ spec:
         app: mysql
         role: replica
     spec:
-      initContainers:
-      - name: setup-replica
+      containers:
+      - name: mysql
         image: mysql:8.0
-        command:
-        - sh
-        - -c
-        - |
-          # Wait for primary
-          until mysqladmin ping -h"$PRIMARY_HOST" -uroot -p"$MYSQL_ROOT_PASSWORD" --silent; do
-            echo "Waiting for primary..."
-            sleep 5
-          done
-
-          # Configure replication
-          mysql -h"$PRIMARY_HOST" -uroot -p"$MYSQL_ROOT_PASSWORD" <<EOF
-          STOP SLAVE;
-          CHANGE MASTER TO
-            MASTER_HOST='$PRIMARY_HOST',
-            MASTER_USER='repl_user',
-            MASTER_PASSWORD='$MYSQL_REPLICATION_PASSWORD',
-            MASTER_AUTO_POSITION=1;
-          START SLAVE;
-          EOF
+        ports:
+        - containerPort: 3306
         env:
         - name: PRIMARY_HOST
           value: "mysql-primary-lb.example.com"
@@ -383,23 +382,40 @@ spec:
             secretKeyRef:
               name: mysql-password
               key: replication-password
-
-      containers:
-      - name: mysql
-        image: mysql:8.0
-        ports:
-        - containerPort: 3306
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-password
-              key: root-password
         volumeMounts:
         - name: data
           mountPath: /var/lib/mysql
         - name: config
           mountPath: /etc/mysql/conf.d
+        command:
+        - bash
+        - -c
+        - |
+          docker-entrypoint.sh mysqld &
+          pid="$!"
+
+          until mysqladmin ping -h127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" --silent; do
+            echo "Waiting for local MySQL..."
+            sleep 5
+          done
+
+          until mysqladmin ping -h"$PRIMARY_HOST" -urepl_user -p"$MYSQL_REPLICATION_PASSWORD" --silent; do
+            echo "Waiting for primary..."
+            sleep 5
+          done
+
+          mysql --force -h127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" <<EOF
+          STOP REPLICA;
+          RESET REPLICA ALL;
+          CHANGE REPLICATION SOURCE TO
+            SOURCE_HOST='$PRIMARY_HOST',
+            SOURCE_USER='repl_user',
+            SOURCE_PASSWORD='$MYSQL_REPLICATION_PASSWORD',
+            SOURCE_AUTO_POSITION=1;
+          START REPLICA;
+          EOF
+
+          wait "$pid"
       volumes:
       - name: config
         configMap:
@@ -417,6 +433,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mysql-replica-config
+  namespace: database
 data:
   replication.cnf: |
     [mysqld]
@@ -429,66 +446,43 @@ data:
 
 ## Setting Up MongoDB Replica Set Across Clusters
 
-Deploy MongoDB with cross-cluster replica set:
+After deploying MongoDB 7.0.4 instances in both clusters with `replication.replSetName` set to `mongodb-global` and externally reachable hostnames, initialize the replica set once:
 
 ```yaml
-# mongodb-cross-cluster.yaml
-apiVersion: mongodbcommunity.mongodb.com/v1
-kind: MongoDBCommunity
+# mongodb-rs-init.yaml
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: mongodb-global
+  name: mongodb-global-init
   namespace: database
 spec:
-  members: 5
-  type: ReplicaSet
-  version: "7.0.4"
-
-  security:
-    authentication:
-      modes: ["SCRAM"]
-
-  users:
-    - name: admin
-      db: admin
-      passwordSecretRef:
-        name: mongodb-password
-      roles:
-        - name: clusterAdmin
-          db: admin
-        - name: userAdminAnyDatabase
-          db: admin
-
-  # Explicitly define member hosts across clusters
-  statefulSet:
+  template:
     spec:
-      template:
-        spec:
-          initContainers:
-          - name: configure-replica-set
-            image: mongo:7.0.4
-            command:
-            - bash
-            - -c
-            - |
-              # Configure replica set with external endpoints
-              cat > /tmp/rs-init.js <<EOF
-              rs.initiate({
-                _id: "mongodb-global",
-                members: [
-                  { _id: 0, host: "mongodb-global-0.cluster-a.example.com:27017", priority: 2 },
-                  { _id: 1, host: "mongodb-global-1.cluster-a.example.com:27017", priority: 2 },
-                  { _id: 2, host: "mongodb-global-2.cluster-a.example.com:27017", priority: 1 },
-                  { _id: 3, host: "mongodb-global-0.cluster-b.example.com:27017", priority: 1 },
-                  { _id: 4, host: "mongodb-global-1.cluster-b.example.com:27017", priority: 0, arbiterOnly: true }
-                ]
-              })
-              EOF
+      restartPolicy: OnFailure
+      containers:
+      - name: configure-replica-set
+        image: mongo:7.0.4
+        command:
+        - bash
+        - -c
+        - |
+          until mongosh "mongodb://mongodb-global-0.cluster-a.example.com:27017/admin" --eval "db.adminCommand('ping')" >/dev/null; do
+            echo "Waiting for MongoDB..."
+            sleep 5
+          done
 
-  additionalMongodConfig:
-    net:
-      bindIpAll: true
-    replication:
-      replSetName: mongodb-global
+          mongosh "mongodb://mongodb-global-0.cluster-a.example.com:27017/admin" <<EOF
+          rs.initiate({
+            _id: "mongodb-global",
+            members: [
+              { _id: 0, host: "mongodb-global-0.cluster-a.example.com:27017", priority: 2 },
+              { _id: 1, host: "mongodb-global-1.cluster-a.example.com:27017", priority: 2 },
+              { _id: 2, host: "mongodb-global-2.cluster-a.example.com:27017", priority: 1 },
+              { _id: 3, host: "mongodb-global-0.cluster-b.example.com:27017", priority: 1 },
+              { _id: 4, host: "mongodb-global-1.cluster-b.example.com:27017", priority: 0, arbiterOnly: true }
+            ]
+          })
+          EOF
 ```
 
 ## Implementing Failover Automation
@@ -566,7 +560,13 @@ if __name__ == "__main__":
     main()
 ```
 
-Deploy as a Job:
+Create the `failover-script` ConfigMap from this file, then deploy as a Job:
+
+```bash
+kubectl create configmap failover-script \
+  --from-file=failover_controller.py \
+  -n database
+```
 
 ```yaml
 # failover-controller.yaml
@@ -581,7 +581,7 @@ spec:
       containers:
       - name: controller
         image: python:3.11
-        command: ["python", "/app/failover_controller.py"]
+        command: ["sh", "-c", "pip install --no-cache-dir psycopg2-binary && python /app/failover_controller.py"]
         env:
         - name: PRIMARY_HOST
           value: "postgres-primary-lb.us-east-1.example.com"
@@ -612,6 +612,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: replication-monitor
+  namespace: database
 data:
   monitor.sh: |
     #!/bin/bash
@@ -625,11 +626,9 @@ data:
       echo "Replication lag: ${LAG} seconds"
 
       # Send to monitoring system
-      curl -X POST http://prometheus-pushgateway:9091/metrics/job/replication_lag \
-        --data-binary @- <<EOF
-# TYPE replication_lag_seconds gauge
-replication_lag_seconds ${LAG}
-EOF
+      printf "# TYPE replication_lag_seconds gauge\nreplication_lag_seconds %s\n" "$LAG" | \
+        curl -X POST http://prometheus-pushgateway:9091/metrics/job/replication_lag \
+        --data-binary @-
 
       sleep 30
     done

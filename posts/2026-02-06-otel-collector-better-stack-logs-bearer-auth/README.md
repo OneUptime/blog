@@ -15,12 +15,13 @@ This guide walks through the full Collector configuration, from receivers to the
 Before starting, you need:
 
 - An OpenTelemetry Collector binary (v0.90.0 or newer recommended)
-- A Better Stack account with a source token
+- An OpenTelemetry Collector Contrib binary if you use the optional `filelog` receiver
+- A Better Stack account with a source token and ingesting host
 - Logs flowing into the Collector from your applications
 
 ## Getting Your Better Stack Source Token
 
-Log into your Better Stack dashboard and navigate to Sources. Create a new source or use an existing one. Copy the source token - this is what you will use as your bearer token in the Collector config.
+Log into your Better Stack dashboard and navigate to Sources. Create a new source or use an existing one. Copy the source token - this is what you will use as your bearer token in the Collector config. Also copy the ingesting host for that source.
 
 ## Collector Configuration
 
@@ -72,9 +73,9 @@ processors:
 exporters:
   # Better Stack uses the OTLP/HTTP exporter with bearer token auth
   otlphttp/betterstack:
-    endpoint: https://in-otel.logs.betterstack.com
+    endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
-      Authorization: "Bearer ${BETTER_STACK_SOURCE_TOKEN}"
+      Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
     compression: gzip
 
 service:
@@ -94,13 +95,13 @@ The exporter section is where the Better Stack integration happens:
 ```yaml
 exporters:
   otlphttp/betterstack:
-    endpoint: https://in-otel.logs.betterstack.com
+    endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
-      Authorization: "Bearer ${BETTER_STACK_SOURCE_TOKEN}"
+      Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
     compression: gzip
 ```
 
-A few things to note here. The endpoint is the Better Stack OTLP ingest URL. The authorization header uses the standard Bearer scheme. The `${BETTER_STACK_SOURCE_TOKEN}` syntax pulls the token from an environment variable, which keeps secrets out of your config files.
+A few things to note here. The endpoint is the Better Stack OTLP ingest URL for your source. The authorization header uses the standard Bearer scheme. The `${env:BETTER_STACK_SOURCE_TOKEN}` syntax pulls the token from an environment variable, which keeps secrets out of your config files.
 
 Gzip compression is enabled because log payloads can be large, and compressing them saves bandwidth and speeds up delivery.
 
@@ -116,7 +117,7 @@ processors:
     timeout: 5s
 ```
 
-This groups up to 1000 log records per batch and sends them every 5 seconds (whichever comes first). Without batching, the Collector would send individual log records as separate HTTP requests, which would be inefficient.
+This sends a batch when it reaches 1000 log records or after 5 seconds, and `send_batch_max_size` caps any single batch at 1500 records. Without batching, the Collector would send smaller, more frequent HTTP requests, which would be inefficient.
 
 ## Running the Collector
 
@@ -126,9 +127,10 @@ Set your environment variable and start the Collector:
 # Export your Better Stack source token
 
 export BETTER_STACK_SOURCE_TOKEN="your-source-token-here"
+export BETTER_STACK_INGESTING_HOST="your-ingesting-host-here"
 
 # Run the Collector with your config
-otelcol --config otel-collector-config.yaml
+otelcol-contrib --config otel-collector-config.yaml
 ```
 
 If you are running in Docker:
@@ -137,10 +139,11 @@ If you are running in Docker:
 docker run -d \
   --name otel-collector \
   -e BETTER_STACK_SOURCE_TOKEN="your-source-token-here" \
+  -e BETTER_STACK_INGESTING_HOST="your-ingesting-host-here" \
   -p 4317:4317 \
   -p 4318:4318 \
-  -v $(pwd)/otel-collector-config.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector-contrib:latest
+  -v $(pwd)/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
+  ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:latest
 ```
 
 ## Adding Retry and Queue Settings
@@ -150,9 +153,9 @@ For production use, add retry logic and a sending queue to handle transient fail
 ```yaml
 exporters:
   otlphttp/betterstack:
-    endpoint: https://in-otel.logs.betterstack.com
+    endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
-      Authorization: "Bearer ${BETTER_STACK_SOURCE_TOKEN}"
+      Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -205,6 +208,6 @@ service:
       level: debug
 ```
 
-Common issues include incorrect source tokens (double-check the token value), network connectivity problems (ensure the Collector can reach `in-otel.logs.betterstack.com` on port 443), and misconfigured pipelines (make sure your exporter name matches in the pipeline definition).
+Common issues include incorrect source tokens (double-check the token value), network connectivity problems (ensure the Collector can reach your Better Stack ingesting host on port 443), and misconfigured pipelines (make sure your exporter name matches in the pipeline definition).
 
 The OpenTelemetry Collector's OTLP/HTTP exporter works reliably with Better Stack, and the bearer token auth pattern keeps the configuration simple. Once you have this working, you can expand the pipeline with additional processors for log enrichment or filtering before export.

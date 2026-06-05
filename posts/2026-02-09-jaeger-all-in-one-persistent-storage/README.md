@@ -29,6 +29,8 @@ It's suitable for:
 
 Start with the simplest deployment:
 
+These examples use Jaeger 1.76.0, the final 1.x all-in-one image. Jaeger 2.x uses a different configuration-file format instead of these 1.x environment variables.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -47,7 +49,7 @@ spec:
     spec:
       containers:
       - name: jaeger
-        image: jaegertracing/all-in-one:latest
+        image: jaegertracing/all-in-one:1.76.0
         env:
         - name: COLLECTOR_OTLP_ENABLED
           value: "true"
@@ -72,6 +74,9 @@ spec:
         - containerPort: 14268
           protocol: TCP
           name: collector
+        - containerPort: 14269
+          protocol: TCP
+          name: admin
         - containerPort: 4317
           protocol: TCP
           name: otlp-grpc
@@ -123,21 +128,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: jaeger-persistent
+  name: jaeger
   namespace: tracing
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: jaeger-persistent
+      app: jaeger
   template:
     metadata:
       labels:
-        app: jaeger-persistent
+        app: jaeger
     spec:
       containers:
       - name: jaeger
-        image: jaegertracing/all-in-one:latest
+        image: jaegertracing/all-in-one:1.76.0
         env:
         - name: SPAN_STORAGE_TYPE
           value: "badger"
@@ -161,6 +166,8 @@ spec:
           name: query
         - containerPort: 14268
           name: collector
+        - containerPort: 14269
+          name: admin
         - containerPort: 4317
           name: otlp-grpc
         - containerPort: 4318
@@ -233,9 +240,8 @@ kind: Ingress
 metadata:
   name: jaeger-ingress
   namespace: tracing
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
   - host: jaeger.dev.local
     http:
@@ -294,7 +300,7 @@ def init_tracer():
     tracer_provider = trace.get_tracer_provider()
 
     otlp_exporter = OTLPSpanExporter(
-        endpoint="jaeger.tracing.svc.cluster.local:4317",
+        endpoint="http://jaeger.tracing.svc.cluster.local:4317",
         insecure=True
     )
 
@@ -433,7 +439,7 @@ spec:
 **High memory usage**:
 - Reduce BADGER_SPAN_STORE_TTL
 - Lower sampling rates
-- Increase BADGER_TRUNCATION_INTERVAL
+- Increase memory limits
 
 **Slow queries**:
 - Check Badger compaction settings

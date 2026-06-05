@@ -8,7 +8,7 @@ Description: Learn how to leverage volume cloning to prepare data for blue-green
 
 ---
 
-Blue-green deployments require identical data in both environments to ensure consistent testing and smooth cutover. Volume cloning provides a fast way to duplicate production data for the green environment without impacting the blue environment.
+Blue-green deployments for stateful applications require consistent data in both environments to ensure reliable testing and smooth cutover. Volume cloning provides a fast way to duplicate production data for the green environment when the source PVC can be quiesced and unmounted during the clone.
 
 ## Understanding Blue-Green with Volume Cloning
 
@@ -17,10 +17,11 @@ Traditional blue-green deployments manage application versions but often share s
 1. Separate data volumes for blue and green environments
 2. Identical data in both environments before cutover
 3. Ability to test green with production-like data
-4. Fast cloning to minimize deployment windows
-5. Easy rollback by switching back to blue
+4. A paused write path while the source PVC is cloned
+5. Fast cloning to minimize deployment windows
+6. Easy rollback by switching back to blue
 
-Volume cloning enables these requirements efficiently.
+Volume cloning enables these requirements efficiently when your CSI driver and dynamic provisioner support PVC cloning in the same namespace.
 
 ## Basic Blue-Green Setup with Cloned Volumes
 
@@ -49,7 +50,7 @@ metadata:
   labels:
     environment: blue
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: myapp
@@ -110,11 +111,23 @@ spec:
 
           echo "=== Preparing Green Environment ==="
 
+          echo "Pausing blue deployment so the source PVC is not in use..."
+          kubectl scale deployment blue-deployment --replicas=0
+          if [ -n "$(kubectl get pod -l app=myapp,environment=blue -o name)" ]; then
+            kubectl wait --for=delete pod \
+              -l app=myapp,environment=blue --timeout=300s
+          fi
+
           # Get blue PVC details
           BLUE_SIZE=$(kubectl get pvc blue-database-pvc \
             -o jsonpath='{.spec.resources.requests.storage}')
           STORAGE_CLASS=$(kubectl get pvc blue-database-pvc \
             -o jsonpath='{.spec.storageClassName}')
+          if [ -n "$STORAGE_CLASS" ]; then
+            STORAGE_CLASS_FIELD="storageClassName: $STORAGE_CLASS"
+          else
+            STORAGE_CLASS_FIELD=""
+          fi
 
           echo "Cloning blue PVC ($BLUE_SIZE)"
 
@@ -135,7 +148,7 @@ spec:
             resources:
               requests:
                 storage: $BLUE_SIZE
-            storageClassName: $STORAGE_CLASS
+            $STORAGE_CLASS_FIELD
             dataSource:
               kind: PersistentVolumeClaim
               name: blue-database-pvc
@@ -157,7 +170,7 @@ spec:
             labels:
               environment: green
           spec:
-            replicas: 3
+            replicas: 1
             selector:
               matchLabels:
                 app: myapp
@@ -231,20 +244,16 @@ echo "✓ Green health check passed"
 
 # Update service to point to green
 echo "Switching traffic to green..."
-kubectl patch service myapp-service -p '{"spec":{"selector":{"environment":"green"}}}'
+kubectl patch service myapp-service -p '{"spec":{"selector":{"app":"myapp","environment":"green"}}}'
 
 echo "✓ Traffic switched to green"
-
-# Scale down blue (optional)
-echo "Scaling down blue deployment..."
-kubectl scale deployment blue-deployment --replicas=0
 
 echo "✓ Blue-Green cutover complete"
 ```
 
 ## Rollback Script
 
-Quickly rollback to blue if issues arise:
+Quickly rollback to blue if issues arise before the green environment accepts new writes:
 
 ```bash
 #!/bin/bash
@@ -260,14 +269,14 @@ BLUE_REPLICAS=$(kubectl get deployment blue-deployment \
 
 if [ "$BLUE_REPLICAS" = "0" ]; then
   echo "Scaling up blue deployment..."
-  kubectl scale deployment blue-deployment --replicas=3
+  kubectl scale deployment blue-deployment --replicas=1
   kubectl wait --for=condition=available \
     deployment/blue-deployment --timeout=120s
 fi
 
 # Switch traffic back to blue
 echo "Switching traffic to blue..."
-kubectl patch service myapp-service -p '{"spec":{"selector":{"environment":"blue"}}}'
+kubectl patch service myapp-service -p '{"spec":{"selector":{"app":"myapp","environment":"blue"}}}'
 
 echo "✓ Rolled back to blue"
 
@@ -326,21 +335,41 @@ spec:
 
           echo "Deploying to: $TARGET_ENV"
 
+          restore_source_on_error() {
+            echo "ERROR: Deployment failed; restoring $SOURCE_ENV replicas"
+            kubectl scale deployment ${SOURCE_ENV}-deployment --replicas=1 || true
+          }
+          trap restore_source_on_error ERR
+
           # Step 1: Clone data from active to target
           echo "Step 1: Cloning data volume..."
 
           SOURCE_PVC="${SOURCE_ENV}-database-pvc"
           TARGET_PVC="${TARGET_ENV}-database-pvc"
 
+          echo "Pausing $SOURCE_ENV so the source PVC is not in use..."
+          kubectl scale deployment ${SOURCE_ENV}-deployment --replicas=0
+          if [ -n "$(kubectl get pod -l app=myapp,environment=$SOURCE_ENV -o name)" ]; then
+            kubectl wait --for=delete pod \
+              -l app=myapp,environment=$SOURCE_ENV --timeout=300s
+          fi
+
           # Delete old target PVC if exists
-          kubectl delete pvc $TARGET_PVC --ignore-not-found=true
-          sleep 5
+          if kubectl get pvc $TARGET_PVC >/dev/null 2>&1; then
+            kubectl delete pvc $TARGET_PVC
+            kubectl wait --for=delete pvc/$TARGET_PVC --timeout=300s
+          fi
 
           # Clone from source
           STORAGE_SIZE=$(kubectl get pvc $SOURCE_PVC \
             -o jsonpath='{.spec.resources.requests.storage}')
           STORAGE_CLASS=$(kubectl get pvc $SOURCE_PVC \
             -o jsonpath='{.spec.storageClassName}')
+          if [ -n "$STORAGE_CLASS" ]; then
+            STORAGE_CLASS_FIELD="storageClassName: $STORAGE_CLASS"
+          else
+            STORAGE_CLASS_FIELD=""
+          fi
 
           kubectl apply -f - <<EOF
           apiVersion: v1
@@ -356,7 +385,7 @@ spec:
             resources:
               requests:
                 storage: $STORAGE_SIZE
-            storageClassName: $STORAGE_CLASS
+            $STORAGE_CLASS_FIELD
             dataSource:
               kind: PersistentVolumeClaim
               name: $SOURCE_PVC
@@ -376,7 +405,7 @@ spec:
           metadata:
             name: ${TARGET_ENV}-deployment
           spec:
-            replicas: 3
+            replicas: 1
             selector:
               matchLabels:
                 app: myapp
@@ -435,9 +464,10 @@ spec:
           echo "Step 4: Switching traffic..."
 
           kubectl patch service myapp-service -p \
-            "{\"spec\":{\"selector\":{\"environment\":\"$TARGET_ENV\"}}}"
+            "{\"spec\":{\"selector\":{\"app\":\"myapp\",\"environment\":\"$TARGET_ENV\"}}}"
 
           echo "✓ Traffic switched to $TARGET_ENV"
+          trap - ERR
 
           # Step 5: Monitor
           echo "Step 5: Monitoring for 60 seconds..."
@@ -478,10 +508,10 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["persistentvolumeclaims", "services", "pods", "pods/exec", "pods/log"]
-  verbs: ["get", "list", "create", "delete", "patch"]
+  verbs: ["get", "list", "watch", "create", "delete", "patch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -500,11 +530,11 @@ subjects:
 
 1. **Clone data before each deployment** for consistency
 2. **Run comprehensive smoke tests** before cutover
-3. **Keep both environments** available for quick rollback
+3. **Keep both environments** available for quick rollback, and plan data reconciliation if green accepts writes before rollback
 4. **Monitor metrics** after cutover for issues
 5. **Automate the entire pipeline** to reduce human error
 6. **Document rollback procedures** clearly
 7. **Test rollback regularly** to ensure it works
 8. **Use readiness probes** to validate health before cutover
 
-Volume cloning enables true blue-green deployments with data isolation, providing confidence in testing and fast rollback capabilities. This approach minimizes risk and downtime during production releases.
+Volume cloning enables true blue-green deployments with data isolation, providing confidence in testing and controlled rollback capabilities. This approach minimizes risk and keeps the deployment window predictable during production releases.

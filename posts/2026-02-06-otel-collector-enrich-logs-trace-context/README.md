@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Log, Trace Context, Enrichment
 
-Description: Configure the OpenTelemetry Collector to automatically enrich log records with trace context from matching spans in the same request.
+Description: Configure the OpenTelemetry Collector to enrich log records with trace context that is already present in non-standard log fields.
 
-Not every application injects trace IDs into its logs at the SDK level. Legacy services, third-party applications, and some language frameworks make it difficult to modify the logging pipeline. For these cases, the OpenTelemetry Collector can enrich logs with trace context after the fact, matching log records to spans based on shared attributes like timestamp, resource, and correlation IDs.
+Not every application injects trace IDs into its logs at the SDK level. Legacy services, third-party applications, and some language frameworks make it difficult to modify the logging pipeline. For these cases, the OpenTelemetry Collector can enrich logs with trace context after the fact when the trace ID is already present in a non-standard log field, and it can standardize shared attributes like request IDs for backend correlation.
 
 ## The Problem
 
@@ -22,11 +22,11 @@ You have a legacy service that emits structured logs via OTLP but does not injec
 }
 ```
 
-The same service is also instrumented for traces (perhaps via auto-instrumentation), and the traces carry the same `request_id` as a span attribute. You want the collector to match these and add the trace ID to the log record.
+The same service is also instrumented for traces (perhaps via auto-instrumentation), and the traces carry the same `request_id` as a span attribute. You want the collector to preserve a common correlation key, and to move trace IDs into the OTLP trace context fields whenever the logs already carry those IDs in non-standard fields.
 
 ## Approach 1: Correlation via Shared Attributes
 
-The OpenTelemetry Collector's `transform` processor can copy attributes between telemetry types when they pass through the same pipeline. However, the more practical approach for trace-log correlation is to use the `correlation` connector:
+The OpenTelemetry Collector does not have a built-in generic connector that looks up spans by `request_id` and writes the matching trace ID into log records. If your logs and spans share an application correlation ID, standardize that attribute on both signals and let your backend correlate or query by it:
 
 ```yaml
 # collector-config.yaml
@@ -37,46 +37,46 @@ receivers:
       grpc:
         endpoint: "0.0.0.0:4317"
 
-connectors:
-  # The correlation connector matches logs to traces
-  correlation:
-    # How to match logs to spans
-    stale_duration: 30s  # how long to keep spans in the correlation cache
-    max_requests_in_flight: 1000
-
 processors:
   batch:
     timeout: 5s
 
-  # Add resource attributes to logs for consistent context
-  resource:
-    attributes:
-      - key: service.name
-        from_attribute: service.name
-        action: upsert
+  # Standardize the request ID on spans.
+  transform/traces:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(span.attributes["correlation.request_id"], span.attributes["request_id"])
+            where span.attributes["request_id"] != nil
+
+  # Standardize the request ID on logs.
+  attributes/logs:
+    actions:
+      - key: "correlation.request_id"
+        from_attribute: "request_id"
+        action: "upsert"
 
 exporters:
   otlp/traces:
-    endpoint: "http://tempo:4317"
+    endpoint: "tempo:4317"
     tls:
       insecure: true
 
-  otlp/logs:
+  otlphttp/logs:
     endpoint: "http://loki:3100/otlp"
-    tls:
-      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/traces, correlation]
+      processors: [transform/traces, batch]
+      exporters: [otlp/traces]
 
     logs:
-      receivers: [otlp, correlation]
-      processors: [resource, batch]
-      exporters: [otlp/logs]
+      receivers: [otlp]
+      processors: [attributes/logs, batch]
+      exporters: [otlphttp/logs]
 ```
 
 ## Approach 2: Transform Processor for Log Enrichment
@@ -86,22 +86,23 @@ If your logs already have trace IDs in a non-standard field, use the `transform`
 ```yaml
 processors:
   transform/logs:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # If trace_id exists as a log attribute, move it to the trace context
-          - set(trace_id.string, attributes["trace_id"])
-            where attributes["trace_id"] != nil
+          - set(log.trace_id.string, log.attributes["trace_id"])
+            where log.attributes["trace_id"] != nil
 
           # Same for span_id
-          - set(span_id.string, attributes["span_id"])
-            where attributes["span_id"] != nil
+          - set(log.span_id.string, log.attributes["span_id"])
+            where log.attributes["span_id"] != nil
 
           # Clean up the redundant attributes
-          - delete_key(attributes, "trace_id")
-            where trace_id.string != ""
-          - delete_key(attributes, "span_id")
-            where span_id.string != ""
+          - delete_key(log.attributes, "trace_id")
+            where log.trace_id.string != ""
+          - delete_key(log.attributes, "span_id")
+            where log.span_id.string != ""
 ```
 
 This handles the common case where your logging library puts `trace_id` in the log body or as a log attribute instead of in the OTLP trace context fields.
@@ -179,23 +180,24 @@ Some legacy services embed trace context in the log message itself. Parse it out
 ```yaml
 processors:
   transform/parse_trace_from_body:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Extract trace_id from log body like "[trace_id=abc123def456...]"
-          - merge_maps(attributes,
-              ExtractPatterns(body, "\\[trace_id=(?P<trace_id>[a-f0-9]{32})\\]"),
+          - merge_maps(log.attributes,
+              ExtractPatterns(log.body.string, "\\[trace_id=(?P<trace_id>[a-f0-9]{32})\\]"),
               "upsert")
-            where body != nil
+            where log.body.string != ""
 
           # Set the OTLP trace context from the extracted attribute
-          - set(trace_id.string, attributes["trace_id"])
-            where attributes["trace_id"] != nil
+          - set(log.trace_id.string, log.attributes["trace_id"])
+            where log.attributes["trace_id"] != nil
 ```
 
 ## Complete Production Configuration
 
-Here is a full collector config that handles both modern (OTLP with trace context) and legacy (logs without trace context) services:
+Here is a full collector config that handles both modern OTLP logs with trace context and legacy file logs that carry trace IDs in fields:
 
 ```yaml
 # collector-config.yaml
@@ -224,14 +226,22 @@ processors:
 
   # Transform logs to standardize trace context fields
   transform/logs:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Move trace_id from attribute to OTLP trace context
-          - set(trace_id.string, attributes["trace_id"])
-            where attributes["trace_id"] != nil and trace_id.string == ""
-          - set(span_id.string, attributes["span_id"])
-            where attributes["span_id"] != nil and span_id.string == ""
+          - set(log.trace_id.string, log.attributes["trace_id"])
+            where log.attributes["trace_id"] != nil and log.trace_id.string == ""
+          - set(log.span_id.string, log.attributes["span_id"])
+            where log.attributes["span_id"] != nil and log.span_id.string == ""
+
+  # Keep a shared request ID for backend correlation when no trace ID is present
+  attributes/logs:
+    actions:
+      - key: "correlation.request_id"
+        from_attribute: "request_id"
+        action: "upsert"
 
   # Add consistent resource attributes
   resource/logs:
@@ -242,13 +252,11 @@ processors:
 
 exporters:
   otlp/traces:
-    endpoint: "http://tempo:4317"
+    endpoint: "tempo:4317"
     tls:
       insecure: true
-  otlp/logs:
+  otlphttp/logs:
     endpoint: "http://loki:3100/otlp"
-    tls:
-      insecure: true
 
 service:
   pipelines:
@@ -259,10 +267,10 @@ service:
 
     logs:
       receivers: [otlp, filelog/legacy]
-      processors: [transform/logs, resource/logs, batch]
-      exporters: [otlp/logs]
+      processors: [transform/logs, attributes/logs, resource/logs, batch]
+      exporters: [otlphttp/logs]
 ```
 
 ## Wrapping Up
 
-Not every service can inject trace context at the application level, but that should not prevent trace-log correlation. The OpenTelemetry Collector gives you multiple tools to enrich logs after the fact: the transform processor for reformatting, the filelog receiver for parsing log files, and the correlation connector for matching logs to spans. Choose the approach that fits your legacy service's log format, and you get the same trace-to-log navigation as services with native OpenTelemetry instrumentation.
+Not every service can inject trace context at the application level, but that should not prevent trace-log correlation. The OpenTelemetry Collector gives you multiple tools to enrich logs after the fact: the transform processor for reformatting trace context that already exists in log fields, the filelog receiver for parsing log files, and the attributes and resource processors for standardizing correlation keys. Choose the approach that fits your legacy service's log format, and you get the same trace-to-log navigation as services with native OpenTelemetry instrumentation when valid trace context is available.

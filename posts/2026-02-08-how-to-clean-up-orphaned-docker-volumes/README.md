@@ -108,7 +108,7 @@ docker ps -a --filter volume=my_old_volume --format "{{.ID}} {{.Names}} {{.Statu
 ### Remove All Dangling Volumes
 
 ```bash
-# Remove all volumes not attached to any container
+# Remove dangling anonymous volumes not attached to any container
 docker volume prune -f
 ```
 
@@ -117,18 +117,18 @@ The `-f` flag skips the confirmation prompt. Remove it if you want to review wha
 ### Remove All Unused Volumes (More Aggressive)
 
 ```bash
-# Remove ALL unused volumes, even named ones not attached to running containers
+# Remove ALL unused local volumes, even named ones not referenced by any container
 docker volume prune -a -f
 ```
 
-The `-a` flag is more aggressive. It removes any volume not currently mounted by a running container, including named volumes. Use this with caution in production.
+The `-a` flag is more aggressive. It removes any local volume not referenced by a container, including named volumes. Use this with caution in production.
 
 ## Docker System Prune
 
-For a comprehensive cleanup that includes volumes along with stopped containers, unused networks, and dangling images:
+For a comprehensive cleanup that includes anonymous volumes along with stopped containers, unused networks, and dangling images:
 
 ```bash
-# Full system cleanup including volumes (destructive - use carefully)
+# Full system cleanup including anonymous volumes (destructive - use carefully)
 docker system prune --volumes -f
 ```
 
@@ -152,7 +152,7 @@ BEFORE=$(docker volume ls --filter dangling=true -q | wc -l)
 # Get space used by Docker before cleanup
 SPACE_BEFORE=$(docker system df --format '{{.Size}}' | head -1)
 
-# Remove dangling volumes (only truly orphaned, not all unused)
+# Remove dangling anonymous volumes
 docker volume prune -f >> "$LOG" 2>&1
 
 # Count remaining after cleanup
@@ -168,7 +168,7 @@ Add it to cron:
 
 ```bash
 # Run volume cleanup every Sunday at 3 AM
-echo "0 3 * * 0 /usr/local/bin/docker-volume-cleanup.sh" | sudo crontab -
+(sudo crontab -l 2>/dev/null; echo "0 3 * * 0 /usr/local/bin/docker-volume-cleanup.sh") | sudo crontab -
 ```
 
 ## Docker Compose Cleanup

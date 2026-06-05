@@ -1,4 +1,4 @@
-# How to Run SQL Server in a Windows Docker Container
+# How to Run SQL Server in Docker Containers
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -8,24 +8,21 @@ Description: Run Microsoft SQL Server in Docker containers for development, test
 
 ---
 
-SQL Server is the database engine behind countless enterprise applications. Running it in a Docker container gives developers instant access to a disposable database instance for testing, eliminates "works on my machine" problems, and lets CI/CD pipelines spin up fresh databases for every test run. Microsoft officially supports SQL Server in both Linux and Windows containers, so you can match your production environment exactly.
+SQL Server is the database engine behind countless enterprise applications. Running it in a Docker container gives developers instant access to a disposable database instance for testing, eliminates "works on my machine" problems, and lets CI/CD pipelines spin up fresh databases for every test run. Microsoft publishes supported SQL Server container images for Linux containers. SQL Server deployments in Windows containers are not covered by Microsoft support; for development and testing, you can build your own custom Windows image from Microsoft's reference samples.
 
 This guide covers running SQL Server in Docker, configuring it for development and testing workflows, managing data persistence, and automating database initialization.
 
 ## Choosing Between Linux and Windows Containers
 
-SQL Server runs on both Linux and Windows containers. The Linux variant is lighter, starts faster, and works on any platform that runs Docker. The Windows container is larger but matches a traditional Windows Server SQL deployment.
+SQL Server's official container images are Linux-based. They are lighter, start faster, and work on any platform that can run Linux containers. Windows container deployments require a custom image and are intended for development and testing scenarios only.
 
 ```powershell
 # Linux-based SQL Server (recommended for most use cases)
 
 docker pull mcr.microsoft.com/mssql/server:2022-latest
-
-# Windows-based SQL Server (for Windows-only environments)
-docker pull mcr.microsoft.com/mssql/server:2022-CU12-windowsservercore-ltsc2022
 ```
 
-For this guide, we will cover both options but focus on practical workflows that apply to either.
+For this guide, we will focus on the supported Linux container workflow.
 
 ## Running SQL Server Quickly
 
@@ -42,16 +39,6 @@ docker run -d \
   mcr.microsoft.com/mssql/server:2022-latest
 ```
 
-```powershell
-# Start SQL Server with Windows container
-docker run -d `
-  --name sqlserver-win `
-  -e "ACCEPT_EULA=Y" `
-  -e "SA_PASSWORD=YourStrong!Passw0rd" `
-  -p 1433:1433 `
-  mcr.microsoft.com/mssql/server:2022-CU12-windowsservercore-ltsc2022
-```
-
 The password must meet SQL Server complexity requirements: at least 8 characters, with uppercase, lowercase, digits, and special characters.
 
 ## Connecting to the Database
@@ -64,7 +51,7 @@ docker exec -it sqlserver /opt/mssql-tools18/bin/sqlcmd \
   -S localhost -U sa -P "YourStrong!Passw0rd" -C
 
 # Or install sqlcmd locally and connect to the mapped port
-sqlcmd -S localhost,1433 -U sa -P "YourStrong!Passw0rd"
+sqlcmd -S localhost,1433 -U sa -P "YourStrong!Passw0rd" -C
 ```
 
 Run a quick test query to verify everything works.
@@ -85,7 +72,7 @@ GO
 
 ## Persistent Data with Volumes
 
-Without a volume, your database disappears when the container stops. Always mount a volume for data you want to keep.
+Without a volume, your database disappears when the container is removed. Always mount a volume for data you want to keep beyond the container lifecycle.
 
 ```bash
 # Create a named volume for SQL Server data
@@ -156,6 +143,11 @@ Create the entrypoint script that runs SQL Server and then executes initializati
 #!/bin/bash
 # entrypoint.sh - Start SQL Server and run init scripts
 
+set -e
+
+INIT_MARKER="/var/opt/mssql/.initialized"
+SQLSERVER_READY=0
+
 # Start SQL Server in the background
 /opt/mssql/bin/sqlservr &
 SQLSERVER_PID=$!
@@ -163,23 +155,33 @@ SQLSERVER_PID=$!
 # Wait for SQL Server to become available
 echo "Waiting for SQL Server to start..."
 for i in {1..60}; do
-    /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" > /dev/null 2>&1; then
         echo "SQL Server is ready."
+        SQLSERVER_READY=1
         break
     fi
     sleep 1
 done
 
-# Run initialization scripts in order
-for script in /docker-entrypoint-initdb/*.sql; do
-    if [ -f "$script" ]; then
-        echo "Running $script..."
-        /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -i "$script"
-    fi
-done
+if [ "$SQLSERVER_READY" -ne 1 ]; then
+    echo "SQL Server did not become ready in time."
+    exit 1
+fi
 
-echo "Initialization complete."
+# Run initialization scripts in order on first start
+if [ ! -f "$INIT_MARKER" ]; then
+    for script in /docker-entrypoint-initdb/*.sql; do
+        if [ -f "$script" ]; then
+            echo "Running $script..."
+            /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -i "$script"
+        fi
+    done
+
+    touch "$INIT_MARKER"
+    echo "Initialization complete."
+else
+    echo "Database already initialized."
+fi
 
 # Keep the container running by waiting on the SQL Server process
 wait $SQLSERVER_PID
@@ -308,6 +310,8 @@ networks:
 
 ```bash
 # Create a database backup inside the container
+docker exec sqlserver mkdir -p /var/opt/mssql/backup
+
 docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
   -S localhost -U sa -P "YourStrong!Passw0rd" -C \
   -Q "BACKUP DATABASE AppDB TO DISK='/var/opt/mssql/backup/AppDB.bak' WITH INIT"
@@ -316,6 +320,8 @@ docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
 docker cp sqlserver:/var/opt/mssql/backup/AppDB.bak ./AppDB.bak
 
 # Restore a backup into the container
+docker exec sqlserver mkdir -p /var/opt/mssql/backup
+
 docker cp ./AppDB.bak sqlserver:/var/opt/mssql/backup/AppDB.bak
 
 docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
@@ -376,4 +382,4 @@ jobs:
 
 ## Conclusion
 
-SQL Server in Docker transforms database management for development and testing. Developers get isolated, disposable database instances that start in seconds. CI/CD pipelines get fresh databases for every test run. The custom initialization pattern ensures every instance starts with the exact schema and data you need. Whether you choose Linux or Windows containers, the workflow is the same: pull, configure, run, and connect. Pair it with volume mounts for persistence, health checks for orchestration, and automated backups for peace of mind.
+SQL Server in Docker transforms database management for development and testing. Developers get isolated, disposable database instances that start in seconds. CI/CD pipelines get fresh databases for every test run. The custom initialization pattern ensures every instance starts with the exact schema and data you need. Use the supported Linux container image when possible: pull, configure, run, and connect. Pair it with volume mounts for persistence, health checks for orchestration, and automated backups for peace of mind.

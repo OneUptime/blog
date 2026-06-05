@@ -141,7 +141,7 @@ export interface MicroserviceArgs {
   port: number;
   cpu?: string;
   memory?: string;
-  env?: { [key: string]: string };
+  env?: { [key: string]: pulumi.Input<string> };
 }
 
 export class Microservice extends pulumi.ComponentResource {
@@ -268,8 +268,8 @@ The component handles all the boilerplate while exposing only the parameters you
 Pulumi uses Output types to handle asynchronous resource creation. These are similar to Promises but designed for infrastructure dependencies:
 
 ```typescript
-// Helper function using apply()
-function createConfigMap(namespace: pulumi.Output<string>, data: { [key: string]: string }) {
+// Helper function accepting an Output
+function createConfigMap(namespace: pulumi.Input<string>, data: { [key: string]: string }) {
   return new k8s.core.v1.ConfigMap("app-config", {
     metadata: {
       namespace: namespace,  // Pulumi handles the async resolution
@@ -288,7 +288,7 @@ const apiEndpoint = pulumi.all([
 });
 
 // Interpolate for string templates
-const databaseConnection = pulumi.interpolate`postgres://${dbService.service.metadata.name}:5432/app`;
+const apiConnection = pulumi.interpolate`http://${apiService.service.metadata.name}:8080`;
 ```
 
 TypeScript ensures you handle outputs correctly. If you forget to use apply() or interpolate when combining outputs, the compiler shows an error.
@@ -324,7 +324,7 @@ function validateConfig(config: ServiceConfig): void {
 function createService(config: ServiceConfig): Microservice {
   validateConfig(config);
 
-  const env: { [key: string]: string } = {};
+  const env: { [key: string]: pulumi.Input<string> } = {};
 
   // Create database if specified
   if (config.database) {

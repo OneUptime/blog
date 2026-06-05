@@ -21,7 +21,7 @@ You need:
 Install kube-state-metrics if missing:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes/kube-state-metrics/tree/main/examples/standard
+kubectl apply -k https://github.com/kubernetes/kube-state-metrics.git/examples/standard?ref=main
 ```
 
 ## Key ResourceQuota Metrics
@@ -55,7 +55,7 @@ kube_resourcequota{type="hard"}
 Calculate usage percentage:
 
 ```promql
-(kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) * 100
+(kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) * 100
 ```
 
 ## Per-Namespace CPU Quota Usage
@@ -77,7 +77,7 @@ Calculate percentage:
 ```promql
 (
   kube_resourcequota{namespace="production", resource="requests.cpu", type="used"}
-  /
+  / ignoring(type)
   kube_resourcequota{namespace="production", resource="requests.cpu", type="hard"}
 ) * 100
 ```
@@ -123,7 +123,7 @@ spec:
       expr: |
         (
           kube_resourcequota{type="used"}
-          /
+          / ignoring(type)
           kube_resourcequota{type="hard"}
         ) > 0.8
       for: 5m
@@ -141,7 +141,7 @@ Alert when quota is completely exhausted:
   expr: |
     (
       kube_resourcequota{type="used"}
-      /
+      / ignoring(type)
       kube_resourcequota{type="hard"}
     ) >= 1
   for: 1m
@@ -149,7 +149,7 @@ Alert when quota is completely exhausted:
     severity: critical
   annotations:
     summary: "ResourceQuota {{ $labels.resourcequota }} exhausted in namespace {{ $labels.namespace }}"
-    description: "Resource {{ $labels.resource }} is at 100% of quota. New pods will be rejected."
+    description: "Resource {{ $labels.resource }} is at 100% of quota. New pods or updates that would exceed this quota will be rejected."
 ```
 
 ## Tracking Quota Changes Over Time
@@ -161,7 +161,7 @@ Record quota usage over time:
   expr: |
     (
       kube_resourcequota{type="used"}
-      /
+      / ignoring(type)
       kube_resourcequota{type="hard"}
     )
 ```
@@ -203,49 +203,34 @@ Example Grafana panel config:
 {
   "targets": [
     {
-      "expr": "(kube_resourcequota{type=\"used\"} / kube_resourcequota{type=\"hard\"}) * 100",
+      "expr": "(kube_resourcequota{type=\"used\"} / ignoring(type) kube_resourcequota{type=\"hard\"}) * 100",
       "legendFormat": "{{ namespace }} - {{ resource }}"
     }
   ],
   "title": "ResourceQuota Usage %",
-  "type": "graph",
-  "yaxes": [
-    {
-      "format": "percent",
-      "max": 100,
-      "min": 0
+  "type": "timeseries",
+  "fieldConfig": {
+    "defaults": {
+      "unit": "percent",
+      "min": 0,
+      "max": 100
     }
-  ]
+  }
 }
 ```
 
 ## Tracking Quota Violations
 
-ResourceQuota violations appear in events. Export events to Prometheus with event-exporter:
+ResourceQuota admission failures can appear in warning events. Export events to Prometheus with an event exporter:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: event-exporter-cfg
-  namespace: monitoring
-data:
-  config.yaml: |
-    receivers:
-    - name: prometheus
-      prometheus:
-        port: 9102
-    route:
-      routes:
-      - match:
-        - receiver: prometheus
-          reason: "Quota"
+```bash
+kubectl apply -f https://raw.githubusercontent.com/caicloud/event_exporter/master/deploy/deploy.yml
 ```
 
-Query quota violation events:
+Query warning events that may include quota failures:
 
 ```promql
-kubernetes_events{reason="ExceededQuota"}
+kube_event_unique_events_total{type="Warning", reason=~"FailedCreate|FailedScheduling"}
 ```
 
 ## Budget Remaining Query
@@ -255,7 +240,7 @@ Show how much quota remains:
 ```promql
 # CPU quota remaining
 kube_resourcequota{resource="requests.cpu", type="hard"}
--
+ - ignoring(type)
 kube_resourcequota{resource="requests.cpu", type="used"}
 ```
 
@@ -264,8 +249,8 @@ kube_resourcequota{resource="requests.cpu", type="used"}
 Track how fast quota is being consumed:
 
 ```promql
-# CPU quota growth rate (cores per hour)
-rate(kube_resourcequota{resource="requests.cpu", type="used"}[1h])
+# CPU quota growth rate (cores per second)
+deriv(kube_resourcequota{resource="requests.cpu", type="used"}[1h])
 ```
 
 Predict when quota will be exhausted:
@@ -274,11 +259,11 @@ Predict when quota will be exhausted:
 # Hours until quota exhausted (assuming linear growth)
 (
   kube_resourcequota{resource="requests.cpu", type="hard"}
-  -
+  - ignoring(type)
   kube_resourcequota{resource="requests.cpu", type="used"}
 )
 /
-rate(kube_resourcequota{resource="requests.cpu", type="used"}[1h])
+(deriv(kube_resourcequota{resource="requests.cpu", type="used"}[1h]) * 3600)
 ```
 
 ## Storage Quota Monitoring
@@ -296,7 +281,7 @@ Alert on storage quota:
   expr: |
     (
       kube_resourcequota{resource="requests.storage", type="used"}
-      /
+      / ignoring(type)
       kube_resourcequota{resource="requests.storage", type="hard"}
     ) > 0.9
   for: 10m
@@ -314,7 +299,7 @@ If teams map to namespaces, create per-team reports:
 # Team A quota usage
 (
   kube_resourcequota{namespace=~"team-a-.*", type="used"}
-  /
+  / ignoring(type)
   kube_resourcequota{namespace=~"team-a-.*", type="hard"}
 ) * 100
 ```
@@ -370,14 +355,14 @@ spec:
       expr: |
         (
           kube_resourcequota{resource="requests.cpu", type="used"}
-          /
+          / ignoring(type)
           kube_resourcequota{resource="requests.cpu", type="hard"}
         )
     - record: namespace:quota:memory_usage_ratio
       expr: |
         (
           kube_resourcequota{resource="requests.memory", type="used"}
-          /
+          / ignoring(type)
           kube_resourcequota{resource="requests.memory", type="hard"}
         )
 ---
@@ -410,7 +395,7 @@ spec:
       expr: |
         (
           kube_resourcequota{type="used"}
-          /
+          / ignoring(type)
           kube_resourcequota{type="hard"}
         ) >= 1
       for: 1m

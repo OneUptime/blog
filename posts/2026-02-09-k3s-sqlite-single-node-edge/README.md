@@ -17,8 +17,8 @@ In this guide, you'll deploy K3s using SQLite storage, optimize it for resource-
 K3s defaults to SQLite for single-server deployments, requiring no external database. This makes it perfect for edge because:
 
 - Zero external dependencies
-- Minimal memory overhead (20-30MB vs 200MB+ for etcd)
-- Simple backup and restore (single file)
+- Lower memory overhead than embedded etcd
+- Simple backup and restore (small datastore directory)
 - Works on low-power ARM devices
 - No network requirements for cluster state
 
@@ -26,12 +26,12 @@ SQLite mode trades off high availability for simplicity and resource efficiency.
 
 ## Minimum Hardware Requirements
 
-K3s with SQLite runs on surprisingly modest hardware:
+K3s with SQLite runs on modest hardware, but current K3s releases list higher minimums for server nodes than for agent-only nodes:
 
-- 512MB RAM (1GB recommended)
-- 1 CPU core (2 cores for comfortable operation)
+- 2GB RAM for a server node
+- 2 CPU cores for a server node
 - 2GB disk space for K3s (add more for workloads)
-- ARM32v7, ARM64, or x86_64 architecture
+- armhf, ARM64/aarch64, or x86_64 architecture
 
 For this guide, we'll use a Raspberry Pi 4 with 4GB RAM as our edge device.
 
@@ -65,14 +65,15 @@ k3s check-config
 Check the datastore being used:
 
 ```bash
-sudo cat /var/lib/rancher/k3s/server/db/state.db
+sudo ls -lh /var/lib/rancher/k3s/server/db/state.db
+sudo sqlite3 /var/lib/rancher/k3s/server/db/state.db "PRAGMA database_list;"
 ```
 
 This SQLite database stores all Kubernetes state.
 
 ## Optimizing for Low Resources
 
-For devices with 1GB RAM or less, tune K3s aggressively:
+For devices close to the minimum server requirements, tune K3s aggressively:
 
 ```bash
 # Create custom configuration
@@ -87,7 +88,6 @@ disable:
 kube-apiserver-arg:
   - "max-requests-inflight=50"
   - "max-mutating-requests-inflight=25"
-  - "watch-cache-sizes=node#100,pod#1000"
 kube-controller-manager-arg:
   - "node-monitor-period=10s"
   - "node-monitor-grace-period=20s"
@@ -102,7 +102,7 @@ EOF
 sudo systemctl restart k3s
 ```
 
-These settings limit concurrent requests, reduce cache sizes, and cap pod count to match hardware capabilities.
+These settings limit concurrent requests and cap pod count to match hardware capabilities.
 
 ## Configuring Resource Limits
 
@@ -110,8 +110,9 @@ Set node-level resource reservations:
 
 ```bash
 # Update kubelet configuration
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-kubelet-arg:
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/10-reservations.yaml > /dev/null <<EOF
+kubelet-arg+:
   - "system-reserved=memory=200Mi,cpu=100m"
   - "kube-reserved=memory=200Mi,cpu=100m"
   - "eviction-hard=memory.available<100Mi"
@@ -179,7 +180,7 @@ Use local-path-provisioner for persistent storage:
 
 ```bash
 # Install local-path-provisioner
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
 
 # Set as default storage class
 kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
@@ -218,8 +219,9 @@ mkdir -p $BACKUP_DIR
 # Stop K3s briefly for consistent backup
 systemctl stop k3s
 
-# Backup SQLite database
-cp /var/lib/rancher/k3s/server/db/state.db $BACKUP_DIR/state-$DATE.db
+# Backup SQLite datastore directory
+tar -czf $BACKUP_DIR/k3s-db-$DATE.tar.gz \
+  /var/lib/rancher/k3s/server/db
 
 # Backup certificates and config
 tar -czf $BACKUP_DIR/k3s-config-$DATE.tar.gz \
@@ -231,7 +233,7 @@ tar -czf $BACKUP_DIR/k3s-config-$DATE.tar.gz \
 systemctl start k3s
 
 # Cleanup old backups (keep last 7 days)
-find $BACKUP_DIR -name "*.db" -mtime +7 -delete
+find $BACKUP_DIR -name "k3s-db-*.tar.gz" -mtime +7 -delete
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
 
 echo "Backup completed: $BACKUP_DIR"
@@ -252,9 +254,9 @@ To restore a corrupted SQLite database:
 # Stop K3s
 sudo systemctl stop k3s
 
-# Restore database
-sudo cp /var/backups/k3s/state-20260209-020000.db \
-  /var/lib/rancher/k3s/server/db/state.db
+# Restore database directory
+sudo rm -rf /var/lib/rancher/k3s/server/db
+sudo tar -xzf /var/backups/k3s/k3s-db-20260209-020000.tar.gz -C /
 
 # Restore config if needed
 sudo tar -xzf /var/backups/k3s/k3s-config-20260209-020000.tar.gz -C /
@@ -271,49 +273,38 @@ kubectl get pods --all-namespaces
 
 For multiple single-node edge deployments, use a management pattern:
 
-```yaml
-# fleet-controller-deployment.yaml (runs in central cloud cluster)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: fleet-controller
-  namespace: fleet-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: fleet-controller
-  template:
-    metadata:
-      labels:
-        app: fleet-controller
-    spec:
-      containers:
-        - name: controller
-          image: rancher/fleet:v0.9.0
-          env:
-            - name: NAMESPACE
-              value: fleet-system
+```bash
+# Install Fleet on the central cloud cluster
+helm repo add fleet https://rancher.github.io/fleet-helm-charts/
+helm -n cattle-fleet-system install --create-namespace --wait fleet-crd \
+  fleet/fleet-crd
+helm -n cattle-fleet-system install --create-namespace --wait fleet \
+  fleet/fleet
 ```
 
 Register edge clusters with Fleet:
 
 ```bash
-# On central cluster, get registration token
-kubectl -n fleet-system get secret fleet-token -o jsonpath='{.data.token}' | base64 -d
-
-# On each edge node
+# On central cluster, create a registration token
+kubectl create namespace clusters --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Secret
+kind: ClusterRegistrationToken
+apiVersion: "fleet.cattle.io/v1alpha1"
 metadata:
-  name: fleet-agent-bootstrap
-  namespace: cattle-fleet-system
-type: Opaque
-data:
-  token: <base64-encoded-token>
-  url: <base64-encoded-fleet-url>
+  name: edge-token
+  namespace: clusters
+spec:
+  ttl: 240h
 EOF
+
+# Get agent values for Helm
+kubectl --namespace clusters get secret edge-token \
+  -o 'jsonpath={.data.values}' | base64 --decode > values.yaml
+
+# Copy values.yaml to your edge cluster admin machine, then on each edge cluster
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Monitoring Resource Usage
@@ -349,21 +340,15 @@ sudo chmod +x /usr/local/bin/k3s-monitor.sh
 Prevent disk space issues with log rotation:
 
 ```bash
-# Configure logrotate for K3s
-sudo tee /etc/logrotate.d/k3s > /dev/null <<EOF
-/var/log/pods/*/*.log {
-    daily
-    rotate 3
-    compress
-    missingok
-    notifempty
-    maxsize 10M
-    delaycompress
-}
+# Configure kubelet container log rotation
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/20-log-rotation.yaml > /dev/null <<EOF
+kubelet-arg+:
+  - "container-log-max-size=10Mi"
+  - "container-log-max-files=3"
 EOF
 
-# Test log rotation
-sudo logrotate -f /etc/logrotate.d/k3s
+sudo systemctl restart k3s
 ```
 
 ## Configuring Offline Operations
@@ -371,23 +356,16 @@ sudo logrotate -f /etc/logrotate.d/k3s
 For disconnected edge locations, pre-pull images:
 
 ```bash
-# Create airgap images bundle
-k3s-airgap-images.sh
-
-# List required images
-cat > /root/required-images.txt <<EOF
+# List required images before disconnecting, or when using a reachable private registry
+sudo mkdir -p /var/lib/rancher/k3s/agent/images
+sudo tee /var/lib/rancher/k3s/agent/images/required-images.txt > /dev/null <<EOF
 alpine:3.19
 busybox:latest
 nginx:alpine
 EOF
 
-# Pre-pull images
-while read image; do
-  crictl pull $image
-done < /root/required-images.txt
-
-# Images are cached locally
-crictl images
+# K3s imports the listed images into containerd
+sudo k3s crictl images
 ```
 
 ## Securing Single-Node Edge
@@ -401,12 +379,21 @@ sudo ufw allow 6443/tcp  # K8s API (restrict to management network)
 sudo ufw enable
 
 # Disable unnecessary K3s ports
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-disable:
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/audit-policy.yaml > /dev/null <<EOF
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: Metadata
+EOF
+
+sudo tee /etc/rancher/k3s/config.yaml.d/30-security.yaml > /dev/null <<EOF
+disable+:
   - servicelb
   - traefik
-kube-apiserver-arg:
+kube-apiserver-arg+:
   - "anonymous-auth=false"
+  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
   - "audit-log-path=/var/log/k3s-audit.log"
   - "audit-log-maxage=30"
 EOF
@@ -420,10 +407,10 @@ Safely upgrade single-node K3s:
 
 ```bash
 # Backup before upgrade
-/usr/local/bin/k3s-backup.sh
+sudo /usr/local/bin/k3s-backup.sh
 
-# Download new version
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.28.5+k3s1 sh -
+# Download the chosen version
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z+k3s1 sh -s -
 
 # Verify upgrade
 k3s --version
@@ -440,8 +427,8 @@ sudo sqlite3 /var/lib/rancher/k3s/server/db/state.db "PRAGMA integrity_check;"
 
 # If corrupted, restore from backup
 sudo systemctl stop k3s
-sudo mv /var/lib/rancher/k3s/server/db/state.db /var/lib/rancher/k3s/server/db/state.db.corrupt
-sudo cp /var/backups/k3s/state-latest.db /var/lib/rancher/k3s/server/db/state.db
+sudo mv /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.corrupt
+sudo tar -xzf /var/backups/k3s/k3s-db-20260209-020000.tar.gz -C /
 sudo systemctl start k3s
 ```
 

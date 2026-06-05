@@ -139,6 +139,7 @@ vars:
     EXTERNAL_NET: "!$HOME_NET"
     HTTP_SERVERS: "$HOME_NET"
     DNS_SERVERS: "$HOME_NET"
+    SSH_SERVERS: "$HOME_NET"
     SMTP_SERVERS: "$HOME_NET"
     SQL_SERVERS: "$HOME_NET"
   port-groups:
@@ -267,17 +268,18 @@ docker exec suricata suricata-update
 docker exec suricata suricatasc -c reload-rules
 
 # Disable specific rules that cause false positives
-docker exec suricata suricata-update --disable-sid 2100498,2100366
+docker exec suricata sh -c 'printf "%s\n" 2100498 2100366 >> /etc/suricata/disable.conf'
+docker exec suricata suricata-update
 
 # Check which rules are loaded
-docker exec suricata suricata-update --dump-sample-configs
+docker exec suricata suricatasc -c ruleset-stats
 ```
 
 ## Writing Custom Rules
 
 Create custom Suricata rules for your specific environment.
 
-```bash
+```suricata
 # local.rules - Custom Suricata detection rules
 # These supplement the downloaded rulesets with organization-specific detections
 
@@ -288,11 +290,11 @@ alert ip $HOME_NET any -> [203.0.113.0/24] any \
     sid:9000001; rev:1;)
 
 # Detect large DNS TXT record responses (possible DNS tunneling)
-alert dns $HOME_NET any -> any any \
+alert dns any 53 -> $HOME_NET any \
     (msg:"Large DNS TXT response - possible tunneling"; \
-    dns.query; content:"|00 10|"; \
+    dns.rrtype:TXT; \
     dsize:>512; \
-    threshold: type both, track by_src, count 10, seconds 60; \
+    threshold: type both, track by_dst, count 10, seconds 60; \
     classtype:policy-violation; \
     sid:9000002; rev:1;)
 
@@ -300,11 +302,11 @@ alert dns $HOME_NET any -> any any \
 alert http $EXTERNAL_NET any -> $HTTP_SERVERS any \
     (msg:"HTTP request with encoded shell command"; \
     flow:established,to_server; \
-    http.uri; content:"%2F bin%2F"; nocase; \
+    http.uri; content:"%2Fbin%2F"; nocase; \
     classtype:web-application-attack; \
     sid:9000003; rev:1;)
 
-# Detect SSH connections from unexpected countries (using GeoIP)
+# Detect repeated SSH connections from unexpected sources
 alert ssh $EXTERNAL_NET any -> $SSH_SERVERS $SSH_PORTS \
     (msg:"SSH connection from non-standard source"; \
     flow:established,to_server; \
@@ -338,13 +340,16 @@ Ship Suricata logs to Elasticsearch for analysis and visualization.
 ```yaml
 # filebeat.yml - Ship Suricata EVE JSON logs to Elasticsearch
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: suricata-eve
     enabled: true
     paths:
       - /var/log/suricata/eve.json
-    json.keys_under_root: true
-    json.add_error_key: true
-    json.overwrite_keys: true
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
 
 output.elasticsearch:
   hosts: ["elasticsearch:9200"]
@@ -384,7 +389,7 @@ docker run -d \
 
 Change rule actions from `alert` to `drop` for traffic you want to block.
 
-```bash
+```suricata
 # In IPS mode, use 'drop' instead of 'alert' to block traffic
 drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
     (msg:"Blocked SQL injection attempt"; \
@@ -430,7 +435,7 @@ for line in sys.stdin:
 
 Reduce false positives by tuning rules for your environment.
 
-```yaml
+```text
 # threshold.config - Suppress and threshold noisy rules
 # Place in /etc/suricata/threshold.config
 

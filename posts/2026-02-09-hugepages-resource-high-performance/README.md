@@ -8,37 +8,34 @@ Description: Configure and use hugepages in Kubernetes to reduce TLB misses and 
 
 ---
 
-Standard 4KB pages cause Translation Lookaside Buffer (TLB) misses in memory-intensive applications, degrading performance. Hugepages (2MB or 1GB pages) reduce TLB pressure and improve throughput. This guide shows you how to configure hugepages in Kubernetes.
+Standard 4KB pages cause Translation Lookaside Buffer (TLB) misses in memory-intensive applications, degrading performance. Hugepages (commonly 2MiB or 1GiB pages on x86) reduce TLB pressure and improve throughput. This guide shows you how to configure hugepages in Kubernetes.
 
 ## What Are Hugepages?
 
-Normal Linux pages are 4KB. The CPU's TLB caches page table entries, but with 4KB pages, large memory footprints cause frequent TLB misses. Hugepages use 2MB or 1GB pages, reducing TLB misses by 500x or more.
+Normal Linux pages are commonly 4KB. The CPU's TLB caches page table entries, but with 4KB pages, large memory footprints cause frequent TLB misses. Hugepages use larger page sizes, reducing page table entries by 512x for 2MiB pages and much more for 1GiB pages.
 
 Workloads that benefit:
 
 - DPDK network applications
-- In-memory databases (Redis, SAP HANA)
+- Some in-memory databases (SAP HANA; Redis mainly requires THP to be disabled)
 - High-performance computing
 - Virtual machines
 
 ## Enabling Hugepages on Nodes
 
-Reserve hugepages on each node before starting Kubernetes. Edit `/etc/sysctl.conf`:
+Reserve hugepages on each node before starting Kubernetes. For boot-time reservation, add hugepage parameters to the kernel command line, for example in `/etc/default/grub`:
 
 ```bash
-# Reserve 1024 2MB hugepages (2GB total)
-
-vm.nr_hugepages=1024
-
-# Or reserve 4 1GB hugepages
-vm.nr_hugepages_1gb=4
+GRUB_CMDLINE_LINUX="hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=1024"
 ```
 
-Apply changes:
+Apply the GRUB change using your distribution's GRUB update command, then reboot the node. For the default hugepage size only, you can also use `vm.nr_hugepages`:
 
 ```bash
-sysctl -p
+sysctl -w vm.nr_hugepages=1024
 ```
+
+If you allocate pages dynamically after kubelet has started, restart kubelet so the node reports the new capacity.
 
 Verify:
 
@@ -46,7 +43,7 @@ Verify:
 cat /proc/meminfo | grep -i huge
 ```
 
-Output:
+Example output for 2MiB hugepages:
 
 ```text
 HugePages_Total:    1024
@@ -58,7 +55,7 @@ Hugepagesize:       2048 kB
 
 ## Configuring Kubelet for Hugepages
 
-Tell kubelet about hugepages. They count against allocatable memory.
+Tell kubelet about hugepages. They appear as allocatable resources separate from regular memory.
 
 No special kubelet config needed - kubelet auto-discovers hugepages from `/proc/meminfo`.
 
@@ -106,11 +103,11 @@ spec:
       medium: HugePages
 ```
 
-The pod gets 512 2MB hugepages (1GB total) mounted at `/dev/hugepages`.
+The pod gets 512 2MiB hugepages (1GiB total) mounted at `/dev/hugepages`.
 
-## Using 1GB Hugepages
+## Using 1GiB Hugepages
 
-For very large memory workloads, use 1GB pages:
+For very large memory workloads, use 1GiB pages:
 
 ```yaml
 apiVersion: v1
@@ -137,7 +134,7 @@ spec:
       medium: HugePages-1Gi
 ```
 
-Note: volume medium is `HugePages-1Gi` for 1GB pages.
+Note: volume medium is `HugePages-1Gi` for 1GiB pages.
 
 ## Hugepages and Memory Accounting
 
@@ -194,9 +191,9 @@ spec:
       path: /dev
 ```
 
-DPDK maps hugepages from `/mnt/huge` for zero-copy packet processing.
+DPDK maps hugepages from `/mnt/huge` for packet buffer memory.
 
-ResourceQuota for Hugepages
+## ResourceQuota for Hugepages
 
 Limit hugepage usage per namespace:
 
@@ -208,15 +205,15 @@ metadata:
   namespace: hpc-team
 spec:
   hard:
-    requests.hugepages-2Mi: "10Gi"
-    requests.hugepages-1Gi: "20Gi"
+    hugepages-2Mi: "10Gi"
+    hugepages-1Gi: "20Gi"
 ```
 
 Prevents one namespace from consuming all hugepages.
 
 ## LimitRange for Hugepages
 
-Set default hugepage requests:
+Set minimum and maximum hugepage requests:
 
 ```yaml
 apiVersion: v1
@@ -267,7 +264,7 @@ cpuManagerPolicy: static
 memoryManagerPolicy: Static
 ```
 
-This ensures CPUs, hugepages, and devices are all on the same NUMA node.
+This helps align CPUs, hugepages, and devices on the same NUMA node for Guaranteed pods when the requested resources are available.
 
 ## Transparent Hugepages vs Explicit
 
@@ -283,54 +280,20 @@ Add to node startup scripts.
 ## Best Practices
 
 - Reserve hugepages at boot time
-- Use 2MB pages for most workloads
-- Use 1GB pages for very large memory footprints (> 32GB)
+- Use 2MiB pages for most workloads
+- Use 1GiB pages for very large memory footprints (> 32GiB)
 - Disable transparent hugepages for predictable performance
 - Combine with CPU Manager and Topology Manager
 - Set ResourceQuotas to prevent exhaustion
 - Monitor hugepage usage per node
 - Document hugepage requirements in app docs
 
-## Redis with Hugepages
+## Redis and Transparent Hugepages
 
-Redis benefits from hugepages for large datasets:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: redis-hugepage
-spec:
-  containers:
-  - name: redis
-    image: redis:7
-    command:
-    - redis-server
-    - --maxmemory
-    - "14gb"
-    resources:
-      requests:
-        cpu: "4"
-        memory: "2Gi"
-        hugepages-2Mi: "14Gi"
-      limits:
-        cpu: "4"
-        memory: "2Gi"
-        hugepages-2Mi: "14Gi"
-    volumeMounts:
-    - name: hugepages
-      mountPath: /dev/hugepages
-  volumes:
-  - name: hugepages
-    emptyDir:
-      medium: HugePages
-```
-
-Configure Redis to use hugepages:
+Redis does not automatically use explicit Kubernetes hugepage volumes for its dataset. Redis recommends disabling Transparent Hugepages because THP can cause latency spikes during `fork()` and copy-on-write:
 
 ```bash
-# In Redis container
-echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
 ## Troubleshooting
@@ -345,7 +308,7 @@ If insufficient, reserve more on the node.
 
 **Hugepages Not Mounted**: Verify the volume is defined with `medium: HugePages`.
 
-**Permission Denied**: Add `IPC_LOCK` capability:
+**Permission Denied**: For applications using `shmget()` with `SHM_HUGETLB`, configure a supplemental group that matches `/proc/sys/vm/hugetlb_shm_group`. Some applications may also need `IPC_LOCK`:
 
 ```yaml
 securityContext:
@@ -360,14 +323,14 @@ Benchmark with and without hugepages:
 
 ```bash
 # Without hugepages
-sysbench memory --memory-total-size=10G run
+sysbench memory --memory-total-size=10G --memory-hugetlb=off run
 
 # With hugepages
-sysbench memory --memory-total-size=10G run
+sysbench memory --memory-total-size=10G --memory-hugetlb=on run
 ```
 
-Hugepages typically improve throughput by 10-30% for memory-intensive workloads.
+Hugepages can improve throughput for memory-intensive workloads, but results depend on the application, access pattern, page size, CPU, and NUMA placement.
 
 ## Conclusion
 
-Hugepages reduce TLB misses and improve memory performance for large-memory workloads. Reserve hugepages at the node level, request them as resources in pod specs, and mount via emptyDir with HugePages medium. Use 2MB pages for most workloads and 1GB pages for very large memory footprints. Combine with CPU and Memory Manager for NUMA-aligned allocation. Disable transparent hugepages for deterministic performance. Hugepages are essential for DPDK, in-memory databases, and high-performance computing on Kubernetes.
+Hugepages reduce TLB misses and improve memory performance for large-memory workloads. Reserve hugepages at the node level, request them as resources in pod specs, and mount via emptyDir with HugePages medium. Use 2MiB pages for most workloads and 1GiB pages for very large memory footprints. Combine with CPU and Memory Manager for NUMA-aligned allocation. Disable transparent hugepages for deterministic performance. Hugepages are essential for DPDK and can benefit supported databases and high-performance computing on Kubernetes.

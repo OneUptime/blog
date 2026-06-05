@@ -99,7 +99,7 @@ new events.Rule(this, 'MonthlyAudit', {
 });
 ```
 
-One gotcha with cron expressions - you can't specify both `day` and `weekDay`. Use a question mark for the one you don't need, or just omit it in CDK since undefined fields default to wildcards.
+One gotcha with cron expressions - you can't specify both `day` and `weekDay`. Use a question mark for the one you don't need, or just omit it in CDK since undefined fields use `*` or `?`, whichever one is appropriate.
 
 ## Multiple Targets
 

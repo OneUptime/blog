@@ -40,6 +40,7 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
         image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
@@ -103,7 +104,7 @@ COPY ./app /inetpub/wwwroot
 # Configure IIS application pool
 RUN powershell -Command \
     Import-Module WebAdministration; \
-    Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name processModel.identityType -Value LocalSystem; \
+    Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name processModel.identityType -Value ApplicationPoolIdentity; \
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name recycling.periodicRestart.time -Value '00:00:00'; \
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name processModel.idleTimeout -Value '00:00:00'
 
@@ -144,6 +145,7 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
         image: myregistry.azurecr.io/myapp:v1
@@ -183,16 +185,13 @@ COPY ./publish /inetpub/wwwroot
 # Configure IIS for ASP.NET
 RUN powershell -Command \
     Import-Module WebAdministration; \
-    # Set application pool to .NET 4.0
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name managedRuntimeVersion -Value 'v4.0'; \
-    # Enable 32-bit applications if needed
-    # Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name enable32BitAppOnWin64 -Value $true; \
-    # Set pipeline mode
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name managedPipelineMode -Value 'Integrated'; \
-    # Configure recycling
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name recycling.periodicRestart.time -Value '00:00:00'; \
-    # Set memory limits
     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name recycling.periodicRestart.privateMemory -Value 1024000
+
+# Enable 32-bit applications if needed:
+# RUN powershell -Command "Import-Module WebAdministration; Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name enable32BitAppOnWin64 -Value $true"
 
 EXPOSE 80
 ```
@@ -252,13 +251,20 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
         image: myregistry.azurecr.io/aspnet-app:v1
+        command:
+        - powershell.exe
+        - -NoProfile
+        - -Command
+        - |
+          Copy-Item -Path C:\config\web.config -Destination C:\inetpub\wwwroot\web.config -Force
+          C:\ServiceMonitor.exe w3svc
         volumeMounts:
         - name: config
-          mountPath: C:\inetpub\wwwroot\web.config
-          subPath: web.config
+          mountPath: C:\config
       volumes:
       - name: config
         configMap:
@@ -287,9 +293,10 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
-        image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
+        image: myregistry.azurecr.io/aspnet-app:v1
         ports:
         - containerPort: 80
         # Startup probe - gives IIS time to start
@@ -312,7 +319,7 @@ spec:
         # Readiness probe - determines if app can receive traffic
         readinessProbe:
           httpGet:
-            path: /health
+            path: /health.aspx
             port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -357,16 +364,16 @@ Mount persistent volumes for application data:
 ```yaml
 # iis-with-storage.yaml
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Service
 metadata:
-  name: iis-app-data
+  name: iis-stateful-service
 spec:
-  accessModes:
-  - ReadWriteOnce
-  storageClassName: managed-premium
-  resources:
-    requests:
-      storage: 50Gi
+  clusterIP: None
+  selector:
+    app: iis-stateful
+  ports:
+  - port: 80
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -385,6 +392,7 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
         image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
@@ -424,10 +432,11 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: iis-tls-cert
-type: kubernetes.io/tls
+type: Opaque
 data:
-  tls.crt: <base64-encoded-certificate>
-  tls.key: <base64-encoded-private-key>
+  tls.pfx: <base64-encoded-pfx-certificate>
+stringData:
+  pfxPassword: <pfx-password>
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -445,40 +454,40 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: '10.0.20348'
       containers:
       - name: iis
         image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
         command:
         - powershell.exe
+        - -NoProfile
         - -Command
         - |
-          # Import certificate
-          $certPath = "C:\certs\tls.crt"
-          $keyPath = "C:\certs\tls.key"
+          $certPath = "C:\certs\tls.pfx"
+          $securePassword = ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force
 
-          # Create PFX from cert and key
-          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-          $cert.Import($certPath)
-
-          # Install certificate to LocalMachine store
-          $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("My", "LocalMachine")
-          $store.Open("ReadWrite")
-          $store.Add($cert)
-          $store.Close()
+          # Import a certificate that includes the private key.
+          $cert = Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\LocalMachine\My -Password $securePassword
 
           # Configure IIS HTTPS binding
           Import-Module WebAdministration
-          New-WebBinding -Name "Default Web Site" -Protocol https -Port 443
+          if (-not (Get-WebBinding -Name "Default Web Site" -Protocol https -ErrorAction SilentlyContinue)) {
+              New-WebBinding -Name "Default Web Site" -Protocol https -Port 443
+          }
 
           # Bind certificate
-          $certThumbprint = $cert.Thumbprint
           $binding = Get-WebBinding -Name "Default Web Site" -Protocol https
-          $binding.AddSslCertificate($certThumbprint, "My")
+          $binding.AddSslCertificate($cert.Thumbprint, "My")
 
           Write-Host "HTTPS configured successfully"
 
-          # Keep container running
-          while ($true) { Start-Sleep -Seconds 3600 }
+          C:\ServiceMonitor.exe w3svc
+        env:
+        - name: PFX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iis-tls-cert
+              key: pfxPassword
         volumeMounts:
         - name: certs
           mountPath: C:\certs
@@ -563,7 +572,7 @@ data:
     [PARSER]
         Name   iis
         Format regex
-        Regex  ^(?<time>[^ ]+) (?<s_ip>[^ ]+) (?<cs_method>[^ ]+) (?<cs_uri_stem>[^ ]+) (?<cs_uri_query>[^ ]+) (?<s_port>[^ ]+) (?<cs_username>[^ ]+) (?<c_ip>[^ ]+) (?<cs_User_Agent>[^ ]+) (?<cs_Referer>[^ ]+) (?<sc_status>[^ ]+) (?<sc_substatus>[^ ]+) (?<sc_win32_status>[^ ]+) (?<time_taken>[^ ]+)$
+        Regex  ^(?<time>[^ ]+ [^ ]+) (?<s_ip>[^ ]+) (?<cs_method>[^ ]+) (?<cs_uri_stem>[^ ]+) (?<cs_uri_query>[^ ]+) (?<s_port>[^ ]+) (?<cs_username>[^ ]+) (?<c_ip>[^ ]+) (?<cs_User_Agent>[^ ]+) (?<cs_Referer>[^ ]+) (?<sc_status>[^ ]+) (?<sc_substatus>[^ ]+) (?<sc_win32_status>[^ ]+) (?<time_taken>[^ ]+)$
         Time_Key time
         Time_Format %Y-%m-%d %H:%M:%S
 

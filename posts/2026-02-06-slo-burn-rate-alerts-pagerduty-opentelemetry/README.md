@@ -27,12 +27,14 @@ Google's SRE book recommends a multi-window, multi-burn-rate approach that balan
 
 ## Step 1: Instrument SLI Metrics with OpenTelemetry
 
-Your Service Level Indicator (SLI) is the metric that measures whether a request was "good" or "bad". For availability SLOs, a good request is one that returns a non-5xx response within the latency threshold.
+Your Service Level Indicator (SLI) is the metric that measures whether a request was "good" or "bad". For request-based SLOs that combine availability and latency, a good request is one that returns a non-5xx response within the latency threshold.
 
 This instrumentation tracks both total requests and good requests:
 
 ```python
 # Python OpenTelemetry SLI instrumentation
+
+import time
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
@@ -136,6 +138,15 @@ groups:
             /
             sum by (service_name) (rate(otel_sli_requests_total_total[3d]))
           )
+
+      # Error ratio over 30 days for remaining budget annotations
+      - record: service:sli_error_ratio:30d
+        expr: |
+          1 - (
+            sum by (service_name) (rate(otel_sli_requests_good_total[30d]))
+            /
+            sum by (service_name) (rate(otel_sli_requests_total_total[30d]))
+          )
 ```
 
 ## Step 3: Build Multi-Window Burn Rate Alerts
@@ -190,6 +201,8 @@ groups:
       - alert: SLOBurnRate_Low
         expr: |
           service:sli_error_ratio:3d > (1 * 0.001)
+          and
+          service:sli_error_ratio:6h > (1 * 0.001)
         labels:
           severity: info
           slo: "availability-99.9"
@@ -205,6 +218,8 @@ Configure Alertmanager to create PagerDuty incidents for critical burn rate aler
 ```yaml
 # alertmanager.yaml
 receivers:
+  - name: default
+
   - name: pagerduty-slo
     pagerduty_configs:
       - routing_key: "YOUR_PAGERDUTY_INTEGRATION_KEY"
@@ -220,21 +235,23 @@ receivers:
           runbook: "{{ .CommonAnnotations.runbook_url }}"
           affected_services: "{{ .CommonLabels.service_name }}"
 
+  - name: slack-slo-warnings
+
 route:
   receiver: default
   routes:
     # Critical burn rate - page immediately
-    - match:
-        severity: critical
-        slo: "availability-99.9"
+    - matchers:
+        - severity="critical"
+        - slo="availability-99.9"
       receiver: pagerduty-slo
       group_wait: 10s
       repeat_interval: 1h
 
     # Warning burn rate - Slack notification
-    - match:
-        severity: warning
-        slo: "availability-99.9"
+    - matchers:
+        - severity="warning"
+        - slo="availability-99.9"
       receiver: slack-slo-warnings
       repeat_interval: 6h
 ```
