@@ -21,7 +21,7 @@ Testing transformations in production is risky and inefficient. The OTTL Playgro
 
 ## Accessing the OTTL Playground
 
-The OTTL Playground is available as a web-based tool that you can access through your browser. Some observability platforms also provide built-in OTTL testing environments.
+Community OTTL playgrounds are available as web-based tools that you can access through your browser. Some observability platforms also provide built-in OTTL testing environments.
 
 For local development, you can also run the OpenTelemetry Collector with the debug exporter to test transformations:
 
@@ -101,7 +101,7 @@ Add your transformation statements:
 
 ```ottl
 # Extract email from body
-- set(attributes["user_email"], ExtractPatterns(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"))
+- merge_maps(attributes, ExtractPatterns(body, "\\b(?P<user_email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b"), "upsert")
 
 # Add alert flag
 - set(attributes["alert_required"], true) where severity_number >= 17
@@ -261,8 +261,8 @@ OTTL statements:
 - replace_pattern(body, "api_key=[^,\\s]+", "api_key=[REDACTED]")
 - replace_pattern(body, "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b", "****-****-****-****")
 
-# Extract email before redacting
-- set(attributes["user_email"], ExtractPatterns(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"))
+# Extract email after redacting other secrets
+- merge_maps(attributes, ExtractPatterns(body, "\\b(?P<user_email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b"), "upsert")
 ```
 
 ## Creating Comprehensive Test Suites
@@ -410,7 +410,7 @@ Test type conversion functions:
 - set(attributes["status_int"], Int(attributes["status_code"]))
 
 # Test float conversion (if available)
-- set(attributes["duration_float"], Int(attributes["duration"]))
+- set(attributes["duration_float"], Double(attributes["duration"]))
 
 # Test boolean logic
 - set(attributes["error_flag"], attributes["is_error"] == "true")
@@ -508,7 +508,7 @@ Order matters in OTTL. Test that transformations execute in the correct sequence
 
 Create a repository of test cases:
 
-```markdown
+~~~markdown
 # Transformation Test Cases
 
 ## User Email Extraction
@@ -518,12 +518,12 @@ Create a repository of test cases:
 {
   "body": "Login from user@example.com"
 }
-```bash
+```
 
 **OTTL:**
 ```ottl
-- set(attributes["email"], ExtractPatterns(body, "[a-z]+@[a-z]+\\.[a-z]+"))
-```bash
+- merge_maps(attributes, ExtractPatterns(body, "(?P<email>[a-z]+@[a-z]+\\.[a-z]+)"), "upsert")
+```
 
 **Expected Output:**
 ```json
@@ -532,8 +532,8 @@ Create a repository of test cases:
     "email": "user@example.com"
   }
 }
-```bash
-```text
+```
+~~~
 
 ## Testing Flow Diagram
 
@@ -623,7 +623,7 @@ Create reusable transformation patterns:
 - set(attributes["is_error"], Int(attributes["http.status_code"]) >= 400)
 
 # Reusable: Environment normalization
-- set(attributes["env"], Lower(attributes["environment"]))
+- set(attributes["env"], ToLowerCase(attributes["environment"]))
 - set(attributes["env"], "production") where attributes["env"] == "prod"
 - set(attributes["env"], "development") where attributes["env"] == "dev"
 ```
@@ -636,40 +636,40 @@ Test these patterns with various inputs to ensure they're truly reusable.
 
 ```ottl
 # Extract
-- set(temp_data, ParseJSON(body))
+- set(cache["data"], ParseJSON(body))
 
 # Transform
-- set(attributes["field"], Upper(temp_data["value"]))
+- set(attributes["field"], ToUpperCase(cache["data"]["value"]))
 
 # Load (clean up)
-- delete_key(temp_data, "")
+- delete_key(cache, "data")
 ```
 
 ### Pattern 2: Validate-Then-Transform
 
 ```ottl
 # Validate
-- set(temp_valid, body != nil and IsString(body))
+- set(cache["valid"], body != nil and IsString(body))
 
 # Transform only if valid
-- set(body, ParseJSON(body)) where temp_valid
+- set(body, ParseJSON(body)) where cache["valid"] == true
 
 # Clean up
-- delete_key(temp_valid, "")
+- delete_key(cache, "valid")
 ```
 
 ### Pattern 3: Conditional Enrichment
 
 ```ottl
 # Set flag based on conditions
-- set(temp_enrich, attributes["user_id"] != nil and attributes["environment"] == "production")
+- set(cache["enrich"], attributes["user_id"] != nil and attributes["environment"] == "production")
 
 # Enrich if flag is true
-- set(attributes["tracking_enabled"], true) where temp_enrich
-- set(attributes["analytics_enabled"], true) where temp_enrich
+- set(attributes["tracking_enabled"], true) where cache["enrich"] == true
+- set(attributes["analytics_enabled"], true) where cache["enrich"] == true
 
 # Clean up
-- delete_key(temp_enrich, "")
+- delete_key(cache, "enrich")
 ```
 
 ## Conclusion
