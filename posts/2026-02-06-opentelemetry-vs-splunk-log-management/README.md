@@ -87,22 +87,35 @@ OpenTelemetry integrates with standard logging frameworks and enriches log recor
 # OpenTelemetry log integration with Python's logging module
 import logging
 from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Set up the OTel log provider
+# Set up the OTel trace and log providers
 resource = Resource.create({"service.name": "order-service"})
+trace_provider = TracerProvider(resource=resource)
+trace_provider.add_span_processor(
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="https://your-backend.com/v1/traces")
+    )
+)
+trace.set_tracer_provider(trace_provider)
+
 logger_provider = LoggerProvider(resource=resource)
 logger_provider.add_log_record_processor(
     BatchLogRecordProcessor(
         OTLPLogExporter(endpoint="https://your-backend.com/v1/logs")
     )
 )
+set_logger_provider(logger_provider)
 
 # Attach OTel handler to Python's standard logging
-handler = LoggingHandler(logger_provider=logger_provider)
+handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
 logging.getLogger().addHandler(handler)
 logging.getLogger().setLevel(logging.INFO)
 
@@ -158,9 +171,6 @@ processors:
     timeout: 5s
   resource:
     attributes:
-      - key: host.name
-        from_attribute: ""
-        action: upsert
       - key: service.name
         value: nginx
         action: upsert
@@ -218,42 +228,54 @@ OpenTelemetry's Collector can help manage this cost even if you keep Splunk as y
 
 ```yaml
 # OTel Collector config to reduce Splunk ingest costs
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+  filelog:
+    include:
+      - /var/log/app/*.log
+
 processors:
   # Drop health check logs that add noise
   filter/drop_health:
-    logs:
-      log_record:
-        - 'IsMatch(body, ".*health.*check.*")'
-        - 'IsMatch(body, ".*readiness.*probe.*")'
-
-  # Route debug logs to cheap storage, errors to Splunk
-  # Using the routing connector
-  attributes/severity:
-    actions:
-      - key: log.severity
-        from_attribute: severity_text
-        action: upsert
+    error_mode: ignore
+    log_conditions:
+      - 'IsMatch(body, ".*health.*check.*")'
+      - 'IsMatch(body, ".*readiness.*probe.*")'
+  batch:
 
 exporters:
   # Send important logs to Splunk
   splunk_hec/important:
     token: ${SPLUNK_HEC_TOKEN}
-    endpoint: https://splunk-hec.example.com:8088
+    endpoint: https://splunk-hec.example.com:8088/services/collector
     source: otel
     index: main
   # Send debug/info logs to cheaper storage
   otlphttp/archive:
     endpoint: https://cheap-log-storage.example.com/otlp
 
+connectors:
+  routing:
+    default_pipelines: [logs/archive]
+    table:
+      - context: log
+        condition: severity_number >= SEVERITY_NUMBER_ERROR
+        pipelines: [logs/important]
+
 service:
   pipelines:
-    logs/important:
-      receivers: [otlp]
+    logs/in:
+      receivers: [otlp, filelog]
       processors: [filter/drop_health, batch]
+      exporters: [routing]
+    logs/important:
+      receivers: [routing]
       exporters: [splunk_hec/important]
     logs/archive:
-      receivers: [filelog]
-      processors: [batch]
+      receivers: [routing]
       exporters: [otlphttp/archive]
 ```
 
