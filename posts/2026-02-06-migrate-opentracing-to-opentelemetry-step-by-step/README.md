@@ -56,11 +56,16 @@ Here is how to set it up in Java:
 ```java
 // Step 2a: Add OpenTelemetry SDK and the OpenTracing shim to your dependencies
 // Maven pom.xml additions:
-// io.opentelemetry:opentelemetry-api:1.35.0
-// io.opentelemetry:opentelemetry-sdk:1.35.0
-// io.opentelemetry.opentracing-shim:opentelemetry-opentracing-shim:1.35.0
+// io.opentelemetry:opentelemetry-api:1.62.0
+// io.opentelemetry:opentelemetry-sdk:1.62.0
+// io.opentelemetry:opentelemetry-exporter-otlp:1.62.0
+// io.opentelemetry:opentelemetry-opentracing-shim:1.62.0
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
@@ -80,7 +85,13 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
 
 OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder()
     .setTracerProvider(tracerProvider)
-    .build();
+    .setPropagators(ContextPropagators.create(
+        TextMapPropagator.composite(
+            W3CTraceContextPropagator.getInstance(),
+            W3CBaggagePropagator.getInstance()
+        )
+    ))
+    .buildAndRegisterGlobal();
 
 // Step 2c: Create the shim tracer and register it as the global OpenTracing tracer
 io.opentracing.Tracer shimTracer = OpenTracingShim.createTracerShim(openTelemetry);
@@ -94,6 +105,7 @@ For Python, the setup looks like this:
 # pip install opentelemetry-api opentelemetry-sdk opentelemetry-opentracing-shim
 
 from opentelemetry import trace
+import opentracing
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -110,6 +122,7 @@ trace.set_tracer_provider(provider)
 # Create the shim tracer for backward compatibility
 # This tracer implements the OpenTracing API but uses OpenTelemetry internally
 shim_tracer = create_tracer(provider)
+opentracing.set_global_tracer(shim_tracer)
 ```
 
 At this point, deploy your application with the shim in place. Verify that traces still appear in your backend. This is your safety net for the rest of the migration.
@@ -208,19 +221,26 @@ GlobalOpenTelemetry.getPropagators()
     .inject(Context.current(), httpHeaders, setter);
 ```
 
-OpenTelemetry defaults to W3C Trace Context propagation (the `traceparent` header), while OpenTracing implementations typically used vendor-specific formats like Jaeger or Zipkin B3 headers. During migration, you can configure OpenTelemetry to support multiple propagation formats simultaneously:
+With W3C Trace Context propagation configured, OpenTelemetry uses the `traceparent` header, while OpenTracing implementations typically used vendor-specific formats like Jaeger or Zipkin B3 headers. During migration, you can configure OpenTelemetry to support multiple propagation formats simultaneously:
 
 ```java
 // Support both W3C and B3 propagation during migration
 // This ensures compatibility with services that have not yet been migrated
+// Add dependency: io.opentelemetry:opentelemetry-extension-trace-propagators:1.62.0
 import io.opentelemetry.extension.trace.propagation.B3Propagator;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.context.propagation.TextMapPropagator;
 
 TextMapPropagator compositePropagator = TextMapPropagator.composite(
     W3CTraceContextPropagator.getInstance(),
     B3Propagator.injectingMultiHeaders()
 );
+
+OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder()
+    .setTracerProvider(tracerProvider)
+    .setPropagators(ContextPropagators.create(compositePropagator))
+    .buildAndRegisterGlobal();
 ```
 
 ## Step 5: Update Your Dependencies and Clean Up
