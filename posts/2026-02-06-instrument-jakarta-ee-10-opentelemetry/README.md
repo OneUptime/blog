@@ -54,6 +54,7 @@ JAVA_OPTS="$JAVA_OPTS -Dotel.traces.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.metrics.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.logs.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.exporter.otlp.endpoint=http://localhost:4317"
+JAVA_OPTS="$JAVA_OPTS -Dotel.exporter.otlp.protocol=grpc"
 ```
 
 For Open Liberty, add the agent configuration to jvm.options:
@@ -64,6 +65,7 @@ For Open Liberty, add the agent configuration to jvm.options:
 -Dotel.service.name=jakarta-ee-app
 -Dotel.traces.exporter=otlp
 -Dotel.exporter.otlp.endpoint=http://localhost:4317
+-Dotel.exporter.otlp.protocol=grpc
 -Dotel.instrumentation.common.default-enabled=true
 ```
 
@@ -73,7 +75,7 @@ For more control over your telemetry data, use manual instrumentation with the O
 
 ```xml
 <properties>
-    <opentelemetry.version>1.37.0</opentelemetry.version>
+    <opentelemetry.version>1.62.0</opentelemetry.version>
 </properties>
 
 <dependencies>
@@ -97,13 +99,6 @@ For more control over your telemetry data, use manual instrumentation with the O
         <artifactId>opentelemetry-exporter-otlp</artifactId>
         <version>${opentelemetry.version}</version>
     </dependency>
-
-    <!-- Semantic Conventions -->
-    <dependency>
-        <groupId>io.opentelemetry.semconv</groupId>
-        <artifactId>opentelemetry-semconv</artifactId>
-        <version>1.23.1-alpha</version>
-    </dependency>
 </dependencies>
 ```
 
@@ -113,14 +108,20 @@ Create a CDI producer to initialize OpenTelemetry:
 package com.example.telemetry;
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.metrics.SdkMeterProvider;
+import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.ResourceAttributes;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
@@ -129,8 +130,9 @@ import jakarta.annotation.PreDestroy;
 @ApplicationScoped
 public class OpenTelemetryProducer {
 
-    private OpenTelemetry openTelemetry;
+    private OpenTelemetrySdk openTelemetry;
     private SdkTracerProvider tracerProvider;
+    private SdkMeterProvider meterProvider;
 
     // Initialize OpenTelemetry SDK with OTLP exporter
     @Produces
@@ -141,14 +143,18 @@ public class OpenTelemetryProducer {
             Resource resource = Resource.getDefault()
                 .merge(Resource.create(
                     Attributes.builder()
-                        .put(ResourceAttributes.SERVICE_NAME, "jakarta-ee-app")
-                        .put(ResourceAttributes.SERVICE_VERSION, "1.0.0")
-                        .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production")
+                        .put("service.name", "jakarta-ee-app")
+                        .put("service.version", "1.0.0")
+                        .put("deployment.environment.name", "production")
                         .build()
                 ));
 
             // Configure OTLP exporter
             OtlpGrpcSpanExporter spanExporter = OtlpGrpcSpanExporter.builder()
+                .setEndpoint("http://localhost:4317")
+                .build();
+
+            OtlpGrpcMetricExporter metricExporter = OtlpGrpcMetricExporter.builder()
                 .setEndpoint("http://localhost:4317")
                 .build();
 
@@ -158,9 +164,19 @@ public class OpenTelemetryProducer {
                 .setResource(resource)
                 .build();
 
+            meterProvider = SdkMeterProvider.builder()
+                .setResource(resource)
+                .registerMetricReader(PeriodicMetricReader.builder(metricExporter).build())
+                .build();
+
             // Create OpenTelemetry instance
             openTelemetry = OpenTelemetrySdk.builder()
                 .setTracerProvider(tracerProvider)
+                .setMeterProvider(meterProvider)
+                .setPropagators(ContextPropagators.create(
+                    TextMapPropagator.composite(
+                        W3CTraceContextPropagator.getInstance(),
+                        W3CBaggagePropagator.getInstance())))
                 .build();
         }
 
@@ -180,23 +196,28 @@ public class OpenTelemetryProducer {
         if (tracerProvider != null) {
             tracerProvider.close();
         }
+        if (meterProvider != null) {
+            meterProvider.close();
+        }
     }
 }
 ```
 
 ## Instrumenting JAX-RS Resources
 
-JAX-RS resources are the entry points for REST APIs in Jakarta EE. Create a custom interceptor to automatically trace all JAX-RS endpoints:
+JAX-RS resources are the entry points for REST APIs in Jakarta EE. Create a custom filter to automatically trace all JAX-RS endpoints:
 
 ```java
 package com.example.telemetry;
 
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.TextMapGetter;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -210,7 +231,23 @@ import java.io.IOException;
 public class OpenTelemetryJaxRsFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
     private static final String SPAN_CONTEXT_KEY = "otel.span.context";
+    private static final String SPAN_SCOPE_KEY = "otel.span.scope";
     private static final String SPAN_KEY = "otel.span";
+    private static final TextMapGetter<ContainerRequestContext> GETTER =
+        new TextMapGetter<ContainerRequestContext>() {
+            @Override
+            public Iterable<String> keys(ContainerRequestContext requestContext) {
+                return requestContext.getHeaders().keySet();
+            }
+
+            @Override
+            public String get(ContainerRequestContext requestContext, String key) {
+                return requestContext.getHeaderString(key);
+            }
+        };
+
+    @Inject
+    private OpenTelemetry openTelemetry;
 
     @Inject
     private Tracer tracer;
@@ -220,20 +257,26 @@ public class OpenTelemetryJaxRsFilter implements ContainerRequestFilter, Contain
         // Extract HTTP method and path
         String method = requestContext.getMethod();
         String path = requestContext.getUriInfo().getPath();
+        Context extractedContext = openTelemetry.getPropagators()
+            .getTextMapPropagator()
+            .extract(Context.current(), requestContext, GETTER);
 
         // Create a new span for this request
         Span span = tracer.spanBuilder(method + " " + path)
+            .setParent(extractedContext)
             .setSpanKind(SpanKind.SERVER)
             .startSpan();
 
         // Add HTTP attributes
-        span.setAttribute("http.method", method);
-        span.setAttribute("http.url", requestContext.getUriInfo().getRequestUri().toString());
+        span.setAttribute("http.request.method", method);
+        span.setAttribute("url.full", requestContext.getUriInfo().getRequestUri().toString());
         span.setAttribute("http.route", path);
 
         // Store span and context for response filter
-        Context context = Context.current().with(span);
+        Context context = extractedContext.with(span);
+        Scope scope = context.makeCurrent();
         requestContext.setProperty(SPAN_CONTEXT_KEY, context);
+        requestContext.setProperty(SPAN_SCOPE_KEY, scope);
         requestContext.setProperty(SPAN_KEY, span);
     }
 
@@ -242,23 +285,23 @@ public class OpenTelemetryJaxRsFilter implements ContainerRequestFilter, Contain
                       ContainerResponseContext responseContext) throws IOException {
         Span span = (Span) requestContext.getProperty(SPAN_KEY);
         Context context = (Context) requestContext.getProperty(SPAN_CONTEXT_KEY);
+        Scope scope = (Scope) requestContext.getProperty(SPAN_SCOPE_KEY);
 
         if (span != null) {
-            try (Scope scope = context.makeCurrent()) {
+            try (Scope currentScope = context.makeCurrent()) {
                 // Add response status
                 int status = responseContext.getStatus();
-                span.setAttribute("http.status_code", status);
+                span.setAttribute("http.response.status_code", status);
 
                 // Set span status based on HTTP status
                 if (status >= 500) {
                     span.setStatus(StatusCode.ERROR, "Server error");
-                } else if (status >= 400) {
-                    span.setStatus(StatusCode.ERROR, "Client error");
-                } else {
-                    span.setStatus(StatusCode.OK);
                 }
             } finally {
                 span.end();
+                if (scope != null) {
+                    scope.close();
+                }
             }
         }
     }
@@ -273,6 +316,7 @@ Create a custom annotation and interceptor to trace CDI bean methods:
 package com.example.telemetry;
 
 import jakarta.interceptor.InterceptorBinding;
+import jakarta.enterprise.util.Nonbinding;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -282,6 +326,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Traced {
+    @Nonbinding
     String value() default "";
 }
 ```
@@ -396,9 +441,9 @@ public class UserRepository {
     @Transactional
     public List<User> findAll() {
         Span span = Span.current();
-        span.setAttribute("db.system", "postgresql");
-        span.setAttribute("db.operation", "SELECT");
-        span.setAttribute("db.sql.table", "users");
+        span.setAttribute("db.system.name", "postgresql");
+        span.setAttribute("db.operation.name", "SELECT");
+        span.setAttribute("db.collection.name", "users");
 
         return em.createQuery("SELECT u FROM User u", User.class)
             .getResultList();
@@ -408,9 +453,9 @@ public class UserRepository {
     @Transactional
     public User findById(Long id) {
         Span span = Span.current();
-        span.setAttribute("db.system", "postgresql");
-        span.setAttribute("db.operation", "SELECT");
-        span.setAttribute("db.sql.table", "users");
+        span.setAttribute("db.system.name", "postgresql");
+        span.setAttribute("db.operation.name", "SELECT");
+        span.setAttribute("db.collection.name", "users");
         span.setAttribute("user.id", id);
 
         return em.find(User.class, id);
@@ -420,13 +465,14 @@ public class UserRepository {
     @Transactional
     public User save(User user) {
         Span span = Span.current();
-        span.setAttribute("db.system", "postgresql");
+        span.setAttribute("db.system.name", "postgresql");
+        span.setAttribute("db.collection.name", "users");
 
         if (user.getId() == null) {
-            span.setAttribute("db.operation", "INSERT");
+            span.setAttribute("db.operation.name", "INSERT");
             em.persist(user);
         } else {
-            span.setAttribute("db.operation", "UPDATE");
+            span.setAttribute("db.operation.name", "UPDATE");
             user = em.merge(user);
         }
 
@@ -498,6 +544,7 @@ Here's a complete JAX-RS resource using all the instrumentation techniques:
 package com.example.api;
 
 import com.example.service.UserRepository;
+import com.example.service.User;
 import com.example.telemetry.MetricsService;
 import com.example.telemetry.Traced;
 import io.opentelemetry.api.trace.Span;
@@ -506,6 +553,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 
 @Path("/users")
 @Produces(MediaType.APPLICATION_JSON)
