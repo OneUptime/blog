@@ -84,12 +84,13 @@ Manually editing version numbers across 15+ lines is error-prone. Write a script
 OLD_VERSION="${1:?Usage: $0 <old-version> <new-version>}"
 NEW_VERSION="${2:?Usage: $0 <old-version> <new-version>}"
 MANIFEST="manifest.yaml"
+OLD_VERSION_PATTERN="${OLD_VERSION//./\\.}"
 
 echo "Updating ${MANIFEST} from v${OLD_VERSION} to v${NEW_VERSION}..."
 
 # Replace all occurrences of the old version with the new version
-sed -i.bak "s/v${OLD_VERSION}/v${NEW_VERSION}/g" "${MANIFEST}"
-sed -i.bak "s/\"${OLD_VERSION}\"/\"${NEW_VERSION}\"/g" "${MANIFEST}"
+sed -i.bak "s/v${OLD_VERSION_PATTERN}/v${NEW_VERSION}/g" "${MANIFEST}"
+sed -i.bak "s/\"${OLD_VERSION_PATTERN}\"/\"${NEW_VERSION}\"/g" "${MANIFEST}"
 
 # Clean up backup file
 rm -f "${MANIFEST}.bak"
@@ -166,9 +167,12 @@ jobs:
           # Get the latest release version
           if [ -n "${{ github.event.inputs.target_version }}" ]; then
             LATEST="${{ github.event.inputs.target_version }}"
+            LATEST="${LATEST#v}"
           else
             LATEST=$(gh release list --repo open-telemetry/opentelemetry-collector-releases \
-              --limit 1 --json tagName -q '.[0].tagName' | grep -oP '[\d.]+')
+              --limit 20 --json tagName \
+              -q '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0]' \
+              | grep -oP '[\d.]+')
           fi
           echo "Latest version: ${LATEST}"
 
@@ -189,10 +193,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
 
       - name: Install OCB
-        run: go install go.opentelemetry.io/collector/cmd/builder@latest
+        run: go install go.opentelemetry.io/collector/cmd/builder@v${{ needs.check-update.outputs.new_version }}
 
       - name: Update versions
         run: |
@@ -213,7 +217,7 @@ jobs:
           COLLECTOR_PID=$!
           sleep 5
 
-          # Check health endpoint
+          # Check health endpoint if config-test.yaml enables the health_check extension
           curl -f http://localhost:13133/health || exit 1
 
           # Send test telemetry
@@ -244,16 +248,16 @@ Breaking changes in the OpenTelemetry Collector typically fall into a few catego
 Sometimes a component renames or restructures its config:
 
 ```yaml
-# Before v0.95.0 - the old format
+# Older format
 processors:
   probabilistic_sampler:
     sampling_percentage: 10
 
-# After v0.95.0 - the new format
+# Newer format with an explicit sampling mode
 processors:
   probabilistic_sampler:
     sampling_percentage: 10
-    mode: proportional  # New required field
+    mode: proportional
 ```
 
 ### Component Renames
@@ -373,11 +377,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
 
       - name: Generate source without compiling
         run: |
-          go install go.opentelemetry.io/collector/cmd/builder@latest
+          VERSION=$(grep 'otelcol_version' manifest.yaml | grep -oP '[\d.]+')
+          go install go.opentelemetry.io/collector/cmd/builder@v${VERSION}
           builder --config manifest.yaml --skip-compilation
 
       - name: Run govulncheck
