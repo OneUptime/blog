@@ -19,7 +19,7 @@ import json
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 class TelemetryCapture:
     """
@@ -36,7 +36,7 @@ class TelemetryCapture:
         )
 
     def install(self):
-        """Replace the global tracer provider with our capturing one."""
+        """Set the global tracer provider before app instrumentation initializes."""
         trace.set_tracer_provider(self.provider)
 
     def clear(self):
@@ -205,9 +205,9 @@ When you run the test for the first time, it generates a snapshot file like this
 [
   {
     "attributes": {
-      "db.operation": "INSERT",
-      "db.sql.table": "orders",
-      "db.system": "postgresql"
+      "db.collection.name": "orders",
+      "db.operation.name": "INSERT",
+      "db.system.name": "postgresql"
     },
     "child_count": 0,
     "events": [],
@@ -221,28 +221,28 @@ When you run the test for the first time, it generates a snapshot file like this
   },
   {
     "attributes": {
-      "http.method": "POST",
+      "http.request.method": "POST",
+      "http.response.status_code": 201,
       "http.route": "/api/v1/orders",
-      "http.status_code": 201,
       "order.currency": "USD",
       "order.id": "<ID>",
       "order.item_count": 3,
       "order.total_amount": 29.97
     },
-    "child_count": 3,
+    "child_count": 2,
     "events": [],
     "has_parent": false,
     "kind": "SERVER",
     "name": "POST /api/v1/orders",
     "status": {
-      "code": "OK",
+      "code": "UNSET",
       "description": ""
     }
   },
   {
     "attributes": {
       "messaging.destination.name": "orders.created",
-      "messaging.operation": "publish",
+      "messaging.operation.type": "publish",
       "messaging.system": "rabbitmq"
     },
     "child_count": 0,
@@ -269,9 +269,9 @@ FAILED tests/test_telemetry_snapshots.py::test_create_order_telemetry
   --- expected
   +++ actual
   @@ -15,7 +15,7 @@
-       "http.method": "POST",
-       "http.route": "/api/v1/orders",
-       "http.status_code": 201,
+      "http.request.method": "POST",
+      "http.response.status_code": 201,
+      "http.route": "/api/v1/orders",
   -    "order.currency": "USD",
   +    "payment.currency": "USD",
        "order.id": "<ID>",
