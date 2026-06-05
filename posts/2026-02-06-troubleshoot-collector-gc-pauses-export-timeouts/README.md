@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Garbage Collection, Timeout
 
 Description: Diagnose and fix intermittent span export timeouts in the OpenTelemetry Collector caused by Go garbage collection pauses.
 
-Your OpenTelemetry Collector exports spans successfully most of the time, but intermittently you see timeout errors in the logs. The backend is healthy, the network is fine, and the timeouts seem random. The root cause might be Go garbage collection (GC) pauses that freeze the Collector long enough for export calls to time out.
+Your OpenTelemetry Collector exports spans successfully most of the time, but intermittently you see timeout errors in the logs. The backend is healthy, the network is fine, and the timeouts seem random. The root cause might be Go garbage collection (GC) work that delays the Collector long enough for export calls to time out.
 
 ## Identifying GC-Related Timeouts
 
@@ -14,7 +14,7 @@ The telltale signs are:
 
 1. Export timeouts happen in bursts, not continuously
 2. CPU usage spikes briefly during the timeout periods
-3. Memory usage drops sharply right after the timeout (because GC freed memory)
+3. Runtime heap allocation drops sharply right after the timeout (because GC freed memory)
 4. The backend shows no errors on its side
 
 Check the Collector's GC stats:
@@ -28,23 +28,23 @@ GODEBUG=gctrace=1 ./otelcol-contrib --config config.yaml
 This prints GC information to stderr:
 
 ```text
-gc 42 @120.305s 5%: 0.12+45.3+0.089 ms clock, 0.48+12.1/42.5/0+0.35 ms cpu, 380->395->210 MB, 400 MB goal, 4 P
+gc 42 @120.305s 5%: 0.12+45.3+0.089 ms clock, 0.48+12.1/42.5/0+0.35 ms cpu, 380->395->210 MB, 400 MB goal, 8 MB stacks, 2 MB globals, 4 P
 ```
 
-The `45.3 ms` in the middle is the GC pause time. If this exceeds your export timeout, exports will fail.
+The first and third clock values (`0.12` and `0.089 ms` in this example) are the stop-the-world parts of the GC cycle. The middle value (`45.3 ms`) is concurrent GC work, not a full process pause, but a long concurrent phase can still indicate GC CPU pressure. If stop-the-world pauses or GC CPU pressure delay an export attempt beyond its timeout, exports can fail.
 
 ## Why GC Pauses Get Long
 
 The Go garbage collector is generally fast, but pauses increase when:
 
-1. **Heap size is large**: More objects to scan means longer pauses
-2. **GOMEMLIMIT is not set**: The GC waits too long before running, allowing heap to grow
+1. **Heap size is large**: More objects to scan means longer GC cycles and can increase pause time
+2. **GOMEMLIMIT is not set**: The runtime has no soft memory limit, so the heap target is mainly controlled by `GOGC`
 3. **Many short-lived allocations**: Creating and discarding many objects forces frequent GC
-4. **Large batches in the batch processor**: Each batch is a large allocation that becomes garbage after export
+4. **Large batches in the batch processor**: Pending batches hold more data in memory until they are exported
 
 ## Fix 1: Set GOMEMLIMIT
 
-This is the most impactful fix. `GOMEMLIMIT` makes the GC run more frequently at smaller heap sizes, reducing individual pause times:
+This is often the most impactful fix. `GOMEMLIMIT` sets a soft memory limit for the Go runtime, which can make the GC run more frequently at smaller heap sizes and return memory to the operating system more aggressively:
 
 ```yaml
 env:
@@ -52,7 +52,7 @@ env:
   value: "800MiB"
 ```
 
-Without `GOMEMLIMIT`, Go's GC runs when heap doubles. If heap is 500MB, GC runs at 1000MB. With `GOMEMLIMIT=800MiB`, GC runs earlier when approaching 800MB, keeping individual pauses shorter.
+Without `GOMEMLIMIT`, the default `GOGC=100` target allows fresh allocations to reach roughly 100% of the live heap after the previous collection. With `GOMEMLIMIT=800MiB`, the runtime starts applying additional GC pressure as runtime-managed memory approaches 800MiB, keeping the heap smaller.
 
 ## Fix 2: Tune GOGC
 
@@ -70,7 +70,7 @@ A `GOGC` of 50 means GC runs when the heap is 1.5x the live data, instead of 2x.
 
 ## Fix 3: Reduce Batch Sizes
 
-Large batches create large allocations. Smaller batches spread the allocation pressure:
+Large batches can hold more data in memory at once. Smaller batches spread the allocation pressure:
 
 ```yaml
 processors:
@@ -82,7 +82,7 @@ processors:
 
 ## Fix 4: Increase Export Timeout
 
-If GC pauses are under 100ms, increase the export timeout to accommodate them:
+If GC-related delays are under 100ms, increase the export timeout to accommodate them:
 
 ```yaml
 exporters:
@@ -99,7 +99,7 @@ This does not fix the GC pauses, but it prevents them from causing export failur
 
 ## Fix 5: Use Persistent Queue
 
-If exports time out, the data is lost (unless retried). A persistent queue stores data on disk so it survives transient failures:
+If exports time out and retries are disabled, exhausted, or the queue fills, data can be lost. A persistent queue stores queued data on disk so it can survive Collector restarts and transient failures:
 
 ```yaml
 exporters:
@@ -120,11 +120,11 @@ service:
   extensions: [file_storage]
 ```
 
-With persistent queuing, even if a GC pause causes a timeout, the data is queued on disk and retried after the pause.
+With persistent queuing, even if GC-related delay causes a timeout, queued data can be retried after the delay as long as the disk-backed queue and retry limits are not exhausted.
 
 ## Monitoring GC Performance
 
-Add the pprof extension and periodically collect GC stats:
+Add the pprof extension and periodically collect heap profiles:
 
 ```yaml
 extensions:
@@ -135,27 +135,27 @@ service:
   extensions: [pprof]
 ```
 
-Query GC stats:
+Query the heap profile:
 
 ```bash
-# Get memory stats including GC info
+# Get a plaintext heap profile
 curl -s http://collector:1777/debug/pprof/heap?debug=1 | head -30
 ```
 
-You can also expose GC metrics through the Collector's telemetry:
+You can also watch the Collector's own process metrics:
 
 ```text
-# Go runtime metrics
-go_gc_duration_seconds
-go_memstats_alloc_bytes
-go_memstats_heap_inuse_bytes
+otelcol_process_cpu_seconds
+otelcol_process_memory_rss
+otelcol_process_runtime_heap_alloc_bytes
+otelcol_process_runtime_total_sys_memory_bytes
 ```
 
-Set an alert on `go_gc_duration_seconds`:
+If your telemetry setup also exposes Go runtime GC pause metrics, set an alert on the 99th percentile pause duration. For example, with the OpenTelemetry Go runtime metric `go.memory.gc.pause.duration` exported to Prometheus-style time series:
 
 ```yaml
 - alert: CollectorLongGCPause
-  expr: go_gc_duration_seconds{quantile="1"} > 0.1
+  expr: histogram_quantile(0.99, rate(go_memory_gc_pause_duration_seconds_bucket[5m])) > 0.1
   for: 5m
   labels:
     severity: warning
@@ -165,4 +165,4 @@ Set an alert on `go_gc_duration_seconds`:
 
 ## Summary
 
-GC pauses cause intermittent export timeouts when the pause duration exceeds the export timeout. Fix this by setting `GOMEMLIMIT` to make GC run more frequently, reducing batch sizes to lower allocation pressure, increasing export timeouts to accommodate short pauses, and using persistent queues to survive transient failures. Monitor `go_gc_duration_seconds` to catch regressions.
+GC pauses and GC CPU pressure can cause intermittent export timeouts when they delay an export attempt beyond its timeout. Fix this by setting `GOMEMLIMIT` to keep runtime-managed memory bounded, reducing batch sizes to lower allocation pressure, increasing export timeouts to accommodate short delays, and using persistent queues to survive transient failures. Monitor Collector process metrics and GC pause metrics to catch regressions.
