@@ -10,7 +10,7 @@ OpenTelemetry semantic conventions define a standard set of attribute names, typ
 
 ## Why This Matters
 
-Imagine you instrument a database call with `db.query` instead of the correct `db.statement`. Your spans look fine in a basic trace viewer, but any dashboard that filters on `db.statement` will miss them. Semantic conventions are the contract between your instrumentation and every tool that consumes it.
+Imagine you instrument a database call with `db.query` instead of the correct `db.query.text`. Your spans look fine in a basic trace viewer, but any dashboard that filters on `db.query.text` will miss them. Semantic conventions are the contract between your instrumentation and every tool that consumes it.
 
 ## Defining the Rules
 
@@ -25,11 +25,11 @@ RULES = {
             ("http.request.method", str),
             ("url.scheme", str),
             ("url.path", str),
-            ("http.response.status_code", int),
-            ("server.address", str),
         ],
         "optional": [
+            ("http.response.status_code", int),
             ("http.route", str),
+            ("server.address", str),
             ("server.port", int),
             ("user_agent.original", str),
         ],
@@ -39,22 +39,23 @@ RULES = {
         "required": [
             ("http.request.method", str),
             ("url.full", str),
-            ("http.response.status_code", int),
-        ],
-        "optional": [
             ("server.address", str),
             ("server.port", int),
+        ],
+        "optional": [
+            ("http.response.status_code", int),
         ],
         "span_kind": "CLIENT",
     },
     "db": {
         "required": [
-            ("db.system", str),
-            ("db.operation.name", str),
+            ("db.system.name", str),
         ],
         "optional": [
-            ("db.statement", str),
+            ("db.operation.name", str),
+            ("db.query.text", str),
             ("db.collection.name", str),
+            ("db.namespace", str),
             ("server.address", str),
             ("server.port", int),
         ],
@@ -63,10 +64,11 @@ RULES = {
     "messaging": {
         "required": [
             ("messaging.system", str),
-            ("messaging.operation.type", str),
-            ("messaging.destination.name", str),
+            ("messaging.operation.name", str),
         ],
         "optional": [
+            ("messaging.operation.type", str),
+            ("messaging.destination.name", str),
             ("messaging.message.id", str),
             ("messaging.batch.message_count", int),
         ],
@@ -96,7 +98,7 @@ def detect_span_category(span):
     """Determine which semantic convention category a span belongs to."""
     attrs = dict(span.attributes) if span.attributes else {}
 
-    if "db.system" in attrs:
+    if "db.system.name" in attrs or "db.system" in attrs:
         return "db"
     if "messaging.system" in attrs:
         return "messaging"
@@ -140,7 +142,9 @@ def check_compliance(span):
         "http.target": "url.path",
         "net.peer.name": "server.address",
         "net.peer.port": "server.port",
+        "db.system": "db.system.name",
         "db.name": "db.namespace",
+        "db.statement": "db.query.text",
     }
 
     for old_name, new_name in deprecated.items():
@@ -163,7 +167,7 @@ import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from compliance_checker import check_compliance
 
 exporter = InMemorySpanExporter()
@@ -205,7 +209,7 @@ def test_database_span_compliance(test_client):
     test_client.get("/api/orders/123")  # Triggers a DB query
 
     spans = exporter.get_finished_spans()
-    db_spans = [s for s in spans if "db.system" in (dict(s.attributes) or {})]
+    db_spans = [s for s in spans if "db.system.name" in (dict(s.attributes) or {})]
 
     assert len(db_spans) > 0, "Expected at least one database span"
 
@@ -224,7 +228,8 @@ def test_no_deprecated_attributes(test_client):
     deprecated_found = []
 
     deprecated_attrs = {"http.method", "http.status_code", "http.url",
-                        "http.target", "net.peer.name", "net.peer.port", "db.name"}
+                        "http.target", "net.peer.name", "net.peer.port",
+                        "db.system", "db.name", "db.statement"}
 
     for span in spans:
         attrs = dict(span.attributes) if span.attributes else {}
