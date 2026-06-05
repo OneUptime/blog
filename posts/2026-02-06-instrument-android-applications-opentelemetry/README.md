@@ -16,26 +16,28 @@ OpenTelemetry instrumentation gives you visibility into what's actually happenin
 
 ## Setting Up OpenTelemetry in Android
 
-Start by adding the OpenTelemetry dependencies to your app's build.gradle file. The Android SDK provides automatic instrumentation for many common operations, but you'll also want manual instrumentation for business logic.
+Start by adding the OpenTelemetry dependencies to your app's build.gradle file. The Android agent can provide automatic instrumentation for common Android operations when you initialize it, and you'll also want manual instrumentation for business logic.
 
 ```groovy
 // app/build.gradle
 dependencies {
-    // OpenTelemetry API for manual instrumentation
-    implementation 'io.opentelemetry:opentelemetry-api:1.32.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk:1.32.0'
+    // OpenTelemetry API and SDK for manual instrumentation
+    implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:2.28.1-alpha')
+    implementation 'io.opentelemetry:opentelemetry-api'
+    implementation 'io.opentelemetry:opentelemetry-sdk'
 
     // OpenTelemetry exporters
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.32.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
-    // Semantic conventions for standard attributes
-    implementation 'io.opentelemetry.semconv:opentelemetry-semconv:1.23.1-alpha'
+    // Kotlin coroutine context propagation
+    implementation 'io.opentelemetry:opentelemetry-extension-kotlin'
 
-    // Android-specific extensions
-    implementation 'io.opentelemetry.android:instrumentation:0.3.0'
+    // Android-specific automatic instrumentation
+    implementation platform('io.opentelemetry.android:opentelemetry-android-bom:1.4.0-alpha')
+    implementation 'io.opentelemetry.android:android-agent'
 
     // HTTP client instrumentation
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-okhttp-3.0:1.32.0-alpha'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-okhttp-3.0'
 }
 ```
 
@@ -47,17 +49,17 @@ import android.os.Build
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Tracer
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes
 import java.util.concurrent.TimeUnit
 
 class MyApplication : Application() {
     companion object {
-        private lateinit var openTelemetry: OpenTelemetry
+        lateinit var openTelemetry: OpenTelemetry
+            private set
         lateinit var tracer: Tracer
             private set
     }
@@ -71,22 +73,22 @@ class MyApplication : Application() {
         // Create resource with app and device information
         val resource = Resource.create(
             Attributes.builder()
-                .put(ResourceAttributes.SERVICE_NAME, "MyAndroidApp")
-                .put(ResourceAttributes.SERVICE_VERSION, BuildConfig.VERSION_NAME)
-                .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, BuildConfig.BUILD_TYPE)
-                .put(ResourceAttributes.DEVICE_MODEL_IDENTIFIER, Build.MODEL)
-                .put(ResourceAttributes.DEVICE_MANUFACTURER, Build.MANUFACTURER)
-                .put(ResourceAttributes.OS_NAME, "Android")
-                .put(ResourceAttributes.OS_VERSION, Build.VERSION.RELEASE)
+                .put("service.name", "MyAndroidApp")
+                .put("service.version", BuildConfig.VERSION_NAME)
+                .put("deployment.environment.name", BuildConfig.BUILD_TYPE)
+                .put("device.model.identifier", Build.MODEL)
+                .put("device.manufacturer", Build.MANUFACTURER)
+                .put("os.name", "Android")
+                .put("os.version", Build.VERSION.RELEASE)
                 .put("device.screen.width", resources.displayMetrics.widthPixels)
                 .put("device.screen.height", resources.displayMetrics.heightPixels)
                 .put("device.screen.density", resources.displayMetrics.density)
                 .build()
         )
 
-        // Configure the OTLP exporter to send data to your backend
-        val spanExporter = OtlpGrpcSpanExporter.builder()
-            .setEndpoint("https://your-observability-backend.com:4317")
+        // Configure the OTLP/HTTP exporter to send data to your backend
+        val spanExporter = OtlpHttpSpanExporter.builder()
+            .setEndpoint("https://your-observability-backend.com/v1/traces")
             .setTimeout(30, TimeUnit.SECONDS)
             .build()
 
@@ -108,7 +110,7 @@ class MyApplication : Application() {
         // Initialize the global OpenTelemetry instance
         openTelemetry = OpenTelemetrySdk.builder()
             .setTracerProvider(tracerProvider)
-            .build()
+            .buildAndRegisterGlobal()
 
         // Get a tracer for manual instrumentation
         tracer = openTelemetry.getTracer("com.example.myapp", BuildConfig.VERSION_NAME)
@@ -124,6 +126,7 @@ Activities are the core building blocks of Android apps. Tracking their lifecycl
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
@@ -135,8 +138,8 @@ open class InstrumentedActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Start a span for the complete activity lifecycle
-        activitySpan = tracer.spanBuilder("Activity.${this::class.simpleName}")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+        activitySpan = tracer.spanBuilder("Activity.${javaClass.simpleName}")
+            .setSpanKind(SpanKind.INTERNAL)
             .startSpan()
 
         // Make this span the current active span
@@ -144,8 +147,8 @@ open class InstrumentedActivity : AppCompatActivity() {
 
         // Start a span specifically for onCreate
         createSpan = tracer.spanBuilder("Activity.onCreate")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
-            .setAttribute("activity.name", this::class.simpleName ?: "Unknown")
+            .setSpanKind(SpanKind.INTERNAL)
+            .setAttribute("activity.name", javaClass.simpleName)
             .setAttribute("activity.is_first_launch", savedInstanceState == null)
             .startSpan()
 
@@ -164,8 +167,9 @@ open class InstrumentedActivity : AppCompatActivity() {
 
     override fun onStart() {
         val span = tracer.spanBuilder("Activity.onStart")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
-            .setAttribute("activity.name", this::class.simpleName ?: "Unknown")
+            .setParent(Context.current().with(activitySpan ?: Span.getInvalid()))
+            .setSpanKind(SpanKind.INTERNAL)
+            .setAttribute("activity.name", javaClass.simpleName)
             .startSpan()
 
         try {
@@ -182,7 +186,8 @@ open class InstrumentedActivity : AppCompatActivity() {
 
     override fun onResume() {
         val span = tracer.spanBuilder("Activity.onResume")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .setParent(Context.current().with(activitySpan ?: Span.getInvalid()))
+            .setSpanKind(SpanKind.INTERNAL)
             .startSpan()
 
         try {
@@ -199,7 +204,8 @@ open class InstrumentedActivity : AppCompatActivity() {
 
     override fun onPause() {
         val span = tracer.spanBuilder("Activity.onPause")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .setParent(Context.current().with(activitySpan ?: Span.getInvalid()))
+            .setSpanKind(SpanKind.INTERNAL)
             .startSpan()
 
         try {
@@ -231,11 +237,15 @@ open class InstrumentedActivity : AppCompatActivity() {
 
 ## Auto-Instrumenting Network Calls with OkHttp
 
-Most Android apps use OkHttp for networking. OpenTelemetry provides an interceptor that automatically instruments HTTP requests, capturing timing, headers, and response codes.
+Most Android apps use OkHttp for networking. OpenTelemetry provides a `Call.Factory` wrapper that automatically instruments HTTP requests, capturing timing, headers, and response codes.
 
 ```kotlin
 import io.opentelemetry.instrumentation.okhttp.v3_0.OkHttpTelemetry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.OkHttpClient
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object NetworkClient {
@@ -247,14 +257,17 @@ object NetworkClient {
         .setCapturedResponseHeaders(listOf("Content-Type", "Content-Length"))
         .build()
 
-    val client: OkHttpClient by lazy {
+    private val baseClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            // Add OpenTelemetry interceptor for automatic instrumentation
-            .addInterceptor(okHttpTelemetry.newInterceptor())
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
+    }
+
+    val client: Call.Factory by lazy {
+        // Wrap the OkHttp client with OpenTelemetry automatic instrumentation
+        okHttpTelemetry.createCallFactory(baseClient)
     }
 }
 
@@ -269,7 +282,7 @@ class ApiClient {
             .get()
             .build()
 
-        // The OkHttp interceptor automatically creates spans for this request
+        // The OpenTelemetry Call.Factory automatically creates spans for this request
         return withContext(Dispatchers.IO) {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -293,8 +306,11 @@ The repository pattern is common in Android for abstracting data sources. Instru
 
 ```kotlin
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
+import io.opentelemetry.extension.kotlin.asContextElement
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 
@@ -306,11 +322,11 @@ class UserRepository(
     suspend fun getUser(userId: String): User {
         // Create a span for the repository operation
         val span = tracer.spanBuilder("UserRepository.getUser")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .setSpanKind(SpanKind.INTERNAL)
             .setAttribute("user.id", userId)
             .startSpan()
 
-        return withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO + Context.current().with(span).asContextElement()) {
             try {
                 // Try to get from local cache first
                 val cachedUser = getCachedUser(userId, span)
@@ -342,8 +358,8 @@ class UserRepository(
 
     private suspend fun getCachedUser(userId: String, parentSpan: Span): User? {
         val span = tracer.spanBuilder("UserRepository.getCachedUser")
-            .setParent(io.opentelemetry.context.Context.current().with(parentSpan))
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .setParent(Context.current().with(parentSpan))
+            .setSpanKind(SpanKind.INTERNAL)
             .setAttribute("user.id", userId)
             .startSpan()
 
@@ -363,28 +379,30 @@ class UserRepository(
 
     private suspend fun fetchUserFromNetwork(userId: String, parentSpan: Span): User {
         val span = tracer.spanBuilder("UserRepository.fetchUserFromNetwork")
-            .setParent(io.opentelemetry.context.Context.current().with(parentSpan))
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.CLIENT)
+            .setParent(Context.current().with(parentSpan))
+            .setSpanKind(SpanKind.CLIENT)
             .setAttribute("user.id", userId)
             .startSpan()
 
-        return try {
-            val user = apiClient.fetchUserProfile(userId)
-            span.setStatus(StatusCode.OK)
-            user
-        } catch (e: Exception) {
-            span.recordException(e)
-            span.setStatus(StatusCode.ERROR, "Network fetch failed")
-            throw e
-        } finally {
-            span.end()
+        return withContext(Context.current().with(span).asContextElement()) {
+            try {
+                val user = apiClient.fetchUserProfile(userId)
+                span.setStatus(StatusCode.OK)
+                user
+            } catch (e: Exception) {
+                span.recordException(e)
+                span.setStatus(StatusCode.ERROR, "Network fetch failed")
+                throw e
+            } finally {
+                span.end()
+            }
         }
     }
 
     private suspend fun cacheUser(user: User, parentSpan: Span) {
         val span = tracer.spanBuilder("UserRepository.cacheUser")
-            .setParent(io.opentelemetry.context.Context.current().with(parentSpan))
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .setParent(Context.current().with(parentSpan))
+            .setSpanKind(SpanKind.INTERNAL)
             .setAttribute("user.id", user.id)
             .startSpan()
 
@@ -412,7 +430,9 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.api.trace.Tracer
 
 @Dao
 abstract class UserDao {
@@ -430,7 +450,7 @@ abstract class UserDao {
     // Instrumented wrapper for getUserById
     suspend fun getUserById(userId: String): User? {
         val span = tracer.spanBuilder("Room.query.getUserById")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.CLIENT)
+            .setSpanKind(SpanKind.CLIENT)
             .setAttribute("db.system", "sqlite")
             .setAttribute("db.operation", "SELECT")
             .setAttribute("db.table", "users")
@@ -458,7 +478,7 @@ abstract class UserDao {
     // Instrumented wrapper for insertUser
     suspend fun insertUser(user: User) {
         val span = tracer.spanBuilder("Room.insert.user")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.CLIENT)
+            .setSpanKind(SpanKind.CLIENT)
             .setAttribute("db.system", "sqlite")
             .setAttribute("db.operation", "INSERT")
             .setAttribute("db.table", "users")
@@ -484,7 +504,7 @@ abstract class UserDao {
     // Instrumented wrapper for getStaleUsers
     suspend fun getStaleUsers(timestamp: Long): List<User> {
         val span = tracer.spanBuilder("Room.query.getStaleUsers")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.CLIENT)
+            .setSpanKind(SpanKind.CLIENT)
             .setAttribute("db.system", "sqlite")
             .setAttribute("db.operation", "SELECT")
             .setAttribute("db.table", "users")
@@ -497,7 +517,7 @@ abstract class UserDao {
             val duration = System.currentTimeMillis() - startTime
 
             span.setAttribute("db.duration_ms", duration)
-            span.setAttribute("db.result_count", results.size)
+            span.setAttribute("db.result_count", results.size.toLong())
             span.setStatus(StatusCode.OK)
             results
         } catch (e: Exception) {
@@ -517,8 +537,11 @@ Track user interactions to understand which features get used and how long opera
 
 ```kotlin
 import android.view.View
+import android.widget.Button
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.api.trace.Tracer
 
 class InstrumentedClickListener(
     private val tracer: Tracer,
@@ -528,9 +551,9 @@ class InstrumentedClickListener(
 
     override fun onClick(view: View) {
         val span = tracer.spanBuilder("user.interaction.$actionName")
-            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
-            .setAttribute("ui.element.id", view.id)
-            .setAttribute("ui.element.type", view::class.simpleName ?: "Unknown")
+            .setSpanKind(SpanKind.INTERNAL)
+            .setAttribute("ui.element.id", view.id.toLong())
+            .setAttribute("ui.element.type", view.javaClass.simpleName)
             .setAttribute("ui.action", "click")
             .startSpan()
 
