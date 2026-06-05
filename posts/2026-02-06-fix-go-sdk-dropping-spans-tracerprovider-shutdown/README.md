@@ -12,7 +12,7 @@ The most common cause of this silent data loss is that your application exits be
 
 ## How the Batch Processor Works
 
-The default span processor in OpenTelemetry Go is the `BatchSpanProcessor`. It collects spans in an internal queue and sends them in batches to the exporter. The default configuration is:
+When you configure OpenTelemetry Go with `sdktrace.WithBatcher(exporter)`, it uses a `BatchSpanProcessor`. It collects spans in an internal queue and sends them in batches to the exporter. The default configuration is:
 
 - `MaxQueueSize`: 2048 spans
 - `BatchTimeout`: 5 seconds
@@ -109,14 +109,18 @@ func main() {
     log.Println("shutting down...")
 
     // Give the server 15 seconds to finish in-flight requests
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    serverShutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
 
     // Shut down the HTTP server first so no new spans are created
-    srv.Shutdown(shutdownCtx)
+    if err := srv.Shutdown(serverShutdownCtx); err != nil {
+        log.Printf("server shutdown error: %v", err)
+    }
 
     // Then flush and shut down the tracer provider
-    if err := tp.Shutdown(shutdownCtx); err != nil {
+    tracerShutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    if err := tp.Shutdown(tracerShutdownCtx); err != nil {
         log.Printf("tracer provider shutdown error: %v", err)
     }
 
@@ -167,21 +171,21 @@ func runCLI() error {
 
 ## Verifying Spans Are Not Being Dropped
 
-Add a check to confirm that shutdown flushes everything:
+Add a check to confirm that shutdown has taken effect:
 
 ```go
-// After shutdown, the provider should reject new spans
+// After shutdown, the provider should not record new spans
 tp.Shutdown(ctx)
 
 // Try creating a span after shutdown - it should be a no-op
 _, span := otel.Tracer("test").Start(ctx, "after-shutdown")
 span.End()
 
-// The span above will be a NoopSpan, which is expected
-// This confirms the provider has been shut down
+// The span above will be non-recording/no-op, which is expected
+// This confirms that no new spans are accepted after shutdown
 ```
 
-You can also monitor the batch processor by checking the `otel.sdk.trace.spans_exported` metric if you have metrics instrumentation enabled.
+You can also monitor the batch processor by checking SDK metrics such as `otel.sdk.processor.span.queue.size`, `otel.sdk.processor.span.processed`, and `otel.sdk.exporter.span.exported` if SDK self-observability is enabled.
 
 ## Key Takeaway
 
