@@ -29,9 +29,11 @@ Add required gems to your Gemfile:
 
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
-gem 'opentelemetry-instrumentation-action_cable'
+gem 'opentelemetry-instrumentation-all'
 gem 'opentelemetry-instrumentation-rails'
 gem 'opentelemetry-instrumentation-redis'
+gem 'opentelemetry-metrics-sdk'
+gem 'opentelemetry-exporter-otlp-metrics'
 ```
 
 Install dependencies:
@@ -40,35 +42,36 @@ Install dependencies:
 bundle install
 ```
 
-Configure OpenTelemetry with ActionCable instrumentation:
+Configure OpenTelemetry for Rails and Redis instrumentation, plus custom metrics:
 
 ```ruby
 # config/initializers/opentelemetry.rb
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
+require 'opentelemetry-metrics-sdk'
+require 'opentelemetry/exporter/otlp_metrics'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-actioncable-app'
   c.service_version = '1.0.0'
 
   c.use_all({
-    'OpenTelemetry::Instrumentation::ActionCable' => {
-      # Enable detailed tracing
-      enable_redis_notification: true,
-      span_naming: :channel_name
-    },
     'OpenTelemetry::Instrumentation::Redis' => {},
     'OpenTelemetry::Instrumentation::Rails' => {}
   })
 end
+
+OpenTelemetry.meter_provider.add_metric_reader(
+  OpenTelemetry::Exporter::OTLP::Metrics::MetricsExporter.new
+)
 ```
 
-This automatically instruments connection handling, channel subscriptions, and message broadcasting.
+This automatically instruments Rails and Redis operations. ActionCable does not currently have a dedicated OpenTelemetry Ruby instrumentation package, so the ActionCable-specific connection, subscription, message, and broadcast spans below are added manually.
 
 ## Tracing WebSocket Connections
 
-ActionCable connection lifecycle is automatically traced, but add custom context:
+ActionCable connection lifecycle is not traced by the Rails instrumentation, but you can add custom spans:
 
 ```ruby
 # app/channels/application_cable/connection.rb
@@ -81,7 +84,7 @@ module ApplicationCable
 
       tracer.in_span('websocket_connect',
                      attributes: {
-                       'connection.id' => connection.connection_identifier,
+                       'connection.id' => connection_identifier,
                        'connection.origin' => request.origin
                      }) do |span|
 
@@ -102,7 +105,7 @@ module ApplicationCable
 
       tracer.in_span('websocket_disconnect',
                      attributes: {
-                       'connection.id' => connection.connection_identifier,
+                       'connection.id' => connection_identifier,
                        'user.id' => current_user&.id
                      }) do |span|
 
@@ -485,14 +488,14 @@ module ApplicationCable
     identified_by :current_user, :session_id
 
     def connect
-      @session_id = SecureRandom.uuid
+      self.session_id = SecureRandom.uuid
       @connected_at = Time.now
 
       tracer = OpenTelemetry.tracer_provider.tracer('actioncable-connection')
 
       tracer.in_span('websocket_connect',
                      attributes: {
-                       'session.id' => @session_id,
+                       'session.id' => session_id,
                        'connection.attempt' => connection_attempt_count
                      }) do |span|
 
@@ -519,7 +522,7 @@ module ApplicationCable
         # Store connection info
         ConnectionSession.create!(
           user: current_user,
-          session_id: @session_id,
+          session_id: session_id,
           connected_at: @connected_at
         )
       end
@@ -530,7 +533,7 @@ module ApplicationCable
 
       tracer.in_span('websocket_disconnect',
                      attributes: {
-                       'session.id' => @session_id,
+                       'session.id' => session_id,
                        'user.id' => current_user&.id
                      }) do |span|
 
@@ -538,7 +541,7 @@ module ApplicationCable
         span.set_attribute('connection.duration_seconds', duration.to_i)
 
         # Update session record
-        if session = ConnectionSession.find_by(session_id: @session_id)
+        if session = ConnectionSession.find_by(session_id: session_id)
           session.update!(
             disconnected_at: Time.now,
             duration_seconds: duration.to_i
@@ -649,9 +652,9 @@ module ApplicationCable
     def transmit_with_trace_context(data)
       current_span = OpenTelemetry::Trace.current_span
 
-      if current_span
-        data[:trace_id] = current_span.context.trace_id.unpack1('H*')
-        data[:span_id] = current_span.context.span_id.unpack1('H*')
+      if current_span.context.valid?
+        data[:trace_id] = current_span.context.hex_trace_id
+        data[:span_id] = current_span.context.hex_span_id
       end
 
       transmit(data)
