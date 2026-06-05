@@ -85,6 +85,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.urllib3 import URLLib3Instrumentor
 
 def configure_telemetry():
     """Initialize OpenTelemetry once for the function app."""
@@ -109,6 +111,10 @@ def configure_telemetry():
     # Set this as the global tracer provider
     trace.set_tracer_provider(provider)
 
+    # Instrument outgoing HTTP calls made with requests or urllib3
+    RequestsInstrumentor().instrument()
+    URLLib3Instrumentor().instrument()
+
     return trace.get_tracer(__name__)
 ```
 
@@ -122,6 +128,7 @@ Now use the tracer in your function code. The key thing is to call `configure_te
 
 import azure.functions as func
 import json
+from opentelemetry.trace import Status, StatusCode
 from telemetry import configure_telemetry
 
 # Initialize telemetry at module level (runs once on cold start)
@@ -156,7 +163,7 @@ def create_order(req: func.HttpRequest) -> func.HttpResponse:
 
         except Exception as e:
             # Record the exception on the span for error tracking
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             return func.HttpResponse(
                 json.dumps({"error": str(e)}),
@@ -200,7 +207,9 @@ The Node.js approach uses the OpenTelemetry SDK with a setup file that runs befo
 
 ```bash
 # Install OpenTelemetry packages for Node.js functions
-npm install @opentelemetry/sdk-node \
+npm install @azure/functions \
+            @opentelemetry/api \
+            @opentelemetry/sdk-node \
             @opentelemetry/sdk-trace-node \
             @opentelemetry/exporter-trace-otlp-grpc \
             @opentelemetry/instrumentation-http \
@@ -213,18 +222,18 @@ npm install @opentelemetry/sdk-node \
 Create the telemetry configuration file. In the v4 Node.js programming model, you can use the `main` field in package.json to load this before your functions.
 
 ```javascript
-// src/telemetry.js
+// src/index.js
 // OpenTelemetry setup for Azure Functions (Node.js)
 
 const { NodeSDK } = require("@opentelemetry/sdk-node");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-grpc");
 const { HttpInstrumentation } = require("@opentelemetry/instrumentation-http");
-const { Resource } = require("@opentelemetry/resources");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require("@opentelemetry/semantic-conventions");
 
 // Create the SDK with OTLP export
 const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
         [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "azure-func-node",
         [ATTR_SERVICE_VERSION]: "1.0.0",
     }),
@@ -242,7 +251,15 @@ process.on("SIGTERM", async () => {
     await sdk.shutdown();
 });
 
-module.exports = sdk;
+require("./functions/processOrder");
+```
+
+Then point the `main` field in `package.json` at the setup file.
+
+```json
+{
+  "main": "src/index.js"
+}
 ```
 
 ### Instrumented Function
@@ -309,17 +326,16 @@ async function processItems(items) {
 
 ## Instrumenting Azure Functions in .NET
 
-.NET Azure Functions have built-in support for OpenTelemetry through dependency injection.
+.NET isolated Azure Functions can configure OpenTelemetry through dependency injection.
 
 ### Install NuGet Packages
 
 ```bash
 # Install OpenTelemetry packages for .NET Functions
-dotnet add package OpenTelemetry
+dotnet add package Microsoft.Azure.Functions.Worker.OpenTelemetry
+dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
-dotnet add package OpenTelemetry.Instrumentation.Http
-dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 ```
 
 ### Configure in Program.cs
@@ -332,45 +348,17 @@ The .NET isolated worker model lets you configure OpenTelemetry in the host buil
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
-using OpenTelemetry.Metrics;
+using Microsoft.Azure.Functions.Worker.OpenTelemetry;
+using OpenTelemetry;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWorkerDefaults()
+    .ConfigureFunctionsWebApplication()
     .ConfigureServices(services =>
     {
         // Add OpenTelemetry tracing with OTLP export
         services.AddOpenTelemetry()
-            .ConfigureResource(resource =>
-            {
-                resource.AddService(
-                    serviceName: "order-functions-dotnet",
-                    serviceVersion: "1.0.0"
-                );
-            })
-            .WithTracing(tracing =>
-            {
-                tracing
-                    .AddAspNetCoreInstrumentation()  // Trace incoming HTTP triggers
-                    .AddHttpClientInstrumentation()    // Trace outgoing HTTP calls
-                    .AddSource("OrderFunctions")       // Listen for custom activity sources
-                    .AddOtlpExporter(options =>
-                    {
-                        // Send traces to your OTLP-compatible backend
-                        options.Endpoint = new Uri(
-                            Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
-                            ?? "http://localhost:4317"
-                        );
-                    });
-            })
-            .WithMetrics(metrics =>
-            {
-                metrics
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddOtlpExporter();
-            });
+            .UseFunctionsWorkerDefaults()
+            .UseOtlpExporter();
     })
     .Build();
 
