@@ -63,8 +63,8 @@ const meter = metrics.getMeter('rest-api-metrics');
 
 // Histogram for latency - tracks the distribution of response times
 const requestDuration = meter.createHistogram('http.server.request.duration', {
-  description: 'Duration of HTTP requests in milliseconds',
-  unit: 'ms',
+  description: 'Duration of HTTP server requests',
+  unit: 's',
 });
 
 // Counter for throughput - total number of requests
@@ -82,16 +82,18 @@ export function metricsMiddleware(req: any, res: any, next: any) {
 
   // Hook into the response finish event
   res.on('finish', () => {
-    const duration = Date.now() - startTime;
-    const route = req.route?.path || req.path || 'unknown';
+    const duration = (Date.now() - startTime) / 1000;
+    const route = req.route?.path
+      ? `${req.baseUrl || ''}${req.route.path}`
+      : 'unknown';
     const method = req.method;
     const statusCode = res.statusCode;
 
     // Common attributes for all metrics
     const attributes = {
-      'http.method': method,
+      'http.request.method': method,
       'http.route': route,
-      'http.status_code': statusCode,
+      'http.response.status_code': statusCode,
     };
 
     // Record latency
@@ -151,7 +153,7 @@ app.get('/api/orders', async (req, res) => {
 
   // Add attributes that help you filter and group traces
   span?.setAttribute('api.version', 'v1');
-  span?.setAttribute('user.tier', req.user?.tier || 'anonymous');
+  span?.setAttribute('user.tier', (req as any).user?.tier || 'anonymous');
   span?.setAttribute('query.limit', parseInt(req.query.limit as string) || 50);
 
   const orders = await fetchOrders(req.query);
@@ -178,7 +180,7 @@ The `http.server.request.duration` histogram gives you percentile breakdowns. Th
 
 Use `http.route` instead of `http.target` as your primary grouping attribute. If you use `http.target`, every unique URL (including path parameters and query strings) becomes a separate series, which causes cardinality explosion.
 
-Set meaningful histogram bucket boundaries for your latency histogram if the defaults do not match your SLO targets. For example, if your P99 target is 200ms, make sure you have buckets around that value.
+Set meaningful histogram bucket boundaries for your latency histogram if the defaults do not match your SLO targets. For example, if your P99 target is 200ms, make sure you have buckets around 0.2 seconds.
 
 Finally, always include the HTTP method in your metric attributes. A `GET` and a `POST` to the same route often have very different latency profiles, and lumping them together hides problems.
 
