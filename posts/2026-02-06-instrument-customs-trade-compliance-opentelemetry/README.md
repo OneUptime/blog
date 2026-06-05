@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Customs Declaration, Trade Compliance, International Logistics
 
-Description: Instrument customs declaration processing and trade compliance validation workflows with OpenTelemetry for full audit trail visibility.
+Description: Instrument customs declaration processing and trade compliance validation workflows with OpenTelemetry for audit trail visibility.
 
-International shipments must clear customs, and that involves a chain of validations: HS code classification, duty calculation, restricted party screening, country-of-origin verification, and document submission to government portals. Any step can fail or stall, holding up goods at the border. OpenTelemetry tracing gives you visibility into every stage of customs processing and, equally important, an audit trail that regulators expect.
+International shipments must clear customs, and that involves a chain of validations: HS code classification, duty calculation, restricted party screening, country-of-origin verification, and document submission to government portals. Any step can fail or stall, holding up goods at the border. OpenTelemetry tracing gives you visibility into every stage of customs processing and, equally important, telemetry that can support compliance audit trails.
 
 ## Setting Up Tracing for Customs Services
 
@@ -15,10 +15,13 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
-provider = TracerProvider()
+provider = TracerProvider(resource=Resource.create({
+    SERVICE_NAME: "customs-compliance"
+}))
 provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
 trace.set_tracer_provider(provider)
 
@@ -126,13 +129,20 @@ def screen_restricted_parties(shipment_id: str):
                         "party_name": match.party_name,
                         "match_score": match.score
                     })
-                results.extend(matches)
+                    results.append({
+                        "list_name": list_name,
+                        "party_name": match.party_name,
+                        "match_score": match.score
+                    })
 
         span.set_attribute("screening.total_matches", len(results))
+        first_match = results[0] if results else None
         return ScreeningResult(
             lists_checked=len(screening_lists),
             match_count=len(results),
-            cleared=len(results) == 0
+            cleared=len(results) == 0,
+            matched_list=first_match["list_name"] if first_match else None,
+            matched_entity=first_match["party_name"] if first_match else None
         )
 ```
 
@@ -140,6 +150,20 @@ def screen_restricted_parties(shipment_id: str):
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
+metrics_provider = MeterProvider(
+    resource=Resource.create({SERVICE_NAME: "customs-compliance"}),
+    metric_readers=[
+        PeriodicExportingMetricReader(
+            OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+        )
+    ]
+)
+metrics.set_meter_provider(metrics_provider)
 
 meter = metrics.get_meter("customs.compliance")
 
@@ -167,4 +191,4 @@ declarations_held = meter.create_counter(
 
 ## Why Tracing Matters for Trade Compliance
 
-Trade compliance is not just about speed. Regulators can audit your screening processes and you need to demonstrate that every shipment was properly checked against all required lists. OpenTelemetry traces serve as a detailed, timestamped record of every check performed, every list queried, and every result returned. This is significantly better than relying on application logs alone because the trace structure shows the causal relationship between steps, not just a flat list of log lines. When an auditor asks "was this shipment screened against the OFAC SDN list?", you can pull the trace and show the exact span with the query time, result, and match score.
+Trade compliance is not just about speed. Regulators can audit your screening processes and you need to demonstrate that every shipment was properly checked against all required lists. OpenTelemetry traces can support a detailed, timestamped record of every check performed, every list queried, and every result returned. This is significantly better than relying on application logs alone because the trace structure shows the causal relationship between steps, not just a flat list of log lines. When an auditor asks "was this shipment screened against the OFAC SDN list?", you can pull the trace and show the exact span with the query time, result, and match score.
