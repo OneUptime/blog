@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Standard, Semantic Conventions, Observability
 
 Description: A step-by-step approach to building an OpenTelemetry standards document that defines span naming, attribute schemas, and metric conventions across your organization.
 
-When you have five services, ad-hoc telemetry conventions are manageable. When you have fifty, they become a nightmare. Dashboards break because one team uses `http.status` and another uses `http.status_code`. Queries return partial results because span names follow different patterns. The solution is a standards document that every team references.
+When you have five services, ad-hoc telemetry conventions are manageable. When you have fifty, they become a nightmare. Dashboards break because one team uses `http.status_code` and another uses `http.response.status_code`. Queries return partial results because span names follow different patterns. The solution is a standards document that every team references.
 
 Here is how to create one that actually gets adopted.
 
@@ -32,7 +32,7 @@ resource:
   service.name: "order-service"          # Must match the Kubernetes deployment name
   service.version: "2.4.1"               # Semantic version from build pipeline
   service.namespace: "commerce"           # Business domain grouping
-  deployment.environment: "production"    # One of: production, staging, development
+  deployment.environment.name: "production" # One of: production, staging, development
   service.instance.id: "${POD_NAME}"      # Unique instance identifier
 ```
 
@@ -46,20 +46,20 @@ Define a clear pattern:
 
 ```text
 # HTTP server spans
-HTTP <method> <route>
-Example: HTTP GET /api/v1/orders/{id}
+<method> <route>
+Example: GET /api/v1/orders/{id}
 
 # HTTP client spans
-HTTP <method> <host>/<route>
-Example: HTTP POST payment-service/api/v1/charges
+<method> <url.template>
+Example: POST /api/v1/charges
 
 # Database spans
-<db.system> <db.operation> <db.sql.table>
-Example: postgresql SELECT orders
+<db.operation.name> <target>
+Example: SELECT orders
 
 # Message queue spans
-<messaging.system> <operation> <destination>
-Example: kafka publish order.events
+<messaging.operation.name> <destination>
+Example: send order.events
 
 # Custom business logic spans
 <domain>.<operation>
@@ -101,18 +101,19 @@ Metrics need even more discipline than traces because they directly power dashbo
 
 ```yaml
 # Metric naming pattern: <domain>.<entity>.<measurement>
-# Always include the unit in the metric name or description
+# Always include the unit in the instrument unit and description.
+# Only include the unit in the name if it removes ambiguity.
 
 # Good examples
-orders.checkout.duration_ms:       # Histogram, measures checkout latency
+order.checkout.duration:           # Histogram, measures checkout latency
   type: histogram
-  unit: milliseconds
+  unit: ms
   description: "Time from cart submission to order confirmation"
   attributes:
     - payment.method    # low cardinality: credit_card, paypal, wire
     - order.type        # low cardinality: one-time, subscription
 
-orders.created.count:              # Counter, counts new orders
+order.created.count:               # Counter, counts new orders
   type: counter
   unit: "1"
   description: "Number of orders successfully created"
@@ -122,7 +123,7 @@ orders.created.count:              # Counter, counts new orders
 # Bad examples (do NOT do this)
 checkout_time:                     # No domain prefix, ambiguous unit
 order_metric:                      # Completely meaningless name
-orders.created.count:
+order.created.count:
   attributes:
     - order.id          # NEVER: high cardinality in metric attributes
 ```
