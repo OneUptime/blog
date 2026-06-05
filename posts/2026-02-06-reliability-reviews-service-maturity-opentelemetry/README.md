@@ -76,6 +76,10 @@ Build an automated scorer that evaluates each service against the maturity model
 
 ```python
 # Automated service maturity scorer
+import json
+import operator
+import re
+
 import yaml
 import requests
 from opentelemetry import metrics
@@ -85,7 +89,7 @@ meter = metrics.get_meter("service.maturity")
 maturity_score = meter.create_gauge(
     "service.maturity.score",
     description="Current maturity level of a service (1-4)",
-    unit="level"
+    unit="1"
 )
 
 maturity_criteria_met = meter.create_counter(
@@ -125,7 +129,7 @@ class MaturityScorer:
                     "service.name": service_name,
                     "level": level_def["name"],
                     "criterion": criterion["metric"],
-                    "passed": str(passed),
+                    "passed": passed,
                 })
 
             all_passed = all(c["passed"] for c in criteria_results)
@@ -147,33 +151,35 @@ class MaturityScorer:
         return results
 
     def _get_metric_value(self, metric_name, service):
-        """Fetch metric value from Prometheus using OTel-generated metrics."""
+        """Fetch metric value from Prometheus using OTel-derived metrics."""
+        service_label = json.dumps(service)
         query_map = {
-            "otel.trace.coverage_pct": (
-                f'count(sum by (http_route) (rate(http_server_duration_count'
-                f'{{service_name="{service}"}}[7d])) > 0) / '
-                f'count(sum by (http_route) (rate(http_server_request_count_total'
-                f'{{service_name="{service}"}}[7d])) > 0) * 100'
-            ),
+            "otel.instrumentation.coverage": f'max(otel_instrumentation_coverage{{service_name={service_label}}})',
+            "slo.defined": f'max(slo_defined{{service_name={service_label}}})',
+            "otel.trace.coverage_pct": f'max(otel_trace_coverage_pct{{service_name={service_label}}})',
+            "otel.log.structured_pct": f'max(otel_log_structured_pct{{service_name={service_label}}})',
+            "otel.metric.custom_count": f'max(otel_metric_custom_count{{service_name={service_label}}})',
             "slo.compliance_30d": (
                 f'avg_over_time((sum(rate(sli_requests_successful_total'
-                f'{{service_name="{service}"}}[1h])) / '
-                f'sum(rate(sli_requests_total{{service_name="{service}"}}[1h])))[30d:1h])'
+                f'{{service_name={service_label}}}[1h])) / '
+                f'sum(rate(sli_requests_total{{service_name={service_label}}}[1h])))[30d:1h])'
             ),
             "incident.mttr_p50_minutes": (
-                f'histogram_quantile(0.50, rate(incident_mttr_seconds_bucket'
-                f'{{service_name="{service}"}}[30d])) / 60'
+                f'histogram_quantile(0.50, sum by (le) (rate(incident_mttr_seconds_bucket'
+                f'{{service_name={service_label}}}[30d]))) / 60'
             ),
             "oncall.pages_per_week": (
-                f'sum(increase(alerts_fired_total{{service_name="{service}",'
+                f'sum(increase(alerts_fired_total{{service_name={service_label},'
                 f'alert_severity=~"critical|warning"}}[7d]))'
             ),
+            "error_budget.remaining_pct": f'max(error_budget_remaining_pct{{service_name={service_label}}})',
             "dora.change_failure_rate": (
                 f'sum(increase(dora_deployments_failed_total'
-                f'{{service_name="{service}"}}[30d])) / '
+                f'{{service_name={service_label}}}[30d])) / '
                 f'sum(increase(dora_deployments_total'
-                f'{{service_name="{service}"}}[30d]))'
+                f'{{service_name={service_label}}}[30d]))'
             ),
+            "runbook.automation_pct": f'max(runbook_automation_pct{{service_name={service_label}}})',
         }
 
         query = query_map.get(metric_name)
@@ -188,6 +194,29 @@ class MaturityScorer:
         if result:
             return float(result[0]["value"][1])
         return None
+
+    def _evaluate_threshold(self, value, threshold):
+        """Evaluate thresholds like '> 80', '< 5', or 'true'."""
+        if value is None:
+            return False
+
+        threshold = str(threshold).strip().lower()
+        if threshold in ("true", "false"):
+            return bool(value) == (threshold == "true")
+
+        match = re.fullmatch(r"(>=|<=|>|<|==)\s*(-?\d+(?:\.\d+)?)", threshold)
+        if not match:
+            raise ValueError(f"Unsupported threshold: {threshold}")
+
+        op, expected = match.groups()
+        operators = {
+            ">": operator.gt,
+            ">=": operator.ge,
+            "<": operator.lt,
+            "<=": operator.le,
+            "==": operator.eq,
+        }
+        return operators[op](float(value), float(expected))
 ```
 
 ## Generating the Review Report
@@ -196,13 +225,16 @@ Produce a structured report for each reliability review session. This gives revi
 
 ```python
 # Generate a reliability review report
-def generate_review_report(scorer, services, output_format="markdown"):
+from datetime import datetime, timezone
+
+
+def generate_review_report(scorer, services, previous_scores=None, output_format="markdown"):
     """
     Score all services and generate a review report.
     This runs before each reliability review meeting.
     """
     report = {
-        "review_date": datetime.utcnow().isoformat(),
+        "review_date": datetime.now(timezone.utc).isoformat(),
         "services": [],
         "summary": {"level_1": 0, "level_2": 0, "level_3": 0, "level_4": 0}
     }
@@ -214,7 +246,7 @@ def generate_review_report(scorer, services, output_format="markdown"):
         report["summary"][level_key] = report["summary"].get(level_key, 0) + 1
 
     # Identify services that regressed since last review
-    previous_scores = load_previous_review()
+    previous_scores = previous_scores or {}
     regressions = []
     for service_result in report["services"]:
         name = service_result["service"]
@@ -286,10 +318,10 @@ Use these queries to build dashboards that support reliability reviews.
 
 ```promql
 # Distribution of services across maturity levels
-count by (service_name) (service_maturity_score == 1)  # Level 1 services
-count by (service_name) (service_maturity_score == 2)  # Level 2 services
-count by (service_name) (service_maturity_score == 3)  # Level 3 services
-count by (service_name) (service_maturity_score == 4)  # Level 4 services
+count(service_maturity_score == 1)  # Count of Level 1 services
+count(service_maturity_score == 2)  # Count of Level 2 services
+count(service_maturity_score == 3)  # Count of Level 3 services
+count(service_maturity_score == 4)  # Count of Level 4 services
 
 # Average maturity score across the organization
 avg(service_maturity_score)
