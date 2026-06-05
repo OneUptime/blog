@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Elixir, Jaeger, Exporter, Tracing, Backend
 
 Description: Configure OpenTelemetry in your Elixir applications to export trace data to Jaeger for powerful distributed tracing visualization.
 
-Jaeger has become one of the most popular distributed tracing backends, providing powerful visualization, analysis, and debugging capabilities for microservices. While Jaeger originally used its own instrumentation format, it now fully supports OpenTelemetry, making it an excellent choice for Elixir applications. Getting trace data from your Elixir services into Jaeger requires proper configuration of exporters and understanding the export pipeline.
+Jaeger has become one of the most popular distributed tracing backends, providing powerful visualization, analysis, and debugging capabilities for microservices. While Jaeger originally used its own instrumentation format, it can now receive OpenTelemetry Protocol (OTLP) data, making it an excellent choice for Elixir applications. Getting trace data from your Elixir services into Jaeger requires proper configuration of exporters and understanding the export pipeline.
 
 ## Why Export to Jaeger
 
-Jaeger offers several compelling features for analyzing traces from Elixir applications. Its UI provides intuitive trace visualization that shows the complete request flow through your system, including timing breakdowns and service dependencies. The architecture search feature helps identify performance bottlenecks by analyzing trace patterns across your infrastructure.
+Jaeger offers several compelling features for analyzing traces from Elixir applications. Its UI provides intuitive trace visualization that shows the complete request flow through your system, including timing breakdowns and service dependencies. Its trace search and dependency graph features help identify performance bottlenecks by analyzing trace patterns across your infrastructure.
 
 Unlike simple logging, Jaeger's trace view connects related operations across service boundaries. You can drill down from a high-level request to see every GenServer call, database query, and external API request involved. This level of detail is essential for debugging distributed Elixir systems where failures might cascade through multiple services.
 
@@ -25,13 +25,12 @@ graph LR
     A[Elixir Application] -->|Spans| B[OpenTelemetry SDK]
     B -->|Batched| C[Span Processor]
     C -->|OTLP/gRPC or OTLP/HTTP| D[OpenTelemetry Collector]
-    D -->|Jaeger Format| E[Jaeger Backend]
+    D -->|OTLP/gRPC| E[Jaeger Collector/Backend]
     E -->|Query| F[Jaeger UI]
-    A -->|Alternative: Direct Export| G[Jaeger Agent]
-    G -->|Jaeger Format| E
+    A -->|Alternative: Direct OTLP Export| E
 ```
 
-The recommended approach uses the OpenTelemetry Protocol (OTLP) to send spans to an OpenTelemetry Collector, which then forwards them to Jaeger. This architecture provides flexibility for changing backends, adding sampling rules, and processing spans before storage. Alternatively, you can export directly to Jaeger, though this couples your application more tightly to Jaeger's specific format.
+The recommended approach uses the OpenTelemetry Protocol (OTLP) to send spans to an OpenTelemetry Collector, which then forwards them to Jaeger over OTLP. This architecture provides flexibility for changing backends, adding sampling rules, and processing spans before storage. Alternatively, you can export OTLP directly to Jaeger, though this gives you less room to process or route telemetry before storage.
 
 ## Setting Up Jaeger
 
@@ -43,6 +42,7 @@ Before configuring your Elixir application, you need a running Jaeger instance. 
 docker run -d --name jaeger \
   -e COLLECTOR_OTLP_ENABLED=true \
   -p 16686:16686 \
+  -p 14269:14269 \
   -p 4317:4317 \
   -p 4318:4318 \
   jaegertracing/all-in-one:latest
@@ -50,6 +50,7 @@ docker run -d --name jaeger \
 
 This command starts Jaeger with multiple ports:
 - 16686: Jaeger UI for viewing traces
+- 14269: Jaeger admin endpoint for health checks and metrics
 - 4317: OTLP gRPC endpoint for receiving traces
 - 4318: OTLP HTTP endpoint for receiving traces
 
@@ -61,6 +62,8 @@ For production, deploy Jaeger with separate components for better scalability:
 docker run -d --name jaeger-collector \
   -e SPAN_STORAGE_TYPE=elasticsearch \
   -e ES_SERVER_URLS=http://elasticsearch:9200 \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -p 14269:14269 \
   -p 4317:4317 \
   -p 4318:4318 \
   jaegertracing/jaeger-collector:latest
@@ -80,10 +83,10 @@ Add the necessary dependencies to your `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:opentelemetry, "~> 1.3"},
-    {:opentelemetry_api, "~> 1.2"},
-    {:opentelemetry_exporter, "~> 1.6"},
-    {:opentelemetry_telemetry, "~> 1.0"}
+    {:opentelemetry_exporter, "~> 1.10"},
+    {:opentelemetry, "~> 1.7"},
+    {:opentelemetry_api, "~> 1.5"},
+    {:opentelemetry_telemetry, "~> 1.1"}
   ]
 end
 ```
@@ -95,14 +98,13 @@ Configure the OTLP exporter in your application configuration:
 import Config
 
 # Configure OpenTelemetry resource attributes
-config :opentelemetry, :resource,
-  service: [
-    name: "my-elixir-service",
-    version: "1.0.0"
-  ]
-
-# Configure the batch span processor
 config :opentelemetry,
+  resource: %{
+    service: %{
+      name: "my-elixir-service",
+      version: "1.0.0"
+    }
+  },
   span_processor: :batch,
   traces_exporter: :otlp
 
@@ -135,17 +137,17 @@ if config_env() == :prod do
   # Production configuration with authentication
   config :opentelemetry_exporter,
     otlp_protocol: :http_protobuf,
-    otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    otlp_endpoint: System.fetch_env!("OTEL_EXPORTER_OTLP_ENDPOINT"),
     otlp_headers: [
-      {"x-api-key", System.get_env("OTEL_API_KEY")}
+      {"x-api-key", System.fetch_env!("OTEL_API_KEY")}
     ]
 
   # More aggressive batching for high throughput
   config :opentelemetry,
-    traces_exporter: {:otlp, %{
-      scheduled_delay_ms: 5000,
-      max_queue_size: 2048
-    }}
+    span_processor: :batch,
+    traces_exporter: :otlp,
+    bsp_scheduled_delay_ms: 5000,
+    bsp_max_queue_size: 2048
 else
   # Development configuration
   config :opentelemetry_exporter,
@@ -165,7 +167,7 @@ defmodule MyApp.Application do
   require Logger
 
   def start(_type, _args) do
-    # Configure OpenTelemetry before starting supervision tree
+    # Verify OpenTelemetry configuration before starting supervision tree
     setup_opentelemetry()
 
     children = [
@@ -179,9 +181,6 @@ defmodule MyApp.Application do
   end
 
   defp setup_opentelemetry do
-    # Register the application tracer
-    OpentelemetryTelemetry.register_application_tracer(:my_app)
-
     # Verify exporter configuration
     case verify_exporter_config() do
       :ok ->
@@ -276,7 +275,7 @@ These spans are automatically batched and exported to Jaeger based on your confi
 
 ## Customizing Export Behavior
 
-Fine-tune the export behavior for your application's needs:
+Fine-tune the export behavior for your application's needs. Set these application environment values before the `:opentelemetry` application starts, such as from `config/runtime.exs`:
 
 ```elixir
 defmodule MyApp.Telemetry do
@@ -290,69 +289,39 @@ defmodule MyApp.Telemetry do
 
     # Add custom resource attributes
     configure_resource_attributes()
-
-    # Set up span filters to exclude noisy operations
-    configure_span_filters()
   end
 
   defp configure_span_processor do
-    # Create a batch processor with custom settings
-    processor_config = %{
-      # Maximum time between exports (milliseconds)
-      scheduled_delay_ms: 5000,
-      # Maximum number of spans in a batch
-      max_queue_size: 2048,
-      # Maximum number of spans to export at once
-      max_export_batch_size: 512,
-      # Timeout for export operations
-      exporter_timeout_ms: 30_000
-    }
-
     # The batch processor is configured via application env
-    Application.put_env(:opentelemetry, :processors, [
-      {:otel_batch_processor, processor_config}
-    ])
+    Application.put_env(:opentelemetry, :span_processor, :batch)
+    Application.put_env(:opentelemetry, :traces_exporter, :otlp)
+    Application.put_env(:opentelemetry, :bsp_scheduled_delay_ms, 5000)
+    Application.put_env(:opentelemetry, :bsp_max_queue_size, 2048)
+    Application.put_env(:opentelemetry, :bsp_exporting_timeout_ms, 30_000)
   end
 
   defp configure_resource_attributes do
     # Add custom attributes to all spans
-    additional_attributes = [
-      deployment: [
+    additional_attributes = %{
+      deployment: %{
         environment: System.get_env("DEPLOYMENT_ENV", "development"),
         region: System.get_env("REGION", "us-east-1")
-      ],
-      host: [
+      },
+      host: %{
         name: System.get_env("HOSTNAME", "localhost"),
         type: System.get_env("INSTANCE_TYPE", "local")
-      ]
-    ]
+      }
+    }
 
-    current_resource = Application.get_env(:opentelemetry, :resource, [])
-    merged_resource = Keyword.merge(current_resource, additional_attributes)
+    current_resource = Application.get_env(:opentelemetry, :resource, %{})
+    merged_resource = Map.merge(current_resource, additional_attributes)
 
     Application.put_env(:opentelemetry, :resource, merged_resource)
   end
-
-  defp configure_span_filters do
-    # Filter out health check spans to reduce noise
-    :otel_batch_processor.set_exporter(fn spans ->
-      filtered_spans = Enum.reject(spans, &health_check_span?/1)
-      :opentelemetry_exporter.export(filtered_spans)
-    end)
-  end
-
-  defp health_check_span?(span) do
-    # Check if this is a health check request
-    attributes = :otel_span.attributes(span)
-
-    case Enum.find(attributes, fn {key, _value} -> key == "http.target" end) do
-      {_key, "/health"} -> true
-      {_key, "/healthz"} -> true
-      _ -> false
-    end
-  end
 end
 ```
+
+For filtering noisy spans such as health checks, prefer the OpenTelemetry Collector `filter` processor. The Erlang batch processor's runtime `set_exporter` functions are deprecated, so replacing the exporter inside your application is not the right place to do span filtering.
 
 ## Handling Export Failures
 
@@ -409,10 +378,10 @@ defmodule MyApp.ExporterHealthCheck do
   end
 
   defp check_exporter_health do
-    # Test the connection to the OTLP endpoint
-    endpoint = Application.get_env(:opentelemetry_exporter, :otlp_endpoint)
+    # Test the Jaeger admin health endpoint
+    health_url = System.get_env("JAEGER_HEALTH_URL", "http://localhost:14269/")
 
-    case HTTPoison.get("#{endpoint}/health") do
+    case HTTPoison.get(health_url) do
       {:ok, %{status_code: 200}} -> :ok
       {:ok, %{status_code: code}} -> {:error, "HTTP #{code}"}
       {:error, error} -> {:error, error}
@@ -453,7 +422,7 @@ defmodule MyApp.TracingTest do
     end
 
     # Force flush to ensure span is exported
-    :otel_batch_processor.force_flush()
+    :otel_tracer_provider.force_flush()
 
     # Wait for export and indexing
     Process.sleep(2000)
@@ -497,7 +466,6 @@ defmodule MyApp.Config.Tracing do
       # Aggressive batching reduces overhead
       scheduled_delay_ms: 10_000,
       max_queue_size: 4096,
-      max_export_batch_size: 1024,
 
       # Longer timeout for large batches
       exporter_timeout_ms: 60_000,
@@ -506,7 +474,9 @@ defmodule MyApp.Config.Tracing do
       sampler: {:parent_based, %{
         root: {:trace_id_ratio_based, 0.1},  # Sample 10% of traces
         remote_parent_sampled: :always_on,
-        remote_parent_not_sampled: :always_off
+        remote_parent_not_sampled: :always_off,
+        local_parent_sampled: :always_on,
+        local_parent_not_sampled: :always_off
       }}
     }
   end
@@ -515,14 +485,11 @@ defmodule MyApp.Config.Tracing do
     Application.put_env(:opentelemetry_exporter, :otlp_protocol, config.protocol)
     Application.put_env(:opentelemetry_exporter, :otlp_endpoint, config.endpoint)
 
-    Application.put_env(:opentelemetry, :processors, [
-      {:otel_batch_processor, %{
-        scheduled_delay_ms: config.scheduled_delay_ms,
-        max_queue_size: config.max_queue_size,
-        max_export_batch_size: config.max_export_batch_size,
-        exporter_timeout_ms: config.exporter_timeout_ms
-      }}
-    ])
+    Application.put_env(:opentelemetry, :span_processor, :batch)
+    Application.put_env(:opentelemetry, :traces_exporter, :otlp)
+    Application.put_env(:opentelemetry, :bsp_scheduled_delay_ms, config.scheduled_delay_ms)
+    Application.put_env(:opentelemetry, :bsp_max_queue_size, config.max_queue_size)
+    Application.put_env(:opentelemetry, :bsp_exporting_timeout_ms, config.exporter_timeout_ms)
 
     Application.put_env(:opentelemetry, :sampler, config.sampler)
   end
@@ -531,70 +498,13 @@ end
 
 ## Monitoring Export Metrics
 
-Track exporter performance with telemetry events:
+Track exporter and backend performance through the Collector or Jaeger metrics endpoints. For the local Jaeger container above, the admin endpoint exposes Prometheus metrics:
 
-```elixir
-defmodule MyApp.ExporterMetrics do
-  require Logger
-
-  def attach_handlers do
-    events = [
-      [:otel, :batch_processor, :export, :start],
-      [:otel, :batch_processor, :export, :stop],
-      [:otel, :batch_processor, :export, :exception]
-    ]
-
-    :telemetry.attach_many(
-      "otel-exporter-metrics",
-      events,
-      &handle_event/4,
-      nil
-    )
-  end
-
-  def handle_event(
-        [:otel, :batch_processor, :export, :start],
-        _measurements,
-        %{span_count: count},
-        _config
-      ) do
-    Logger.debug("Exporting #{count} spans to Jaeger")
-  end
-
-  def handle_event(
-        [:otel, :batch_processor, :export, :stop],
-        %{duration: duration},
-        %{span_count: count},
-        _config
-      ) do
-    duration_ms = System.convert_time_unit(duration, :native, :millisecond)
-    Logger.debug("Exported #{count} spans in #{duration_ms}ms")
-
-    # Record metrics for monitoring
-    :telemetry.execute(
-      [:my_app, :otel_export],
-      %{duration: duration_ms, span_count: count},
-      %{}
-    )
-  end
-
-  def handle_event(
-        [:otel, :batch_processor, :export, :exception],
-        _measurements,
-        %{kind: kind, reason: reason},
-        _config
-      ) do
-    Logger.error("Span export failed: #{kind} - #{inspect(reason)}")
-
-    # Record error metric
-    :telemetry.execute(
-      [:my_app, :otel_export, :error],
-      %{count: 1},
-      %{kind: kind}
-    )
-  end
-end
+```bash
+curl http://localhost:14269/metrics | grep jaeger_collector
 ```
+
+When you run a separate OpenTelemetry Collector, expose its telemetry endpoint and scrape its `otelcol_exporter_*`, `otelcol_receiver_*`, and `otelcol_processor_*` metrics from Prometheus.
 
 ## Using the OpenTelemetry Collector
 
@@ -627,8 +537,8 @@ processors:
     sampling_percentage: 10
 
 exporters:
-  jaeger:
-    endpoint: jaeger-collector:14250
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true
 
@@ -637,7 +547,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, probabilistic_sampler, batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 Deploy the collector alongside your services:
