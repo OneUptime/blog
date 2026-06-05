@@ -29,9 +29,10 @@ The debug output is verbose. Here is what to look for:
 ### Successful Startup
 
 ```text
-[otel.javaagent] INFO - opentelemetry-javaagent 1.32.0
+[otel.javaagent] INFO - opentelemetry-javaagent 2.28.1
 [otel.javaagent] INFO - Runtime configuration:
-  otel.exporter.otlp.endpoint = http://localhost:4317
+  otel.exporter.otlp.endpoint = http://localhost:4318
+  otel.exporter.otlp.protocol = http/protobuf
   otel.service.name = my-service
 [otel.javaagent] DEBUG - Transformed class javax/servlet/http/HttpServlet
 [otel.javaagent] DEBUG - Transformed class org/springframework/web/servlet/FrameworkServlet
@@ -150,7 +151,7 @@ exec java \
 If debug output is too verbose, use the logging configuration to focus on specific areas:
 
 ```bash
-# Only show instrumentation-related debug messages
+# Use the default simple logger to print agent logs to stderr
 -Dotel.javaagent.logging=simple
 -Dotel.javaagent.debug=true
 ```
