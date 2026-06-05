@@ -51,7 +51,7 @@ otel:
       timeout: 10000
   resource:
     attributes:
-      deployment.environment: "${DEPLOY_ENV}"
+      deployment.environment.name: "${DEPLOY_ENV}"
       service.namespace: "mycompany"
   traces:
     sampler: "parentbased_traceidratio"
@@ -73,10 +73,11 @@ export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_EXPORTER_OTLP_TIMEOUT="10000"
 export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
 export OTEL_TRACES_SAMPLER_ARG="0.1"
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=${DEPLOY_ENV},service.namespace=mycompany"
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=${DEPLOY_ENV},service.namespace=mycompany"
+export OTEL_LOG_LEVEL="info"
 ```
 
-Since all OpenTelemetry SDKs respect the same environment variables, this single set of env vars works for Java, Python, Go, Node.js, and every other supported language.
+OpenTelemetry defines standard environment variables for SDK configuration, and the official SDKs for Java, Python, Go, and Node.js support the variables used here through SDK configuration, exporter configuration, or language-specific initialization code.
 
 ## Language-Specific Initialization Libraries
 
@@ -93,13 +94,15 @@ package otelgo
 import (
     "context"
     "os"
+    "strconv"
+    "strings"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // Init configures the global tracer provider with the standard
@@ -112,8 +115,8 @@ func Init(ctx context.Context, serviceName string) (func(), error) {
 
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName(serviceName),
-            semconv.ServiceVersion(os.Getenv("SERVICE_VERSION")),
+            semconv.ServiceNameKey.String(serviceName),
+            semconv.ServiceVersionKey.String(os.Getenv("SERVICE_VERSION")),
         ),
         resource.WithFromEnv(),
     )
@@ -124,12 +127,43 @@ func Init(ctx context.Context, serviceName string) (func(), error) {
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
         sdktrace.WithResource(res),
+        sdktrace.WithSampler(samplerFromEnv()),
     )
 
     otel.SetTracerProvider(tp)
-    otel.SetTextMapPropagator(propagation.TraceContext{})
+    otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    ))
 
     return func() { tp.Shutdown(context.Background()) }, nil
+}
+
+func samplerFromEnv() sdktrace.Sampler {
+    switch strings.ToLower(os.Getenv("OTEL_TRACES_SAMPLER")) {
+    case "always_off":
+        return sdktrace.NeverSample()
+    case "traceidratio":
+        return sdktrace.TraceIDRatioBased(samplingRatioFromEnv())
+    case "parentbased_traceidratio":
+        return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRatioFromEnv()))
+    case "parentbased_always_off":
+        return sdktrace.ParentBased(sdktrace.NeverSample())
+    case "always_on":
+        return sdktrace.AlwaysSample()
+    case "", "parentbased_always_on":
+        return sdktrace.ParentBased(sdktrace.AlwaysSample())
+    default:
+        return sdktrace.ParentBased(sdktrace.AlwaysSample())
+    }
+}
+
+func samplingRatioFromEnv() float64 {
+    ratio, err := strconv.ParseFloat(os.Getenv("OTEL_TRACES_SAMPLER_ARG"), 64)
+    if err != nil {
+        return 1.0
+    }
+    return ratio
 }
 ```
 
@@ -142,8 +176,8 @@ func Init(ctx context.Context, serviceName string) (func(), error) {
 //   node --require @monorepo/otel-node app.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
 // The SDK reads OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT
@@ -277,7 +311,8 @@ data:
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
   OTEL_TRACES_SAMPLER_ARG: "0.1"
-  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=production,service.namespace=mycompany"
+  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=production,service.namespace=mycompany"
+  OTEL_LOG_LEVEL: "info"
 ```
 
 Each service deployment references this ConfigMap:
@@ -315,9 +350,12 @@ For Node.js services using a tool like Turborepo or Nx, define the OpenTelemetry
 ```json
 {
   "resolutions": {
-    "@opentelemetry/sdk-node": "0.52.0",
-    "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/exporter-trace-otlp-http": "0.52.0"
+    "@opentelemetry/sdk-node": "0.218.0",
+    "@opentelemetry/sdk-metrics": "2.7.1",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "0.76.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.218.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.218.0"
   }
 }
 ```
@@ -327,9 +365,9 @@ For Python services, maintain a shared constraints file:
 ```text
 # packages/otel-config/python-constraints.txt
 # Pin OpenTelemetry versions across all Python services
-opentelemetry-api==1.25.0
-opentelemetry-sdk==1.25.0
-opentelemetry-exporter-otlp-proto-http==1.25.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
 ```
 
 ## Conclusion
