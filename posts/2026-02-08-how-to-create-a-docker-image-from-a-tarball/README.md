@@ -78,7 +78,7 @@ tar -C myroot -c . | docker import \
     - myapp:v1
 ```
 
-Supported `--change` instructions include CMD, ENTRYPOINT, ENV, EXPOSE, ONBUILD, USER, VOLUME, and WORKDIR.
+Supported `--change` instructions include CMD, ENTRYPOINT, ENV, EXPOSE, HEALTHCHECK, LABEL, ONBUILD, STOPSIGNAL, USER, VOLUME, and WORKDIR.
 
 ## Creating a Minimal Root Filesystem
 
@@ -120,16 +120,16 @@ Alpine provides pre-built minimal root filesystems that are perfect for this pur
 
 ```bash
 # Download Alpine's mini root filesystem
-wget https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-minirootfs-3.19.0-x86_64.tar.gz
+wget https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/alpine-minirootfs-3.23.4-x86_64.tar.gz
 
 # Import directly from the compressed archive
 docker import \
     --change 'CMD ["/bin/sh"]' \
-    alpine-minirootfs-3.19.0-x86_64.tar.gz alpine:custom
+    alpine-minirootfs-3.23.4-x86_64.tar.gz alpine:custom
 
 # Verify it works
 docker run --rm alpine:custom cat /etc/alpine-release
-# Output: 3.19.0
+# Output: 3.23.4
 ```
 
 ### Using DNF/YUM (Red Hat/Fedora)
@@ -141,7 +141,7 @@ Create a minimal Red Hat-based rootfs:
 mkdir -p fedora-root
 
 # Install a minimal system using dnf
-sudo dnf --installroot=$(pwd)/fedora-root --releasever=39 \
+sudo dnf --installroot=$(pwd)/fedora-root --releasever=44 \
     install -y --setopt=install_weak_deps=False \
     bash coreutils
 
@@ -201,12 +201,12 @@ cp -r ./my-application/* $ROOT/app/
 # Use ldd to find dependencies
 for lib in $(ldd ./my-application/server 2>/dev/null | grep "=>" | awk '{print $3}'); do
     if [ -f "$lib" ]; then
-        cp "$lib" "$ROOT/lib/"
+        cp --parents "$lib" "$ROOT/"
     fi
 done
 
 # Copy the dynamic linker
-cp /lib64/ld-linux-x86-64.so.2 $ROOT/lib/ 2>/dev/null || true
+cp --parents /lib64/ld-linux-x86-64.so.2 "$ROOT/" 2>/dev/null || true
 
 # Create a configuration file
 cat > $ROOT/etc/app.conf << 'CONF'
@@ -271,7 +271,7 @@ docker import nginx-export.tar nginx:imported
 
 # The loaded image has all original layers
 docker image inspect nginx:alpine --format "Layers: {{len .RootFS.Layers}}"
-# Layers: 7
+# Layers: <multiple layers, depending on the image version>
 
 # The imported image has just one layer
 docker image inspect nginx:imported --format "Layers: {{len .RootFS.Layers}}"
@@ -328,7 +328,7 @@ ROOT_DIR := ./rootfs
 .PHONY: rootfs image clean
 
 rootfs:
-	mkdir -p $(ROOT_DIR)/{app,etc,tmp}
+	mkdir -p $(ROOT_DIR)/app $(ROOT_DIR)/etc $(ROOT_DIR)/tmp
 	cp -r src/* $(ROOT_DIR)/app/
 	cp config/* $(ROOT_DIR)/etc/
 
