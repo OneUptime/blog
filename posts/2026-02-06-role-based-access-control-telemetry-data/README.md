@@ -53,13 +53,14 @@ This configuration sets resource attributes that identify the team and environme
 # otel-sdk-config.yaml
 
 # Set resource attributes to identify the owning team and environment
+file_format: "1.0"
 resource:
   attributes:
-    - key: team.name
+    - name: team.name
       value: "payments"
-    - key: service.namespace
+    - name: service.namespace
       value: "fintech-platform"
-    - key: environment
+    - name: deployment.environment.name
       value: "production"
 ```
 
@@ -89,15 +90,22 @@ This configuration routes traces to different exporters based on the team.name r
 
 ```yaml
 # collector-routing.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 connectors:
   # Route telemetry to different pipelines based on team ownership
   routing:
     default_pipelines: [traces/default]
     error_mode: ignore
     table:
-      - statement: route() where resource.attributes["team.name"] == "payments"
+      - context: resource
+        condition: attributes["team.name"] == "payments"
         pipelines: [traces/payments]
-      - statement: route() where resource.attributes["team.name"] == "platform"
+      - context: resource
+        condition: attributes["team.name"] == "platform"
         pipelines: [traces/platform]
 
 exporters:
@@ -105,16 +113,25 @@ exporters:
   otlp/payments:
     endpoint: "https://telemetry-backend:4317"
     headers:
-      X-Tenant-ID: "payments"
+      X-Scope-OrgID: "payments"
 
   # Platform team data goes to a separate endpoint
   otlp/platform:
     endpoint: "https://telemetry-backend:4317"
     headers:
-      X-Tenant-ID: "platform"
+      X-Scope-OrgID: "platform"
+
+  # Untagged data goes to a default tenant
+  otlp/default:
+    endpoint: "https://telemetry-backend:4317"
+    headers:
+      X-Scope-OrgID: "default"
 
 service:
   pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
     traces/payments:
       receivers: [routing]
       exporters: [otlp/payments]
@@ -123,7 +140,7 @@ service:
       exporters: [otlp/platform]
     traces/default:
       receivers: [routing]
-      exporters: [otlp/payments]
+      exporters: [otlp/default]
 ```
 
 ## Step 3: Enforce Access Controls at the Backend
@@ -140,6 +157,7 @@ apiVersion: 1
 datasources:
   # Tempo datasource scoped to payments team tenant
   - name: Tempo-Payments
+    uid: tempo-payments
     type: tempo
     access: proxy
     url: http://tempo:3200
@@ -149,22 +167,26 @@ datasources:
       httpHeaderValue1: "payments"
 ```
 
-For Grafana's RBAC, you can create teams and assign folder-level permissions so that the payments team can only access dashboards in their folder.
+For Grafana Enterprise or Grafana Cloud RBAC, you can create a custom role and assign it to the payments team so that the team can read only its folder and query only its tenant-scoped datasource.
 
-```json
-{
-  "name": "Payments Team",
-  "permissions": [
-    {
-      "action": "dashboards:read",
-      "scope": "folders:uid:payments-folder"
-    },
-    {
-      "action": "datasources:query",
-      "scope": "datasources:name:Tempo-Payments"
-    }
-  ]
-}
+```yaml
+# provisioning/access-control/payments-rbac.yaml
+apiVersion: 2
+roles:
+  - name: custom:payments:viewer
+    uid: custom-payments-viewer
+    description: Read payments dashboards and query the payments Tempo datasource.
+    version: 1
+    orgId: 1
+    permissions:
+      - action: dashboards:read
+        scope: folders:uid:payments-folder
+      - action: folders:read
+        scope: folders:uid:payments-folder
+      - action: datasources:read
+        scope: datasources:uid:tempo-payments
+      - action: datasources:query
+        scope: datasources:uid:tempo-payments
 ```
 
 ## Step 4: Implement Attribute-Level Redaction
