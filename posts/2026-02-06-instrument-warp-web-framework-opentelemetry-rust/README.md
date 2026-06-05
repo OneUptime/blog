@@ -48,28 +48,25 @@ Add required crates to your `Cargo.toml`:
 ```toml
 [dependencies]
 # Warp web framework
-
-warp = "0.3"
+warp = { version = "0.4", features = ["server", "test", "websocket"] }
 
 # OpenTelemetry ecosystem
-opentelemetry = "0.22"
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.15", features = ["tonic"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 
 # Tracing integration
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.23"
-
-# HTTP semantic conventions
-opentelemetry-semantic-conventions = "0.14"
+tracing-opentelemetry = "0.33"
 
 # Async runtime
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+futures-util = "0.3"
 ```
 
 ## Initialize OpenTelemetry Tracer
@@ -77,28 +74,27 @@ serde_json = "1.0"
 Set up the tracing pipeline with HTTP semantic conventions:
 
 ```rust
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace::TracerProvider, Resource};
+use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint("http://localhost:4317");
+fn init_tracer() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            opentelemetry_sdk::trace::Config::default()
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "warp-web-service"),
-                    KeyValue::new("service.version", "1.0.0"),
-                    KeyValue::new("deployment.environment", "production"),
-                ]))
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_attribute(KeyValue::new("service.name", "warp-web-service"))
+                .with_attribute(KeyValue::new("service.version", "1.0.0"))
+                .with_attribute(KeyValue::new("deployment.environment", "production"))
+                .build(),
         )
-        .install_batch(runtime::Tokio)?;
+        .build();
 
     let telemetry = tracing_opentelemetry::layer()
         .with_tracer(provider.tracer("warp-service"));
@@ -107,7 +103,10 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
         .with(EnvFilter::from_default_env())
         .with(telemetry)
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init()
+        .ok();
+
+    opentelemetry::global::set_tracer_provider(provider.clone());
 
     Ok(provider)
 }
@@ -115,39 +114,22 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
 
 ## Tracing Filter for HTTP Requests
 
-Create a Warp filter that automatically traces all HTTP requests:
+Use Warp's trace wrapper to create a request span around each route:
 
 ```rust
 use warp::Filter;
-use tracing::{info, info_span, Instrument};
-use std::time::Instant;
-
-fn with_tracing() -> impl Filter<Extract = (), Error = std::convert::Infallible> + Clone {
-    warp::any()
-        .and(warp::method())
-        .and(warp::path::full())
-        .and(warp::header::optional::<String>("user-agent"))
-        .and_then(|method: warp::http::Method, path: warp::path::FullPath, user_agent: Option<String>| async move {
-            let span = info_span!(
-                "http_request",
-                http.method = %method,
-                http.target = %path.as_str(),
-                http.user_agent = user_agent.as_deref().unwrap_or("unknown"),
-            );
-
-            let _enter = span.enter();
-
-            info!("Request received");
-
-            Ok::<_, std::convert::Infallible>(())
-        })
-        .untuple_one()
-}
+use tracing::info_span;
 
 // Apply tracing to routes
-fn traced_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    with_tracing()
-        .and(api_routes())
+fn traced_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    api_routes().with(warp::trace::trace(|info| {
+        info_span!(
+            "http_request",
+            http.method = %info.method(),
+            http.target = %info.path(),
+            http.user_agent = info.user_agent().unwrap_or("unknown"),
+        )
+    }))
 }
 ```
 
@@ -230,12 +212,12 @@ async fn delete_user_handler(user_id: u64) -> Result<impl warp::Reply, warp::Rej
 Compose filters with tracing for complex routes:
 
 ```rust
-fn api_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn api_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     users_routes()
         .or(health_route())
 }
 
-fn users_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn users_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     let create_user = warp::path!("users")
         .and(warp::post())
         .and(warp::body::json())
@@ -252,7 +234,7 @@ fn users_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejec
     create_user.or(get_user).or(delete_user)
 }
 
-fn health_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn health_route() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("health")
         .and(warp::get())
         .and_then(health_handler)
@@ -326,7 +308,7 @@ fn with_auth() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
 }
 
 // Apply auth filter to protected routes
-fn protected_routes() -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+fn protected_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = Rejection> + Clone {
     warp::path!("protected" / "data")
         .and(warp::get())
         .and(with_auth())
@@ -360,10 +342,9 @@ Create middleware that measures request duration:
 use std::time::Instant;
 use tracing::warn;
 
-fn with_timing() -> impl Filter<Extract = (), Error = std::convert::Infallible> + Clone {
+fn with_timing() -> impl Filter<Extract = (Instant,), Error = std::convert::Infallible> + Clone {
     warp::any()
         .map(|| Instant::now())
-        .untuple_one()
 }
 
 async fn log_timing(start: Instant) {
@@ -384,7 +365,7 @@ async fn log_timing(start: Instant) {
 }
 
 // Combine timing with other filters
-fn timed_routes() -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+fn timed_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = Rejection> + Clone {
     with_timing()
         .and(api_routes())
         .then(|start: Instant, reply| async move {
@@ -409,7 +390,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, std::conve
         code = StatusCode::NOT_FOUND;
         message = "Not Found";
         error!("Route not found");
-    } else if let Some(Unauthorized) = err.find() {
+    } else if err.find::<Unauthorized>().is_some() {
         code = StatusCode::UNAUTHORIZED;
         message = "Unauthorized";
         error!("Authentication failed");
@@ -444,9 +425,9 @@ Instrument WebSocket connections for real-time communication:
 
 ```rust
 use warp::ws::{Message, WebSocket};
-use futures::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 
-fn websocket_route() -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+fn websocket_route() -> impl Filter<Extract = (impl warp::Reply,), Error = Rejection> + Clone {
     warp::path!("ws")
         .and(warp::ws())
         .and_then(websocket_handler)
@@ -522,12 +503,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Warp server with OpenTelemetry");
 
     // Build complete route tree
-    let routes = with_tracing()
-        .and(
-            api_routes()
-                .or(protected_routes())
-                .or(websocket_route())
-        )
+    let routes = api_routes()
+        .or(protected_routes())
+        .or(websocket_route())
+        .with(warp::trace::request())
         .recover(handle_rejection);
 
     // Add CORS if needed
@@ -553,7 +532,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Flush spans before exit
-    opentelemetry::global::shutdown_tracer_provider();
     provider.shutdown()?;
 
     info!("Server shutdown complete");
@@ -562,9 +540,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Testing with Trace Propagation
+## Testing Traced Routes
 
-Write tests that verify trace context propagation:
+Write tests that exercise traced routes and rejection handling:
 
 ```rust
 #[cfg(test)]
@@ -593,7 +571,7 @@ mod tests {
     async fn test_auth_filter() {
         let provider = init_tracer().unwrap();
 
-        let api = protected_routes();
+        let api = protected_routes().recover(handle_rejection);
 
         // Test without auth
         let response = request()
