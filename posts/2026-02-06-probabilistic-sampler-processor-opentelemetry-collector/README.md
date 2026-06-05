@@ -52,7 +52,7 @@ processors:
 
     # Optional: Hash seed for reproducibility
     # Same seed + trace ID = same decision
-    # Leave unset for random seed
+    # Leave unset to use the default seed of 0
     hash_seed: 42
 
 exporters:
@@ -71,11 +71,26 @@ service:
 
 ## Sampling Modes
 
-The probabilistic sampler supports two modes: proportional and equalizing.
+The probabilistic sampler supports three modes: hash_seed, proportional, and equalizing.
 
-### Proportional Mode (Default)
+### Hash Seed Mode (Default)
 
-Respects upstream sampling decisions. If a trace is already sampled at 50% upstream and you sample at 10%, the effective rate is 5% (0.5 × 0.1).
+Hashes the trace ID with the configured `hash_seed` and compares the result with the sampling percentage. This is the default mode and preserves the processor's original behavior.
+
+```yaml
+processors:
+  probabilistic_sampler:
+    # Default mode - can be explicit
+    mode: hash_seed
+
+    # Sample 10% using FNV hash of the trace ID
+    sampling_percentage: 10
+    hash_seed: 42
+```
+
+### Proportional Mode
+
+Reduces the incoming telemetry volume proportionally. If a trace stream has already been sampled at 50% upstream and you sample the incoming stream at 10%, the effective rate relative to the original stream is 5% (0.5 × 0.1).
 
 ```yaml
 processors:
@@ -84,17 +99,12 @@ processors:
     # Effective rate = upstream_rate × local_rate
     sampling_percentage: 10
 
-    # Default mode - can be explicit
     mode: proportional
-
-    # When using proportional mode, you can set different rates
-    # for traces that have no prior sampling information
-    sampling_percentage_for_missing_priority: 10
 ```
 
 ### Equalizing Mode
 
-Adjusts sampling to achieve a target rate regardless of upstream decisions. If upstream sampled at 50% and you want 10% final rate, this mode samples at 20% (0.5 × 0.2 = 0.1).
+Adjusts sampling threshold information to bring mixed upstream sampling probabilities down to the configured target. If upstream sampled at 50% and you want a 10% final rate, this mode keeps 20% of that incoming stream (0.5 × 0.2 = 0.1). Already-sampled items at the configured target can pass through unchanged.
 
 ```yaml
 processors:
@@ -105,9 +115,6 @@ processors:
 
     # Enable equalizing mode
     mode: equalizing
-
-    # Traces without sampling info use this rate
-    sampling_percentage_for_missing_priority: 10
 ```
 
 ## Attribute-Based Sampling Configuration
@@ -115,17 +122,23 @@ processors:
 While the basic probabilistic sampler uses only the trace ID, you can combine it with other processors for attribute-based logic:
 
 ```yaml
-processors:
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+connectors:
   # Route traces to different pipelines based on attributes
   routing:
-    default_pipelines:
-      - traces/sampled
+    default_pipelines: [traces/sampled]
     table:
       # High-priority traces go to different pipeline
-      - statement: route() where attributes["priority"] == "high"
-        pipelines:
-          - traces/high-priority
+      - context: span
+        condition: attributes["priority"] == "high"
+        pipelines: [traces/high-priority]
 
+processors:
   # Sample regular traffic at 10%
   probabilistic_sampler/regular:
     sampling_percentage: 10
@@ -142,15 +155,20 @@ exporters:
 
 service:
   pipelines:
+    # Intake pipeline routes traces to downstream pipelines
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
+
     # Pipeline for regular traces
     traces/sampled:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [probabilistic_sampler/regular]
       exporters: [otlp]
 
     # Pipeline for high-priority traces
     traces/high-priority:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [probabilistic_sampler/high-priority]
       exporters: [otlp]
 ```
@@ -212,9 +230,9 @@ While the collector doesn't support dynamic rate adjustment natively, you can im
 processors:
   probabilistic_sampler:
     # Reference environment variable for dynamic control
-    # Update env var and reload collector to change rate
-    sampling_percentage: ${SAMPLING_RATE}
-    hash_seed: ${SAMPLING_SEED:42}  # Default to 42 if not set
+    # Update env var and restart or reload collector to change rate
+    sampling_percentage: ${env:SAMPLING_RATE}
+    hash_seed: ${env:SAMPLING_SEED:-42}  # Default to 42 if not set
 
 exporters:
   otlp:
@@ -238,11 +256,11 @@ export SAMPLING_RATE=10
 export SAMPLING_SEED=12345
 
 # Run collector
-otelcol --config config.yaml
+otelcol --config=config.yaml
 
-# To change rate at runtime, update env and send SIGHUP
+# To change the rate, update the collector's environment and restart or reload it
 export SAMPLING_RATE=25
-kill -SIGHUP $(pidof otelcol)
+otelcol --config=config.yaml
 ```
 
 ## Per-Environment Sampling
@@ -257,21 +275,21 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Filter processor to route by environment
+  # Filter processors drop spans that do not belong to each environment
   filter/production:
-    traces:
-      span:
-        - 'attributes["deployment.environment"] == "production"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["deployment.environment"] != "production"'
 
   filter/staging:
-    traces:
-      span:
-        - 'attributes["deployment.environment"] == "staging"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["deployment.environment"] != "staging"'
 
   filter/development:
-    traces:
-      span:
-        - 'attributes["deployment.environment"] == "development"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["deployment.environment"] != "development"'
 
   # Different sampling rates per environment
   probabilistic_sampler/production:
@@ -354,7 +372,8 @@ processors:
         latency:
           threshold_ms: 1000
 
-      # Sample remaining at 40% (effective: 25% × 40% = 10%)
+      # Keep a 40% random baseline from the 25% that passed probabilistic sampling
+      # Error and latency policies can raise the final rate above the baseline
       - name: baseline
         type: probabilistic
         probabilistic:
@@ -393,7 +412,7 @@ receivers:
 
 processors:
   # Add batch processor for efficiency
-  # Groups spans before sampling decisions
+  # Groups sampled spans before export
   batch:
     timeout: 1s
     send_batch_size: 1024
@@ -402,33 +421,30 @@ processors:
   # Probabilistic sampling
   probabilistic_sampler:
     # Sample 10% of traces
-    sampling_percentage: ${SAMPLING_PERCENTAGE:10}
+    sampling_percentage: ${env:SAMPLING_PERCENTAGE:-10}
 
     # Use consistent hash seed for reproducibility
     # Useful for testing and debugging
-    hash_seed: ${SAMPLING_HASH_SEED:42}
+    hash_seed: ${env:SAMPLING_HASH_SEED:-42}
 
     # Equalizing mode for consistent rate
-    mode: ${SAMPLING_MODE:equalizing}
-
-    # Rate for traces without sampling priority
-    sampling_percentage_for_missing_priority: 10
+    mode: ${env:SAMPLING_MODE:-equalizing}
 
   # Add sampling decision as attribute for analysis
   attributes:
     actions:
       - key: sampling.probabilistic.rate
-        value: "${SAMPLING_PERCENTAGE:10}"
+        value: "${env:SAMPLING_PERCENTAGE:-10}"
         action: insert
       - key: sampling.probabilistic.seed
-        value: "${SAMPLING_HASH_SEED:42}"
+        value: "${env:SAMPLING_HASH_SEED:-42}"
         action: insert
 
 exporters:
   otlp:
-    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:https://oneuptime.com/otlp}
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://oneuptime.com/otlp}
     headers:
-      x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+      x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 
     # Configure timeouts and retries
     timeout: 30s
@@ -443,18 +459,18 @@ exporters:
 
   # Optional: Export to multiple backends
   otlp/backup:
-    endpoint: ${BACKUP_OTLP_ENDPOINT}
+    endpoint: https://backup.example.com:4317
     headers:
-      authorization: Bearer ${BACKUP_TOKEN}
+      authorization: Bearer BACKUP_TOKEN
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors:
-        - batch
         - probabilistic_sampler
         - attributes
+        - batch
       exporters: [otlp, otlp/backup]
 
   # Monitor sampler performance
@@ -468,7 +484,7 @@ service:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
                 headers:
-                  x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+                  x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 ```
 
 ## Sampling Rate Selection Guidelines
@@ -529,14 +545,13 @@ service:
 ```
 
 Key metrics to monitor:
-- `otelcol_processor_probabilistic_sampler_count_traces_sampled` - Traces sampled
-- `otelcol_processor_probabilistic_sampler_sampling_percentage` - Current sampling rate
-- `otelcol_processor_dropped_spans` - Spans dropped by sampling
+- `otelcol_processor_probabilistic_sampler_count_traces_sampled_total{sampled="true"}` - Spans kept by the sampler
+- `otelcol_processor_probabilistic_sampler_count_traces_sampled_total{sampled="false"}` - Spans dropped by the sampler
 - `otelcol_receiver_accepted_spans` - Total spans received
 
 Calculate actual sampling rate:
 ```text
-Actual Rate = (sampled_traces / total_traces) × 100
+Actual Rate = (sampled_true / (sampled_true + sampled_false)) × 100
 ```
 
 ## Troubleshooting
@@ -559,7 +574,7 @@ Actual Rate = (sampled_traces / total_traces) × 100
 - Check if multiple probabilistic samplers are in the pipeline (rates multiply)
 - Verify upstream sampling isn't reducing the rate
 - Use `equalizing` mode if upstream sampling is affecting results
-- Monitor `sampling_percentage_for_missing_priority` usage
+- Compare sampled and not-sampled sampler metrics
 
 ### Higher Than Expected Costs
 
