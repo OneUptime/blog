@@ -76,6 +76,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.context.Scope;
 import org.neo4j.driver.*;
 
 import java.util.List;
@@ -100,13 +101,13 @@ public class TracedNeo4jSession {
         // Create a span named after the operation type and description
         Span span = tracer.spanBuilder("Neo4j READ: " + description)
             .setSpanKind(SpanKind.CLIENT)
-            .setAttribute(AttributeKey.stringKey("db.system"), "neo4j")
-            .setAttribute(AttributeKey.stringKey("db.name"), databaseName)
-            .setAttribute(AttributeKey.stringKey("db.operation"), "READ")
-            .setAttribute(AttributeKey.stringKey("db.statement"), cypher)
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "neo4j")
+            .setAttribute(AttributeKey.stringKey("db.namespace"), databaseName)
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), "READ")
+            .setAttribute(AttributeKey.stringKey("db.query.text"), cypher)
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Execute within a read transaction for optimal routing
             T result = session.executeRead(tx -> {
                 Result queryResult = tx.run(cypher, params);
@@ -131,13 +132,13 @@ public class TracedNeo4jSession {
                                    java.util.function.Function<Result, T> mapper) {
         Span span = tracer.spanBuilder("Neo4j WRITE: " + description)
             .setSpanKind(SpanKind.CLIENT)
-            .setAttribute(AttributeKey.stringKey("db.system"), "neo4j")
-            .setAttribute(AttributeKey.stringKey("db.name"), databaseName)
-            .setAttribute(AttributeKey.stringKey("db.operation"), "WRITE")
-            .setAttribute(AttributeKey.stringKey("db.statement"), cypher)
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "neo4j")
+            .setAttribute(AttributeKey.stringKey("db.namespace"), databaseName)
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), "WRITE")
+            .setAttribute(AttributeKey.stringKey("db.query.text"), cypher)
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             T result = session.executeWrite(tx -> {
                 Result queryResult = tx.run(cypher, params);
                 return mapper.apply(queryResult);
@@ -165,7 +166,9 @@ Here is how you use the traced session in your application code.
 ```java
 // Usage example - Tracing a graph query for user recommendations
 TracedNeo4jSession tracedSession = new TracedNeo4jSession(
-    driver.session(), tracer, "social-graph"
+    driver.session(SessionConfig.builder().withDatabase("social-graph").build()),
+    tracer,
+    "social-graph"
 );
 
 // This Cypher query finds friends-of-friends who share common interests
@@ -245,23 +248,25 @@ class TracedSession:
             name=f"Neo4j {operation_name}",
             kind=SpanKind.CLIENT,
             attributes={
-                "db.system": "neo4j",
-                "db.name": self.database,
-                "db.statement": cypher,
-                "db.operation": operation_name.upper(),
+                "db.system.name": "neo4j",
+                "db.namespace": self.database,
+                "db.query.text": cypher,
+                "db.operation.name": operation_name.upper(),
             }
         ) as span:
             try:
                 result = self.session.run(cypher, parameters or {})
                 # Consume the result and count records
                 records = list(result)
-                span.set_attribute("db.neo4j.records_returned", len(records))
+                span.set_attribute("db.response.returned_rows", len(records))
 
                 # Capture query plan summary if available
                 summary = result.consume()
                 if summary.plan:
-                    span.set_attribute("db.neo4j.plan_operator",
-                                      summary.plan.operator_type)
+                    operator_type = summary.plan.get("operatorType")
+                    if operator_type:
+                        span.set_attribute("db.neo4j.plan_operator",
+                                           operator_type)
 
                 return records
             except Exception as e:
@@ -283,7 +288,7 @@ with driver.traced_session() as session:
     results = session.run_query(
         cypher="""
             MATCH path = shortestPath(
-                (a:Person {name: $from})-[:KNOWS*]-(b:Person {name: $to})
+                (a:Person {name: $from})-[:KNOWS*1..5]-(b:Person {name: $to})
             )
             RETURN [node IN nodes(path) | node.name] AS names,
                    length(path) AS hops
@@ -300,7 +305,6 @@ For Node.js applications, you can instrument the Neo4j JavaScript driver using a
 ```javascript
 // traced-neo4j.js - OpenTelemetry tracing for Neo4j Node.js driver
 const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
-const neo4j = require('neo4j-driver');
 
 // Create a tracer for Neo4j operations
 const tracer = trace.getTracer('neo4j-instrumentation', '1.0.0');
@@ -309,22 +313,25 @@ const tracer = trace.getTracer('neo4j-instrumentation', '1.0.0');
  * Execute a traced Cypher query against Neo4j.
  * Creates an OpenTelemetry span with database semantic conventions.
  */
-async function tracedQuery(session, cypher, params = {}, operationName = 'query') {
+async function tracedQuery(session, cypher, params = {}, operationName = 'query', databaseName) {
     // Start a span for this database call
     return tracer.startActiveSpan(
         `Neo4j ${operationName}`,
         { kind: SpanKind.CLIENT },
         async (span) => {
             // Set standard database attributes
-            span.setAttribute('db.system', 'neo4j');
-            span.setAttribute('db.statement', cypher);
-            span.setAttribute('db.operation', operationName.toUpperCase());
+            span.setAttribute('db.system.name', 'neo4j');
+            if (databaseName) {
+                span.setAttribute('db.namespace', databaseName);
+            }
+            span.setAttribute('db.query.text', cypher);
+            span.setAttribute('db.operation.name', operationName.toUpperCase());
 
             try {
                 const result = await session.run(cypher, params);
 
                 // Record how many records were returned
-                span.setAttribute('db.neo4j.records_returned',
+                span.setAttribute('db.response.returned_rows',
                     result.records.length);
 
                 // Capture query statistics from the summary
@@ -365,7 +372,8 @@ async function findConnections(driver, fromId, toId) {
              RETURN path
              LIMIT 5`,
             { fromId, toId },
-            'find-connections'
+            'find-connections',
+            'social'
         );
         return result.records.map(r => r.get('path'));
     } finally {
@@ -382,11 +390,11 @@ Graph database spans benefit from additional attributes beyond the standard data
 
 | Attribute | Description |
 |-----------|-------------|
-| `db.system` | Always `neo4j` |
-| `db.name` | The Neo4j database name |
-| `db.statement` | The Cypher query text |
-| `db.operation` | READ, WRITE, or the operation name |
-| `db.neo4j.records_returned` | Number of records in the result |
+| `db.system.name` | Always `neo4j` |
+| `db.namespace` | The Neo4j database name |
+| `db.query.text` | The Cypher query text |
+| `db.operation.name` | READ, WRITE, or the operation name |
+| `db.response.returned_rows` | Number of records in the result |
 | `db.neo4j.nodes_created` | Nodes created by write operations |
 | `db.neo4j.relationships_created` | Relationships created |
 | `db.neo4j.plan_operator` | Root operator from the query plan |
@@ -439,8 +447,8 @@ Graph queries have a unique performance characteristic: they can start fast and 
 Watch for these warning signs in your traces:
 
 - **Variable-length path queries** (`-[:KNOWS*1..6]-`) with high durations. These are the most common source of Neo4j performance problems.
-- **Large result sets.** If `db.neo4j.records_returned` is consistently high, the query may be returning more data than the application needs.
+- **Large result sets.** If `db.response.returned_rows` is consistently high, the query may be returning more data than the application needs.
 - **Write operations that take longer than reads.** Neo4j write transactions acquire locks, and slow writes can indicate lock contention.
-- **Queries without a leading label scan.** If the Cypher query does not start with a labeled node lookup, Neo4j performs a full graph scan. You can detect this by examining the query plan operator.
+- **Queries that cannot use a label or index lookup.** If the planner cannot anchor the Cypher query on labels or indexes, Neo4j may fall back to an `AllNodesScan`. You can detect this by examining the query plan operator.
 
 OpenTelemetry tracing turns Neo4j from a black box into a transparent component of your system. When your application slows down, you can immediately see whether the graph database is the bottleneck and which specific queries need optimization.
