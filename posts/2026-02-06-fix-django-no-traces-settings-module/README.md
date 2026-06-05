@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Django, Python, Configuration
 
 Description: Resolve the silent failure where Django OpenTelemetry instrumentation produces no traces due to a missing DJANGO_SETTINGS_MODULE.
 
-The OpenTelemetry Django instrumentation requires `DJANGO_SETTINGS_MODULE` to be set as an environment variable before the instrumentation is applied. Without it, Django's internals are not properly initialized, and the instrumentation silently fails to produce spans. There is no error message pointing to this specific issue.
+The OpenTelemetry Django instrumentation requires `DJANGO_SETTINGS_MODULE` to be set as an environment variable before the instrumentation is applied. Without it, the instrumentor cannot read your real Django settings and may fall back to empty settings, so Django middleware is not patched as expected. In normal runs there is no visible error message pointing to this specific issue.
 
 ## The Problem
 
@@ -26,7 +26,7 @@ DjangoInstrumentor().instrument()
 
 ## Why It Happens
 
-Django's URL routing, middleware, and request handling are all configured via the settings module. The Django instrumentation wraps Django's request handling pipeline. If `DJANGO_SETTINGS_MODULE` is not set, Django cannot resolve its configuration, and the instrumentation's attempt to patch the request pipeline fails silently.
+Django's URL routing, middleware, and request handling are all configured via the settings module. The Django instrumentation wraps Django's request handling pipeline by adding OpenTelemetry middleware to Django's configured middleware list. If `DJANGO_SETTINGS_MODULE` is not set when instrumentation runs, the instrumentor cannot read that list and may configure an empty settings object instead.
 
 ## The Fix
 
@@ -144,8 +144,7 @@ bind = "0.0.0.0:8000"
 workers = 4
 
 def post_fork(server, worker):
-    from opentelemetry.instrumentation.django import DjangoInstrumentor
-    DjangoInstrumentor().instrument()
+    import myproject.tracing  # noqa: F401
 ```
 
 ## Docker Setup
@@ -173,12 +172,21 @@ OTEL_TRACES_EXPORTER=console \
 opentelemetry-instrument python manage.py runserver
 ```
 
-Make a request and check stdout for spans like:
+Make a request and check stdout for exported span objects like:
 
 ```text
-GET /api/users  [================] 45ms
-  django.middleware  [==]  5ms
-  django.view  [============]  35ms
+{
+    "name": "GET /api/users",
+    "context": {
+        "trace_id": "0x...",
+        "span_id": "0x..."
+    },
+    "kind": "SpanKind.SERVER",
+    "attributes": {
+        "http.request.method": "GET",
+        "url.path": "/api/users"
+    }
+}
 ```
 
 ## Common Related Issues
