@@ -78,37 +78,32 @@ meter = metrics.get_meter("llm-cost-tracker")
 Create dedicated metrics for token usage, cost, and latency. Histograms work best here because they let you compute percentiles, averages, and totals from the same instrument.
 
 ```python
-# Token usage histograms - track distribution of token counts per request
-input_token_metric = meter.create_histogram(
-    name="gen_ai.usage.input_tokens",
-    description="Number of input tokens per LLM request",
-    unit="tokens",
-)
-
-output_token_metric = meter.create_histogram(
-    name="gen_ai.usage.output_tokens",
-    description="Number of output tokens per LLM request",
-    unit="tokens",
-)
-
-total_token_metric = meter.create_histogram(
-    name="gen_ai.usage.total_tokens",
-    description="Total tokens (input + output) per LLM request",
-    unit="tokens",
+# Token usage histogram - record input and output separately with gen_ai.token.type
+token_usage_metric = meter.create_histogram(
+    name="gen_ai.client.token.usage",
+    description="Number of input and output tokens used per GenAI operation",
+    unit="{token}",
 )
 
 # Cost metric - track the dollar cost of each LLM request
 cost_metric = meter.create_histogram(
-    name="gen_ai.usage.cost",
+    name="gen_ai.client.cost",
     description="Estimated cost in USD per LLM request",
     unit="USD",
 )
 
 # Latency metric - track how long each LLM call takes
 latency_metric = meter.create_histogram(
-    name="gen_ai.latency",
-    description="Latency of LLM API calls in milliseconds",
-    unit="ms",
+    name="gen_ai.client.operation.duration",
+    description="Duration of GenAI client operations",
+    unit="s",
+)
+
+# Streaming responsiveness metric - track time to first streamed chunk
+ttft_metric = meter.create_histogram(
+    name="gen_ai.client.operation.time_to_first_chunk",
+    description="Time to first streamed response chunk",
+    unit="s",
 )
 
 # Counter for total requests - useful for rate calculations
@@ -131,9 +126,21 @@ error_counter = meter.create_counter(
 To calculate costs, you need a pricing table that maps models to their per-token rates. Keep this as configuration so you can update it when providers change pricing.
 
 ```python
-# Pricing per 1 million tokens as of early 2026
+# Pricing per 1 million tokens as of June 2026
 # Update these values when providers change their pricing
 MODEL_PRICING = {
+    "gpt-5.5": {
+        "input_per_million": 5.00,
+        "output_per_million": 30.00,
+    },
+    "gpt-5.4": {
+        "input_per_million": 2.50,
+        "output_per_million": 15.00,
+    },
+    "gpt-5.4-mini": {
+        "input_per_million": 0.75,
+        "output_per_million": 4.50,
+    },
     "gpt-4o": {
         "input_per_million": 2.50,
         "output_per_million": 10.00,
@@ -142,21 +149,17 @@ MODEL_PRICING = {
         "input_per_million": 0.15,
         "output_per_million": 0.60,
     },
-    "gpt-4-turbo": {
-        "input_per_million": 10.00,
-        "output_per_million": 30.00,
-    },
-    "claude-sonnet-4-20250514": {
+    "claude-sonnet-4-6": {
         "input_per_million": 3.00,
         "output_per_million": 15.00,
     },
-    "claude-haiku-35": {
-        "input_per_million": 0.80,
-        "output_per_million": 4.00,
+    "claude-haiku-4-5-20251001": {
+        "input_per_million": 1.00,
+        "output_per_million": 5.00,
     },
-    "claude-opus-4-20250514": {
-        "input_per_million": 15.00,
-        "output_per_million": 75.00,
+    "claude-opus-4-7": {
+        "input_per_million": 5.00,
+        "output_per_million": 25.00,
     },
 }
 
@@ -186,7 +189,7 @@ from opentelemetry import trace
 
 def tracked_llm_call(
     messages: list,
-    model: str = "gpt-4o",
+    model: str = "gpt-5.4",
     feature: str = "unknown",
     user_id: str = "anonymous",
 ) -> dict:
@@ -194,13 +197,15 @@ def tracked_llm_call(
 
     # Common labels for all metrics - these enable filtering and grouping
     metric_labels = {
-        "gen_ai.system": "openai",
+        "gen_ai.provider.name": "openai",
+        "gen_ai.operation.name": "chat",
         "gen_ai.request.model": model,
         "feature": feature,  # Which product feature triggered this call
     }
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("feature", feature)
         span.set_attribute("user_id", user_id)
@@ -219,7 +224,8 @@ def tracked_llm_call(
             )
 
             # Calculate elapsed time in milliseconds
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            elapsed_s = time.perf_counter() - start_time
+            elapsed_ms = elapsed_s * 1000
 
             # Extract token counts from the response
             input_tokens = response.usage.prompt_tokens
@@ -230,11 +236,19 @@ def tracked_llm_call(
             cost = calculate_cost(model, input_tokens, output_tokens)
 
             # Record all metrics
-            input_token_metric.record(input_tokens, metric_labels)
-            output_token_metric.record(output_tokens, metric_labels)
-            total_token_metric.record(total_tokens, metric_labels)
+            token_usage_metric.record(
+                input_tokens,
+                {**metric_labels, "gen_ai.token.type": "input"},
+            )
+            token_usage_metric.record(
+                output_tokens,
+                {**metric_labels, "gen_ai.token.type": "output"},
+            )
             cost_metric.record(cost, metric_labels)
-            latency_metric.record(elapsed_ms, metric_labels)
+            latency_metric.record(elapsed_s, metric_labels)
+
+            if "budget" in globals():
+                budget.record_cost(cost)
 
             # Also record on the span for per-request investigation
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
@@ -253,8 +267,11 @@ def tracked_llm_call(
             }
 
         except Exception as e:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
-            latency_metric.record(elapsed_ms, metric_labels)
+            elapsed_s = time.perf_counter() - start_time
+            latency_metric.record(
+                elapsed_s,
+                {**metric_labels, "error.type": type(e).__name__},
+            )
             error_counter.add(1, {**metric_labels, "error.type": type(e).__name__})
             span.set_status(trace.StatusCode.ERROR, str(e))
             span.record_exception(e)
@@ -271,7 +288,7 @@ One of the most useful things you can do is tag each LLM call with the product f
 # Tag calls by feature for cost attribution
 result = tracked_llm_call(
     messages=[{"role": "user", "content": "Summarize this document..."}],
-    model="gpt-4o",
+    model="gpt-5.4",
     feature="document_summarization",
     user_id="user-12345",
 )
@@ -287,8 +304,8 @@ result = tracked_llm_call(
 This produces metrics like:
 
 ```text
-gen_ai.usage.cost{feature="document_summarization", model="gpt-4o"} = 0.0125
-gen_ai.usage.cost{feature="translation", model="gpt-4o-mini"} = 0.00008
+gen_ai.client.cost{feature="document_summarization", gen_ai.request.model="gpt-5.4"} = 0.0125
+gen_ai.client.cost{feature="translation", gen_ai.request.model="gpt-4o-mini"} = 0.00008
 ```
 
 ---
@@ -314,12 +331,14 @@ class BudgetTracker:
         self.spend_gauge = meter.create_observable_gauge(
             name="gen_ai.budget.daily_spend",
             description="Current daily LLM spend in USD",
+            unit="USD",
             callbacks=[self._observe_spend],
         )
 
         self.budget_gauge = meter.create_observable_gauge(
             name="gen_ai.budget.daily_limit",
             description="Daily LLM budget limit in USD",
+            unit="USD",
             callbacks=[self._observe_budget],
         )
 
@@ -365,11 +384,12 @@ budget = BudgetTracker(daily_budget_usd=50.0)
 For streaming responses, total latency doesn't tell the whole story. Users perceive time-to-first-token (TTFT) as responsiveness. Here's how to measure it.
 
 ```python
-def stream_with_ttft(messages: list, model: str = "gpt-4o"):
+def stream_with_ttft(messages: list, model: str = "gpt-5.4"):
     """Stream a response and measure time to first token."""
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.stream", True)
 
@@ -389,19 +409,39 @@ def stream_with_ttft(messages: list, model: str = "gpt-4o"):
                 # Record the time to first token
                 if first_token_time is None:
                     first_token_time = time.perf_counter()
-                    ttft_ms = (first_token_time - start_time) * 1000
+                    ttft_s = first_token_time - start_time
+                    ttft_ms = ttft_s * 1000
                     span.set_attribute("gen_ai.time_to_first_token_ms", ttft_ms)
-                    latency_metric.record(ttft_ms, {
+                    ttft_metric.record(ttft_s, {
+                        "gen_ai.provider.name": "openai",
+                        "gen_ai.operation.name": "chat",
                         "gen_ai.request.model": model,
-                        "metric_type": "ttft",
                     })
 
                 yield chunk.choices[0].delta.content
 
             # Capture usage from the final chunk
-            if chunk.usage:
+            if chunk.usage is not None:
                 span.set_attribute("gen_ai.usage.input_tokens", chunk.usage.prompt_tokens)
                 span.set_attribute("gen_ai.usage.output_tokens", chunk.usage.completion_tokens)
+                token_usage_metric.record(
+                    chunk.usage.prompt_tokens,
+                    {
+                        "gen_ai.provider.name": "openai",
+                        "gen_ai.operation.name": "chat",
+                        "gen_ai.request.model": model,
+                        "gen_ai.token.type": "input",
+                    },
+                )
+                token_usage_metric.record(
+                    chunk.usage.completion_tokens,
+                    {
+                        "gen_ai.provider.name": "openai",
+                        "gen_ai.operation.name": "chat",
+                        "gen_ai.request.model": model,
+                        "gen_ai.token.type": "output",
+                    },
+                )
 
         # Record total latency
         total_ms = (time.perf_counter() - start_time) * 1000
@@ -421,7 +461,7 @@ flowchart LR
     A --> D[Inference Time]
     A --> E[Output Generation]
 
-    B --> F[Measured: TTFT minus inference]
+    B --> F[Not directly measurable from client]
     C --> F
     D --> G[Measured: TTFT]
     E --> H[Measured: Total minus TTFT]
@@ -450,20 +490,24 @@ Once your metrics are flowing, here are some useful queries to build dashboards 
 
 ```text
 # Total daily cost by model
-sum(rate(gen_ai_usage_cost_sum[24h])) by (gen_ai_request_model)
+sum(increase(gen_ai_client_cost_sum[24h])) by (gen_ai_request_model)
 
 # Average tokens per request by feature
-avg(gen_ai_usage_total_tokens) by (feature)
+sum(rate(gen_ai_client_token_usage_sum[5m])) by (feature)
+/ sum(rate(gen_ai_requests_total[5m])) by (feature)
 
 # P99 latency by model
-histogram_quantile(0.99, rate(gen_ai_latency_bucket[5m])) by (gen_ai_request_model)
+histogram_quantile(
+  0.99,
+  sum by (le, gen_ai_request_model) (rate(gen_ai_client_operation_duration_bucket[5m]))
+)
 
 # Error rate by model
 sum(rate(gen_ai_requests_errors_total[5m])) by (gen_ai_request_model)
 / sum(rate(gen_ai_requests_total[5m])) by (gen_ai_request_model)
 
-# Cost per user (top 10)
-topk(10, sum(gen_ai_usage_cost_sum) by (user_id))
+# Cost by feature (top 10)
+topk(10, sum(increase(gen_ai_client_cost_sum[24h])) by (feature))
 ```
 
 ---
