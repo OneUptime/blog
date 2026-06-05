@@ -14,7 +14,7 @@ OpenTelemetry lets you instrument your Netlify Functions with distributed tracin
 
 ## Understanding Netlify Functions Execution
 
-Netlify Functions come in two flavors: standard functions (Node.js on Lambda) and edge functions (Deno on Cloudflare Workers). This guide focuses on standard functions since they're more commonly used and have broader library support.
+Netlify Functions come in two flavors: standard functions (Node.js on AWS Lambda) and edge functions (Deno-based functions that run on Netlify's edge network). This guide focuses on standard functions since they're more commonly used and have broader library support.
 
 ```mermaid
 graph LR
@@ -43,7 +43,7 @@ npm install @opentelemetry/sdk-node \
   @opentelemetry/semantic-conventions \
   @opentelemetry/api \
   @opentelemetry/instrumentation-http \
-  @opentelemetry/instrumentation-fetch
+  @opentelemetry/instrumentation-undici
 ```
 
 We're installing specific instrumentations rather than the full auto-instrumentation package. In serverless environments, keeping the dependency footprint small helps with cold start times.
@@ -57,11 +57,14 @@ The biggest challenge with serverless OpenTelemetry is lifecycle management. You
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 const { trace } = require('@opentelemetry/api');
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
+const { UndiciInstrumentation } = require('@opentelemetry/instrumentation-undici');
 
 let sdk = null;
+let spanProcessor = null;
 let isInitialized = false;
 
 // Initialize the SDK once per cold start
@@ -75,8 +78,10 @@ function initTelemetry() {
     },
   });
 
+  spanProcessor = new SimpleSpanProcessor(exporter);
+
   sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'netlify-functions',
       'deployment.environment': process.env.CONTEXT || 'production',
       'faas.name': 'netlify-function',
@@ -85,10 +90,14 @@ function initTelemetry() {
       'netlify.deploy.id': process.env.DEPLOY_ID || 'unknown',
       'netlify.build.id': process.env.BUILD_ID || 'unknown',
     }),
+    instrumentations: [
+      new HttpInstrumentation(),
+      new UndiciInstrumentation(),
+    ],
     // Use SimpleSpanProcessor to export spans immediately
     // BatchSpanProcessor can lose data in serverless because the function
     // may freeze before the batch timer fires
-    spanProcessor: new SimpleSpanProcessor(exporter),
+    spanProcessors: [spanProcessor],
   });
 
   sdk.start();
@@ -97,11 +106,8 @@ function initTelemetry() {
 
 // Force export all pending spans
 async function flushTelemetry() {
-  if (sdk) {
-    const provider = trace.getTracerProvider();
-    if (provider && typeof provider.forceFlush === 'function') {
-      await provider.forceFlush();
-    }
+  if (spanProcessor) {
+    await spanProcessor.forceFlush();
   }
 }
 
@@ -123,6 +129,7 @@ Here's how to use the telemetry wrapper in a Netlify Function. The pattern is: i
 ```javascript
 // netlify/functions/get-users.js - Instrumented Netlify Function
 const { getTracer, flushTelemetry, initTelemetry } = require('../../lib/telemetry');
+const { SpanStatusCode } = require('@opentelemetry/api');
 
 // Initialize telemetry on cold start (outside the handler)
 initTelemetry();
@@ -164,7 +171,7 @@ exports.handler = async function(event, context) {
     } catch (error) {
       // Record the error on the span
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
       return {
         statusCode: 500,
@@ -188,6 +195,7 @@ If you have many Netlify Functions, wrapping each one with telemetry boilerplate
 ```javascript
 // lib/withTelemetry.js - Higher-order function for instrumenting Netlify Functions
 const { getTracer, flushTelemetry, initTelemetry } = require('./telemetry');
+const { SpanStatusCode } = require('@opentelemetry/api');
 
 initTelemetry();
 
@@ -217,7 +225,7 @@ function withTelemetry(functionName, handler) {
         return response;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         return {
           statusCode: 500,
@@ -270,7 +278,7 @@ exports.handler = withTelemetry('create-order', handler);
 
 ## Setting Environment Variables
 
-Configure your OpenTelemetry settings in the Netlify dashboard. Go to Site settings, then Environment variables.
+Configure your OpenTelemetry settings in the Netlify dashboard. Go to Site settings, then Environment variables, and make sure the variables are available to Functions at runtime.
 
 ```text
 OTEL_EXPORTER_OTLP_ENDPOINT = https://your-collector.example.com
@@ -299,7 +307,7 @@ Netlify Functions often call external APIs. You can trace these calls by wrappin
 ```javascript
 // lib/tracedFetch.js - Fetch wrapper that creates spans for external calls
 const { getTracer } = require('./telemetry');
-const { propagation, context } = require('@opentelemetry/api');
+const { propagation, context, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = getTracer('netlify-functions.http-client');
 
@@ -322,13 +330,13 @@ async function tracedFetch(url, options = {}) {
       span.setAttribute('http.status_code', response.status);
 
       if (response.status >= 400) {
-        span.setStatus({ code: 2, message: `HTTP ${response.status}` });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `HTTP ${response.status}` });
       }
 
       return response;
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -346,6 +354,7 @@ Netlify supports scheduled functions (cron jobs). These work similarly to regula
 ```javascript
 // netlify/functions/cleanup-sessions.js - Scheduled function with telemetry
 const { getTracer, flushTelemetry, initTelemetry } = require('../../lib/telemetry');
+const { SpanStatusCode } = require('@opentelemetry/api');
 
 initTelemetry();
 const tracer = getTracer('netlify-functions.scheduled');
@@ -366,7 +375,7 @@ exports.handler = async function(event, context) {
       return { statusCode: 200 };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       return { statusCode: 500 };
     } finally {
       span.end();
