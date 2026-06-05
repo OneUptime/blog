@@ -36,13 +36,14 @@ receivers:
         endpoint: "0.0.0.0:4318"
 
 connectors:
-  # The spanmetrics connector reads from the trace pipeline
+  # The span_metrics connector reads from the trace pipeline
   # and produces metrics for the metric pipeline
-  spanmetrics:
+  span_metrics:
     # Histogram configuration for duration metrics
     histogram:
+      unit: s
       explicit:
-        buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+        buckets: [0.002s, 0.005s, 0.01s, 0.025s, 0.05s, 0.1s, 0.25s, 0.5s, 1s, 2.5s, 5s, 10s]
 
     # Dimensions to include as metric labels
     dimensions:
@@ -51,14 +52,13 @@ connectors:
       - name: http.route
       - name: rpc.method
       - name: rpc.service
+      - name: deployment.environment
 
-    # Exclude high-cardinality dimensions that would explode metric series
+    # Optional: remove the connector instance label if you do not need it
     exclude_dimensions:
-      - "url.full"
-      - "http.url"
-      - "db.statement"
+      - "collector.instance.id"
 
-    # Metric names
+    # How often generated metrics are flushed
     metrics_flush_interval: 15s
 
     # Namespace prefix for generated metrics
@@ -69,14 +69,6 @@ processors:
     send_batch_size: 1024
     timeout: 5s
 
-  # Optional: add resource attributes as metric labels
-  resource/metrics:
-    attributes:
-      - key: service.name
-        action: upsert
-      - key: deployment.environment
-        action: upsert
-
 exporters:
   # Traces go to Tempo (or your trace backend)
   otlp/traces:
@@ -85,7 +77,7 @@ exporters:
       insecure: true
 
   # Metrics (including generated RED metrics) go to Prometheus/Mimir
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://mimir:9009/api/v1/push"
 
 service:
@@ -94,42 +86,42 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/traces, spanmetrics]
+      exporters: [otlp/traces, span_metrics]
 
-    # Metric pipeline: receives from both OTLP (app metrics) and spanmetrics connector
+    # Metric pipeline: receives from both OTLP (app metrics) and span_metrics connector
     metrics:
-      receivers: [otlp, spanmetrics]
-      processors: [resource/metrics, batch]
-      exporters: [prometheusremotewrite]
+      receivers: [otlp, span_metrics]
+      processors: [batch]
+      exporters: [prometheus_remote_write]
 ```
 
-Notice the key wiring: in the traces pipeline, `spanmetrics` appears as an exporter. In the metrics pipeline, `spanmetrics` appears as a receiver. The connector bridges the two.
+Notice the key wiring: in the traces pipeline, `span_metrics` appears as an exporter. In the metrics pipeline, `span_metrics` appears as a receiver. The connector bridges the two.
 
 ## Generated Metrics
 
-The Span Metrics Connector generates three metrics by default:
+The Span Metrics Connector generates two metric streams by default. Together they cover RED metrics: request rate and error rate come from the `calls` counter, and duration comes from the `duration` histogram.
 
 ```text
 # Request rate (counter) - incremented for each span
-traces.spanmetrics.calls_total{
-  service.name="checkout-service",
-  span.name="POST /api/checkout",
-  span.kind="SPAN_KIND_SERVER",
-  http.request.method="POST",
-  http.response.status_code="200",
-  status.code="STATUS_CODE_OK"
+traces_spanmetrics_calls_total{
+  service_name="checkout-service",
+  span_name="POST /api/checkout",
+  span_kind="SPAN_KIND_SERVER",
+  http_request_method="POST",
+  http_response_status_code="200",
+  status_code="STATUS_CODE_OK"
 }
 
-# Error rate (counter) - incremented for spans with error status
-traces.spanmetrics.calls_total{
+# Error rate - query the calls counter where the status dimension is ERROR
+traces_spanmetrics_calls_total{
   ...
-  status.code="STATUS_CODE_ERROR"
+  status_code="STATUS_CODE_ERROR"
 }
 
 # Duration histogram
-traces.spanmetrics.duration_seconds_bucket{
-  service.name="checkout-service",
-  span.name="POST /api/checkout",
+traces_spanmetrics_duration_seconds_bucket{
+  service_name="checkout-service",
+  span_name="POST /api/checkout",
   ...
   le="0.1"
 }
@@ -140,23 +132,23 @@ traces.spanmetrics.duration_seconds_bucket{
 Once the metrics are in Prometheus or Mimir, query them like any other metrics:
 
 ```promql
-# Request rate per service
-sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name, span_name)
+# Request rate per service for server spans
+sum(rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m])) by (service_name, span_name)
 
 # Error rate as a percentage
-sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name)
+sum(rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m])) by (service_name)
 /
-sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name)
+sum(rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m])) by (service_name)
 * 100
 
 # p99 latency
 histogram_quantile(0.99,
-  sum(rate(traces_spanmetrics_duration_seconds_bucket[5m])) by (le, service_name, span_name)
+  sum(rate(traces_spanmetrics_duration_seconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m])) by (le, service_name, span_name)
 )
 
 # p50 latency
 histogram_quantile(0.50,
-  sum(rate(traces_spanmetrics_duration_seconds_bucket[5m])) by (le, service_name, span_name)
+  sum(rate(traces_spanmetrics_duration_seconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m])) by (le, service_name, span_name)
 )
 ```
 
@@ -168,15 +160,15 @@ Control this in the connector config:
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     # Only include specific dimensions
     dimensions:
       - name: http.request.method
       - name: http.response.status_code
       - name: http.route         # use route template, not raw path
 
-    # Explicitly exclude high-cardinality fields
-    dimensions_cache_size: 1000  # limit number of unique dimension combinations
+    # Do not add high-cardinality fields such as url.full or db.statement
+    aggregation_cardinality_limit: 1000  # limit number of unique dimension combinations
 
     # Aggregate spans with similar attributes
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
@@ -205,9 +197,9 @@ service:
     metrics:
       receivers:
         - otlp          # application-emitted metrics
-        - spanmetrics    # trace-derived RED metrics
+        - span_metrics    # trace-derived RED metrics
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Wrapping Up
