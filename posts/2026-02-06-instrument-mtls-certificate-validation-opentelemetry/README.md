@@ -27,9 +27,9 @@ Go gives you access to the TLS handshake through the `tls.Config` struct. Here i
 package main
 
 import (
+    "context"
     "crypto/tls"
     "crypto/x509"
-    "net/http"
     "time"
 
     "go.opentelemetry.io/otel/attribute"
@@ -51,11 +51,6 @@ var (
         metric.WithUnit("ms"),
     )
 
-    certExpiryGauge, _ = meter.Float64ObservableGauge(
-        "tls.certificate.days_until_expiry",
-        metric.WithDescription("Days until the server certificate expires"),
-    )
-
     validationErrorCounter, _ = meter.Int64Counter(
         "tls.validation.errors",
         metric.WithDescription("TLS certificate validation errors by type"),
@@ -63,12 +58,15 @@ var (
 )
 
 func createMTLSConfig(certFile, keyFile, caFile string) *tls.Config {
+    serverCert, _ := tls.LoadX509KeyPair(certFile, keyFile)
+
     // Load the CA cert pool for client certificate validation
     caCert, _ := loadCACert(caFile)
     clientCAs := x509.NewCertPool()
     clientCAs.AppendCertsFromPEM(caCert)
 
     return &tls.Config{
+        Certificates: []tls.Certificate{serverCert},
         ClientAuth: tls.RequireAndVerifyClientCert,
         ClientCAs:  clientCAs,
         MinVersion: tls.VersionTLS12,
@@ -81,6 +79,8 @@ func createMTLSConfig(certFile, keyFile, caFile string) *tls.Config {
 }
 
 func recordHandshakeMetrics(state tls.ConnectionState) error {
+    ctx := context.Background()
+
     // Record the TLS version and cipher suite
     attrs := []attribute.KeyValue{
         attribute.String("tls.version", tlsVersionString(state.Version)),
@@ -105,7 +105,7 @@ func recordHandshakeMetrics(state tls.ConnectionState) error {
 
         // Warn if the client cert is close to expiring
         if daysUntilExpiry < 30 {
-            validationErrorCounter.Add(nil, 1,
+            validationErrorCounter.Add(ctx, 1,
                 metric.WithAttributes(
                     attribute.String("error.type", "near_expiry"),
                     attribute.String("tls.client.subject",
@@ -115,7 +115,7 @@ func recordHandshakeMetrics(state tls.ConnectionState) error {
         }
     }
 
-    handshakeCounter.Add(nil, 1,
+    handshakeCounter.Add(ctx, 1,
         metric.WithAttributes(
             append(attrs, attribute.String("result", "success"))...,
         ),
@@ -148,6 +148,7 @@ Handshake failures are trickier because they happen before the connection is est
 package main
 
 import (
+    "context"
     "crypto/tls"
     "net"
     "strings"
@@ -165,45 +166,48 @@ type InstrumentedListener struct {
 }
 
 func (l *InstrumentedListener) Accept() (net.Conn, error) {
-    conn, err := l.Listener.Accept()
-    if err != nil {
-        return nil, err
+    for {
+        conn, err := l.Listener.Accept()
+        if err != nil {
+            return nil, err
+        }
+
+        tlsConn := tls.Server(conn, l.tlsConfig)
+
+        ctx := context.Background()
+        start := time.Now()
+        handshakeErr := tlsConn.Handshake()
+        duration := time.Since(start).Milliseconds()
+
+        // Record handshake duration
+        handshakeDuration.Record(ctx, float64(duration))
+
+        if handshakeErr != nil {
+            // Classify the error
+            errorType := classifyTLSError(handshakeErr)
+            remoteAddr := conn.RemoteAddr().String()
+
+            handshakeCounter.Add(ctx, 1,
+                metric.WithAttributes(
+                    attribute.String("result", "failure"),
+                    attribute.String("error.type", errorType),
+                    attribute.String("error.message", handshakeErr.Error()),
+                    attribute.String("remote.addr", remoteAddr),
+                ),
+            )
+
+            validationErrorCounter.Add(ctx, 1,
+                metric.WithAttributes(
+                    attribute.String("error.type", errorType),
+                ),
+            )
+
+            conn.Close()
+            continue
+        }
+
+        return tlsConn, nil
     }
-
-    tlsConn := tls.Server(conn, l.tlsConfig)
-
-    start := time.Now()
-    handshakeErr := tlsConn.Handshake()
-    duration := time.Since(start).Milliseconds()
-
-    // Record handshake duration
-    handshakeDuration.Record(nil, float64(duration))
-
-    if handshakeErr != nil {
-        // Classify the error
-        errorType := classifyTLSError(handshakeErr)
-        remoteAddr := conn.RemoteAddr().String()
-
-        handshakeCounter.Add(nil, 1,
-            metric.WithAttributes(
-                attribute.String("result", "failure"),
-                attribute.String("error.type", errorType),
-                attribute.String("error.message", handshakeErr.Error()),
-                attribute.String("remote.addr", remoteAddr),
-            ),
-        )
-
-        validationErrorCounter.Add(nil, 1,
-            metric.WithAttributes(
-                attribute.String("error.type", errorType),
-            ),
-        )
-
-        conn.Close()
-        return nil, handshakeErr
-    }
-
-    return tlsConn, nil
 }
 
 func classifyTLSError(err error) string {
@@ -218,11 +222,13 @@ func classifyTLSError(err error) string {
         return "untrusted_ca"
     case strings.Contains(msg, "bad certificate"):
         return "bad_certificate"
-    case strings.Contains(msg, "certificate required"):
+    case strings.Contains(msg, "certificate required") ||
+        strings.Contains(msg, "client didn't provide a certificate"):
         return "missing_client_cert"
     case strings.Contains(msg, "protocol version"):
         return "protocol_mismatch"
-    case strings.Contains(msg, "no mutual cipher"):
+    case strings.Contains(msg, "no mutual cipher") ||
+        strings.Contains(msg, "no cipher suite supported"):
         return "cipher_mismatch"
     case strings.Contains(msg, "hostname"):
         return "hostname_mismatch"
@@ -242,6 +248,7 @@ Set up a periodic check that reports how many days each certificate has until it
 func RegisterCertExpiryCallback(certPaths []string) {
     meter.Float64ObservableGauge(
         "tls.certificate.days_until_expiry",
+        metric.WithDescription("Days until the certificate expires"),
         metric.WithFloat64Callback(func(ctx context.Context,
             observer metric.Float64Observer) error {
 
