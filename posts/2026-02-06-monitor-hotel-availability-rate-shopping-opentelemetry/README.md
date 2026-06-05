@@ -123,7 +123,7 @@ async def query_supplier(supplier, search_request):
             latency = (time.time() - start) * 1000
             span.set_attribute("hotel.supplier_latency_ms", latency)
             span.set_attribute("hotel.supplier_results", len(response.properties))
-            span.set_attribute("http.status_code", response.status_code)
+            span.set_attribute("http.response.status_code", response.status_code)
 
             # Normalize to common format
             with tracer.start_as_current_span(
