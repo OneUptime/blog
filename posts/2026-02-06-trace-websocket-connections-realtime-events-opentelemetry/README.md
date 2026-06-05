@@ -42,12 +42,12 @@ Before instrumenting WebSocket code, you need the OpenTelemetry SDK configured a
 // tracing.js - Initialize OpenTelemetry before your app starts
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Create the SDK with OTLP exporter pointing to your collector
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'websocket-server',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -72,6 +72,16 @@ const WebSocket = require('ws');
 const tracer = trace.getTracer('websocket-server', '1.0.0');
 const wss = new WebSocket.Server({ port: 8080 });
 
+function getMessageSize(data) {
+  if (Buffer.isBuffer(data)) {
+    return data.length;
+  }
+  if (Array.isArray(data)) {
+    return data.reduce((size, chunk) => size + chunk.length, 0);
+  }
+  return data.byteLength;
+}
+
 wss.on('connection', (ws, req) => {
   // Create a long-lived span for the entire WebSocket connection
   const connectionSpan = tracer.startSpan('ws.connection', {
@@ -89,22 +99,22 @@ wss.on('connection', (ws, req) => {
     connectionSpan
   );
 
-  ws.on('message', (data) => {
+  ws.on('message', (data, isBinary) => {
     // Each incoming message gets its own child span
     const messageSpan = tracer.startSpan(
       'ws.message.receive',
       {
         kind: SpanKind.SERVER,
         attributes: {
-          'ws.message.type': typeof data === 'string' ? 'text' : 'binary',
-          'ws.message.size': data.length,
+          'ws.message.type': isBinary ? 'binary' : 'text',
+          'ws.message.size': getMessageSize(data),
         },
       },
       connectionContext // Link this span to the connection span
     );
 
     try {
-      handleMessage(ws, data); // Your business logic here
+      handleMessage(ws, data, messageSpan); // Your business logic here
       messageSpan.setStatus({ code: SpanStatusCode.OK });
     } catch (error) {
       messageSpan.setStatus({
@@ -221,7 +231,6 @@ graph TD
     A --> F[ws.message.receive - data request]
     F --> G[db.query - fetch results]
     A --> H[ws.message.send - data response]
-    A --> I[ws.connection.close]
 ```
 
 The connection span acts as the root, and every message or event hangs off it as a child. If processing a message triggers downstream calls (database queries, API calls, etc.), those show up as grandchildren of the connection span.
