@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, RabbitMQ, Message Queue, Metric, Observability, 
 
 Description: Configure the RabbitMQ receiver in OpenTelemetry Collector to monitor message queues, track queue depths, measure consumer performance.
 
-RabbitMQ is a widely adopted message broker that enables asynchronous communication between microservices. Monitoring RabbitMQ is essential for ensuring reliable message delivery, preventing queue backlogs, and maintaining system throughput. The RabbitMQ receiver in the OpenTelemetry Collector provides native integration with RabbitMQ's management API, automatically collecting metrics about queues, exchanges, connections, channels, and overall broker health.
+RabbitMQ is a widely adopted message broker that enables asynchronous communication between microservices. Monitoring RabbitMQ is essential for ensuring reliable message delivery, preventing queue backlogs, and maintaining system throughput. The RabbitMQ receiver in the OpenTelemetry Collector provides native integration with RabbitMQ's management API, automatically collecting metrics about queues, consumers, message flow, and node health.
 
 ## What is the RabbitMQ Receiver?
 
@@ -15,14 +15,13 @@ The RabbitMQ receiver is a specialized OpenTelemetry Collector component that co
 The receiver monitors critical RabbitMQ aspects including:
 
 - Queue depth and growth rates
-- Message publish and consumption rates
+- Message publish and delivery counts
 - Unacknowledged message counts
 - Consumer performance and lag
-- Connection and channel statistics
+- Connection and channel lifecycle statistics
 - Memory and disk usage
-- Exchange routing efficiency
 - Node health in clustered deployments
-- Message persistence and durability metrics
+- RabbitMQ runtime and I/O metrics
 
 ## How the RabbitMQ Receiver Works
 
@@ -69,18 +68,18 @@ receivers:
 
     # Authentication for management API
     username: "guest"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
 
     # Collection interval - how often to scrape metrics
     collection_interval: 30s
 
     # Enable basic queue and node metrics
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
+        enabled: true
+      rabbitmq.node.mem_used:
         enabled: true
 
 # Processors - transform collected metrics
@@ -96,7 +95,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # Service section - wire components into pipelines
 service:
@@ -108,7 +107,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This basic configuration connects to a local RabbitMQ instance and collects essential queue metrics. The receiver automatically discovers all queues and tracks their depths and consumer counts.
+This basic configuration connects to a local RabbitMQ instance and collects essential queue metrics. The `rabbitmq.message.current` metric uses a `state` attribute to distinguish ready and unacknowledged messages, and the receiver reports queue and virtual-host names as resource attributes.
 
 ## Comprehensive Metrics Configuration
 
@@ -119,127 +118,88 @@ receivers:
   rabbitmq:
     endpoint: "http://rabbitmq.internal:15672"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
 
     # Enable comprehensive RabbitMQ monitoring
     metrics:
       # Queue metrics - message depths and backlogs
-      rabbitmq.queue.messages.ready:
+      rabbitmq.message.current:
         enabled: true
-        description: "Number of messages ready for delivery"
 
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.published:
         enabled: true
-        description: "Messages delivered but not yet acknowledged"
 
-      rabbitmq.queue.messages.total:
+      rabbitmq.message.delivered:
         enabled: true
-        description: "Total messages in queue (ready + unacknowledged)"
 
-      rabbitmq.queue.messages.published:
+      rabbitmq.message.acknowledged:
         enabled: true
-        description: "Total messages published to queue"
 
-      rabbitmq.queue.messages.delivered:
+      rabbitmq.message.dropped:
         enabled: true
-        description: "Messages delivered to consumers"
-
-      rabbitmq.queue.messages.acknowledged:
-        enabled: true
-        description: "Messages acknowledged by consumers"
-
-      rabbitmq.queue.messages.redelivered:
-        enabled: true
-        description: "Messages redelivered after nack or timeout"
 
       # Consumer metrics - track consumer health
       rabbitmq.consumer.count:
         enabled: true
-        description: "Number of active consumers per queue"
-
-      rabbitmq.consumer.prefetch_count:
-        enabled: true
-        description: "Consumer prefetch setting"
-
-      # Queue state metrics
-      rabbitmq.queue.state:
-        enabled: true
-        description: "Queue state (running, idle, flow)"
-
-      # Message rate metrics - throughput tracking
-      rabbitmq.queue.message.publish_rate:
-        enabled: true
-        description: "Messages published per second"
-
-      rabbitmq.queue.message.deliver_rate:
-        enabled: true
-        description: "Messages delivered per second"
-
-      rabbitmq.queue.message.ack_rate:
-        enabled: true
-        description: "Messages acknowledged per second"
 
       # Memory and resource metrics
-      rabbitmq.queue.memory:
+      rabbitmq.node.mem_used:
         enabled: true
-        description: "Memory used by queue in bytes"
 
-      rabbitmq.node.memory.used:
+      rabbitmq.node.mem_limit:
         enabled: true
-        description: "Total memory used by RabbitMQ node"
 
-      rabbitmq.node.memory.limit:
+      rabbitmq.node.mem_alarm:
         enabled: true
-        description: "Memory limit for RabbitMQ node"
 
-      rabbitmq.node.disk.free:
+      rabbitmq.node.disk_free:
         enabled: true
-        description: "Free disk space on node"
 
-      rabbitmq.node.disk.limit:
+      rabbitmq.node.disk_free_limit:
         enabled: true
-        description: "Disk free space alarm threshold"
 
-      # Connection and channel metrics
-      rabbitmq.connection.count:
+      rabbitmq.node.disk_free_alarm:
         enabled: true
-        description: "Number of client connections"
 
-      rabbitmq.channel.count:
+      # Connection and channel lifecycle metrics
+      rabbitmq.node.connection_created:
         enabled: true
-        description: "Number of channels across all connections"
 
-      # Exchange metrics
-      rabbitmq.exchange.messages.published:
+      rabbitmq.node.connection_closed:
         enabled: true
-        description: "Messages published through exchange"
+
+      rabbitmq.node.channel_created:
+        enabled: true
+
+      rabbitmq.node.channel_closed:
+        enabled: true
 
       # Node health metrics
-      rabbitmq.node.fd.used:
+      rabbitmq.node.fd_used:
         enabled: true
-        description: "File descriptors used"
 
-      rabbitmq.node.fd.limit:
+      rabbitmq.node.fd_total:
         enabled: true
-        description: "File descriptor limit"
 
-      rabbitmq.node.socket.used:
+      rabbitmq.node.sockets_used:
         enabled: true
-        description: "Sockets used for connections"
 
-      rabbitmq.node.socket.limit:
+      rabbitmq.node.sockets_total:
         enabled: true
-        description: "Socket limit"
 
       # Erlang VM metrics
-      rabbitmq.node.erlang.processes.used:
+      rabbitmq.node.proc_used:
         enabled: true
-        description: "Erlang processes running"
 
-      rabbitmq.node.erlang.processes.limit:
+      rabbitmq.node.proc_total:
         enabled: true
-        description: "Maximum Erlang processes allowed"
+
+      rabbitmq.node.run_queue:
+        enabled: true
+
+      rabbitmq.node.uptime:
+        enabled: true
 ```
 
 This comprehensive configuration provides complete visibility into RabbitMQ operations, from individual queue performance to overall node health.
@@ -254,60 +214,54 @@ receivers:
   rabbitmq/node1:
     endpoint: "http://rabbitmq-node1.internal:15672"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
-      rabbitmq.node.memory.used:
+      rabbitmq.node.mem_used:
         enabled: true
-      rabbitmq.node.disk.free:
+      rabbitmq.node.disk_free:
         enabled: true
-      rabbitmq.connection.count:
+      rabbitmq.node.connection_created:
         enabled: true
 
   # RabbitMQ cluster node 2
   rabbitmq/node2:
     endpoint: "http://rabbitmq-node2.internal:15672"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
-      rabbitmq.node.memory.used:
+      rabbitmq.node.mem_used:
         enabled: true
-      rabbitmq.node.disk.free:
+      rabbitmq.node.disk_free:
         enabled: true
-      rabbitmq.connection.count:
+      rabbitmq.node.connection_created:
         enabled: true
 
   # RabbitMQ cluster node 3
   rabbitmq/node3:
     endpoint: "http://rabbitmq-node3.internal:15672"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
-      rabbitmq.node.memory.used:
+      rabbitmq.node.mem_used:
         enabled: true
-      rabbitmq.node.disk.free:
+      rabbitmq.node.disk_free:
         enabled: true
-      rabbitmq.connection.count:
+      rabbitmq.node.connection_created:
         enabled: true
 
 # Add node-specific attributes
@@ -346,7 +300,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -368,51 +322,35 @@ service:
 
 This configuration monitors all cluster nodes and tags metrics with cluster and node identifiers, making it easy to aggregate or filter by node in your observability platform.
 
-## Filtering Specific Queues and Exchanges
+## Managing Queue Metric Cardinality
 
-In large RabbitMQ deployments with hundreds of queues, you may want to monitor only specific queues or exchanges:
+In large RabbitMQ deployments with hundreds of queues, the RabbitMQ receiver does not provide native queue or exchange include/exclude filters. To reduce exported cardinality, filter queue metrics after collection with the Collector filter processor:
 
 ```yaml
 receivers:
   rabbitmq:
     endpoint: "http://rabbitmq.internal:15672"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
 
-    # Filter which queues to monitor
-    queues:
-      # Monitor specific queues by name (regex supported)
-      include:
-        - "orders.*"        # All queues starting with "orders"
-        - "payments.prod"   # Specific payment queue
-        - "notifications"   # Notification queue
-
-      # Exclude certain queues
-      exclude:
-        - ".*test.*"        # Exclude test queues
-        - "temp.*"          # Exclude temporary queues
-
-    # Filter which exchanges to monitor
-    exchanges:
-      include:
-        - "orders.exchange"
-        - "payments.exchange"
-      exclude:
-        - "amq.*"           # Exclude default AMQP exchanges
-
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
-      rabbitmq.exchange.messages.published:
+      rabbitmq.message.published:
         enabled: true
+
+processors:
+  filter/queues:
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "rabbitmq.message.current" and not IsMatch(resource.attributes["rabbitmq.queue.name"], "^(orders.*|payments\\.prod|notifications)$")'
+      - 'metric.name == "rabbitmq.consumer.count" and not IsMatch(resource.attributes["rabbitmq.queue.name"], "^(orders.*|payments\\.prod|notifications)$")'
 ```
 
-Queue and exchange filtering reduces metric cardinality and focuses monitoring on business-critical message flows.
+Filtering after collection reduces exported metric cardinality and focuses monitoring on business-critical message flows. The receiver still scrapes the RabbitMQ management API for the node.
 
 ## TLS Configuration for Secure Deployments
 
@@ -424,7 +362,7 @@ receivers:
     # Use HTTPS endpoint for secure management API
     endpoint: "https://rabbitmq-prod.internal:15671"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
 
     # TLS configuration
@@ -443,9 +381,7 @@ receivers:
       min_version: "1.2"
 
     metrics:
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
@@ -462,7 +398,7 @@ receivers:
   rabbitmq:
     endpoint: "https://rabbitmq-prod.internal:15671"
     username: "monitor"
-    password: ${RABBITMQ_PASSWORD}
+    password: ${env:RABBITMQ_PASSWORD}
     collection_interval: 30s
 
     # Request timeout - prevent hanging on slow API responses
@@ -473,39 +409,27 @@ receivers:
       insecure_skip_verify: false
       ca_file: "/etc/ssl/certs/rabbitmq-ca.crt"
 
-    # Queue filtering to reduce cardinality
-    queues:
-      include:
-        - "orders.*"
-        - "payments.*"
-        - "notifications.*"
-      exclude:
-        - ".*test.*"
-        - "tmp.*"
-
     metrics:
       # Critical queue metrics
-      rabbitmq.queue.messages.ready:
-        enabled: true
-      rabbitmq.queue.messages.unacknowledged:
+      rabbitmq.message.current:
         enabled: true
       rabbitmq.consumer.count:
         enabled: true
 
-      # Message flow rates
-      rabbitmq.queue.message.publish_rate:
+      # Message flow counters
+      rabbitmq.message.published:
         enabled: true
-      rabbitmq.queue.message.deliver_rate:
+      rabbitmq.message.delivered:
         enabled: true
-      rabbitmq.queue.message.ack_rate:
+      rabbitmq.message.acknowledged:
         enabled: true
 
       # Resource metrics
-      rabbitmq.node.memory.used:
+      rabbitmq.node.mem_used:
         enabled: true
-      rabbitmq.node.disk.free:
+      rabbitmq.node.disk_free:
         enabled: true
-      rabbitmq.connection.count:
+      rabbitmq.node.connection_created:
         enabled: true
 
 processors:
@@ -520,16 +444,16 @@ processors:
         action: insert
 
   # Detect resource attributes (hostname, cloud provider)
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker]
     timeout: 5s
 
-  # Filter out zero-value metrics to reduce noise
-  filter/drop_zeros:
-    metrics:
-      datapoint:
-        - 'metric.name == "rabbitmq.queue.messages.ready" and value_int == 0'
-        - 'metric.name == "rabbitmq.consumer.count" and value_int == 0'
+  # Filter exported queue metrics to reduce cardinality
+  filter/queues:
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "rabbitmq.message.current" and not IsMatch(resource.attributes["rabbitmq.queue.name"], "^(orders.*|payments.*|notifications.*)$")'
+      - 'metric.name == "rabbitmq.consumer.count" and not IsMatch(resource.attributes["rabbitmq.queue.name"], "^(orders.*|payments.*|notifications.*)$")'
 
   # Batch for efficiency
   batch:
@@ -540,7 +464,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
     timeout: 30s
 
@@ -561,7 +485,7 @@ service:
   pipelines:
     metrics:
       receivers: [rabbitmq]
-      processors: [resourcedetection, attributes, filter/drop_zeros, batch]
+      processors: [resource_detection, attributes, filter/queues, batch]
       exporters: [otlphttp]
 ```
 
@@ -577,20 +501,20 @@ Create a RabbitMQ user with read-only monitoring permissions:
 
 ```bash
 # Create monitoring user
-rabbitmqctl add_user monitor "StrongPassword123!"
+rabbitmqctl add_user monitor 'StrongPassword123!'
 
 # Set monitoring tag (grants read-only access to management API)
 rabbitmqctl set_user_tags monitor monitoring
 
-# Grant permissions to view all vhosts (but not modify)
+# Grant empty resource permissions for monitoring-only access
 # Format: rabbitmqctl set_permissions -p <vhost> <user> <conf> <write> <read>
-rabbitmqctl set_permissions -p "/" monitor "" "" ".*"
+rabbitmqctl set_permissions -p "/" monitor "^$" "^$" "^$"
 
 # Repeat for additional vhosts if needed
-rabbitmqctl set_permissions -p "production" monitor "" "" ".*"
+rabbitmqctl set_permissions -p "production" monitor "^$" "^$" "^$"
 ```
 
-The monitoring tag provides read-only access to the management API without allowing configuration changes or message manipulation.
+The monitoring tag provides read-only access to management data, and empty resource permissions avoid allowing configuration changes, publishing, or consuming messages.
 
 ### Use Environment Variables
 
@@ -599,9 +523,9 @@ Never hardcode credentials:
 ```yaml
 receivers:
   rabbitmq:
-    endpoint: "${RABBITMQ_ENDPOINT}"
-    username: "${RABBITMQ_MONITOR_USER}"
-    password: "${RABBITMQ_MONITOR_PASSWORD}"
+    endpoint: "${env:RABBITMQ_ENDPOINT}"
+    username: "${env:RABBITMQ_MONITOR_USER}"
+    password: "${env:RABBITMQ_MONITOR_PASSWORD}"
 ```
 
 Set in your environment:
@@ -617,7 +541,7 @@ export RABBITMQ_MONITOR_PASSWORD="StrongPassword123!"
 Limit management API access to monitoring systems:
 
 ```bash
-# In rabbitmq.conf, restrict management plugin to specific IPs
+# In rabbitmq.conf, bind the management listener to a specific interface
 management.tcp.ip = 10.0.0.50
 management.tcp.port = 15672
 
@@ -678,8 +602,8 @@ If authentication fails:
 
 If some metrics don't appear:
 
-1. Verify queues exist and are not filtered out
-2. Check queue names match include patterns
+1. Verify queues exist in the RabbitMQ management API
+2. Check any Collector filter processor rules that drop queue datapoints
 3. Review Collector logs for API errors
 4. Verify monitoring user has permissions to view queues
 
@@ -687,7 +611,7 @@ If some metrics don't appear:
 
 If metric cardinality is too high:
 
-1. Use queue and exchange filtering to reduce scope
+1. Use the Collector filter processor to reduce exported queue metrics
 2. Monitor only business-critical queues
 3. Aggregate metrics by queue name pattern
 4. Increase collection_interval to reduce data volume
@@ -708,7 +632,7 @@ service:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
                 headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
+                  x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 ```
 
 Watch these internal metrics:
@@ -728,9 +652,9 @@ For comprehensive message broker and distributed system monitoring:
 
 ## Summary
 
-The RabbitMQ receiver provides comprehensive monitoring of your message broker infrastructure through RabbitMQ's management API. It automatically collects metrics about queues, exchanges, connections, consumers, and node health, giving you complete visibility into message flow and broker performance.
+The RabbitMQ receiver provides comprehensive monitoring of your message broker infrastructure through RabbitMQ's management API. It automatically collects metrics about queues, consumers, message flow, and node health, giving you visibility into broker performance.
 
-Configure the receiver with appropriate authentication, enable relevant metrics for your deployment size, and use filtering to manage metric cardinality in large installations. Follow security best practices by creating dedicated monitoring users with read-only access and using encrypted connections.
+Configure the receiver with appropriate authentication, enable relevant metrics for your deployment size, and use Collector-side filtering to manage exported metric cardinality in large installations. Follow security best practices by creating dedicated monitoring users with read-only access and using encrypted connections.
 
 Whether monitoring a single RabbitMQ node or a multi-node production cluster, the RabbitMQ receiver scales to meet your observability needs. Track queue backlogs, consumer performance, resource utilization, and overall broker health to ensure reliable asynchronous communication in your distributed systems.
 
