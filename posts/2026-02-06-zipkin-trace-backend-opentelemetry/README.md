@@ -43,7 +43,7 @@ docker run -d \
   openzipkin/zipkin:latest
 ```
 
-For production environments, you will want to use a persistent storage backend. Zipkin supports Elasticsearch, Cassandra, and MySQL. Here is how to start Zipkin with Elasticsearch as the storage layer.
+For production environments, you will want to use a persistent storage backend. Zipkin supports Elasticsearch and Cassandra for production use, while MySQL is a legacy storage component that is not recommended for production. Here is how to start Zipkin with Elasticsearch as the storage layer.
 
 ```bash
 # Start Zipkin with Elasticsearch storage
@@ -65,7 +65,7 @@ If you prefer Docker Compose, here is a complete stack with Zipkin and Elasticse
 version: "3.8"
 services:
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -184,7 +184,7 @@ provider.shutdown()
 print("Test trace sent successfully")
 ```
 
-After running this script, open Zipkin's UI at http://localhost:9411 and search for traces from the "test-service" service. You should see the parent span with a nested child span, complete with all the attributes you set.
+After running this script, open Zipkin's UI at http://localhost:9411/zipkin and search for traces from the "test-service" service. You should see the parent span with a nested child span, complete with all the attributes you set.
 
 ## Choosing a Storage Backend
 
@@ -196,7 +196,7 @@ Elasticsearch is the most popular choice for production deployments. It provides
 
 Cassandra is a strong option if you already run Cassandra in your infrastructure. It handles massive write volumes and scales linearly, but querying is less flexible than Elasticsearch.
 
-MySQL works for smaller deployments where you want simplicity and already have MySQL expertise on your team. It will struggle at high trace volumes compared to Elasticsearch or Cassandra.
+MySQL is available as a legacy storage component, but Zipkin does not recommend it for production use. If you choose it for a small internal or test deployment, apply the Zipkin MySQL schema first and expect it to struggle at high trace volumes compared to Elasticsearch or Cassandra.
 
 ## Production Considerations
 
