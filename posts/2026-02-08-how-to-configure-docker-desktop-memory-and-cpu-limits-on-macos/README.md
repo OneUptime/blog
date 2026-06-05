@@ -16,12 +16,12 @@ Getting these limits right matters. Set them too low and containers crash with o
 
 Docker Desktop on macOS ships with these defaults (varies by machine):
 
-- **CPU**: Half of your available cores
-- **Memory**: 2 GB (older versions) or variable based on total RAM (newer versions)
+- **CPU**: All host CPU cores on current Docker Desktop releases
+- **Memory**: 50% of your host memory
 - **Swap**: 1 GB
-- **Disk**: 64 GB virtual disk
+- **Disk**: The disk usage limit is based on the host filesystem size on current Docker Desktop releases
 
-For a MacBook Pro with 16 GB RAM and 10 CPU cores, the defaults give Docker 5 cores and somewhere between 2-4 GB of memory. That is fine for running a single web application but not enough for a full development stack.
+For a MacBook Pro with 16 GB RAM and 10 CPU cores, the current defaults give Docker access to 10 cores and about 8 GB of memory. That is fine for many development stacks, but some workloads still need tuning to keep the host responsive.
 
 ## Changing Resource Limits via the GUI
 
@@ -85,10 +85,10 @@ For scripted or automated configuration, edit the Docker Desktop settings JSON f
 ```bash
 # Location of Docker Desktop settings on macOS
 
-cat ~/Library/Group\ Containers/group.com.docker/settings.json | python3 -m json.tool
+cat ~/Library/Group\ Containers/group.com.docker/settings-store.json | python3 -m json.tool
 ```
 
-The relevant fields:
+Docker Desktop 4.34 and earlier used `settings.json` in the same directory. The relevant fields in current releases are typically:
 
 ```json
 {
@@ -101,13 +101,13 @@ The relevant fields:
 
 ```bash
 # Backup current settings before modifying
-cp ~/Library/Group\ Containers/group.com.docker/settings.json \
-   ~/Library/Group\ Containers/group.com.docker/settings.json.backup
+cp ~/Library/Group\ Containers/group.com.docker/settings-store.json \
+   ~/Library/Group\ Containers/group.com.docker/settings-store.json.backup
 
 # Modify settings using python3 (change memory to 8 GB)
 python3 -c "
 import json
-path = '$HOME/Library/Group Containers/group.com.docker/settings.json'
+path = '$HOME/Library/Group Containers/group.com.docker/settings-store.json'
 with open(path, 'r') as f:
     settings = json.load(f)
 settings['memoryMiB'] = 8192
@@ -174,7 +174,7 @@ docker run -d --name mydb --memory=1g --memory-swap=1.5g postgres:16-alpine
 
 ## Apple Silicon Specific Settings
 
-On M1, M2, M3, and M4 Macs, Docker Desktop runs through Apple's Virtualization framework. Performance is generally better than on Intel Macs, and you can typically allocate fewer resources for the same workload.
+On M1, M2, M3, and M4 Macs, Docker Desktop can use Apple's Virtualization framework or Docker VMM to run the Linux VM. Performance is generally better than on Intel Macs, and you can typically allocate fewer resources for the same workload.
 
 ```bash
 # Check if running on Apple Silicon
@@ -186,7 +186,7 @@ docker version --format '{{.Server.Arch}}'
 # Should output: arm64
 ```
 
-Apple Silicon Macs handle memory pressure more gracefully because of unified memory architecture. If you have a 16 GB M-series Mac, allocating 8 GB to Docker still leaves macOS responsive because the memory is unified. On Intel Macs, the VM memory is fully reserved, so allocating 8 GB of 16 GB truly leaves only 8 GB for the host.
+Apple Silicon Macs can handle memory pressure well because of unified memory architecture, but memory allocated to the Docker VM still counts against the same physical RAM pool used by macOS and your apps. If you have a 16 GB M-series Mac, allocating 8 GB to Docker can work well for heavier stacks, but you should still monitor host memory pressure and reduce the limit if macOS becomes sluggish.
 
 ## VirtioFS Performance on macOS
 
@@ -214,14 +214,14 @@ Keep swap at 1-2 GB for most workloads. If containers regularly use swap, that s
 
 ## Resetting to Optimal Defaults
 
-If your Docker Desktop configuration gets into a bad state, you can reset just the resource settings without losing containers and images.
+If your Docker Desktop configuration gets into a bad state, you can reset just the CPU, memory, and swap settings without losing containers and images. Be careful with the disk limit: on macOS, reducing the maximum disk image size deletes the current disk image and loses containers and images.
 
 ```bash
 # Reset to recommended settings for your hardware
 python3 -c "
 import json, os, multiprocessing
 
-path = os.path.expanduser('~/Library/Group Containers/group.com.docker/settings.json')
+path = os.path.expanduser('~/Library/Group Containers/group.com.docker/settings-store.json')
 with open(path, 'r') as f:
     settings = json.load(f)
 
@@ -231,7 +231,6 @@ settings['cpus'] = max(2, total_cpus // 2)
 # Default to 4 GB memory
 settings['memoryMiB'] = 4096
 settings['swapMiB'] = 1024
-settings['diskSizeMiB'] = 65536
 
 with open(path, 'w') as f:
     json.dump(settings, f, indent=2)
