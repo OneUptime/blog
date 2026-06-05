@@ -12,7 +12,7 @@ Your Go application is sending spans to the OpenTelemetry Collector, but some of
 
 Go 1.19 introduced the `GOMEMLIMIT` environment variable, which sets a soft memory limit for the Go runtime garbage collector. Without it, the Go GC uses a default target of keeping heap memory at 100% of the live heap size before triggering collection. This means the Collector can use much more memory than you expect before GC kicks in.
 
-When the Collector runs in a container with a memory limit (say, 512MB), and `GOMEMLIMIT` is not set, the Go runtime might let memory grow to 400MB+ before GC runs. The container hits its memory limit and gets OOM-killed, or the Collector's internal buffers fill up and it starts dropping data silently.
+When the Collector runs in a container with a memory limit (say, 512Mi), and `GOMEMLIMIT` is not set, the Go runtime may allow memory to grow much closer to the container limit than you expect. The container hits its memory limit and gets OOM-killed, or upstream clients and Collector components start dropping data after buffers fill or retry budgets are exhausted.
 
 ## Symptoms
 
@@ -23,7 +23,7 @@ When the Collector runs in a container with a memory limit (say, 512MB), and `GO
 
 ## The Fix: Set GOMEMLIMIT on the Collector
 
-Set `GOMEMLIMIT` to about 80% of your container's memory limit. If your container has 512MB of memory:
+Set `GOMEMLIMIT` to about 80% of your container's memory limit. If your container has 512Mi of memory:
 
 ```yaml
 # Kubernetes deployment for the Collector
@@ -33,14 +33,20 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: collector
         image: otel/opentelemetry-collector-contrib:0.121.0
         env:
         - name: GOMEMLIMIT
-          value: "410MiB"  # ~80% of 512MB
+          value: "410MiB"  # ~80% of 512Mi
         resources:
           limits:
             memory: 512Mi
@@ -72,10 +78,10 @@ processors:
   memory_limiter:
     # check_interval determines how often memory usage is checked
     check_interval: 1s
-    # limit_percentage is the maximum percentage of total memory
+    # limit_percentage is the hard limit as a percentage of available memory
     limit_percentage: 75
-    # spike_limit_percentage accounts for sudden spikes
-    spike_limit_percentage: 25
+    # spike_limit_percentage is subtracted from the hard limit to set the soft limit
+    spike_limit_percentage: 15
 
 service:
   pipelines:
@@ -92,8 +98,8 @@ The `memory_limiter` processor should always be the first processor in the pipel
 Here is how `GOMEMLIMIT` and `memory_limiter` work together:
 
 1. `GOMEMLIMIT` (410MiB) tells Go's GC to be more aggressive when memory approaches this limit
-2. `memory_limiter` (75% = 384MB) starts refusing new data before the GC limit is hit
-3. Container memory limit (512MB) is the hard ceiling where OOM-kill happens
+2. `memory_limiter` uses a hard limit of 75% (384MiB) and starts refusing new data at the soft limit, which is the hard limit minus the spike allowance
+3. Container memory limit (512Mi) is the hard ceiling where OOM-kill happens
 
 The layered approach ensures:
 - Normal operation: memory stays well below limits
@@ -119,6 +125,7 @@ Also, configure the OTLP exporter with retry:
 ```go
 exporter, err := otlptracegrpc.New(ctx,
     otlptracegrpc.WithEndpoint("otel-collector:4317"),
+    otlptracegrpc.WithInsecure(),
     otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
         Enabled:         true,
         InitialInterval: 1 * time.Second,
@@ -128,7 +135,7 @@ exporter, err := otlptracegrpc.New(ctx,
 )
 ```
 
-When the Collector's `memory_limiter` is refusing data, the exporter will get back a gRPC status code indicating the Collector is temporarily unavailable. With retry enabled, the exporter will attempt to resend the data after the Collector recovers.
+When the Collector's `memory_limiter` is refusing data, the exporter should get back a retryable error, such as a gRPC status code indicating the Collector is temporarily unavailable. With retry enabled, the exporter will attempt to resend the data after the Collector recovers.
 
 ## Quick Diagnostic Checklist
 
