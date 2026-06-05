@@ -24,7 +24,7 @@ Kali follows a rolling release model. Update your system before installing Docke
 ```bash
 # Full system update
 
-sudo apt-get update && sudo apt-get full-upgrade -y
+sudo apt-get update && sudo apt-get dist-upgrade -y
 ```
 
 ## Step 2: Remove Conflicting Packages
@@ -33,7 +33,7 @@ Remove any old or conflicting Docker-related packages.
 
 ```bash
 # Remove legacy packages
-sudo apt-get remove -y docker docker-engine docker.io containerd runc
+sudo apt-get remove -y $(dpkg --get-selections docker.io docker-compose docker-doc podman-docker containerd runc | cut -f1)
 ```
 
 ## Step 3: Install Dependencies
@@ -56,11 +56,11 @@ sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyring
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 ```
 
-Now add the repository with the Debian Bookworm codename (since Kali rolling tracks Debian Testing, Bookworm packages are compatible).
+Now add the repository with the Debian Trixie codename (the current Docker-supported Debian release that best corresponds to Kali rolling).
 
 ```bash
-# Add Docker repository with explicit Debian bookworm codename
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# Add Docker repository with explicit Debian trixie codename
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian trixie stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 ```
 
 Update the package index.
@@ -145,7 +145,10 @@ docker run --rm --network host instrumentisto/nmap -sV -sC target.example.com
 docker run -d --name zap \
   -p 8080:8080 \
   ghcr.io/zaproxy/zaproxy:stable zap.sh \
-  -daemon -host 0.0.0.0 -port 8080
+  -daemon -host 0.0.0.0 -port 8080 \
+  -config api.addrs.addr.name=.* \
+  -config api.addrs.addr.regex=true \
+  -config api.key=change-me
 ```
 
 ## Setting Up Vulnerable Lab Environments
@@ -301,18 +304,20 @@ Alternatively, use Docker Desktop for Windows and enable WSL integration with yo
 Kali's rolling release can cause dependency conflicts with Docker packages built for stable Debian.
 
 ```bash
-# If docker-ce conflicts with existing packages, try pinning
-sudo apt-get install -y docker-ce=5:27.* docker-ce-cli=5:27.* containerd.io
+# List available versions, then install the matching version you choose
+apt list --all-versions docker-ce docker-ce-cli
+VERSION_STRING=5:29.5.2-1~debian.13~trixie
+sudo apt-get install -y docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ### iptables issues
 
-Kali sometimes has `iptables` configured in nftables mode. Docker works better with legacy iptables.
+Docker supports `iptables-nft` and `iptables-legacy`, but it does not support rules created directly with `nft`. If you have Docker networking problems after custom firewall changes, make sure your rules are managed through `iptables` or `ip6tables`.
 
 ```bash
-# Switch to legacy iptables
-sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
-sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+# Check the current iptables backends
+sudo update-alternatives --display iptables
+sudo update-alternatives --display ip6tables
 
 # Restart Docker
 sudo systemctl restart docker
@@ -336,4 +341,4 @@ sudo modprobe overlay
 
 ## Summary
 
-Docker on Kali Linux transforms your security testing workflow. You can spin up vulnerable targets in seconds, run security tools in isolated environments, and create reproducible lab setups with Docker Compose. The key installation detail is using the Debian Bookworm codename when adding Docker's repository, since Kali's own codename is not recognized by Docker. With Docker running, the combination of Kali's security tooling and Docker's containerization gives you a flexible, powerful testing platform.
+Docker on Kali Linux transforms your security testing workflow. You can spin up vulnerable targets in seconds, run security tools in isolated environments, and create reproducible lab setups with Docker Compose. The key installation detail is using a supported Debian codename such as Trixie when adding Docker's repository, since Kali's own codename is not recognized by Docker. With Docker running, the combination of Kali's security tooling and Docker's containerization gives you a flexible, powerful testing platform.
