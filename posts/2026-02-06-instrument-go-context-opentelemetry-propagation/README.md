@@ -28,7 +28,6 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -85,7 +84,7 @@ func initTracing(serviceName string) (*sdktrace.TracerProvider, error) {
 
 ## Creating and Using Spans with Context
 
-Every span operation requires a context. Understanding when to use the returned context versus the original is crucial.
+Starting a span requires a context. Understanding when to use the returned context versus the original is crucial.
 
 ```go
 package main
@@ -406,12 +405,14 @@ package main
 
 import (
     "context"
+    "fmt"
     "io"
     "net/http"
 
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // SetupHTTPServer configures an HTTP server with OpenTelemetry
@@ -556,7 +557,7 @@ func AddContextualInfo(ctx context.Context, key, value string) {
     // Extract the current span from context
     span := trace.SpanFromContext(ctx)
 
-    // Check if span is valid (non-nil and recording)
+    // Check whether the span is recording before adding telemetry
     if span.IsRecording() {
         span.SetAttributes(attribute.String(key, value))
     }
@@ -603,7 +604,7 @@ import (
     "go.opentelemetry.io/otel"
 )
 
-// BAD: This creates a disconnected span
+// BAD: This creates the child span under the original parent, not this operation
 func badExample(ctx context.Context) error {
     tracer := otel.Tracer("service")
 
@@ -611,7 +612,7 @@ func badExample(ctx context.Context) error {
     _, span := tracer.Start(ctx, "operation")
     defer span.End()
 
-    // This child span won't be connected properly
+    // This child span won't be a child of the operation span
     return childOperation(ctx)  // BUG: Should use the new context from Start()
 }
 
@@ -708,18 +709,24 @@ import (
 // AddUserToBaggage stores user information in baggage
 func AddUserToBaggage(ctx context.Context, userID, tenantID string) (context.Context, error) {
     // Create baggage members
-    userMember, err := baggage.NewMember("user.id", userID)
+    userMember, err := baggage.NewMemberRaw("user.id", userID)
     if err != nil {
         return ctx, err
     }
 
-    tenantMember, err := baggage.NewMember("tenant.id", tenantID)
+    tenantMember, err := baggage.NewMemberRaw("tenant.id", tenantID)
     if err != nil {
         return ctx, err
     }
 
-    // Create or update baggage
-    bag, err := baggage.New(userMember, tenantMember)
+    // Update existing baggage
+    bag := baggage.FromContext(ctx)
+    bag, err = bag.SetMember(userMember)
+    if err != nil {
+        return ctx, err
+    }
+
+    bag, err = bag.SetMember(tenantMember)
     if err != nil {
         return ctx, err
     }
