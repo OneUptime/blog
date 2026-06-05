@@ -76,7 +76,7 @@ cls_gauge = meter.create_gauge("lighthouse.cls.score")
 
 def parse_and_emit(results_dir="./lighthouse-results"):
     """Parse Lighthouse JSON results and emit as OTel metrics."""
-    for result_file in glob.glob(f"{results_dir}/*.json"):
+    for result_file in glob.glob(f"{results_dir}/*.report.json"):
         with open(result_file) as f:
             report = json.load(f)
 
@@ -139,18 +139,18 @@ module.exports = { pageTrackingMiddleware };
 
 ## Building a Combined Dashboard
 
-With both Lighthouse metrics and backend traces flowing into the same observability platform, you can build dashboards that show the full picture. In Grafana, create a dashboard with these panels:
+With both Lighthouse metrics and backend traces flowing into the same observability platform, you can build dashboards that show the full picture. If you generate Prometheus metrics from traces, configure your span metrics processor or connector to include `page.url` as a dimension before querying it as a label. In Grafana, create a dashboard with these panels:
 
 ```text
 Panel 1: Lighthouse Performance Scores by Page
   Query: lighthouse_score_performance{url=~".*"}
 
-Panel 2: Backend API Latency (P95) by Page
-  Query: histogram_quantile(0.95, sum(rate(http_server_duration_bucket{page_url=~".*"}[5m])) by (le, page_url))
+Panel 2: Backend API Latency (P95) by Route
+  Query: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{http_route=~".*"}[5m])) by (le, http_route))
 
 Panel 3: LCP vs Backend Response Time Correlation
   Query A: lighthouse_lcp_milliseconds
-  Query B: histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le))
+  Query B: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))
 ```
 
 ## Automating the Full Pipeline
