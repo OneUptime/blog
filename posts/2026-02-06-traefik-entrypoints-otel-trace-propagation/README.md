@@ -18,8 +18,12 @@ Configure OpenTelemetry in the Traefik static configuration:
 entryPoints:
   web:
     address: ":80"
+    observability:
+      traceVerbosity: detailed
   websecure:
     address: ":443"
+    observability:
+      traceVerbosity: detailed
 
 api:
   dashboard: true
@@ -29,9 +33,6 @@ tracing:
   otlp:
     http:
       endpoint: http://otel-collector:4318/v1/traces
-    grpc:
-      endpoint: otel-collector:4317
-      insecure: true
 
   # Service name in traces
   serviceName: traefik-proxy
@@ -56,8 +57,6 @@ tracing:
     grpc:
       endpoint: otel-collector:4317
       insecure: true
-      # Timeout for export calls
-      timeout: 10s
   serviceName: traefik-proxy
   sampleRate: 0.1
 ```
@@ -82,7 +81,7 @@ http:
         average: 100
         burst: 50
 
-    # Retry middleware (creates child spans)
+    # Retry middleware
     retry-middleware:
       retry:
         attempts: 3
@@ -96,6 +95,7 @@ http:
       middlewares:
         - add-trace-headers
         - rate-limit
+        - retry-middleware
       service: api-service
 
     web-router:
@@ -125,15 +125,15 @@ When using Docker provider, configure routing with container labels:
 
 ```yaml
 # docker-compose.yaml
-version: "3.8"
-
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.observability.traceVerbosity=detailed"
+      - "--tracing.otlp.grpc=true"
       - "--tracing.otlp.grpc.endpoint=otel-collector:4317"
       - "--tracing.otlp.grpc.insecure=true"
       - "--tracing.serviceName=traefik"
@@ -150,6 +150,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.routers.api.observability.traceVerbosity=detailed"
       - "traefik.http.services.api.loadbalancer.server.port=8080"
       # Apply middleware
       - "traefik.http.routers.api.middlewares=retry@docker"
@@ -169,15 +170,15 @@ services:
 
 ## Trace Context Propagation
 
-Traefik automatically propagates W3C Trace Context headers. When a request arrives with a `traceparent` header, Traefik creates a child span and forwards the updated header to the backend. This works out of the box without additional configuration.
+Traefik automatically propagates W3C Trace Context headers. When a request arrives with a `traceparent` header, Traefik creates spans in the existing trace and forwards the updated context to the backend. This works out of the box with the default `tracecontext` propagator.
 
 The trace flow looks like:
 
 ```text
-Client -> Traefik (span: entrypoint) -> Middleware (span: retry) -> Backend (span: service)
+Client -> Traefik (server span) -> Middleware spans (with traceVerbosity: detailed) -> Backend (client span)
 ```
 
-Each middleware in the chain creates its own span, giving you visibility into middleware processing time.
+With `traceVerbosity: detailed`, each middleware in the chain creates its own span, giving you visibility into middleware processing time. The default `minimal` trace verbosity creates the main server and client spans without per-middleware spans.
 
 ## Collector Configuration
 
@@ -252,4 +253,4 @@ Traefik also respects parent-based sampling. If an incoming request has a sample
 
 ## Summary
 
-Traefik's native OpenTelemetry support makes it easy to add distributed tracing to your reverse proxy layer. Configure the OTLP exporter in the static configuration, and Traefik automatically creates spans for entry points, middleware, and service routing. W3C Trace Context propagation works out of the box. Use Docker labels or file-based dynamic configuration for routing rules and middleware chains. Each middleware in the chain generates its own span, providing granular timing visibility.
+Traefik's native OpenTelemetry support makes it easy to add distributed tracing to your reverse proxy layer. Configure the OTLP exporter in the static configuration, and Traefik automatically creates spans for request handling and service routing. W3C Trace Context propagation works out of the box. Use Docker labels or file-based dynamic configuration for routing rules and middleware chains. Enable detailed trace verbosity when you need middleware spans for granular timing visibility.
