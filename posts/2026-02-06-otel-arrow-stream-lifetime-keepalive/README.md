@@ -27,14 +27,14 @@ exporters:
     arrow:
       num_streams: 4
       # How long each stream stays open
-      max_stream_lifetime: 10m
+      max_stream_lifetime: 30s
 ```
 
-- **Short lifetime (1-2 minutes)**: Good for load balancing. Streams redistribute frequently. But compression suffers because dictionaries are rebuilt often.
-- **Medium lifetime (5-15 minutes)**: Good balance. Dictionaries stabilize within the first 30-60 seconds, so most of the stream's life is spent in the optimal compression state.
-- **Long lifetime (30+ minutes)**: Best compression. But load balancing becomes very coarse-grained.
+- **Short lifetime (30-60 seconds)**: Good for load balancing. Streams redistribute frequently, and this matches the current exporter default. The OpenTelemetry Arrow exporter documentation notes that most compression benefit is reached quickly.
+- **Medium lifetime (2-10 minutes)**: Useful when the receiver or an intermediate gRPC proxy has a longer connection-age grace window and you want fewer stream restarts.
+- **Long lifetime (10+ minutes)**: Can reduce stream churn, but load balancing becomes coarse-grained and the stream must still end before the receiver or proxy forcibly closes the connection.
 
-For most deployments, 5-15 minutes is the sweet spot.
+For most deployments, start with the default 30-second stream lifetime and increase it only after measuring compression, retry behavior, and backend load distribution.
 
 ## Keepalive Settings
 
@@ -46,10 +46,10 @@ exporters:
     endpoint: gateway:4317
     arrow:
       num_streams: 4
-      max_stream_lifetime: 10m
+      max_stream_lifetime: 30s
     # gRPC keepalive settings
     keepalive:
-      time: 30s        # Send keepalive ping every 30s
+      time: 60s        # Send keepalive ping every 60s
       timeout: 10s      # Wait 10s for a response before considering the stream dead
       permit_without_stream: true  # Send keepalives even when no streams are active
 ```
@@ -64,13 +64,13 @@ receivers:
         endpoint: 0.0.0.0:4317
         keepalive:
           server_parameters:
-            time: 30s
+            time: 60s
             timeout: 10s
             max_connection_idle: 120s
-            max_connection_age: 600s
-            max_connection_age_grace: 30s
+            max_connection_age: 1m
+            max_connection_age_grace: 1m
           enforcement_policy:
-            min_time: 10s
+            min_time: 60s
             permit_without_stream: true
 ```
 
@@ -84,28 +84,33 @@ Key settings explained:
 
 There are two levels of lifetime management:
 
-1. **Stream lifetime** (`max_stream_lifetime`): The Arrow stream within a gRPC connection. When it expires, the exporter starts a new stream, potentially on a new connection.
-2. **Connection age** (`max_connection_age`): The gRPC connection itself. When it expires, all streams on that connection are closed.
+1. **Stream lifetime** (`max_stream_lifetime`): The Arrow stream within a gRPC connection. When it expires, the exporter cleanly ends the stream and starts a new one.
+2. **Connection age and grace** (`max_connection_age` and `max_connection_age_grace`): The gRPC connection itself. After the connection reaches its maximum age, gRPC allows existing RPCs to continue only during the grace period before the connection is closed.
 
-Set `max_connection_age` to be at least 2x `max_stream_lifetime` so that streams can complete their full lifetime without being interrupted by connection-level recycling.
+Set `max_stream_lifetime` to be slightly less than the receiver's `max_connection_age_grace` setting, minus the export timeout. This lets the exporter close Arrow streams cleanly before gRPC connection management forcibly terminates them.
 
 ```yaml
 # Good configuration:
 
-# Stream lifetime: 10 minutes
-# Connection age: 30 minutes
-# This allows 2-3 stream cycles per connection
-arrow:
-  max_stream_lifetime: 10m
-keepalive:
-  server_parameters:
-    max_connection_age: 30m
-    max_connection_age_grace: 30s
+exporters:
+  otelarrow:
+    timeout: 10s
+    arrow:
+      max_stream_lifetime: 30s
+
+receivers:
+  otelarrow:
+    protocols:
+      grpc:
+        keepalive:
+          server_parameters:
+            max_connection_age: 1m
+            max_connection_age_grace: 1m
 ```
 
 ## Load Balancing Considerations
 
-If you are using an L4 load balancer (TCP-level), connections are distributed at connection time. Once established, a connection stays on the same backend. This means stream lifetime is your primary tool for redistribution.
+If you are using an L4 load balancer (TCP-level), connections are distributed at connection time. Once established, a connection stays on the same backend. This means stream lifetime alone will not necessarily redistribute traffic; connection recycling or exporter-side gRPC balancing is what gives new backend instances a chance to receive traffic.
 
 If you are using an L7 load balancer that understands gRPC (like Envoy), each new stream can potentially be routed to a different backend. In this case, shorter stream lifetimes give finer-grained load balancing without waiting for the entire connection to recycle.
 
@@ -113,14 +118,15 @@ If you are using an L7 load balancer that understands gRPC (like Envoy), each ne
 # Behind an L7 gRPC-aware load balancer
 arrow:
   num_streams: 4
-  max_stream_lifetime: 5m  # Shorter is fine because L7 balances per-stream
+  max_stream_lifetime: 30s  # Shorter is fine because L7 balances per-stream
 ```
 
 ```yaml
 # Behind an L4 TCP load balancer
-arrow:
-  num_streams: 4
-  max_stream_lifetime: 10m  # Longer since redistribution only happens on reconnect
+keepalive:
+  server_parameters:
+    max_connection_age: 1m  # Connection recycling gives the L4 load balancer a chance to rebalance
+    max_connection_age_grace: 1m
 ```
 
 ## Monitoring Stream Behavior
@@ -128,18 +134,16 @@ arrow:
 Check these metrics to verify your tuning:
 
 ```promql
-# Average stream lifetime (should be close to your configured max)
-histogram_quantile(0.5,
-  rate(otelcol_exporter_otelarrow_stream_lifetime_seconds_bucket[5m])
-)
+# Compression ratio derived from documented exporter byte counters
+sum(rate(otelcol_exporter_sent[5m]))
+/
+sum(rate(otelcol_exporter_sent_wire[5m]))
 
-# Stream reconnection rate
-rate(otelcol_exporter_otelarrow_stream_reconnections_total[5m])
-
-# Compression ratio (higher is better)
-otelcol_exporter_otelarrow_compression_ratio
+# Receiver-side admission pressure
+otelcol_otelarrow_admission_in_flight_bytes
+otelcol_otelarrow_admission_waiting_bytes
 ```
 
-If the average stream lifetime is significantly shorter than your configured maximum, streams are being terminated prematurely, possibly by network issues or load balancer timeouts. Increase the keepalive frequency or check your load balancer's idle timeout settings.
+If compression drops or admission pressure rises after changing stream lifetime, streams may be cycling too often or the receiver may be under memory pressure. If exporter logs show streams ending with gRPC errors instead of clean `OK` status, check the receiver and proxy connection-age settings and make sure `max_stream_lifetime` is shorter than the available grace window.
 
-The goal is to keep streams alive long enough for the Arrow dictionary to stabilize (usually 30-60 seconds) while recycling them often enough that load stays evenly distributed across your receiver fleet.
+The goal is to keep streams alive long enough to get the Arrow compression benefit while recycling them often enough that load stays evenly distributed across your receiver fleet.
