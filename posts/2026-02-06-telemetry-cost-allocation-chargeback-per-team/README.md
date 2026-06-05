@@ -20,9 +20,10 @@ Here is how to configure the resource attribute in a Python service:
 
 ```python
 # Set team ownership as a resource attribute so every signal
-
 # emitted by this service carries the team identifier.
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 
 resource = Resource.create({
@@ -32,14 +33,16 @@ resource = Resource.create({
     "deployment.environment": "production"
 })
 
-provider = TracerProvider(resource=resource)
+tracer_provider = TracerProvider(resource=resource)
+meter_provider = MeterProvider(resource=resource)
+logger_provider = LoggerProvider(resource=resource)
 ```
 
 For Kubernetes-based deployments, you can inject these attributes via the OpenTelemetry Operator's `Instrumentation` CRD rather than modifying application code:
 
 ```yaml
 # This Instrumentation resource automatically injects team metadata
-# into all pods matching the namespace selector.
+# into workloads that opt in to Python auto-instrumentation.
 apiVersion: opentelemetry.io/v1alpha1
 kind: Instrumentation
 metadata:
@@ -57,13 +60,13 @@ spec:
 
 ## Step 2: Route Telemetry Through a Metering Collector
 
-Once every signal carries a team identifier, you need a Collector that meters data volume per team. The `routing` connector paired with a `count` connector can split traffic and measure bytes per team.
+Once every signal carries a team identifier, you need a Collector that meters telemetry volume per team. The `routing` connector can split traffic by team, while the `count` connector can emit count metrics for spans, metric data points, and log records.
 
-A more practical approach uses the `transform` processor to compute estimated sizes and export them as internal metrics:
+A practical approach uses the `count` connector to export per-team signal counts as internal metrics:
 
 ```yaml
 # Collector config that extracts team.name from resource attributes
-# and records per-team data volume as a metric.
+# and records per-team telemetry counts as metrics.
 receivers:
   otlp:
     protocols:
@@ -71,7 +74,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Group telemetry by team to enable per-team routing
+  # Group telemetry by team to reduce fragmentation before batching
   groupbyattrs:
     keys:
       - team.name
@@ -95,13 +98,17 @@ exporters:
 
 connectors:
   # The count connector generates metrics about the number of
-  # spans, metrics, and log records flowing through the pipeline.
+  # spans, metric data points, and log records flowing through the pipeline.
   count:
     spans:
       otel.chargeback.span.count:
         description: "Number of spans per team"
-        conditions:
-          - resource.attributes["team.name"] != nil
+        attributes:
+          - key: team.name
+            default_value: unattributed
+    datapoints:
+      otel.chargeback.datapoint.count:
+        description: "Number of metric data points per team"
         attributes:
           - key: team.name
             default_value: unattributed
@@ -122,6 +129,10 @@ service:
       receivers: [otlp]
       processors: [groupbyattrs, batch]
       exporters: [otlphttp/backend, count]
+    metrics/ingest:
+      receivers: [otlp]
+      processors: [groupbyattrs, batch]
+      exporters: [otlphttp/backend, count]
     metrics/chargeback:
       receivers: [count]
       exporters: [prometheus]
@@ -135,7 +146,7 @@ The Prometheus metrics from the count connector give you raw signal counts per t
 # Calculate estimated monthly span cost per team.
 # rate() gives per-second throughput, multiplied out to monthly volume.
 (
-  rate(otel_chargeback_span_count_total[1h])
+  sum by (team_name) (rate(otel_chargeback_span_count_total[1h]))
   * 60 * 60 * 24 * 30  # extrapolate to monthly
   / 1e6                  # convert to millions
   * 0.30                 # cost per million spans
