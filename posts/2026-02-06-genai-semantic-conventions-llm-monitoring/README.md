@@ -19,7 +19,7 @@ OpenTelemetry's GenAI conventions live under the `gen_ai` namespace and cover th
 ```text
 # Core GenAI attributes
 
-gen_ai.system              - The GenAI provider (e.g., "openai", "anthropic")
+gen_ai.provider.name       - The GenAI provider (e.g., "openai", "anthropic")
 gen_ai.request.model       - Model requested (e.g., "gpt-4", "claude-3-opus")
 gen_ai.response.model      - Model that actually served the request
 gen_ai.operation.name      - Type of operation ("chat", "text_completion", "embeddings")
@@ -52,8 +52,8 @@ Here is how to instrument a typical OpenAI API call with the GenAI semantic conv
 # Captures token usage, model info, latency, and request parameters.
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 import openai
-import time
 
 tracer = trace.get_tracer("llm-service", "1.0.0")
 
@@ -61,7 +61,7 @@ def instrumented_chat_completion(
     messages: list,
     model: str = "gpt-4",
     temperature: float = 0.7,
-    max_tokens: int = 1000
+    max_completion_tokens: int = 1000
 ) -> dict:
     """Make an OpenAI chat completion call with full telemetry."""
 
@@ -70,11 +70,11 @@ def instrumented_chat_completion(
     with tracer.start_as_current_span(f"chat {model}") as span:
 
         # Set request attributes before the call
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.temperature", temperature)
-        span.set_attribute("gen_ai.request.max_tokens", max_tokens)
+        span.set_attribute("gen_ai.request.max_tokens", max_completion_tokens)
 
         try:
             # Make the actual API call
@@ -83,7 +83,7 @@ def instrumented_chat_completion(
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_completion_tokens=max_completion_tokens
             )
 
             # Set response attributes after the call
@@ -111,7 +111,7 @@ def instrumented_chat_completion(
 
         except openai.APIError as e:
             # Record the error on the span
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             raise
 ```
@@ -120,7 +120,7 @@ Every LLM call now produces a span with rich metadata. You can see which model w
 
 ## Instrumenting Multi-Provider Applications
 
-Many applications use multiple LLM providers. The GenAI conventions handle this cleanly because the `gen_ai.system` attribute distinguishes between providers.
+Many applications use multiple LLM providers. The GenAI conventions handle this cleanly because the `gen_ai.provider.name` attribute distinguishes between providers.
 
 ```python
 # multi_provider.py
@@ -137,7 +137,7 @@ class InstrumentedLLMClient:
     def call_openai(self, prompt: str, model: str = "gpt-4") -> dict:
         """Call OpenAI with GenAI convention instrumentation."""
         with tracer.start_as_current_span(f"chat {model}") as span:
-            span.set_attribute("gen_ai.system", "openai")
+            span.set_attribute("gen_ai.provider.name", "openai")
             span.set_attribute("gen_ai.operation.name", "chat")
             span.set_attribute("gen_ai.request.model", model)
 
@@ -148,7 +148,7 @@ class InstrumentedLLMClient:
     def call_anthropic(self, prompt: str, model: str = "claude-3-opus") -> dict:
         """Call Anthropic with GenAI convention instrumentation."""
         with tracer.start_as_current_span(f"chat {model}") as span:
-            span.set_attribute("gen_ai.system", "anthropic")
+            span.set_attribute("gen_ai.provider.name", "anthropic")
             span.set_attribute("gen_ai.operation.name", "chat")
             span.set_attribute("gen_ai.request.model", model)
 
@@ -159,7 +159,7 @@ class InstrumentedLLMClient:
     def call_embedding(self, text: str, model: str = "text-embedding-3-small") -> list:
         """Generate embeddings with GenAI convention instrumentation."""
         with tracer.start_as_current_span(f"embeddings {model}") as span:
-            span.set_attribute("gen_ai.system", "openai")
+            span.set_attribute("gen_ai.provider.name", "openai")
             span.set_attribute("gen_ai.operation.name", "embeddings")
             span.set_attribute("gen_ai.request.model", model)
 
@@ -170,11 +170,11 @@ class InstrumentedLLMClient:
             return embeddings
 ```
 
-With this approach, a single dashboard can show you token usage, latency, and error rates broken down by `gen_ai.system` and `gen_ai.request.model`. You get a unified view across all your LLM providers.
+With this approach, a single dashboard can show you token usage, latency, and error rates broken down by `gen_ai.provider.name` and `gen_ai.request.model`. You get a unified view across all your LLM providers.
 
 ## Capturing Prompt and Completion Events
 
-The GenAI conventions also define span events for recording prompt and completion content. This is optional and should be gated by a configuration flag since prompts may contain sensitive data.
+The GenAI conventions also define opt-in attributes and an operation details event for recording prompt and completion content. This is optional and should be gated by a configuration flag since prompts may contain sensitive data.
 
 ```python
 # prompt_events.py
@@ -184,51 +184,75 @@ The GenAI conventions also define span events for recording prompt and completio
 
 from opentelemetry import trace
 import os
+import json
 
 tracer = trace.get_tracer("llm-service", "1.0.0")
 
 # Control prompt logging via environment variable
-CAPTURE_PROMPTS = os.environ.get("OTEL_GENAI_CAPTURE_CONTENT", "false").lower() == "true"
+CAPTURE_PROMPTS = os.environ.get(
+    "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT",
+    "false"
+).lower() == "true"
 
 def chat_with_events(messages: list, model: str = "gpt-4") -> dict:
     """Make a chat completion call with optional prompt/completion events."""
 
     with tracer.start_as_current_span(f"chat {model}") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
 
-        # Record each message as a gen_ai.content.prompt event
-        if CAPTURE_PROMPTS:
-            for i, msg in enumerate(messages):
-                span.add_event(
-                    "gen_ai.content.prompt",
-                    attributes={
-                        "gen_ai.prompt": msg.get("content", ""),
-                        # Role helps distinguish system, user, and assistant messages
-                        "gen_ai.prompt.role": msg.get("role", "user"),
-                        "gen_ai.prompt.index": i,
+        input_messages = [
+            {
+                "role": msg.get("role", "user"),
+                "parts": [
+                    {
+                        "type": "text",
+                        "content": msg.get("content", ""),
                     }
-                )
+                ],
+            }
+            for msg in messages
+        ]
+
+        # Record input messages as an opt-in GenAI content attribute
+        if CAPTURE_PROMPTS:
+            span.set_attribute("gen_ai.input.messages", json.dumps(input_messages))
 
         # Make the API call
         response = call_openai_api(messages, model)
 
-        # Record the completion as a gen_ai.content.completion event
-        if CAPTURE_PROMPTS:
-            for choice in response.choices:
-                span.add_event(
-                    "gen_ai.content.completion",
-                    attributes={
-                        "gen_ai.completion": choice.message.content,
-                        "gen_ai.completion.role": choice.message.role,
-                        "gen_ai.completion.index": choice.index,
+        output_messages = [
+            {
+                "role": choice.message.role,
+                "parts": [
+                    {
+                        "type": "text",
+                        "content": choice.message.content,
                     }
-                )
+                ],
+                "finish_reason": choice.finish_reason,
+            }
+            for choice in response.choices
+        ]
+
+        # Record output messages as an opt-in GenAI content attribute and event
+        if CAPTURE_PROMPTS:
+            span.set_attribute("gen_ai.output.messages", json.dumps(output_messages))
+            span.add_event(
+                "gen_ai.client.inference.operation.details",
+                attributes={
+                    "gen_ai.operation.name": "chat",
+                    "gen_ai.request.model": model,
+                    "gen_ai.input.messages": json.dumps(input_messages),
+                    "gen_ai.output.messages": json.dumps(output_messages),
+                }
+            )
 
         return response
 ```
 
-The `OTEL_GENAI_CAPTURE_CONTENT` environment variable follows the pattern used by OpenTelemetry auto-instrumentation libraries. When set to `true`, full prompt and completion text is recorded. When `false`, only the metadata (token counts, model, parameters) is captured.
+The `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` environment variable follows the pattern used by OpenTelemetry GenAI auto-instrumentation libraries. When set to `true`, full prompt and completion text is recorded. When `false`, only the metadata (token counts, model, parameters) is captured.
 
 ## Metrics for LLM Operations
 
@@ -243,8 +267,8 @@ from opentelemetry import metrics
 
 meter = metrics.get_meter("llm-service", "1.0.0")
 
-# Token usage counters - critical for cost tracking
-input_token_counter = meter.create_counter(
+# Token usage histogram - critical for cost tracking
+token_usage = meter.create_histogram(
     name="gen_ai.client.token.usage",
     description="Total tokens consumed by LLM operations",
     unit="{token}"
@@ -269,17 +293,17 @@ def record_llm_metrics(
 
     # Common attributes for all metrics from this operation
     common_attrs = {
-        "gen_ai.system": system,
+        "gen_ai.provider.name": system,
         "gen_ai.request.model": model,
         "gen_ai.operation.name": operation,
     }
 
     # Record input and output tokens separately using the token type attribute
-    input_token_counter.add(
+    token_usage.record(
         input_tokens,
         {**common_attrs, "gen_ai.token.type": "input"}
     )
-    input_token_counter.add(
+    token_usage.record(
         output_tokens,
         {**common_attrs, "gen_ai.token.type": "output"}
     )
@@ -324,7 +348,7 @@ def daily_cost_report(metrics_data: list) -> dict:
 
     for entry in metrics_data:
         model = entry["gen_ai.request.model"]
-        system = entry["gen_ai.system"]
+        system = entry["gen_ai.provider.name"]
         key = f"{system}/{model}"
 
         if key not in report:
@@ -384,6 +408,8 @@ Many LLM applications use streaming responses for better user experience. Instru
 # only after the full response has been received.
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+import openai
 
 tracer = trace.get_tracer("llm-service", "1.0.0")
 
@@ -391,7 +417,7 @@ def instrumented_streaming_chat(messages: list, model: str = "gpt-4"):
     """Stream a chat completion with telemetry captured at stream end."""
 
     span = tracer.start_span(f"chat {model}")
-    span.set_attribute("gen_ai.system", "openai")
+    span.set_attribute("gen_ai.provider.name", "openai")
     span.set_attribute("gen_ai.request.model", model)
     span.set_attribute("gen_ai.operation.name", "chat")
 
@@ -424,10 +450,10 @@ def instrumented_streaming_chat(messages: list, model: str = "gpt-4"):
                 )
 
         # Mark the span as successful and end it
-        span.set_status(trace.StatusCode.OK)
+        span.set_status(Status(StatusCode.OK))
 
     except Exception as e:
-        span.set_status(trace.StatusCode.ERROR, str(e))
+        span.set_status(Status(StatusCode.ERROR, str(e)))
         span.record_exception(e)
         raise
 
@@ -439,6 +465,6 @@ The key detail here is that we create the span manually instead of using a conte
 
 ## Getting Started
 
-If you are just beginning to instrument LLM operations, start with the basics: set `gen_ai.system`, `gen_ai.request.model`, `gen_ai.operation.name`, and the token usage attributes on every LLM call. These five attributes alone give you enough data for cost tracking, latency monitoring, and error rate alerting. Add prompt and completion events later once you have addressed the privacy and compliance considerations for your organization.
+If you are just beginning to instrument LLM operations, start with the basics: set `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.operation.name`, and the token usage attributes on every LLM call. These five attributes alone give you enough data for cost tracking, latency monitoring, and error rate alerting. Add prompt and completion content later once you have addressed the privacy and compliance considerations for your organization.
 
-The GenAI semantic conventions are still evolving as the LLM landscape matures, but the core attributes covered here are stable and widely supported. Building on them now gives you a strong foundation for LLM observability that will grow with your AI infrastructure.
+The GenAI semantic conventions are still evolving as the LLM landscape matures, but the core attributes covered here are widely supported and are the current direction of the OpenTelemetry specification. Building on them now gives you a strong foundation for LLM observability that will grow with your AI infrastructure.
