@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporter, InfluxDB, Time Series, Metric, Monitoring, Observability
 
-Description: Learn how to configure the InfluxDB exporter in the OpenTelemetry Collector for time-series metrics storage and analysis with InfluxDB 2.x and 3.x.
+Description: Learn how to configure the InfluxDB exporter in the OpenTelemetry Collector for time-series metrics storage and analysis with InfluxDB 2.x and the InfluxDB 3.x v2-compatible write API.
 
 InfluxDB is a high-performance time-series database designed for handling large volumes of timestamped data. The OpenTelemetry Collector's InfluxDB exporter enables you to send metrics data to InfluxDB for storage, analysis, and visualization. This integration is ideal for organizations looking to leverage InfluxDB's powerful query language and time-series optimizations.
 
@@ -24,10 +24,10 @@ graph LR
     B -->|Receivers| C[Processors]
     C -->|Transform| D[InfluxDB Exporter]
     D -->|Line Protocol| E[InfluxDB]
-    E -->|Flux/InfluxQL| F[Queries]
+    E -->|Flux/SQL/InfluxQL| F[Queries]
     E -->|Dashboards| G[Grafana]
-    E -->|Alerts| H[Kapacitor]
-    E -->|Analysis| I[Chronograf]
+    E -->|Alerts| H[Checks/Tasks]
+    E -->|Analysis| I[Explorer/Grafana]
 ```
 
 ## Prerequisites
@@ -35,7 +35,7 @@ graph LR
 Before configuring the InfluxDB exporter, ensure you have:
 
 - InfluxDB 2.x or 3.x installed and running
-- An InfluxDB organization and bucket created
+- An InfluxDB organization and bucket created (for InfluxDB 3.x, the exporter writes through the v2-compatible API and the bucket value maps to the database name)
 - An API token with write permissions
 - OpenTelemetry Collector Contrib installed (version 0.80.0 or later)
 
@@ -46,14 +46,19 @@ Install and configure InfluxDB 2.x:
 ```bash
 # Download and install InfluxDB (example for Linux)
 
-wget https://dl.influxdata.com/influxdb/releases/influxdb2-2.7.4-linux-amd64.tar.gz
-tar xvfz influxdb2-2.7.4-linux-amd64.tar.gz
-cd influxdb2-2.7.4-linux-amd64
+wget https://download.influxdata.com/influxdb/releases/v2.8.0/influxdb2-2.8.0_linux_amd64.tar.gz
+tar xvfz influxdb2-2.8.0_linux_amd64.tar.gz
+cd influxdb2-2.8.0/usr/bin
 
 # Start InfluxDB
-./influxd
+./influxd &
 
-# Initial setup (in another terminal)
+# Install the separate influx CLI
+wget https://dl.influxdata.com/influxdb/releases/influxdb2-client-2.8.0-linux-amd64.tar.gz
+tar xvfz influxdb2-client-2.8.0-linux-amd64.tar.gz
+cd influxdb2-client-2.8.0-linux-amd64
+
+# Initial setup
 ./influx setup \
   --username admin \
   --password mypassword123 \
@@ -66,11 +71,14 @@ cd influxdb2-2.7.4-linux-amd64
 Create an API token:
 
 ```bash
+# Get the bucket ID
+BUCKET_ID=$(influx bucket list --org myorg --name telemetry --hide-headers | awk '{print $1}')
+
 # Create a token with write access to the bucket
 influx auth create \
   --org myorg \
-  --read-bucket telemetry \
-  --write-bucket telemetry \
+  --read-bucket "${BUCKET_ID}" \
+  --write-bucket "${BUCKET_ID}" \
   --description "OpenTelemetry Collector Token"
 
 # Output will include the token string
@@ -139,25 +147,16 @@ exporters:
     # InfluxDB v1.x endpoint
     endpoint: "http://localhost:8086"
 
-    # Database name (v1.x concept)
-    # For v2.x, this maps to bucket
-    # db: "telegraf"
-
-    # Username and password (v1.x authentication)
-    # username: "admin"
-    # password: "password"
-
-    # For v2.x with v1 compatibility API
+    # These fields are still part of the exporter configuration
     org: "myorg"
     bucket: "telemetry"
-    token: "${INFLUXDB_TOKEN}"
 
     # Use v1 write endpoint
-    # v1_compatibility:
-    #   enabled: true
-    #   db: "telegraf"
-    #   username: "admin"
-    #   password: "password"
+    v1_compatibility:
+      enabled: true
+      db: "telegraf"
+      username: "admin"
+      password: "password"
 
     timeout: 10s
 ```
@@ -190,9 +189,6 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 10000
-      storage:
-        directory: /var/lib/otelcol/queue
-        timeout: 10s
 
     # Retry configuration
     retry_on_failure:
@@ -203,13 +199,6 @@ exporters:
 
     # Metrics specific configuration
     metrics_schema: "telegraf-prometheus-v2"
-
-    # Tags to add to all metrics
-    tags:
-      - key: "collector"
-        value: "otel"
-      - key: "environment"
-        value: "production"
 
     # HTTP client settings
     compression: "gzip"
@@ -249,9 +238,9 @@ exporters:
     metrics_schema: "telegraf-prometheus-v2"
 ```
 
-Resource Attributes and Tags
+## Resource Attributes and Tags
 
-Map OpenTelemetry resource attributes to InfluxDB tags:
+Add OpenTelemetry resource and metric attributes before export:
 
 ```yaml
 processors:
@@ -271,16 +260,6 @@ processors:
         value: "${HOSTNAME}"
         action: upsert
 
-  # Transform attributes to better tag names
-  attributes/transform:
-    actions:
-      - key: service_name
-        from_attribute: service.name
-        action: insert
-      - key: environment
-        from_attribute: deployment.environment
-        action: insert
-
   batch:
     timeout: 10s
     send_batch_size: 1024
@@ -292,18 +271,11 @@ exporters:
     bucket: "telemetry"
     token: "${INFLUXDB_TOKEN}"
 
-    # Add global tags
-    tags:
-      - key: "cluster"
-        value: "production"
-      - key: "region"
-        value: "us-east-1"
-
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resource, attributes/transform, batch]
+      processors: [resource, batch]
       exporters: [influxdb]
 ```
 
@@ -315,15 +287,13 @@ Filter and transform metrics before export:
 processors:
   # Filter out unwanted metrics
   filter/metrics:
-    metrics:
-      metric:
-        # Exclude specific metrics
-        - 'name == "up"'
-        - 'name == "scrape_duration_seconds"'
-
-      datapoint:
-        # Filter by attribute values
-        - 'attributes["status"] == "healthy"'
+    error_mode: ignore
+    metric_conditions:
+      # Exclude specific metrics
+      - 'metric.name == "up"'
+      - 'metric.name == "scrape_duration_seconds"'
+      # Filter by attribute values
+      - 'datapoint.attributes["status"] == "healthy"'
 
   # Transform metric names
   metricstransform:
@@ -349,14 +319,18 @@ processors:
       # Aggregate metrics
       - include: "request_count"
         action: update
-        aggregation_type: sum
-        submatch_case: lower
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: sum
 
   # Convert cumulative to delta
   cumulativetodelta:
-    metrics:
-      - http_requests_total
-      - bytes_sent_total
+    include:
+      metrics:
+        - http_requests_total
+        - bytes_sent_total
+      match_type: strict
 
   batch:
     timeout: 10s
@@ -395,6 +369,7 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 10000
+      storage: file_storage/primary
 
     retry_on_failure:
       enabled: true
@@ -414,6 +389,7 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 10000
+      storage: file_storage/secondary
 
     retry_on_failure:
       enabled: true
@@ -426,7 +402,17 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
+extensions:
+  file_storage/primary:
+    directory: /var/lib/otelcol/primary-queue
+    timeout: 10s
+
+  file_storage/secondary:
+    directory: /var/lib/otelcol/secondary-queue
+    timeout: 10s
+
 service:
+  extensions: [file_storage/primary, file_storage/secondary]
   pipelines:
     metrics:
       receivers: [otlp]
@@ -437,14 +423,14 @@ service:
 
 ## Querying Data with Flux
 
-Once metrics are in InfluxDB, query them using Flux:
+Once metrics are in InfluxDB 2.x, query them using Flux. These examples assume `metrics_schema: "telegraf-prometheus-v1"`; with `telegraf-prometheus-v2`, metric points are stored in the `prometheus` measurement and metric names are field keys.
 
 ```flux
 // Query request rate over last hour
 from(bucket: "telemetry")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "http_requests_total")
-  |> filter(fn: (r) => r["service_name"] == "payment-service")
+  |> filter(fn: (r) => r["service.name"] == "payment-service")
   |> derivative(unit: 1s, nonNegative: true)
   |> aggregateWindow(every: 1m, fn: mean)
 
@@ -452,14 +438,14 @@ from(bucket: "telemetry")
 from(bucket: "telemetry")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "http_request_duration")
-  |> filter(fn: (r) => r["service_name"] == "payment-service")
+  |> filter(fn: (r) => r["service.name"] == "payment-service")
   |> quantile(q: 0.95, method: "exact_mean")
 
 // Aggregate by tags
 from(bucket: "telemetry")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "cpu_usage")
-  |> group(columns: ["service_name", "environment"])
+  |> group(columns: ["service.name", "deployment.environment"])
   |> mean()
 
 // Join multiple measurements
@@ -475,18 +461,18 @@ errors = from(bucket: "telemetry")
 
 join(
   tables: {requests: requests, errors: errors},
-  on: ["_time", "service_name"]
+  on: ["_time", "service.name"]
 )
 |> map(fn: (r) => ({
     _time: r._time,
-    service_name: r.service_name,
+    service_name: r["service.name"],
     error_rate: r._value_errors / r._value_requests
   }))
 ```
 
 ## Creating Tasks and Alerts
 
-Set up automated tasks in InfluxDB:
+Set up automated tasks in InfluxDB 2.x:
 
 ```flux
 // Downsampling task - aggregate 5-minute data to hourly
@@ -502,38 +488,19 @@ from(bucket: "telemetry")
   |> aggregateWindow(every: 1h, fn: mean)
   |> to(bucket: "telemetry_downsampled", org: "myorg")
 
-// Data retention task - delete old data
-option task = {
-  name: "delete_old_data",
-  every: 24h
-}
-
-from(bucket: "telemetry")
-  |> range(start: -90d, stop: -60d)
-  |> drop()
 ```
 
-Create alerts using InfluxDB checks:
+Delete old data explicitly with the InfluxDB CLI when retention policies are not enough:
 
 ```bash
-# Create a deadman check (no data)
-influx check create deadman \
-  --name "Service Down Check" \
-  --every 1m \
+influx delete \
+  --bucket telemetry \
   --org myorg \
-  --level CRIT \
-  --time-since 5m \
-  --stale-time 10m
-
-# Create a threshold check
-influx check create threshold \
-  --name "High CPU Check" \
-  --every 1m \
-  --org myorg \
-  --level CRIT \
-  --threshold-crit 90 \
-  --threshold-warn 75
+  --start 2026-01-01T00:00:00Z \
+  --stop 2026-02-01T00:00:00Z
 ```
+
+Create alerts using InfluxDB checks in the InfluxDB UI or the `/api/v2/checks` API. Checks include a query and check configuration, and support threshold and deadman check types.
 
 ## Integration with Grafana
 
@@ -581,6 +548,14 @@ Create a Grafana dashboard with Flux queries:
 Optimize the exporter for high-throughput scenarios:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
   # Memory limiter to prevent OOM
   memory_limiter:
@@ -611,9 +586,7 @@ exporters:
       enabled: true
       num_consumers: 20
       queue_size: 20000
-      storage:
-        directory: /var/lib/otelcol/queue
-        timeout: 10s
+      storage: file_storage/queue
 
     retry_on_failure:
       enabled: true
@@ -622,6 +595,8 @@ exporters:
       max_elapsed_time: 300s
 
 service:
+  extensions: [file_storage/queue]
+
   pipelines:
     metrics:
       receivers: [otlp]
@@ -633,7 +608,19 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
+
+extensions:
+  file_storage/queue:
+    directory: /var/lib/otelcol/queue
+    timeout: 10s
 ```
 
 ## Data Retention and Management
@@ -711,9 +698,11 @@ exporters:
 
 ```bash
 # Create new token
+BUCKET_ID=$(influx bucket list --org myorg --name telemetry --hide-headers | awk '{print $1}')
+
 influx auth create \
   --org myorg \
-  --write-bucket telemetry \
+  --write-bucket "${BUCKET_ID}" \
   --description "Rotated token $(date +%Y-%m-%d)"
 
 # Delete old token
@@ -726,28 +715,23 @@ Create tokens with minimal required permissions:
 
 ```bash
 # Create read-only token
+BUCKET_ID=$(influx bucket list --org myorg --name telemetry --hide-headers | awk '{print $1}')
+
 influx auth create \
   --org myorg \
-  --read-bucket telemetry \
+  --read-bucket "${BUCKET_ID}" \
   --description "Read-only token"
 
 # Create write-only token
 influx auth create \
   --org myorg \
-  --write-bucket telemetry \
+  --write-bucket "${BUCKET_ID}" \
   --description "Write-only token for collector"
 ```
 
-**4. Enable Authentication and Authorization:**
+**4. Use InfluxDB 2.x or 3.x token-based authentication:**
 
-Configure InfluxDB with authentication enabled:
-
-```toml
-# influxdb.conf
-[http]
-  auth-enabled = true
-  flux-enabled = true
-```
+InfluxDB 2.x and 3.x API requests are authenticated with tokens. Avoid using legacy InfluxDB 1.x username/password authentication unless you are explicitly using the v1 compatibility API.
 
 ## Complete Production Example
 
@@ -787,10 +771,10 @@ processors:
 
   # Filter unnecessary metrics
   filter/metrics:
-    metrics:
-      metric:
-        - 'name == "up"'
-        - 'name == "scrape_duration_seconds"'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "up"'
+      - 'metric.name == "scrape_duration_seconds"'
 
   # Transform metrics
   metricstransform:
@@ -804,9 +788,11 @@ processors:
 
   # Convert cumulative to delta
   cumulativetodelta:
-    metrics:
-      - http_requests_total
-      - bytes_sent_total
+    include:
+      metrics:
+        - http_requests_total
+        - bytes_sent_total
+      match_type: strict
 
   # Batch for efficiency
   batch:
@@ -825,21 +811,11 @@ exporters:
     timeout: 60s
     compression: "gzip"
 
-    tags:
-      - key: "collector"
-        value: "opentelemetry"
-      - key: "cluster"
-        value: "${CLUSTER_NAME}"
-      - key: "environment"
-        value: "${ENVIRONMENT}"
-
     sending_queue:
       enabled: true
       num_consumers: 20
       queue_size: 20000
-      storage:
-        directory: /var/lib/otelcol/queue
-        timeout: 10s
+      storage: file_storage/queue
 
     retry_on_failure:
       enabled: true
@@ -853,6 +829,8 @@ exporters:
       ca_file: "${TLS_CA_FILE}"
 
 service:
+  extensions: [file_storage/queue]
+
   pipelines:
     metrics:
       receivers: [otlp]
@@ -863,7 +841,19 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
+
+extensions:
+  file_storage/queue:
+    directory: /var/lib/otelcol/queue
+    timeout: 10s
 ```
 
 ## Troubleshooting Common Issues
