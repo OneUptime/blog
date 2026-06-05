@@ -23,14 +23,15 @@ Before writing a custom profile, check what the default profile allows. Docker's
 ```bash
 # Download Docker's default seccomp profile for reference
 
-curl -sL https://raw.githubusercontent.com/moby/moby/master/profiles/seccomp/default.json \
+curl -sL https://raw.githubusercontent.com/moby/profiles/main/seccomp/default.json \
   -o default-seccomp.json
 
-# Count how many syscalls it allows
+# Count how many syscall names it allows
 cat default-seccomp.json | python3 -c "
 import json, sys
 profile = json.load(sys.stdin)
-print(f'Allowed syscalls: {len(profile[\"syscalls\"])} rules')
+allowed = sum(len(rule.get('names', [])) for rule in profile['syscalls'])
+print(f'Allowed syscall names: {allowed}')
 print(f'Default action: {profile[\"defaultAction\"]}')
 "
 ```
@@ -81,12 +82,14 @@ Available actions include:
 
 The first step in creating a custom profile is finding out which system calls your application actually makes. Use `strace` to trace them.
 
-Run your container with the default seccomp profile and strace attached:
+Run your container without seccomp confinement and with `strace` as the entrypoint:
 
 ```bash
 # Run the container with strace to discover syscall usage
-docker run --rm -it --security-opt seccomp=unconfined \
-  strace -c -f -S name your-image:latest 2>&1 | tail -50
+docker run --rm -it \
+  --security-opt seccomp=unconfined \
+  --entrypoint strace \
+  your-image:latest -c -f -S name /app/entrypoint.sh 2>&1 | tail -50
 ```
 
 The `-c` flag gives you a summary count of each syscall. The `-f` flag follows child processes. The output looks something like this:
@@ -106,10 +109,10 @@ For a more automated approach, use the OCI seccomp-bpf tracing tool:
 
 ```bash
 # Install oci-seccomp-bpf-hook for automatic profile generation
-sudo apt-get install golang-github-containers-ocicrypt-dev
+sudo apt-get install oci-seccomp-bpf-hook
 
-# Run with the hook to generate a profile automatically
-docker run --rm \
+# Run with a container engine that supports OCI hooks to generate a profile automatically
+sudo podman run \
   --annotation io.containers.trace-syscall="of:/tmp/generated-profile.json" \
   your-image:latest
 ```
@@ -195,7 +198,7 @@ services:
 
 ## Step 4: Test and Iterate
 
-After applying the profile, test your application thoroughly. If something breaks, the container logs or `dmesg` will show which syscall was blocked:
+After applying the profile, test your application thoroughly. If something breaks, the application usually gets a permission error for the blocked syscall. To audit missing syscalls, switch the profile to `SCMP_ACT_LOG` and check the kernel audit logs:
 
 ```bash
 # Check kernel logs for blocked syscalls
@@ -281,4 +284,4 @@ echo "Generated profile with $(echo "$SYSCALLS" | wc -l) syscalls: $OUTPUT"
 
 ## Wrapping Up
 
-Custom seccomp profiles reduce the kernel attack surface for your containers. The process is straightforward: trace your application's syscalls, build an allow list, apply the profile, and test. Start with a logging profile in staging, then switch to enforcement in production. Even a rough custom profile blocks more dangerous syscalls than Docker's default, giving you a meaningful security improvement.
+Custom seccomp profiles can reduce the kernel attack surface for your containers. The process is straightforward: trace your application's syscalls, build an allow list, apply the profile, and test. Start with a logging profile in staging, then switch to enforcement in production. Compare your profile with Docker's default profile and keep it narrowly scoped so you do not accidentally allow calls that the default profile would have blocked.
