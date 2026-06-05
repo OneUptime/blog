@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Swift, IOS, App Launch, Performance, Span
 
 Description: Track and optimize iOS app launch performance using OpenTelemetry spans to measure cold starts, warm starts, and initialization phases for better user experience.
 
-App launch time is one of the most critical performance metrics for iOS applications. Users expect apps to start quickly, and slow launches lead to frustration and abandonment. Apple recommends keeping launch time under 400 milliseconds, but many apps take several seconds. OpenTelemetry provides the instrumentation needed to measure, analyze, and optimize your app's launch performance.
+App launch time is one of the most critical performance metrics for iOS applications. Users expect apps to start quickly, and slow launches lead to frustration and abandonment. Apple's launch diagnostics focus on the time from the user tapping your icon to the first screen being drawn and becoming responsive, and many apps take several seconds. OpenTelemetry provides the instrumentation needed to measure, analyze, and optimize your app's launch performance.
 
 ## Understanding iOS App Launch Types
 
-iOS has three distinct types of app launches, each with different performance characteristics. Cold starts happen when the app isn't in memory and the system must load everything from scratch. Warm starts occur when the app was recently terminated but some resources remain cached. Resume operations happen when the app was suspended in the background and returns to the foreground.
+iOS launch performance is often discussed in three categories, each with different performance characteristics. Cold starts happen when the app isn't in memory and the system must load everything from scratch. Warm starts occur when the app process needs to launch again but the system can still reuse cached work. Resume operations happen when the app was suspended in the background and returns to the foreground without a new process launch.
 
 Cold starts are the slowest and most important to optimize. They include process creation, dylib loading, static initializer execution, UIApplication initialization, and your app's custom setup code. Each phase contributes to the total launch time, and measuring them individually helps identify bottlenecks.
 
@@ -26,8 +26,15 @@ import OpenTelemetrySdk
 class LaunchPerformanceTracer {
     static let shared = LaunchPerformanceTracer()
 
+    private struct PendingPhase {
+        let name: String
+        let startTime: Date
+        let endTime: Date
+    }
+
     private var tracer: Tracer?
     private var launchSpan: Span?
+    private var pendingPhases: [PendingPhase] = []
     private let launchStartTime: Date
 
     private init() {
@@ -48,10 +55,18 @@ class LaunchPerformanceTracer {
             .startSpan()
 
         launchSpan?.setAttribute(key: "launch.type", value: determineLaunchType())
+
+        pendingPhases.forEach { phase in
+            recordPhase(name: phase.name, startTime: phase.startTime, endTime: phase.endTime)
+        }
+        pendingPhases.removeAll()
     }
 
     func recordPhase(name: String, startTime: Date, endTime: Date) {
-        guard let tracer = tracer, let parent = launchSpan else { return }
+        guard let tracer = tracer, let parent = launchSpan else {
+            pendingPhases.append(PendingPhase(name: name, startTime: startTime, endTime: endTime))
+            return
+        }
 
         let phaseSpan = tracer.spanBuilder(spanName: "launch.\(name)")
             .setParent(parent)
@@ -63,6 +78,21 @@ class LaunchPerformanceTracer {
         phaseSpan.setAttribute(key: "phase.duration_ms", value: duration * 1000)
 
         phaseSpan.end(time: endTime)
+    }
+
+    func recordMilestone(name: String, time: Date, attributes: [String: AttributeValue] = [:]) {
+        guard let tracer = tracer, let parent = launchSpan else { return }
+
+        let span = tracer.spanBuilder(spanName: name)
+            .setParent(parent)
+            .setStartTime(time: time)
+            .startSpan()
+
+        attributes.forEach { attribute in
+            span.setAttribute(key: attribute.key, value: attribute.value)
+        }
+
+        span.end(time: time)
     }
 
     func completeLaunch() {
@@ -119,7 +149,9 @@ The AppDelegate receives callbacks at key points during launch. Instrument these
 
 ```swift
 import UIKit
+import OpenTelemetryApi
 import OpenTelemetrySdk
+import StdoutExporter
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -191,8 +223,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Launch is complete when the app becomes active
-        LaunchPerformanceTracer.shared.completeLaunch()
+        // Record when the app becomes active; complete the launch after first screen display
+        LaunchPerformanceTracer.shared.recordMilestone(
+            name: "application_did_become_active",
+            time: Date()
+        )
     }
 
     private func initializeOpenTelemetry() -> TracerProvider {
@@ -209,13 +244,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     private func createResource() -> Resource {
         return Resource(attributes: [
-            ResourceAttributes.serviceName.rawValue: AttributeValue.string("my-ios-app")
+            SemanticConventions.Service.name.rawValue: AttributeValue.string("my-ios-app")
         ])
     }
 
     private func createSpanProcessor() -> SpanProcessor {
         // Return configured span processor with exporter
-        return SimpleSpanProcessor(spanExporter: StdoutExporter())
+        return SimpleSpanProcessor(spanExporter: StdoutSpanExporter())
     }
 
     private func initializeSDKs() {
@@ -239,6 +274,9 @@ A significant portion of launch time happens before your code runs. The system l
 Add the environment variable `DYLD_PRINT_STATISTICS` in your scheme's Run configuration to see pre-main timing in the console. Record this information as a span attribute:
 
 ```swift
+import Foundation
+import OpenTelemetryApi
+
 class SystemLaunchMetrics {
     static func recordPreMainTime() {
         // The pre-main time must be captured from Xcode logs and recorded manually
@@ -246,23 +284,22 @@ class SystemLaunchMetrics {
 
         // This is a placeholder showing how you would record the data
         let estimatedPreMainTime: TimeInterval = 0.3 // 300ms, example value
+        let endTime = Date()
+        let startTime = endTime.addingTimeInterval(-estimatedPreMainTime)
 
-        let tracer = OpenTelemetry.instance.tracerProvider.get(
-            instrumentationName: "app-launch",
-            instrumentationVersion: "1.0.0"
+        LaunchPerformanceTracer.shared.recordPhase(
+            name: "pre_main_initialization",
+            startTime: startTime,
+            endTime: endTime
         )
 
-        let span = tracer.spanBuilder(spanName: "pre_main_initialization")
-            .startSpan()
-
-        span.setAttribute(key: "phase.name", value: "pre_main")
-        span.setAttribute(key: "phase.duration_ms", value: estimatedPreMainTime * 1000)
-        span.setAttribute(
-            key: "phase.note",
-            value: "Estimated from DYLD_PRINT_STATISTICS"
+        LaunchPerformanceTracer.shared.recordMilestone(
+            name: "pre_main_note",
+            time: endTime,
+            attributes: [
+                "phase.note": AttributeValue.string("Estimated from DYLD_PRINT_STATISTICS")
+            ]
         )
-
-        span.end()
     }
 }
 ```
@@ -289,18 +326,14 @@ struct RootView: View {
         guard !hasRecordedFirstPaint else { return }
         hasRecordedFirstPaint = true
 
-        let tracer = OpenTelemetry.instance.tracerProvider.get(
-            instrumentationName: "app-launch",
-            instrumentationVersion: "1.0.0"
+        LaunchPerformanceTracer.shared.recordMilestone(
+            name: "first_paint",
+            time: Date(),
+            attributes: [
+                "ui.state": AttributeValue.string("visible"),
+                "view.name": AttributeValue.string("HomeView")
+            ]
         )
-
-        let span = tracer.spanBuilder(spanName: "first_paint")
-            .startSpan()
-
-        span.setAttribute(key: "ui.state", value: "visible")
-        span.setAttribute(key: "view.name", value: "HomeView")
-
-        span.end()
 
         // Mark launch as complete
         LaunchPerformanceTracer.shared.completeLaunch()
@@ -341,28 +374,28 @@ class AsyncInitializationTracker {
         // Track multiple async initialization tasks
         let group = DispatchGroup()
 
+        // Create a span for the entire async initialization phase
+        let overallSpan = tracer.spanBuilder(spanName: "async_initialization")
+            .setSpanKind(spanKind: .internal)
+            .startSpan()
+
         group.enter()
         loadConfiguration { [weak self] success in
-            self?.recordTask(name: "load_configuration", success: success)
+            self?.recordTask(name: "load_configuration", success: success, parentSpan: overallSpan)
             group.leave()
         }
 
         group.enter()
         loadUserPreferences { [weak self] success in
-            self?.recordTask(name: "load_user_preferences", success: success)
+            self?.recordTask(name: "load_user_preferences", success: success, parentSpan: overallSpan)
             group.leave()
         }
 
         group.enter()
         initializeAnalytics { [weak self] success in
-            self?.recordTask(name: "initialize_analytics", success: success)
+            self?.recordTask(name: "initialize_analytics", success: success, parentSpan: overallSpan)
             group.leave()
         }
-
-        // Create a span for the entire async initialization phase
-        let overallSpan = tracer.spanBuilder(spanName: "async_initialization")
-            .setSpanKind(spanKind: .internal)
-            .startSpan()
 
         group.notify(queue: .main) {
             overallSpan.setAttribute(key: "initialization.complete", value: true)
@@ -370,8 +403,9 @@ class AsyncInitializationTracker {
         }
     }
 
-    private func recordTask(name: String, success: Bool) {
+    private func recordTask(name: String, success: Bool, parentSpan: Span) {
         let span = tracer.spanBuilder(spanName: "init_task.\(name)")
+            .setParent(parentSpan)
             .startSpan()
 
         span.setAttribute(key: "task.name", value: name)
@@ -431,6 +465,7 @@ This hierarchy shows the complete launch sequence with parallel and sequential o
 Track launch performance over time to catch regressions before they reach production. Compare launches across app versions, device types, and OS versions.
 
 ```swift
+import UIKit
 import OpenTelemetryApi
 
 class LaunchPerformanceAnalyzer {
@@ -572,32 +607,32 @@ class OptimizedAppDelegate: UIResponder, UIApplicationDelegate {
 
 ## Measuring Warm Start Performance
 
-Distinguish between cold starts and warm starts to understand the full picture of launch performance.
+Distinguish between cold starts and warm starts to understand the full picture of launch performance. iOS doesn't always call termination callbacks before stopping an app, so treat app lifecycle timestamps as hints rather than exact proof of how the system launched the process.
 
 ```swift
 class LaunchTypeDetector {
-    private static let lastTerminationTimeKey = "last_termination_time"
+    private static let lastBackgroundTimeKey = "last_background_time"
 
-    static func recordTermination() {
+    static func recordBackgroundTime() {
         UserDefaults.standard.set(
             Date().timeIntervalSince1970,
-            forKey: lastTerminationTimeKey
+            forKey: lastBackgroundTimeKey
         )
     }
 
     static func detectLaunchType() -> String {
-        let lastTerminationTime = UserDefaults.standard.double(
-            forKey: lastTerminationTimeKey
+        let lastBackgroundTime = UserDefaults.standard.double(
+            forKey: lastBackgroundTimeKey
         )
 
-        if lastTerminationTime == 0 {
+        if lastBackgroundTime == 0 {
             return "first_launch"
         }
 
-        let timeSinceTermination = Date().timeIntervalSince1970 - lastTerminationTime
+        let timeSinceBackground = Date().timeIntervalSince1970 - lastBackgroundTime
 
-        // If less than 60 seconds since termination, likely a warm start
-        if timeSinceTermination < 60 {
+        // If less than 60 seconds since the app entered the background, likely a warm start
+        if timeSinceBackground < 60 {
             return "warm_start"
         }
 
@@ -618,8 +653,8 @@ class ImprovedAppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    func applicationWillTerminate(_ application: UIApplication) {
-        LaunchTypeDetector.recordTermination()
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        LaunchTypeDetector.recordBackgroundTime()
     }
 
     private func createLaunchSpan() -> Span {
