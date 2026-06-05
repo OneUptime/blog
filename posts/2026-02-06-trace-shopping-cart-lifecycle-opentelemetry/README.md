@@ -15,10 +15,14 @@ This post walks through instrumenting the full shopping cart lifecycle with Open
 First, let's configure a tracer specifically for cart operations. This keeps your spans organized and easy to filter in your observability backend.
 
 ```python
+from datetime import datetime, timedelta, timezone
+
 from opentelemetry import trace
+from opentelemetry.propagate import extract, inject
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.trace import Status, StatusCode
 
 # Set up the provider with OTLP export
 
@@ -37,7 +41,10 @@ The "add" event is where the cart lifecycle begins. You want to capture the prod
 
 ```python
 def add_to_cart(user_id: str, product_id: str, quantity: int):
-    with tracer.start_as_current_span("cart.add_item") as span:
+    with tracer.start_as_current_span(
+        "cart.add_item",
+        context=get_or_create_cart_session(user_id),
+    ) as span:
         # Tag the span with business-relevant attributes
         span.set_attribute("cart.user_id", user_id)
         span.set_attribute("cart.product_id", product_id)
@@ -49,7 +56,7 @@ def add_to_cart(user_id: str, product_id: str, quantity: int):
             inv_span.set_attribute("inventory.available", available)
             if not available:
                 span.set_attribute("cart.add_result", "out_of_stock")
-                span.set_status(trace.StatusCode.ERROR, "Product out of stock")
+                span.set_status(Status(StatusCode.ERROR, "Product out of stock"))
                 return {"error": "out_of_stock"}
 
         # Fetch current price (might involve promotions service)
@@ -71,7 +78,10 @@ Updates include quantity changes, variant swaps, and gift wrapping toggles. Each
 
 ```python
 def update_cart_item(user_id: str, item_id: str, changes: dict):
-    with tracer.start_as_current_span("cart.update_item") as span:
+    with tracer.start_as_current_span(
+        "cart.update_item",
+        context=get_or_create_cart_session(user_id),
+    ) as span:
         span.set_attribute("cart.user_id", user_id)
         span.set_attribute("cart.item_id", item_id)
         span.set_attribute("cart.update_type", list(changes.keys()))
@@ -96,7 +106,10 @@ Removals are straightforward but valuable for analytics. Knowing which products 
 
 ```python
 def remove_from_cart(user_id: str, item_id: str, reason: str = "user_action"):
-    with tracer.start_as_current_span("cart.remove_item") as span:
+    with tracer.start_as_current_span(
+        "cart.remove_item",
+        context=get_or_create_cart_session(user_id),
+    ) as span:
         span.set_attribute("cart.user_id", user_id)
         span.set_attribute("cart.item_id", item_id)
         span.set_attribute("cart.removal_reason", reason)
@@ -120,7 +133,7 @@ Cart abandonment is not a single event. It is the absence of an event. You typic
 def detect_abandoned_carts():
     """Runs on a schedule (e.g., every 15 minutes) to find abandoned carts."""
     with tracer.start_as_current_span("cart.abandonment_scan") as span:
-        threshold = datetime.utcnow() - timedelta(hours=2)
+        threshold = datetime.now(timezone.utc) - timedelta(hours=2)
         stale_carts = cart_store.find_inactive_since(threshold)
         span.set_attribute("cart.stale_count", len(stale_carts))
 
@@ -142,24 +155,25 @@ def detect_abandoned_carts():
 
 ## Connecting It All with a Cart Session Span
 
-To get the full picture, wrap the entire cart session in a long-lived span that links all the individual operations together.
+To get the full picture, create a cart session trace context that links all the individual operations together.
 
 ```python
 def get_or_create_cart_session(user_id: str):
-    """Returns a span context that ties all cart operations to one session."""
-    existing = cart_store.get_session_context(user_id)
-    if existing:
-        return trace.propagation.extract(existing)
+    """Returns a context that ties all cart operations to one session."""
+    carrier = cart_store.get_session_context(user_id)
+    if carrier:
+        return extract(carrier)
 
     # Start a new root span for this cart session
     with tracer.start_as_current_span("cart.session") as session_span:
         session_span.set_attribute("cart.user_id", user_id)
-        session_span.set_attribute("cart.session_start", datetime.utcnow().isoformat())
+        session_span.set_attribute("cart.session_start", datetime.now(timezone.utc).isoformat())
         # Store the context so subsequent operations link back
-        ctx = {}
-        trace.propagation.inject(ctx)
-        cart_store.save_session_context(user_id, ctx)
-        return ctx
+        carrier = {}
+        inject(carrier)
+
+    cart_store.save_session_context(user_id, carrier)
+    return extract(carrier)
 ```
 
 ## Useful Metrics to Derive from These Spans
