@@ -15,15 +15,16 @@ OpenTelemetry lets you track schema violations as span events and metrics, givin
 Use `express-openapi-validator` combined with OpenTelemetry instrumentation:
 
 ```bash
-npm install express-openapi-validator @opentelemetry/api
+npm install express-openapi-validator @opentelemetry/api ajv
 ```
+
+This assumes your application has already initialized an OpenTelemetry SDK and exporter; the API package alone only provides the instrumentation API.
 
 ```typescript
 // schema-validation-middleware.ts
 import * as OpenApiValidator from 'express-openapi-validator';
-import { trace, metrics, SpanStatusCode } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
-const tracer = trace.getTracer('openapi-validation');
 const meter = metrics.getMeter('openapi-validation');
 
 // Metrics for schema violations
@@ -40,14 +41,18 @@ const validRequests = meter.createCounter('api.schema.valid_requests', {
   description: 'Count of requests that passed schema validation',
 });
 
+const invalidRequests = meter.createCounter('api.schema.invalid_requests', {
+  description: 'Count of requests that failed schema validation',
+});
+
 // Configure the validator
 export function setupValidation(app: any, specPath: string) {
   app.use(
     OpenApiValidator.middleware({
       apiSpec: specPath,
-      validateRequests: true,
+      // This rejects invalid requests by default. Use the custom middleware
+      // below if you want to record violations without rejecting requests.
       validateResponses: true,
-      // Do not reject invalid requests - just record violations
       validateRequests: {
         allowUnknownQueryParameters: true, // We will track these separately
       },
@@ -63,9 +68,27 @@ For more control, build a validation middleware that records violations without 
 ```typescript
 // traced-validation.ts
 import Ajv from 'ajv';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { trace, metrics, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('openapi-validation');
+const meter = metrics.getMeter('openapi-validation');
+
+const validationErrors = meter.createCounter('api.schema.violations', {
+  description: 'Count of OpenAPI schema violations by type and path',
+});
+
+const validationDuration = meter.createHistogram('api.schema.validation_duration_ms', {
+  description: 'Time spent on schema validation',
+  unit: 'ms',
+});
+
+const validRequests = meter.createCounter('api.schema.valid_requests', {
+  description: 'Count of requests that passed schema validation',
+});
+
+const invalidRequests = meter.createCounter('api.schema.invalid_requests', {
+  description: 'Count of requests that failed schema validation',
+});
 
 interface ValidationResult {
   valid: boolean;
@@ -78,6 +101,8 @@ interface ValidationError {
   type: string;        // "missing_required", "wrong_type", "unknown_property", etc.
   schemaPath: string;
 }
+
+declare function findPathSpec(openApiSpec: any, route: string, method: string): any;
 
 export function schemaValidationMiddleware(openApiSpec: any) {
   const ajv = new Ajv({ allErrors: true, strict: false });
@@ -160,6 +185,7 @@ export function schemaValidationMiddleware(openApiSpec: any) {
       } else {
         validationSpan.setAttribute('openapi.validation.passed', false);
         validationSpan.setAttribute('openapi.validation.error_count', errors.length);
+        invalidRequests.add(1, { 'http.route': route, 'http.method': method });
 
         // Record each violation as a span event
         for (const error of errors) {
@@ -214,6 +240,22 @@ Validate outgoing responses too, because your own code can violate the spec:
 
 ```typescript
 // response-validation.ts
+import Ajv from 'ajv';
+import { trace, metrics } from '@opentelemetry/api';
+
+const meter = metrics.getMeter('openapi-validation');
+
+const validationErrors = meter.createCounter('api.schema.violations', {
+  description: 'Count of OpenAPI schema violations by type and path',
+});
+
+declare function findResponseSchema(
+  openApiSpec: any,
+  route: string,
+  method: string,
+  statusCode: number
+): any;
+
 export function responseValidationMiddleware(openApiSpec: any) {
   return (req: any, res: any, next: any) => {
     const originalJson = res.json.bind(res);
@@ -266,7 +308,7 @@ Track schema compliance over time:
 
 sum(rate(api_schema_valid_requests_total[1h]))
 /
-(sum(rate(api_schema_valid_requests_total[1h])) + sum(rate(api_schema_violations_total[1h])))
+(sum(rate(api_schema_valid_requests_total[1h])) + sum(rate(api_schema_invalid_requests_total[1h])))
 
 # Most violated endpoints
 topk(10, sum(rate(api_schema_violations_total[24h])) by (http_route))
