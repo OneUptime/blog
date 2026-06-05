@@ -19,7 +19,7 @@ HTTPX offers several advantages over traditional HTTP clients like requests:
 - Connection pooling and multiplexing
 - Streaming request and response bodies
 - Modern, type-annotated API
-- Built-in timeout and retry configuration
+- Built-in timeout configuration
 
 ```mermaid
 graph LR
@@ -38,7 +38,7 @@ graph LR
 Install HTTPX along with OpenTelemetry instrumentation packages.
 
 ```bash
-pip install httpx \
+pip install "httpx[http2]" \
             opentelemetry-api \
             opentelemetry-sdk \
             opentelemetry-instrumentation-httpx \
@@ -315,42 +315,49 @@ if __name__ == "__main__":
 Add custom attributes to spans based on request and response data.
 
 ```python
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from httpx import Request, Response
+from opentelemetry.instrumentation.httpx import (
+    HTTPXClientInstrumentor,
+    RequestInfo,
+    ResponseInfo,
+)
 
-async def async_request_hook(span, request: Request):
+async def async_request_hook(span, request: RequestInfo):
     """
     Hook called before async request is sent.
     Add custom attributes based on request parameters.
     """
+    method = request.method.decode()
+    url = request.url
+
     # Add request details
-    span.set_attribute("http.method", request.method)
-    span.set_attribute("http.url", str(request.url))
+    span.set_attribute("http.method", method)
+    span.set_attribute("http.url", str(url))
 
     # Extract URL components
-    span.set_attribute("http.scheme", request.url.scheme)
-    span.set_attribute("http.host", request.url.host)
-    span.set_attribute("http.path", request.url.path)
+    span.set_attribute("http.scheme", url.scheme)
+    span.set_attribute("http.host", url.host)
+    span.set_attribute("http.path", url.path)
 
     # Add custom headers (avoid sensitive data)
-    if "X-Request-ID" in request.headers:
+    if request.headers and "X-Request-ID" in request.headers:
         span.set_attribute("request.id", request.headers["X-Request-ID"])
 
-    if "X-Correlation-ID" in request.headers:
+    if request.headers and "X-Correlation-ID" in request.headers:
         span.set_attribute("correlation.id", request.headers["X-Correlation-ID"])
 
     # Tag API versions
-    if "/v1/" in str(request.url):
+    if "/v1/" in str(url):
         span.set_attribute("api.version", "v1")
-    elif "/v2/" in str(request.url):
+    elif "/v2/" in str(url):
         span.set_attribute("api.version", "v2")
 
-    # Add request body size for POST/PUT
-    if request.method in ["POST", "PUT", "PATCH"]:
-        if request.content:
-            span.set_attribute("http.request_content_length", len(request.content))
+    # Add request body size for POST/PUT/PATCH when provided as a header
+    if method in ["POST", "PUT", "PATCH"] and request.headers:
+        content_length = request.headers.get("Content-Length")
+        if content_length:
+            span.set_attribute("http.request_content_length", int(content_length))
 
-async def async_response_hook(span, request: Request, response: Response):
+async def async_response_hook(span, request: RequestInfo, response: ResponseInfo):
     """
     Hook called after async response is received.
     Add attributes based on response data.
@@ -359,34 +366,38 @@ async def async_response_hook(span, request: Request, response: Response):
     span.set_attribute("http.status_code", response.status_code)
 
     # Add response headers
-    span.set_attribute("http.response_content_type",
-                      response.headers.get("Content-Type", "unknown"))
+    content_type = (
+        response.headers.get("Content-Type", "unknown")
+        if response.headers
+        else "unknown"
+    )
+    span.set_attribute("http.response_content_type", content_type)
 
-    if "Content-Length" in response.headers:
+    if response.headers and "Content-Length" in response.headers:
         span.set_attribute("http.response_content_length",
                           int(response.headers["Content-Length"]))
 
     # Track caching
-    if "X-Cache" in response.headers:
+    if response.headers and "X-Cache" in response.headers:
         span.set_attribute("cache.status", response.headers["X-Cache"])
 
     # Tag successful vs error responses
-    if response.is_success:
+    if 200 <= response.status_code < 300:
         span.set_attribute("response.success", True)
-    elif response.is_error:
+    elif response.status_code >= 400:
         span.set_attribute("response.success", False)
         span.set_attribute("error.category",
-                          "client_error" if response.is_client_error else "server_error")
+                          "client_error" if response.status_code < 500 else "server_error")
 
     # Add custom timing headers if present
-    if "X-Response-Time" in response.headers:
+    if response.headers and "X-Response-Time" in response.headers:
         span.set_attribute("server.response_time_ms",
                           response.headers["X-Response-Time"])
 
 # Instrument with async hooks
 HTTPXClientInstrumentor().instrument(
-    request_hook=async_request_hook,
-    response_hook=async_response_hook
+    async_request_hook=async_request_hook,
+    async_response_hook=async_response_hook
 )
 ```
 
@@ -415,11 +426,11 @@ async def http2_concurrent_requests():
         async with httpx.AsyncClient(http2=True) as client:
             # Multiple concurrent requests over same connection
             urls = [
-                'https://http2.github.io/',
-                'https://http2.github.io/faq/',
-                'https://http2.github.io/implementations/',
-                'https://http2.github.io/specs/',
-                'https://http2.github.io/tools/'
+                'https://nghttp2.org/httpbin/get?request=1',
+                'https://nghttp2.org/httpbin/get?request=2',
+                'https://nghttp2.org/httpbin/headers',
+                'https://nghttp2.org/httpbin/user-agent',
+                'https://nghttp2.org/httpbin/ip'
             ]
 
             # All requests are traced individually
@@ -650,7 +661,7 @@ async def handle_all_error_types(url: str):
 
 async def main():
     # Test with various URLs
-    await handle_all_error_types('https://httpbin.org/status/200')  # Success
+    await handle_all_error_types('https://httpbin.org/json')        # Success
     await handle_all_error_types('https://httpbin.org/status/404')  # Not found
     await handle_all_error_types('https://httpbin.org/delay/10')    # Timeout
 
