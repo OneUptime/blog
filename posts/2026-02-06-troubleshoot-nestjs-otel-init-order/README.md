@@ -6,15 +6,15 @@ Tags: OpenTelemetry, NestJS, Node.js, Module Loading
 
 Description: Solve the NestJS initialization order problem where framework modules load before OpenTelemetry can register its hooks.
 
-NestJS uses decorators and dependency injection that trigger module loading during the framework bootstrap process. By the time your application module runs, NestJS has already imported HTTP, Express (or Fastify), and other instrumented libraries internally. This means OpenTelemetry hooks registered in your application code are too late.
+NestJS uses decorators and dependency injection that trigger module loading during the framework bootstrap process. By the time your `bootstrap()` function runs, your application module and many of its dependencies have already been imported, and the default HTTP adapter is loaded when `NestFactory.create()` runs. This means OpenTelemetry hooks registered in your application code are often too late.
 
 ## Why NestJS Is Different
 
 In a plain Express app, you control when `require('express')` happens. In NestJS, the framework itself imports Express during its internal bootstrap:
 
 ```typescript
-// main.ts - by the time this runs, Express is already loaded
-import { NestFactory } from '@nestjs/core';  // This loads Express internally
+// main.ts - by the time bootstrap() runs, AppModule and its imports are already loaded
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -25,22 +25,22 @@ async function bootstrap() {
 bootstrap();
 ```
 
-The `import { NestFactory } from '@nestjs/core'` statement triggers a chain of internal imports that loads Express, HTTP, and other modules before your code executes.
+The static `import` statements in `main.ts` are evaluated before your module body runs. Nest's default Express adapter is loaded when `NestFactory.create()` creates the application, and your `AppModule` imports are already evaluated by then.
 
 ## The Fix: Use --require Flag
 
-The only reliable way to initialize OpenTelemetry before NestJS loads is to use the `--require` flag:
+The simplest reliable way to initialize OpenTelemetry before NestJS loads is to preload the instrumentation file. For a CommonJS tracing file, use the `--require` flag:
 
 ```javascript
 // tracing.js (CommonJS)
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'nestjs-api',
   }),
   traceExporter: new OTLPTraceExporter(),
@@ -64,7 +64,7 @@ console.log('OpenTelemetry initialized before NestJS bootstrap');
 
 NestJS projects are TypeScript. The tracing file must be either:
 
-1. A CommonJS JavaScript file (`.js`) that does not need compilation
+1. A CommonJS JavaScript file (`.js`, or `.cjs` if your package uses `"type": "module"`) that does not need compilation
 2. A pre-compiled TypeScript file
 
 Option 1 is simpler:
@@ -118,7 +118,11 @@ import { Tracer } from '@opentelemetry/api';
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject('TRACER') private readonly tracer: Tracer) {}
+  constructor(
+    @Inject('TRACER') private readonly tracer: Tracer,
+    @Inject('USERS_REPOSITORY')
+    private readonly usersRepository: { find(): Promise<any[]> },
+  ) {}
 
   async findAll() {
     return this.tracer.startActiveSpan('UsersService.findAll', async (span) => {
@@ -141,8 +145,8 @@ Create an interceptor that automatically wraps every controller method in a span
 ```typescript
 // src/otel/tracing.interceptor.ts
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { Observable, finalize, tap } from 'rxjs';
+import { context as otelContext, trace, SpanStatusCode } from '@opentelemetry/api';
 
 @Injectable()
 export class TracingInterceptor implements NestInterceptor {
@@ -154,16 +158,23 @@ export class TracingInterceptor implements NestInterceptor {
     const spanName = `${className}.${methodName}`;
 
     const span = this.tracer.startSpan(spanName);
+    const activeContext = trace.setSpan(otelContext.active(), span);
 
-    return next.handle().pipe(
-      tap({
-        next: () => span.end(),
-        error: (error) => {
-          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-          span.recordException(error);
-          span.end();
-        },
-      }),
+    return new Observable((subscriber) =>
+      otelContext.with(activeContext, () =>
+        next
+          .handle()
+          .pipe(
+            tap({
+              error: (error) => {
+                span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+                span.recordException(error);
+              },
+            }),
+            finalize(() => span.end()),
+          )
+          .subscribe(subscriber),
+      ),
     );
   }
 }
@@ -202,4 +213,4 @@ ENV NODE_OPTIONS="--require ./tracing.js"
 CMD ["node", "dist/main.js"]
 ```
 
-The critical point with NestJS is that OpenTelemetry must be initialized before any NestJS module is imported. The `--require` flag is the only reliable way to achieve this. Everything else builds on top of that foundation.
+The critical point with NestJS is that OpenTelemetry must be initialized before any NestJS module is imported. Preloading the instrumentation file with `--require` for CommonJS, or the equivalent ESM preload path for ESM applications, gives the instrumentation a chance to register before NestJS starts loading application and framework modules. Everything else builds on top of that foundation.
