@@ -38,8 +38,8 @@ The simplest and most portable approach is setting the `TZ` environment variable
 # Run a container with a specific timezone
 docker run -e TZ=America/New_York myimage
 
-# Verify the timezone is applied
-docker run -e TZ=America/New_York alpine date
+# Verify the timezone is applied in an image with timezone data installed
+docker run -e TZ=America/New_York debian:bookworm-slim date
 ```
 
 In Docker Compose:
@@ -56,7 +56,7 @@ services:
     image: postgres:15
     environment:
       - TZ=America/New_York
-      - PGTZ=America/New_York  # PostgreSQL-specific timezone setting
+      - PGTZ=America/New_York  # libpq client timezone setting
 
   redis:
     image: redis:7
@@ -64,7 +64,7 @@ services:
       - TZ=America/New_York
 ```
 
-This approach works on most images. However, some minimal images (like scratch-based images) might not have timezone data installed, so the TZ variable alone will not work.
+This approach works on images that include timezone data. However, some minimal images (like Alpine or scratch-based images) might not have timezone data installed, so the TZ variable alone will not work.
 
 ## Fix 2: Mount the Host's Timezone Files
 
@@ -119,10 +119,9 @@ RUN apk add --no-cache tzdata
 # Set the timezone
 ENV TZ=America/New_York
 
-# Copy the timezone file and clean up to keep the image small
+# Link the timezone file and keep tzdata installed for the TZ name
 RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo "$TZ" > /etc/timezone && \
-    apk del tzdata
+    echo "$TZ" > /etc/timezone
 
 COPY app /app
 CMD ["/app"]
@@ -162,7 +161,7 @@ COPY myapp /myapp
 CMD ["/myapp"]
 ```
 
-## Fix 4: Configure Timezone at Runtime with a Build Argument
+## Fix 4: Configure Timezone at Build Time with a Build Argument
 
 Make the timezone configurable at build time while providing a sensible default:
 
@@ -223,7 +222,7 @@ services:
     image: mysql:8
     environment:
       - TZ=America/New_York
-    command: --default-time-zone=America/New_York
+    command: --default-time-zone=-04:00  # Use a named zone only after loading MySQL time zone tables
     volumes:
       - /etc/localtime:/etc/localtime:ro
 ```
