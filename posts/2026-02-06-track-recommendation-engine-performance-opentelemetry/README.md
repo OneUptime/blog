@@ -65,13 +65,13 @@ reco_clicks = meter.create_counter(
 async def get_recommendations(user_id: str, context_product_id: str,
                                placement: str, limit: int = 12):
     """Generate product recommendations for a user in a given context."""
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("reco.generate") as span:
         # Generate a unique ID to link impressions with clicks later
         reco_request_id = generate_request_id()
         span.set_attribute("reco.request_id", reco_request_id)
-        span.set_attribute("reco.user_id", user_id)
+        span.set_attribute("reco.user_hash", hash_user_id(user_id))
         span.set_attribute("reco.context_product_id", context_product_id)
         span.set_attribute("reco.placement", placement)
         span.set_attribute("reco.requested_limit", limit)
@@ -79,11 +79,12 @@ async def get_recommendations(user_id: str, context_product_id: str,
         # Step 1: Fetch user interaction history
         with tracer.start_as_current_span("reco.fetch_user_history") as hist_span:
             history = await user_history_store.get_recent(user_id, limit=200)
-            hist_span.set_attribute("reco.history_items", len(history))
+            history_count = len(history) if history else 0
+            hist_span.set_attribute("reco.history_items", history_count)
             hist_span.set_attribute("reco.history_days", history.span_days if history else 0)
 
             # Cold start detection
-            is_cold_start = len(history) < 5
+            is_cold_start = history_count < 5
             span.set_attribute("reco.cold_start", is_cold_start)
 
         # Step 2: Get candidate items
@@ -99,28 +100,36 @@ async def get_recommendations(user_id: str, context_product_id: str,
                 cand_span.set_attribute("reco.candidate_source", "collaborative_filtering")
             cand_span.set_attribute("reco.candidate_count", len(candidates))
 
-        # Step 3: Score candidates with collaborative filtering model
+        # Step 3: Score candidates with the model or fallback strategy
         with tracer.start_as_current_span("reco.score_candidates") as score_span:
-            model_start = time.time()
+            scoring_start = time.perf_counter()
 
-            # Fetch item embeddings for scoring
-            with tracer.start_as_current_span("reco.fetch_embeddings"):
-                embeddings = await embedding_store.batch_get(
-                    [c["product_id"] for c in candidates]
-                )
+            if is_cold_start:
+                scores = popularity_score(candidates)
+                score_span.set_attribute("reco.scoring_strategy", "popularity")
+            else:
+                # Fetch item embeddings for scoring
+                with tracer.start_as_current_span("reco.fetch_embeddings"):
+                    embeddings = await embedding_store.batch_get(
+                        [c["product_id"] for c in candidates]
+                    )
 
-            # Run the model
-            with tracer.start_as_current_span("reco.model_inference") as model_span:
-                scores = recommendation_model.score(
-                    user_embedding=history.user_vector,
-                    item_embeddings=embeddings
-                )
-                model_span.set_attribute("reco.model_name", recommendation_model.name)
-                model_span.set_attribute("reco.model_version", recommendation_model.version)
+                # Run the model
+                model_start = time.perf_counter()
+                with tracer.start_as_current_span("reco.model_inference") as model_span:
+                    scores = recommendation_model.score(
+                        user_embedding=history.user_vector,
+                        item_embeddings=embeddings
+                    )
+                    model_span.set_attribute("reco.model_name", recommendation_model.name)
+                    model_span.set_attribute("reco.model_version", recommendation_model.version)
 
-            model_ms = (time.time() - model_start) * 1000
-            score_span.set_attribute("reco.scoring_latency_ms", model_ms)
-            model_latency.record(model_ms, {"reco.placement": placement})
+                model_ms = (time.perf_counter() - model_start) * 1000
+                model_latency.record(model_ms, {"reco.placement": placement})
+                score_span.set_attribute("reco.scoring_strategy", "collaborative_filtering")
+
+            scoring_ms = (time.perf_counter() - scoring_start) * 1000
+            score_span.set_attribute("reco.scoring_latency_ms", scoring_ms)
 
         # Step 4: Post-processing - filtering and diversity
         with tracer.start_as_current_span("reco.post_process") as post_span:
@@ -133,7 +142,7 @@ async def get_recommendations(user_id: str, context_product_id: str,
             post_span.set_attribute("reco.filtered_out", len(candidates) - len(filtered))
             post_span.set_attribute("reco.final_count", len(final))
 
-        total_ms = (time.time() - start) * 1000
+        total_ms = (time.perf_counter() - start) * 1000
         reco_latency.record(total_ms, {"reco.placement": placement})
         span.set_attribute("reco.total_latency_ms", total_ms)
 
