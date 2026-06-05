@@ -10,7 +10,7 @@ HTTP 4xx errors and 5xx errors are fundamentally different. A 4xx means the clie
 
 ## The Default Behavior Problem
 
-Most OpenTelemetry HTTP instrumentations set the span status to `ERROR` for any response code >= 400. This means a wave of bots hitting nonexistent URLs (404s) or sending malformed requests (400s) will spike your error rate even though your server is perfectly healthy.
+Some older instrumentation, custom instrumentation, or backend span-metrics pipelines treat every response code >= 400 as an error. This means a wave of bots hitting nonexistent URLs (404s) or sending malformed requests (400s) can spike your error rate even though your server is perfectly healthy.
 
 ## Strategy 1: Server Spans vs Client Spans
 
@@ -33,13 +33,12 @@ function serverResponseHook(span, response) {
   const statusCode = response.statusCode;
 
   // Always record the HTTP status code as an attribute
-  span.setAttribute("http.status_code", statusCode);
+  span.setAttribute("http.response.status_code", statusCode);
 
   if (statusCode >= 500) {
     // 5xx: Server error - this is a real problem
     span.setStatus({
       code: SpanStatusCode.ERROR,
-      message: `Server error: HTTP ${statusCode}`,
     });
     span.setAttribute("error.category", "server_error");
   } else if (statusCode >= 400) {
@@ -65,9 +64,9 @@ function serverResponseHook(span, response) {
 module.exports = { serverResponseHook };
 ```
 
-## Strategy 2: Configuring the Express Instrumentation
+## Strategy 2: Configuring HTTP Instrumentation for Express
 
-Apply the custom hook to the Express HTTP instrumentation:
+Apply the custom hook to the HTTP instrumentation used by Express:
 
 ```javascript
 // tracing.js - Configure OpenTelemetry with custom HTTP status handling
@@ -101,21 +100,26 @@ sdk.start();
 ```python
 # flask_status_strategy.py
 
-from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from functools import wraps
 
-def custom_response_hook(span, status_code, response_headers):
+def custom_response_hook(span, status, response_headers):
     """
     Custom hook that sets span status based on HTTP status code
     with different strategies for 4xx vs 5xx.
     """
+    if not span or not span.is_recording():
+        return
+
+    status_code = int(status.split(" ", 1)[0])
+    span.set_attribute("http.response.status_code", status_code)
+
     if status_code >= 500:
-        span.set_status(trace.StatusCode.ERROR, f"HTTP {status_code}")
+        span.set_status(StatusCode.ERROR)
         span.set_attribute("error.category", "server_error")
     elif status_code >= 400:
         # Do NOT set ERROR for 4xx
-        span.set_status(trace.StatusCode.OK)
+        span.set_status(StatusCode.OK)
         span.set_attribute("http.client_error", True)
 
         # Subcategorize 4xx errors for monitoring
@@ -140,7 +144,7 @@ Sometimes specific 4xx errors do indicate server-side problems. A 401 might mean
 
 ```python
 # selective_4xx_strategy.py
-from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 
 class SelectiveHttpStatusStrategy:
     """
@@ -171,28 +175,22 @@ class SelectiveHttpStatusStrategy:
 
     def apply(self, span, status_code):
         """Apply the strategy to a span."""
-        span.set_attribute("http.status_code", status_code)
+        span.set_attribute("http.response.status_code", status_code)
 
         if status_code >= 500:
             if status_code in self.expected_5xx_codes:
-                span.set_status(trace.StatusCode.OK)
+                span.set_status(StatusCode.OK)
                 span.set_attribute("http.expected_error", True)
             else:
-                span.set_status(
-                    trace.StatusCode.ERROR,
-                    f"HTTP {status_code}"
-                )
+                span.set_status(StatusCode.ERROR)
         elif status_code >= 400:
             if status_code in self.error_4xx_codes:
-                span.set_status(
-                    trace.StatusCode.ERROR,
-                    f"HTTP {status_code}"
-                )
+                span.set_status(StatusCode.ERROR)
             else:
-                span.set_status(trace.StatusCode.OK)
+                span.set_status(StatusCode.OK)
                 span.set_attribute("http.client_error", True)
         else:
-            span.set_status(trace.StatusCode.OK)
+            span.set_status(StatusCode.OK)
 
 
 # Example configuration
@@ -208,30 +206,30 @@ strategy.treat_as_expected(503)
 
 ## Building Separate Dashboards
 
-With 4xx and 5xx tracked separately, you can build more useful dashboards:
+With 4xx and 5xx tracked separately, you can build more useful dashboards. If you use the Collector span metrics connector, add `error.category` and `http.client_error` as dimensions so they appear as Prometheus labels:
 
 ```promql
 # True server error rate (only 5xx)
-sum(rate(otel_traces_spanmetrics_calls_total{
+sum(rate(traces_span_metrics_calls_total{
   status_code="STATUS_CODE_ERROR",
   error_category="server_error"
 }[5m]))
 /
-sum(rate(otel_traces_spanmetrics_calls_total[5m]))
+sum(rate(traces_span_metrics_calls_total[5m]))
 
 # Client error rate (4xx) - for monitoring API usage patterns
-sum(rate(otel_traces_spanmetrics_calls_total{
+sum(rate(traces_span_metrics_calls_total{
   http_client_error="true"
 }[5m]))
 /
-sum(rate(otel_traces_spanmetrics_calls_total[5m]))
+sum(rate(traces_span_metrics_calls_total[5m]))
 
 # Auth error rate specifically
-sum(rate(otel_traces_spanmetrics_calls_total{
+sum(rate(traces_span_metrics_calls_total{
   error_category="auth_error"
 }[5m]))
 /
-sum(rate(otel_traces_spanmetrics_calls_total[5m]))
+sum(rate(traces_span_metrics_calls_total[5m]))
 ```
 
 ## Collector-Level Normalization
@@ -242,13 +240,10 @@ If you cannot modify every service, normalize at the collector level using the t
 # otel-collector-config.yaml
 processors:
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        conditions:
-          - 'attributes["http.status_code"] >= 400 and attributes["http.status_code"] < 500'
-        statements:
-          - 'set(status.code, 1)'  # Set to OK
-          - 'set(attributes["http.client_error"], "true")'
+      - 'set(span.status.code, STATUS_CODE_OK) where span.attributes["http.response.status_code"] >= 400 and span.attributes["http.response.status_code"] < 500'
+      - 'set(span.attributes["http.client_error"], true) where span.attributes["http.response.status_code"] >= 400 and span.attributes["http.response.status_code"] < 500'
 ```
 
 ## Conclusion
