@@ -23,6 +23,7 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Set up the metric reader with OTLP export
@@ -34,7 +35,33 @@ metric_reader = PeriodicExportingMetricReader(
 
 # Create meter provider with custom histogram bucket boundaries
 # These boundaries are tuned for detecting timeout patterns
-meter_provider = MeterProvider(metric_readers=[metric_reader])
+meter_provider = MeterProvider(
+    metric_readers=[metric_reader],
+    views=[
+        View(
+            instrument_name="http.server.request.duration.debug",
+            aggregation=ExplicitBucketHistogramAggregation(
+                boundaries=[
+                    50,
+                    100,
+                    250,
+                    500,
+                    1000,
+                    2500,
+                    4000,
+                    4500,
+                    4750,
+                    4900,
+                    5000,
+                    5250,
+                    5500,
+                    7500,
+                    10000,
+                ]
+            ),
+        )
+    ],
+)
 metrics.set_meter_provider(meter_provider)
 
 meter = metrics.get_meter("timeout-debugger")
@@ -60,6 +87,7 @@ tracer = trace.get_tracer("timeout-debugger")
 
 def call_downstream_service(request):
     start_time = time.monotonic()
+    timed_out = False
 
     with tracer.start_as_current_span("downstream.call") as span:
         span.set_attribute("downstream.service", "payment-api")
@@ -75,6 +103,7 @@ def call_downstream_service(request):
             return response
 
         except TimeoutError:
+            timed_out = True
             span.set_attribute("error", True)
             span.set_attribute("timeout.hit", True)
             raise
@@ -87,7 +116,7 @@ def call_downstream_service(request):
                 attributes={
                     "service": "payment-api",
                     "endpoint": "/charge",
-                    "timed_out": str(span.attributes.get("timeout.hit", False)),
+                    "timed_out": timed_out,
                 },
             )
 ```
@@ -98,18 +127,20 @@ Once you have collected enough data points, query your backend to look at the di
 
 ```promql
 # Look at the histogram buckets for the downstream call
-histogram_quantile(0.50, rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m]))
-histogram_quantile(0.90, rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m]))
-histogram_quantile(0.99, rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m]))
+histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m])))
+histogram_quantile(0.90, sum by (le) (rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_debug_bucket{service="payment-api"}[5m])))
 ```
 
-If you see the p50 at 120ms but the p99 at 4900ms (just under your 5s timeout), you have a bimodal distribution. This typically means some requests are hitting a slow path.
+If you see the p50 at 120ms but the p99 at 4900ms (just under your 5s timeout), inspect the bucket counts or a histogram heatmap to confirm whether the distribution is bimodal. This typically means some requests are hitting a slow path.
 
 ## Identifying the Root Cause
 
 Once you confirm the bimodal pattern, the next step is to find what differentiates the slow requests from the fast ones. Add more span attributes to slice the data:
 
 ```python
+import os
+
 span.set_attribute("db.connection_pool.active", pool.active_count)
 span.set_attribute("db.connection_pool.idle", pool.idle_count)
 span.set_attribute("server.pod", os.environ.get("HOSTNAME", "unknown"))
