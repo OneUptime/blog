@@ -8,7 +8,7 @@ Description: A hands-on guide to adding OpenTelemetry auto-instrumentation to AW
 
 ---
 
-AWS Lambda layers let you package libraries and tools separately from your function code. The OpenTelemetry project publishes official Lambda layers that add auto-instrumentation to your functions without any code changes. You attach a layer, set a few environment variables, and your function starts producing traces, metrics, and logs.
+AWS Lambda layers let you package libraries and tools separately from your function code. The OpenTelemetry project publishes community Lambda layers that add auto-instrumentation to your functions without any code changes. You attach the instrumentation layer, add the collector layer or point the SDK at an external collector, set a few environment variables, and your function starts producing telemetry.
 
 This approach is appealing because it keeps your function code clean and makes it easy to roll instrumentation out across dozens or hundreds of functions. This post covers how to set up and configure these layers for Python, Node.js, and Java runtimes.
 
@@ -30,32 +30,38 @@ graph TD
     H --> I[Response Returned]
 ```
 
-The wrapper script is the key piece. It intercepts the normal Lambda handler invocation, sets up the OpenTelemetry SDK, and then calls your actual handler. From your function's perspective, nothing changes. But every HTTP call, AWS SDK operation, and database query now produces spans automatically.
+The wrapper script is the key piece. It changes the normal Lambda runtime startup, sets up the OpenTelemetry SDK, and then calls your actual handler. From your function's perspective, nothing changes. But supported HTTP clients, AWS SDK operations, and database clients can now produce spans automatically.
 
 ## Setting Up the Python Layer
 
-The AWS-managed OpenTelemetry Python layer includes the OpenTelemetry SDK, the AWS Lambda instrumentation, and auto-instrumentation for popular libraries like `boto3`, `requests`, and `urllib3`.
+The OpenTelemetry Python layer includes the OpenTelemetry SDK, the AWS Lambda instrumentation, and auto-instrumentation for supported Python libraries.
 
-First, add the layer to your function. You can do this through the AWS Console, CLI, or infrastructure as code.
+First, add the layers to your function. You can do this through the AWS Console, CLI, or infrastructure as code.
 
 ```bash
-# Add the OpenTelemetry Python layer to your function
+# Add the OpenTelemetry collector and Python instrumentation layers to your function
 
-# Replace the ARN with the latest version for your region
+OTEL_COLLECTOR_LAYER_VERSION=0_22_0
+OTEL_PYTHON_LAYER_VERSION=0_20_0
+
 aws lambda update-function-configuration \
   --function-name my-python-function \
-  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-python-aws-sdk-amd64:1 \
-  --environment "Variables={
-    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument,
-    OTEL_SERVICE_NAME=my-python-function,
-    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318,
-    OTEL_TRACES_EXPORTER=otlp,
-    OTEL_METRICS_EXPORTER=otlp,
-    OTEL_PROPAGATORS=tracecontext,baggage,xray
-  }"
+  --layers \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64-${OTEL_COLLECTOR_LAYER_VERSION}:1 \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-python-${OTEL_PYTHON_LAYER_VERSION}:1 \
+  --environment '{
+    "Variables": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/otel-handler",
+      "OTEL_SERVICE_NAME": "my-python-function",
+      "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+      "OTEL_TRACES_EXPORTER": "otlp",
+      "OTEL_METRICS_EXPORTER": "otlp",
+      "OTEL_PROPAGATORS": "tracecontext,baggage,xray"
+    }
+  }'
 ```
 
-The `AWS_LAMBDA_EXEC_WRAPPER` environment variable tells the Lambda runtime to execute the `/opt/otel-instrument` script before your handler. This script sets up the Python auto-instrumentation agent.
+The `AWS_LAMBDA_EXEC_WRAPPER` environment variable tells the Lambda runtime to execute the `/opt/otel-handler` script before your handler. This script sets up the Python auto-instrumentation agent.
 
 Here is what a basic Python handler looks like. No OpenTelemetry imports needed.
 
@@ -94,16 +100,23 @@ The layer automatically creates spans for the DynamoDB `get_item` call, includin
 The Node.js layer works similarly but uses a different wrapper mechanism. Node.js supports the `--require` flag to preload modules, which the layer leverages for initialization.
 
 ```bash
-# Add the OpenTelemetry Node.js layer
+# Add the OpenTelemetry collector and Node.js instrumentation layers
+OTEL_COLLECTOR_LAYER_VERSION=0_22_0
+OTEL_NODEJS_LAYER_VERSION=0_22_0
+
 aws lambda update-function-configuration \
   --function-name my-node-function \
-  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-amd64:1 \
-  --environment "Variables={
-    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
-    OTEL_SERVICE_NAME=my-node-function,
-    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318,
-    OTEL_NODE_ENABLED_INSTRUMENTATIONS=aws-sdk,http,fetch
-  }"
+  --layers \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64-${OTEL_COLLECTOR_LAYER_VERSION}:1 \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-${OTEL_NODEJS_LAYER_VERSION}:1 \
+  --environment '{
+    "Variables": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/otel-handler",
+      "OTEL_SERVICE_NAME": "my-node-function",
+      "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+      "OTEL_NODE_ENABLED_INSTRUMENTATIONS": "aws-sdk,http,undici"
+    }
+  }'
 ```
 
 The `OTEL_NODE_ENABLED_INSTRUMENTATIONS` variable is particularly useful. Instead of instrumenting every library the layer supports, you can specify exactly which instrumentations to activate. This reduces initialization time and keeps your traces focused.
@@ -139,26 +152,32 @@ exports.handler = async (event) => {
 };
 ```
 
-The Node.js layer patches the AWS SDK v3 client, so every `send()` call produces a span with the service name, operation, and request ID as attributes. HTTP calls made through `node:http`, `node:https`, or the `fetch` API are also traced.
+The Node.js layer includes AWS SDK v3 instrumentation, so client calls such as `send()` produce spans with service and operation attributes. HTTP calls made through `node:http`, `node:https`, or Undici-backed APIs such as `fetch` are also traced when the relevant instrumentation is enabled.
 
 ## Setting Up the Java Layer
 
 Java Lambda functions benefit from the OpenTelemetry Java Agent, which performs bytecode manipulation to instrument libraries at the JVM level. The layer packages this agent along with Lambda-specific configuration.
 
 ```bash
-# Add the OpenTelemetry Java layer
+# Add the OpenTelemetry collector and Java agent layers
+OTEL_COLLECTOR_LAYER_VERSION=0_22_0
+OTEL_JAVAAGENT_LAYER_VERSION=0_20_0
+
 aws lambda update-function-configuration \
   --function-name my-java-function \
-  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-java-agent-amd64:1 \
-  --environment "Variables={
-    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
-    OTEL_SERVICE_NAME=my-java-function,
-    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318,
-    JAVA_TOOL_OPTIONS=-javaagent:/opt/opentelemetry-javaagent.jar
-  }"
+  --layers \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64-${OTEL_COLLECTOR_LAYER_VERSION}:1 \
+    arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-javaagent-${OTEL_JAVAAGENT_LAYER_VERSION}:1 \
+  --environment '{
+    "Variables": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/otel-handler",
+      "OTEL_SERVICE_NAME": "my-java-function",
+      "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+    }
+  }'
 ```
 
-The `JAVA_TOOL_OPTIONS` environment variable injects the OpenTelemetry Java agent into the JVM. This is the standard mechanism for attaching Java agents in Lambda.
+The Java agent layer uses the `/opt/otel-handler` wrapper to load the OpenTelemetry Java agent and initialize supported auto-instrumentation.
 
 ```java
 // Handler.java
@@ -217,7 +236,7 @@ Lambda functions rarely operate in isolation. They are triggered by API Gateway,
 OTEL_PROPAGATORS=tracecontext,baggage,xray
 ```
 
-The `xray` propagator is important because many AWS services inject X-Ray trace headers. By including it alongside `tracecontext`, your Lambda function can participate in traces that originate from X-Ray instrumented services while also supporting W3C Trace Context for non-AWS callers.
+The `xray` propagator is important when upstream AWS services or callers send X-Ray trace headers. By including it alongside `tracecontext`, your Lambda function can participate in traces that originate from X-Ray instrumented services while also supporting W3C Trace Context for non-AWS callers.
 
 ```mermaid
 graph LR
@@ -227,7 +246,7 @@ graph LR
     D -->|X-Ray Header| E[Consumer Lambda]
 ```
 
-This dual-propagation setup ensures your traces are connected regardless of whether the upstream service uses X-Ray or W3C Trace Context.
+This dual-propagation setup helps connect traces whether the upstream service uses X-Ray or W3C Trace Context. If you export traces to AWS X-Ray and have enabled Lambda active tracing, use `xray-lambda` instead of `xray`.
 
 ## Managing Layer Versions with Infrastructure as Code
 
@@ -240,11 +259,16 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  OTelLayerVersion:
+  OTelCollectorVersion:
     Type: String
     # Pin the version and update through your deployment pipeline
-    Default: "1"
-    Description: Version of the OpenTelemetry Lambda layer
+    Default: "0_22_0"
+    Description: Release version embedded in the OpenTelemetry collector layer name
+  OTelPythonVersion:
+    Type: String
+    # Pin the version and update through your deployment pipeline
+    Default: "0_20_0"
+    Description: Release version embedded in the OpenTelemetry Python layer name
 
 Resources:
   MyFunction:
@@ -256,13 +280,14 @@ Resources:
       Timeout: 30
       Layers:
         # Reference the layer with a parameterized version
-        - !Sub "arn:aws:lambda:${AWS::Region}:184161586896:layer:opentelemetry-python-aws-sdk-amd64:${OTelLayerVersion}"
+        - !Sub "arn:aws:lambda:${AWS::Region}:184161586896:layer:opentelemetry-collector-amd64-${OTelCollectorVersion}:1"
+        - !Sub "arn:aws:lambda:${AWS::Region}:184161586896:layer:opentelemetry-python-${OTelPythonVersion}:1"
       Environment:
         Variables:
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
           OTEL_SERVICE_NAME: !Ref AWS::StackName
           OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
-          OTEL_RESOURCE_ATTRIBUTES: !Sub "deployment.environment=${Environment}"
+          OTEL_RESOURCE_ATTRIBUTES: deployment.environment=production
 ```
 
 By parameterizing the layer version, you can test new versions in staging before promoting them to production. This avoids surprises from breaking changes in the instrumentation layer.
@@ -275,6 +300,6 @@ If you see no traces at all, check that `AWS_LAMBDA_EXEC_WRAPPER` is set correct
 
 If traces appear but are missing spans for specific libraries, the auto-instrumentation may not include that library. Check the layer's documentation for the list of supported instrumentations. You can supplement auto-instrumentation with manual spans for unsupported libraries.
 
-If cold starts are too slow, reduce the number of active instrumentations using `OTEL_NODE_ENABLED_INSTRUMENTATIONS` for Node.js or `OTEL_INSTRUMENTATION_[NAME]_ENABLED=false` for Python. Only instrument the libraries that matter for your observability goals.
+If cold starts are too slow, reduce the number of active instrumentations using `OTEL_NODE_ENABLED_INSTRUMENTATIONS` for Node.js or `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` for Python. Only instrument the libraries that matter for your observability goals.
 
 Lambda layers make OpenTelemetry adoption straightforward for serverless workloads. The zero-code-change approach means platform teams can roll out instrumentation across all functions without requiring application developers to learn the OpenTelemetry API.
