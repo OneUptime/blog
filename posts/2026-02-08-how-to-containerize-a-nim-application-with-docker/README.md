@@ -126,8 +126,8 @@ FROM nimlang/nim:2.0.2-alpine AS builder
 
 WORKDIR /app
 
-# Install musl-dev for static linking
-RUN apk add --no-cache musl-dev pcre-dev openssl-dev openssl-libs-static
+# Install musl-dev for static linking and file for verification
+RUN apk add --no-cache musl-dev pcre-dev openssl-dev openssl-libs-static file
 
 # Copy nimble file and install dependencies
 COPY nim_docker_demo.nimble ./
@@ -180,7 +180,7 @@ FROM nimlang/nim:2.0.2-alpine AS builder
 
 WORKDIR /app
 
-RUN apk add --no-cache musl-dev pcre-dev openssl-dev openssl-libs-static
+RUN apk add --no-cache musl-dev pcre-dev openssl-dev openssl-libs-static ca-certificates
 
 COPY nim_docker_demo.nimble ./
 RUN nimble install -y --depsOnly
@@ -247,16 +247,16 @@ Nim's compiler has several flags that matter for Docker builds:
 ```bash
 # Explanation of key compiler flags
 nim compile \
-    -d:release \          # Enable release mode (optimizations on, assertions off)
-    --opt:speed \         # Optimize for speed over size
-    --passL:"-static" \   # Pass -static flag to the C linker
-    --passC:"-flto" \     # Enable Link Time Optimization in C compiler
-    --gc:arc \            # Use ARC garbage collector (lower latency)
-    -o:server \           # Output binary name
-    src/server.nim        # Source file
+    -d:release \
+    --opt:speed \
+    --passL:"-static" \
+    --passC:"-flto" \
+    --mm:arc \
+    -o:server \
+    src/server.nim
 ```
 
-The `--gc:arc` flag is worth highlighting. Nim's ARC (Automatic Reference Counting) garbage collector provides more predictable latency than the default GC, which matters for web services.
+The `--mm:arc` flag is worth highlighting. Nim's ARC (Automatic Reference Counting) memory manager provides deterministic reference-counting behavior, while Nim 2.x defaults to ORC, which adds cycle collection. For async web services, keep the default ORC unless you know your code does not create reference cycles.
 
 ## Docker Compose for Development
 
@@ -364,8 +364,8 @@ A Nim web server typically uses under 5 MB of RAM at idle, making 64 MB a genero
 
 ## Monitoring
 
-Even lightweight applications need monitoring. [OneUptime](https://oneuptime.com) can watch your Nim service's health endpoint and track response times. Nim's ARC garbage collector produces consistent latency, so any deviation in response time patterns likely indicates a real problem rather than GC pauses.
+Even lightweight applications need monitoring. [OneUptime](https://oneuptime.com) can watch your Nim service's health endpoint and track response times. Nim's ARC/ORC memory managers provide deterministic behavior without tracing pauses, so any deviation in response time patterns likely indicates a real problem rather than GC pauses.
 
 ## Summary
 
-Nim produces some of the smallest Docker images of any compiled language. Static linking through the musl libc creates fully self-contained binaries that run in scratch images at 4-5 MB. The compilation flags give you control over optimization level, garbage collector choice, and linking behavior. Combined with Nim's expressive syntax and strong performance, Docker gives you a productive and efficient deployment pipeline for Nim services.
+Nim produces some of the smallest Docker images of any compiled language. Static linking through the musl libc creates fully self-contained binaries that run in scratch images at 4-5 MB. The compilation flags give you control over optimization level, memory management choice, and linking behavior. Combined with Nim's expressive syntax and strong performance, Docker gives you a productive and efficient deployment pipeline for Nim services.
