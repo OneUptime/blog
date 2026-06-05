@@ -30,6 +30,8 @@ Add the necessary dependencies for HTTP client tracing.
 dependencies {
     // Micronaut HTTP client
     implementation("io.micronaut:micronaut-http-client")
+    implementation("io.micronaut.reactor:micronaut-reactor-http-client")
+    implementation("io.micrometer:context-propagation")
 
     // OpenTelemetry integration
     implementation("io.micronaut.tracing:micronaut-tracing-opentelemetry")
@@ -49,26 +51,9 @@ Configure OpenTelemetry and the HTTP client:
 ```yaml
 # application.yml
 
-tracing:
-  enabled: true
-
-opentelemetry:
-  service-name: micronaut-client-service
-
-  resource-attributes:
-    deployment.environment: production
-    service.version: 1.0.0
-
-  exporter:
-    otlp:
-      enabled: true
-      endpoint: http://localhost:4317
-
-  # Enable HTTP client instrumentation
-  instrument:
-    http-client: true
-
 micronaut:
+  application:
+    name: micronaut-client-service
   http:
     client:
       # Global client configuration
@@ -78,6 +63,17 @@ micronaut:
       pool:
         enabled: true
         max-connections: 50
+
+otel:
+  service:
+    name: micronaut-client-service
+  resource:
+    attributes: deployment.environment=production,service.version=1.0.0
+  traces:
+    exporter: otlp
+  exporter:
+    otlp:
+      endpoint: http://localhost:4317
 ```
 
 ## Automatic HTTP Client Instrumentation
@@ -89,7 +85,8 @@ package com.example.client;
 
 import io.micronaut.http.annotation.*;
 import io.micronaut.http.client.annotation.Client;
-import io.micronaut.retry.annotation.Retryable;
+
+import java.util.List;
 
 // Declarative HTTP client with automatic tracing
 @Client("${services.product.url}")
@@ -130,13 +127,15 @@ public interface ProductClient {
 
 Each HTTP client call automatically creates a span with these attributes:
 
-- `http.method`: The HTTP method (GET, POST, etc.)
-- `http.url`: The full request URL
-- `http.status_code`: The response status code
+- `http.request.method`: The HTTP method (GET, POST, etc.)
+- `url.full`: The full request URL
+- `http.response.status_code`: The response status code
 - `http.request.header.*`: Request headers (if configured)
 - `http.response.header.*`: Response headers (if configured)
-- `net.peer.name`: The target host
-- `net.peer.port`: The target port
+- `server.address`: The target host
+- `server.port`: The target port
+
+Depending on your OpenTelemetry semantic convention stability settings, your exporter may also emit legacy attribute names such as `http.method`, `http.url`, `http.status_code`, `net.peer.name`, and `net.peer.port`.
 
 ## Using the HTTP Client with Tracing
 
@@ -223,6 +222,8 @@ import io.opentelemetry.context.Scope;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import java.util.Map;
+
 @Singleton
 public class ExternalApiService {
 
@@ -241,8 +242,8 @@ public class ExternalApiService {
 
         try (Scope scope = span.makeCurrent()) {
             // Add attributes before making the request
-            span.setAttribute("http.method", "POST");
-            span.setAttribute("http.url", endpoint);
+            span.setAttribute("http.request.method", "POST");
+            span.setAttribute("url.full", endpoint);
             span.setAttribute("service.name", "external-api");
 
             // Build the request
@@ -259,7 +260,7 @@ public class ExternalApiService {
                 .exchange(request, ApiResponse.class);
 
             // Record response details
-            span.setAttribute("http.status_code", response.getStatus().getCode());
+            span.setAttribute("http.response.status_code", response.getStatus().getCode());
             span.setAttribute("response.size", response.getContentLength());
             span.addEvent("response_received");
 
@@ -299,6 +300,8 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 @Singleton
 public class ReactiveProductService {
@@ -342,13 +345,16 @@ public class ReactiveProductService {
                 Span childSpan = tracer.spanBuilder("fetch-product-" + productId)
                     .startSpan();
 
-                return httpClient
-                    .retrieve(HttpRequest.GET("/api/products/" + productId), Product.class)
-                    .doOnNext(product -> {
-                        childSpan.setAttribute("product.id", product.getId());
-                        childSpan.setAttribute("product.name", product.getName());
-                    })
-                    .doFinally(signalType -> childSpan.end());
+                try (var scope = childSpan.makeCurrent()) {
+                    return httpClient
+                        .retrieve(HttpRequest.GET("/api/products/" + productId), Product.class)
+                        .doOnNext(product -> {
+                            childSpan.setAttribute("product.id", product.getId());
+                            childSpan.setAttribute("product.name", product.getName());
+                        })
+                        .doOnError(childSpan::recordException)
+                        .doFinally(signalType -> childSpan.end());
+                }
             });
     }
 
@@ -418,17 +424,12 @@ public class ResilientApiService {
         Span span = Span.current();
         span.setAttribute("endpoint", endpoint);
 
-        // Track retry attempt
-        String attemptKey = "retry.attempt";
-        int attempt = span.getAttribute(attemptKey) != null
-            ? (int) span.getAttribute(attemptKey) + 1
-            : 1;
-        span.setAttribute(attemptKey, attempt);
+        span.addEvent("retryable_request_started");
 
         try {
             ApiResponse response = apiClient.call(endpoint, payload);
 
-            span.setAttribute("http.status_code", response.getStatusCode());
+            span.setAttribute("http.response.status_code", response.getStatusCode());
             span.addEvent("request_successful");
             span.setStatus(StatusCode.OK);
 
@@ -438,10 +439,7 @@ public class ResilientApiService {
             span.recordException(e);
             span.addEvent("request_failed");
             span.setAttribute("error.message", e.getMessage());
-
-            if (attempt >= 3) {
-                span.setStatus(StatusCode.ERROR, "Max retries exceeded");
-            }
+            span.setStatus(StatusCode.ERROR, "Request attempt failed");
 
             throw e;
         }
@@ -520,9 +518,9 @@ public class TracingHttpClientFilter implements HttpClientFilter {
 
         try (Scope scope = span.makeCurrent()) {
             // Add custom attributes
-            span.setAttribute("http.method", request.getMethod().name());
-            span.setAttribute("http.url", request.getUri().toString());
-            span.setAttribute("http.target", request.getPath());
+            span.setAttribute("http.request.method", request.getMethod().name());
+            span.setAttribute("url.full", request.getUri().toString());
+            span.setAttribute("url.path", request.getPath());
 
             // Add custom header
             request.header("X-Trace-ID", span.getSpanContext().getTraceId());
@@ -535,7 +533,7 @@ public class TracingHttpClientFilter implements HttpClientFilter {
                 .doOnNext(response -> {
                     // Record response details
                     long duration = System.currentTimeMillis() - startTime;
-                    span.setAttribute("http.status_code", response.getStatus().getCode());
+                    span.setAttribute("http.response.status_code", response.getStatus().getCode());
                     span.setAttribute("http.duration_ms", duration);
                     span.addEvent("response_received");
 
@@ -614,25 +612,29 @@ micronaut:
       # HTTP/2 support
       http-version: HTTP_2_0
 
-opentelemetry:
+otel:
   # Optimize span processing
-  span-processor:
-    batch:
-      schedule-delay: 5000
-      max-queue-size: 4096
-      max-export-batch-size: 512
+  bsp:
+    schedule:
+      delay: 5000
+    max:
+      queue:
+        size: 4096
+      export:
+        batch:
+          size: 512
 
-  # Limit span attributes
-  span-limits:
-    max-attributes: 64
-    max-events: 64
-    max-attribute-length: 512
-
-  # Selective instrumentation
-  instrument:
-    http-client: true
-    # Disable if not needed
-    http-server: true
+  # Limit span attributes and events
+  span:
+    attribute:
+      count:
+        limit: 64
+      value:
+        length:
+          limit: 512
+    event:
+      count:
+        limit: 64
 ```
 
 ## Testing HTTP Client Tracing
@@ -646,7 +648,7 @@ import io.micronaut.http.HttpRequest;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.http.client.annotation.Client;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
-import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import jakarta.inject.Inject;
@@ -683,8 +685,18 @@ public class ProductClientTest {
             .orElse(null);
 
         assertNotNull(httpSpan);
-        assertEquals("GET", httpSpan.getAttributes().get("http.method"));
-        assertTrue(httpSpan.getAttributes().get("http.url").toString().contains("/api/products/123"));
+        String method = httpSpan.getAttributes().get(AttributeKey.stringKey("http.request.method"));
+        if (method == null) {
+            method = httpSpan.getAttributes().get(AttributeKey.stringKey("http.method"));
+        }
+
+        String url = httpSpan.getAttributes().get(AttributeKey.stringKey("url.full"));
+        if (url == null) {
+            url = httpSpan.getAttributes().get(AttributeKey.stringKey("http.url"));
+        }
+
+        assertEquals("GET", method);
+        assertTrue(url.contains("/api/products/123"));
     }
 }
 ```
