@@ -8,7 +8,7 @@ Description: Learn multiple techniques to discover the base image of any Docker 
 
 ---
 
-Every Docker image builds on top of another image. That foundation is called the base image. Knowing which base image sits beneath your containers matters for security audits, compliance checks, and debugging. If a vulnerability shows up in a base image, you need to know which of your images are affected.
+Most Docker images build on top of another image. That foundation is called the base image. Knowing which base image sits beneath your containers matters for security audits, compliance checks, and debugging. If a vulnerability shows up in a base image, you need to know which of your images are affected.
 
 This guide walks through several practical methods to uncover the base image of any Docker image on your system or in a remote registry.
 
@@ -20,7 +20,7 @@ Without knowing the base image, you cannot answer these questions. You also cann
 
 ## Method 1: Check the Dockerfile
 
-The most direct approach is reading the Dockerfile itself. The `FROM` instruction at the top tells you exactly which base image was used.
+The most direct approach is reading the Dockerfile itself. The `FROM` instruction starts a build stage and tells you which base image was used for that stage.
 
 ```bash
 # If you have the Dockerfile locally, just read the FROM line
@@ -34,11 +34,11 @@ The output might look like this:
 FROM node:20-alpine
 ```
 
-This tells you the base image is `node:20-alpine`. But what if you do not have the Dockerfile? That is where the next methods come in.
+This tells you the base image for that stage is `node:20-alpine`. In multi-stage builds, check the `FROM` instruction for the final stage as well as any earlier stages that produce copied artifacts. But what if you do not have the Dockerfile? That is where the next methods come in.
 
 ## Method 2: Use docker history
 
-The `docker history` command shows every layer in an image. The bottom-most layers belong to the base image.
+The `docker history` command shows the history entries for an image. The oldest filesystem layers usually belong to the base image.
 
 ```bash
 # Show the full history of an image without truncating output
@@ -52,7 +52,7 @@ The output displays each layer along with the command that created it. Look at t
 docker history --format "table {{.ID}}\t{{.CreatedBy}}\t{{.Size}}" nginx:latest
 ```
 
-The layer created by an `ADD` command with a large file size is usually the base operating system layer. Layers marked as `<missing>` for the image ID indicate they came from the base image rather than being built locally.
+The layer created by an `ADD` command with a large file size is often the base operating system layer. Layers marked as `<missing>` for the image ID can indicate that those steps were built on another system, came from a pulled image, or were built with BuildKit, so treat them as clues rather than definitive proof of the base image.
 
 ## Method 3: Use docker inspect
 
@@ -102,20 +102,23 @@ docker inspect --format '{{index .Config.Labels "org.opencontainers.image.base.n
 
 ## Method 6: Query the Docker Hub API
 
-For images hosted on Docker Hub, you can query the API to get details about how the image was built.
+For images hosted on Docker Hub, you can query the registry API to get the image manifest or manifest list.
 
 ```bash
-# Fetch the Dockerfile or build details from Docker Hub
+# Fetch manifest details from Docker Hub
 # First, get an authentication token
 TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" | jq -r .token)
 
 # Then fetch the manifest
 curl -s -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  -H "Accept: application/vnd.oci.image.manifest.v1+json" \
   "https://registry-1.docker.io/v2/library/nginx/manifests/latest"
 ```
 
-The manifest contains layer digests that you can cross-reference with known base images.
+A platform-specific manifest contains compressed layer digests that you can cross-reference with manifests from known base images. If the tag returns a manifest list or OCI index, first select the platform-specific manifest digest for the OS and architecture you care about.
 
 ## Method 7: Use a Layer Comparison Script
 
@@ -128,20 +131,24 @@ You can automate the comparison of layers between your image and candidate base 
 
 TARGET=$1
 shift
-TARGET_LAYERS=$(docker inspect "$TARGET" | jq -r '.[0].RootFS.Layers[]')
+mapfile -t TARGET_LAYERS < <(docker inspect "$TARGET" | jq -r '.[0].RootFS.Layers[]')
 
 for CANDIDATE in "$@"; do
     echo "Checking against $CANDIDATE..."
-    CANDIDATE_LAYERS=$(docker inspect "$CANDIDATE" | jq -r '.[0].RootFS.Layers[]')
+    mapfile -t CANDIDATE_LAYERS < <(docker inspect "$CANDIDATE" | jq -r '.[0].RootFS.Layers[]')
 
     # Check if all candidate layers appear at the start of the target
     MATCH=true
-    while IFS= read -r layer; do
-        if ! echo "$TARGET_LAYERS" | grep -q "$layer"; then
-            MATCH=false
-            break
-        fi
-    done <<< "$CANDIDATE_LAYERS"
+    if [ "${#CANDIDATE_LAYERS[@]}" -gt "${#TARGET_LAYERS[@]}" ]; then
+        MATCH=false
+    else
+        for i in "${!CANDIDATE_LAYERS[@]}"; do
+            if [ "${TARGET_LAYERS[$i]}" != "${CANDIDATE_LAYERS[$i]}" ]; then
+                MATCH=false
+                break
+            fi
+        done
+    fi
 
     if [ "$MATCH" = true ]; then
         echo "  MATCH: $CANDIDATE is likely the base image"
@@ -150,6 +157,8 @@ for CANDIDATE in "$@"; do
     fi
 done
 ```
+
+If you need a POSIX `sh` version, compare the layer lists with a language that handles arrays cleanly, such as Python or Go, or write the layer lists to temporary files and compare the expected prefix line by line.
 
 Run it like this:
 
@@ -165,15 +174,15 @@ docker pull debian:bookworm-slim
 The `dive` tool provides an interactive view of image layers. It can help you visually identify where the base image ends and your application layers begin.
 
 ```bash
-# Install dive and explore an image interactively
+# Install dive separately, then explore an image interactively
 dive nginx:latest
 ```
 
-Dive shows each layer alongside the filesystem changes it introduces. The initial layers that set up the operating system and core packages belong to the base image. You can read more about this approach in our post on [using Dive to explore Docker image layers](https://oneuptime.com/blog/post/2026-02-08-how-to-use-dive-to-explore-docker-image-layers/view).
+Dive shows each layer alongside the filesystem changes it introduces. The initial layers that set up the operating system and core packages often belong to the base image. You can read more about this approach in our post on [using Dive to explore Docker image layers](https://oneuptime.com/blog/post/2026-02-08-how-to-use-dive-to-explore-docker-image-layers/view).
 
 ## Understanding the Layer Stack
 
-Docker images are built as a stack of read-only layers. The base image forms the foundation.
+Docker images are built as a stack of read-only layers. The base image usually forms the foundation.
 
 ```mermaid
 graph TD
@@ -183,7 +192,7 @@ graph TD
     D --> E[Configuration Layer]
 ```
 
-Each `RUN`, `COPY`, or `ADD` instruction in a Dockerfile creates a new layer on top of the base. When you identify the boundary between base image layers and your own layers, you have found the base image.
+`RUN`, `COPY`, and `ADD` instructions commonly create filesystem layers on top of the base. When you identify the boundary between base image layers and your own layers, you have found the base image.
 
 ## Practical Tips
 
