@@ -8,7 +8,7 @@ Description: Implement comprehensive database query tracing for Diesel and SeaOR
 
 Database queries often represent the most significant performance bottleneck in applications. Without proper instrumentation, identifying slow queries or inefficient database access patterns becomes guesswork. OpenTelemetry provides standardized tracing for database operations, enabling you to monitor query execution times, detect N+1 problems, and optimize database interactions.
 
-This guide demonstrates how to instrument both Diesel and SeaORM, the two most popular Rust ORMs, with OpenTelemetry to capture detailed query traces including SQL statements, execution times, and connection pool metrics.
+This guide demonstrates how to instrument both Diesel and SeaORM, two popular Rust ORMs, with OpenTelemetry to capture database spans, execution times, and connection pool health signals. SQL statements should only be captured when you explicitly enable statement recording and have reviewed the privacy impact.
 
 ## Why Trace Database Queries
 
@@ -35,7 +35,7 @@ graph TD
     B -->|Create Span| E[OpenTelemetry]
     E -->|Export| F[Trace Backend]
     E -->|Record Metrics| G[Query Duration]
-    E -->|Record Attributes| H[SQL, Table, Rows]
+    E -->|Record Attributes| H[Database Metadata]
 ```
 
 ## Dependencies for Diesel Tracing
@@ -46,21 +46,22 @@ Add required crates to `Cargo.toml` for Diesel instrumentation:
 [dependencies]
 # Diesel ORM with PostgreSQL backend
 
-diesel = { version = "2.1", features = ["postgres", "r2d2", "chrono"] }
-diesel-tracing = "0.2"
+diesel = { version = "2.3", features = ["postgres", "r2d2", "chrono"] }
+diesel-tracing = { version = "0.4", features = ["postgres", "r2d2"] }
 
 # Database connection pool
 r2d2 = "0.8"
 
 # OpenTelemetry ecosystem
-opentelemetry = "0.22"
-opentelemetry_sdk = "0.22"
-opentelemetry-otlp = "0.15"
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry-semantic-conventions = "0.32"
 
 # Tracing integration
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.23"
+tracing-opentelemetry = "0.33"
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -74,28 +75,34 @@ chrono = "0.4"
 Set up the tracer with semantic conventions for database operations:
 
 ```rust
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace::TracerProvider, Resource};
+use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
+use opentelemetry_semantic_conventions::attribute::{
+    DEPLOYMENT_ENVIRONMENT_NAME,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint("http://localhost:4317");
+fn init_tracer() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            opentelemetry_sdk::trace::Config::default()
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "rust-database-service"),
-                    KeyValue::new("service.version", "1.0.0"),
-                    KeyValue::new("deployment.environment", "production"),
-                ]))
-        )
-        .install_batch(runtime::Tokio)?;
+    let resource = Resource::builder()
+        .with_attributes([
+            KeyValue::new(SERVICE_NAME, "rust-database-service"),
+            KeyValue::new(SERVICE_VERSION, "1.0.0"),
+            KeyValue::new(DEPLOYMENT_ENVIRONMENT_NAME, "production"),
+        ])
+        .build();
+
+    let provider = SdkTracerProvider::builder()
+        .with_resource(resource)
+        .with_batch_exporter(exporter)
+        .build();
 
     let telemetry = tracing_opentelemetry::layer()
         .with_tracer(provider.tracer("database-tracer"));
@@ -112,19 +119,20 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
 
 ## Instrument Diesel with Connection Pool
 
-Create a connection pool wrapper that traces all database operations:
+Create a connection pool that uses `diesel-tracing` for Diesel query spans and a wrapper span for connection acquisition:
 
 ```rust
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
+use diesel_tracing::pg::InstrumentedPgConnection;
 use tracing::{info, info_span, instrument};
 
-pub type DbPool = Pool<ConnectionManager<PgConnection>>;
-pub type DbConnection = PooledConnection<ConnectionManager<PgConnection>>;
+pub type DbPool = Pool<ConnectionManager<InstrumentedPgConnection>>;
+pub type DbConnection = PooledConnection<ConnectionManager<InstrumentedPgConnection>>;
 
 // Initialize a traced connection pool
 pub fn create_pool(database_url: &str) -> Result<DbPool, Box<dyn std::error::Error>> {
-    let manager = ConnectionManager::<PgConnection>::new(database_url);
+    let manager = ConnectionManager::<InstrumentedPgConnection>::new(database_url);
 
     let pool = Pool::builder()
         .max_size(15)
@@ -146,7 +154,7 @@ pub fn create_pool(database_url: &str) -> Result<DbPool, Box<dyn std::error::Err
 pub fn get_connection(pool: &DbPool) -> Result<DbConnection, r2d2::Error> {
     let span = info_span!(
         "db.connection.get",
-        db.system = "postgresql",
+        db.system.name = "postgresql",
         pool.size = pool.state().connections,
         pool.idle = pool.state().idle_connections
     );
@@ -162,7 +170,7 @@ Define your database schema with Diesel:
 
 ```rust
 // schema.rs - generated by diesel CLI
-table! {
+diesel::table! {
     users (id) {
         id -> Int4,
         email -> Varchar,
@@ -172,7 +180,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     posts (id) {
         id -> Int4,
         user_id -> Int4,
@@ -183,14 +191,15 @@ table! {
     }
 }
 
-joinable!(posts -> users (user_id));
-allow_tables_to_appear_in_same_query!(users, posts);
+diesel::joinable!(posts -> users (user_id));
+diesel::allow_tables_to_appear_in_same_query!(users, posts);
 ```
 
 Define models with instrumented methods:
 
 ```rust
 use diesel::prelude::*;
+use diesel_tracing::pg::InstrumentedPgConnection;
 use chrono::NaiveDateTime;
 use tracing::{info, instrument};
 
@@ -213,8 +222,8 @@ pub struct NewUser<'a> {
 
 impl User {
     // Instrumented query method with detailed span attributes
-    #[instrument(skip(conn), fields(db.system = "postgresql", db.operation = "SELECT"))]
-    pub fn find_by_id(conn: &mut PgConnection, user_id: i32) -> QueryResult<User> {
+    #[instrument(skip(conn), fields(db.system.name = "postgresql", db.operation.name = "SELECT"))]
+    pub fn find_by_id(conn: &mut InstrumentedPgConnection, user_id: i32) -> QueryResult<User> {
         use crate::schema::users::dsl::*;
 
         info!(user_id = user_id, "Fetching user by ID");
@@ -224,8 +233,8 @@ impl User {
             .first::<User>(conn)
     }
 
-    #[instrument(skip(conn), fields(db.system = "postgresql", db.operation = "SELECT"))]
-    pub fn find_by_email(conn: &mut PgConnection, user_email: &str) -> QueryResult<User> {
+    #[instrument(skip(conn), fields(db.system.name = "postgresql", db.operation.name = "SELECT"))]
+    pub fn find_by_email(conn: &mut InstrumentedPgConnection, user_email: &str) -> QueryResult<User> {
         use crate::schema::users::dsl::*;
 
         info!(email = user_email, "Fetching user by email");
@@ -235,8 +244,8 @@ impl User {
             .first::<User>(conn)
     }
 
-    #[instrument(skip(conn), fields(db.system = "postgresql", db.operation = "INSERT"))]
-    pub fn create(conn: &mut PgConnection, new_user: NewUser) -> QueryResult<User> {
+    #[instrument(skip(conn), fields(db.system.name = "postgresql", db.operation.name = "INSERT"))]
+    pub fn create(conn: &mut InstrumentedPgConnection, new_user: NewUser) -> QueryResult<User> {
         use crate::schema::users::dsl::*;
 
         info!(email = new_user.email, name = new_user.name, "Creating new user");
@@ -246,8 +255,8 @@ impl User {
             .get_result(conn)
     }
 
-    #[instrument(skip(conn), fields(db.system = "postgresql", db.operation = "SELECT"))]
-    pub fn list_all(conn: &mut PgConnection, limit: i64) -> QueryResult<Vec<User>> {
+    #[instrument(skip(conn), fields(db.system.name = "postgresql", db.operation.name = "SELECT"))]
+    pub fn list_all(conn: &mut InstrumentedPgConnection, limit: i64) -> QueryResult<Vec<User>> {
         use crate::schema::users::dsl::*;
 
         info!(limit = limit, "Listing all users");
@@ -264,7 +273,7 @@ impl User {
 Instrument queries involving multiple tables:
 
 ```rust
-#[derive(Queryable, Associations, Debug)]
+#[derive(Queryable, Identifiable, Associations, Debug)]
 #[diesel(belongs_to(User))]
 #[diesel(table_name = posts)]
 pub struct Post {
@@ -281,12 +290,12 @@ impl Post {
     #[instrument(
         skip(conn),
         fields(
-            db.system = "postgresql",
-            db.operation = "SELECT",
-            db.sql.table = "posts"
+            db.system.name = "postgresql",
+            db.operation.name = "SELECT",
+            db.collection.name = "posts"
         )
     )]
-    pub fn find_with_user(conn: &mut PgConnection, post_id: i32) -> QueryResult<(Post, User)> {
+    pub fn find_with_user(conn: &mut InstrumentedPgConnection, post_id: i32) -> QueryResult<(Post, User)> {
         use crate::schema::{posts, users};
 
         info!(post_id = post_id, "Fetching post with user");
@@ -300,13 +309,13 @@ impl Post {
     #[instrument(
         skip(conn),
         fields(
-            db.system = "postgresql",
-            db.operation = "SELECT",
+            db.system.name = "postgresql",
+            db.operation.name = "SELECT",
             query_type = "join"
         )
     )]
     pub fn list_published_with_authors(
-        conn: &mut PgConnection,
+        conn: &mut InstrumentedPgConnection,
         limit: i64,
     ) -> QueryResult<Vec<(Post, User)>> {
         use crate::schema::{posts, users};
@@ -324,7 +333,7 @@ impl Post {
     // Demonstrate a potential N+1 query pattern (anti-pattern)
     #[instrument(skip(conn))]
     pub fn list_with_separate_user_queries(
-        conn: &mut PgConnection,
+        conn: &mut InstrumentedPgConnection,
         limit: i64,
     ) -> QueryResult<Vec<(Post, User)>> {
         use crate::schema::posts::dsl::*;
@@ -355,24 +364,27 @@ For SeaORM instrumentation, add these dependencies:
 ```toml
 [dependencies]
 # SeaORM with PostgreSQL and tracing
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
-sea-orm-migration = "0.12"
+sea-orm = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+sea-orm-migration = "1.1"
 
 # OpenTelemetry (same as Diesel example)
-opentelemetry = "0.22"
-opentelemetry_sdk = "0.22"
-opentelemetry-otlp = "0.15"
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry-semantic-conventions = "0.32"
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.23"
+tracing-opentelemetry = "0.33"
 
 tokio = { version = "1.35", features = ["full"] }
+chrono = "0.4"
+log = "0.4"
 ```
 
 ## Instrument SeaORM Connection
 
-Create a database connection with automatic tracing:
+Create a database connection with SQLx statement logging enabled so those events can flow through your tracing subscriber:
 
 ```rust
 use sea_orm::{Database, DatabaseConnection, DbErr, ConnectOptions};
@@ -390,7 +402,7 @@ pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection,
         .acquire_timeout(Duration::from_secs(10))
         .idle_timeout(Duration::from_secs(600))
         .max_lifetime(Duration::from_secs(3600))
-        .sqlx_logging(true)  // Enable SQL logging through tracing
+        .sqlx_logging(true)  // Enable SQLx statement logging
         .sqlx_logging_level(log::LevelFilter::Debug);
 
     info!(
@@ -413,6 +425,7 @@ Define entities with instrumented queries:
 
 ```rust
 use sea_orm::entity::prelude::*;
+use sea_orm::{DatabaseConnection, DbErr};
 use tracing::{info, instrument};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -445,9 +458,9 @@ impl Entity {
     #[instrument(
         skip(db),
         fields(
-            db.system = "postgresql",
-            db.operation = "SELECT",
-            db.sql.table = "users"
+            db.system.name = "postgresql",
+            db.operation.name = "SELECT",
+            db.collection.name = "users"
         )
     )]
     pub async fn find_by_email_traced(
@@ -465,8 +478,8 @@ impl Entity {
     #[instrument(
         skip(db),
         fields(
-            db.system = "postgresql",
-            db.operation = "SELECT",
+            db.system.name = "postgresql",
+            db.operation.name = "SELECT",
             query_type = "paginated"
         )
     )]
@@ -490,14 +503,14 @@ impl Entity {
 Implement transaction tracing to monitor atomic operations:
 
 ```rust
-use sea_orm::{DatabaseConnection, TransactionTrait, DbErr, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, TransactionTrait, DbErr, Set};
 use tracing::{info, error, instrument};
 
 #[instrument(
     skip(db),
     fields(
-        db.system = "postgresql",
-        db.operation = "TRANSACTION"
+        db.system.name = "postgresql",
+        db.operation.name = "TRANSACTION"
     )
 )]
 pub async fn create_user_with_post(
@@ -509,7 +522,7 @@ pub async fn create_user_with_post(
 ) -> Result<(user::Model, post::Model), DbErr> {
     info!("Starting transaction: create user with post");
 
-    // Begin transaction - automatically traced
+    // Begin transaction inside the current transaction span
     let txn = db.begin().await?;
 
     // Insert user
@@ -578,10 +591,11 @@ pub async fn transaction_with_rollback(
 Create middleware to track query execution metrics:
 
 ```rust
-use tracing::{info, warn};
+use sea_orm::{DatabaseConnection, DbErr};
+use tracing::{info, instrument, warn};
 use std::time::Instant;
 
-#[instrument(skip(db, query_fn), fields(db.system = "postgresql"))]
+#[instrument(skip(db, query_fn), fields(db.system.name = "postgresql"))]
 pub async fn execute_with_metrics<F, T>(
     db: &DatabaseConnection,
     operation: &str,
@@ -632,7 +646,7 @@ where
 Track connection pool health metrics:
 
 ```rust
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 use tracing::{info, warn};
 use std::time::Duration;
 
@@ -645,7 +659,6 @@ pub async fn monitor_pool_health(db: &DatabaseConnection) {
             loop {
                 interval.tick().await;
 
-                // SeaORM exposes pool metrics through the underlying SQLx pool
                 info!(
                     "Connection pool health check",
                 );
