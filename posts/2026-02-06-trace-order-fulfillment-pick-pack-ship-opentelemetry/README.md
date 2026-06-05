@@ -18,7 +18,8 @@ Start by capturing the trace context at checkout time and persisting it alongsid
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import Link, SpanContext, TraceFlags
+from opentelemetry.context import Context
+from opentelemetry.trace import Link, SpanContext, TraceFlags, TraceState
 import json
 
 tracer = trace.get_tracer("fulfillment.service")
@@ -34,7 +35,8 @@ class CheckoutService:
             trace_context = {
                 "trace_id": format(span_context.trace_id, "032x"),
                 "span_id": format(span_context.span_id, "016x"),
-                "trace_flags": span_context.trace_flags
+                "trace_flags": int(span_context.trace_flags),
+                "trace_state": span_context.trace_state.to_header()
             }
 
             # Store this with the order record
@@ -66,12 +68,14 @@ class WarehousePickService:
             trace_id=int(checkout_ctx["trace_id"], 16),
             span_id=int(checkout_ctx["span_id"], 16),
             is_remote=True,
-            trace_flags=TraceFlags(checkout_ctx["trace_flags"])
+            trace_flags=TraceFlags(checkout_ctx["trace_flags"]),
+            trace_state=TraceState.from_header([checkout_ctx["trace_state"]])
         )
 
         # Start a new span with a link to the checkout span
         with tracer.start_as_current_span(
             "warehouse.pick",
+            context=Context(),
             links=[Link(checkout_span_context, {"link.type": "follows_from"})]
         ) as span:
             span.set_attribute("order.id", order_id)
@@ -94,7 +98,8 @@ class WarehousePickService:
                 "pick_trace_context": {
                     "trace_id": format(pick_context.trace_id, "032x"),
                     "span_id": format(pick_context.span_id, "016x"),
-                    "trace_flags": pick_context.trace_flags
+                    "trace_flags": int(pick_context.trace_flags),
+                    "trace_state": pick_context.trace_state.to_header()
                 }
             })
 ```
@@ -116,12 +121,17 @@ class PackingService:
                 trace_id=int(ctx["trace_id"], 16),
                 span_id=int(ctx["span_id"], 16),
                 is_remote=True,
-                trace_flags=TraceFlags(ctx["trace_flags"])
+                trace_flags=TraceFlags(ctx["trace_flags"]),
+                trace_state=TraceState.from_header([ctx["trace_state"]])
             )
             stage_name = ctx_key.replace("_trace_context", "")
             links.append(Link(span_ctx, {"link.stage": stage_name}))
 
-        with tracer.start_as_current_span("warehouse.pack", links=links) as span:
+        with tracer.start_as_current_span(
+            "warehouse.pack",
+            context=Context(),
+            links=links
+        ) as span:
             span.set_attribute("order.id", order_id)
 
             # Determine box size based on items
@@ -141,7 +151,8 @@ class PackingService:
                     "pack_trace_context": {
                         "trace_id": format(pack_context.trace_id, "032x"),
                         "span_id": format(pack_context.span_id, "016x"),
-                        "trace_flags": pack_context.trace_flags
+                        "trace_flags": int(pack_context.trace_flags),
+                        "trace_state": pack_context.trace_state.to_header()
                     }
                 }
             })
@@ -155,7 +166,11 @@ class ShippingService:
         # Link to all previous stages
         links = self._build_links(contexts)
 
-        with tracer.start_as_current_span("shipping.dispatch", links=links) as span:
+        with tracer.start_as_current_span(
+            "shipping.dispatch",
+            context=Context(),
+            links=links
+        ) as span:
             span.set_attribute("order.id", order_id)
 
             label = self._generate_shipping_label(order_id)
@@ -168,7 +183,7 @@ class ShippingService:
 
 ## Querying Across the Fulfillment Chain
 
-With span links in place, your observability backend can reconstruct the full order journey even though each stage ran in a separate trace. You can query for orders where the pick-to-ship time exceeded your SLA:
+With span links in place, your observability backend can reconstruct the full order journey even though each stage ran in a separate trace. You can query for orders where the checkout-to-ship time exceeded your SLA:
 
 ```sql
 SELECT
