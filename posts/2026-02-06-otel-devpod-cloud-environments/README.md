@@ -59,6 +59,7 @@ docker network create otel-net 2>/dev/null || true
 # Start Jaeger for trace visualization
 docker run -d --name jaeger \
   --network otel-net \
+  -e COLLECTOR_OTLP_ENABLED=true \
   -p 16686:16686 \
   jaegertracing/all-in-one:1.54
 
@@ -95,6 +96,10 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
 YAML
 
 # Start the OpenTelemetry Collector
@@ -102,7 +107,7 @@ docker run -d --name otel-collector \
   --network otel-net \
   -p 4317:4317 \
   -p 4318:4318 \
-  -v /tmp/otel/collector-config.yaml:/etc/otelcol/config.yaml \
+  -v /tmp/otel/collector-config.yaml:/etc/otelcol-contrib/config.yaml \
   otel/opentelemetry-collector-contrib:0.96.0
 
 echo "OpenTelemetry Collector running on ports 4317 (gRPC) and 4318 (HTTP)"
