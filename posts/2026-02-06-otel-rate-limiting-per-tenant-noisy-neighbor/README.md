@@ -12,9 +12,9 @@ In multi-tenant observability setups, one team deploying a buggy service can flo
 
 Here is a typical scenario. Team A has 50 services producing a steady 10,000 spans per second. Team B deploys a new version with an infinite retry loop that suddenly generates 500,000 spans per second. Without rate limiting, the collector tries to process everything, its memory spikes, it starts dropping data from all teams, and everyone loses visibility at the worst possible moment.
 
-## Using the Rate Limiting Processor
+## Using Tail Sampling Rate Limits
 
-The OpenTelemetry Collector contrib distribution includes a rate limiting processor that you can configure per pipeline. Combined with routing, you get per-tenant limits:
+The OpenTelemetry Collector contrib distribution includes the tail sampling processor, which has a `rate_limiting` policy for traces. Combined with routing, you get per-tenant limits:
 
 ```yaml
 receivers:
@@ -25,36 +25,57 @@ receivers:
 
 connectors:
   routing/by_tenant:
+    error_mode: ignore
     table:
-      - statement: route() where resource.attributes["tenant.id"] == "team-a"
+      - condition: attributes["tenant.id"] == "team-a"
         pipelines: [traces/team_a]
-      - statement: route() where resource.attributes["tenant.id"] == "team-b"
+      - condition: attributes["tenant.id"] == "team-b"
         pipelines: [traces/team_b]
-      - statement: route() where resource.attributes["tenant.id"] == "team-c"
+      - condition: attributes["tenant.id"] == "team-c"
         pipelines: [traces/team_c]
     default_pipelines: [traces/default]
 
 processors:
-  # Each tenant gets their own rate limit
-  rate_limiter/team_a:
-    # Allow 20,000 spans per second for team A
-    rate: 20000
-    burst: 25000
+  # Each tenant gets their own trace sampler with a span-rate limit
+  tail_sampling/team_a:
+    decision_wait: 10s
+    policies:
+      - name: team-a-rate-limit
+        type: rate_limiting
+        rate_limiting:
+          # Allow 20,000 spans per second for team A
+          spans_per_second: 20000
+          burst_capacity: 25000
 
-  rate_limiter/team_b:
-    # Allow 10,000 spans per second for team B
-    rate: 10000
-    burst: 15000
+  tail_sampling/team_b:
+    decision_wait: 10s
+    policies:
+      - name: team-b-rate-limit
+        type: rate_limiting
+        rate_limiting:
+          # Allow 10,000 spans per second for team B
+          spans_per_second: 10000
+          burst_capacity: 15000
 
-  rate_limiter/team_c:
-    # Allow 5,000 spans per second for team C
-    rate: 5000
-    burst: 8000
+  tail_sampling/team_c:
+    decision_wait: 10s
+    policies:
+      - name: team-c-rate-limit
+        type: rate_limiting
+        rate_limiting:
+          # Allow 5,000 spans per second for team C
+          spans_per_second: 5000
+          burst_capacity: 8000
 
-  rate_limiter/default:
-    # Default limit for unidentified tenants
-    rate: 1000
-    burst: 2000
+  tail_sampling/default:
+    decision_wait: 10s
+    policies:
+      - name: default-rate-limit
+        type: rate_limiting
+        rate_limiting:
+          # Default limit for unidentified tenants
+          spans_per_second: 1000
+          burst_capacity: 2000
 
   batch:
     send_batch_size: 512
@@ -75,28 +96,28 @@ service:
 
     traces/team_a:
       receivers: [routing/by_tenant]
-      processors: [rate_limiter/team_a, batch]
+      processors: [tail_sampling/team_a, batch]
       exporters: [otlp]
 
     traces/team_b:
       receivers: [routing/by_tenant]
-      processors: [rate_limiter/team_b, batch]
+      processors: [tail_sampling/team_b, batch]
       exporters: [otlp]
 
     traces/team_c:
       receivers: [routing/by_tenant]
-      processors: [rate_limiter/team_c, batch]
+      processors: [tail_sampling/team_c, batch]
       exporters: [otlp]
 
     traces/default:
       receivers: [routing/by_tenant]
-      processors: [rate_limiter/default, batch]
+      processors: [tail_sampling/default, batch]
       exporters: [otlp]
 ```
 
 ## Alternative: Using the Probabilistic Sampler for Soft Limits
 
-If you prefer soft limits (reduce volume but do not hard-drop), use the probabilistic sampler with different rates per tenant:
+If you prefer soft limits that reduce volume by percentage instead of enforcing a span-per-second cap, use the probabilistic sampler with different rates per tenant:
 
 ```yaml
 processors:
@@ -116,11 +137,11 @@ processors:
     hash_seed: 42
 ```
 
-This approach is less precise than hard rate limiting but has the advantage of maintaining trace completeness for the traces that are kept.
+This approach is less precise than span-per-second limiting but can keep complete traces when all spans for a trace use the same TraceID-based sampling decision.
 
 ## Memory Protection with Per-Pipeline Memory Limiters
 
-Rate limiting controls ingest, but you also need memory protection. Configure memory limiters per pipeline:
+Tail-sampling limits control export volume, but you also need memory protection. Configure memory limiters in each routed pipeline:
 
 ```yaml
 processors:
@@ -143,13 +164,13 @@ service:
   pipelines:
     traces/team_a:
       receivers: [routing/by_tenant]
-      processors: [memory_limiter/team_a, rate_limiter/team_a, batch]
+      processors: [memory_limiter/team_a, tail_sampling/team_a, batch]
       exporters: [otlp]
 ```
 
 ## Tracking Rate-Limited Data
 
-You need to know when data is being dropped. Add attributes before rate limiting so you can track it:
+You need to know when data is being limited. Add attributes before tail sampling so sampled traces carry the policy name, then use the Collector's internal metrics to count sampling decisions:
 
 ```yaml
 processors:
@@ -157,7 +178,8 @@ processors:
     trace_statements:
       - context: resource
         statements:
-          - set(attributes["rate_limit.applied"], true)
+          - set(attributes["rate_limit.policy"], "team-a-rate-limit")
+            where attributes["tenant.id"] == "team-a"
 
   # Then use the collector's internal metrics
 ```
@@ -165,14 +187,14 @@ processors:
 Monitor these collector metrics to know when rate limiting kicks in:
 
 ```bash
-# Check the processor's dropped span count
+# Check the processor's sampling decision count
 
 curl -s http://localhost:8888/metrics | \
-  grep "otelcol_processor_dropped_spans"
+  grep "otelcol_processor_tail_sampling_count_traces_sampled"
 
-# Output will show per-processor metrics:
-# otelcol_processor_dropped_spans{processor="rate_limiter/team_a"} 0
-# otelcol_processor_dropped_spans{processor="rate_limiter/team_c"} 45231
+# Output will show policy-level metrics:
+# otelcol_processor_tail_sampling_count_traces_sampled{policy="team-a-rate-limit",decision="sampled"} 12450
+# otelcol_processor_tail_sampling_count_traces_sampled{policy="team-c-rate-limit",decision="not_sampled"} 45231
 ```
 
 ## Setting Limits Based on Real Usage
@@ -209,4 +231,4 @@ processors:
 
 ## Wrapping Up
 
-Per-tenant rate limiting is essential for any shared observability infrastructure. Without it, one noisy team can take down observability for everyone. The combination of routing connectors, rate limiting processors, and memory limiters gives you a robust defense. Start with generous limits based on actual usage data, monitor dropped spans closely, and communicate limits clearly to your tenants.
+Per-tenant rate limiting is essential for any shared observability infrastructure. Without it, one noisy team can take down observability for everyone. The combination of routing connectors, tail-sampling rate limits, and memory limiters gives you a robust defense. Start with generous limits based on actual usage data, monitor sampling drops closely, and communicate limits clearly to your tenants.
