@@ -14,7 +14,7 @@ Docker Desktop has been the default way to run containers on macOS for years. Bu
 
 macOS cannot run Linux containers natively. Both Colima and Docker Desktop create a Linux virtual machine under the hood, then expose the Docker API from that VM to your Mac.
 
-**Docker Desktop** bundles a custom Linux VM (based on LinuxKit), a graphical interface, Docker Compose, Kubernetes support, volume sharing, and various integrations into a single installer.
+**Docker Desktop** bundles a Linux VM, a graphical interface, Docker Compose, Kubernetes support, volume sharing, and various integrations into a single installer.
 
 **Colima** uses Lima (Linux Machines) to manage a lightweight VM running Alpine or Ubuntu. It configures the Docker socket so that the standard Docker CLI and Docker Compose just work. There is no GUI - everything runs from the terminal.
 
@@ -40,7 +40,7 @@ Getting Colima installed:
 # Install Colima and the Docker CLI tools
 brew install colima docker docker-compose docker-credential-helper
 
-# Start Colima with default settings (2 CPUs, 2GB RAM, 60GB disk)
+# Start Colima with default settings (2 CPUs, 2GB RAM, 100GB disk)
 colima start
 
 # Verify it works
@@ -57,13 +57,13 @@ Colima lets you configure resources at startup:
 
 ```bash
 # Start with custom resources: 4 CPUs, 8GB RAM, 100GB disk
-colima start --cpu 4 --memory 8 --disk 100
+colima start --cpus 4 --memory 8 --disk 100
 
 # Start with specific architecture (useful for multi-platform development)
 colima start --arch aarch64
 
 # Start a second profile for testing with different resources
-colima start --profile test --cpu 2 --memory 4 --disk 40
+colima start --profile test --cpus 2 --memory 4 --disk 40
 
 # List running profiles
 colima list
@@ -73,10 +73,10 @@ The profile feature is genuinely useful. You can run multiple isolated Docker en
 
 ```bash
 # Development profile with generous resources
-colima start --profile dev --cpu 4 --memory 8
+colima start --profile dev --cpus 4 --memory 8
 
 # CI testing profile with minimal resources
-colima start --profile ci --cpu 2 --memory 2
+colima start --profile ci --cpus 2 --memory 2
 
 # Switch between profiles
 colima stop --profile dev
@@ -97,13 +97,13 @@ time docker build -t bench-test .
 time docker run -v $(pwd):/app alpine find /app -type f | wc -l
 ```
 
-For CPU and memory intensive tasks (compilation, test suites), both tools perform similarly since they both run a Linux VM on Apple's virtualization framework.
+For CPU and memory intensive tasks (compilation, test suites), both tools perform similarly because they both run containers inside a Linux VM. Depending on your settings, Docker Desktop may use Docker VMM or Apple's Virtualization framework, while Colima defaults to QEMU and can use Apple's Virtualization framework with `--vm-type vz`.
 
 The real difference shows up in **file system performance**. Docker Desktop uses VirtioFS (or the older gRPC FUSE) for volume mounts. Colima also supports VirtioFS but defaults to sshfs:
 
 ```bash
 # Start Colima with VirtioFS for better file mount performance
-colima start --mount-type virtiofs
+colima start --vm-type vz --mount-type virtiofs
 
 # Or use 9p for compatibility
 colima start --mount-type 9p
@@ -123,10 +123,10 @@ colima start
 colima start --mount /Volumes/data:w --mount /opt/shared:r
 
 # Edit the Colima configuration file for persistent settings
-colima template
+colima start --edit
 ```
 
-The Colima template command opens a YAML configuration file:
+The Colima template command prints a YAML template, and each profile stores its active configuration in a YAML file:
 
 ```yaml
 # ~/.colima/default/colima.yaml
@@ -163,7 +163,7 @@ Colima's k3s setup is lighter weight than Docker Desktop's Kubernetes. It starts
 
 ## Licensing and Cost
 
-This is the elephant in the room. Docker Desktop requires a paid subscription for organizations with more than 250 employees or more than $10 million in annual revenue. The pricing tiers start at $5/user/month.
+This is the elephant in the room. Docker Desktop requires a paid subscription for organizations with more than 250 employees or more than $10 million in annual revenue. As of 2026, the paid pricing tiers start at $9/user/month on an annual plan or $11/user/month on a monthly plan.
 
 Colima is open-source (MIT license) and free for everyone, regardless of company size. The Docker CLI, Docker Compose, and BuildKit that Colima uses are also open-source.
 
@@ -192,7 +192,7 @@ For individual developers and small companies, Docker Desktop's free tier works 
 | Dev Containers | Full support | Works via CLI |
 | Resource monitoring | GUI dashboard | CLI only |
 | Automatic updates | Yes | brew upgrade |
-| Rosetta x86 emulation | Built-in | Manual setup |
+| Rosetta x86 emulation | Settings option with Apple Virtualization framework | `--vm-type vz --vz-rosetta` |
 
 ## Development Workflow Differences
 
