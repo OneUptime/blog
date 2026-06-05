@@ -24,12 +24,23 @@ The first step is adding the OpenTelemetry Spring Boot Starter to your project. 
 
 ```xml
 <!-- Add this to your pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Core OpenTelemetry Spring Boot Starter -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        <version>2.1.0-alpha</version>
     </dependency>
 
     <!-- OTLP Exporter for sending data to collectors -->
@@ -43,6 +54,12 @@ The first step is adding the OpenTelemetry Spring Boot Starter to your project. 
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+
+    <!-- Spring Boot JDBC for JdbcTemplate instrumentation -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -50,9 +67,11 @@ For Gradle users, the equivalent configuration looks like this:
 
 ```groovy
 dependencies {
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.1.0-alpha'
+    implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.28.1')
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 }
 ```
 
@@ -67,13 +86,13 @@ otel:
   # Service name appears in all traces and metrics
   service:
     name: payment-service
-    version: 1.0.0
 
   # Resource attributes for service identification
   resource:
     attributes:
       deployment.environment: production
       service.namespace: payments
+      service.version: 1.0.0
 
   # OTLP exporter configuration
   exporter:
@@ -83,21 +102,20 @@ otel:
       # Use HTTP or gRPC protocol
       protocol: http/protobuf
       # Headers for authentication
-      headers:
-        api-key: your-api-key-here
+      headers: api-key=your-api-key-here
 
   # Trace configuration
   traces:
     exporter: otlp
-    sampler:
-      # Sample 100% of traces (adjust for production)
-      probability: 1.0
+    # Sample 100% of traces (adjust for production)
+    sampler: parentbased_traceidratio
+    sampler.arg: 1.0
 
   # Metrics configuration
   metrics:
     exporter: otlp
-    # Export interval in milliseconds
-    export-interval: 60000
+  # Export interval in milliseconds
+  metric.export.interval: 60000
 
   # Logging configuration
   logs:
@@ -114,9 +132,9 @@ graph TD
     A --> C[RestTemplate]
     A --> D[WebClient]
     A --> E[JDBC Datasources]
-    A --> F[Spring Data JPA]
+    A --> F[MongoDB Clients]
     A --> G[Kafka Clients]
-    A --> H[Redis Operations]
+    A --> H[R2DBC Clients]
 
     B --> I[Trace Spans Created]
     C --> I
@@ -140,6 +158,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Main Spring Boot application with automatic OpenTelemetry instrumentation.
@@ -168,15 +188,17 @@ class PaymentController {
         // Database query automatically creates a span
         return jdbcTemplate.query(
             "SELECT id, amount, status FROM payments WHERE status = ?",
-            new Object[]{"pending"},
             (rs, rowNum) -> new Payment(
                 rs.getLong("id"),
                 rs.getBigDecimal("amount"),
                 rs.getString("status")
-            )
+            ),
+            "pending"
         );
     }
 }
+
+record Payment(Long id, BigDecimal amount, String status) {}
 ```
 
 ## Manual Instrumentation with the Starter
@@ -186,22 +208,26 @@ While auto-instrumentation covers many cases, you'll often need custom spans for
 ```java
 package com.example.demo;
 
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
+import java.math.BigDecimal;
 
 /**
  * Service demonstrating manual span creation with the OpenTelemetry API.
- * The Tracer is automatically injected by the Spring Boot Starter.
+ * The OpenTelemetry bean is provided by the Spring Boot Starter.
  */
 @Service
 public class PaymentService {
 
-    @Autowired
-    private Tracer tracer;
+    private final Tracer tracer;
+
+    public PaymentService(OpenTelemetry openTelemetry) {
+        this.tracer = openTelemetry.getTracer("payment-service");
+    }
 
     /**
      * Process a payment with custom instrumentation.
@@ -210,8 +236,8 @@ public class PaymentService {
     public void processPayment(Payment payment) {
         // Create a new span for this operation
         Span span = tracer.spanBuilder("payment.process")
-            .setAttribute("payment.id", payment.getId())
-            .setAttribute("payment.amount", payment.getAmount().toString())
+            .setAttribute("payment.id", payment.id())
+            .setAttribute("payment.amount", payment.amount().toString())
             .startSpan();
 
         // Make this span the active span
@@ -225,7 +251,7 @@ public class PaymentService {
             span.setAttribute("transaction.id", transactionId);
 
             // Update database
-            updatePaymentStatus(payment.getId(), "completed");
+            updatePaymentStatus(payment.id(), "completed");
 
             // Mark span as successful
             span.setStatus(StatusCode.OK);
@@ -248,7 +274,7 @@ public class PaymentService {
     private void validatePayment(Payment payment) {
         Span span = tracer.spanBuilder("payment.validate").startSpan();
         try (Scope scope = span.makeCurrent()) {
-            if (payment.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            if (payment.amount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new PaymentException("Invalid amount");
             }
             span.setStatus(StatusCode.OK);
@@ -266,10 +292,9 @@ Production environments typically need sampling to reduce data volume. Configure
 ```yaml
 otel:
   traces:
-    sampler:
-      # Parent-based sampling with ratio
-      type: parentbased_traceidratio
-      arg: 0.1  # Sample 10% of traces
+    # Parent-based sampling with ratio
+    sampler: parentbased_traceidratio
+    sampler.arg: 0.1  # Sample 10% of traces
 ```
 
 For more complex sampling, implement a custom sampler:
@@ -280,58 +305,62 @@ package com.example.demo.config;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
+import io.opentelemetry.sdk.trace.data.LinkData;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.api.common.Attributes;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.util.List;
 
 /**
- * Custom sampler that samples 100% of errors and 10% of successful requests.
- * This ensures you always capture traces when things go wrong.
+ * Custom head sampler that samples spans whose names indicate errors,
+ * and samples 10% of other root traces.
  */
 @Configuration
 public class TracingConfig {
 
     @Bean
-    public Sampler customSampler() {
-        return new Sampler() {
-            private final Sampler alwaysOn = Sampler.alwaysOn();
-            private final Sampler tenPercent = Sampler.traceIdRatioBased(0.1);
+    public AutoConfigurationCustomizerProvider customSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> new Sampler() {
+                private final Sampler alwaysOn = Sampler.alwaysOn();
+                private final Sampler tenPercent = Sampler.parentBased(Sampler.traceIdRatioBased(0.1));
 
-            @Override
-            public SamplingResult shouldSample(
-                Context parentContext,
-                String traceId,
-                String name,
-                SpanKind spanKind,
-                Attributes attributes,
-                List<LinkData> parentLinks
-            ) {
-                // Always sample if span name indicates an error
-                if (name.contains("error") || name.contains("exception")) {
-                    return alwaysOn.shouldSample(
+                @Override
+                public SamplingResult shouldSample(
+                    Context parentContext,
+                    String traceId,
+                    String name,
+                    SpanKind spanKind,
+                    Attributes attributes,
+                    List<LinkData> parentLinks
+                ) {
+                    // Head sampling runs when the span starts, before later exceptions are known.
+                    if (name.contains("error") || name.contains("exception")) {
+                        return alwaysOn.shouldSample(
+                            parentContext, traceId, name, spanKind, attributes, parentLinks
+                        );
+                    }
+
+                    return tenPercent.shouldSample(
                         parentContext, traceId, name, spanKind, attributes, parentLinks
                     );
                 }
 
-                // Otherwise sample 10%
-                return tenPercent.shouldSample(
-                    parentContext, traceId, name, spanKind, attributes, parentLinks
-                );
+                @Override
+                public String getDescription() {
+                    return "ErrorNameSampler{sample error-named spans, 10% otherwise}";
+                }
             }
-
-            @Override
-            public String getDescription() {
-                return "ErrorAwareSampler{always sample errors, 10% otherwise}";
-            }
-        };
+        );
     }
 }
 ```
 
 ## Exporting to Different Backends
 
-The starter supports multiple export destinations. Here's how to configure different backends:
+The starter supports multiple export destinations. Here's how to configure different backends. Exporters other than OTLP, such as Zipkin, must also be added to your dependencies.
 
 ```yaml
 # Export to Jaeger
@@ -356,53 +385,52 @@ otel:
       endpoint: http://zipkin:9411/api/v2/spans
 
 ---
-# Export to multiple destinations (requires custom configuration)
+# Export to multiple destinations
 spring:
   config:
     activate:
       on-profile: multi-export
+
+otel:
+  traces:
+    exporter: otlp,zipkin
 ```
 
-For multiple exporters, configure them programmatically:
+For advanced exporter customization, configure it programmatically:
 
 ```java
 package com.example.demo.config;
 
-import io.opentelemetry.sdk.trace.export.SpanExporter;
-import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
-import io.opentelemetry.exporter.logging.LoggingSpanExporter;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
+import java.util.Collections;
+import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Configure multiple span exporters for redundancy or testing.
- * Spans will be sent to both OTLP collector and console logs.
+ * Customize the autoconfigured OTLP span exporter.
  */
 @Configuration
-public class MultiExporterConfig {
+public class ExporterConfig {
 
     @Bean
-    public SpanExporter otlpExporter() {
-        return OtlpGrpcSpanExporter.builder()
-            .setEndpoint("http://collector:4317")
-            .build();
+    public AutoConfigurationCustomizerProvider exporterCustomizer() {
+        return customizer -> customizer.addSpanExporterCustomizer(
+            (exporter, config) -> {
+                if (exporter instanceof OtlpHttpSpanExporter otlpExporter) {
+                    return otlpExporter.toBuilder()
+                        .setEndpoint("http://collector:4318/v1/traces")
+                        .setHeaders(this::headers)
+                        .build();
+                }
+                return exporter;
+            }
+        );
     }
 
-    @Bean
-    public SpanExporter loggingExporter() {
-        // Useful for debugging
-        return LoggingSpanExporter.create();
-    }
-
-    @Bean
-    public BatchSpanProcessor otlpProcessor(SpanExporter otlpExporter) {
-        return BatchSpanProcessor.builder(otlpExporter).build();
-    }
-
-    @Bean
-    public BatchSpanProcessor loggingProcessor(SpanExporter loggingExporter) {
-        return BatchSpanProcessor.builder(loggingExporter).build();
+    private Map<String, String> headers() {
+        return Collections.singletonMap("Authorization", "Bearer token");
     }
 }
 ```
@@ -428,7 +456,7 @@ Monitor the health of your OpenTelemetry instrumentation:
 ```java
 package com.example.demo.actuator;
 
-import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
@@ -442,18 +470,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class OpenTelemetryHealthIndicator implements HealthIndicator {
 
     @Autowired(required = false)
-    private SdkTracerProvider tracerProvider;
+    private OpenTelemetry openTelemetry;
 
     @Override
     public Health health() {
-        if (tracerProvider == null) {
+        if (openTelemetry == null) {
             return Health.down()
-                .withDetail("reason", "TracerProvider not initialized")
+                .withDetail("reason", "OpenTelemetry not initialized")
                 .build();
         }
 
         return Health.up()
-            .withDetail("provider", tracerProvider.getClass().getSimpleName())
+            .withDetail("provider", openTelemetry.getClass().getSimpleName())
             .build();
     }
 }
@@ -488,14 +516,10 @@ The Spring Boot Starter has minimal overhead, but consider these optimizations:
 
 ```yaml
 otel:
-  sdk:
-    trace:
-      export:
-        # Batch configuration for optimal performance
-        batch:
-          max-queue-size: 2048
-          max-export-batch-size: 512
-          schedule-delay: 5000  # milliseconds
+  # Batch configuration for optimal performance
+  bsp.max.queue.size: 2048
+  bsp.max.export.batch.size: 512
+  bsp.schedule.delay: 5000  # milliseconds
 ```
 
 The OpenTelemetry Spring Boot Starter provides a production-ready foundation for observability in Spring applications. By leveraging Spring Boot's auto-configuration, it reduces the complexity of adding telemetry while maintaining the flexibility to customize instrumentation as your needs evolve.
