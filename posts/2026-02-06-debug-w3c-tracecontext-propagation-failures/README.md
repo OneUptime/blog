@@ -8,7 +8,7 @@ Description: A step-by-step guide to diagnosing and fixing W3C TraceContext prop
 
 ---
 
-W3C TraceContext is the standard propagation format for distributed tracing. It uses two HTTP headers, `traceparent` and `tracestate`, to carry trace identity and vendor-specific data across service boundaries. When propagation works, every service in a request chain shares the same trace ID and your traces appear as a single connected graph. When it breaks, you get fragmented traces, orphaned spans, and an observability experience that is more confusing than helpful.
+W3C TraceContext is the standard propagation format for distributed tracing. It uses the `traceparent` HTTP header, plus the optional `tracestate` header, to carry trace identity and vendor-specific data across service boundaries. When propagation works, every service in a request chain shares the same trace ID and your traces appear as a single connected graph. When it breaks, you get fragmented traces, orphaned spans, and an observability experience that is more confusing than helpful.
 
 This guide walks through how to systematically debug W3C TraceContext propagation failures, from confirming the problem to finding and fixing the root cause.
 
@@ -16,7 +16,7 @@ This guide walks through how to systematically debug W3C TraceContext propagatio
 
 Before debugging failures, let's review what should happen when propagation is working correctly.
 
-When Service A makes an HTTP request to Service B, the OpenTelemetry SDK in Service A injects two headers into the outgoing request:
+When Service A makes an HTTP request to Service B, the OpenTelemetry SDK in Service A injects a `traceparent` header into the outgoing request. It also injects `tracestate` when there is vendor-specific trace state to propagate:
 
 ```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
@@ -30,7 +30,7 @@ The `traceparent` header has four fields separated by dashes:
 - `00f067aa0ba902b7` - parent span ID (16 hex characters)
 - `01` - trace flags (01 means sampled)
 
-When Service B receives this request, its SDK extracts the trace context from the headers, creates a new span with the extracted trace ID as the parent, and the trace continues seamlessly.
+When Service B receives this request, its SDK extracts the remote span context from the headers, creates a new span with that remote span as the parent, and the trace continues seamlessly with the same trace ID.
 
 ```mermaid
 sequenceDiagram
@@ -38,11 +38,11 @@ sequenceDiagram
     participant B as Service B
     participant C as Service C
 
-    Note over A: Creates trace abc123
-    A->>B: traceparent: 00-abc123-span1-01
-    Note over B: Continues trace abc123
-    B->>C: traceparent: 00-abc123-span2-01
-    Note over C: Continues trace abc123
+    Note over A: Creates trace 4bf92f3577b34da6a3ce929d0e0e4736
+    A->>B: traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01
+    Note over B: Continues trace 4bf92f3577b34da6a3ce929d0e0e4736
+    B->>C: traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-2222222222222222-01
+    Note over C: Continues trace 4bf92f3577b34da6a3ce929d0e0e4736
 ```
 
 When propagation fails, Service B does not see the `traceparent` header (or sees a malformed one) and starts a brand new trace with a different trace ID.
@@ -57,7 +57,7 @@ You can also verify programmatically by logging the trace context on both sides:
 
 ```javascript
 // Service A: Log the trace context before making an outgoing request
-const { trace, context } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 
 function makeRequest() {
   const currentSpan = trace.getActiveSpan();
@@ -98,7 +98,7 @@ app.get('/api/data', (req, res) => {
 });
 ```
 
-Compare the trace IDs from both logs. If they match, propagation is working. If Service B shows a different trace ID or the `traceparent` header is missing, you have confirmed a propagation failure.
+Compare the trace IDs from both logs. If they match, propagation is working at the trace level. If Service B shows a different trace ID or the `traceparent` header is missing, you have confirmed a propagation failure.
 
 ## Step 2: Verify the Propagator Configuration
 
@@ -113,7 +113,7 @@ const { propagation } = require('@opentelemetry/api');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 
 // Configure the global propagator
-// Both services in a trace chain must use the same propagator
+// Downstream services must be able to extract the format emitted upstream
 propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 ```
 
@@ -125,7 +125,7 @@ const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 const { B3Propagator, B3InjectEncoding } = require('@opentelemetry/propagator-b3');
 
 // Composite propagator that handles both W3C and B3 formats
-// It will inject both formats and try to extract from either
+// It will inject both formats and extract from the configured formats
 const propagator = new CompositePropagator({
   propagators: [
     new W3CTraceContextPropagator(),
@@ -152,7 +152,7 @@ export OTEL_PROPAGATORS=tracecontext,baggage,b3multi
 
 Propagation only works if the HTTP client library used to make outgoing requests is properly instrumented. The instrumentation is what calls the propagator's `inject` method to add headers to outgoing requests.
 
-If you are using `fetch`, `axios`, `http.request`, or any other HTTP client, make sure the corresponding instrumentation package is installed and active:
+If you are using `fetch`, `axios`, `http.request`, or any other HTTP client, make sure the corresponding instrumentation is installed and active. In Node.js, `http.request` and many HTTP clients built on `http` or `https` are covered by `@opentelemetry/instrumentation-http`; Node.js `fetch` is backed by Undici and needs `@opentelemetry/instrumentation-undici`. Browser `fetch` uses `@opentelemetry/instrumentation-fetch`.
 
 ```javascript
 // Verify that HTTP instrumentation is registered and active
@@ -211,7 +211,7 @@ curl -v \
 If the `traceparent` header is present but malformed, the receiving SDK will reject it and start a new trace. The header must follow a strict format.
 
 ```javascript
-// Validate a traceparent header value
+// Validate a version 00 traceparent header value
 // Returns true if the format is valid according to W3C spec
 function validateTraceparent(value) {
   if (!value) {
@@ -253,7 +253,8 @@ function validateTraceparent(value) {
   console.log('  Version:', version);
   console.log('  Trace ID:', traceId);
   console.log('  Parent ID:', parentId);
-  console.log('  Flags:', flags, flags === '01' ? '(sampled)' : '(not sampled)');
+  const sampled = (parseInt(flags, 16) & 0x01) === 0x01;
+  console.log('  Flags:', flags, sampled ? '(sampled)' : '(not sampled)');
 
   return true;
 }
@@ -278,19 +279,30 @@ In JavaScript, trace context is propagated through async operations using `Async
 
 const { context, trace } = require('@opentelemetry/api');
 
-// BAD: setTimeout without context propagation
-// The trace context is lost inside the callback
-setTimeout(() => {
-  // trace.getActiveSpan() returns undefined here
-  makeOutgoingRequest(); // No trace context propagated
-}, 100);
+// BAD: callback escapes and is invoked later outside the active context
+let savedCallback;
 
-// GOOD: Explicitly bind the context before the async operation
+function registerCallback() {
+  savedCallback = () => {
+    // trace.getActiveSpan() may return undefined here
+    makeOutgoingRequest(); // No trace context propagated
+  };
+}
+
+registerCallback();
+
+// Later, outside the original active context
+savedCallback();
+
+// GOOD: Explicitly bind the context before the callback escapes
 const currentContext = context.active();
-setTimeout(context.bind(currentContext, () => {
+savedCallback = context.bind(currentContext, () => {
   // trace.getActiveSpan() returns the correct span here
   makeOutgoingRequest(); // Trace context propagated correctly
-}), 100);
+});
+
+// Later, outside the original active context
+savedCallback();
 ```
 
 ## Wrapping Up
