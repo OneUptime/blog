@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Rotel, Rust, High Throughput
 
 Description: Deploy Rotel, a Rust-based OpenTelemetry Collector, to achieve 3.7 million spans per second throughput in high-volume pipelines.
 
-The standard OpenTelemetry Collector written in Go is excellent for most use cases. But when you are pushing millions of spans per second through a single instance, the Go garbage collector starts to become a bottleneck. Rotel is a Rust-based alternative that achieves 3.7 million spans per second on a single node by eliminating garbage collection pauses entirely.
+The standard OpenTelemetry Collector written in Go is excellent for most use cases. But when you are pushing millions of spans per second through a single instance, runtime overhead and allocation behavior can become bottlenecks. Rotel is a Rust-based alternative that has reached 3.7 million spans per second on a single gateway node in a Kafka-to-ClickHouse benchmark.
 
 ## What is Rotel
 
@@ -17,7 +17,7 @@ Rotel is an OpenTelemetry-compatible collector implemented in Rust. It supports 
 You should consider Rotel when:
 
 - A single Collector instance needs to handle more than 500K spans/sec
-- You need sub-millisecond p99 processing latency (no GC pauses)
+- You need predictable latency without garbage collection pauses
 - You are running gateway Collectors that aggregate traffic from hundreds of agent Collectors
 - Memory predictability is critical (no GC-driven memory spikes)
 
@@ -30,10 +30,10 @@ Build Rotel from source or use the pre-built Docker image:
 ```bash
 # Using Docker
 
-docker pull rotel/rotel:latest
+docker pull streamfold/rotel:latest
 
 # Or build from source
-git clone https://github.com/rotel-io/rotel.git
+git clone https://github.com/rotel-dev/rotel.git
 cd rotel
 cargo build --release
 # Binary is at target/release/rotel
@@ -41,84 +41,53 @@ cargo build --release
 
 ## Configuration
 
-Rotel uses a YAML configuration format similar to the standard Collector:
+Rotel is configured with command-line flags or `ROTEL_` environment variables. The default OTLP receiver listens on `localhost:4317` for gRPC and `localhost:4318` for HTTP, so bind those endpoints to `0.0.0.0` in containers:
 
-```yaml
-# rotel-config.yaml
-receivers:
-  otlp:
-    grpc:
-      endpoint: 0.0.0.0:4317
-      # Increase max message size for large batches
-      max_recv_msg_size_bytes: 67108864
-    http:
-      endpoint: 0.0.0.0:4318
+```bash
+export ROTEL_OTLP_GRPC_ENDPOINT=0.0.0.0:4317
+export ROTEL_OTLP_HTTP_ENDPOINT=0.0.0.0:4318
 
-processors:
-  batch:
-    # Larger batches for higher throughput
-    max_batch_size: 16384
-    timeout_ms: 1000
-    # Number of worker threads for processing
-    num_workers: 8
+# Increase the OTLP/gRPC receiver max message size for large batches.
+export ROTEL_OTLP_GRPC_MAX_RECV_MSG_SIZE_MIB=64
 
-  # Resource-based routing
-  routing:
-    attribute: "service.name"
-    routes:
-      - match: "payment-*"
-        exporters: [otlp_critical]
-      - match: "*"
-        exporters: [otlp_default]
+# Larger batches for higher throughput.
+export ROTEL_BATCH_MAX_SIZE=16384
+export ROTEL_BATCH_TIMEOUT=1s
 
-exporters:
-  otlp_critical:
-    endpoint: critical-backend:4317
-    compression: zstd
-    # Connection pooling for high throughput
-    num_connections: 16
-    queue:
-      max_size: 100000
-      num_consumers: 8
-
-  otlp_default:
-    endpoint: default-backend:4317
-    compression: zstd
-    num_connections: 8
-    queue:
-      max_size: 50000
-      num_consumers: 4
-
-# Telemetry about Rotel itself
-telemetry:
-  metrics:
-    endpoint: 0.0.0.0:9090
-    export_interval_ms: 10000
-  logging:
-    level: info
-
-pipelines:
-  traces:
-    receivers: [otlp]
-    processors: [batch, routing]
-    exporters: [otlp_critical, otlp_default]
+# Export traces to an OTLP backend.
+export ROTEL_EXPORTER=otlp
+export ROTEL_OTLP_EXPORTER_ENDPOINT=default-backend:4317
+export ROTEL_OTLP_EXPORTER_PROTOCOL=grpc
+export ROTEL_OTLP_EXPORTER_COMPRESSION=gzip
 ```
 
 ## Running Rotel
 
 ```bash
-# Run with configuration file
-rotel --config rotel-config.yaml
+# Run with command-line flags
+rotel start \
+  --otlp-grpc-endpoint 0.0.0.0:4317 \
+  --otlp-http-endpoint 0.0.0.0:4318 \
+  --otlp-grpc-max-recv-msg-size-mib 64 \
+  --batch-max-size 16384 \
+  --batch-timeout 1s \
+  --exporter otlp \
+  --otlp-exporter-endpoint default-backend:4317
 
 # Or with Docker
 docker run -d \
   --name rotel \
   -p 4317:4317 \
   -p 4318:4318 \
-  -p 9090:9090 \
-  -v $(pwd)/rotel-config.yaml:/etc/rotel/config.yaml \
-  rotel/rotel:latest \
-  --config /etc/rotel/config.yaml
+  streamfold/rotel:latest \
+  start \
+  --otlp-grpc-endpoint 0.0.0.0:4317 \
+  --otlp-http-endpoint 0.0.0.0:4318 \
+  --otlp-grpc-max-recv-msg-size-mib 64 \
+  --batch-max-size 16384 \
+  --batch-timeout 1s \
+  --exporter otlp \
+  --otlp-exporter-endpoint default-backend:4317
 ```
 
 ## Kubernetes Deployment
@@ -144,15 +113,28 @@ spec:
     spec:
       containers:
         - name: rotel
-          image: rotel/rotel:latest
-          args: ["--config", "/etc/rotel/config.yaml"]
+          image: streamfold/rotel:latest
+          args: ["start"]
+          env:
+            - name: ROTEL_OTLP_GRPC_ENDPOINT
+              value: "0.0.0.0:4317"
+            - name: ROTEL_OTLP_HTTP_ENDPOINT
+              value: "0.0.0.0:4318"
+            - name: ROTEL_OTLP_GRPC_MAX_RECV_MSG_SIZE_MIB
+              value: "64"
+            - name: ROTEL_BATCH_MAX_SIZE
+              value: "16384"
+            - name: ROTEL_BATCH_TIMEOUT
+              value: "1s"
+            - name: ROTEL_EXPORTER
+              value: "otlp"
+            - name: ROTEL_OTLP_EXPORTER_ENDPOINT
+              value: "default-backend:4317"
           ports:
             - containerPort: 4317
               name: otlp-grpc
             - containerPort: 4318
               name: otlp-http
-            - containerPort: 9090
-              name: metrics
           resources:
             requests:
               cpu: "4"
@@ -160,13 +142,6 @@ spec:
             limits:
               cpu: "8"
               memory: "8Gi"
-          volumeMounts:
-            - name: config
-              mountPath: /etc/rotel
-      volumes:
-        - name: config
-          configMap:
-            name: rotel-config
 ---
 apiVersion: v1
 kind: Service
@@ -190,27 +165,25 @@ spec:
 Run a benchmark to verify throughput on your hardware:
 
 ```bash
-# Use the otel-load-generator to push spans
-docker run --rm \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://rotel:4317 \
-  otel/opentelemetry-collector-contrib:latest \
-  telemetrygen traces \
-  --otlp-insecure \
-  --rate 1000000 \
-  --duration 60s \
-  --workers 32 \
-  --otlp-endpoint rotel:4317
+# Use telemetrygen for a functional load check.
+go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
 
-# Monitor Rotel's metrics
-curl http://rotel:9090/metrics | grep rotel_spans_received_total
+telemetrygen traces \
+  --otlp-insecure \
+  --otlp-endpoint localhost:4317 \
+  --rate 100000 \
+  --duration 60s \
+  --workers 32
 ```
+
+The published 3.7M spans/sec result used Rotel in a Kafka-to-ClickHouse benchmark with a custom load generator, not `telemetrygen`, which the Rotel authors reported could not generate enough traffic for that benchmark.
 
 ## Performance Tuning Tips
 
 - **CPU pinning**: Use `taskset` or Kubernetes CPU manager to pin Rotel to specific cores and avoid NUMA effects.
 - **Network tuning**: Increase `net.core.rmem_max` and `net.core.wmem_max` for the gRPC receiver.
-- **Batch size**: Larger batches amortize per-span overhead. Start with 16384 and increase from there.
-- **Connection pooling**: Use `num_connections` in the exporter to parallelize outbound requests.
+- **Batch size**: Larger batches amortize per-span overhead. Start with `--batch-max-size 16384` and tune from there.
+- **Exporter protocol**: Match the exporter protocol, compression, retry, and timeout settings to the destination backend.
 - **Memory**: Rotel's memory usage is predictable. Monitor RSS, not heap, since there is no GC overhead.
 
 ## Wrapping Up
