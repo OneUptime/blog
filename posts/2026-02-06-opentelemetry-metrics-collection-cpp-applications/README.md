@@ -18,9 +18,18 @@ Counters measure values that only increase, like request counts or bytes sent. G
 
 ```cpp
 // Basic metrics SDK setup
+#include "opentelemetry/common/attribute_value.h"
 #include "opentelemetry/metrics/provider.h"
+#include "opentelemetry/sdk/metrics/aggregation/aggregation_config.h"
+#include "opentelemetry/sdk/metrics/instruments.h"
+#include "opentelemetry/sdk/metrics/meter_context.h"
 #include "opentelemetry/sdk/metrics/meter_provider.h"
+#include "opentelemetry/sdk/metrics/meter_provider_factory.h"
 #include "opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h"
+#include "opentelemetry/sdk/metrics/view/instrument_selector.h"
+#include "opentelemetry/sdk/metrics/view/meter_selector.h"
+#include "opentelemetry/sdk/metrics/view/view.h"
+#include "opentelemetry/sdk/metrics/view/view_registry.h"
 #include "opentelemetry/exporters/otlp/otlp_http_metric_exporter.h"
 
 namespace metrics_api = opentelemetry::metrics;
@@ -49,12 +58,16 @@ void InitializeMetrics() {
         reader_opts
     );
 
-    // Create meter provider with resource information
+    // Create meter provider context with resource information
     auto resource = CreateServiceResource();  // From previous resource detection post
-
-    auto provider = std::shared_ptr<metrics_api::MeterProvider>(
-        new metrics_sdk::MeterProvider(std::move(reader), resource)
+    auto context = std::make_unique<metrics_sdk::MeterContext>(
+        std::unique_ptr<metrics_sdk::ViewRegistry>(new metrics_sdk::ViewRegistry()),
+        resource
     );
+    context->AddMetricReader(std::move(reader));
+
+    auto sdk_provider = metrics_sdk::MeterProviderFactory::Create(std::move(context));
+    std::shared_ptr<metrics_api::MeterProvider> provider(std::move(sdk_provider));
 
     // Set as global meter provider
     metrics_api::Provider::SetMeterProvider(provider);
@@ -86,29 +99,29 @@ public:
         request_counter_ = meter_->CreateUInt64Counter(
             "http.server.requests",
             "Total number of HTTP requests received",
-            "requests"
+            "{request}"
         );
 
         error_counter_ = meter_->CreateUInt64Counter(
             "http.server.errors",
             "Total number of HTTP errors",
-            "errors"
+            "{error}"
         );
 
         bytes_sent_counter_ = meter_->CreateUInt64Counter(
             "http.server.bytes_sent",
             "Total bytes sent in responses",
-            "bytes"
+            "By"
         );
     }
 
     // Record a successful request
     void RecordRequest(const std::string& method, const std::string& route, int status_code) {
         // Attributes provide dimensions for filtering and aggregation
-        std::map<std::string, std::string> attributes = {
-            {"http.method", method},
+        std::map<std::string, opentelemetry::common::AttributeValue> attributes = {
+            {"http.request.method", method},
             {"http.route", route},
-            {"http.status_code", std::to_string(status_code)}
+            {"http.response.status_code", status_code}
         };
 
         // Convert to OpenTelemetry's attribute format
@@ -124,7 +137,7 @@ public:
     // Record response size
     void RecordBytesSent(uint64_t bytes, const std::string& method, const std::string& route) {
         std::map<std::string, std::string> attributes = {
-            {"http.method", method},
+            {"http.request.method", method},
             {"http.route", route}
         };
 
@@ -150,7 +163,7 @@ Attributes (also called labels in some systems) add dimensions to your metrics. 
 
 ## Using Histograms for Distribution Measurements
 
-Histograms capture the distribution of values, providing percentiles, min, max, and sum. They're perfect for latency measurements.
+Histograms capture the distribution of values, exporting bucket counts, count, sum, and optional min/max values. They're perfect for latency measurements, and many backends can calculate percentiles from the bucketed data.
 
 ```cpp
 // Histogram implementation for latency tracking
@@ -187,10 +200,10 @@ public:
         const std::string& route,
         int status_code
     ) {
-        std::map<std::string, std::string> attributes = {
-            {"http.method", method},
+        std::map<std::string, opentelemetry::common::AttributeValue> attributes = {
+            {"http.request.method", method},
             {"http.route", route},
-            {"http.status_code", std::to_string(status_code)}
+            {"http.response.status_code", status_code}
         };
 
         auto context = opentelemetry::context::Context{};
@@ -252,16 +265,16 @@ The RAII pattern ensures latency is always recorded, even if exceptions occur. T
 
 ## Implementing Observable Gauges for Current State
 
-Gauges represent current values that can increase or decrease. OpenTelemetry uses observable gauges that are read periodically rather than pushed continuously.
+Gauges represent current values that can increase or decrease. OpenTelemetry also supports observable gauges that are read periodically rather than pushed continuously.
 
 ```cpp
 // Observable gauge for monitoring system resources
 class SystemMetrics {
 private:
     nostd::shared_ptr<metrics_api::Meter> meter_;
-    std::unique_ptr<metrics_api::ObservableInstrument> memory_gauge_;
-    std::unique_ptr<metrics_api::ObservableInstrument> cpu_gauge_;
-    std::unique_ptr<metrics_api::ObservableInstrument> thread_gauge_;
+    nostd::shared_ptr<metrics_api::ObservableInstrument> memory_gauge_;
+    nostd::shared_ptr<metrics_api::ObservableInstrument> cpu_gauge_;
+    nostd::shared_ptr<metrics_api::ObservableInstrument> thread_gauge_;
 
     // Callbacks are invoked during collection
     static void MemoryCallback(
@@ -275,21 +288,27 @@ private:
             {"memory.type", "physical"}
         };
 
-        observer_result.Observe(memory_info.used_bytes, attributes);
+        auto result = nostd::get<nostd::shared_ptr<metrics_api::ObserverResultT<int64_t>>>(
+            observer_result
+        );
+        result->Observe(memory_info.used_bytes, attributes);
     }
 
     static void CPUCallback(
         metrics_api::ObserverResult observer_result,
         void* /* state */
     ) {
-        // Get current CPU usage
-        auto cpu_usage = GetCPUUsagePercent();
+        // Get current CPU utilization as a fraction from 0.0 to 1.0
+        auto cpu_usage = GetCPUUtilization();
 
         std::map<std::string, std::string> attributes = {
             {"cpu.state", "user"}
         };
 
-        observer_result.Observe(cpu_usage, attributes);
+        auto result = nostd::get<nostd::shared_ptr<metrics_api::ObserverResultT<double>>>(
+            observer_result
+        );
+        result->Observe(cpu_usage, attributes);
     }
 
     static void ThreadCountCallback(
@@ -299,7 +318,10 @@ private:
         // Get current thread count
         auto thread_count = GetActiveThreadCount();
 
-        observer_result.Observe(static_cast<double>(thread_count), {});
+        auto result = nostd::get<nostd::shared_ptr<metrics_api::ObserverResultT<int64_t>>>(
+            observer_result
+        );
+        result->Observe(thread_count, {});
     }
 
 public:
@@ -311,26 +333,23 @@ public:
         memory_gauge_ = meter_->CreateInt64ObservableGauge(
             "process.memory.usage",
             "Current memory usage",
-            "bytes",
-            MemoryCallback,
-            nullptr  // Optional state pointer
+            "By"
         );
+        memory_gauge_->AddCallback(MemoryCallback, nullptr);
 
         cpu_gauge_ = meter_->CreateDoubleObservableGauge(
             "process.cpu.usage",
             "Current CPU usage",
-            "percent",
-            CPUCallback,
-            nullptr
+            "1"
         );
+        cpu_gauge_->AddCallback(CPUCallback, nullptr);
 
         thread_gauge_ = meter_->CreateInt64ObservableGauge(
             "process.thread.count",
             "Number of active threads",
-            "threads",
-            ThreadCountCallback,
-            nullptr
+            "{thread}"
         );
+        thread_gauge_->AddCallback(ThreadCountCallback, nullptr);
     }
 
 private:
@@ -351,8 +370,8 @@ private:
         return {0, 0};  // Placeholder
     }
 
-    static double GetCPUUsagePercent() {
-        // Calculate CPU usage percentage
+    static double GetCPUUtilization() {
+        // Calculate CPU utilization as a fraction from 0.0 to 1.0
         return 0.0;  // Placeholder
     }
 
@@ -387,13 +406,13 @@ public:
         orders_placed_ = meter_->CreateUInt64Counter(
             "orders.placed",
             "Total number of orders placed",
-            "orders"
+            "{order}"
         );
 
         orders_cancelled_ = meter_->CreateUInt64Counter(
             "orders.cancelled",
             "Total number of orders cancelled",
-            "orders"
+            "{order}"
         );
 
         order_value_ = meter_->CreateDoubleHistogram(
@@ -405,7 +424,7 @@ public:
         revenue_ = meter_->CreateUInt64Counter(
             "revenue.total",
             "Total revenue (in cents to avoid floating point)",
-            "cents"
+            "{cent}"
         );
     }
 
@@ -459,7 +478,7 @@ private:
         task_counter_ = meter_->CreateUInt64Counter(
             "tasks.processed",
             "Number of tasks processed",
-            "tasks"
+            "{task}"
         );
 
         task_duration_ = meter_->CreateDoubleHistogram(
@@ -533,26 +552,45 @@ void InitializeMetricsWithViews() {
     );
 
     // Configure views for custom histogram boundaries
-    std::vector<std::unique_ptr<metrics_sdk::View>> views;
+    auto context = std::make_unique<metrics_sdk::MeterContext>(
+        std::unique_ptr<metrics_sdk::ViewRegistry>(new metrics_sdk::ViewRegistry()),
+        resource
+    );
+    context->AddMetricReader(std::move(reader));
 
     // Custom buckets for HTTP request duration (in seconds)
+    auto histogram_config = std::shared_ptr<metrics_sdk::AggregationConfig>(
+        new metrics_sdk::HistogramAggregationConfig()
+    );
+    static_cast<metrics_sdk::HistogramAggregationConfig*>(
+        histogram_config.get()
+    )->boundaries_ = {0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0};
+
+    auto instrument_selector = std::make_unique<metrics_sdk::InstrumentSelector>(
+        metrics_sdk::InstrumentType::kHistogram,
+        "http.server.request.duration",
+        "s"
+    );
+    auto meter_selector = std::make_unique<metrics_sdk::MeterSelector>(
+        "latency-metrics",
+        "1.0.0",
+        ""
+    );
     auto http_duration_view = std::make_unique<metrics_sdk::View>(
         "http_duration_view",
         "Custom buckets for HTTP duration",
-        "http.server.request.duration",
         metrics_sdk::AggregationType::kHistogram,
-        std::vector<double>{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0}
+        histogram_config
     );
-    views.push_back(std::move(http_duration_view));
+    context->AddView(
+        std::move(instrument_selector),
+        std::move(meter_selector),
+        std::move(http_duration_view)
+    );
 
     // Create meter provider with views
-    auto provider = std::shared_ptr<metrics_api::MeterProvider>(
-        new metrics_sdk::MeterProvider(
-            std::move(views),
-            std::move(reader),
-            resource
-        )
-    );
+    auto sdk_provider = metrics_sdk::MeterProviderFactory::Create(std::move(context));
+    std::shared_ptr<metrics_api::MeterProvider> provider(std::move(sdk_provider));
 
     metrics_api::Provider::SetMeterProvider(provider);
 }
