@@ -43,7 +43,7 @@ mindmap
 
 ## Defining the Metrics
 
-Let's define a comprehensive set of OpenTelemetry metrics for LLM observability. We'll use histograms for latency and token distributions (so we get percentiles), counters for request totals and errors, and gauges where appropriate.
+Let's define a comprehensive set of OpenTelemetry metrics for LLM observability. We'll use histograms for latency and token distributions (so we get percentiles), and counters for request totals and errors.
 
 ```python
 # llm_metrics.py - Define all LLM observability metrics
@@ -85,8 +85,8 @@ llm_output_tokens = meter.create_histogram(
 )
 
 # Counter for total tokens consumed (for cost tracking)
-llm_total_tokens = meter.create_counter(
-    name="llm.usage.total_tokens",
+llm_tokens_total = meter.create_counter(
+    name="llm.usage.tokens",
     description="Cumulative total tokens consumed",
     unit="tokens",
 )
@@ -95,13 +95,13 @@ llm_total_tokens = meter.create_counter(
 
 # Counter for total LLM requests
 llm_requests_total = meter.create_counter(
-    name="llm.requests.total",
+    name="llm.requests",
     description="Total number of LLM requests made",
 )
 
 # Counter for LLM errors
 llm_errors_total = meter.create_counter(
-    name="llm.errors.total",
+    name="llm.errors",
     description="Total number of failed LLM requests",
 )
 
@@ -109,9 +109,8 @@ llm_errors_total = meter.create_counter(
 
 # Counter for estimated cost in USD
 llm_cost_total = meter.create_counter(
-    name="llm.cost.total",
+    name="llm.cost",
     description="Estimated cumulative cost in USD",
-    unit="usd",
 )
 ```
 
@@ -126,7 +125,7 @@ import openai
 from opentelemetry import trace
 from llm_metrics import (
     llm_request_duration, llm_time_to_first_token, llm_input_tokens,
-    llm_output_tokens, llm_total_tokens, llm_requests_total,
+    llm_output_tokens, llm_tokens_total, llm_requests_total,
     llm_errors_total, llm_cost_total,
 )
 
@@ -134,14 +133,14 @@ tracer = trace.get_tracer("llm-service")
 
 # Pricing per 1K tokens (update these for your models)
 MODEL_PRICING = {
-    "gpt-4": {"input": 0.03, "output": 0.06},
-    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+    "gpt-4.1": {"input": 0.002, "output": 0.008},
+    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
 }
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Calculate the estimated cost for an LLM request based on token usage."""
-    pricing = MODEL_PRICING.get(model, {"input": 0.01, "output": 0.03})
+    pricing = MODEL_PRICING.get(model, MODEL_PRICING["gpt-4.1"])
     input_cost = (input_tokens / 1000) * pricing["input"]
     output_cost = (output_tokens / 1000) * pricing["output"]
     return input_cost + output_cost
@@ -149,9 +148,9 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 def chat_completion(
     client: openai.OpenAI,
     messages: list,
-    model: str = "gpt-4",
+    model: str = "gpt-4.1",
     temperature: float = 0.7,
-    max_tokens: int = 1024,
+    max_completion_tokens: int = 1024,
     feature: str = "default",
     user_id: str = "unknown",
 ):
@@ -164,10 +163,10 @@ def chat_completion(
     }
 
     with tracer.start_as_current_span("llm.chat_completion") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.temperature", temperature)
-        span.set_attribute("gen_ai.request.max_tokens", max_tokens)
+        span.set_attribute("gen_ai.request.max_tokens", max_completion_tokens)
         span.set_attribute("user.id", user_id)
         span.set_attribute("feature", feature)
 
@@ -178,7 +177,7 @@ def chat_completion(
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_completion_tokens,
             )
 
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -193,7 +192,7 @@ def chat_completion(
             llm_request_duration.record(duration_ms, attributes=attrs)
             llm_input_tokens.record(input_tok, attributes=attrs)
             llm_output_tokens.record(output_tok, attributes=attrs)
-            llm_total_tokens.add(input_tok + output_tok, attributes=attrs)
+            llm_tokens_total.add(input_tok + output_tok, attributes=attrs)
             llm_requests_total.add(1, attributes={**attrs, "status": "success", "finish_reason": finish_reason})
             llm_cost_total.add(cost, attributes=attrs)
 
@@ -246,19 +245,20 @@ from llm_metrics import llm_request_duration, llm_time_to_first_token, llm_outpu
 
 tracer = trace.get_tracer("llm-service")
 
-def chat_completion_stream(client, messages: list, model: str = "gpt-4", feature: str = "default"):
+def chat_completion_stream(client, messages: list, model: str = "gpt-4.1", feature: str = "default"):
     """Stream an LLM response while capturing timing metrics."""
 
     attrs = {"model": model, "feature": feature}
 
     with tracer.start_as_current_span("llm.chat_completion_stream") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
         span.set_attribute("gen_ai.request.model", model)
-        span.set_attribute("llm.streaming", True)
+        span.set_attribute("gen_ai.request.stream", True)
 
         start_time = time.perf_counter()
         first_token_time = None
-        token_count = 0
+        chunk_count = 0
+        output_tokens = None
         full_response = []
 
         # Create the streaming request
@@ -266,11 +266,16 @@ def chat_completion_stream(client, messages: list, model: str = "gpt-4", feature
             model=model,
             messages=messages,
             stream=True,
+            stream_options={"include_usage": True},
         )
 
         # Iterate over streamed chunks
         for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.usage:
+                output_tokens = chunk.usage.completion_tokens
+                continue
+
+            if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
 
                 # Record time to first token
@@ -280,7 +285,7 @@ def chat_completion_stream(client, messages: list, model: str = "gpt-4", feature
                     llm_time_to_first_token.record(ttft_ms, attributes=attrs)
                     span.set_attribute("llm.time_to_first_token_ms", ttft_ms)
 
-                token_count += 1
+                chunk_count += 1
                 full_response.append(content)
 
                 # Yield each chunk to the caller
@@ -289,10 +294,13 @@ def chat_completion_stream(client, messages: list, model: str = "gpt-4", feature
         # Record total duration and token count after stream completes
         total_duration_ms = (time.perf_counter() - start_time) * 1000
         llm_request_duration.record(total_duration_ms, attributes=attrs)
-        llm_output_tokens.record(token_count, attributes=attrs)
+        if output_tokens is not None:
+            llm_output_tokens.record(output_tokens, attributes=attrs)
 
         span.set_attribute("llm.duration_ms", total_duration_ms)
-        span.set_attribute("llm.output_token_estimate", token_count)
+        span.set_attribute("llm.output_chunks", chunk_count)
+        if output_tokens is not None:
+            span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
 ```
 
 ## Dashboard Layout
@@ -302,9 +310,9 @@ Now that the metrics are flowing, let's design the dashboard. A well-organized L
 ```mermaid
 flowchart TB
     subgraph Row1["Health Overview"]
-        A["Request Rate<br/>llm.requests.total<br/>rate over 5m"]
-        B["Error Rate %<br/>llm.errors.total /<br/>llm.requests.total"]
-        C["Active Models<br/>unique(model) from<br/>llm.requests.total"]
+        A["Request Rate<br/>llm_requests_total<br/>rate over 5m"]
+        B["Error Rate %<br/>llm_errors_total /<br/>llm_requests_total"]
+        C["Active Models<br/>unique(model) from<br/>llm_requests_total"]
     end
 
     subgraph Row2["Latency"]
@@ -315,40 +323,40 @@ flowchart TB
 
     subgraph Row3["Token Usage & Cost"]
         G["Input vs Output Tokens<br/>llm.usage.input_tokens<br/>llm.usage.output_tokens"]
-        H["Cost Over Time<br/>llm.cost.total<br/>rate by feature"]
-        I["Tokens/Second Throughput<br/>llm.usage.total_tokens<br/>rate over 1m"]
+        H["Cost Over Time<br/>llm_cost_total<br/>rate by feature"]
+        I["Tokens/Second Throughput<br/>llm_usage_tokens_total<br/>rate over 1m"]
     end
 
     subgraph Row4["Quality & Errors"]
-        J["Finish Reason Distribution<br/>llm.requests.total<br/>by finish_reason"]
-        K["Error Type Breakdown<br/>llm.errors.total<br/>by error_type"]
-        L["Rate Limit Hits<br/>llm.errors.total<br/>where error_type=rate_limit"]
+        J["Finish Reason Distribution<br/>llm_requests_total<br/>by finish_reason"]
+        K["Error Type Breakdown<br/>llm_errors_total<br/>by error_type"]
+        L["Rate Limit Hits<br/>llm_errors_total<br/>where error_type=rate_limit"]
     end
 ```
 
 ## Setting Up the Dashboard Panels
 
-Here are the specific metric queries for each panel. These examples use PromQL syntax, which is common across many backends, but the OpenTelemetry metrics are standard and will work with any OTLP-compatible system.
+Here are the specific metric queries for each panel. These examples use PromQL syntax, which is common across many backends, but the OpenTelemetry metrics are standard and will work with any OTLP-compatible system. The PromQL names below assume the common Prometheus export form where OpenTelemetry metric names use underscores instead of dots and monotonic counters have a `_total` suffix.
 
 ```yaml
 # dashboard_panels.yaml - Panel definitions for the LLM observability dashboard
 
 # Panel 1: Request rate over time
 - title: "LLM Request Rate"
-  query: "rate(llm_requests_total[5m])"
+  query: "sum by (model, feature) (rate(llm_requests_total[5m]))"
   group_by: ["model", "feature"]
   visualization: "time_series"
 
 # Panel 2: Error rate percentage
 - title: "Error Rate %"
-  query: "rate(llm_errors_total[5m]) / rate(llm_requests_total[5m]) * 100"
+  query: "sum by (model) (rate(llm_errors_total[5m])) / sum by (model) (rate(llm_requests_total[5m])) * 100"
   group_by: ["model"]
   visualization: "gauge"
   thresholds: { warning: 1, critical: 5 }
 
 # Panel 3: Latency percentiles
 - title: "Request Latency (P50/P95/P99)"
-  query: "histogram_quantile(0.95, rate(llm_request_duration_bucket[5m]))"
+  query: "histogram_quantile(0.95, sum by (le, model) (rate(llm_request_duration_bucket[5m])))"
   group_by: ["model"]
   visualization: "time_series"
 
@@ -361,13 +369,13 @@ Here are the specific metric queries for each panel. These examples use PromQL s
 
 # Panel 5: Cost tracking
 - title: "Estimated Cost (USD/hour)"
-  query: "rate(llm_cost_total[1h]) * 3600"
+  query: "sum by (model, feature) (rate(llm_cost_total[1h])) * 3600"
   group_by: ["model", "feature"]
   visualization: "time_series"
 
 # Panel 6: Finish reason breakdown
 - title: "Finish Reason Distribution"
-  query: "rate(llm_requests_total[5m])"
+  query: "sum by (finish_reason) (rate(llm_requests_total[5m]))"
   group_by: ["finish_reason"]
   visualization: "pie_chart"
 ```
@@ -387,7 +395,7 @@ client = openai.OpenAI()
 result = chat_completion(
     client=client,
     messages=[{"role": "user", "content": "Summarize this document..."}],
-    model="gpt-4",
+    model="gpt-4.1",
     feature="document-summarizer",  # Business feature name
     user_id="user-12345",           # Enables per-user cost analysis
 )
@@ -396,7 +404,7 @@ result = chat_completion(
 result = chat_completion(
     client=client,
     messages=[{"role": "user", "content": "Classify this email as spam or not spam"}],
-    model="gpt-3.5-turbo",
+    model="gpt-4.1-mini",
     feature="email-classifier",
     user_id="user-12345",
 )
@@ -406,9 +414,9 @@ With this in place, your cost panel can show a breakdown like:
 
 | Feature | Model | Requests/hr | Avg Tokens | Cost/hr |
 |---------|-------|------------|------------|---------|
-| document-summarizer | gpt-4 | 150 | 2,400 | $12.60 |
-| email-classifier | gpt-3.5-turbo | 3,000 | 180 | $0.81 |
-| chatbot | gpt-4-turbo | 500 | 900 | $6.00 |
+| document-summarizer | gpt-4.1 | 150 | 2,400 | $1.44 |
+| email-classifier | gpt-4.1-mini | 3,000 | 180 | $0.43 |
+| chatbot | gpt-4o-mini | 500 | 900 | $0.14 |
 
 ## Alerting Rules
 
@@ -420,35 +428,35 @@ A dashboard is only useful if someone is looking at it. Set up alerts for the co
 ALERT_RULES = {
     # Error rate exceeds 5% for any model
     "high_error_rate": {
-        "condition": "rate(llm_errors_total[5m]) / rate(llm_requests_total[5m]) > 0.05",
+        "condition": "sum by (model) (rate(llm_errors_total[5m])) / sum by (model) (rate(llm_requests_total[5m])) > 0.05",
         "severity": "critical",
         "summary": "LLM error rate exceeds 5%",
     },
 
     # P95 latency exceeds 10 seconds
     "high_latency": {
-        "condition": "histogram_quantile(0.95, rate(llm_request_duration_bucket[5m])) > 10000",
+        "condition": "histogram_quantile(0.95, sum by (le, model) (rate(llm_request_duration_bucket[5m]))) > 10000",
         "severity": "warning",
         "summary": "LLM P95 latency exceeds 10 seconds",
     },
 
     # Hourly cost exceeds budget
     "cost_overrun": {
-        "condition": "rate(llm_cost_total[1h]) * 3600 > 50",
+        "condition": "sum by (model, feature) (rate(llm_cost_total[1h])) * 3600 > 50",
         "severity": "warning",
         "summary": "LLM cost exceeds $50/hour",
     },
 
     # Rate limit errors spike
     "rate_limiting": {
-        "condition": "rate(llm_errors_total{error_type='rate_limit'}[5m]) > 10",
+        "condition": "sum by (model) (rate(llm_errors_total{error_type='rate_limit'}[5m])) > 10",
         "severity": "critical",
         "summary": "High rate of API rate limit errors",
     },
 
     # Time to first token regression
     "slow_ttft": {
-        "condition": "histogram_quantile(0.95, rate(llm_time_to_first_token_bucket[5m])) > 3000",
+        "condition": "histogram_quantile(0.95, sum by (le, model) (rate(llm_time_to_first_token_bucket[5m]))) > 3000",
         "severity": "warning",
         "summary": "Time to first token P95 exceeds 3 seconds",
     },
