@@ -22,23 +22,23 @@ The Routing Connector makes these scenarios possible without changing applicatio
 
 ## How the Routing Connector Works
 
-The Routing Connector examines attributes on incoming telemetry and routes data to exporters based on matching rules:
+The Routing Connector examines incoming telemetry with OpenTelemetry Transformation Language (OTTL) conditions and routes data to downstream pipelines based on matching rules:
 
 ```mermaid
 graph TB
     A[Incoming Telemetry] --> B[Routing Connector]
     B --> C{Evaluate Attribute}
-    C -->|tenant=customer-a| D[Exporter A]
-    C -->|tenant=customer-b| E[Exporter B]
-    C -->|environment=prod| F[Exporter C]
-    C -->|No Match| G[Default Exporter]
-    D --> H[Backend A]
-    E --> I[Backend B]
-    F --> J[Backend C]
-    G --> K[Default Backend]
+    C -->|tenant=customer-a| D[Pipeline A]
+    C -->|tenant=customer-b| E[Pipeline B]
+    C -->|environment=prod| F[Pipeline C]
+    C -->|No Match| G[Default Pipeline]
+    D --> H[Exporter A]
+    E --> I[Exporter B]
+    F --> J[Exporter C]
+    G --> K[Default Exporter]
 ```
 
-The connector evaluates routing rules in order and sends telemetry to the first matching exporter. If no rules match, it uses a default exporter or drops the data.
+The connector evaluates routing rules in order. By default, matched data is moved to the target pipeline and removed from later route evaluation; use `action: copy` when the same data should continue through later routes. If no rules match, it uses a default pipeline or drops the data.
 
 ## Basic Configuration
 
@@ -70,28 +70,38 @@ exporters:
 
 connectors:
   routing:
-    # Attribute to use for routing decisions
-    from_attribute: service.name
-    # Default exporters if no match is found
-    default_exporters:
-      - otlp/default
+    # Default pipeline if no match is found
+    default_pipelines:
+      - traces/default
 
-    # Routing table mapping attribute values to exporters
+    # Routing table mapping OTTL conditions to pipelines
     table:
-      - value: service-a
-        exporters:
-          - otlp/service-a
-      - value: service-b
-        exporters:
-          - otlp/service-b
+      - condition: attributes["service.name"] == "service-a"
+        pipelines:
+          - traces/service-a
+      - condition: attributes["service.name"] == "service-b"
+        pipelines:
+          - traces/service-b
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [batch]
       # Use routing connector instead of direct exporters
       exporters: [routing]
+
+    traces/service-a:
+      receivers: [routing]
+      exporters: [otlp/service-a]
+
+    traces/service-b:
+      receivers: [routing]
+      exporters: [otlp/service-b]
+
+    traces/default:
+      receivers: [routing]
+      exporters: [otlp/default]
 ```
 
 This configuration routes traces from "service-a" to one backend, "service-b" to another, and everything else to the default backend.
@@ -102,12 +112,12 @@ Implement multi-tenancy by routing data based on tenant identifiers:
 
 ```yaml
 processors:
-  # Extract tenant ID from authentication headers or attributes
+  # Ensure a tenant ID exists when the application has not set one
   resource:
     attributes:
       - key: tenant.id
-        from_attribute: http.request.header.x-tenant-id
-        action: upsert
+        value: unknown
+        action: insert
 
 exporters:
   # Tenant-specific backends
@@ -126,29 +136,48 @@ exporters:
     endpoint: unknown-tenant.example.com:4317
 
 connectors:
-  routing:
-    from_attribute: tenant.id
-    default_exporters:
-      - otlp/unknown
+  routing/traces:
+    default_pipelines:
+      - traces/unknown
 
     table:
       # Gold tier customers
-      - value: tenant-001
-        exporters: [otlp/tenant-gold]
-      - value: tenant-002
-        exporters: [otlp/tenant-gold]
+      - condition: attributes["tenant.id"] == "tenant-001"
+        pipelines: [traces/tenant-gold]
+      - condition: attributes["tenant.id"] == "tenant-002"
+        pipelines: [traces/tenant-gold]
 
       # Silver tier customers
-      - value: tenant-003
-        exporters: [otlp/tenant-silver]
-      - value: tenant-004
-        exporters: [otlp/tenant-silver]
+      - condition: attributes["tenant.id"] == "tenant-003"
+        pipelines: [traces/tenant-silver]
+      - condition: attributes["tenant.id"] == "tenant-004"
+        pipelines: [traces/tenant-silver]
 
       # Bronze tier customers
-      - value: tenant-005
-        exporters: [otlp/tenant-bronze]
-      - value: tenant-006
-        exporters: [otlp/tenant-bronze]
+      - condition: attributes["tenant.id"] == "tenant-005"
+        pipelines: [traces/tenant-bronze]
+      - condition: attributes["tenant.id"] == "tenant-006"
+        pipelines: [traces/tenant-bronze]
+
+  routing/metrics:
+    default_pipelines: [metrics/unknown]
+    table:
+      - condition: attributes["tenant.id"] == "tenant-001" or attributes["tenant.id"] == "tenant-002"
+        pipelines: [metrics/tenant-gold]
+      - condition: attributes["tenant.id"] == "tenant-003" or attributes["tenant.id"] == "tenant-004"
+        pipelines: [metrics/tenant-silver]
+      - condition: attributes["tenant.id"] == "tenant-005" or attributes["tenant.id"] == "tenant-006"
+        pipelines: [metrics/tenant-bronze]
+
+  routing/logs:
+    default_pipelines: [logs/unknown]
+    table:
+      - condition: attributes["tenant.id"] == "tenant-001" or attributes["tenant.id"] == "tenant-002"
+        pipelines: [logs/tenant-gold]
+      - condition: attributes["tenant.id"] == "tenant-003" or attributes["tenant.id"] == "tenant-004"
+        pipelines: [logs/tenant-silver]
+      - condition: attributes["tenant.id"] == "tenant-005" or attributes["tenant.id"] == "tenant-006"
+        pipelines: [logs/tenant-bronze]
 
 receivers:
   otlp:
@@ -158,20 +187,68 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/traces]
 
-    metrics:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [routing]
+    traces/tenant-gold:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-gold]
 
-    logs:
+    traces/tenant-silver:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-silver]
+
+    traces/tenant-bronze:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-bronze]
+
+    traces/unknown:
+      receivers: [routing/traces]
+      exporters: [otlp/unknown]
+
+    metrics/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/metrics]
+
+    metrics/tenant-gold:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-gold]
+
+    metrics/tenant-silver:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-silver]
+
+    metrics/tenant-bronze:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-bronze]
+
+    metrics/unknown:
+      receivers: [routing/metrics]
+      exporters: [otlp/unknown]
+
+    logs/in:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [routing/logs]
+
+    logs/tenant-gold:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-gold]
+
+    logs/tenant-silver:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-silver]
+
+    logs/tenant-bronze:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-bronze]
+
+    logs/unknown:
+      receivers: [routing/logs]
+      exporters: [otlp/unknown]
 ```
 
 ## Environment-Based Routing
@@ -205,38 +282,53 @@ exporters:
     timeout: 10s
 
 connectors:
-  routing:
-    from_attribute: deployment.environment
-    default_exporters:
-      - otlp/development
+  routing/traces:
+    default_pipelines:
+      - traces/development
 
     table:
-      - value: production
-        exporters: [otlp/production]
-      - value: prod
-        exporters: [otlp/production]
+      - condition: attributes["deployment.environment"] == "production" or attributes["deployment.environment"] == "prod"
+        pipelines: [traces/production]
 
-      - value: staging
-        exporters: [otlp/staging]
-      - value: stage
-        exporters: [otlp/staging]
+      - condition: attributes["deployment.environment"] == "staging" or attributes["deployment.environment"] == "stage"
+        pipelines: [traces/staging]
 
-      - value: testing
-        exporters: [otlp/testing]
-      - value: test
-        exporters: [otlp/testing]
+      - condition: attributes["deployment.environment"] == "testing" or attributes["deployment.environment"] == "test"
+        pipelines: [traces/testing]
 
-      - value: development
-        exporters: [otlp/development]
-      - value: dev
-        exporters: [otlp/development]
+      - condition: attributes["deployment.environment"] == "development" or attributes["deployment.environment"] == "dev"
+        pipelines: [traces/development]
+
+  routing/metrics:
+    default_pipelines: [metrics/development]
+    table:
+      - condition: attributes["deployment.environment"] == "production" or attributes["deployment.environment"] == "prod"
+        pipelines: [metrics/production]
+      - condition: attributes["deployment.environment"] == "staging" or attributes["deployment.environment"] == "stage"
+        pipelines: [metrics/staging]
+      - condition: attributes["deployment.environment"] == "testing" or attributes["deployment.environment"] == "test"
+        pipelines: [metrics/testing]
+      - condition: attributes["deployment.environment"] == "development" or attributes["deployment.environment"] == "dev"
+        pipelines: [metrics/development]
+
+  routing/logs:
+    default_pipelines: [logs/development]
+    table:
+      - condition: attributes["deployment.environment"] == "production" or attributes["deployment.environment"] == "prod"
+        pipelines: [logs/production]
+      - condition: attributes["deployment.environment"] == "staging" or attributes["deployment.environment"] == "stage"
+        pipelines: [logs/staging]
+      - condition: attributes["deployment.environment"] == "testing" or attributes["deployment.environment"] == "test"
+        pipelines: [logs/testing]
+      - condition: attributes["deployment.environment"] == "development" or attributes["deployment.environment"] == "dev"
+        pipelines: [logs/development]
 
 processors:
   # Ensure deployment.environment attribute exists
   resource:
     attributes:
       - key: deployment.environment
-        value: ${ENVIRONMENT:-development}
+        value: ${env:ENVIRONMENT:-development}
         action: insert
 
 receivers:
@@ -247,20 +339,68 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/traces]
 
-    metrics:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [routing]
+    traces/production:
+      receivers: [routing/traces]
+      exporters: [otlp/production]
 
-    logs:
+    traces/staging:
+      receivers: [routing/traces]
+      exporters: [otlp/staging]
+
+    traces/testing:
+      receivers: [routing/traces]
+      exporters: [otlp/testing]
+
+    traces/development:
+      receivers: [routing/traces]
+      exporters: [otlp/development]
+
+    metrics/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/metrics]
+
+    metrics/production:
+      receivers: [routing/metrics]
+      exporters: [otlp/production]
+
+    metrics/staging:
+      receivers: [routing/metrics]
+      exporters: [otlp/staging]
+
+    metrics/testing:
+      receivers: [routing/metrics]
+      exporters: [otlp/testing]
+
+    metrics/development:
+      receivers: [routing/metrics]
+      exporters: [otlp/development]
+
+    logs/in:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [routing/logs]
+
+    logs/production:
+      receivers: [routing/logs]
+      exporters: [otlp/production]
+
+    logs/staging:
+      receivers: [routing/logs]
+      exporters: [otlp/staging]
+
+    logs/testing:
+      receivers: [routing/logs]
+      exporters: [otlp/testing]
+
+    logs/development:
+      receivers: [routing/logs]
+      exporters: [otlp/development]
 ```
 
 ## Cost-Optimized Routing
@@ -301,19 +441,21 @@ exporters:
 
 connectors:
   routing:
-    from_attribute: telemetry.tier
-    default_exporters:
-      - otlp/standard
+    default_pipelines:
+      - traces/standard
 
     table:
-      - value: high-value
-        exporters: [otlp/premium]
+      - context: span
+        condition: attributes["telemetry.tier"] == "high-value"
+        pipelines: [traces/premium]
 
-      - value: medium-value
-        exporters: [otlp/standard]
+      - context: span
+        condition: attributes["telemetry.tier"] == "medium-value"
+        pipelines: [traces/standard]
 
-      - value: low-value
-        exporters: [otlp/archive]
+      - context: span
+        condition: attributes["telemetry.tier"] == "low-value"
+        pipelines: [traces/archive]
 
 receivers:
   otlp:
@@ -323,10 +465,22 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [transform, batch]
       exporters: [routing]
+
+    traces/premium:
+      receivers: [routing]
+      exporters: [otlp/premium]
+
+    traces/standard:
+      receivers: [routing]
+      exporters: [otlp/standard]
+
+    traces/archive:
+      receivers: [routing]
+      exporters: [otlp/archive]
 ```
 
 ## Geographic Routing
@@ -339,7 +493,7 @@ processors:
   resource:
     attributes:
       - key: cloud.region
-        value: ${CLOUD_REGION}
+        value: ${env:CLOUD_REGION}
         action: insert
 
 exporters:
@@ -360,35 +514,54 @@ exporters:
     endpoint: global.example.com:4317
 
 connectors:
-  routing:
-    from_attribute: cloud.region
-    default_exporters:
-      - otlp/default
+  routing/traces:
+    default_pipelines:
+      - traces/default
 
     table:
       # US regions
-      - value: us-east-1
-        exporters: [otlp/us-east]
-      - value: us-east-2
-        exporters: [otlp/us-east]
-      - value: us-west-1
-        exporters: [otlp/us-west]
-      - value: us-west-2
-        exporters: [otlp/us-west]
+      - condition: attributes["cloud.region"] == "us-east-1" or attributes["cloud.region"] == "us-east-2"
+        pipelines: [traces/us-east]
+      - condition: attributes["cloud.region"] == "us-west-1" or attributes["cloud.region"] == "us-west-2"
+        pipelines: [traces/us-west]
 
       # European regions
-      - value: eu-west-1
-        exporters: [otlp/eu-west]
-      - value: eu-west-2
-        exporters: [otlp/eu-west]
-      - value: eu-central-1
-        exporters: [otlp/eu-central]
+      - condition: attributes["cloud.region"] == "eu-west-1" or attributes["cloud.region"] == "eu-west-2"
+        pipelines: [traces/eu-west]
+      - condition: attributes["cloud.region"] == "eu-central-1"
+        pipelines: [traces/eu-central]
 
       # Asia Pacific regions
-      - value: ap-southeast-1
-        exporters: [otlp/ap-southeast]
-      - value: ap-southeast-2
-        exporters: [otlp/ap-southeast]
+      - condition: attributes["cloud.region"] == "ap-southeast-1" or attributes["cloud.region"] == "ap-southeast-2"
+        pipelines: [traces/ap-southeast]
+
+  routing/metrics:
+    default_pipelines: [metrics/default]
+    table:
+      - condition: attributes["cloud.region"] == "us-east-1" or attributes["cloud.region"] == "us-east-2"
+        pipelines: [metrics/us-east]
+      - condition: attributes["cloud.region"] == "us-west-1" or attributes["cloud.region"] == "us-west-2"
+        pipelines: [metrics/us-west]
+      - condition: attributes["cloud.region"] == "eu-west-1" or attributes["cloud.region"] == "eu-west-2"
+        pipelines: [metrics/eu-west]
+      - condition: attributes["cloud.region"] == "eu-central-1"
+        pipelines: [metrics/eu-central]
+      - condition: attributes["cloud.region"] == "ap-southeast-1" or attributes["cloud.region"] == "ap-southeast-2"
+        pipelines: [metrics/ap-southeast]
+
+  routing/logs:
+    default_pipelines: [logs/default]
+    table:
+      - condition: attributes["cloud.region"] == "us-east-1" or attributes["cloud.region"] == "us-east-2"
+        pipelines: [logs/us-east]
+      - condition: attributes["cloud.region"] == "us-west-1" or attributes["cloud.region"] == "us-west-2"
+        pipelines: [logs/us-west]
+      - condition: attributes["cloud.region"] == "eu-west-1" or attributes["cloud.region"] == "eu-west-2"
+        pipelines: [logs/eu-west]
+      - condition: attributes["cloud.region"] == "eu-central-1"
+        pipelines: [logs/eu-central]
+      - condition: attributes["cloud.region"] == "ap-southeast-1" or attributes["cloud.region"] == "ap-southeast-2"
+        pipelines: [logs/ap-southeast]
 
 receivers:
   otlp:
@@ -398,20 +571,77 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/traces]
 
-    metrics:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [routing]
+    traces/us-east:
+      receivers: [routing/traces]
+      exporters: [otlp/us-east]
+    traces/us-west:
+      receivers: [routing/traces]
+      exporters: [otlp/us-west]
+    traces/eu-west:
+      receivers: [routing/traces]
+      exporters: [otlp/eu-west]
+    traces/eu-central:
+      receivers: [routing/traces]
+      exporters: [otlp/eu-central]
+    traces/ap-southeast:
+      receivers: [routing/traces]
+      exporters: [otlp/ap-southeast]
+    traces/default:
+      receivers: [routing/traces]
+      exporters: [otlp/default]
 
-    logs:
+    metrics/in:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [routing]
+      exporters: [routing/metrics]
+
+    metrics/us-east:
+      receivers: [routing/metrics]
+      exporters: [otlp/us-east]
+    metrics/us-west:
+      receivers: [routing/metrics]
+      exporters: [otlp/us-west]
+    metrics/eu-west:
+      receivers: [routing/metrics]
+      exporters: [otlp/eu-west]
+    metrics/eu-central:
+      receivers: [routing/metrics]
+      exporters: [otlp/eu-central]
+    metrics/ap-southeast:
+      receivers: [routing/metrics]
+      exporters: [otlp/ap-southeast]
+    metrics/default:
+      receivers: [routing/metrics]
+      exporters: [otlp/default]
+
+    logs/in:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [routing/logs]
+
+    logs/us-east:
+      receivers: [routing/logs]
+      exporters: [otlp/us-east]
+    logs/us-west:
+      receivers: [routing/logs]
+      exporters: [otlp/us-west]
+    logs/eu-west:
+      receivers: [routing/logs]
+      exporters: [otlp/eu-west]
+    logs/eu-central:
+      receivers: [routing/logs]
+      exporters: [otlp/eu-central]
+    logs/ap-southeast:
+      receivers: [routing/logs]
+      exporters: [otlp/ap-southeast]
+    logs/default:
+      receivers: [routing/logs]
+      exporters: [otlp/default]
 ```
 
 ## Multiple Routing Stages
@@ -441,41 +671,38 @@ exporters:
 connectors:
   # First stage: Route by environment
   routing/environment:
-    from_attribute: deployment.environment
-    default_exporters:
-      - routing/nonprod-teams
+    default_pipelines:
+      - traces/nonprod-route
 
     table:
-      - value: production
-        exporters: [routing/prod-teams]
-      - value: staging
-        exporters: [routing/nonprod-teams]
-      - value: development
-        exporters: [routing/nonprod-teams]
+      - condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/prod-route]
+      - condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/nonprod-route]
+      - condition: attributes["deployment.environment"] == "development"
+        pipelines: [traces/nonprod-route]
 
   # Second stage: Route production by team
   routing/prod-teams:
-    from_attribute: team.name
-    default_exporters:
-      - otlp/prod-default
+    default_pipelines:
+      - traces/prod-default
 
     table:
-      - value: team-a
-        exporters: [otlp/prod-team-a]
-      - value: team-b
-        exporters: [otlp/prod-team-b]
+      - condition: attributes["team.name"] == "team-a"
+        pipelines: [traces/prod-team-a]
+      - condition: attributes["team.name"] == "team-b"
+        pipelines: [traces/prod-team-b]
 
   # Second stage: Route non-production by team
   routing/nonprod-teams:
-    from_attribute: team.name
-    default_exporters:
-      - otlp/nonprod-default
+    default_pipelines:
+      - traces/nonprod-default
 
     table:
-      - value: team-a
-        exporters: [otlp/nonprod-team-a]
-      - value: team-b
-        exporters: [otlp/nonprod-team-b]
+      - condition: attributes["team.name"] == "team-a"
+        pipelines: [traces/nonprod-team-a]
+      - condition: attributes["team.name"] == "team-b"
+        pipelines: [traces/nonprod-team-b]
 
 receivers:
   otlp:
@@ -489,11 +716,43 @@ processors:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [batch]
       # Start with environment routing
       exporters: [routing/environment]
+
+    traces/prod-route:
+      receivers: [routing/environment]
+      exporters: [routing/prod-teams]
+
+    traces/nonprod-route:
+      receivers: [routing/environment]
+      exporters: [routing/nonprod-teams]
+
+    traces/prod-team-a:
+      receivers: [routing/prod-teams]
+      exporters: [otlp/prod-team-a]
+
+    traces/prod-team-b:
+      receivers: [routing/prod-teams]
+      exporters: [otlp/prod-team-b]
+
+    traces/prod-default:
+      receivers: [routing/prod-teams]
+      exporters: [otlp/prod-default]
+
+    traces/nonprod-team-a:
+      receivers: [routing/nonprod-teams]
+      exporters: [otlp/nonprod-team-a]
+
+    traces/nonprod-team-b:
+      receivers: [routing/nonprod-teams]
+      exporters: [otlp/nonprod-team-b]
+
+    traces/nonprod-default:
+      receivers: [routing/nonprod-teams]
+      exporters: [otlp/nonprod-default]
 ```
 
 ## Routing with Sampling
@@ -523,19 +782,18 @@ exporters:
 
 connectors:
   routing:
-    from_attribute: deployment.environment
-    default_exporters:
-      - otlp/development
+    default_pipelines:
+      - traces/development
 
     table:
-      - value: production
-        exporters: [otlp/production]
+      - condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/production]
 
-      - value: staging
-        exporters: [otlp/staging]
+      - condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/staging]
 
-      - value: development
-        exporters: [otlp/development]
+      - condition: attributes["deployment.environment"] == "development"
+        pipelines: [traces/development]
 
 receivers:
   otlp:
@@ -545,10 +803,14 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [batch]
       exporters: [routing]
+
+    traces/production:
+      receivers: [routing]
+      exporters: [otlp/production]
 
     # Separate pipelines with sampling for non-production
     traces/staging:
@@ -587,36 +849,35 @@ exporters:
 connectors:
   # Route by service type
   routing/service-type:
-    from_attribute: service.type
-    default_exporters:
-      - otlp/primary
+    default_pipelines:
+      - traces/primary
 
     table:
       # API services go to primary and analytics
-      - value: api
-        exporters:
-          - otlp/primary
-          - otlp/analytics
+      - condition: attributes["service.type"] == "api"
+        pipelines:
+          - traces/primary
+          - traces/analytics
 
       # Auth services go to primary, security, and audit
-      - value: authentication
-        exporters:
-          - otlp/primary
-          - otlp/security
-          - otlp/audit
+      - condition: attributes["service.type"] == "authentication"
+        pipelines:
+          - traces/primary
+          - traces/security
+          - traces/audit
 
       # Payment services go to all backends
-      - value: payment
-        exporters:
-          - otlp/primary
-          - otlp/analytics
-          - otlp/security
-          - otlp/audit
+      - condition: attributes["service.type"] == "payment"
+        pipelines:
+          - traces/primary
+          - traces/analytics
+          - traces/security
+          - traces/audit
 
       # Background jobs go to primary only
-      - value: worker
-        exporters:
-          - otlp/primary
+      - condition: attributes["service.type"] == "worker"
+        pipelines:
+          - traces/primary
 
 receivers:
   otlp:
@@ -632,20 +893,36 @@ processors:
   resource:
     attributes:
       - key: service.type
-        value: ${SERVICE_TYPE}
+        value: ${env:SERVICE_TYPE}
         action: upsert
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [resource, batch]
       exporters: [routing/service-type]
+
+    traces/primary:
+      receivers: [routing/service-type]
+      exporters: [otlp/primary]
+
+    traces/analytics:
+      receivers: [routing/service-type]
+      exporters: [otlp/analytics]
+
+    traces/security:
+      receivers: [routing/service-type]
+      exporters: [otlp/security]
+
+    traces/audit:
+      receivers: [routing/service-type]
+      exporters: [otlp/audit]
 ```
 
 ## Production-Ready Configuration
 
-Here's a comprehensive production configuration with routing, failover, and monitoring:
+Here's a comprehensive production configuration with routing and monitoring:
 
 ```yaml
 receivers:
@@ -669,109 +946,161 @@ processors:
   resource/metadata:
     attributes:
       - key: collector.name
-        value: ${COLLECTOR_NAME}
+        value: ${env:COLLECTOR_NAME}
         action: upsert
       - key: collector.version
-        value: ${COLLECTOR_VERSION}
+        value: ${env:COLLECTOR_VERSION}
         action: upsert
-
-  # Classify telemetry
-  transform:
-    trace_statements:
-      - context: resource
-        statements:
-          # Ensure tenant ID exists
-          - set(attributes["tenant.id"], "unknown") where attributes["tenant.id"] == nil
+      - key: tenant.id
+        value: unknown
+        action: insert
 
 exporters:
-  # Tenant-specific backends with failover
+  # Tenant-specific backends
   otlp/tenant-premium:
-    endpoint: ${PREMIUM_BACKEND}
+    endpoint: ${env:PREMIUM_BACKEND}
     timeout: 5s
     compression: gzip
 
   otlp/tenant-standard:
-    endpoint: ${STANDARD_BACKEND}
+    endpoint: ${env:STANDARD_BACKEND}
     timeout: 10s
     compression: gzip
 
   otlp/tenant-basic:
-    endpoint: ${BASIC_BACKEND}
+    endpoint: ${env:BASIC_BACKEND}
     timeout: 10s
 
   # Default backend
   otlp/default:
-    endpoint: ${DEFAULT_BACKEND}
+    endpoint: ${env:DEFAULT_BACKEND}
     timeout: 10s
 
-  # Monitoring
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
 connectors:
-  routing:
-    from_attribute: tenant.id
-    default_exporters:
-      - otlp/default
+  routing/traces:
+    default_pipelines:
+      - traces/default
 
     table:
       # Premium tenants (SLA: 99.99%)
-      - value: tenant-premium-001
-        exporters: [otlp/tenant-premium]
-      - value: tenant-premium-002
-        exporters: [otlp/tenant-premium]
+      - condition: attributes["tenant.id"] == "tenant-premium-001" or attributes["tenant.id"] == "tenant-premium-002"
+        pipelines: [traces/tenant-premium]
 
       # Standard tenants (SLA: 99.9%)
-      - value: tenant-standard-001
-        exporters: [otlp/tenant-standard]
-      - value: tenant-standard-002
-        exporters: [otlp/tenant-standard]
-      - value: tenant-standard-003
-        exporters: [otlp/tenant-standard]
+      - condition: attributes["tenant.id"] == "tenant-standard-001" or attributes["tenant.id"] == "tenant-standard-002" or attributes["tenant.id"] == "tenant-standard-003"
+        pipelines: [traces/tenant-standard]
 
       # Basic tenants (SLA: 99%)
-      - value: tenant-basic-001
-        exporters: [otlp/tenant-basic]
-      - value: tenant-basic-002
-        exporters: [otlp/tenant-basic]
-      - value: tenant-basic-003
-        exporters: [otlp/tenant-basic]
+      - condition: attributes["tenant.id"] == "tenant-basic-001" or attributes["tenant.id"] == "tenant-basic-002" or attributes["tenant.id"] == "tenant-basic-003"
+        pipelines: [traces/tenant-basic]
+
+  routing/metrics:
+    default_pipelines: [metrics/default]
+    table:
+      - condition: attributes["tenant.id"] == "tenant-premium-001" or attributes["tenant.id"] == "tenant-premium-002"
+        pipelines: [metrics/tenant-premium]
+      - condition: attributes["tenant.id"] == "tenant-standard-001" or attributes["tenant.id"] == "tenant-standard-002" or attributes["tenant.id"] == "tenant-standard-003"
+        pipelines: [metrics/tenant-standard]
+      - condition: attributes["tenant.id"] == "tenant-basic-001" or attributes["tenant.id"] == "tenant-basic-002" or attributes["tenant.id"] == "tenant-basic-003"
+        pipelines: [metrics/tenant-basic]
+
+  routing/logs:
+    default_pipelines: [logs/default]
+    table:
+      - condition: attributes["tenant.id"] == "tenant-premium-001" or attributes["tenant.id"] == "tenant-premium-002"
+        pipelines: [logs/tenant-premium]
+      - condition: attributes["tenant.id"] == "tenant-standard-001" or attributes["tenant.id"] == "tenant-standard-002" or attributes["tenant.id"] == "tenant-standard-003"
+        pipelines: [logs/tenant-standard]
+      - condition: attributes["tenant.id"] == "tenant-basic-001" or attributes["tenant.id"] == "tenant-basic-002" or attributes["tenant.id"] == "tenant-basic-003"
+        pipelines: [logs/tenant-basic]
 
 service:
   telemetry:
     logs:
-      level: ${LOG_LEVEL:-info}
+      level: ${env:LOG_LEVEL:-info}
       encoding: json
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors:
         - memory_limiter
         - resource/metadata
-        - transform
         - batch
-      exporters: [routing]
+      exporters: [routing/traces]
 
-    metrics:
-      receivers: [otlp]
-      processors:
-        - memory_limiter
-        - resource/metadata
-        - batch
-      exporters: [routing]
+    traces/tenant-premium:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-premium]
 
-    logs:
+    traces/tenant-standard:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-standard]
+
+    traces/tenant-basic:
+      receivers: [routing/traces]
+      exporters: [otlp/tenant-basic]
+
+    traces/default:
+      receivers: [routing/traces]
+      exporters: [otlp/default]
+
+    metrics/in:
       receivers: [otlp]
       processors:
         - memory_limiter
         - resource/metadata
         - batch
-      exporters: [routing]
+      exporters: [routing/metrics]
+
+    metrics/tenant-premium:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-premium]
+
+    metrics/tenant-standard:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-standard]
+
+    metrics/tenant-basic:
+      receivers: [routing/metrics]
+      exporters: [otlp/tenant-basic]
+
+    metrics/default:
+      receivers: [routing/metrics]
+      exporters: [otlp/default]
+
+    logs/in:
+      receivers: [otlp]
+      processors:
+        - memory_limiter
+        - resource/metadata
+        - batch
+      exporters: [routing/logs]
+
+    logs/tenant-premium:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-premium]
+
+    logs/tenant-standard:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-standard]
+
+    logs/tenant-basic:
+      receivers: [routing/logs]
+      exporters: [otlp/tenant-basic]
+
+    logs/default:
+      receivers: [routing/logs]
+      exporters: [otlp/default]
 ```
 
 ## Monitoring Routing Decisions
@@ -783,16 +1112,20 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
     logs:
       level: info
-      # Log routing decisions
 ```
 
 Key metrics to monitor:
-- `otelcol_connector_accepted_spans`: Spans accepted by routing connector
-- `otelcol_connector_refused_spans`: Spans refused due to routing errors
+- `otelcol_receiver_accepted_spans`: Spans accepted by the input receiver
+- `otelcol_receiver_refused_spans`: Spans refused by the input receiver
 - `otelcol_exporter_sent_spans`: Spans sent to each destination exporter
 
 ## Integration with Other Connectors
@@ -803,7 +1136,7 @@ The Routing Connector works well with other connectors. Combine it with the Fail
 
 1. **Use Resource Attributes for Routing**: Resource attributes are more reliable than span attributes for routing decisions.
 
-2. **Provide Default Exporters**: Always configure default exporters to handle unmatched telemetry gracefully.
+2. **Provide Default Pipelines**: Always configure default pipelines to handle unmatched telemetry gracefully.
 
 3. **Validate Routing Attributes**: Ensure routing attributes are present before the routing connector processes data.
 
