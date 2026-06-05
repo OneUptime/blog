@@ -40,7 +40,7 @@ Start with a simple configuration to collect system events.
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     # Collect from System channel
     channel: System
 
@@ -54,7 +54,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog]
+      receivers: [windows_event_log]
       exporters: [debug]
 ```
 
@@ -69,27 +69,27 @@ Windows Event Log has multiple channels for different event types.
 ```yaml
 receivers:
   # System events
-  windowseventlog/system:
+  windows_event_log/system:
     channel: System
     start_at: end
 
   # Application events
-  windowseventlog/application:
+  windows_event_log/application:
     channel: Application
     start_at: end
 
   # Security events (requires administrator privileges)
-  windowseventlog/security:
+  windows_event_log/security:
     channel: Security
     start_at: end
 
   # Windows PowerShell events
-  windowseventlog/powershell:
+  windows_event_log/powershell:
     channel: Windows PowerShell
     start_at: end
 
   # Windows Defender events
-  windowseventlog/defender:
+  windows_event_log/defender:
     channel: Microsoft-Windows-Windows Defender/Operational
     start_at: end
 
@@ -101,11 +101,11 @@ service:
   pipelines:
     logs:
       receivers:
-        - windowseventlog/system
-        - windowseventlog/application
-        - windowseventlog/security
-        - windowseventlog/powershell
-        - windowseventlog/defender
+        - windows_event_log/system
+        - windows_event_log/application
+        - windows_event_log/security
+        - windows_event_log/powershell
+        - windows_event_log/defender
       exporters: [otlp]
 ```
 
@@ -131,17 +131,17 @@ Configure where the receiver starts collecting events.
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
     # Start from the beginning (collect all historical events)
     start_at: beginning
 
     # OR start from the end (only new events)
-    start_at: end
+    # start_at: end
 ```
 
-Use `beginning` for initial setup to collect historical events, then the receiver automatically bookmarks its position for subsequent runs.
+Use `beginning` for initial setup to collect historical events. The receiver tracks its position in memory while it runs; configure the `storage` option with a storage extension if you need bookmarks to survive collector restarts.
 
 ## Event Filtering
 
@@ -151,7 +151,7 @@ Filter events to collect only relevant logs.
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
     # Only collect errors and critical events
@@ -168,7 +168,7 @@ receivers:
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
     # Only collect specific event IDs
@@ -192,7 +192,7 @@ receivers:
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
     # Only collect events from specific provider
@@ -210,7 +210,7 @@ receivers:
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: Security
 
     # Collect failed login attempts (Event ID 4625)
@@ -230,31 +230,29 @@ receivers:
 
 Extract structured data from event logs.
 
-### Basic Attributes
+### Basic Fields
 
-The receiver automatically extracts these attributes:
+The receiver automatically parses Windows events into a structured log body:
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
 processors:
   # View extracted attributes
   transform/view_attributes:
     log_statements:
-      - context: log
-        statements:
-          # Attributes automatically extracted:
-          # - event.id: Event ID number
-          # - event.level: Event level (Critical, Error, Warning, Info, Verbose)
-          # - event.provider: Event provider name
-          # - event.computer: Computer name
-          # - event.user: User SID
-          # - event.time_created: Event timestamp
-          # - event.record_id: Event record ID
-          # - event.channel: Channel name
-          - set(attributes["extracted"], "true")
+      - statements:
+          # Fields automatically parsed into log.body:
+          # - log.body["event_id"]["id"]: Event ID number
+          # - log.body["level"]: Event level (Critical, Error, Warning, Information, Verbose)
+          # - log.body["provider"]["name"]: Event provider name
+          # - log.body["computer"]: Computer name
+          # - log.body["system_time"]: Event timestamp
+          # - log.body["record_id"]: Event record ID
+          # - log.body["channel"]: Channel name
+          - set(log.attributes["extracted"], "true")
 
 exporters:
   debug:
@@ -263,7 +261,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog]
+      receivers: [windows_event_log]
       processors: [transform/view_attributes]
       exporters: [debug]
 ```
@@ -274,29 +272,28 @@ Extract specific fields from event data.
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: Security
 
 processors:
   # Extract login event details
   transform/security:
     log_statements:
-      - context: log
-        statements:
+      - statements:
           # Extract fields from event data
           # Security event 4624 (successful login) structure:
           # - TargetUserName: Username
           # - IpAddress: Source IP
           # - LogonType: Logon type
 
-          # Parse event data (assuming XML structure in body)
-          - set(attributes["user.name"], body["EventData"]["TargetUserName"]) where body["EventData"]["TargetUserName"] != nil
-          - set(attributes["source.ip"], body["EventData"]["IpAddress"]) where body["EventData"]["IpAddress"] != nil
-          - set(attributes["logon.type"], body["EventData"]["LogonType"]) where body["EventData"]["LogonType"] != nil
+          # Access event data from the structured log body
+          - set(log.attributes["user.name"], log.body["event_data"]["TargetUserName"]) where log.body["event_data"]["TargetUserName"] != nil
+          - set(log.attributes["source.ip"], log.body["event_data"]["IpAddress"]) where log.body["event_data"]["IpAddress"] != nil
+          - set(log.attributes["logon.type"], log.body["event_data"]["LogonType"]) where log.body["event_data"]["LogonType"] != nil
 
           # Set severity based on event type
-          - set(severity_text, "INFO") where attributes["event.id"] == 4624
-          - set(severity_text, "WARN") where attributes["event.id"] == 4625
+          - set(log.severity_text, "INFO") where log.body["event_id"]["id"] == 4624
+          - set(log.severity_text, "WARN") where log.body["event_id"]["id"] == 4625
 
 exporters:
   otlp:
@@ -305,7 +302,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog]
+      receivers: [windows_event_log]
       processors: [transform/security]
       exporters: [otlp]
 ```
@@ -318,7 +315,7 @@ Monitor Windows security events for audit and compliance.
 
 ```yaml
 receivers:
-  windowseventlog/failed_logins:
+  windows_event_log/failed_logins:
     channel: Security
 
     # Event ID 4625: Failed login attempt
@@ -332,20 +329,19 @@ receivers:
 processors:
   transform/failed_logins:
     log_statements:
-      - context: log
-        statements:
+      - statements:
           # Extract failed login details
-          - set(attributes["security.event"], "failed_login")
-          - set(attributes["user.name"], body["EventData"]["TargetUserName"]) where body["EventData"]["TargetUserName"] != nil
-          - set(attributes["source.ip"], body["EventData"]["IpAddress"]) where body["EventData"]["IpAddress"] != nil
-          - set(attributes["failure.reason"], body["EventData"]["FailureReason"]) where body["EventData"]["FailureReason"] != nil
-          - set(severity_text, "WARN")
+          - set(log.attributes["security.event"], "failed_login")
+          - set(log.attributes["user.name"], log.body["event_data"]["TargetUserName"]) where log.body["event_data"]["TargetUserName"] != nil
+          - set(log.attributes["source.ip"], log.body["event_data"]["IpAddress"]) where log.body["event_data"]["IpAddress"] != nil
+          - set(log.attributes["failure.reason"], log.body["event_data"]["FailureReason"]) where log.body["event_data"]["FailureReason"] != nil
+          - set(log.severity_text, "WARN")
 
   # Filter to only IP-based attacks
   filter/remote_attacks:
-    logs:
-      log_record:
-        - attributes["source.ip"] != nil and attributes["source.ip"] != "-"
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["source.ip"] == nil or log.attributes["source.ip"] == "-"
 
 exporters:
   otlp:
@@ -354,7 +350,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/failed_logins]
+      receivers: [windows_event_log/failed_logins]
       processors: [transform/failed_logins, filter/remote_attacks]
       exporters: [otlp]
 ```
@@ -363,7 +359,7 @@ service:
 
 ```yaml
 receivers:
-  windowseventlog/account_changes:
+  windows_event_log/account_changes:
     channel: Security
 
     # Monitor account management events
@@ -385,21 +381,20 @@ receivers:
 processors:
   transform/account_changes:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["security.event"], "account_change")
-          - set(attributes["target.user"], body["EventData"]["TargetUserName"]) where body["EventData"]["TargetUserName"] != nil
-          - set(attributes["changed.by"], body["EventData"]["SubjectUserName"]) where body["EventData"]["SubjectUserName"] != nil
+      - statements:
+          - set(log.attributes["security.event"], "account_change")
+          - set(log.attributes["target.user"], log.body["event_data"]["TargetUserName"]) where log.body["event_data"]["TargetUserName"] != nil
+          - set(log.attributes["changed.by"], log.body["event_data"]["SubjectUserName"]) where log.body["event_data"]["SubjectUserName"] != nil
 
           # Classify event type
-          - set(attributes["change.type"], "created") where attributes["event.id"] == 4720
-          - set(attributes["change.type"], "enabled") where attributes["event.id"] == 4722
-          - set(attributes["change.type"], "password_changed") where attributes["event.id"] == 4723
-          - set(attributes["change.type"], "password_reset") where attributes["event.id"] == 4724
-          - set(attributes["change.type"], "disabled") where attributes["event.id"] == 4725
-          - set(attributes["change.type"], "deleted") where attributes["event.id"] == 4726
+          - set(log.attributes["change.type"], "created") where log.body["event_id"]["id"] == 4720
+          - set(log.attributes["change.type"], "enabled") where log.body["event_id"]["id"] == 4722
+          - set(log.attributes["change.type"], "password_changed") where log.body["event_id"]["id"] == 4723
+          - set(log.attributes["change.type"], "password_reset") where log.body["event_id"]["id"] == 4724
+          - set(log.attributes["change.type"], "disabled") where log.body["event_id"]["id"] == 4725
+          - set(log.attributes["change.type"], "deleted") where log.body["event_id"]["id"] == 4726
 
-          - set(severity_text, "INFO")
+          - set(log.severity_text, "INFO")
 
 exporters:
   otlp:
@@ -408,7 +403,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/account_changes]
+      receivers: [windows_event_log/account_changes]
       processors: [transform/account_changes]
       exporters: [otlp]
 ```
@@ -417,7 +412,7 @@ service:
 
 ```yaml
 receivers:
-  windowseventlog/privilege_escalation:
+  windows_event_log/privilege_escalation:
     channel: Security
 
     # Monitor privilege use events
@@ -436,12 +431,11 @@ receivers:
 processors:
   transform/privilege_escalation:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["security.event"], "privilege_use")
-          - set(attributes["user.name"], body["EventData"]["SubjectUserName"]) where body["EventData"]["SubjectUserName"] != nil
-          - set(attributes["privileges"], body["EventData"]["PrivilegeList"]) where body["EventData"]["PrivilegeList"] != nil
-          - set(severity_text, "WARN")
+      - statements:
+          - set(log.attributes["security.event"], "privilege_use")
+          - set(log.attributes["user.name"], log.body["event_data"]["SubjectUserName"]) where log.body["event_data"]["SubjectUserName"] != nil
+          - set(log.attributes["privileges"], log.body["event_data"]["PrivilegeList"]) where log.body["event_data"]["PrivilegeList"] != nil
+          - set(log.severity_text, "WARN")
 
 exporters:
   otlp:
@@ -450,7 +444,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/privilege_escalation]
+      receivers: [windows_event_log/privilege_escalation]
       processors: [transform/privilege_escalation]
       exporters: [otlp]
 ```
@@ -463,7 +457,7 @@ Monitor application errors and warnings.
 
 ```yaml
 receivers:
-  windowseventlog/application_errors:
+  windows_event_log/application_errors:
     channel: Application
 
     # Application error events
@@ -477,17 +471,16 @@ receivers:
 processors:
   transform/app_errors:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["event.type"], "application_error")
-          - set(attributes["application.name"], attributes["event.provider"]) where attributes["event.provider"] != nil
+      - statements:
+          - set(log.attributes["event.type"], "application_error")
+          - set(log.attributes["application.name"], log.body["provider"]["name"]) where log.body["provider"]["name"] != nil
 
           # Extract error code if present
-          - set(attributes["error.code"], body["EventData"]["ErrorCode"]) where body["EventData"]["ErrorCode"] != nil
+          - set(log.attributes["error.code"], log.body["event_data"]["ErrorCode"]) where log.body["event_data"]["ErrorCode"] != nil
 
           # Set severity
-          - set(severity_text, "CRITICAL") where attributes["event.level"] == "Critical"
-          - set(severity_text, "ERROR") where attributes["event.level"] == "Error"
+          - set(log.severity_text, "CRITICAL") where log.body["level"] == "Critical"
+          - set(log.severity_text, "ERROR") where log.body["level"] == "Error"
 
 exporters:
   otlp:
@@ -496,7 +489,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/application_errors]
+      receivers: [windows_event_log/application_errors]
       processors: [transform/app_errors]
       exporters: [otlp]
 ```
@@ -505,18 +498,17 @@ service:
 
 ```yaml
 receivers:
-  windowseventlog/iis:
+  windows_event_log/iis:
     channel: Microsoft-Windows-IIS-Logging/Logs
 
 processors:
   transform/iis:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["service.name"], "iis")
-          - set(attributes["http.request_path"], body["EventData"]["RequestPath"]) where body["EventData"]["RequestPath"] != nil
-          - set(attributes["http.status_code"], body["EventData"]["StatusCode"]) where body["EventData"]["StatusCode"] != nil
-          - set(attributes["http.client_ip"], body["EventData"]["ClientIP"]) where body["EventData"]["ClientIP"] != nil
+      - statements:
+          - set(log.attributes["service.name"], "iis")
+          - set(log.attributes["http.request_path"], log.body["event_data"]["RequestPath"]) where log.body["event_data"]["RequestPath"] != nil
+          - set(log.attributes["http.status_code"], log.body["event_data"]["StatusCode"]) where log.body["event_data"]["StatusCode"] != nil
+          - set(log.attributes["http.client_ip"], log.body["event_data"]["ClientIP"]) where log.body["event_data"]["ClientIP"] != nil
 
 exporters:
   otlp:
@@ -525,7 +517,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/iis]
+      receivers: [windows_event_log/iis]
       processors: [transform/iis]
       exporters: [otlp]
 ```
@@ -538,7 +530,7 @@ Monitor system health and operations.
 
 ```yaml
 receivers:
-  windowseventlog/system_power:
+  windows_event_log/system_power:
     channel: System
 
     # System power events
@@ -558,19 +550,18 @@ receivers:
 processors:
   transform/system_power:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["system.event"], "power")
+      - statements:
+          - set(log.attributes["system.event"], "power")
 
           # Classify event
-          - set(attributes["power.action"], "restart_initiated") where attributes["event.id"] == 1074
-          - set(attributes["power.action"], "boot_complete") where attributes["event.id"] == 6005
-          - set(attributes["power.action"], "shutdown_clean") where attributes["event.id"] == 6006
-          - set(attributes["power.action"], "shutdown_unexpected") where attributes["event.id"] == 6008
+          - set(log.attributes["power.action"], "restart_initiated") where log.body["event_id"]["id"] == 1074
+          - set(log.attributes["power.action"], "boot_complete") where log.body["event_id"]["id"] == 6005
+          - set(log.attributes["power.action"], "shutdown_clean") where log.body["event_id"]["id"] == 6006
+          - set(log.attributes["power.action"], "shutdown_unexpected") where log.body["event_id"]["id"] == 6008
 
           # Set severity
-          - set(severity_text, "INFO") where attributes["event.id"] == 1074 or attributes["event.id"] == 6005 or attributes["event.id"] == 6006
-          - set(severity_text, "ERROR") where attributes["event.id"] == 6008
+          - set(log.severity_text, "INFO") where log.body["event_id"]["id"] == 1074 or log.body["event_id"]["id"] == 6005 or log.body["event_id"]["id"] == 6006
+          - set(log.severity_text, "ERROR") where log.body["event_id"]["id"] == 6008
 
 exporters:
   otlp:
@@ -579,7 +570,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/system_power]
+      receivers: [windows_event_log/system_power]
       processors: [transform/system_power]
       exporters: [otlp]
 ```
@@ -588,7 +579,7 @@ service:
 
 ```yaml
 receivers:
-  windowseventlog/services:
+  windows_event_log/services:
     channel: System
 
     # Service control manager events
@@ -608,19 +599,18 @@ receivers:
 processors:
   transform/services:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["system.event"], "service")
-          - set(attributes["service.name"], body["EventData"]["ServiceName"]) where body["EventData"]["ServiceName"] != nil
+      - statements:
+          - set(log.attributes["system.event"], "service")
+          - set(log.attributes["service.name"], log.body["event_data"]["ServiceName"]) where log.body["event_data"]["ServiceName"] != nil
 
           # Classify event
-          - set(attributes["service.action"], "terminated_unexpectedly") where attributes["event.id"] == 7034
-          - set(attributes["service.action"], "state_changed") where attributes["event.id"] == 7036
-          - set(attributes["service.action"], "startup_type_changed") where attributes["event.id"] == 7040
+          - set(log.attributes["service.action"], "terminated_unexpectedly") where log.body["event_id"]["id"] == 7034
+          - set(log.attributes["service.action"], "state_changed") where log.body["event_id"]["id"] == 7036
+          - set(log.attributes["service.action"], "startup_type_changed") where log.body["event_id"]["id"] == 7040
 
           # Set severity
-          - set(severity_text, "ERROR") where attributes["event.id"] == 7034
-          - set(severity_text, "INFO") where attributes["event.id"] == 7035 or attributes["event.id"] == 7036 or attributes["event.id"] == 7040
+          - set(log.severity_text, "ERROR") where log.body["event_id"]["id"] == 7034
+          - set(log.severity_text, "INFO") where log.body["event_id"]["id"] == 7035 or log.body["event_id"]["id"] == 7036 or log.body["event_id"]["id"] == 7040
 
 exporters:
   otlp:
@@ -629,7 +619,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog/services]
+      receivers: [windows_event_log/services]
       processors: [transform/services]
       exporters: [otlp]
 ```
@@ -640,7 +630,7 @@ Add contextual information to logs.
 
 ```yaml
 receivers:
-  windowseventlog:
+  windows_event_log:
     channel: System
 
 processors:
@@ -658,7 +648,7 @@ processors:
         action: upsert
 
   # Detect additional host information
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
     timeout: 5s
 
@@ -669,8 +659,8 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [windowseventlog]
-      processors: [resource/windows, resourcedetection]
+      receivers: [windows_event_log]
+      processors: [resource/windows, resource_detection]
       exporters: [otlp]
 ```
 
@@ -681,7 +671,7 @@ Full configuration for comprehensive Windows monitoring.
 ```yaml
 receivers:
   # System events
-  windowseventlog/system:
+  windows_event_log/system:
     channel: System
     start_at: end
     query: |
@@ -692,7 +682,7 @@ receivers:
       </QueryList>
 
   # Application errors
-  windowseventlog/application:
+  windows_event_log/application:
     channel: Application
     start_at: end
     query: |
@@ -703,7 +693,7 @@ receivers:
       </QueryList>
 
   # Security events - Failed logins
-  windowseventlog/security_failed_logins:
+  windows_event_log/security_failed_logins:
     channel: Security
     start_at: end
     query: |
@@ -714,7 +704,7 @@ receivers:
       </QueryList>
 
   # Security events - Account changes
-  windowseventlog/security_account_changes:
+  windows_event_log/security_account_changes:
     channel: Security
     start_at: end
     query: |
@@ -727,7 +717,7 @@ receivers:
       </QueryList>
 
   # Windows Defender
-  windowseventlog/defender:
+  windows_event_log/defender:
     channel: Microsoft-Windows-Windows Defender/Operational
     start_at: end
 
@@ -735,36 +725,33 @@ processors:
   # Process system events
   transform/system:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["log.source"], "system") where resource.attributes["event.channel"] == "System"
-          - set(severity_text, "CRITICAL") where attributes["event.level"] == "Critical"
-          - set(severity_text, "ERROR") where attributes["event.level"] == "Error"
-          - set(severity_text, "WARN") where attributes["event.level"] == "Warning"
+      - statements:
+          - set(log.attributes["log.source"], "system") where log.body["channel"] == "System"
+          - set(log.severity_text, "CRITICAL") where log.body["level"] == "Critical"
+          - set(log.severity_text, "ERROR") where log.body["level"] == "Error"
+          - set(log.severity_text, "WARN") where log.body["level"] == "Warning"
 
   # Process application events
   transform/application:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["log.source"], "application") where resource.attributes["event.channel"] == "Application"
-          - set(attributes["application.name"], attributes["event.provider"])
+      - statements:
+          - set(log.attributes["log.source"], "application") where log.body["channel"] == "Application"
+          - set(log.attributes["application.name"], log.body["provider"]["name"])
 
   # Process security events
   transform/security:
     log_statements:
-      - context: log
-        statements:
-          - set(attributes["log.source"], "security") where resource.attributes["event.channel"] == "Security"
+      - statements:
+          - set(log.attributes["log.source"], "security") where log.body["channel"] == "Security"
 
           # Failed logins
-          - set(attributes["security.event"], "failed_login") where attributes["event.id"] == 4625
-          - set(attributes["user.name"], body["EventData"]["TargetUserName"]) where attributes["event.id"] == 4625 and body["EventData"]["TargetUserName"] != nil
-          - set(attributes["source.ip"], body["EventData"]["IpAddress"]) where attributes["event.id"] == 4625 and body["EventData"]["IpAddress"] != nil
+          - set(log.attributes["security.event"], "failed_login") where log.body["event_id"]["id"] == 4625
+          - set(log.attributes["user.name"], log.body["event_data"]["TargetUserName"]) where log.body["event_id"]["id"] == 4625 and log.body["event_data"]["TargetUserName"] != nil
+          - set(log.attributes["source.ip"], log.body["event_data"]["IpAddress"]) where log.body["event_id"]["id"] == 4625 and log.body["event_data"]["IpAddress"] != nil
 
           # Account changes
-          - set(attributes["security.event"], "account_change") where attributes["event.id"] == 4720 or attributes["event.id"] == 4722 or attributes["event.id"] == 4725 or attributes["event.id"] == 4726
-          - set(attributes["target.user"], body["EventData"]["TargetUserName"]) where body["EventData"]["TargetUserName"] != nil
+          - set(log.attributes["security.event"], "account_change") where log.body["event_id"]["id"] == 4720 or log.body["event_id"]["id"] == 4722 or log.body["event_id"]["id"] == 4725 or log.body["event_id"]["id"] == 4726
+          - set(log.attributes["target.user"], log.body["event_data"]["TargetUserName"]) where log.body["event_data"]["TargetUserName"] != nil
 
   # Add resource attributes
   resource/windows:
@@ -783,7 +770,7 @@ processors:
         action: upsert
 
   # Detect host information
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
     timeout: 5s
 
@@ -811,17 +798,17 @@ service:
   pipelines:
     logs:
       receivers:
-        - windowseventlog/system
-        - windowseventlog/application
-        - windowseventlog/security_failed_logins
-        - windowseventlog/security_account_changes
-        - windowseventlog/defender
+        - windows_event_log/system
+        - windows_event_log/application
+        - windows_event_log/security_failed_logins
+        - windows_event_log/security_account_changes
+        - windows_event_log/defender
       processors:
         - transform/system
         - transform/application
         - transform/security
         - resource/windows
-        - resourcedetection
+        - resource_detection
         - batch
       exporters: [otlp]
 
@@ -830,7 +817,12 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Summary
@@ -842,7 +834,7 @@ service:
 | **Security Monitoring** | Failed logins, account changes, privileges |
 | **Application Monitoring** | Errors, crashes, IIS logs |
 | **System Monitoring** | Restarts, shutdowns, services |
-| **Attributes** | Automatic extraction + custom transform |
+| **Fields** | Structured log body + custom transform |
 
 The Windows Event Log Receiver provides comprehensive visibility into Windows system activity. By collecting and processing events from system, application, and security channels, you can monitor system health, detect security threats, troubleshoot application issues, and maintain compliance. Combined with transform processors, you can extract structured data and create actionable alerts for your Windows infrastructure.
 
