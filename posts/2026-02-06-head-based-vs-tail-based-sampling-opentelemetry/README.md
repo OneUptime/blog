@@ -47,10 +47,7 @@ The decision propagates through the W3C `traceparent` header. When a downstream 
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import (
-    ParentBasedTraceIdRatio,
-    TraceIdRatioBased,
-)
+from opentelemetry.sdk.trace.sampling import ParentBasedTraceIdRatio
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
@@ -83,7 +80,7 @@ provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 ```
 
-The `ParentBasedTraceIdRatio` sampler is the key here. It handles two scenarios. For root spans (no parent), it applies the 10% probability. For child spans, it follows whatever the parent decided. This ensures that if a trace is sampled, all of its spans across all services are collected, giving you complete traces rather than fragments.
+The `ParentBasedTraceIdRatio` sampler is the key here. It handles two scenarios. For root spans (no parent), it applies the 10% probability. For child spans, it follows whatever the parent decided. This ensures that if a trace is sampled, participating downstream services that respect the parent decision record their spans, giving you complete traces rather than fragments.
 
 ### Head-Based Sampling in Node.js
 
@@ -92,7 +89,7 @@ The `ParentBasedTraceIdRatio` sampler is the key here. It handles two scenarios.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
@@ -106,7 +103,7 @@ const sampler = new ParentBasedSampler({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'api-gateway',
     'deployment.environment': 'production',
   }),
@@ -126,9 +123,9 @@ The `TraceIdRatioBasedSampler` uses a deterministic algorithm. It hashes the tra
 
 ## How Tail-Based Sampling Works
 
-Tail-based sampling flips the model. Instead of deciding at the start, it collects all spans from all services, waits for the trace to complete, and then examines the full picture before deciding whether to keep or drop it.
+Tail-based sampling flips the model. Instead of deciding at the start, it collects spans from all services, waits for a configured period, and then examines the buffered trace before deciding whether to keep or drop it.
 
-This happens in the OpenTelemetry Collector, not in your application code. The Collector buffers spans in memory, groups them by trace ID, and applies policies once a trace is considered complete.
+This happens in the OpenTelemetry Collector, not in your application code. The Collector buffers spans in memory, groups them by trace ID, and applies policies after a configured wait period.
 
 ```mermaid
 flowchart TD
@@ -137,7 +134,7 @@ flowchart TD
     C[Service C: Always Send Spans] --> D
 
     D --> E[Buffer Spans in Memory]
-    E --> F{Trace Complete?}
+    E --> F{Decision Wait Expired?}
     F -->|No| E
     F -->|Yes| G{Apply Policies}
     G -->|Error Detected| H[Keep Trace]
@@ -161,7 +158,7 @@ receivers:
 processors:
   tail_sampling:
     # Wait 30 seconds for all spans in a trace to arrive.
-    # This must be longer than your longest request latency.
+    # This should cover the traces you want to evaluate completely.
     decision_wait: 30s
 
     # Maximum number of traces held in memory at any time.
@@ -214,11 +211,11 @@ Here is how the two approaches compare across the dimensions that matter most.
 
 | Dimension | Head-Based | Tail-Based |
 |---|---|---|
-| Decision timing | Before trace starts | After trace completes |
-| Error capture | Random chance | Guaranteed (policy-based) |
-| Latency capture | Random chance | Guaranteed (threshold-based) |
+| Decision timing | Before trace starts | After the configured wait period |
+| Error capture | Random chance | Policy-based, if the full trace reaches the sampler |
+| Latency capture | Random chance | Threshold-based, if the full trace reaches the sampler |
 | Infrastructure cost | Low (no buffering) | Higher (Collector memory) |
-| Trace completeness | Always complete | Risk of incomplete if decision_wait is too short |
+| Trace completeness | Complete for sampled traces when context is propagated | Risk of incomplete if decision_wait is too short |
 | Operational complexity | Minimal | Requires stateful Collector |
 | Scaling model | Stateless, scales easily | Needs sticky routing by trace ID |
 
@@ -299,7 +296,7 @@ You also need to ensure that all spans for a given trace arrive at the same Coll
 
 ## Conclusion
 
-Head-based sampling is the right starting point for most teams. It is simple, predictable, and works without any special infrastructure. Tail-based sampling becomes necessary when you need guarantees about capturing errors, latency outliers, or specific business-critical transactions.
+Head-based sampling is the right starting point for most teams. It is simple, predictable, and works without any special infrastructure. Tail-based sampling becomes necessary when you need policy-based capture of errors, latency outliers, or specific business-critical transactions.
 
 The good news is that you do not have to choose one forever. Many teams start with head-based sampling and add tail-based sampling as their observability practice matures. The OpenTelemetry Collector makes it straightforward to add tail sampling policies without changing any application code.
 
