@@ -11,10 +11,11 @@ Highlight.io is a full-stack monitoring platform that combines session replay, e
 ## Highlight.io OTLP Endpoints
 
 Highlight.io provides standard OTLP endpoints:
-- gRPC: `otel.highlight.io:4317`
-- HTTP: `https://otel.highlight.io:4318`
+- gRPC: `https://otel.highlight.io:4317`
+- HTTP traces: `https://otel.highlight.io:4318/v1/traces`
+- HTTP logs: `https://otel.highlight.io:4318/v1/logs`
 
-Authentication is done through resource attributes rather than headers. You set your `highlight.project_id` as a resource attribute on every span and log record.
+Project routing can be done through resource attributes. You set your `highlight.project_id` as a resource attribute on every span and log record.
 
 ## Python Setup
 
@@ -41,7 +42,7 @@ resource = Resource.create({
 
 # Configure trace exporter
 trace_exporter = OTLPSpanExporter(
-    endpoint="otel.highlight.io:4317",
+    endpoint="https://otel.highlight.io:4317",
     # No extra headers needed; project_id is in the resource
 )
 
@@ -51,7 +52,7 @@ trace.set_tracer_provider(trace_provider)
 
 # Configure log exporter
 log_exporter = OTLPLogExporter(
-    endpoint="otel.highlight.io:4317",
+    endpoint="https://otel.highlight.io:4317",
 )
 
 logger_provider = LoggerProvider(resource=resource)
@@ -70,7 +71,6 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -84,7 +84,7 @@ func initHighlightTracing() (*sdktrace.TracerProvider, error) {
     ctx := context.Background()
 
     exporter, err := otlptracegrpc.New(ctx,
-        otlptracegrpc.WithEndpoint("otel.highlight.io:4317"),
+        otlptracegrpc.WithEndpointURL("https://otel.highlight.io:4317"),
     )
     if err != nil {
         return nil, err
@@ -114,31 +114,33 @@ func initHighlightTracing() (*sdktrace.TracerProvider, error) {
 ## Node.js Setup
 
 ```javascript
-const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
-const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-grpc");
-const { BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { Resource } = require("@opentelemetry/resources");
+const { trace } = require("@opentelemetry/api");
+const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
 
 const HIGHLIGHT_PROJECT_ID = process.env.HIGHLIGHT_PROJECT_ID;
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "express-api",
   "service.version": "2.0.0",
   "highlight.project_id": HIGHLIGHT_PROJECT_ID,
 });
 
-const exporter = new OTLPTraceExporter({
-  url: "https://otel.highlight.io:4317",
+const sdk = new NodeSDK({
+  resource,
+  traceExporter: new OTLPTraceExporter({
+    url: "https://otel.highlight.io:4318/v1/traces",
+  }),
 });
 
-const provider = new NodeTracerProvider({ resource });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
+sdk.start();
+const tracer = trace.getTracer("express-api");
 ```
 
 ## Linking Backend Traces to Frontend Sessions
 
-The magic of Highlight.io is connecting backend errors to the frontend session replay. To do this, the frontend passes a `highlight.session_id` header that you capture on the backend:
+The magic of Highlight.io is connecting backend errors to the frontend session replay. To do this, the frontend passes an `x-highlight-request` header that you capture on the backend:
 
 ```python
 from flask import Flask, request
@@ -171,6 +173,8 @@ def create_order():
 Highlight.io highlights errors (pun intended) prominently. Make sure your errors are properly recorded:
 
 ```python
+from opentelemetry.trace import Status, StatusCode
+
 logger = logging.getLogger("api-backend")
 
 def handle_request(request):
@@ -181,7 +185,7 @@ def handle_request(request):
         except ValueError as e:
             # This error will appear in Highlight.io's error tracking
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             logger.error(
                 f"ValueError in handle_request: {e}",
                 exc_info=True,
@@ -205,7 +209,8 @@ trace_exporter = OTLPSpanExporter(
 ## Environment Variables
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.highlight.io:4317"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.highlight.io:4318"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_SERVICE_NAME="my-service"
 export OTEL_RESOURCE_ATTRIBUTES="highlight.project_id=your-project-id"
 ```
