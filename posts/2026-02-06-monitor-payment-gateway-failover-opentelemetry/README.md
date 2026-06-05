@@ -24,6 +24,7 @@ Each gateway has its own SDK, error codes, and timeout behavior. The payment ser
 
 ```python
 from opentelemetry import trace, metrics
+import asyncio
 import time
 
 tracer = trace.get_tracer("ecommerce.payments", "1.0.0")
@@ -185,9 +186,9 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Sample all payment traces at 100%, other traces at 10%
+  # Sample payment traces at 100%
   probabilistic_sampler:
-    sampling_percentage: 10
+    sampling_percentage: 100
   attributes:
     actions:
       - key: payment.card_token
