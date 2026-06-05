@@ -14,7 +14,7 @@ This guide covers practical instrumentation patterns for Kinesis Data Streams us
 
 ## The Observability Gap in Kinesis
 
-Kinesis sits between your services as a managed buffer. CloudWatch gives you shard-level metrics like incoming records and iterator age, but it cannot tell you what happened to a specific record. When a producer puts a record into a stream and a Lambda function or KCL consumer processes it, you need distributed tracing to connect those two events into a single story.
+Kinesis sits between your services as a managed buffer. CloudWatch gives you stream-level metrics like incoming records and iterator age, plus optional enhanced shard-level metrics, but it cannot tell you what happened to a specific record. When a producer puts a record into a stream and a Lambda function or KCL consumer processes it, you need distributed tracing to connect those two events into a single story.
 
 ```mermaid
 graph TD
@@ -55,7 +55,9 @@ resource = Resource.create({
 
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+    )
 )
 trace.set_tracer_provider(provider)
 
@@ -71,7 +73,7 @@ The producer wraps each PutRecord call in a span and injects trace context into 
 ```python
 import boto3
 import json
-from opentelemetry.context.propagation import get_global_textmap_propagator
+from opentelemetry.propagate import inject
 
 kinesis_client = boto3.client("kinesis", region_name="us-east-1")
 
@@ -83,13 +85,14 @@ def put_traced_record(stream_name, data, partition_key):
         attributes={
             "messaging.system": "aws_kinesis",
             "messaging.destination.name": stream_name,
-            "messaging.operation": "publish",
-            "messaging.kinesis.partition_key": partition_key,
+            "messaging.operation.name": "PutRecord",
+            "messaging.operation.type": "send",
+            "messaging.aws_kinesis.partition_key": partition_key,
         }
     ) as span:
         # Inject the current trace context into a carrier
         carrier = {}
-        get_global_textmap_propagator().inject(carrier)
+        inject(carrier)
 
         # Wrap the original data with trace context metadata
         envelope = {
@@ -108,8 +111,8 @@ def put_traced_record(stream_name, data, partition_key):
         )
 
         # Capture Kinesis-specific response metadata
-        span.set_attribute("messaging.kinesis.shard_id", response["ShardId"])
-        span.set_attribute("messaging.kinesis.sequence_number", response["SequenceNumber"])
+        span.set_attribute("messaging.destination.partition.id", response["ShardId"])
+        span.set_attribute("messaging.message.id", response["SequenceNumber"])
 
         return response
 ```
@@ -154,11 +157,12 @@ def process_kinesis_records(stream_name, shard_iterator):
             kind=trace.SpanKind.CONSUMER,
             attributes={
                 "messaging.system": "aws_kinesis",
-                "messaging.source.name": stream_name,
-                "messaging.operation": "process",
-                "messaging.kinesis.sequence_number": record["SequenceNumber"],
-                "messaging.kinesis.partition_key": record["PartitionKey"],
-                "messaging.kinesis.approximate_arrival": str(
+                "messaging.destination.name": stream_name,
+                "messaging.operation.name": "process",
+                "messaging.operation.type": "process",
+                "messaging.message.id": record["SequenceNumber"],
+                "messaging.aws_kinesis.partition_key": record["PartitionKey"],
+                "messaging.aws_kinesis.approximate_arrival_timestamp": str(
                     record["ApproximateArrivalTimestamp"]
                 ),
             }
@@ -208,11 +212,13 @@ def lambda_handler(event, lambda_context):
             kind=trace.SpanKind.CONSUMER,
             attributes={
                 "messaging.system": "aws_kinesis",
-                "messaging.operation": "process",
-                "messaging.kinesis.sequence_number": record["kinesis"]["sequenceNumber"],
-                "messaging.kinesis.partition_key": record["kinesis"]["partitionKey"],
-                "faas.trigger": "datasource",
-                "cloud.resource_id": record["eventSourceARN"],
+                "messaging.destination.name": record["eventSourceARN"].split("/")[-1],
+                "messaging.operation.name": "process",
+                "messaging.operation.type": "process",
+                "messaging.message.id": record["kinesis"]["sequenceNumber"],
+                "messaging.aws_kinesis.partition_key": record["kinesis"]["partitionKey"],
+                "messaging.aws_kinesis.stream.arn": record["eventSourceARN"],
+                "faas.trigger": "pubsub",
             }
         ) as span:
             try:
@@ -224,11 +230,11 @@ def lambda_handler(event, lambda_context):
                 raise  # Re-raise to trigger Lambda retry
 ```
 
-The `faas.trigger` attribute follows the OpenTelemetry semantic conventions for serverless functions. Setting it to `datasource` indicates that this invocation was triggered by a data source event rather than an HTTP request. The `cloud.resource_id` records the Kinesis stream ARN for precise identification.
+The `faas.trigger` attribute follows the OpenTelemetry semantic conventions for serverless functions. Setting it to `pubsub` indicates that this invocation was triggered by messages sent to a messaging system rather than an HTTP request. The `messaging.aws_kinesis.stream.arn` attribute records the Kinesis stream ARN for precise identification.
 
-## Collecting Kinesis Shard Metrics
+## Collecting Kinesis Stream Metrics
 
-Beyond traces, you want to monitor shard-level health. The OpenTelemetry Collector can pull CloudWatch metrics for Kinesis and forward them alongside your trace data.
+Beyond traces, you want to monitor stream health. The OpenTelemetry Collector can pull CloudWatch metrics for Kinesis and forward them alongside your trace data.
 
 ```yaml
 # Collector configuration for Kinesis metrics via CloudWatch
@@ -240,25 +246,20 @@ receivers:
   # Pull Kinesis metrics from CloudWatch
   awscloudwatch:
     region: us-east-1
-    poll_interval: 60s
     metrics:
-      named:
-        kinesis_incoming:
-          namespace: AWS/Kinesis
+      collection_interval: 60s
+      period: 60s
+      queries:
+        - namespace: AWS/Kinesis
           metric_name: IncomingRecords
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: StreamName
-              value: "my-event-stream"
-        kinesis_iterator_age:
-          namespace: AWS/Kinesis
+            StreamName: "my-event-stream"
+        - namespace: AWS/Kinesis
           metric_name: GetRecords.IteratorAgeMilliseconds
-          period: 60s
-          statistics: [Maximum]
+          stats: [Maximum]
           dimensions:
-            - name: StreamName
-              value: "my-event-stream"
+            StreamName: "my-event-stream"
 
 processors:
   batch:
@@ -295,6 +296,8 @@ def put_traced_records_batch(stream_name, records):
         attributes={
             "messaging.system": "aws_kinesis",
             "messaging.destination.name": stream_name,
+            "messaging.operation.name": "PutRecords",
+            "messaging.operation.type": "send",
             "messaging.batch.message_count": len(records),
         }
     ) as batch_span:
@@ -305,9 +308,15 @@ def put_traced_records_batch(stream_name, records):
             with tracer.start_as_current_span(
                 f"{stream_name} send",
                 kind=trace.SpanKind.PRODUCER,
+                attributes={
+                    "messaging.system": "aws_kinesis",
+                    "messaging.destination.name": stream_name,
+                    "messaging.operation.name": "PutRecords entry",
+                    "messaging.operation.type": "create",
+                }
             ) as record_span:
                 carrier = {}
-                get_global_textmap_propagator().inject(carrier)
+                inject(carrier)
 
                 envelope = {
                     "data": item["data"],
@@ -330,7 +339,7 @@ def put_traced_records_batch(stream_name, records):
 
         # Check for partial failures
         failed_count = response.get("FailedRecordCount", 0)
-        batch_span.set_attribute("messaging.kinesis.failed_record_count", failed_count)
+        batch_span.set_attribute("messaging.aws_kinesis.failed_record_count", failed_count)
 
         if failed_count > 0:
             batch_span.set_status(
