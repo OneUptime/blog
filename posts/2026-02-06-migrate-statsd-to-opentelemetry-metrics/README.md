@@ -39,21 +39,16 @@ receivers:
       - statsd_type: "timing"
         observer_type: "histogram"
         histogram:
+          max_size: 100
           # Define bucket boundaries for timer histograms
-          explicit:
-            - 10
-            - 25
-            - 50
-            - 100
-            - 250
-            - 500
-            - 1000
-            - 5000
+          explicit_buckets:
+            - matcher_pattern: "request.*"
+              buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5]
 
 exporters:
   # Send metrics to your backend using OTLP
   otlp:
-    endpoint: "http://your-backend:4317"
+    endpoint: "https://your-backend:4317"
     tls:
       insecure: false
 
@@ -89,8 +84,8 @@ Before rewriting your instrumentation, understand how StatsD metric types transl
 
 | StatsD Type | OpenTelemetry Instrument | Notes |
 |-------------|--------------------------|-------|
-| Counter (`c`) | Counter | Both are monotonically increasing. OpenTelemetry counters support floating point values. |
-| Gauge (`g`) | Gauge (UpDownCounter or Gauge callback) | StatsD gauges support increment/decrement. Use UpDownCounter if you need the same behavior. |
+| Counter (`c`) | Counter or UpDownCounter | Use Counter for monotonically increasing values. Use UpDownCounter if your StatsD counter can decrement. |
+| Gauge (`g`) | Gauge callback, Gauge, or UpDownCounter | StatsD gauges can report absolute values or increment/decrement. Use a gauge for current values, or UpDownCounter if you need additive changes. |
 | Timer (`ms`) | Histogram | OpenTelemetry histograms capture value distributions with configurable bucket boundaries. |
 | Set (`s`) | No direct equivalent | Track unique values using custom logic or an attribute on a counter. |
 | Histogram (`h`) | Histogram | Direct mapping in implementations that support StatsD histograms. |
@@ -150,7 +145,7 @@ orders_counter = meter.create_counter(
 request_duration = meter.create_histogram(
     name="request.duration",
     description="Request processing time",
-    unit="ms"
+    unit="s"
 )
 
 # UpDownCounter replaces statsd.gauge() when you need increment/decrement
@@ -163,7 +158,7 @@ queue_depth = meter.create_up_down_counter(
 # Usage in application code
 # Attributes replace StatsD tags with the same key-value semantics
 orders_counter.add(1, {"region": "us-east", "tier": "premium"})
-request_duration.record(elapsed_ms, {"endpoint": "/api/orders"})
+request_duration.record(elapsed_ms / 1000, {"endpoint": "/api/orders"})
 queue_depth.add(delta, {"queue": "orders"})
 ```
 
@@ -219,7 +214,7 @@ const requestCounter = meter.createCounter("api.requests", {
 
 const responseHistogram = meter.createHistogram("api.response_time", {
   description: "API response time distribution",
-  unit: "ms",
+  unit: "s",
 });
 
 const activeConnections = meter.createUpDownCounter("connections.active", {
@@ -229,7 +224,7 @@ const activeConnections = meter.createUpDownCounter("connections.active", {
 
 // Usage with structured attributes instead of tag strings
 requestCounter.add(1, { method: "GET", path: "/users" });
-responseHistogram.record(responseMs, { method: "GET" });
+responseHistogram.record(responseMs / 1000, { method: "GET" });
 activeConnections.add(1);  // connection opened
 activeConnections.add(-1); // connection closed
 ```
@@ -264,7 +259,7 @@ Once all application instrumentation uses native OpenTelemetry, remove the Stats
 
 ## Things to Watch Out For
 
-**Metric naming conventions.** StatsD has no enforced naming convention. OpenTelemetry has semantic conventions that recommend using dot-separated lowercase names with a unit suffix where appropriate. Take the opportunity to clean up metric names during migration.
+**Metric naming conventions.** StatsD has no enforced naming convention. OpenTelemetry has semantic conventions that recommend lowercase names, dot-separated namespaces, and units in instrument metadata rather than metric name suffixes. Take the opportunity to clean up metric names during migration.
 
 **High cardinality attributes.** StatsD tags and OpenTelemetry attributes both let you add dimensions to metrics, but OpenTelemetry makes it easier to accidentally create high-cardinality metric series. Avoid putting user IDs, request IDs, or other unbounded values in metric attributes.
 
