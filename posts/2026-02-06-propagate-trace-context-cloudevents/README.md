@@ -36,6 +36,13 @@ function createOrderEvent(orderData) {
     const carrier = {};
     propagation.inject(context.active(), carrier);
 
+    const tracingAttributes = carrier.traceparent
+      ? {
+          traceparent: carrier.traceparent,
+          ...(carrier.tracestate ? { tracestate: carrier.tracestate } : {}),
+        }
+      : {};
+
     // Create the CloudEvent with trace context as extension attributes
     const event = new CloudEvent({
       type: "com.shop.order.created",
@@ -43,12 +50,11 @@ function createOrderEvent(orderData) {
       datacontenttype: "application/json",
       data: orderData,
       // W3C Trace Context fields as CloudEvents extensions
-      traceparent: carrier.traceparent,
-      tracestate: carrier.tracestate || "",
+      ...tracingAttributes,
     });
 
-    span.setAttribute("cloudevents.id", event.id);
-    span.setAttribute("cloudevents.type", event.type);
+    span.setAttribute("cloudevents.event_id", event.id);
+    span.setAttribute("cloudevents.event_type", event.type);
     span.end();
 
     return event;
@@ -69,7 +75,7 @@ function handleOrderEvent(cloudEvent) {
   // Build a carrier from the CloudEvent's extension attributes
   const carrier = {
     traceparent: cloudEvent.traceparent,
-    tracestate: cloudEvent.tracestate || "",
+    ...(cloudEvent.tracestate ? { tracestate: cloudEvent.tracestate } : {}),
   };
 
   // Extract the trace context from the carrier
@@ -81,9 +87,9 @@ function handleOrderEvent(cloudEvent) {
     {
       kind: SpanKind.CONSUMER,
       attributes: {
-        "cloudevents.id": cloudEvent.id,
-        "cloudevents.type": cloudEvent.type,
-        "cloudevents.source": cloudEvent.source,
+        "cloudevents.event_id": cloudEvent.id,
+        "cloudevents.event_type": cloudEvent.type,
+        "cloudevents.event_source": cloudEvent.source,
       },
     },
     parentContext
@@ -114,7 +120,7 @@ function handleAndForwardEvent(incomingEvent) {
   // Extract trace context from the incoming event
   const carrier = {
     traceparent: incomingEvent.traceparent,
-    tracestate: incomingEvent.tracestate || "",
+    ...(incomingEvent.tracestate ? { tracestate: incomingEvent.tracestate } : {}),
   };
   const parentContext = propagation.extract(context.active(), carrier);
 
@@ -131,12 +137,20 @@ function handleAndForwardEvent(incomingEvent) {
       const newCarrier = {};
       propagation.inject(context.active(), newCarrier);
 
+      const tracingAttributes = newCarrier.traceparent
+        ? {
+            traceparent: newCarrier.traceparent,
+            ...(newCarrier.tracestate
+              ? { tracestate: newCarrier.tracestate }
+              : {}),
+          }
+        : {};
+
       const downstreamEvent = new CloudEvent({
         type: "com.shop.inventory.reserved",
         source: "/inventory/service",
         data: result,
-        traceparent: newCarrier.traceparent,
-        tracestate: newCarrier.tracestate || "",
+        ...tracingAttributes,
       });
 
       publishEvent(downstreamEvent);
@@ -164,7 +178,7 @@ function safeExtractContext(cloudEvent) {
 
   const carrier = {
     traceparent: cloudEvent.traceparent,
-    tracestate: cloudEvent.tracestate || "",
+    ...(cloudEvent.tracestate ? { tracestate: cloudEvent.tracestate } : {}),
   };
 
   return propagation.extract(context.active(), carrier);
@@ -177,7 +191,7 @@ To confirm that your trace context is flowing correctly, check these things in y
 
 1. The trace ID should be the same across the producer and all consumers in the chain.
 2. Each consumer span should appear as a child of the producer span.
-3. The CloudEvents attributes (`cloudevents.id`, `cloudevents.type`, `cloudevents.source`) should be visible on each span.
+3. The CloudEvents attributes (`cloudevents.event_id`, `cloudevents.event_type`, `cloudevents.event_source`) should be visible on each span.
 
 ## Common Pitfalls
 
