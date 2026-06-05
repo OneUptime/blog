@@ -111,7 +111,7 @@ processors:
     send_batch_size: 256
 
 exporters:
-  # Forward everything to the gateway cluster via load balancer
+  # Forward everything to the gateway cluster
   otlp:
     endpoint: "otel-gateway.observability.svc:4317"
     tls:
@@ -135,7 +135,7 @@ service:
 
 Notice that the agent accepts both OTLP and legacy formats (Jaeger, StatsD). This is essential during migration because services at different stages will speak different protocols. The agent normalizes everything to OTLP before forwarding to the gateway.
 
-The gateway cluster receives OTLP from all agents and handles heavier processing: tail-based sampling (always keep errors and slow traces, sample a percentage of normal traffic), memory limiting, batching, and export to your trace, metrics, and log backends. Separate the gateway's pipelines by signal type so you can route traces, metrics, and logs to different backend systems.
+The gateway cluster receives OTLP from all agents and handles heavier processing: tail-based sampling (always keep errors and slow traces, sample a percentage of normal traffic), memory limiting, batching, and export to your trace, metrics, and log backends. If you run tail sampling across multiple gateway instances, make sure all spans for the same trace reach the same gateway instance, for example by using the Collector load-balancing exporter with `routing_key: traceID` between the agent tier and the gateway tier. Separate the gateway's pipelines by signal type so you can route traces, metrics, and logs to different backend systems.
 
 ## Phase 2: Create a Migration SDK Package (Weeks 4 to 7)
 
@@ -166,8 +166,8 @@ public class OtelBootstrap {
                     .setEndpoint("http://localhost:4317")
                     .build()
                 ).build())
-            // Use parent-based sampling so the gateway's tail sampling works
-            .setSampler(Sampler.parentBased(Sampler.alwaysOn()))
+            // Export all local spans so the gateway's tail sampler can decide
+            .setSampler(Sampler.alwaysOn())
             .build();
 
         // Configure metrics export
@@ -250,7 +250,7 @@ graph LR
 
 ### Per-Service Migration Checklist
 
-Each service migration follows the same four stages: preparation (add SDK dependency, set up feature flag), implementation (initialize OTel SDK, configure auto-instrumentation, migrate manual spans and metrics, set up log bridge), validation (verify traces appear with correct service name, metrics match legacy pipeline within 5%, logs contain trace IDs, no increase in P99 latency or error rate), and cleanup (remove legacy libraries, remove old agent sidecars, remove feature flag).
+Each service migration follows the same four stages: preparation (add SDK dependency, set up feature flag), implementation (initialize OTel SDK, configure auto-instrumentation, migrate manual spans and metrics, set up log bridge), validation (verify traces appear with correct service name, metrics match legacy pipeline within 5%, logs contain trace IDs, no increase in P99 latency or error rate), and cleanup (remove legacy libraries, remove legacy agent sidecars, remove feature flag).
 
 ## Handling Context Propagation During Mixed-State Migration
 
@@ -271,11 +271,11 @@ TextMapPropagator multiPropagator = TextMapPropagator.composite(
 );
 ```
 
-Configure this at the collector agent level too, so agents extract and inject context in all supported header formats simultaneously.
+Configure this in each service's OpenTelemetry SDK or auto-instrumentation settings. Context extraction and injection happens in application instrumentation, while the Collector receives and exports telemetry data.
 
 ## Monitoring the Migration Itself
 
-Build a migration dashboard that tracks progress. The collector exposes `otelcol_receiver_accepted_spans` metrics broken down by receiver. Count distinct `service_name` labels per receiver to see how many services send via OTLP (migrated) vs Jaeger (not yet migrated). The ratio gives you a real-time migration percentage.
+Build a migration dashboard that tracks progress. The collector exposes `otelcol_receiver_accepted_spans` metrics broken down by receiver, which you can use to compare traffic volume arriving via OTLP versus Jaeger. To count migrated services, combine those receiver metrics with backend queries over the `service.name` resource attribute or with your migration inventory.
 
 ## Rollback Strategy
 
