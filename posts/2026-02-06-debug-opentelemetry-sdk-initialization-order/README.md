@@ -14,7 +14,7 @@ This post explains why initialization order matters, what the correct sequence i
 
 ## Why Order Matters
 
-The OpenTelemetry SDK has a layered architecture. At the bottom is the API layer, which your application code and instrumentation libraries call. On top of that is the SDK layer, which implements the actual tracing, metrics, and logging logic. The SDK layer must be initialized before any instrumentation code runs, or the API calls will use a no-op implementation that silently discards everything.
+The OpenTelemetry SDK has a layered architecture. At the bottom is the API layer, which your application code and instrumentation libraries call. On top of that is the SDK layer, which implements the actual tracing, metrics, and logging logic. The SDK layer must be initialized before spans are created, or those early API calls can use a no-op implementation that silently discards them.
 
 ```mermaid
 graph TD
@@ -55,7 +55,7 @@ def init_telemetry():
     resource = Resource.create({
         "service.name": "payment-service",
         "service.version": "1.4.2",
-        "deployment.environment": "production"
+        "deployment.environment.name": "production"
     })
 
     # Step 2: Create the exporter (where to send data)
@@ -112,9 +112,10 @@ The critical point is that `init_telemetry()` must run before you import any mod
 The most common mistake is initializing the provider too late, after instrumentation or application code has already started:
 
 ```python
-# BUG: Application starts before the provider is registered
+# BUG: Startup work creates spans before the provider is registered
 from flask import Flask
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry import trace
 
 app = Flask(__name__)
 
@@ -123,15 +124,17 @@ app = Flask(__name__)
 def process_payment():
     return "ok"
 
-# FlaskInstrumentor patches Flask, but the global provider is still no-op
-FlaskInstrumentor().instrument_app(app)
+# This startup span is created while the global provider is still no-op
+tracer = trace.get_tracer("startup")
+with tracer.start_as_current_span("warm-cache"):
+    warm_cache()
 
-# NOW we set up the provider, but it is too late
-# FlaskInstrumentor already grabbed a reference to the no-op provider
-from opentelemetry import trace
+# NOW we set up the provider, but it is too late for the startup span
 from opentelemetry.sdk.trace import TracerProvider
 provider = TracerProvider()
 trace.set_tracer_provider(provider)
+
+FlaskInstrumentor().instrument_app(app)
 ```
 
 ```python
@@ -162,47 +165,46 @@ def process_payment():
     return "ok"
 ```
 
-## Common Mistake 2: Module-Level Tracer Acquisition
+## Common Mistake 2: Module-Level Span Creation
 
-Another frequent issue is acquiring a tracer at module level before the provider is set up:
+Another frequent issue is starting spans at module level before the provider is set up:
 
 ```python
-# utils.py: Tracer acquired at import time
+# utils.py: Span started at import time
 from opentelemetry import trace
 
+tracer = trace.get_tracer("payment-service")
+
 # This runs when the module is imported
-# If the provider is not set up yet, this gets a no-op tracer
+# If the provider is not set up yet, this span is no-op and is lost
+with tracer.start_as_current_span("load-payment-rules") as span:
+    span.set_attribute("rules.loaded", True)
+    PAYMENT_RULES = load_rules()
+
+def process_payment(amount):
+    with tracer.start_as_current_span("process-payment") as span:
+        span.set_attribute("payment.amount", amount)
+        return do_payment(amount)
+```
+
+This is tricky because it depends on import order. If `utils.py` gets imported before your initialization code runs, the import-time span is created before a real provider exists.
+
+There are two fixes. The first is to move span creation into runtime code:
+
+```python
+# utils.py: FIX option 1 - No spans at import time
+from opentelemetry import trace
+
 tracer = trace.get_tracer("payment-service")
 
 def process_payment(amount):
-    # This span will be a no-op if the module was imported
-    # before the provider was registered
+    # Span is created when the function runs, not when the module loads
     with tracer.start_as_current_span("process-payment") as span:
         span.set_attribute("payment.amount", amount)
         return do_payment(amount)
 ```
 
-This is tricky because it depends on import order. If `utils.py` gets imported before your initialization code runs, the tracer is a no-op.
-
-There are two fixes. The first is to make the tracer lazy:
-
-```python
-# utils.py: FIX option 1 - Lazy tracer acquisition
-from opentelemetry import trace
-
-def get_tracer():
-    # Get the tracer at call time, not import time
-    return trace.get_tracer("payment-service")
-
-def process_payment(amount):
-    # Tracer is acquired when the function runs, not when the module loads
-    tracer = get_tracer()
-    with tracer.start_as_current_span("process-payment") as span:
-        span.set_attribute("payment.amount", amount)
-        return do_payment(amount)
-```
-
-The second fix is to make sure your initialization code runs before any imports that acquire tracers:
+The second fix is to make sure your initialization code runs before any imports that create spans:
 
 ```python
 # main.py: FIX option 2 - Ensure init happens before imports
@@ -211,13 +213,13 @@ from tracing_setup import init_telemetry
 # Initialize FIRST
 init_telemetry()
 
-# Now it is safe to import modules that acquire tracers at module level
+# Now it is safe to import modules that create startup spans
 from utils import process_payment
 ```
 
 ## Common Mistake 3: Multiple Provider Registrations
 
-Setting the global provider more than once causes confusing behavior. Only the last registration takes effect, but earlier instrumentations might have cached references to the previous provider:
+Setting the global provider more than once causes confusing behavior. In Python, the global tracer provider can only be set once; later calls log a warning and are ignored:
 
 ```python
 # BUG: Two different parts of the code both set the provider
@@ -229,8 +231,8 @@ trace.set_tracer_provider(provider1)
 provider2 = TracerProvider(resource=Resource.create({"service.name": "svc-b"}))
 trace.set_tracer_provider(provider2)
 
-# Now some spans go to provider1 and some to provider2
-# depending on when each component acquired its tracer
+# This logs: "Overriding of current TracerProvider is not allowed"
+# Spans continue to use provider1, not provider2
 ```
 
 The fix is to have a single initialization point:
@@ -244,7 +246,7 @@ def init_telemetry():
     global _provider
     if _provider is not None:
         # Already initialized, skip
-        return
+        return _provider
 
     _provider = TracerProvider(
         resource=Resource.create({"service.name": "payment-service"})
@@ -261,37 +263,26 @@ Node.js has its own set of initialization order challenges, particularly with ES
 // tracing.js: Must be loaded BEFORE the application
 // Use --require flag: node --require ./tracing.js app.js
 
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 
-// Create and register the provider BEFORE any other imports
-const provider = new NodeTracerProvider({
-    resource: new Resource({
+// Create and start the SDK BEFORE any other imports
+const sdk = new NodeSDK({
+    resource: resourceFromAttributes({
         'service.name': 'payment-service',
         'service.version': '1.4.2'
-    })
-});
-
-provider.addSpanProcessor(
-    new BatchSpanProcessor(
-        new OTLPTraceExporter({ url: 'http://collector:4317' })
-    )
-);
-
-provider.register();
-
-// Register instrumentations AFTER the provider
-registerInstrumentations({
+    }),
+    traceExporter: new OTLPTraceExporter({ url: 'http://collector:4317' }),
     instrumentations: [
         new HttpInstrumentation(),
         new ExpressInstrumentation()
     ]
 });
+
+sdk.start();
 ```
 
 ```bash
@@ -310,24 +301,18 @@ For ES modules (import syntax), you need a different approach:
 // instrumentation.mjs: Use the --import flag for ES modules
 // node --import ./instrumentation.mjs app.mjs
 
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
-const provider = new NodeTracerProvider({
-    resource: new Resource({
+const sdk = new NodeSDK({
+    resource: resourceFromAttributes({
         'service.name': 'payment-service'
-    })
+    }),
+    traceExporter: new OTLPTraceExporter({ url: 'http://collector:4317' })
 });
 
-provider.addSpanProcessor(
-    new BatchSpanProcessor(
-        new OTLPTraceExporter({ url: 'http://collector:4317' })
-    )
-);
-
-provider.register();
+sdk.start();
 ```
 
 ```bash
@@ -363,8 +348,8 @@ public class Application {
     private static void initTelemetry() {
         Resource resource = Resource.getDefault()
             .merge(Resource.create(Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "payment-service",
-                ResourceAttributes.SERVICE_VERSION, "1.4.2"
+                AttributeKey.stringKey("service.name"), "payment-service",
+                AttributeKey.stringKey("service.version"), "1.4.2"
             )));
 
         SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
@@ -376,7 +361,7 @@ public class Application {
             ).build())
             .build();
 
-        OpenTelemetrySdk sdk = OpenTelemetrySdk.builder()
+        OpenTelemetrySdk.builder()
             .setTracerProvider(tracerProvider)
             .buildAndRegisterGlobal();
     }
@@ -474,25 +459,22 @@ Next.js has an `instrumentation.ts` hook specifically designed for this:
 export async function register() {
     if (process.env.NEXT_RUNTIME === 'nodejs') {
         // Dynamic import to avoid loading in edge runtime
-        const { NodeTracerProvider } = await import('@opentelemetry/sdk-trace-node');
-        const { BatchSpanProcessor } = await import('@opentelemetry/sdk-trace-base');
+        const { NodeSDK } = await import('@opentelemetry/sdk-node');
         const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-grpc');
+        const { resourceFromAttributes } = await import('@opentelemetry/resources');
 
-        const provider = new NodeTracerProvider({
-            resource: new Resource({
+        const sdk = new NodeSDK({
+            resource: resourceFromAttributes({
                 'service.name': 'my-nextjs-app'
-            })
+            }),
+            traceExporter: new OTLPTraceExporter()
         });
 
-        provider.addSpanProcessor(
-            new BatchSpanProcessor(new OTLPTraceExporter())
-        );
-
-        provider.register();
+        sdk.start();
     }
 }
 ```
 
 ## Conclusion
 
-OpenTelemetry SDK initialization order issues cause silent data loss, which makes them particularly frustrating to debug. The core rule is simple: set up and register the global tracer provider before any instrumentation code runs and before any application code that creates spans. Avoid acquiring tracers at module-level import time, and if you must, make sure the provider is registered before those modules are imported. When debugging, check the type of the registered provider, send a test span early in startup, and use debug logging to trace the initialization sequence. Every language and framework has slightly different patterns, but the fundamental ordering requirement is the same across all of them.
+OpenTelemetry SDK initialization order issues cause silent data loss, which makes them particularly frustrating to debug. The core rule is simple: set up and register the global tracer provider before any instrumentation code runs and before any application code that creates spans. Avoid creating spans at module-level import time, and if you must, make sure the provider is registered before those modules are imported. When debugging, check the type of the registered provider, send a test span early in startup, and use debug logging to trace the initialization sequence. Every language and framework has slightly different patterns, but the fundamental ordering requirement is the same across all of them.
