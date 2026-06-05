@@ -10,15 +10,15 @@ Product images are the heaviest assets on most e-commerce pages. A product listi
 
 ## Setting Up the Browser SDK
 
-First, initialize the OpenTelemetry Web SDK with the resource detection and metric exporter configured for your backend.
+First, initialize the OpenTelemetry Web SDK with resource attributes and the metric exporter configured for your backend.
 
 ```javascript
 // otel-init.js
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': 'product-catalog-frontend',
   'service.version': '2.4.1',
   'deployment.environment': 'production'
@@ -43,7 +43,7 @@ export const meter = meterProvider.getMeter('product.images');
 
 ## Instrumenting Image Load Performance
 
-Create a reusable observer that hooks into the browser's PerformanceObserver API to capture image load timing from the Resource Timing API.
+Create a reusable observer that hooks into the browser's PerformanceObserver API to capture image load timing from the Resource Timing API. For cross-origin CDN images, configure the CDN to send `Timing-Allow-Origin` so the browser exposes detailed timing and size fields. To measure CDN cache status from the browser, have the CDN expose it with `Server-Timing`, for example `Server-Timing: cdn-cache;desc=HIT`.
 
 ```javascript
 // image-metrics.js
@@ -59,7 +59,7 @@ const imageLoadDuration = meter.createHistogram('image.load.duration', {
 });
 
 // Counter for image load failures
-const imageLoadErrors = meter.createCounter('image.load.errors', {
+export const imageLoadErrors = meter.createCounter('image.load.errors', {
   description: 'Number of product image load failures'
 });
 
@@ -82,8 +82,8 @@ function observeImagePerformance() {
       const attributes = {
         'cdn.edge': cdnEdge,
         'image.type': imageType, // thumbnail, gallery, zoom
-        'image.format': entry.name.split('.').pop(),
-        'cache.hit': entry.transferSize < entry.decodedBodySize * 0.1
+        'image.format': extractImageFormat(entry.name),
+        'cdn.cache_status': extractCdnCacheStatus(entry)
       };
 
       // Record load duration (responseEnd - startTime)
@@ -106,6 +106,20 @@ function extractCdnEdge(url) {
   return match ? match[1] : 'unknown';
 }
 
+function extractCdnCacheStatus(entry) {
+  const cacheMetric = entry.serverTiming?.find(metric => metric.name === 'cdn-cache');
+  return cacheMetric?.description || 'unknown';
+}
+
+function extractImageFormat(url) {
+  try {
+    const extension = new URL(url).pathname.split('.').pop();
+    return extension || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function extractImageType(url) {
   if (url.includes('/thumb/')) return 'thumbnail';
   if (url.includes('/gallery/')) return 'gallery';
@@ -123,6 +137,7 @@ Lazy loading means images only start fetching when they approach the viewport. Y
 ```javascript
 // lazy-load-metrics.js
 import { meter } from './otel-init.js';
+import { imageLoadErrors } from './image-metrics.js';
 
 const lazyLoadLatency = meter.createHistogram('image.lazy_load.latency', {
   description: 'Time from image entering viewport to fully loaded',
@@ -164,16 +179,17 @@ class ProductImageObserver {
       });
 
       // Listen for the image to finish loading
-      if (img.complete) {
+      if (img.complete && img.naturalWidth > 0) {
         this.recordLatency(img, visibleTime);
+      } else if (img.complete) {
+        this.recordError(img);
       } else {
         img.addEventListener('load', () => {
           this.recordLatency(img, visibleTime);
         }, { once: true });
 
         img.addEventListener('error', () => {
-          this.pendingImages.delete(img);
-          // Track the error through the image load errors counter
+          this.recordError(img);
         }, { once: true });
       }
 
@@ -190,6 +206,16 @@ class ProductImageObserver {
       'page.type': this.getPageType(),
       'image.type': img.dataset.imageType || 'unknown',
       'image.was_cached': latency < 50 // Very fast loads are likely cached
+    });
+
+    this.pendingImages.delete(img);
+  }
+
+  recordError(img) {
+    imageLoadErrors.add(1, {
+      'page.type': this.getPageType(),
+      'image.type': img.dataset.imageType || 'unknown',
+      'image.position': img.dataset.position || 'unknown'
     });
 
     this.pendingImages.delete(img);
@@ -216,7 +242,7 @@ With these metrics flowing, set up alerts for the conditions that actually impac
 
 - **p95 lazy load latency above 1 second on PLP**: Users scrolling through product listings will see blank tiles, which kills browsing engagement.
 - **Image error rate above 2%**: Broken product images are one of the fastest ways to lose trust.
-- **CDN cache hit rate dropping below 80%**: This usually means a deployment invalidated the cache or a CDN configuration changed unexpectedly.
+- **CDN cache hit rate dropping below 80%**: Use the `cdn.cache_status` value exposed through `Server-Timing`. A sudden drop usually means a deployment invalidated the cache or a CDN configuration changed unexpectedly.
 - **p99 image load duration above 3 seconds for any single CDN edge**: This isolates regional CDN issues before they show up in aggregate metrics.
 
 The combination of Resource Timing API data and Intersection Observer metrics gives you a complete picture of the image loading experience from the user's perspective, not just what the CDN reports in its own logs.
