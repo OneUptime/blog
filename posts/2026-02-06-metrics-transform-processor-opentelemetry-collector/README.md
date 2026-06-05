@@ -6,17 +6,17 @@ Tags: OpenTelemetry, Collector, Processor, Metric, Data Transformation, Observab
 
 Description: Learn how to configure the metrics transform processor in OpenTelemetry Collector to rename metrics, modify labels, aggregate data points, and transform metric types for standardization.
 
-The metrics transform processor allows you to modify metrics as they flow through the collector. You can rename metrics, add or remove labels, change metric types, apply mathematical operations, and aggregate data points. This is essential when integrating metrics from different sources that use inconsistent naming conventions or when you need to adapt metrics to match your backend's requirements.
+The metrics transform processor allows you to modify metrics as they flow through the collector. You can rename metrics, add or rename labels, update label values, scale values, and aggregate data points. This is essential when integrating metrics from different sources that use inconsistent naming conventions or when you need to adapt metrics to match your backend's requirements.
 
 ## Why Metrics Transformation Matters
 
-Different systems produce metrics with different naming conventions. Prometheus uses underscores (`http_requests_total`), while some systems use dots (`http.requests.total`). Labels might be named differently (`service` vs `service_name`), or you might need to convert between metric types (gauge to counter, cumulative to delta). The metrics transform processor standardizes these differences before export.
+Different systems produce metrics with different naming conventions. Prometheus uses underscores (`http_requests_total`), while some systems use dots (`http.requests.total`). Labels might be named differently (`service` vs `service_name`), or you might need to scale metric values. The metrics transform processor standardizes these differences before export.
 
 For more context on metrics in OpenTelemetry, see our guide on [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
 
 ## How Metrics Transform Works
 
-The processor applies transformations sequentially to incoming metrics. Each transformation can match metrics by name (exact or regex), then apply operations like renaming, label manipulation, aggregation, or type conversion.
+The processor applies transformations sequentially to incoming metrics. Each transformation can match metrics by name (exact or regex), then apply operations like renaming, label manipulation, aggregation, or scalar value scaling.
 
 ```mermaid
 graph LR
@@ -44,7 +44,7 @@ receivers:
 processors:
   # Metrics transform processor modifies metrics
   # Transformations are applied in order
-  metricstransform:
+  metrics_transform:
     transforms:
       # Rename a single metric
       - include: http_request_duration_seconds
@@ -61,7 +61,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [metricstransform]
+      processors: [metrics_transform]
       exporters: [otlp]
 ```
 
@@ -73,7 +73,7 @@ Match metrics by exact name:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Match exact metric name
       - include: http_requests_total
@@ -92,28 +92,28 @@ Match multiple metrics with regular expressions:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Match all HTTP metrics
-      # ^http_ matches any metric starting with "http_"
-      - include: ^http_.*
+      # ^http_(.*)$ matches any metric starting with "http_"
+      - include: ^http_(.*)$$
         match_type: regexp
         action: update
         # Use capture groups in new_name
-        # $$1 refers to first capture group
-        new_name: http.$$1
+        # $${1} refers to first capture group
+        new_name: http.$${1}
 
       # Match all metrics ending with _total
       - include: ^(.*)_total$$
         match_type: regexp
         action: update
-        new_name: $$1.count
+        new_name: $${1}.count
 
       # Match specific pattern
       - include: ^process_(.*)_bytes$$
         match_type: regexp
         action: update
-        new_name: process.$$1.bytes
+        new_name: process.$${1}.bytes
 ```
 
 ### Strict Matching
@@ -122,7 +122,7 @@ Control whether to match only exact metric names:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Strict matching (default)
       # Only matches if name is exactly "http_requests_total"
@@ -133,10 +133,10 @@ processors:
 
       # Regexp matching
       # Matches any metric with "http" in the name
-      - include: .*http.*
+      - include: ^(.*http.*)$$
         match_type: regexp
         action: update
-        new_name: http.$$1
+        new_name: http.$${1}
 ```
 
 ## Label Operations
@@ -147,7 +147,7 @@ Add new labels to metrics:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: cpu_usage_percent
         action: update
@@ -172,7 +172,7 @@ Modify existing label values:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
@@ -198,40 +198,42 @@ Change label names:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
         operations:
           # Rename label from "service" to "service_name"
-          - action: rename_label
+          - action: update_label
             label: service
             new_label: service_name
 
           # Rename "status" to "http_status"
-          - action: rename_label
+          - action: update_label
             label: status
             new_label: http_status
 ```
 
-### Deleting Labels
+### Deleting Data Points by Label Value
 
-Remove labels from metrics:
+Delete data points that have a specific label value:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
         operations:
-          # Delete high-cardinality label
+          # Delete data points for one user ID
           - action: delete_label_value
             label: user_id
+            label_value: test-user
 
-          # Delete internal label
+          # Delete internal test traffic
           - action: delete_label_value
             label: internal_tracking_id
+            label_value: synthetic
 ```
 
 ### Aggregating by Labels
@@ -240,7 +242,7 @@ Combine data points by aggregating across labels:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
@@ -263,11 +265,11 @@ processors:
 
 ### Label Value Mapping
 
-Map label values using regex:
+Map label values using exact matches:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
@@ -276,35 +278,39 @@ processors:
           - action: update_label
             label: status
             value_actions:
-              # Map 2xx to success
-              - value: ^2.*
+              # Map common status codes to classes
+              - value: "200"
                 new_value: success
-              # Map 4xx to client_error
-              - value: ^4.*
+              - value: "201"
+                new_value: success
+              - value: "400"
                 new_value: client_error
-              # Map 5xx to server_error
-              - value: ^5.*
+              - value: "404"
+                new_value: client_error
+              - value: "500"
+                new_value: server_error
+              - value: "503"
                 new_value: server_error
 ```
 
-## Metric Type Conversion
+## Scalar Data Type Conversion
 
-### Converting Gauge to Sum
+### Toggling Integer and Double Data Points
 
-Convert gauge metrics to cumulative sums:
+Toggle scalar metric data points between integer and double values:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
-      # Convert gauge to cumulative sum
+      # Toggle scalar datapoints between int64 and double
       - include: active_connections
         action: update
         operations:
           - action: toggle_scalar_data_type
 ```
 
-Note: The metrics transform processor has limited type conversion capabilities. For complex conversions, use the cumulative to delta processor or metrics generation processor.
+Note: This operation does not convert a gauge into a sum or change cumulative and delta temporality. For temporality conversion, use the cumulative to delta processor.
 
 ## Aggregating Metrics
 
@@ -314,7 +320,7 @@ Aggregate data points while keeping specific labels:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Aggregate HTTP requests by method and status only
       # Removes path, user_agent, and other labels
@@ -342,6 +348,10 @@ Supported aggregation types:
 - `mean` - Calculate average
 - `min` - Keep minimum value
 - `max` - Keep maximum value
+- `count` - Count values
+- `median` - Calculate median value
+
+Only `sum` is supported for histogram and exponential histogram metrics.
 
 ## Combining Multiple Operations
 
@@ -349,7 +359,7 @@ Apply multiple operations to a single metric:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Transform HTTP request metrics comprehensively
       - include: http_server_duration_milliseconds
@@ -371,15 +381,12 @@ processors:
                 new_value: post
 
           # Rename route label
-          - action: rename_label
+          - action: update_label
             label: route
             new_label: http.route
 
-          # Remove high-cardinality label
-          - action: delete_label_value
-            label: client_ip
-
-          # Aggregate by important dimensions only
+          # Aggregate by important dimensions only.
+          # Labels not listed here, such as client_ip, are aggregated away.
           - action: aggregate_labels
             label_set: [method, http.route, status]
             aggregation_type: mean
@@ -389,40 +396,21 @@ processors:
 
 ### Include and Exclude Patterns
 
-Use multiple transforms to filter metrics:
+Use the filter processor to drop metrics or data points:
 
 ```yaml
 processors:
-  metricstransform:
-    transforms:
-      # Keep only production metrics
-      - include: .*
-        match_type: regexp
-        action: update
-        operations:
-          - action: update_label
-            label: environment
-            value_actions:
-              # Drop non-production metrics
-              - value: development
-                action: drop
-              - value: staging
-                action: drop
-
-      # Keep only HTTP and database metrics
-      - include: ^(http|db)_.*
-        match_type: regexp
-        action: update
-
-  # Use filter processor for more complex filtering
   filter:
+    error_mode: ignore
     metrics:
-      # Exclude internal metrics
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ^internal_.*
-          - ^debug_.*
+      # Drop internal metrics by name
+      metric:
+        - 'IsMatch(name, "^internal_.*")'
+        - 'IsMatch(name, "^debug_.*")'
+      # Drop non-production data points
+      datapoint:
+        - 'attributes["environment"] == "development"'
+        - 'attributes["environment"] == "staging"'
 ```
 
 ## Production Configuration
@@ -453,10 +441,10 @@ processors:
     send_batch_size: 1024
 
   # Transform metrics for standardization
-  metricstransform:
+  metrics_transform:
     transforms:
       # Normalize HTTP metrics from Prometheus format
-      - include: ^http_request_duration_seconds.*
+      - include: ^http_request_duration_seconds.*$$
         match_type: regexp
         action: update
         new_name: http.server.duration
@@ -464,12 +452,6 @@ processors:
           - action: add_label
             new_label: unit
             new_value: seconds
-
-          - action: update_label
-            label: method
-            value_actions:
-              - value: ^(.*)$$
-                new_value: $$1
 
           - action: aggregate_labels
             label_set: [method, status, service]
@@ -479,13 +461,13 @@ processors:
       - include: ^(.*)_total$$
         match_type: regexp
         action: update
-        new_name: $$1.count
+        new_name: $${1}.count
 
       # Convert memory metrics
-      - include: ^memory_.*_bytes$$
+      - include: ^memory_(.*)_bytes$$
         match_type: regexp
         action: update
-        new_name: memory.$$1.bytes
+        new_name: memory.$${1}.bytes
         operations:
           - action: add_label
             new_label: unit
@@ -497,7 +479,7 @@ processors:
         action: update
         operations:
           - action: add_label
-            new_label: deployment.environment
+            new_label: deployment.environment.name
             new_value: ${ENVIRONMENT:production}
 
       # Normalize status codes
@@ -508,26 +490,20 @@ processors:
           - action: update_label
             label: status_code
             value_actions:
-              - value: ^2\d{2}$$
+              - value: "200"
                 new_value: 2xx
-              - value: ^3\d{2}$$
+              - value: "201"
+                new_value: 2xx
+              - value: "302"
                 new_value: 3xx
-              - value: ^4\d{2}$$
+              - value: "400"
                 new_value: 4xx
-              - value: ^5\d{2}$$
+              - value: "404"
+                new_value: 4xx
+              - value: "500"
                 new_value: 5xx
-
-      # Remove sensitive labels
-      - include: .*
-        match_type: regexp
-        action: update
-        operations:
-          - action: delete_label_value
-            label: api_key
-          - action: delete_label_value
-            label: token
-          - action: delete_label_value
-            label: password
+              - value: "503"
+                new_value: 5xx
 
   # Add resource attributes
   resource:
@@ -538,6 +514,16 @@ processors:
       - key: service.version
         value: ${SERVICE_VERSION}
         action: insert
+
+  # Remove sensitive metric attributes
+  attributes/delete_sensitive:
+    actions:
+      - key: api_key
+        action: delete
+      - key: token
+        action: delete
+      - key: password
+        action: delete
 
 exporters:
   otlp:
@@ -557,7 +543,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp, prometheus]
-      processors: [batch, metricstransform, resource]
+      processors: [batch, metrics_transform, attributes/delete_sensitive, resource]
       exporters: [otlp]
 
   # Monitor transform performance
@@ -580,7 +566,7 @@ When collecting from multiple sources with different conventions:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Standardize Prometheus metrics to OTel semantic conventions
       - include: ^http_request_duration_seconds$
@@ -611,10 +597,10 @@ processors:
         action: update
         new_name: db.client.operation.duration
         operations:
-          - action: rename_label
+          - action: update_label
             label: query_type
             new_label: db.operation
-          - action: rename_label
+          - action: update_label
             label: db
             new_label: db.name
 ```
@@ -625,39 +611,36 @@ Control metric cardinality to reduce storage costs:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
       # Reduce cardinality of HTTP metrics
       - include: http.server.request.duration
         action: update
         operations:
-          # Remove high-cardinality path label
-          - action: delete_label_value
-            label: http.target
-
           # Keep only route template
           # This requires the route to already be a template (e.g., /users/:id)
 
-          # Aggregate status codes into classes
+          # Map common status codes into classes
           - action: update_label
             label: http.status_code
             value_actions:
-              - value: ^2\d{2}$$
+              - value: "200"
                 new_value: 2xx
-              - value: ^3\d{2}$$
+              - value: "201"
+                new_value: 2xx
+              - value: "302"
                 new_value: 3xx
-              - value: ^4\d{2}$$
+              - value: "400"
                 new_value: 4xx
-              - value: ^5\d{2}$$
+              - value: "404"
+                new_value: 4xx
+              - value: "500"
+                new_value: 5xx
+              - value: "503"
                 new_value: 5xx
 
-          # Remove user-specific labels
-          - action: delete_label_value
-            label: user_id
-          - action: delete_label_value
-            label: session_id
-
           # Aggregate by remaining labels
+          # Labels not listed here, such as http.target, user_id, and session_id, are aggregated away.
           - action: aggregate_labels
             label_set: [method, http.route, http.status_code, service]
             aggregation_type: mean
@@ -669,19 +652,18 @@ Convert metric units using the transform processor:
 
 ```yaml
 processors:
-  metricstransform:
+  metrics_transform:
     transforms:
-      # Note: metrics transform doesn't support mathematical operations
-      # Use metrics generation processor for unit conversion
-      # This example shows labeling units
-
       - include: response_time_ms
         action: update
         new_name: http.server.request.duration
         operations:
+          # Convert milliseconds to seconds
+          - action: experimental_scale_value
+            experimental_scale: 0.001
           - action: add_label
             new_label: unit
-            new_value: ms
+            new_value: s
 
       - include: response_time_seconds
         action: update
@@ -695,12 +677,15 @@ processors:
         action: update
         new_name: system.memory.usage
         operations:
+          # Convert kilobytes to bytes
+          - action: experimental_scale_value
+            experimental_scale: 1024
           - action: add_label
             new_label: unit
-            new_value: kb
+            new_value: By
 ```
 
-For actual unit conversion (e.g., milliseconds to seconds), use a different processor or handle it at the application level.
+The scale operation is experimental, so verify behavior with your Collector version before relying on it in production.
 
 ## Troubleshooting
 
@@ -722,7 +707,7 @@ For actual unit conversion (e.g., milliseconds to seconds), use a different proc
 **Solutions**:
 - Verify label exists on metric
 - Check label name spelling (case-sensitive)
-- Ensure `rename_label` operation is configured correctly
+- Ensure `update_label` with `new_label` is configured correctly
 - Confirm metric matches the `include` pattern
 
 ### High CPU Usage
@@ -767,11 +752,12 @@ Optimize by:
 |-----------|---------|---------------|
 | **update** | Rename metric | new_name |
 | **add_label** | Add new label | new_label, new_value |
-| **update_label** | Change label value | label, value_actions |
-| **rename_label** | Rename label | label, new_label |
-| **delete_label_value** | Remove label | label |
+| **update_label** | Rename a label or change label values | label, new_label, value_actions |
+| **delete_label_value** | Delete data points with a matching label value | label, label_value |
 | **aggregate_labels** | Aggregate data points | label_set, aggregation_type |
-| **toggle_scalar_data_type** | Convert type | (no params) |
+| **aggregate_label_values** | Aggregate selected values of one label | label, aggregated_values, new_value, aggregation_type |
+| **experimental_scale_value** | Scale metric values | experimental_scale |
+| **toggle_scalar_data_type** | Toggle scalar datapoints between int64 and double | (no params) |
 
 The metrics transform processor provides powerful capabilities for standardizing, enriching, and optimizing metrics as they flow through the collector. By renaming metrics, normalizing labels, and aggregating data points, you can ensure consistent metric formats across different sources and reduce storage costs.
 
