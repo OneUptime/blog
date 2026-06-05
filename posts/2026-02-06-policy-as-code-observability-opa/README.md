@@ -28,24 +28,23 @@ Create Rego policies that validate Kubernetes manifests and Collector configurat
 package observability.kubernetes
 
 # Deny deployments without an OTel collector sidecar or env var pointing to one
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     not has_collector_sidecar(input)
     not has_collector_endpoint_env(input)
     msg := sprintf(
-        "Deployment '%s' in namespace '%s' must have an OTel Collector "
-        "sidecar or OTEL_EXPORTER_OTLP_ENDPOINT environment variable",
+        "Deployment '%s' in namespace '%s' must have an OTel Collector sidecar or OTEL_EXPORTER_OTLP_ENDPOINT environment variable",
         [input.metadata.name, input.metadata.namespace]
     )
 }
 
-has_collector_sidecar(deployment) {
+has_collector_sidecar(deployment) if {
     some i
     container := deployment.spec.template.spec.containers[i]
     contains(container.image, "opentelemetry-collector")
 }
 
-has_collector_endpoint_env(deployment) {
+has_collector_endpoint_env(deployment) if {
     some i
     container := deployment.spec.template.spec.containers[i]
     some j
@@ -61,7 +60,7 @@ package observability.kubernetes
 
 # Every container must have OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES
 # with service.name set
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     some i
     container := input.spec.template.spec.containers[i]
@@ -69,20 +68,19 @@ deny[msg] {
     # Skip collector sidecars
     not contains(container.image, "opentelemetry-collector")
     msg := sprintf(
-        "Container '%s' in deployment '%s' must set "
-        "OTEL_SERVICE_NAME environment variable",
+        "Container '%s' in deployment '%s' must set OTEL_SERVICE_NAME environment variable",
         [container.name, input.metadata.name]
     )
 }
 
-has_service_name(container) {
+has_service_name(container) if {
     some i
     env := container.env[i]
     env.name == "OTEL_SERVICE_NAME"
     env.value != ""
 }
 
-has_service_name(container) {
+has_service_name(container) if {
     some i
     env := container.env[i]
     env.name == "OTEL_RESOURCE_ATTRIBUTES"
@@ -95,13 +93,13 @@ has_service_name(container) {
 package observability.collector
 
 # Collector configs must have memory_limiter processor
-deny[msg] {
+deny contains msg if {
     not input.processors.memory_limiter
     msg := "Collector configuration must include memory_limiter processor"
 }
 
 # All pipelines must have the batch processor
-deny[msg] {
+deny contains msg if {
     some pipeline_name
     pipeline := input.service.pipelines[pipeline_name]
     not array_contains(pipeline.processors, "batch")
@@ -112,7 +110,7 @@ deny[msg] {
 }
 
 # Critical services must have high sampling rates
-deny[msg] {
+deny contains msg if {
     input.processors.probabilistic_sampler
     rate := input.processors.probabilistic_sampler.sampling_percentage
     # Check if this is a critical service
@@ -127,7 +125,7 @@ deny[msg] {
     )
 }
 
-array_contains(arr, elem) {
+array_contains(arr, elem) if {
     some i
     arr[i] == elem
 }
