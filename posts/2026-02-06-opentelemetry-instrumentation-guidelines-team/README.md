@@ -112,7 +112,7 @@ Attributes provide the context that makes spans useful for debugging. But they a
 attributes:
   required:
     # Every span from a business operation should include these
-    - name: service.operation
+    - name: app.operation
       description: "The logical operation being performed"
       example: "createOrder"
 
@@ -143,20 +143,18 @@ attributes:
 
 ### Implementing Attribute Limits
 
-Enforce attribute limits with a custom span processor:
+Flag attribute limit violations with a custom span processor:
 
 ```javascript
-// AttributeLimitProcessor enforces attribute count and size limits.
+// AttributeLimitProcessor reports attribute count and size violations.
 // Add this processor to catch spans that exceed guidelines.
-const { SpanProcessor } = require('@opentelemetry/sdk-trace-base');
-
 class AttributeLimitProcessor {
   constructor(options = {}) {
     this.maxAttributes = options.maxAttributes || 32;
     this.maxValueLength = options.maxValueLength || 256;
   }
 
-  onStart(span) {
+  onStart(span, parentContext) {
     // Check will happen on end when all attributes are set
   }
 
@@ -236,18 +234,18 @@ Define naming and unit conventions for custom metrics:
 # Custom metrics naming conventions
 metrics:
   naming:
-    pattern: "{service}.{domain}.{measurement}"
+    pattern: "{domain}.{measurement}"
     examples:
-      - "order_service.orders.created_total"
-      - "order_service.orders.processing_duration_seconds"
-      - "order_service.inventory.stock_level"
+      - "orders.created"
+      - "orders.processing.duration"
+      - "inventory.stock_level"
 
   rules:
     - Use snake_case for metric names
-    - Include the unit in the metric name (seconds, bytes, total)
-    - Use _total suffix for counters
-    - Use _seconds or _milliseconds suffix for durations
-    - Use _bytes suffix for sizes
+    - Use dots to namespace metrics by domain
+    - Set the unit when creating the metric instrument
+    - Do not add _total to counter names
+    - Include a unit in the name only when it avoids ambiguity
     - Do not include the service name prefix (it is in the resource)
 
   instrument_types:
@@ -260,26 +258,28 @@ metrics:
 
 ```python
 # Custom metrics following the guidelines
+import time
+
 from opentelemetry import metrics
 
 meter = metrics.get_meter("order-service", "1.0.0")
 
 # Counter for order events
 orders_created = meter.create_counter(
-    name="orders.created_total",
+    name="orders.created",
     description="Total number of orders created",
     unit="1",
 )
 
 # Histogram for processing duration
 processing_duration = meter.create_histogram(
-    name="orders.processing_duration_seconds",
+    name="orders.processing.duration",
     description="Time to process an order from submission to completion",
     unit="s",
 )
 
 # Gauge for current queue depth
-queue_depth = meter.create_up_down_counter(
+queue_depth = meter.create_gauge(
     name="orders.queue_depth",
     description="Number of orders waiting to be processed",
     unit="1",
