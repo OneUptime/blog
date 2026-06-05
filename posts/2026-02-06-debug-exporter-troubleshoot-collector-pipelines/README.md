@@ -65,7 +65,7 @@ The configuration above sets up the debug exporter for all three signal types. T
 
 Each verbosity level serves different troubleshooting needs:
 
-**Basic verbosity** shows minimal information, including counts of data points received:
+**Basic verbosity** shows minimal information, including counts of telemetry records received in each batch:
 
 ```yaml
 exporters:
@@ -73,7 +73,7 @@ exporters:
     verbosity: basic
 ```
 
-This outputs simple statistics like "Traces received: 10" without detailed content.
+This outputs a single-line summary with counts such as resource spans and spans, without detailed content.
 
 **Normal verbosity** includes resource attributes and basic telemetry information:
 
@@ -167,7 +167,6 @@ processors:
       - key: http.method
         action: upsert
         value: REDACTED
-        from_attribute: http.method.original
       - key: sensitive_data
         action: delete
 
@@ -201,13 +200,13 @@ processors:
   filter/high_priority:
     traces:
       span:
-        - 'resource.attributes["service.tier"] == "critical"'
+        - 'resource.attributes["service.tier"] != "critical"'
 
   # Processor for standard services
   filter/standard:
     traces:
       span:
-        - 'resource.attributes["service.tier"] != "critical"'
+        - 'resource.attributes["service.tier"] == "critical"'
 
   batch/fast:
     timeout: 1s
@@ -261,7 +260,7 @@ exporters:
     sampling_thereafter: 1000
 ```
 
-This configuration displays the first 10 telemetry items in full, then shows every 1000th item afterward. This approach provides insight into data flow without overwhelming your logs.
+This configuration logs the first 10 debug exporter messages in each sampling interval, then logs every 1000th message afterward. This approach provides insight into data flow without overwhelming your logs.
 
 ## Visualizing Pipeline Flow
 
@@ -411,7 +410,7 @@ exporters:
     verbosity: normal
 
 extensions:
-  # Enable zPages for live metrics
+  # Enable zPages for live Collector debug pages
   zpages:
     endpoint: 0.0.0.0:55679
 
@@ -431,7 +430,12 @@ service:
     logs:
       level: debug
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 This configuration combines the debug exporter with zPages and pprof extensions for comprehensive troubleshooting. You can correlate debug output with live metrics and performance profiles. For more on these tools, see https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view and https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
