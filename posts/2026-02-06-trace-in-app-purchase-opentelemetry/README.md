@@ -74,7 +74,8 @@ public async Task<PurchaseResult> InitiatePurchase(string productId, string curr
     catch (Exception ex)
     {
         activity?.SetTag("purchase.outcome", "error");
-        activity?.SetTag("error.message", ex.Message);
+        activity?.RecordException(ex);
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         throw;
     }
 }
@@ -101,8 +102,8 @@ private async Task<PurchaseResult> ValidateReceiptWithBackend(
         })
     };
 
-    // OpenTelemetry HTTP instrumentation automatically injects
-    // trace context headers (traceparent, tracestate)
+    // With OpenTelemetry HTTP instrumentation enabled, the current
+    // trace context is injected into traceparent and tracestate headers.
     var response = await _httpClient.SendAsync(request);
 
     activity?.SetTag("backend.status_code", (int)response.StatusCode);
@@ -117,12 +118,16 @@ private async Task<PurchaseResult> ValidateReceiptWithBackend(
 On the backend, the trace context from the client is automatically picked up:
 
 ```python
+import time
+
+from flask import jsonify, request
 from opentelemetry import trace
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("purchase-service")
 
-# Flask instrumentation automatically extracts trace context from headers
+# Flask instrumentation extracts trace context from headers when configured.
 
 FlaskInstrumentor().instrument_app(app)
 
@@ -203,10 +208,11 @@ def handle_purchase_error(error):
     span = trace.get_current_span()
     span.set_attribute("purchase.outcome", "error")
     span.record_exception(error)
+    span.set_status(Status(StatusCode.ERROR, str(error)))
 
     # Log to a separate remediation queue for manual review
     remediation_queue.enqueue({
-        "trace_id": span.get_span_context().trace_id,
+        "trace_id": f"{span.get_span_context().trace_id:032x}",
         "error": str(error),
         "timestamp": time.time(),
     })
