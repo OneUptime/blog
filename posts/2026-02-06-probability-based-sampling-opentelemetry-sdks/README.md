@@ -16,20 +16,20 @@ But there are important details that determine whether your sampling actually wo
 
 ## How Probability Sampling Works Internally
 
-The OpenTelemetry SDK does not flip a coin for each trace. Instead, it uses a deterministic algorithm based on the trace ID. The trace ID is a 128-bit random number. The sampler takes the lower 64 bits, divides by the maximum possible value, and compares the result to your sampling ratio.
+The OpenTelemetry SDK does not flip a coin for each trace. Instead, `TraceIdRatioBased` uses a deterministic algorithm based on the trace ID. The exact algorithm is SDK-specific, but implementations must make deterministic decisions and must ensure that a higher sampling probability includes the traces sampled by lower probabilities. For example, the Python SDK checks the low-order 64 bits of the trace ID against a bound calculated from your sampling ratio.
 
 ```mermaid
 flowchart TD
-    A[New Trace Created] --> B[Extract Lower 64 Bits of Trace ID]
-    B --> C[Compute: value / MAX_UINT64]
-    C --> D{Result < Sampling Ratio?}
+    A[New Trace Created] --> B[Evaluate Trace ID Deterministically]
+    B --> C[Compare Deterministic Value to Sampling Ratio]
+    C --> D{Within Sampling Ratio?}
     D -->|Yes| E[Decision: RECORD_AND_SAMPLE]
     D -->|No| F[Decision: DROP]
     E --> G[Propagate sampled=1 in Context]
     F --> H[Propagate sampled=0 in Context]
 ```
 
-This deterministic approach has a critical property: any service that sees the same trace ID and uses the same sampling ratio will independently arrive at the same decision. This means you do not need a centralized sampling coordinator. Two services can independently decide to sample the same trace without any communication between them.
+This deterministic approach has a critical property within a single SDK algorithm: a given trace ID and ratio produce the same decision each time. In a distributed system, the safer pattern is to make the decision once at the root and propagate it with the trace context. That is why the OpenTelemetry spec recommends using `TraceIdRatioBased` as the root sampler inside `ParentBased`.
 
 ---
 
@@ -49,7 +49,7 @@ from opentelemetry.sdk.resources import Resource
 
 resource = Resource.create({
     "service.name": "inventory-service",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # TraceIdRatioBased takes a float between 0.0 and 1.0.
@@ -134,7 +134,7 @@ trace.set_tracer_provider(provider)
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
@@ -155,9 +155,9 @@ const sampler = new ParentBasedSampler({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'notification-service',
-    'deployment.environment': 'production',
+    'deployment.environment.name': 'production',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -192,8 +192,8 @@ import io.opentelemetry.sdk.trace.samplers.Sampler;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.semconv.ResourceAttributes;
 
 public class TracingConfig {
 
@@ -201,8 +201,8 @@ public class TracingConfig {
         // Resource identifies this service in traces
         Resource resource = Resource.getDefault().merge(
             Resource.create(Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "user-service",
-                ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production"
+                AttributeKey.stringKey("service.name"), "user-service",
+                AttributeKey.stringKey("deployment.environment.name"), "production"
             ))
         );
 
@@ -251,7 +251,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func InitTracing(ctx context.Context) func() {
@@ -271,7 +271,7 @@ func InitTracing(ctx context.Context) func() {
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName("catalog-service"),
-			semconv.DeploymentEnvironment("production"),
+			semconv.DeploymentEnvironmentName("production"),
 		),
 	)
 	if err != nil {
@@ -326,7 +326,7 @@ Notice how the spans-per-second column stays roughly consistent. The goal is to 
 
 **Using TraceIdRatioBased without ParentBased.** This is the most common mistake. Without the parent-based wrapper, each service independently decides whether to sample, which leads to broken traces where some services record spans and others do not.
 
-**Mismatched ratios across services.** If Service A uses 0.1 and Service B uses 0.5, traces that start at Service B and flow to Service A will be inconsistent. When using probability sampling, configure the same ratio on all services, or better yet, use environment variables to manage it centrally.
+**Mismatched ratios across root services.** If Service A starts traces at 0.1 and Service B starts traces at 0.5, your effective sampling rate depends on where each trace begins. With `ParentBased`, downstream services still follow the propagated parent decision, but you should configure the same root ratio at service boundaries, or better yet, use environment variables to manage it centrally.
 
 **Forgetting that ratio applies to root spans only.** With `ParentBased`, the ratio only applies when there is no parent. If 100% of your traffic comes from an upstream service that already made a sampling decision, the ratio has no effect. The ratio matters at the edge of your system where traces originate.
 
@@ -345,8 +345,7 @@ from opentelemetry.sdk.trace.sampling import (
     Decision,
     Sampler,
 )
-from opentelemetry.trace import SpanKind
-import hashlib
+from opentelemetry.trace import get_current_span
 
 class DynamicRatioSampler(Sampler):
     """A sampler that reads its ratio from a callable,
@@ -359,22 +358,32 @@ class DynamicRatioSampler(Sampler):
         self._ratio_provider = ratio_provider
 
     def should_sample(self, parent_context, trace_id, name,
-                      kind=None, attributes=None, links=None):
-        ratio = self._ratio_provider()
+                      kind=None, attributes=None, links=None,
+                      trace_state=None):
+        ratio = max(0.0, min(1.0, float(self._ratio_provider())))
 
-        # Use the same deterministic algorithm as TraceIdRatioBased
-        bound = int(ratio * (2**64 - 1))
+        # Use the same low-order 64-bit calculation as Python's
+        # TraceIdRatioBased sampler.
+        bound = round(ratio * (2**64))
         trace_id_lower = trace_id & 0xFFFFFFFFFFFFFFFF
+        parent_span_context = get_current_span(
+            parent_context
+        ).get_span_context()
+        result_trace_state = trace_state
+        if result_trace_state is None and parent_span_context.is_valid:
+            result_trace_state = parent_span_context.trace_state
 
         if trace_id_lower < bound:
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 attributes or {},
+                result_trace_state,
             )
         else:
             return SamplingResult(
                 Decision.DROP,
-                attributes or {},
+                None,
+                result_trace_state,
             )
 
     def get_description(self):
