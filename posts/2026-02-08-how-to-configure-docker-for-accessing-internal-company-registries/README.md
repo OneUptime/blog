@@ -53,19 +53,19 @@ Always use `--password-stdin` instead of `-p` to avoid leaking credentials in sh
 
 ## Where Credentials Are Stored
 
-After `docker login`, credentials are saved in `~/.docker/config.json`:
+After `docker login`, credentials are saved in the configured credential store. If you have not configured a credential store or credential helper, Docker saves them in `~/.docker/config.json`:
 
 ```json
 {
   "auths": {
     "registry.company.com": {
-      "auth": "base64-encoded-username:password"
+      "auth": "base64-encoded-username-and-password"
     }
   }
 }
 ```
 
-This file stores credentials in base64 encoding, which is not encryption. For better security, use a credential helper.
+This `auth` value is the base64 encoding of `username:password`, which is not encryption. For better security, use a credential helper.
 
 ## Using Credential Helpers
 
@@ -139,7 +139,7 @@ sudo mkdir -p /etc/docker/certs.d/registry.company.com:5000
 sudo cp company-ca.crt /etc/docker/certs.d/registry.company.com:5000/ca.crt
 ```
 
-No Docker restart is needed. Docker reads this directory on every registry interaction.
+On Docker Desktop, restart Docker Desktop after changing the keychain or `~/.docker/certs.d` directory so the changes take effect. On Linux Docker Engine hosts, retry the registry operation after placing the certificate in `/etc/docker/certs.d`.
 
 ### Option 2: Client Certificate Authentication
 
@@ -159,7 +159,7 @@ Docker automatically uses these for TLS handshakes with the matching registry.
 
 ### Option 3: Insecure Registry (Not Recommended)
 
-As a last resort, you can tell Docker to skip TLS verification entirely. This is insecure and should only be used for testing.
+As a last resort, you can tell Docker to allow unencrypted HTTP or TLS with an untrusted CA for a registry. This is insecure and should only be used for testing.
 
 Edit `/etc/docker/daemon.json`:
 
@@ -177,7 +177,7 @@ sudo systemctl restart docker
 
 ## Setting Up a Registry Mirror
 
-A registry mirror caches images from Docker Hub or other public registries. This speeds up pulls and reduces external bandwidth usage.
+A registry mirror caches images from Docker Hub. This speeds up pulls and reduces external bandwidth usage.
 
 Configure a mirror in `/etc/docker/daemon.json`:
 
@@ -204,8 +204,6 @@ Docker Compose projects often pull images from multiple registries.
 This Compose file references images from different sources:
 
 ```yaml
-version: "3.8"
-
 services:
   # Image from the company's internal registry
   backend:
@@ -308,7 +306,7 @@ build:
     - docker:dind
   before_script:
     # GitLab CI provides these variables automatically
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
   script:
     - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
