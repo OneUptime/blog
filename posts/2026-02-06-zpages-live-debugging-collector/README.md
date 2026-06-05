@@ -13,12 +13,14 @@ The zPages extension provides a web-based interface for live debugging and monit
 zPages originated in the OpenCensus project and provide lightweight, always-available debugging endpoints. The collector's zPages implementation includes several specialized pages for different aspects of collector operation.
 
 Available zPages include:
-- ServiceZ: Overall collector health and version information
-- PipelineZ: Pipeline configuration and data flow statistics
-- ExtensionZ: Extension status and health
-- FeatureZ: Enabled features and capabilities
+- ServiceZ: Overall collector service, build, and runtime information
+- PipelineZ: Pipeline configuration, component wiring, and mutation status
+- ExtensionZ: Active extensions
+- FeatureZ: Available feature gates, their status, and descriptions
+- TraceZ: Internal trace samples grouped by latency and error status
+- ExpvarZ: Go expvar data, when expvar is enabled in the zPages extension
 
-These pages refresh dynamically, showing current collector state without requiring log analysis or metric queries.
+These pages show current collector state without requiring log analysis or a backend. For live counters such as accepted spans, refused data, exporter failures, and queue size, use the collector's internal metrics endpoint.
 
 ## Enabling zPages Extension
 
@@ -194,9 +196,10 @@ OpenTelemetry Collector zPages
 
 Available Pages:
 - /debug/servicez     - Service information and health
-- /debug/pipelinez    - Pipeline statistics and data flow
+- /debug/pipelinez    - Pipeline configuration and component wiring
 - /debug/extensionz   - Extension status
 - /debug/featurez     - Enabled features
+- /debug/tracez       - Internal trace samples and latency buckets
 
 Collector Version: 0.96.0
 Uptime: 2h 34m 15s
@@ -206,7 +209,7 @@ Each page provides specific insights into different aspects of collector operati
 
 ## Using ServiceZ Page
 
-ServiceZ displays overall collector health, version information, and uptime:
+ServiceZ displays service, build, and runtime information:
 
 ```text
 ServiceZ - Service Information
@@ -217,8 +220,6 @@ Git Commit: a1b2c3d4
 Uptime: 2h 34m 15s
 
 Service Status: Running
-Config Checksum: e5f6a7b8
-Last Config Reload: 2026-02-06 08:00:00
 
 System Information:
 - Go Version: go1.21.6
@@ -231,80 +232,49 @@ System Information:
 ServiceZ helps verify:
 - Collector version matches expected deployment
 - Uptime indicates stability (or recent restarts)
-- Configuration checksum confirms correct config loaded
 - Resource usage shows memory consumption and goroutine count
 
 High goroutine counts may indicate goroutine leaks or high concurrency. Compare current values with baseline measurements to identify anomalies.
 
 ## Using PipelineZ Page
 
-PipelineZ provides the most detailed debugging information, showing real-time statistics for each pipeline:
+PipelineZ shows how each pipeline is assembled, including pipeline type, whether data can be mutated, and the receivers, processors, and exporters used by each pipeline:
 
 ```text
-PipelineZ - Pipeline Statistics
+PipelineZ - Pipeline Configuration
 
 Pipeline: traces/main
-Status: Running
+Type: traces
+Data Mutated: true
 Receivers:
   - otlp
-    Status: Running
-    Data Received: 1,234,567 spans
-    Data Accepted: 1,234,567 spans
-    Data Refused: 0 spans
-    Data Dropped: 0 spans
 
 Processors:
   - memory_limiter
-    Status: Running
-    Data Received: 1,234,567 spans
-    Data Accepted: 1,234,567 spans
-    Data Refused: 0 spans
   - batch
-    Status: Running
-    Data Received: 1,234,567 spans
-    Batches Sent: 12,345 batches
-    Average Batch Size: 100 spans
 
 Exporters:
   - otlp
-    Status: Running
-    Data Sent: 1,234,567 spans
-    Data Failed: 0 spans
-    Queue Size: 45 batches
-    Queue Capacity: 1000 batches
 ```
 
-PipelineZ statistics reveal:
-- Data flow through each pipeline component
-- Refused data indicating backpressure
-- Dropped data indicating errors or capacity limits
-- Queue utilization showing export performance
-- Batch sizes and frequencies
+PipelineZ reveals:
+- Which pipelines are active
+- Which components are connected to each pipeline
+- Whether processors in the pipeline may mutate telemetry
+- Whether the collector loaded the expected receiver, processor, and exporter instances
 
 ## Troubleshooting with PipelineZ
 
-PipelineZ statistics directly indicate common issues:
+Use PipelineZ to confirm pipeline wiring, then use internal metrics for live counters. The collector exposes metrics such as accepted and refused receiver items, exporter send failures, and exporter queue size at the internal telemetry endpoint.
 
 **Issue: Data not reaching backend**
 
 ```text
-Pipeline: traces/main
-
-Receivers:
-  - otlp
-    Data Received: 5,000 spans
-    Data Accepted: 5,000 spans
-
-Processors:
-  - batch
-    Data Received: 5,000 spans
-    Batches Sent: 50 batches
-
-Exporters:
-  - otlp
-    Data Sent: 0 spans          <- No data exported
-    Data Failed: 5,000 spans    <- All exports failing
-    Queue Size: 1000 batches    <- Queue is full
+otelcol_receiver_accepted_spans 5000
+otelcol_exporter_sent_spans 0
+otelcol_exporter_send_failed_spans 5000
+otelcol_exporter_queue_size 1000
+otelcol_exporter_queue_capacity 1000
 ```
 
 **Diagnosis**: Exporter failing to send data. Queue filled up and now drops data. Check backend connectivity and exporter logs.
@@ -312,47 +282,22 @@ Exporters:
 **Issue: Memory limiter refusing data**
 
 ```text
-Pipeline: traces/main
-
-Receivers:
-  - otlp
-    Data Received: 10,000 spans
-    Data Accepted: 7,500 spans
-    Data Refused: 2,500 spans   <- Data refused at receiver
-
-Processors:
-  - memory_limiter
-    Data Received: 7,500 spans
-    Data Refused: 2,500 spans   <- Memory pressure causing refusals
+otelcol_receiver_accepted_spans 7500
+otelcol_receiver_refused_spans 2500
 ```
 
-**Diagnosis**: Memory limiter activating due to memory pressure. Increase memory allocation or reduce data volume. See https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view for details.
+**Diagnosis**: The collector is refusing data. If the memory limiter is configured, memory pressure is a common cause. Increase memory allocation or reduce data volume. See https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view for details.
 
 **Issue: Processing bottleneck**
 
 ```text
-Pipeline: traces/main
-
-Receivers:
-  - otlp
-    Data Received: 100,000 spans
-    Data Accepted: 100,000 spans
-
-Processors:
-  - transform
-    Data Received: 100,000 spans
-    Processing Time: 45s        <- Slow processing
-  - batch
-    Data Received: 100,000 spans
-    Batches Sent: 1000 batches
-
-Exporters:
-  - otlp
-    Data Sent: 100,000 spans
-    Queue Size: 950 batches     <- Queue filling up
+otelcol_processor_incoming_items{processor="transform"} 100000
+otelcol_processor_outgoing_items{processor="transform"} 100000
+otelcol_exporter_queue_size 950
+otelcol_exporter_queue_capacity 1000
 ```
 
-**Diagnosis**: Transform processor is slow, causing queue buildup. Optimize transformation logic or increase collector resources.
+**Diagnosis**: Queue buildup alongside expensive processors can indicate that processing or export cannot keep up. Use pprof and component logs to identify whether transformation logic, exporter latency, or backend performance is the bottleneck.
 
 ## Monitoring Multiple Pipelines
 
@@ -379,15 +324,17 @@ processors:
 
   # Filter for high-priority services
   filter/high_priority:
-    traces:
-      span:
-        - 'resource.attributes["service.tier"] == "critical"'
-
-  # Filter for standard services
-  filter/standard:
+    error_mode: ignore
     traces:
       span:
         - 'resource.attributes["service.tier"] != "critical"'
+
+  # Filter for standard services
+  filter/standard:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.tier"] == "critical"'
 
 exporters:
   otlp/high_priority:
@@ -417,33 +364,29 @@ service:
       exporters: [otlp/standard]
 ```
 
-PipelineZ displays statistics for both pipelines:
+PipelineZ displays both pipelines and their component wiring:
 
 ```text
-PipelineZ - Pipeline Statistics
+PipelineZ - Pipeline Configuration
 
 Pipeline: traces/high_priority
-Status: Running
-Receivers: otlp - 5,000 spans received
-Processors:
-  filter/high_priority - 500 spans accepted
-  batch/fast - 10 batches sent (avg 50 spans)
-Exporters: otlp/high_priority - 500 spans sent
+Type: traces
+Receivers: otlp
+Processors: filter/high_priority, batch/fast
+Exporters: otlp/high_priority
 
 Pipeline: traces/standard
-Status: Running
-Receivers: otlp - 5,000 spans received
-Processors:
-  filter/standard - 4,500 spans accepted
-  batch/standard - 9 batches sent (avg 500 spans)
-Exporters: otlp/standard - 4,500 spans sent
+Type: traces
+Receivers: otlp
+Processors: filter/standard, batch/standard
+Exporters: otlp/standard
 ```
 
-This view confirms that filtering correctly routes data to appropriate pipelines and that each pipeline processes data as configured.
+This view confirms that both pipelines loaded with the expected filters, batch processors, and exporters. Use internal metrics to confirm the number of spans accepted, refused, and exported by each component.
 
 ## Understanding Data Flow Visualization
 
-PipelineZ statistics map to the data flow architecture:
+PipelineZ maps to the data flow architecture, while internal metrics provide the counters:
 
 ```mermaid
 graph LR
@@ -459,57 +402,40 @@ graph LR
     style E fill:#fc9,stroke:#333,stroke-width:2px
 ```
 
-Each component's statistics appear in PipelineZ, allowing you to trace data through the entire pipeline and identify where issues occur.
+PipelineZ shows the component path through the pipeline. Internal metrics provide the live counters needed to identify where issues occur.
 
 ## Using ExtensionZ Page
 
-ExtensionZ displays status for all enabled extensions:
+ExtensionZ displays active extensions:
 
 ```text
 ExtensionZ - Extension Status
 
 Extension: zpages
 Status: Running
-Endpoint: 0.0.0.0:55679
-Requests Served: 1,234
 
 Extension: health_check
 Status: Running
-Endpoint: 0.0.0.0:13133
-Health Checks: 5,678 (all passing)
 
 Extension: pprof
 Status: Running
-Endpoint: 0.0.0.0:1777
-Profile Requests: 12
 ```
 
-ExtensionZ confirms extensions are running and accessible. If an extension shows as stopped or failed, check logs for initialization errors.
+ExtensionZ confirms which extensions are active. If an expected extension is missing, check the service extension list and startup logs for initialization errors.
 
 ## Using FeatureZ Page
 
-FeatureZ lists enabled features and capabilities:
+FeatureZ lists feature gates, their current status, and descriptions:
 
 ```text
 FeatureZ - Feature Information
 
-Enabled Features:
-- Trace Pipeline
-- Metric Pipeline
-- Log Pipeline
-- Batch Processing
-- Memory Limiting
-- OTLP Receiver (gRPC)
-- OTLP Receiver (HTTP)
-- OTLP Exporter
-- Debug Exporter
-
 Feature Gates:
-- telemetry.useOtelForInternalMetrics: enabled
-- component.UseLocalHostAsDefaultHost: enabled
+- example.feature.gate: enabled
+- another.feature.gate: disabled
 ```
 
-FeatureZ helps verify that expected features are available and feature gates are configured correctly.
+FeatureZ helps verify that feature gates are configured correctly.
 
 ## Combining zPages with Other Tools
 
@@ -565,7 +491,12 @@ service:
     # Internal metrics for detailed monitoring
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 
   pipelines:
     traces:
@@ -576,7 +507,7 @@ service:
 
 Use this comprehensive setup for troubleshooting:
 
-1. **zPages** for real-time pipeline statistics
+1. **zPages** for live pipeline structure, extension, feature gate, and internal trace views
 2. **pprof** for performance profiling: https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view
 3. **Debug exporter** for data inspection: https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view
 4. **Internal logs** for detailed event history: https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view
@@ -651,19 +582,19 @@ curl http://localhost:55679/debug/pipelinez
 While zPages provide a web interface for humans, you can also query them programmatically for automation:
 
 ```bash
-# Fetch pipeline statistics as JSON
-curl -s http://localhost:55679/debug/pipelinez | grep -A 50 "Pipeline:"
+# Fetch pipeline wiring from zPages
+curl -s http://localhost:55679/debug/pipelinez | grep -A 50 "Pipeline"
 
 # Monitor exporter queue size
-watch 'curl -s http://localhost:55679/debug/pipelinez | grep "Queue Size"'
+watch 'curl -s http://localhost:8888/metrics | grep "otelcol_exporter_queue_size"'
 
 # Check for refused data
-curl -s http://localhost:55679/debug/pipelinez | grep "Refused"
+curl -s http://localhost:8888/metrics | grep "otelcol_receiver_refused"
 
 # Alert on high queue utilization
 #!/bin/bash
-QUEUE_SIZE=$(curl -s http://localhost:55679/debug/pipelinez | grep "Queue Size" | grep -oP '\d+' | head -1)
-QUEUE_CAPACITY=$(curl -s http://localhost:55679/debug/pipelinez | grep "Queue Capacity" | grep -oP '\d+' | head -1)
+QUEUE_SIZE=$(curl -s http://localhost:8888/metrics | awk '/otelcol_exporter_queue_size/ && !/^#/ {print $NF; exit}')
+QUEUE_CAPACITY=$(curl -s http://localhost:8888/metrics | awk '/otelcol_exporter_queue_capacity/ && !/^#/ {print $NF; exit}')
 UTILIZATION=$((100 * QUEUE_SIZE / QUEUE_CAPACITY))
 
 if [ $UTILIZATION -gt 80 ]; then
@@ -674,23 +605,23 @@ fi
 
 Note that zPages HTML output is designed for human consumption. For programmatic access, prefer using the collector's internal metrics endpoint (`http://localhost:8888/metrics`) which provides structured Prometheus-format metrics.
 
-## Interpreting Pipeline Statistics
+## Interpreting Internal Metrics
 
-Understanding what different statistics indicate helps diagnose issues:
+Understanding what different internal metrics indicate helps diagnose issues:
 
-**Data Received vs Data Accepted**: The difference indicates refused data. Non-zero refusals suggest backpressure from downstream components.
+**Receiver accepted vs receiver refused**: Non-zero refused items suggest errors or backpressure from downstream components.
 
-**Data Accepted vs Data Sent**: For exporters, this difference indicates failed exports. Investigate exporter logs and backend connectivity.
+**Receiver accepted vs exporter sent**: A sustained gap can indicate failed exports, queued data, or processors that intentionally drop data. Investigate exporter logs, backend connectivity, and processor configuration.
 
 **Queue Size vs Queue Capacity**: High queue utilization indicates the exporter cannot keep up with incoming data. This may be temporary during traffic spikes or indicate persistent performance issues.
 
-**Batches Sent and Average Batch Size**: Compare against configured batch parameters. Low batch sizes may indicate insufficient data volume or short timeouts triggering early sends.
+**Batch processor metrics**: Compare batch send size and timeout-trigger metrics against configured batch parameters. Low batch sizes may indicate insufficient data volume or short timeouts triggering early sends.
 
 ## Real-World Troubleshooting Scenarios
 
 **Scenario 1: Sudden traffic spike**
 
-Check PipelineZ during a traffic spike:
+Check internal metrics during a traffic spike:
 
 ```text
 Before Spike:
@@ -707,11 +638,11 @@ After Spike:
   Queue Size: 200/1000        <- Draining back to normal
 ```
 
-PipelineZ confirms the collector handled the spike appropriately, temporarily building queue depth but not failing catastrophically.
+Internal metrics confirm whether the collector handled the spike appropriately, temporarily building queue depth but not failing catastrophically.
 
 **Scenario 2: Backend outage**
 
-Monitor PipelineZ during backend downtime:
+Monitor internal metrics during backend downtime:
 
 ```text
 Backend Available:
@@ -731,7 +662,7 @@ This shows the collector buffering data during the outage and resuming normal op
 
 **Scenario 3: Configuration change impact**
 
-Compare PipelineZ before and after configuration changes:
+Compare internal metrics before and after configuration changes:
 
 ```text
 Before (batch timeout: 10s, size: 100):
@@ -745,18 +676,13 @@ After (batch timeout: 5s, size: 50):
   Queue Size: 30/1000          <- Lower queue depth
 ```
 
-PipelineZ confirms the configuration change had the intended effect of more frequent, smaller batches.
+Internal metrics confirm whether the configuration change had the intended effect of more frequent, smaller batches.
 
 ## Performance Impact of zPages
 
-zPages add minimal overhead to collector operation. The extension maintains statistics asynchronously and only generates HTML when pages are requested.
+zPages are intended for lightweight in-process diagnostics. The extension serves HTML only when pages are requested, but TraceZ records internal spans and the extension should still be treated as an operational debugging endpoint.
 
-Typical overhead:
-- Memory: Less than 10 MB
-- CPU: Negligible when not accessed
-- CPU during access: Minimal, comparable to serving a static web page
-
-This minimal impact makes zPages suitable for production use, provided access is properly restricted.
+This design makes zPages suitable for production troubleshooting, provided access is properly restricted.
 
 ## Limitations and Alternatives
 
@@ -766,7 +692,7 @@ While powerful, zPages have limitations:
 
 **No alerting**: zPages are read-only monitoring tools. Implement alerting using metrics exported to monitoring systems.
 
-**Limited data visualization**: zPages provide tables of statistics but no graphs. Use Grafana or similar tools with collector metrics for visualization.
+**Limited data visualization**: zPages provide simple diagnostic pages, not dashboards or graphs. Use Grafana or similar tools with collector metrics for visualization.
 
 **No authentication**: zPages have no built-in authentication. Rely on network restrictions for access control.
 
@@ -813,7 +739,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 
   pipelines:
     traces:
@@ -832,6 +763,6 @@ This configuration uses zPages for live debugging while exporting metrics for hi
 
 ## Conclusion
 
-The zPages extension provides real-time visibility into OpenTelemetry Collector operations, making it an essential tool for troubleshooting and monitoring. PipelineZ's detailed statistics reveal data flow issues, queue buildups, and processing bottlenecks immediately, without requiring log analysis or metric queries. Combined with other debugging tools like pprof, debug exporters, and internal logs, zPages enable comprehensive collector observability.
+The zPages extension provides live visibility into OpenTelemetry Collector operations, making it a useful tool for troubleshooting and monitoring. PipelineZ reveals pipeline wiring and component configuration, while internal metrics reveal data flow issues, queue buildups, and exporter failures. Combined with other debugging tools like pprof, debug exporters, and internal logs, zPages enable comprehensive collector observability.
 
 For complementary troubleshooting techniques, see https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view for performance profiling, https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view for data inspection, and https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view for log analysis.
