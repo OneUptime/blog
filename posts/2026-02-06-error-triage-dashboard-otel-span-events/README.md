@@ -17,7 +17,7 @@ For the dashboard to be useful, your spans need to include:
 - Service name in the resource attributes
 - HTTP route or RPC method in span attributes
 
-If you are using `span.record_exception()` correctly, you already have most of this.
+If you are using `span.record_exception()` and setting the span status to `ERROR` correctly, you already have most of this.
 
 ## Generating Span Metrics from Traces
 
@@ -33,17 +33,21 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 500ms, 1s, 5s]
     dimensions:
-      - name: http.method
+      - name: http.request.method
       - name: http.route
-      - name: http.status_code
+      - name: http.response.status_code
       - name: service.name
-    dimensions_cache_size: 1000
+    aggregation_cardinality_limit: 1000
     metrics_flush_interval: 15s
+    events:
+      enabled: true
+      dimensions:
+        - name: exception.type
 
 exporters:
   prometheus:
@@ -57,9 +61,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/tempo]
+      exporters: [span_metrics, otlp/tempo]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -70,11 +74,11 @@ This panel shows the overall error rate trend, which answers "when did it start?
 ```promql
 # Error rate by service over time
 sum by (service_name) (
-  rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])
+  rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])
 )
 /
 sum by (service_name) (
-  rate(traces_spanmetrics_calls_total[5m])
+  rate(traces_span_metrics_calls_total[5m])
 )
 ```
 
@@ -88,7 +92,7 @@ This panel answers "what is breaking?" by showing the most frequent exception ty
 # Top exception types by count
 topk(10,
   sum by (exception_type, service_name) (
-    increase(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[1h])
+    increase(traces_span_metrics_events_total{exception_type!=""}[1h])
   )
 )
 ```
@@ -102,7 +106,7 @@ This shows which endpoints are producing the most errors:
 ```promql
 # Error count by route and service
 sum by (http_route, service_name) (
-  increase(traces_spanmetrics_calls_total{
+  increase(traces_span_metrics_calls_total{
     status_code="STATUS_CODE_ERROR",
     http_route!=""
   }[1h])
@@ -116,7 +120,7 @@ A bar gauge or horizontal bar chart works well here.
 For this panel, use Grafana's Tempo data source to show recent traces that contain errors. Create a TraceQL query:
 
 ```text
-{ status = error } | select(resource.service.name, span.http.route)
+{ span:status = error } | select(resource.service.name, span.http.route)
 ```
 
 This gives your engineer clickable links to jump from the dashboard directly into the trace view with the full stack trace.
@@ -130,7 +134,7 @@ If you want more control over the triage dashboard, build a small API that queri
 from flask import Flask, jsonify
 import requests
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
 
@@ -143,7 +147,7 @@ def error_summary():
     grouped by exception type and service.
     """
     # Query Tempo for recent error traces
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(hours=1)
 
     response = requests.get(
@@ -155,6 +159,7 @@ def error_summary():
             "limit": 1000,
         },
     )
+    response.raise_for_status()
 
     traces = response.json().get("traces", [])
 
@@ -162,33 +167,48 @@ def error_summary():
     error_groups = Counter()
     error_examples = {}
 
+    def attr_value(attribute):
+        value = attribute.get("value", {})
+        for key in ("stringValue", "intValue", "doubleValue", "boolValue"):
+            if key in value:
+                return str(value[key])
+        return ""
+
     for t in traces:
         service = t.get("rootServiceName", "unknown")
         # Fetch the full trace to get exception details
-        trace_detail = requests.get(
+        trace_response = requests.get(
             f"{TEMPO_URL}/api/traces/{t['traceID']}"
-        ).json()
+        )
+        trace_response.raise_for_status()
+        trace_detail = trace_response.json()
 
-        for batch in trace_detail.get("batches", []):
-            for span in batch.get("scopeSpans", [{}])[0].get("spans", []):
-                for event in span.get("events", []):
-                    if event.get("name") == "exception":
-                        attrs = {
-                            a["key"]: a["value"].get("stringValue", "")
-                            for a in event.get("attributes", [])
-                        }
-                        exc_type = attrs.get("exception.type", "Unknown")
-                        key = f"{service}:{exc_type}"
-                        error_groups[key] += 1
-
-                        if key not in error_examples:
-                            error_examples[key] = {
-                                "trace_id": t["traceID"],
-                                "message": attrs.get("exception.message", ""),
-                                "stacktrace": attrs.get(
-                                    "exception.stacktrace", ""
-                                )[:500],
+        for resource_span in trace_detail.get("resourceSpans", []):
+            resource_attrs = {
+                a["key"]: attr_value(a)
+                for a in resource_span.get("resource", {}).get("attributes", [])
+            }
+            service = resource_attrs.get("service.name", service)
+            for scope_span in resource_span.get("scopeSpans", []):
+                for span in scope_span.get("spans", []):
+                    for event in span.get("events", []):
+                        if event.get("name") == "exception":
+                            attrs = {
+                                a["key"]: attr_value(a)
+                                for a in event.get("attributes", [])
                             }
+                            exc_type = attrs.get("exception.type", "Unknown")
+                            key = f"{service}:{exc_type}"
+                            error_groups[key] += 1
+
+                            if key not in error_examples:
+                                error_examples[key] = {
+                                    "trace_id": t["traceID"],
+                                    "message": attrs.get("exception.message", ""),
+                                    "stacktrace": attrs.get(
+                                        "exception.stacktrace", ""
+                                    )[:500],
+                                }
 
     # Build the response
     summary = []
