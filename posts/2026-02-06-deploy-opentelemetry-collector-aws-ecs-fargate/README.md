@@ -64,6 +64,12 @@ aws iam attach-role-policy \
   --role-name ecsTaskExecutionRole \
   --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
+# Allow the execution role to inject SSM parameters and Secrets Manager secrets
+aws iam put-role-policy \
+  --role-name ecsTaskExecutionRole \
+  --policy-name EcsTaskSecretAccess \
+  --policy-document file://ecs-task-secret-access-policy.json
+
 # Create IAM role for task (collector runtime permissions)
 aws iam create-role \
   --role-name otelCollectorTaskRole \
@@ -73,7 +79,6 @@ aws iam create-role \
 Create the trust policy document:
 
 ```json
-# ecs-trust-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -88,10 +93,32 @@ Create the trust policy document:
 }
 ```
 
+Create a policy for execution role secret access:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameters",
+        "secretsmanager:GetSecretValue",
+        "kms:Decrypt"
+      ],
+      "Resource": [
+        "arn:aws:ssm:*:*:parameter/otel/collector/*",
+        "arn:aws:secretsmanager:*:*:secret:backend-api-key*",
+        "arn:aws:kms:*:*:key/*"
+      ]
+    }
+  ]
+}
+```
+
 Create a policy for collector permissions:
 
 ```json
-# otel-collector-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -102,7 +129,19 @@ Create a policy for collector permissions:
         "logs:CreateLogStream",
         "logs:DescribeLogStreams"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/ecs/otel-collector:*"
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/ecs/*",
+        "arn:aws:logs:*:*:log-group:/ecs/*:*",
+        "arn:aws:logs:*:*:log-group:/aws/ecs/*",
+        "arn:aws:logs:*:*:log-group:/aws/ecs/*:*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup"
+      ],
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -160,7 +199,6 @@ Create a task definition for the collector service:
       "name": "otel-collector",
       "image": "public.ecr.aws/aws-observability/aws-otel-collector:latest",
       "essential": true,
-      "command": ["--config=/etc/ecs/config.yaml"],
       "portMappings": [
         {
           "containerPort": 4317,
@@ -176,6 +214,11 @@ Create a task definition for the collector service:
           "containerPort": 8888,
           "protocol": "tcp",
           "name": "metrics"
+        },
+        {
+          "containerPort": 13133,
+          "protocol": "tcp",
+          "name": "health-check"
         }
       ],
       "environment": [
@@ -192,6 +235,10 @@ Create a task definition for the collector service:
         {
           "name": "BACKEND_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:backend-api-key"
+        },
+        {
+          "name": "AOT_CONFIG_CONTENT",
+          "valueFrom": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/otel/collector/config"
         }
       ],
       "logConfiguration": {
@@ -208,20 +255,7 @@ Create a task definition for the collector service:
         "timeout": 5,
         "retries": 3,
         "startPeriod": 60
-      },
-      "mountPoints": [
-        {
-          "sourceVolume": "config",
-          "containerPath": "/etc/ecs",
-          "readOnly": true
-        }
-      ]
-    }
-  ],
-  "volumes": [
-    {
-      "name": "config",
-      "configuredAtLaunch": false
+      }
     }
   ]
 }
@@ -247,6 +281,15 @@ receivers:
   # AWS ECS Container Metrics receiver
   awsecscontainermetrics:
     collection_interval: 30s
+
+  # Scrape the Collector's own Prometheus-format telemetry
+  prometheus/internal:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 30s
+          static_configs:
+            - targets: [127.0.0.1:8888]
 
 processors:
   # Memory limiter to prevent OOM
@@ -286,15 +329,12 @@ exporters:
     no_verify_ssl: false
 
   # Export metrics to CloudWatch
-  awscloudwatch:
+  awsemf:
     region: us-east-1
     namespace: OtelCollector
     log_group_name: /aws/ecs/otel-collector
-    metric_declarations:
-      - dimensions: [[ServiceName, Operation]]
-        metric_name_selectors:
-          - "^latency$"
-          - "^request_count$"
+    resource_to_telemetry_conversion:
+      enabled: true
 
   # Export logs to CloudWatch Logs
   awscloudwatchlogs:
@@ -306,12 +346,12 @@ exporters:
   prometheusremotewrite:
     endpoint: https://prometheus.example.com/api/v1/write
     headers:
-      Authorization: Bearer ${BACKEND_API_KEY}
+      Authorization: Bearer ${env:BACKEND_API_KEY}
     retry_on_failure:
       enabled: true
 
   # Debug logging
-  logging:
+  debug:
     verbosity: normal
 
 extensions:
@@ -331,23 +371,35 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [awsxray, logging]
+      exporters: [awsxray, debug]
 
     metrics:
       receivers: [otlp, awsecscontainermetrics]
       processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [awscloudwatch, prometheusremotewrite, logging]
+      exporters: [awsemf, prometheusremotewrite, debug]
+
+    metrics/internal:
+      receivers: [prometheus/internal]
+      processors: [memory_limiter, batch]
+      exporters: [awsemf, debug]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [awscloudwatchlogs, logging]
+      exporters: [awscloudwatchlogs, debug]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 For simpler configuration management, embed the config in the task definition using environment variables or store in S3:
@@ -359,11 +411,11 @@ aws ssm put-parameter \
   --type String \
   --value file://collector-config.yaml
 
-# Update task definition to fetch from Parameter Store
-# Add to containerDefinitions[0].environment:
+# Update the task definition to fetch from Parameter Store
+# Add to containerDefinitions[0].secrets:
 {
   "name": "AOT_CONFIG_CONTENT",
-  "value": "$(aws ssm get-parameter --name /otel/collector/config --query Parameter.Value --output text)"
+  "valueFrom": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/otel/collector/config"
 }
 ```
 
@@ -409,14 +461,17 @@ aws elbv2 create-target-group \
   --protocol HTTP \
   --protocol-version GRPC \
   --port 4317 \
+  --target-type ip \
   --vpc-id vpc-xxxxx \
   --health-check-protocol HTTP \
+  --health-check-port 13133 \
   --health-check-path /
 
 aws elbv2 create-target-group \
   --name otel-collector-http-tg \
   --protocol HTTP \
   --port 4318 \
+  --target-type ip \
   --vpc-id vpc-xxxxx \
   --health-check-protocol HTTP \
   --health-check-path /
@@ -424,8 +479,9 @@ aws elbv2 create-target-group \
 # Create listeners
 aws elbv2 create-listener \
   --load-balancer-arn arn:aws:elasticloadbalancing:... \
-  --protocol HTTP \
+  --protocol HTTPS \
   --port 4317 \
+  --certificates CertificateArn=arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID \
   --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:...
 
 aws elbv2 create-listener \
@@ -457,6 +513,12 @@ aws ec2 authorize-security-group-ingress \
   --port 4318 \
   --source-group sg-xxxxx
 
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-yyyyy \
+  --protocol tcp \
+  --port 13133 \
+  --source-group sg-xxxxx
+
 # Create ECS service
 aws ecs create-service \
   --cluster otel-collector-cluster \
@@ -466,7 +528,7 @@ aws ecs create-service \
   --launch-type FARGATE \
   --platform-version LATEST \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxx,subnet-yyyyy],securityGroups=[sg-yyyyy],assignPublicIp=DISABLED}" \
-  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:...,containerName=otel-collector,containerPort=4317" \
+  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:...:targetgroup/otel-collector-grpc-tg/...,containerName=otel-collector,containerPort=4317" "targetGroupArn=arn:aws:elasticloadbalancing:...:targetgroup/otel-collector-http-tg/...,containerName=otel-collector,containerPort=4318" \
   --health-check-grace-period-seconds 60
 ```
 
@@ -561,7 +623,6 @@ Create a task definition with both application and collector containers:
       "name": "otel-collector",
       "image": "public.ecr.aws/aws-observability/aws-otel-collector:latest",
       "essential": true,
-      "command": ["--config=/etc/ecs/sidecar-config.yaml"],
       "cpu": 256,
       "memory": 512,
       "environment": [
@@ -571,7 +632,13 @@ Create a task definition with both application and collector containers:
         },
         {
           "name": "GATEWAY_ENDPOINT",
-          "value": "otel-collector-alb-xxxxx.us-east-1.elb.amazonaws.com:4317"
+          "value": "otel-collector.internal.example.com:4317"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AOT_CONFIG_CONTENT",
+          "valueFrom": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/otel/collector/sidecar-config"
         }
       ],
       "logConfiguration": {
@@ -581,20 +648,7 @@ Create a task definition with both application and collector containers:
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "sidecar"
         }
-      },
-      "mountPoints": [
-        {
-          "sourceVolume": "config",
-          "containerPath": "/etc/ecs",
-          "readOnly": true
-        }
-      ]
-    }
-  ],
-  "volumes": [
-    {
-      "name": "config",
-      "configuredAtLaunch": false
+      }
     }
   ]
 }
@@ -631,7 +685,7 @@ processors:
 exporters:
   # Forward to gateway collector
   otlp:
-    endpoint: ${GATEWAY_ENDPOINT}
+    endpoint: ${env:GATEWAY_ENDPOINT}
     tls:
       insecure: false
     retry_on_failure:
@@ -656,6 +710,15 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, resource, batch]
       exporters: [otlp]
+```
+
+Store the sidecar configuration in Parameter Store:
+
+```bash
+aws ssm put-parameter \
+  --name /otel/collector/sidecar-config \
+  --type String \
+  --value file://sidecar-config.yaml
 ```
 
 ## Using AWS Service Discovery
@@ -707,8 +770,8 @@ Dashboard configuration:
       "type": "metric",
       "properties": {
         "metrics": [
-          ["AWS/ECS", "CPUUtilization", {"stat": "Average"}],
-          [".", "MemoryUtilization", {"stat": "Average"}]
+          ["AWS/ECS", "CPUUtilization", "ClusterName", "otel-collector-cluster", "ServiceName", "otel-collector-service", {"stat": "Average"}],
+          [".", "MemoryUtilization", ".", ".", ".", ".", {"stat": "Average"}]
         ],
         "period": 300,
         "stat": "Average",
@@ -744,6 +807,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Alert when collector CPU is high" \
   --metric-name CPUUtilization \
   --namespace AWS/ECS \
+  --dimensions Name=ClusterName,Value=otel-collector-cluster Name=ServiceName,Value=otel-collector-service \
   --statistic Average \
   --period 300 \
   --threshold 80 \
@@ -809,7 +873,6 @@ resource "aws_ecs_task_definition" "otel_collector" {
       name      = "otel-collector"
       image     = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
       essential = true
-      command   = ["--config=/etc/ecs/config.yaml"]
 
       portMappings = [
         {
@@ -826,6 +889,13 @@ resource "aws_ecs_task_definition" "otel_collector" {
         {
           name  = "AWS_REGION"
           value = var.aws_region
+        }
+      ]
+
+      secrets = [
+        {
+          name      = "AOT_CONFIG_CONTENT"
+          valueFrom = var.otel_collector_config_parameter_arn
         }
       ]
 
