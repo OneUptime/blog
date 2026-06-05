@@ -35,7 +35,7 @@ func processOrder(ctx context.Context, order Order) error {
     wg.Add(1)
     go func() {
         defer wg.Done()
-        // This creates a root span because context.Background() is implicit
+        // This creates a root span because context.Background() has no parent span
         validateInventory(context.Background(), order)
     }()
 
@@ -135,7 +135,7 @@ func TestProcessOrder(t *testing.T) {
     spans := exporter.GetSpans()
 
     // Check that no spans are orphaned
-    checkForOrphans(t, convertSpans(spans))
+    checkForOrphans(t, spans.Snapshots())
 }
 ```
 
@@ -186,4 +186,4 @@ emitter.On("order.created", func(ctx context.Context, data interface{}) {
 
 The best way to prevent orphaned spans is to make context the first parameter of every function, following the Go convention. Run `go vet` and consider using linters like `contextcheck` that can flag functions where context is not being propagated correctly.
 
-If you spot orphaned spans in production, check your trace backend for single-span traces. In most applications, a legitimate trace has at least two spans (the root and at least one child). Single-span traces are a strong signal that context propagation is broken somewhere.
+If you spot orphaned spans in production, check your trace backend for unexpected single-span traces. Single-span traces can be legitimate for simple operations, or can happen when spans are dropped by sampling or export failures, but a sudden cluster of them is a useful signal that context propagation may be broken somewhere.
