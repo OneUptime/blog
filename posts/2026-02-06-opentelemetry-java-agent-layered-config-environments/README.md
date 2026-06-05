@@ -17,7 +17,8 @@ Configuration sources ranked from highest to lowest precedence:
 1. System properties (-D flags)
 2. Environment variables
 3. Configuration file properties
-4. Default values
+4. Properties supplied by `AutoConfigurationCustomizerProvider` extensions
+5. Default values
 
 This layered approach means you can define common settings in a configuration file, override specific values with environment variables in your deployment manifests, and still use system properties for local debugging.
 
@@ -30,14 +31,13 @@ Create a base configuration file that contains settings common across all enviro
 
 # Service identification
 otel.service.name=payment-service
-otel.service.version=1.0.0
 
 # Resource attributes shared across environments
-otel.resource.attributes=service.namespace=ecommerce,deployment.environment=unset
+otel.resource.attributes=service.namespace=ecommerce,service.version=1.0.0,deployment.environment.name=unset
 
 # Instrumentation settings
 otel.instrumentation.common.default-enabled=true
-otel.instrumentation.jdbc.statement-sanitizer.enabled=true
+otel.instrumentation.common.query-sanitization.enabled=true
 
 # Sampling configuration - use parent-based by default
 otel.traces.sampler=parentbased_traceidratio
@@ -52,7 +52,7 @@ otel.bsp.max.export.batch.size=512
 otel.logs.exporter=none
 ```
 
-The base configuration establishes sensible defaults. Notice how `deployment.environment` is set to `unset` - this signals which values need environment-specific overrides.
+The base configuration establishes sensible defaults. Notice how `deployment.environment.name` is set to `unset` - this signals which values need environment-specific overrides.
 
 ## Environment-Specific Overrides
 
@@ -62,7 +62,7 @@ Development environment configuration:
 
 ```properties
 # otel-config-dev.properties
-otel.resource.attributes=service.namespace=ecommerce,deployment.environment=dev
+otel.resource.attributes=service.namespace=ecommerce,service.version=1.0.0,deployment.environment.name=development
 
 # Development uses local OTLP collector
 otel.exporter.otlp.endpoint=http://localhost:4317
@@ -73,23 +73,20 @@ otel.traces.sampler.arg=1.0
 
 # Enable debug logging
 otel.javaagent.debug=true
-
-# Enable all instrumentations for testing
-otel.instrumentation.experimental-span-attributes=true
 ```
 
 Staging environment configuration:
 
 ```properties
 # otel-config-staging.properties
-otel.resource.attributes=service.namespace=ecommerce,deployment.environment=staging
+otel.resource.attributes=service.namespace=ecommerce,service.version=1.0.0,deployment.environment.name=staging
 
 # Staging collector endpoint
 otel.exporter.otlp.endpoint=https://otel-collector.staging.company.internal:4317
 otel.exporter.otlp.protocol=grpc
 
 # Authentication for staging collector
-otel.exporter.otlp.headers=authorization=Bearer ${OTEL_AUTH_TOKEN}
+otel.exporter.otlp.headers=authorization=Bearer your-staging-token
 
 # Reduced sampling in staging
 otel.traces.sampler.arg=0.5
@@ -103,15 +100,15 @@ Production environment configuration:
 
 ```properties
 # otel-config-prod.properties
-otel.resource.attributes=service.namespace=ecommerce,deployment.environment=production
+otel.resource.attributes=service.namespace=ecommerce,service.version=1.0.0,deployment.environment.name=production
 
 # Production collector with TLS
 otel.exporter.otlp.endpoint=https://otel-collector.prod.company.internal:4317
 otel.exporter.otlp.protocol=grpc
 otel.exporter.otlp.certificate=/etc/ssl/certs/otel-ca.crt
 
-# Authentication header from environment variable
-otel.exporter.otlp.headers=authorization=Bearer ${OTEL_AUTH_TOKEN}
+# Authentication header
+otel.exporter.otlp.headers=authorization=Bearer your-production-token
 
 # Conservative sampling for production traffic
 otel.traces.sampler.arg=0.1
@@ -157,9 +154,18 @@ spec:
       - name: payment-service
         image: payment-service:1.0.0
         env:
+        # Service metadata from Kubernetes
+        - name: OTEL_SERVICE_NAME
+          value: "payment-service"
+
+        - name: APPLICATION_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['version']
+
         # Override deployment environment
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "service.namespace=ecommerce,deployment.environment=production,k8s.cluster.name=prod-us-east-1"
+          value: "service.namespace=ecommerce,service.version=$(APPLICATION_VERSION),deployment.environment.name=production,k8s.cluster.name=prod-us-east-1"
 
         # Production collector endpoint
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -178,21 +184,11 @@ spec:
         # Production sampling rate
         - name: OTEL_TRACES_SAMPLER_ARG
           value: "0.1"
-
-        # Service metadata from Kubernetes
-        - name: OTEL_SERVICE_NAME
-          value: "payment-service"
-
-        - name: OTEL_SERVICE_VERSION
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.labels['version']
 ```
 
 Environment variables convert to configuration properties by following these rules:
-- Uppercase the property name
-- Replace dots with underscores
-- Prefix with `OTEL_`
+- Convert the full property name to uppercase
+- Replace dots and hyphens with underscores
 
 For example: `otel.service.name` becomes `OTEL_SERVICE_NAME`.
 
@@ -203,15 +199,15 @@ Create a validation mechanism to ensure required configuration is present and co
 ```java
 package com.company.observability;
 
-import io.opentelemetry.api.GlobalOpenTelemetry;
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.sdk.OpenTelemetrySdk;
-import io.opentelemetry.sdk.resources.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.Properties;
 
 /**
  * Validates OpenTelemetry configuration on application startup.
@@ -221,21 +217,12 @@ import org.springframework.stereotype.Component;
 public class OpenTelemetryConfigValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenTelemetryConfigValidator.class);
+    private final Properties fileProperties = loadAgentConfigurationFile();
 
     @EventListener(ApplicationReadyEvent.class)
     public void validateConfiguration() {
-        OpenTelemetry openTelemetry = GlobalOpenTelemetry.get();
-
-        if (!(openTelemetry instanceof OpenTelemetrySdk)) {
-            logger.warn("OpenTelemetry SDK not properly initialized");
-            return;
-        }
-
-        OpenTelemetrySdk sdk = (OpenTelemetrySdk) openTelemetry;
-        Resource resource = sdk.getSdkTracerProvider().getResource();
-
         // Validate service name
-        String serviceName = resource.getAttribute(ResourceAttributes.SERVICE_NAME);
+        String serviceName = getConfigValue("otel.service.name", "OTEL_SERVICE_NAME");
         if (serviceName == null || serviceName.equals("unknown_service:java")) {
             logger.error("Service name not configured - using default");
         } else {
@@ -243,23 +230,53 @@ public class OpenTelemetryConfigValidator {
         }
 
         // Validate deployment environment
-        String environment = resource.getAttribute(ResourceAttributes.DEPLOYMENT_ENVIRONMENT);
-        if (environment == null || environment.equals("unset")) {
+        String resourceAttributes = getConfigValue("otel.resource.attributes", "OTEL_RESOURCE_ATTRIBUTES");
+        if (resourceAttributes == null || !resourceAttributes.contains("deployment.environment.name=")
+                || resourceAttributes.contains("deployment.environment.name=unset")) {
             logger.error("Deployment environment not configured");
         } else {
-            logger.info("Deployment environment: {}", environment);
+            logger.info("OpenTelemetry resource attributes: {}", resourceAttributes);
         }
 
         // Validate exporter configuration
-        String otlpEndpoint = System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT");
+        String otlpEndpoint = getConfigValue("otel.exporter.otlp.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT");
         if (otlpEndpoint == null) {
             logger.warn("OTLP endpoint not configured - telemetry may not be exported");
         } else {
             logger.info("OTLP exporter endpoint: {}", otlpEndpoint);
         }
+    }
 
-        // Log all resource attributes for debugging
-        logger.debug("OpenTelemetry resource attributes: {}", resource.getAttributes().asMap());
+    private String getConfigValue(String systemProperty, String environmentVariable) {
+        String value = System.getProperty(systemProperty);
+        if (value != null) {
+            return value;
+        }
+
+        value = System.getenv(environmentVariable);
+        if (value != null) {
+            return value;
+        }
+
+        return fileProperties.getProperty(systemProperty);
+    }
+
+    private Properties loadAgentConfigurationFile() {
+        Properties props = new Properties();
+        String configFile = System.getProperty("otel.javaagent.configuration-file");
+        if (configFile == null) {
+            configFile = System.getenv("OTEL_JAVAAGENT_CONFIGURATION_FILE");
+        }
+        if (configFile == null) {
+            return props;
+        }
+
+        try (FileInputStream fis = new FileInputStream(configFile)) {
+            props.load(fis);
+        } catch (IOException e) {
+            logger.warn("Could not load OpenTelemetry configuration file: {}", configFile, e);
+        }
+        return props;
     }
 }
 ```
@@ -298,8 +315,7 @@ metadata:
 data:
   otel-config.properties: |
     otel.service.name=payment-service
-    otel.service.version=1.0.0
-    otel.resource.attributes=service.namespace=ecommerce,deployment.environment=production
+    otel.resource.attributes=service.namespace=ecommerce,service.version=1.0.0,deployment.environment.name=production
     otel.exporter.otlp.endpoint=https://otel-collector.prod.company.internal:4317
     otel.traces.sampler=parentbased_traceidratio
     otel.traces.sampler.arg=0.1
@@ -361,10 +377,7 @@ class OpenTelemetryConfigurationTest {
         "src/main/resources/otel-config-prod.properties"
     })
     void testConfigurationFilesHaveRequiredProperties(String configFile) throws IOException {
-        Properties props = new Properties();
-        try (FileInputStream fis = new FileInputStream(configFile)) {
-            props.load(fis);
-        }
+        Properties props = loadLayeredProperties(configFile);
 
         // Verify required properties
         assertNotNull(props.getProperty("otel.service.name"),
@@ -377,10 +390,7 @@ class OpenTelemetryConfigurationTest {
 
     @Test
     void testProductionConfigHasSecureSampling() throws IOException {
-        Properties props = new Properties();
-        try (FileInputStream fis = new FileInputStream("src/main/resources/otel-config-prod.properties")) {
-            props.load(fis);
-        }
+        Properties props = loadLayeredProperties("src/main/resources/otel-config-prod.properties");
 
         String samplerArg = props.getProperty("otel.traces.sampler.arg");
         assertNotNull(samplerArg, "Production must have explicit sampling rate");
@@ -389,6 +399,20 @@ class OpenTelemetryConfigurationTest {
         assertTrue(samplingRate <= 0.2,
             "Production sampling rate should be conservative (<=20%)");
     }
+
+    private Properties loadLayeredProperties(String overrideFile) throws IOException {
+        Properties props = new Properties();
+        try (FileInputStream fis = new FileInputStream("src/main/resources/otel-config-base.properties")) {
+            props.load(fis);
+        }
+
+        if (!overrideFile.endsWith("otel-config-base.properties")) {
+            try (FileInputStream fis = new FileInputStream(overrideFile)) {
+                props.load(fis);
+            }
+        }
+        return props;
+    }
 }
 ```
 
@@ -396,7 +420,7 @@ These tests run in CI/CD pipelines to catch configuration errors before deployme
 
 ## Troubleshooting Configuration Issues
 
-Enable debug logging to see which configuration sources the agent uses:
+Enable debug logging to see verbose Java agent initialization and configuration details:
 
 ```bash
 # Enable agent debug logging
@@ -406,14 +430,11 @@ export OTEL_JAVAAGENT_DEBUG=true
 java -javaagent:/opt/opentelemetry-javaagent.jar -jar application.jar
 ```
 
-The agent logs will show configuration resolution:
+The agent logs will include verbose entries similar to:
 
 ```text
-[otel.javaagent] Resolving otel.service.name
-[otel.javaagent] - System property: null
-[otel.javaagent] - Environment variable OTEL_SERVICE_NAME: payment-service
-[otel.javaagent] - Configuration file: null
-[otel.javaagent] Using value: payment-service (from environment variable)
+[otel.javaagent] DEBUG io.opentelemetry.javaagent.tooling.VersionLogger - opentelemetry-javaagent
+[otel.javaagent] DEBUG io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdkBuilder - Configuring OpenTelemetry SDK
 ```
 
 Layered configuration for the OpenTelemetry Java agent gives you flexibility to manage multiple environments without duplicating code or configuration. By combining base configuration files with environment-specific overrides through environment variables, you create a maintainable and auditable observability setup that scales across your entire deployment pipeline.
