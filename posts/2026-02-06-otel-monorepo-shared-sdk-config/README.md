@@ -59,14 +59,13 @@ Create `packages/tracing/package.json`:
   "version": "1.0.0",
   "main": "src/index.js",
   "dependencies": {
-    "@opentelemetry/api": "^1.8.0",
-    "@opentelemetry/sdk-node": "^0.49.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.49.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.49.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.43.0",
-    "@opentelemetry/sdk-trace-base": "^1.22.0",
-    "@opentelemetry/resources": "^1.22.0",
-    "@opentelemetry/semantic-conventions": "^1.22.0"
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/sdk-trace-base": "^2.7.1",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/semantic-conventions": "^1.41.1"
   }
 }
 ```
@@ -113,11 +112,14 @@ And the main initialization in `packages/tracing/src/index.js`:
 // packages/tracing/src/index.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { ConsoleSpanExporter, SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { mergeConfig } = require('./config');
 
 let sdkInstance = null;
@@ -132,10 +134,10 @@ function initTracing(overrides = {}) {
   const config = mergeConfig(overrides);
 
   // Build the resource with service-specific attributes
-  const resource = new Resource({
-    'service.name': config.serviceName,
-    'deployment.environment': config.environment,
-    'service.version': config.serviceVersion || 'unknown',
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: config.serviceName,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: config.environment,
+    [ATTR_SERVICE_VERSION]: config.serviceVersion || 'unknown',
   });
 
   // Choose exporter based on environment
@@ -156,11 +158,20 @@ function initTracing(overrides = {}) {
 
   // Configure auto-instrumentations based on config
   const instrumentationConfig = {};
+  if (!config.instrumentations.http) {
+    instrumentationConfig['@opentelemetry/instrumentation-http'] = { enabled: false };
+  }
+  if (!config.instrumentations.express) {
+    instrumentationConfig['@opentelemetry/instrumentation-express'] = { enabled: false };
+  }
   if (!config.instrumentations.pg) {
     instrumentationConfig['@opentelemetry/instrumentation-pg'] = { enabled: false };
   }
   if (!config.instrumentations.redis) {
     instrumentationConfig['@opentelemetry/instrumentation-redis'] = { enabled: false };
+  }
+  if (!config.instrumentations.grpc) {
+    instrumentationConfig['@opentelemetry/instrumentation-grpc'] = { enabled: false };
   }
 
   const sdk = new NodeSDK({
