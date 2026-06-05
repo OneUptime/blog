@@ -18,7 +18,7 @@ Start Pyroscope:
 docker run --rm -d \
   --name pyroscope \
   -p 4040:4040 \
-  grafana/pyroscope:1.7.0
+  grafana/pyroscope:2.0.2
 ```
 
 Configure the OpenTelemetry Collector to export profiles to Pyroscope:
@@ -33,8 +33,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope:4040
+  otlp/pyroscope:
+    endpoint: pyroscope:4040
     tls:
       insecure: true
 
@@ -42,8 +42,10 @@ service:
   pipelines:
     profiles:
       receivers: [otlp]
-      exporters: [otlphttp/pyroscope]
+      exporters: [otlp/pyroscope]
 ```
+
+Start the Collector with profile support enabled, for example by adding `--feature-gates=service.profilesSupport` to the Collector command.
 
 ## Understanding Flame Graphs
 
@@ -51,7 +53,7 @@ A flame graph stacks function calls vertically. The x-axis represents the propor
 
 Here is what to look for:
 
-- **Wide bars at the top** indicate functions that consume a lot of CPU directly (self time).
+- **Wide bars** indicate functions with high cumulative resource usage. Use the self value or top table to identify functions that consume a lot of CPU directly.
 - **Tall narrow towers** suggest deep call stacks, which might indicate excessive recursion or deeply nested abstractions.
 - **Plateaus** where a parent function is wide but its children are narrow suggest the parent itself is doing significant work.
 
@@ -61,7 +63,7 @@ In Grafana, navigate to **Explore > Pyroscope** and select your application. Cho
 
 An icicle chart is essentially a flame graph flipped upside down. The root function is at the top, and callees descend downward. Some engineers find this more intuitive because it mirrors the actual call flow: the entry point is at the top and execution flows downward.
 
-In Pyroscope's UI, you can toggle between flame graph and icicle chart views with a single click. Both represent the same data, just oriented differently.
+Grafana Pyroscope's flame graph view already presents the root at the top and callees below it, which is the icicle-style orientation. Other profiling tools may use the opposite orientation, but both represent the same data, just oriented differently.
 
 ## Querying Specific Profiles
 
