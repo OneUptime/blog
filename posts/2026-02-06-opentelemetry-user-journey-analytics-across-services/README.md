@@ -44,27 +44,28 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
-import { Resource } from '@opentelemetry/resources';
-
-// Initialize the browser tracer
-const provider = new WebTracerProvider({
-    resource: new Resource({
-        'service.name': 'web-frontend',
-        'service.version': '2.1.0',
-        'deployment.environment': 'production',
-    }),
-});
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 // Export spans to the collector via OTLP/HTTP
 const exporter = new OTLPTraceExporter({
     url: 'https://otel-collector.example.com/v1/traces',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-    maxQueueSize: 100,
-    maxExportBatchSize: 30,
-    scheduledDelayMillis: 5000, // Batch for 5 seconds before sending
-}));
+// Initialize the browser tracer
+const provider = new WebTracerProvider({
+    resource: resourceFromAttributes({
+        'service.name': 'web-frontend',
+        'service.version': '2.1.0',
+        'deployment.environment': 'production',
+    }),
+    spanProcessors: [
+        new BatchSpanProcessor(exporter, {
+            maxQueueSize: 100,
+            maxExportBatchSize: 30,
+            scheduledDelayMillis: 5000, // Batch for 5 seconds before sending
+        }),
+    ],
+});
 
 // ZoneContextManager maintains trace context across async operations
 provider.register({
@@ -80,8 +81,11 @@ registerInstrumentations({
                 propagateTraceHeaderCorsUrls: [/api\.example\.com/],
                 // Add custom attributes to every fetch span
                 applyCustomAttributesOnSpan: (span, request, result) => {
+                    const url = request instanceof Request ? request.url : result.url;
+                    if (!url) return;
+
                     span.setAttribute('http.request.url_path',
-                        new URL(request.url || request).pathname);
+                        new URL(url, window.location.origin).pathname);
                 },
             },
             '@opentelemetry/instrumentation-document-load': {
@@ -95,6 +99,7 @@ export const tracer = provider.getTracer('user-journey');
 ```
 
 The auto-instrumentation handles the common cases: page loads, fetch requests, and XMLHttpRequest calls. The `propagateTraceHeaderCorsUrls` setting is critical because it tells the SDK to include the `traceparent` header on API calls, which is how the backend connects its spans to the frontend trace.
+For cross-origin API calls, your backend CORS configuration must also allow the `traceparent` header.
 
 ## Tracking Custom User Journey Events
 
@@ -207,6 +212,7 @@ Here is how you would wire the journey tracker into a React checkout flow:
 ```javascript
 // CheckoutPage.jsx - React component with journey tracking
 import { journeyTracker } from './journey-tracker';
+import { SpanStatusCode, context, trace } from '@opentelemetry/api';
 import { useEffect } from 'react';
 
 function CheckoutPage({ cartItems, userId }) {
@@ -231,13 +237,18 @@ function CheckoutPage({ cartItems, userId }) {
         const paymentSpan = journeyTracker.trackStep('payment_submission', {
             'payment.method': paymentDetails.method,
         });
+        if (!paymentSpan) return;
 
         try {
-            const result = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cartItems, paymentDetails }),
-            });
+            const paymentContext = trace.setSpan(context.active(), paymentSpan);
+
+            const result = await context.with(paymentContext, () =>
+                fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cartItems, paymentDetails }),
+                })
+            );
 
             if (result.ok) {
                 paymentSpan.setStatus({ code: SpanStatusCode.OK });
@@ -278,7 +289,7 @@ const tracer = trace.getTracer('checkout-service');
 
 async function handleCheckout(req, res) {
     // The trace context is automatically propagated from the frontend
-    // via the W3C traceparent header. The SDK picks it up automatically.
+    // via the W3C traceparent header when HTTP/Express instrumentation is configured.
 
     const span = trace.getActiveSpan();
 
@@ -290,10 +301,15 @@ async function handleCheckout(req, res) {
     });
 
     // Validate inventory across all items
-    const inventorySpan = tracer.startSpan('validate_inventory');
-    const inventoryResult = await inventoryService.checkAll(req.body.cartItems);
-    inventorySpan.setAttribute('inventory.all_available', inventoryResult.allAvailable);
-    inventorySpan.end();
+    const inventoryResult = await tracer.startActiveSpan('validate_inventory', async (inventorySpan) => {
+        try {
+            const result = await inventoryService.checkAll(req.body.cartItems);
+            inventorySpan.setAttribute('inventory.all_available', result.allAvailable);
+            return result;
+        } finally {
+            inventorySpan.end();
+        }
+    });
 
     if (!inventoryResult.allAvailable) {
         span.addEvent('checkout_blocked', {
@@ -304,32 +320,33 @@ async function handleCheckout(req, res) {
     }
 
     // Process payment
-    const paymentSpan = tracer.startSpan('process_payment');
-    try {
-        const payment = await paymentService.charge({
-            userId: req.user.id,
-            amount: calculateTotal(req.body.cartItems),
-            method: req.body.paymentDetails,
-        });
+    return tracer.startActiveSpan('process_payment', async (paymentSpan) => {
+        try {
+            const payment = await paymentService.charge({
+                userId: req.user.id,
+                amount: calculateTotal(req.body.cartItems),
+                method: req.body.paymentDetails,
+            });
 
-        paymentSpan.setAttribute('payment.transaction_id', payment.transactionId);
-        paymentSpan.setStatus({ code: SpanStatusCode.OK });
-        paymentSpan.end();
+            paymentSpan.setAttribute('payment.transaction_id', payment.transactionId);
+            paymentSpan.setStatus({ code: SpanStatusCode.OK });
 
-        // Add a journey completion event to the trace
-        span.addEvent('journey_completed', {
-            'order.id': payment.orderId,
-            'payment.transaction_id': payment.transactionId,
-        });
+            // Add a journey completion event to the trace
+            span.addEvent('journey_completed', {
+                'order.id': payment.orderId,
+                'payment.transaction_id': payment.transactionId,
+            });
 
-        return res.json({ orderId: payment.orderId });
-    } catch (error) {
-        paymentSpan.recordException(error);
-        paymentSpan.setStatus({ code: SpanStatusCode.ERROR });
-        paymentSpan.end();
+            return res.json({ orderId: payment.orderId });
+        } catch (error) {
+            paymentSpan.recordException(error);
+            paymentSpan.setStatus({ code: SpanStatusCode.ERROR });
 
-        throw error;
-    }
+            throw error;
+        } finally {
+            paymentSpan.end();
+        }
+    });
 }
 ```
 
