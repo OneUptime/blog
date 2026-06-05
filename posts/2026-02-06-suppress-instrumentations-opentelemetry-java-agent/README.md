@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Java Agent, Suppression, Configuration, Performance
 
 Description: Detailed guide to selectively disabling instrumentations in the OpenTelemetry Java agent to optimize performance, reduce noise, and avoid conflicts in production Java applications.
 
-The OpenTelemetry Java agent automatically instruments hundreds of libraries and frameworks. While this comprehensive coverage is powerful, there are scenarios where you need to disable specific instrumentations. This might be to improve performance, reduce trace volume, avoid instrumentation conflicts, or eliminate noise from internal services.
+The OpenTelemetry Java agent automatically instruments many libraries and frameworks. While this comprehensive coverage is powerful, there are scenarios where you need to disable specific instrumentations. This might be to improve performance, reduce trace volume, avoid instrumentation conflicts, or eliminate noise from internal services.
 
 ## Why Suppress Instrumentations
 
@@ -50,12 +50,12 @@ The OpenTelemetry Java agent organizes instrumentations by library name. Each in
 - `spring-webmvc` - Spring Web MVC
 - `hibernate` - Hibernate ORM
 - `kafka` - Apache Kafka clients
-- `redis` - Redis client instrumentation
+- `jedis`, `lettuce`, `redisson`, or `rediscala` - Redis client instrumentation
 - `mongo` - MongoDB client instrumentation
-- `httpclient` - HTTP client libraries
+- `apache-httpclient` or `java-http-client` - HTTP client libraries
 - `netty` - Netty networking framework
-- `logback` - Logback logging instrumentation
-- `log4j` - Log4j logging instrumentation
+- `logback-appender` or `logback-mdc` - Logback logging instrumentation
+- `log4j-appender` or `log4j-context-data` - Log4j logging instrumentation
 
 ## Basic Suppression Configuration
 
@@ -108,7 +108,7 @@ Edit `setenv.sh` (Linux/macOS) or `setenv.bat` (Windows):
 OTEL_AGENT_PATH="/opt/opentelemetry/opentelemetry-javaagent.jar"
 CATALINA_OPTS="$CATALINA_OPTS -javaagent:$OTEL_AGENT_PATH"
 CATALINA_OPTS="$CATALINA_OPTS -Dotel.service.name=tomcat-app"
-CATALINA_OPTS="$CATALINA_OPTS -Dotel.exporter.otlp.endpoint=http://localhost:4317"
+CATALINA_OPTS="$CATALINA_OPTS -Dotel.exporter.otlp.endpoint=http://localhost:4318"
 
 # Suppress specific instrumentations
 CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.jdbc.enabled=false"
@@ -119,8 +119,10 @@ CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.tomcat.enabled=false"
 CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.servlet.enabled=true"
 
 # Suppress noisy logging instrumentation
-CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.logback.enabled=false"
-CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.log4j.enabled=false"
+CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.logback-appender.enabled=false"
+CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.logback-mdc.enabled=false"
+CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.log4j-appender.enabled=false"
+CATALINA_OPTS="$CATALINA_OPTS -Dotel.instrumentation.log4j-context-data.enabled=false"
 
 export CATALINA_OPTS
 ```
@@ -138,7 +140,8 @@ JAVA_OPTS="$JAVA_OPTS -javaagent:$OTEL_AGENT_PATH"
 JAVA_OPTS="$JAVA_OPTS -Dotel.service.name=wildfly-app"
 
 # Suppress instrumentations that conflict with WildFly
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jboss-logging.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jboss-logmanager-appender.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jboss-logmanager-mdc.enabled=false"
 JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.undertow.enabled=false"
 
 # Keep essential instrumentations
@@ -161,7 +164,7 @@ Add suppression settings to `jvm.options`:
 # Agent configuration
 -javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar
 -Dotel.service.name=liberty-app
--Dotel.exporter.otlp.endpoint=http://localhost:4317
+-Dotel.exporter.otlp.endpoint=http://localhost:4318
 
 # Suppress Liberty-specific instrumentations
 -Dotel.instrumentation.liberty.enabled=false
@@ -174,22 +177,23 @@ Add suppression settings to `jvm.options`:
 -Dotel.instrumentation.servlet.enabled=true
 
 # Suppress client libraries
--Dotel.instrumentation.httpclient.enabled=false
+-Dotel.instrumentation.apache-httpclient.enabled=false
+-Dotel.instrumentation.java-http-client.enabled=false
 -Dotel.instrumentation.okhttp.enabled=false
 ```
 
-## Suppressing by Library Version
+## Suppressing Related Library Components
 
-Some instrumentations support version-specific suppression when you need to disable instrumentation only for certain library versions:
+Some related libraries and components have separate instrumentation names, so you can disable one component while leaving another enabled:
 
 ```bash
-# Suppress specific library versions
+# Suppress JDBC spans but keep JDBC DataSource telemetry
 -Dotel.instrumentation.jdbc.enabled=false
--Dotel.instrumentation.jdbc.postgresql.enabled=true
+-Dotel.instrumentation.jdbc-datasource.enabled=true
 
-# Suppress old versions but keep new ones
--Dotel.instrumentation.spring-webmvc-3.1.enabled=false
--Dotel.instrumentation.spring-webmvc-5.3.enabled=true
+# Suppress Spring MVC server instrumentation but keep Spring WebFlux
+-Dotel.instrumentation.spring-webmvc.enabled=false
+-Dotel.instrumentation.spring-webflux.enabled=true
 ```
 
 ## Configuration File Approach
@@ -201,7 +205,7 @@ For complex configurations, use a properties file instead of command-line argume
 
 # Service identification
 otel.service.name=production-app
-otel.exporter.otlp.endpoint=http://localhost:4317
+otel.exporter.otlp.endpoint=http://localhost:4318
 
 # Disable all by default (allowlist approach)
 otel.instrumentation.common.default-enabled=false
@@ -213,20 +217,19 @@ otel.instrumentation.jdbc.enabled=true
 otel.instrumentation.jaxrs-client.enabled=true
 
 # Explicitly disable noisy instrumentations
-otel.instrumentation.logback.enabled=false
-otel.instrumentation.log4j.enabled=false
-otel.instrumentation.slf4j.enabled=false
+otel.instrumentation.logback-appender.enabled=false
+otel.instrumentation.logback-mdc.enabled=false
+otel.instrumentation.log4j-appender.enabled=false
+otel.instrumentation.log4j-context-data.enabled=false
 
 # Disable internal framework instrumentations
 otel.instrumentation.spring-scheduling.enabled=false
-otel.instrumentation.executor.enabled=false
-otel.instrumentation.thread.enabled=false
+otel.instrumentation.executors.enabled=false
 
-# Disable health check endpoints
-otel.instrumentation.actuator.enabled=false
+# Disable Spring Boot Actuator autoconfigure instrumentation
+otel.instrumentation.spring-boot-actuator-autoconfigure.enabled=false
 
 # Performance optimization: disable caching instrumentation
-otel.instrumentation.caffeine.enabled=false
 otel.instrumentation.guava.enabled=false
 ```
 
@@ -239,20 +242,25 @@ JAVA_OPTS="$JAVA_OPTS -Dotel.javaagent.configuration-file=/etc/otel-suppression.
 
 ## Suppressing HTTP Endpoints
 
-Suppress instrumentation for specific HTTP endpoints like health checks or internal APIs:
+Suppress spans for specific HTTP endpoints like health checks or internal APIs by using declarative configuration with the Java agent:
 
-```bash
-# Suppress instrumentation for specific URL patterns
--Dotel.instrumentation.servlet.enabled=true
--Dotel.instrumentation.http-url-connection.enabled=true
+```yaml
+# otel-config.yaml
+file_format: '1.0'
 
-# Use span suppression for specific paths
--Dotel.instrumentation.servlet.suppress-spans-for-paths=/health,/metrics,/actuator/*
-
-# Alternative: Use sampling to drop health check traces
--Dotel.traces.sampler=parentbased_traceidratio
--Dotel.traces.sampler.arg=1.0
+tracer_provider:
+  sampler:
+    rule_based_routing:
+      fallback_sampler:
+        always_on:
+      span_kind: SERVER
+      rules:
+        - action: DROP
+          attribute: url.path
+          pattern: /actuator.*
 ```
+
+Load this file with `-Dotel.config.file=/path/to/otel-config.yaml`.
 
 ## Performance-Focused Suppression Strategy
 
@@ -271,18 +279,20 @@ JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.servlet.enabled=true"
 JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jaxrs.enabled=true"
 
 # Suppress internal operations that create noise
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.executor.enabled=false"
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.thread.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.executors.enabled=false"
 JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jdbc.enabled=false"
 
 # Suppress caching operations
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.caffeine.enabled=false"
 JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.guava.enabled=false"
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.redis.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jedis.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.lettuce.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.redisson.enabled=false"
 
-# Suppress logging instrumentation (high overhead)
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.logback.enabled=false"
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.log4j.enabled=false"
+# Suppress noisy logging instrumentation
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.logback-appender.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.logback-mdc.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.log4j-appender.enabled=false"
+JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.log4j-context-data.enabled=false"
 
 # Optimize batch processing
 JAVA_OPTS="$JAVA_OPTS -Dotel.bsp.schedule.delay=10000"
@@ -299,16 +309,15 @@ Control database instrumentation granularly:
 -Dotel.instrumentation.hibernate.enabled=false
 -Dotel.instrumentation.r2dbc.enabled=false
 
-# Or keep JDBC but disable ORM
+# Or keep JDBC but disable ORM-specific instrumentation
 -Dotel.instrumentation.jdbc.enabled=true
 -Dotel.instrumentation.hibernate.enabled=false
--Dotel.instrumentation.jpa.enabled=false
 
-# Disable specific database drivers
+# Disable specific database client instrumentations
 -Dotel.instrumentation.jdbc.enabled=true
--Dotel.instrumentation.postgresql.enabled=true
--Dotel.instrumentation.mysql.enabled=false
--Dotel.instrumentation.oracle.enabled=false
+-Dotel.instrumentation.mongo.enabled=false
+-Dotel.instrumentation.cassandra.enabled=false
+-Dotel.instrumentation.clickhouse.enabled=false
 ```
 
 ## Messaging System Suppression
@@ -320,13 +329,13 @@ Control instrumentation for messaging systems:
 -Dotel.instrumentation.jms.enabled=false
 -Dotel.instrumentation.kafka.enabled=false
 -Dotel.instrumentation.rabbitmq.enabled=false
--Dotel.instrumentation.aws-sqs.enabled=false
+-Dotel.instrumentation.aws-sdk.enabled=false
 
 # Or enable only what you use
 -Dotel.instrumentation.common.default-enabled=false
 -Dotel.instrumentation.kafka.enabled=true
--Dotel.instrumentation.kafka-clients.enabled=true
--Dotel.instrumentation.kafka-streams.enabled=false
+-Dotel.instrumentation.spring-kafka.enabled=true
+-Dotel.instrumentation.reactor-kafka.enabled=false
 ```
 
 ## Client Library Suppression
@@ -334,15 +343,15 @@ Control instrumentation for messaging systems:
 Manage HTTP client instrumentation:
 
 ```bash
-# Disable all HTTP client instrumentation
--Dotel.instrumentation.httpclient.enabled=false
--Dotel.instrumentation.okhttp.enabled=false
+# Disable common HTTP client instrumentation
 -Dotel.instrumentation.apache-httpclient.enabled=false
+-Dotel.instrumentation.java-http-client.enabled=false
+-Dotel.instrumentation.okhttp.enabled=false
 -Dotel.instrumentation.google-http-client.enabled=false
 
 # Keep specific client instrumentation
 -Dotel.instrumentation.jaxrs-client.enabled=true
--Dotel.instrumentation.resttemplate.enabled=true
+-Dotel.instrumentation.spring-web.enabled=true
 ```
 
 ## Docker and Kubernetes Configuration
@@ -359,12 +368,13 @@ COPY opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 # Set environment variables for suppression
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/opentelemetry-javaagent.jar"
 ENV OTEL_SERVICE_NAME="containerized-app"
-ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"
+ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4318"
 
 # Suppress instrumentations via environment variables
 ENV OTEL_INSTRUMENTATION_JDBC_ENABLED="false"
 ENV OTEL_INSTRUMENTATION_HIBERNATE_ENABLED="false"
-ENV OTEL_INSTRUMENTATION_LOGBACK_ENABLED="false"
+ENV OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED="false"
+ENV OTEL_INSTRUMENTATION_LOGBACK_MDC_ENABLED="false"
 
 # Enable only required instrumentations
 ENV OTEL_INSTRUMENTATION_SERVLET_ENABLED="true"
@@ -384,12 +394,12 @@ metadata:
 data:
   otel.properties: |
     otel.service.name=k8s-app
-    otel.exporter.otlp.endpoint=http://otel-collector:4317
+    otel.exporter.otlp.endpoint=http://otel-collector:4318
 
     # Disable noisy instrumentations
-    otel.instrumentation.logback.enabled=false
-    otel.instrumentation.executor.enabled=false
-    otel.instrumentation.thread.enabled=false
+    otel.instrumentation.logback-appender.enabled=false
+    otel.instrumentation.logback-mdc.enabled=false
+    otel.instrumentation.executors.enabled=false
 
     # Enable essential instrumentations
     otel.instrumentation.servlet.enabled=true
@@ -446,13 +456,14 @@ Example debug output:
 
 ## Programmatic Suppression Check
 
-Verify at runtime which instrumentations are active:
+Verify at runtime that the OpenTelemetry SDK is active and that the expected instrumentation environment variables are present. The Java agent does not expose a public runtime API that lists active auto-instrumentations:
 
 ```java
 package com.example.telemetry;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 
 import jakarta.annotation.PostConstruct;
@@ -473,8 +484,8 @@ public class TelemetryVerifier {
         logger.info("OpenTelemetry initialized: " +
             (openTelemetry != OpenTelemetry.noop()));
 
-        // Check if instrumentation is active by creating a test span
-        var span = tracer.spanBuilder("test-span").startSpan();
+        // Check if spans are being recorded by the configured SDK
+        Span span = tracer.spanBuilder("test-span").startSpan();
         boolean isRecording = span.isRecording();
         span.end();
 
@@ -519,8 +530,11 @@ Real-world suppression configurations for different scenarios:
 -Dotel.instrumentation.jdbc.enabled=false
 -Dotel.instrumentation.hibernate.enabled=false
 -Dotel.instrumentation.mongo.enabled=false
--Dotel.instrumentation.redis.enabled=false
--Dotel.instrumentation.logging.enabled=false
+-Dotel.instrumentation.jedis.enabled=false
+-Dotel.instrumentation.lettuce.enabled=false
+-Dotel.instrumentation.redisson.enabled=false
+-Dotel.instrumentation.logback-appender.enabled=false
+-Dotel.instrumentation.log4j-appender.enabled=false
 ```
 
 ## Measuring Impact
@@ -568,8 +582,8 @@ When manual and automatic instrumentation conflict:
 -Dotel.instrumentation.jaxrs.enabled=false
 -Dotel.instrumentation.servlet.enabled=false
 
-# Keep context propagation
--Dotel.context.propagation=true
+# Keep async context propagation
+-Dotel.instrumentation.executors.enabled=true
 ```
 
 ## Best Practices
