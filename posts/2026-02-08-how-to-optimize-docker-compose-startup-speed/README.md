@@ -8,7 +8,7 @@ Description: Speed up Docker Compose startup times with parallel execution, heal
 
 ---
 
-Docker Compose is the standard tool for running multi-container applications during development. But as your stack grows, `docker compose up` can take minutes. Services wait for each other in chains, images get pulled sequentially, volumes mount slowly, and health checks add delays. Most of this waiting is avoidable. Here are the techniques that cut Compose startup times from minutes to seconds.
+Docker Compose is the standard tool for running multi-container applications during development. But as your stack grows, `docker compose up` can take minutes. Services wait for each other in chains, image downloads dominate first runs, volumes mount slowly, and health checks add delays. Most of this waiting is avoidable. Here are the techniques that cut Compose startup times from minutes to seconds.
 
 ## Diagnosing Slow Startups
 
@@ -70,7 +70,7 @@ volumes:
   pgdata:
 ```
 
-Alpine-based images download faster because they are smaller. `postgres:16-alpine` is about 80MB compared to 400MB for `postgres:16`.
+Alpine-based images usually download faster because they are smaller. `postgres:16-alpine` is significantly smaller than the default Debian-based `postgres:16` image.
 
 ## Technique 2: Optimize depends_on with Health Checks
 
@@ -88,7 +88,7 @@ services:
       interval: 2s      # Check every 2 seconds (not the default 30s)
       timeout: 3s
       retries: 5
-      start_period: 5s   # Give it 5 seconds before first check
+      start_period: 5s   # Do not count early failures during startup
 
   redis:
     image: redis:7-alpine
@@ -113,7 +113,7 @@ services:
 The key settings for fast startup:
 
 - **interval: 2s** instead of the default 30s. Check readiness frequently.
-- **start_period: 5s** for databases. This gives the service time to initialize before the first check.
+- **start_period: 5s** for databases. This gives the service time to initialize without counting early failures toward the retry limit.
 - **retries: 3-5** to handle brief startup delays without waiting too long.
 
 ## Technique 3: Pull Images in Parallel
@@ -130,10 +130,10 @@ docker compose up -d
 
 ```bash
 # Or combine in a single command for CI/CD
-docker compose pull --parallel && docker compose up -d --wait
+docker compose pull && docker compose up -d --wait
 ```
 
-The `--wait` flag tells Compose to wait until all services are healthy before returning, which is useful in CI/CD scripts.
+The `--wait` flag tells Compose to wait until services are running or healthy before returning, which is useful in CI/CD scripts.
 
 ## Technique 4: Use Build Cache Effectively
 
@@ -159,8 +159,8 @@ services:
 ```
 
 ```bash
-# Build with BuildKit for faster builds
-COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose build
+# Build with BuildKit, the default builder in current Docker versions
+docker compose build
 ```
 
 ## Technique 5: Reduce Service Count
@@ -289,7 +289,7 @@ services:
     image: minio/minio
     command: server /data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 2s
       retries: 5
 
