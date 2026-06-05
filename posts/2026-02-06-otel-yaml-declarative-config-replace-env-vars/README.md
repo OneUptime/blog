@@ -40,29 +40,32 @@ This works, but it has real downsides. There is no schema validation, no auto-co
 
 ## The Declarative Configuration Alternative
 
-The OpenTelemetry configuration file specification defines a YAML schema that covers everything those environment variables do, and more. Here is the equivalent of the environment variables above:
+The OpenTelemetry configuration file specification defines a YAML schema that covers SDK setup in a structured way, including options that are awkward or unavailable as environment variables. Here is the equivalent of the environment variables above:
 
 ```yaml
 # otel-config.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 # Resource definition shared across all signals
 resource:
   attributes:
-    service.name: "payment-api"
-    service.version: "2.4.1"
-    deployment.environment: "production"
+    - name: service.name
+      value: "payment-api"
+    - name: service.version
+      value: "2.4.1"
+    - name: deployment.environment
+      value: "production"
 
 # Tracer provider configuration
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "https://collector.example.com:4317"
-            protocol: "grpc"
             headers:
-              Authorization: "Bearer token123"
+              - name: Authorization
+                value: "Bearer token123"
   sampler:
     parent_based:
       root:
@@ -74,22 +77,22 @@ meter_provider:
   readers:
     - periodic:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "https://collector.example.com:4317"
-            protocol: "grpc"
 
 # Logger provider configuration
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "https://collector.example.com:4317"
-            protocol: "grpc"
 
 # Context propagation
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 Notice how much more readable this is. The hierarchical structure groups related settings together, and you can add inline comments to explain decisions.
@@ -99,10 +102,10 @@ Notice how much more readable this is. The hierarchical structure groups related
 Once you have your YAML file, you tell the SDK to use it by setting a single environment variable:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE="/etc/otel/otel-config.yaml"
+export OTEL_CONFIG_FILE="/etc/otel/otel-config.yaml"
 ```
 
-That is the only environment variable you need. The SDK reads the file at startup and configures itself accordingly.
+That is the only OpenTelemetry configuration environment variable you need for a static file. The SDK reads the file at startup and configures itself accordingly.
 
 In a Kubernetes deployment, you would mount the config file as a ConfigMap:
 
@@ -114,27 +117,36 @@ metadata:
   name: otel-config
 data:
   otel-config.yaml: |
-    file_format: "0.3"
+    file_format: "1.0"
     resource:
       attributes:
-        service.name: "payment-api"
+        - name: service.name
+          value: "payment-api"
     tracer_provider:
       processors:
         - batch:
             exporter:
-              otlp:
+              otlp_grpc:
                 endpoint: "http://otel-collector:4317"
-                protocol: "grpc"
 ---
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: payment-api
 spec:
+  selector:
+    matchLabels:
+      app: payment-api
   template:
+    metadata:
+      labels:
+        app: payment-api
     spec:
       containers:
         - name: payment-api
+          image: payment-api:latest
           env:
-            - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+            - name: OTEL_CONFIG_FILE
               value: "/etc/otel/otel-config.yaml"
           volumeMounts:
             - name: otel-config
@@ -151,22 +163,26 @@ You do not have to hardcode everything. The declarative configuration supports e
 
 ```yaml
 # otel-config.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT}"
             headers:
-              Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+              - name: Authorization
+                value: "Bearer ${OTEL_AUTH_TOKEN}"
   sampler:
     parent_based:
       root:
@@ -180,14 +196,14 @@ This gives you the best of both worlds: a structured, validated configuration fi
 
 A few things to keep in mind as you make this transition:
 
-1. **SDK support varies by language.** As of early 2026, the Java agent has the most mature support. Python, Go, and .NET are in various stages of implementing the spec. Check your language SDK's documentation for the current status.
+1. **SDK support varies by language.** As of mid-2026, Java is the primary language documented in the OpenTelemetry SDK configuration guide, while the configuration repository tracks implementation status for C++, Go, Java, JavaScript, and PHP. .NET and Python are still in progress. Check your language SDK's documentation for the current status.
 
 2. **The `file_format` field matters.** It pins the schema version your file targets. If you upgrade your SDK, check whether new config options require a newer file format version.
 
-3. **Config file takes precedence.** When both environment variables and a config file are present, the config file wins. This can trip you up during migration if you forget to remove old env vars.
+3. **Config file ignores most other environment variables.** When `OTEL_CONFIG_FILE` is set, SDK environment variables are ignored unless they are explicitly referenced in the file through environment variable substitution. This can trip you up during migration if you forget to move old env vars into the YAML file.
 
 4. **Validate before deploying.** The OpenTelemetry project publishes a JSON schema you can use to validate your YAML files in CI. We will cover that in detail in a follow-up post.
 
 ## Wrapping Up
 
-Replacing environment variables with a YAML declarative configuration file is a straightforward improvement that pays off quickly. You get better readability, schema validation, inline documentation through comments, and a single source of truth that is easy to version control and review in pull requests. Start by translating your existing env vars into the YAML format, set `OTEL_EXPERIMENTAL_CONFIG_FILE`, and remove the old variables one service at a time.
+Replacing environment variables with a YAML declarative configuration file is a straightforward improvement that pays off quickly. You get better readability, schema validation, inline documentation through comments, and a single source of truth that is easy to version control and review in pull requests. Start by translating your existing env vars into the YAML format, set `OTEL_CONFIG_FILE`, and remove the old variables one service at a time.
