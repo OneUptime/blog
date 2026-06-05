@@ -129,13 +129,15 @@ diff /tmp/history-v1.txt /tmp/history-v2.txt | colordiff 2>/dev/null || diff /tm
 
 ## Using container-diff
 
-Google's container-diff tool is purpose-built for comparing container images. It analyzes filesystem content, package installations, and more.
+Google's archived container-diff tool is purpose-built for comparing container images. It analyzes filesystem content, package installations, and more.
 
 Install container-diff:
 
 ```bash
 # macOS
-brew install container-diff
+curl -LO https://storage.googleapis.com/container-diff/latest/container-diff-darwin-amd64
+chmod +x container-diff-darwin-amd64
+sudo mv container-diff-darwin-amd64 /usr/local/bin/container-diff
 
 # Linux
 curl -LO https://storage.googleapis.com/container-diff/latest/container-diff-linux-amd64
@@ -168,7 +170,7 @@ container-diff diff myapp:v1 myapp:v2 --type=size
 container-diff diff myapp:v1 myapp:v2 --type=apt --json
 
 # Compare remote images (pulls from registry)
-container-diff diff docker://nginx:1.24 docker://nginx:1.25 --type=file
+container-diff diff remote://nginx:1.24 remote://nginx:1.25 --type=file
 ```
 
 The file comparison shows added, deleted, and modified files with their sizes. The package comparisons show version changes, additions, and removals.
@@ -281,8 +283,8 @@ Compare vulnerabilities between image versions:
 # Compare security profiles
 docker scout compare myapp:v2 --to myapp:v1
 
-# Show only new vulnerabilities in v2
-docker scout cves myapp:v2 --only-severity critical,high
+# Show critical/high vulnerability differences between v2 and v1
+docker scout compare myapp:v2 --to myapp:v1 --only-severity critical,high --ignore-unchanged
 
 # Compare with a specific base image
 docker scout compare myapp:latest --to nginx:alpine
