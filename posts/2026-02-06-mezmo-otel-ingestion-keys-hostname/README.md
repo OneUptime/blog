@@ -13,14 +13,13 @@ Getting the Mezmo OpenTelemetry integration right requires two things: a valid i
 Log into the Mezmo dashboard and navigate to Settings then Organization then API Keys. Create a new ingestion key:
 
 ```bash
-# You can also create keys via the Mezmo API
+# You can also create keys via the Mezmo API with an IAM access key
 
-curl -X POST "https://api.mezmo.com/v1/config/ingestion" \
-  -H "Authorization: Basic $(echo -n 'your-service-key:' | base64)" \
+curl -X POST "https://api.mezmo.com/v1/config/keys?type=ingestion" \
+  -H "Authorization: Token ${MZM_ACCESS_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "otel-collector-production",
-    "description": "Ingestion key for the OpenTelemetry Collector in production"
+    "name": "otel-collector-production"
   }'
 ```
 
@@ -48,8 +47,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
+  namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
@@ -80,19 +86,11 @@ Use the resource detection processor to automatically pick up the system hostnam
 
 ```yaml
 processors:
-  resourcedetection/system:
+  resource_detection/system:
     detectors: [system]
     system:
       hostname_sources: ["os"]
       # This sets the host.name resource attribute
-
-  # Map host.name to what Mezmo expects
-  transform/hostname:
-    log_statements:
-      - context: resource
-        statements:
-          - set(attributes["mezmo.hostname"], attributes["host.name"])
-            where attributes["host.name"] != nil
 ```
 
 ### Strategy 2: Kubernetes Node Name
@@ -101,17 +99,10 @@ In Kubernetes, the pod hostname is not very useful. Use the node name instead:
 
 ```yaml
 processors:
-  resourcedetection/k8s:
-    detectors: [env]
-    # This picks up NODE_NAME from the environment
-
   resource/k8s-hostname:
     attributes:
-      - key: mezmo.hostname
+      - key: host.name
         value: "${NODE_NAME}"
-        action: upsert
-      - key: mezmo.app
-        from_attribute: k8s.deployment.name
         action: upsert
 ```
 
@@ -123,7 +114,7 @@ If you want each service to have its own hostname in Mezmo:
 processors:
   resource/custom-hostname:
     attributes:
-      - key: mezmo.hostname
+      - key: host.name
         value: "${SERVICE_NAME}-${ENVIRONMENT}"
         action: upsert
 ```
@@ -137,6 +128,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
   filelog:
     include:
@@ -144,7 +137,7 @@ receivers:
     start_at: end
 
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
 
   k8sattributes:
@@ -158,12 +151,14 @@ processors:
 
   resource/mezmo:
     attributes:
-      - key: mezmo.hostname
+      - key: host.name
         from_attribute: k8s.node.name
         action: upsert
-      - key: mezmo.app
-        from_attribute: k8s.deployment.name
-        action: upsert
+
+  transform/mezmo-app:
+    log_statements:
+      - set(log.attributes["appname"], resource.attributes["k8s.deployment.name"])
+        where resource.attributes["k8s.deployment.name"] != nil
 
   batch:
     timeout: 2s
@@ -182,7 +177,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp, filelog]
-      processors: [resourcedetection, k8sattributes, resource/mezmo, batch]
+      processors: [resource_detection, k8sattributes, resource/mezmo, transform/mezmo-app, batch]
       exporters: [mezmo]
 ```
 
@@ -221,7 +216,7 @@ Common issues and fixes:
 ```bash
 # Check if the ingestion key is valid
 curl -X POST "https://logs.mezmo.com/otel/ingest/rest" \
-  -H "Authorization: Basic $(echo -n "${MEZMO_INGESTION_KEY}:" | base64)" \
+  -H "apikey: ${MEZMO_INGESTION_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"lines": [{"line": "test", "app": "test"}]}'
 # 200 = valid key, 401 = invalid key
