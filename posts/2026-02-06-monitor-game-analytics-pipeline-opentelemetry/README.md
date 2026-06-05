@@ -46,10 +46,22 @@ const batchSendFailures = meter.createCounter('analytics.client.batch_failures',
     description: 'Failed batch send attempts',
 });
 
+interface AnalyticsEvent {
+    eventType: string;
+    properties: Record<string, unknown>;
+    timestamp: number;
+    sessionId: string;
+    clientEventId: string;
+}
+
 class AnalyticsPublisher {
     private queue: AnalyticsEvent[] = [];
     private readonly batchSize = 50;
     private readonly flushIntervalMs = 30000;
+
+    constructor(private readonly sessionId: string) {
+        setInterval(() => void this.flush(), this.flushIntervalMs);
+    }
 
     trackEvent(eventType: string, properties: Record<string, unknown>) {
         const event: AnalyticsEvent = {
@@ -64,7 +76,7 @@ class AnalyticsPublisher {
         eventsQueued.add(1, { 'event.type': eventType });
 
         if (this.queue.length >= this.batchSize) {
-            this.flush();
+            void this.flush();
         }
     }
 
@@ -180,11 +192,12 @@ def ingest_events():
 
             # Publish to Kafka
             try:
-                kafka_producer.send(
-                    topic="game-analytics-events",
+                future = kafka_producer.send(
+                    "game-analytics-events",
                     key=event["sessionId"].encode(),
                     value=json.dumps(event).encode(),
                 )
+                future.get(timeout=10)
                 events_published.add(1, {"event_type": event["eventType"]})
                 accepted += 1
 
@@ -209,10 +222,12 @@ def ingest_events():
 The stream processor consumes from Kafka and writes to the data warehouse. Track throughput and lag:
 
 ```python
+from opentelemetry.metrics import Observation
+
 consumer_lag = meter.create_observable_gauge(
     "analytics.consumer.lag",
     callbacks=[lambda options: [
-        metrics.Observation(
+        Observation(
             value=get_consumer_lag(partition),
             attributes={
                 "partition": str(partition),
@@ -261,6 +276,11 @@ def process_event(event):
 The most important metric: are you getting all the events you should be getting? Compare expected versus actual counts:
 
 ```python
+completeness_gauge = meter.create_gauge(
+    "analytics.completeness.ratio",
+    description="Ratio of ingested events that reached the warehouse"
+)
+
 def run_completeness_check():
     with tracer.start_as_current_span("analytics.completeness_check") as span:
         # Compare events received at ingestion vs events in the warehouse
