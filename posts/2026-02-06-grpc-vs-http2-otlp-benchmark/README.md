@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTLP, GRPC vs HTTP, Performance Benchmarking
 
 Description: Benchmark OTLP gRPC versus HTTP/2 export performance using the OpenTelemetry Collector internal metrics to pick the right protocol.
 
-The OpenTelemetry Collector supports two OTLP transport protocols: gRPC and HTTP (with protobuf or JSON encoding). Both run over HTTP/2, but they have different performance characteristics. gRPC uses protobuf encoding with HTTP/2 multiplexing. OTLP/HTTP uses protobuf (or JSON) over standard HTTP POST requests. This post shows you how to benchmark them using the Collector's own internal telemetry.
+The OpenTelemetry Collector supports two OTLP transport protocols: gRPC and HTTP (with protobuf or JSON encoding). gRPC runs over HTTP/2, while OTLP/HTTP implementations may use HTTP/1.1 or HTTP/2, and they have different performance characteristics. gRPC uses protobuf encoding with HTTP/2 multiplexing. OTLP/HTTP uses protobuf (or JSON) over standard HTTP POST requests. This post shows you how to benchmark them using the Collector's own internal telemetry.
 
 ## Setting Up the Benchmark
 
@@ -35,8 +35,15 @@ processors:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
@@ -66,8 +73,15 @@ processors:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8889
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8889
+                without_type_suffix: true
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
@@ -94,27 +108,32 @@ scrape_configs:
 
 ```promql
 # 1. Receiver throughput: spans accepted per second
-rate(otelcol_receiver_accepted_spans_total[1m])
+rate(otelcol_receiver_accepted_spans[1m])
 
 # 2. Receiver refusals: spans rejected (backpressure signal)
-rate(otelcol_receiver_refused_spans_total[1m])
+rate(otelcol_receiver_refused_spans[1m])
 
-# 3. Exporter send latency
+# 3. Receiver request latency
 histogram_quantile(0.95,
-  rate(otelcol_exporter_send_latency_bucket[1m])
+  sum(rate({"rpc.server.call.duration_bucket"}[1m])) by (job, le)
+)
+histogram_quantile(0.95,
+  sum(rate({"http.server.request.duration_bucket"}[1m])) by (job, le)
 )
 
 # 4. Exporter queue size (are exports keeping up?)
 otelcol_exporter_queue_size
 
-# 5. Processor batch size distribution
-histogram_avg(otelcol_processor_batch_batch_send_size[1m])
+# 5. Average processor batch send size
+sum(rate(otelcol_processor_batch_batch_send_size_sum[1m])) by (job)
+/
+sum(rate(otelcol_processor_batch_batch_send_size_count[1m])) by (job)
 
 # 6. Process memory usage
-process_resident_memory_bytes
+otelcol_process_memory_rss
 
 # 7. CPU usage
-rate(process_cpu_seconds_total[1m])
+rate(otelcol_process_cpu_seconds[1m])
 ```
 
 ## Load Generator Script
@@ -194,21 +213,24 @@ After running the benchmark, compare the metrics side by side:
 
 ```promql
 # Throughput comparison
-sum(rate(otelcol_receiver_accepted_spans_total[1m])) by (job)
+sum(rate(otelcol_receiver_accepted_spans[1m])) by (job)
 
 # Memory comparison
-process_resident_memory_bytes by (job)
+otelcol_process_memory_rss
 
 # CPU comparison
-rate(process_cpu_seconds_total[1m]) by (job)
+rate(otelcol_process_cpu_seconds[1m])
 
-# Export latency comparison (P95)
+# Receiver latency comparison (P95)
 histogram_quantile(0.95,
-  sum(rate(otelcol_exporter_send_latency_bucket[1m])) by (le, job)
+  sum(rate({"rpc.server.call.duration_bucket"}[1m])) by (le, job)
+)
+histogram_quantile(0.95,
+  sum(rate({"http.server.request.duration_bucket"}[1m])) by (le, job)
 )
 
 # Dropped spans (data loss comparison)
-sum(rate(otelcol_receiver_refused_spans_total[1m])) by (job)
+sum(rate(otelcol_receiver_refused_spans[1m])) by (job)
 ```
 
 ## Typical Results
@@ -224,7 +246,7 @@ Based on common benchmark findings:
 | Compression support | Native gzip | gzip via header | gzip via header |
 | Connection reuse | Multiplexed | Keep-alive | Keep-alive |
 
-gRPC generally wins on raw performance because of HTTP/2 multiplexing and efficient protobuf serialization. HTTP/protobuf is close behind and has the advantage of working through more proxies and load balancers. HTTP/JSON is the slowest but easiest to debug.
+gRPC often wins on raw performance because of HTTP/2 multiplexing and efficient protobuf serialization. HTTP/protobuf is often close behind and has the advantage of working through more proxies and load balancers. HTTP/JSON is usually the slowest but easiest to debug.
 
 ## Choosing the Right Protocol
 
