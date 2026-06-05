@@ -17,8 +17,8 @@ The K8s Leader Elector Extension implements the Kubernetes leader election patte
 This extension is critical for:
 
 - Preventing duplicate cluster-level metrics collection from Kubernetes API
-- Ensuring only one instance scrapes cluster-wide Prometheus endpoints
-- Coordinating batch jobs that should run once per cluster
+- Ensuring only one instance runs supported cluster-scoped Collector components
+- Coordinating Collector components that explicitly integrate with the leader elector
 - Avoiding race conditions in cluster-scoped configuration operations
 - Maintaining high availability through automatic leader failover
 
@@ -76,13 +76,15 @@ Setting up the K8s Leader Elector Extension requires configuration in your Colle
 # extensions section defines the leader election behavior
 
 extensions:
-  # Configure leader election extension
-  k8s_observer:
-    # Required: Kubernetes authentication method
-    auth_type: serviceAccount      # Use pod's service account
+  # Health endpoint used by Kubernetes probes
+  health_check:
+    endpoint: 0.0.0.0:13133
 
   # Leader election extension configuration
   k8s_leader_elector:
+    # Kubernetes authentication method
+    auth_type: serviceAccount      # Use pod's service account
+
     # Lease name used for coordination
     lease_name: otel-collector-leader
 
@@ -111,10 +113,11 @@ receivers:
   # Kubernetes cluster metrics (leader only)
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector
     # Collect cluster-level metrics
     collection_interval: 30s
     node_conditions_to_report: [Ready, MemoryPressure, DiskPressure]
-    allocatable_types_to_report: [cpu, memory, storage]
+    allocatable_types_to_report: [cpu, memory, ephemeral-storage]
 
 processors:
   batch:
@@ -125,18 +128,18 @@ processors:
   resource:
     attributes:
       - key: collector.role
-        value: ${COLLECTOR_ROLE}      # Set via environment variable
+        value: cluster-metrics-leader
         action: upsert
 
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Enable both extensions
-  extensions: [k8s_observer, k8s_leader_elector]
+  extensions: [health_check, k8s_leader_elector]
 
   pipelines:
     # Pipeline for cluster metrics (leader only)
@@ -157,7 +160,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration establishes leader election with a 15-second lease duration. The leader renews every 10 seconds, and standby instances check every 2 seconds for lease availability.
+This configuration establishes leader election with a 15-second lease duration. The leader has a 10-second renewal deadline, and standby instances retry every 2 seconds. The `k8s_cluster` receiver references the extension so only the elected leader starts cluster metrics collection.
 
 ## Kubernetes Deployment Configuration
 
@@ -185,11 +188,40 @@ rules:
 
   # Permissions for cluster metrics collection
   - apiGroups: [""]
-    resources: ["nodes", "nodes/stats", "pods", "namespaces"]
+    resources:
+      - events
+      - namespaces
+      - namespaces/status
+      - nodes
+      - nodes/spec
+      - persistentvolumes
+      - persistentvolumeclaims
+      - pods
+      - pods/status
+      - replicationcontrollers
+      - replicationcontrollers/status
+      - resourcequotas
+      - services
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["apps"]
     resources: ["replicasets", "deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["extensions"]
+    resources: ["replicasets", "deployments", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
 
 ---
@@ -231,7 +263,7 @@ spec:
 
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.93.0
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
 
           # Environment variables for configuration
           env:
@@ -326,20 +358,22 @@ Lease timing parameters significantly impact failover behavior and API server lo
 extensions:
   # Fast failover configuration (for critical clusters)
   k8s_leader_elector/fast:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader-fast
     lease_namespace: observability
 
     # Short lease duration for quick failover
-    lease_duration: 10s           # Leader must renew within 10s
+    lease_duration: 10s           # Lease expires if it is not renewed in time
 
-    # Aggressive renewal to prevent unnecessary failovers
-    renew_deadline: 8s            # Renew every 8s
+    # Aggressive renewal deadline to prevent unnecessary failovers
+    renew_deadline: 8s            # Must be less than lease_duration
 
     # Quick detection of leader failure
     retry_period: 2s              # Check every 2s
 
   # Balanced configuration (recommended for most deployments)
   k8s_leader_elector/balanced:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader-balanced
     lease_namespace: observability
 
@@ -354,13 +388,14 @@ extensions:
 
   # Conservative configuration (for large clusters with high API load)
   k8s_leader_elector/conservative:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader-conservative
     lease_namespace: observability
 
     # Longer lease reduces API server load
     lease_duration: 30s
 
-    # Extended renewal interval
+    # Extended renewal deadline
     renew_deadline: 20s
 
     # Longer retry period reduces API calls from standbys
@@ -369,6 +404,7 @@ extensions:
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector/balanced
     collection_interval: 30s
 
 processors:
@@ -379,7 +415,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Choose extension based on cluster requirements
@@ -394,56 +430,49 @@ service:
 
 **Timing Recommendations**:
 
-- **Fast failover** (10s lease, 8s renew, 2s retry): Use for critical production clusters where 10-15 second failover is acceptable. Increases API server load.
+- **Fast failover** (10s lease, 8s renewal deadline, 2s retry): Use for critical production clusters where 10-15 second failover is acceptable. Increases API server load.
 
-- **Balanced** (15s lease, 10s renew, 2s retry): Recommended for most deployments. Provides reasonable failover time (15-20 seconds) with moderate API load.
+- **Balanced** (15s lease, 10s renewal deadline, 2s retry): Recommended for most deployments. Provides reasonable failover time (15-20 seconds) with moderate API load.
 
-- **Conservative** (30s lease, 20s renew, 5s retry): Use for large clusters (1000+ nodes) where API server load is a concern. Accepts longer failover time (30-40 seconds).
+- **Conservative** (30s lease, 20s renewal deadline, 5s retry): Use for large clusters (1000+ nodes) where API server load is a concern. Accepts longer failover time (30-40 seconds).
 
 ### Multiple Leader Election Groups
 
-Complex deployments may require multiple leader election groups for different operational scopes:
+Complex deployments may require multiple leader election groups for different receiver instances that explicitly support the `k8s_leader_elector` setting:
 
 ```yaml
 extensions:
   # Leader election for cluster-wide metrics
   k8s_leader_elector/cluster:
+    auth_type: serviceAccount
     lease_name: otel-collector-cluster-leader
     lease_namespace: observability
     lease_duration: 15s
     renew_deadline: 10s
     retry_period: 2s
 
-  # Separate leader election for Prometheus federation
-  k8s_leader_elector/prometheus:
-    lease_name: otel-collector-prometheus-leader
+  # Separate leader election for namespace-scoped Kubernetes metrics
+  k8s_leader_elector/namespaces:
+    auth_type: serviceAccount
+    lease_name: otel-collector-namespace-leader
     lease_namespace: observability
     lease_duration: 15s
     renew_deadline: 10s
     retry_period: 2s
 
-  # Leader election for batch processing jobs
-  k8s_leader_elector/batch:
-    lease_name: otel-collector-batch-leader
-    lease_namespace: observability
-    lease_duration: 30s           # Longer lease for batch jobs
-    renew_deadline: 20s
-    retry_period: 5s
-
 receivers:
   # Kubernetes cluster metrics (cluster leader only)
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector/cluster
     collection_interval: 30s
 
-  # Prometheus scraping (prometheus leader only)
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'kubernetes-pods'
-          kubernetes_sd_configs:
-            - role: pod
-          scrape_interval: 30s
+  # Namespace-scoped Kubernetes metrics (namespace leader only)
+  k8s_cluster/namespaces:
+    auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector/namespaces
+    namespaces: [production, staging]
+    collection_interval: 30s
 
   # OTLP for application telemetry (all instances)
   otlp:
@@ -460,14 +489,13 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Enable all leader election groups
   extensions:
     - k8s_leader_elector/cluster
-    - k8s_leader_elector/prometheus
-    - k8s_leader_elector/batch
+    - k8s_leader_elector/namespaces
 
   pipelines:
     # Cluster metrics pipeline (cluster leader)
@@ -476,9 +504,9 @@ service:
       processors: [batch]
       exporters: [otlphttp]
 
-    # Prometheus metrics pipeline (prometheus leader)
-    metrics/prometheus:
-      receivers: [prometheus]
+    # Namespace metrics pipeline (namespace leader)
+    metrics/namespaces:
+      receivers: [k8s_cluster/namespaces]
       processors: [batch]
       exporters: [otlphttp]
 
@@ -489,29 +517,26 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration allows different instances to be leaders for different operational domains. One instance might be the cluster metrics leader while another handles Prometheus federation, distributing load and reducing single points of failure.
+This configuration allows different instances to be leaders for different supported receiver instances. One instance might be the full-cluster metrics leader while another handles namespace-scoped Kubernetes metrics.
 
 ## Monitoring Leader Election
 
-Track leader election status and transitions with internal metrics and logs:
+Track leader election status and transitions with Collector logs and the Kubernetes Lease object:
 
 ```yaml
 extensions:
   k8s_leader_elector:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader
     lease_namespace: observability
     lease_duration: 15s
     renew_deadline: 10s
     retry_period: 2s
 
-    # Enable detailed logging for leader transitions
-    logging:
-      level: info                 # Log all leader changes
-      log_transitions: true       # Log when leadership changes
-
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector
     collection_interval: 30s
 
   otlp:
@@ -527,7 +552,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_leader_elector]
@@ -546,7 +571,7 @@ service:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
                 headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
+                  x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
   pipelines:
     metrics/cluster:
@@ -560,14 +585,13 @@ service:
       exporters: [otlphttp]
 ```
 
-**Key Metrics to Monitor**:
+**Key Signals to Monitor**:
 
-- **otelcol_k8s_leader_elector_is_leader**: Boolean gauge indicating if this instance is the current leader (1 = leader, 0 = standby)
-- **otelcol_k8s_leader_elector_lease_renewals_total**: Counter of successful lease renewals
-- **otelcol_k8s_leader_elector_lease_renewal_failures_total**: Counter of failed renewal attempts
-- **otelcol_k8s_leader_elector_leader_transitions_total**: Counter of leadership transitions (indicates failovers)
+- **Collector logs**: The extension logs when the leader elector starts, stops, and loses the lease.
+- **Lease holder identity**: `kubectl describe lease otel-collector-leader -n observability` shows the current lease holder and renewal times.
+- **k8s_cluster receiver output**: Gaps in cluster metrics can indicate that the leader receiver is not starting or renewing its lease.
 
-Monitor `leader_transitions_total` - frequent transitions indicate instability in your deployment, possibly due to resource constraints, network issues, or overly aggressive lease parameters.
+Frequent lease holder changes indicate instability in your deployment, possibly due to resource constraints, network issues, or overly aggressive lease parameters.
 
 ## Troubleshooting Common Issues
 
@@ -578,6 +602,7 @@ Network partitions can potentially create split-brain scenarios. The extension h
 ```yaml
 extensions:
   k8s_leader_elector:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader
     lease_namespace: observability
 
@@ -586,12 +611,10 @@ extensions:
     renew_deadline: 15s
     retry_period: 3s
 
-    # Explicitly require API server consensus
-    require_leader_confirmation: true
-
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector
     collection_interval: 30s
 
 processors:
@@ -602,7 +625,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_leader_elector]
@@ -623,22 +646,17 @@ Enable verbose logging to diagnose election issues:
 ```yaml
 extensions:
   k8s_leader_elector:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader
     lease_namespace: observability
     lease_duration: 15s
     renew_deadline: 10s
     retry_period: 2s
 
-    # Verbose logging for debugging
-    logging:
-      level: debug                # Enable debug-level logs
-      log_transitions: true       # Log all transitions
-      log_lease_updates: true     # Log every lease update
-      log_api_errors: true        # Log API communication errors
-
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector
     collection_interval: 30s
 
 processors:
@@ -646,16 +664,16 @@ processors:
     timeout: 10s
 
 exporters:
-  # Use logging exporter for debugging
-  logging:
-    loglevel: debug
+  # Use debug exporter for debugging
+  debug:
+    verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
 
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Enable debug telemetry
@@ -669,10 +687,10 @@ service:
     metrics/cluster:
       receivers: [k8s_cluster]
       processors: [batch]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlphttp]
 ```
 
-Debug logs will show lease acquisition attempts, renewal operations, and any API communication errors.
+Collector debug logs and the Kubernetes lease object will show lease acquisition, loss, and API communication errors.
 
 ### RBAC Permission Issues
 
@@ -721,7 +739,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.93.0
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
 
           # Guaranteed QoS for reliable failover
           resources:
@@ -772,7 +790,7 @@ This ensures sufficient replicas remain available during voluntary disruptions (
 
 ### Graceful Shutdown
 
-Configure graceful shutdown to enable clean leader transitions:
+Configure Kubernetes termination grace periods so the Collector can shut down cleanly:
 
 ```yaml
 # Kubernetes Deployment snippet
@@ -781,11 +799,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          # Environment variable for graceful shutdown timeout
-          env:
-            - name: SHUTDOWN_TIMEOUT
-              value: "30s"
-
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
       # Allow time for graceful shutdown and leader transition
       terminationGracePeriodSeconds: 60
 ```
@@ -795,24 +809,17 @@ spec:
 ```yaml
 extensions:
   k8s_leader_elector:
+    auth_type: serviceAccount
     lease_name: otel-collector-leader
     lease_namespace: observability
     lease_duration: 15s
     renew_deadline: 10s
     retry_period: 2s
 
-    # Graceful shutdown configuration
-    shutdown:
-      # Release lease immediately on shutdown signal
-      release_lease_on_shutdown: true
-
-      # Wait for standby to acquire lease before fully shutting down
-      wait_for_successor: true
-      successor_timeout: 30s      # Max wait for successor election
-
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
+    k8s_leader_elector: k8s_leader_elector
     collection_interval: 30s
 
 processors:
@@ -823,7 +830,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_leader_elector]
@@ -835,7 +842,7 @@ service:
       exporters: [otlphttp]
 ```
 
-Graceful shutdown ensures the outgoing leader releases its lease and waits for a successor to acquire it before fully terminating, minimizing gaps in cluster metrics collection.
+On shutdown, the extension stops participating in leader election and the remaining Collector replicas can acquire the lease after the configured timing window, minimizing gaps in cluster metrics collection.
 
 ## Related Resources
 
@@ -849,8 +856,8 @@ For comprehensive coverage of OpenTelemetry Collector deployment in Kubernetes, 
 
 The K8s Leader Elector Extension enables reliable coordination among multiple OpenTelemetry Collector instances in Kubernetes deployments. By implementing leader election, you prevent duplicate cluster metrics, reduce API server load, and maintain high availability through automatic failover.
 
-Start with the balanced configuration (15s lease, 10s renew, 2s retry) for most production deployments. Tune lease parameters based on your specific failover requirements and cluster size. Always deploy at least 3 replicas to ensure reliable leader election during maintenance and failures.
+Start with the balanced configuration (15s lease, 10s renewal deadline, 2s retry) for most production deployments. Tune lease parameters based on your specific failover requirements and cluster size. Always deploy at least 3 replicas to ensure reliable leader election during maintenance and failures.
 
-Monitor leader election metrics to detect instability, and implement proper RBAC permissions, resource limits, and graceful shutdown behavior for production reliability. The extension's automatic failover mechanism ensures continuous cluster metrics collection even during pod failures, node maintenance, or cluster upgrades.
+Monitor the Kubernetes Lease object and Collector logs to detect instability, and implement proper RBAC permissions, resource limits, and graceful shutdown behavior for production reliability. The extension's automatic failover mechanism helps maintain cluster metrics collection even during pod failures, node maintenance, or cluster upgrades.
 
 Need a production-grade backend for your Kubernetes observability? OneUptime provides native support for OpenTelemetry with automatic high availability, seamless failover, and comprehensive Kubernetes integration without vendor lock-in.
