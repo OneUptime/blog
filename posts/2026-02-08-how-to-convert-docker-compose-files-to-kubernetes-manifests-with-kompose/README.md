@@ -188,7 +188,7 @@ Generate a Helm chart instead of raw manifests:
 kompose convert --chart
 ```
 
-This creates a `chart/` directory with `Chart.yaml`, `values.yaml`, and a `templates/` folder containing all the manifests. Useful if you want to parameterize values later.
+This creates a chart directory named after the Compose project, with `Chart.yaml` and a `templates/` folder containing all the manifests. Useful if you want to parameterize values later.
 
 Output JSON instead of YAML:
 
@@ -213,9 +213,9 @@ services:
     labels:
       # Expose as a NodePort service instead of ClusterIP
       kompose.service.type: nodeport
-      # Set resource requests and limits
-      kompose.service.expose: "true"
       # Create an Ingress resource
+      kompose.service.expose: "true"
+      # Set the Ingress class
       kompose.service.expose.ingress-class-name: "nginx"
       # Add health check as a liveness probe
       kompose.service.healthcheck.liveness.http_get_port: 8080
@@ -304,13 +304,13 @@ Kompose handles the common cases well, but some Compose features do not translat
 
 **`depends_on`**: Kubernetes does not have a built-in equivalent. Kompose ignores it. You need init containers or application-level retry logic instead.
 
-**`build` directives**: Kompose skips `build` sections since Kubernetes pulls pre-built images. Build your images and push them to a registry before converting.
+**`build` directives**: A plain `kompose convert` does not build images for Kubernetes manifests. Build your images and push them to a registry before converting, or use Kompose build and push options if they fit your workflow.
 
 **Host networking**: `network_mode: host` does not map well to Kubernetes networking. You will need to refactor this.
 
 **Named networks**: Compose networks become Kubernetes NetworkPolicies only in some cases. Most of the time, Kompose ignores custom networks since all pods in a namespace can communicate by default in Kubernetes.
 
-**Bind mounts**: Local file paths (like `./config:/etc/config`) cannot be converted to PVCs. Use ConfigMaps or Secrets for configuration files instead.
+**Bind mounts**: Local file paths (like `./config:/etc/config`) do not preserve the local host path in the generated manifests. Kompose may generate a PVC for the mount path, but the local files are not copied into it. Use ConfigMaps or Secrets for configuration files instead.
 
 ## A Practical Workflow
 
