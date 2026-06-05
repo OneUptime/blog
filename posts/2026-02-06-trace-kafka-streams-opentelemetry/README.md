@@ -41,9 +41,10 @@ The OpenTelemetry Java agent provides automatic instrumentation for Kafka client
 java -javaagent:/opt/opentelemetry-javaagent.jar \
   -Dotel.service.name=order-stream-processor \
   -Dotel.exporter.otlp.endpoint=http://otel-collector:4317 \
+  -Dotel.exporter.otlp.protocol=grpc \
   -Dotel.instrumentation.kafka.experimental-span-attributes=true \
   -Dotel.instrumentation.kafka.producer-propagation.enabled=true \
-  -Dotel.traces.sampler=parentbased_traceid_ratio \
+  -Dotel.traces.sampler=parentbased_traceidratio \
   -Dotel.traces.sampler.arg=0.1 \
   -jar order-stream-processor.jar
 ```
@@ -64,7 +65,6 @@ import org.apache.kafka.common.serialization.Serdes;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Scope;
 
 import java.util.Properties;
@@ -88,6 +88,9 @@ public class OrderStreamProcessor {
         // Use exactly-once processing semantics
         props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG,
             StreamsConfig.EXACTLY_ONCE_V2);
+        // Required for detailed state store latency metrics
+        props.put(StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG,
+            "debug");
 
         StreamsBuilder builder = new StreamsBuilder();
         buildTopology(builder);
@@ -206,6 +209,8 @@ The topology reads orders, validates them, enriches them with customer data via 
 
 Note that the Java agent handles the underlying Kafka consume and produce operations automatically. The manual spans add visibility into the stream processing logic itself, which is where most application-specific issues occur.
 
+The example assumes application-specific helper methods such as `validateOrder`, `extractCustomerId`, `extractTotal`, and `enrichOrder` are implemented elsewhere in your codebase.
+
 ## Monitoring State Store Performance
 
 Kafka Streams state stores (backed by RocksDB) are a common source of performance issues. Large state stores can cause slow restarts, and state store operations contribute to processing latency. Use the built-in Kafka Streams metrics alongside custom OpenTelemetry metrics to monitor state store health:
@@ -213,7 +218,6 @@ Kafka Streams state stores (backed by RocksDB) are a common source of performanc
 ```java
 // StateStoreMonitor.java - Export state store metrics via OTel
 import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.common.Metric;
@@ -234,21 +238,20 @@ public class StateStoreMonitor {
     }
 
     private void registerMetrics() {
-        // Expose state store size as an OTel gauge
-        meter.gaugeBuilder("kafka.streams.state_store.size")
-            .setDescription("Approximate number of entries in state store")
-            .setUnit("entries")
+        // Expose estimated key count as an OTel gauge
+        meter.gaugeBuilder("kafka.streams.state_store.keys.estimated")
+            .setDescription("Estimated number of keys in the state store")
+            .setUnit("{key}")
             .ofLongs()
             .buildWithCallback(measurement -> {
                 Map<MetricName, ? extends Metric> metrics =
                     streams.metrics();
                 metrics.forEach((name, metric) -> {
-                    // Filter for state store size metrics
-                    if (name.name().equals("num-entries-active-mem-table")
+                    // Filter for RocksDB state store key estimates
+                    if (name.name().equals("estimate-num-keys")
                         && name.group().equals(
                             "stream-state-metrics")) {
-                        String storeName = name.tags()
-                            .getOrDefault("rocksdb-state-id", "unknown");
+                        String storeName = stateStoreName(name);
                         measurement.record(
                             ((Number) metric.metricValue()).longValue(),
                             io.opentelemetry.api.common.Attributes.of(
@@ -262,7 +265,7 @@ public class StateStoreMonitor {
         // Track state store operation latency
         meter.gaugeBuilder("kafka.streams.state_store.latency")
             .setDescription("Average state store operation latency")
-            .setUnit("ms")
+            .setUnit("ns")
             .buildWithCallback(measurement -> {
                 Map<MetricName, ? extends Metric> metrics =
                     streams.metrics();
@@ -270,8 +273,7 @@ public class StateStoreMonitor {
                     if (name.name().equals("put-latency-avg")
                         && name.group().equals(
                             "stream-state-metrics")) {
-                        String storeName = name.tags()
-                            .getOrDefault("rocksdb-state-id", "unknown");
+                        String storeName = stateStoreName(name);
                         measurement.record(
                             ((Number) metric.metricValue()).doubleValue(),
                             io.opentelemetry.api.common.Attributes.of(
@@ -282,10 +284,19 @@ public class StateStoreMonitor {
                 });
             });
     }
+
+    private static String stateStoreName(MetricName name) {
+        for (Map.Entry<String, String> tag : name.tags().entrySet()) {
+            if (tag.getKey().endsWith("-state-id")) {
+                return tag.getValue();
+            }
+        }
+        return "unknown";
+    }
 }
 ```
 
-This code bridges Kafka Streams' built-in metrics into the OpenTelemetry metrics pipeline. By exposing state store size and operation latency as OpenTelemetry metrics, you can alert on state store growth and correlate state store performance with processing latency in the same observability platform.
+This code bridges Kafka Streams' built-in metrics into the OpenTelemetry metrics pipeline. By exposing estimated state store key count and operation latency as OpenTelemetry metrics, you can alert on state store growth and correlate state store performance with processing latency in the same observability platform.
 
 ## Collector Configuration for Kafka Streams Telemetry
 
@@ -308,9 +319,11 @@ processors:
 
   # Filter out low-value internal Kafka spans
   filter/kafka_internal:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["messaging.kafka.consumer.group"] == "__consumer_offsets"'
+        - 'IsMatch(attributes["messaging.destination.name"], "^__.*")'
+        - 'IsMatch(attributes["messaging.destination"], "^__.*")'
 
   # Add topology metadata
   resource:
@@ -337,7 +350,7 @@ service:
       exporters: [otlp]
 ```
 
-The filter processor removes spans from internal Kafka operations like consumer offset commits, which add noise without providing useful debugging information. Adjust the filter patterns based on what your specific application generates.
+The filter processor removes spans from internal Kafka topics, which can add noise without providing useful debugging information. Adjust the filter patterns based on what your specific application generates.
 
 ## Tracing Through Multi-Stage Topologies
 
@@ -368,11 +381,11 @@ Kafka Streams applications often process thousands or millions of records per se
 
 ```bash
 # Parent-based sampling at 10% for new traces
--Dotel.traces.sampler=parentbased_traceid_ratio
+-Dotel.traces.sampler=parentbased_traceidratio
 -Dotel.traces.sampler.arg=0.1
 ```
 
-The `parentbased_traceid_ratio` sampler respects the sampling decision from upstream services. If an upstream service decided to trace a particular request, all downstream Kafka Streams processing for that request will also be traced, regardless of the local sampling ratio. The 0.1 ratio only applies to records that start new traces (those without a parent context).
+The `parentbased_traceidratio` sampler respects the sampling decision from upstream services. If an upstream service decided to trace a particular request, all downstream Kafka Streams processing for that request will also be traced, regardless of the local sampling ratio. The 0.1 ratio only applies to records that start new traces (those without a parent context).
 
 This approach ensures you get complete end-to-end traces for sampled requests while keeping the overall trace volume manageable.
 
