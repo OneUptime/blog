@@ -21,6 +21,7 @@ import ssl
 import socket
 import time
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("tls-debugger")
 
@@ -39,9 +40,11 @@ def instrumented_tls_connect(host, port=443, timeout=10):
             sock.settimeout(timeout)
             try:
                 sock.connect((host, port))
-                tcp_span.set_attribute("net.peer.ip", sock.getpeername()[0])
+                tcp_span.set_attribute("network.peer.address", sock.getpeername()[0])
             except socket.error as e:
-                tcp_span.set_attribute("error", True)
+                tcp_span.set_status(Status(StatusCode.ERROR, str(e)))
+                tcp_span.record_exception(e)
+                tcp_span.set_attribute("error.type", type(e).__name__)
                 tcp_span.set_attribute("tcp.error", str(e))
                 raise
 
@@ -78,7 +81,9 @@ def instrumented_tls_connect(host, port=443, timeout=10):
                 return wrapped
 
             except ssl.SSLCertVerificationError as e:
-                tls_span.set_attribute("error", True)
+                tls_span.set_status(Status(StatusCode.ERROR, str(e)))
+                tls_span.record_exception(e)
+                tls_span.set_attribute("error.type", type(e).__name__)
                 tls_span.set_attribute("tls.error.type", "certificate_verification")
                 tls_span.set_attribute("tls.error.message", str(e))
                 tls_span.set_attribute("tls.error.verify_code", e.verify_code)
@@ -86,10 +91,14 @@ def instrumented_tls_connect(host, port=443, timeout=10):
                 raise
 
             except ssl.SSLError as e:
-                tls_span.set_attribute("error", True)
+                tls_span.set_status(Status(StatusCode.ERROR, str(e)))
+                tls_span.record_exception(e)
+                tls_span.set_attribute("error.type", type(e).__name__)
                 tls_span.set_attribute("tls.error.type", "ssl_error")
-                tls_span.set_attribute("tls.error.reason", e.reason)
-                tls_span.set_attribute("tls.error.library", e.library)
+                if e.reason is not None:
+                    tls_span.set_attribute("tls.error.reason", e.reason)
+                if e.library is not None:
+                    tls_span.set_attribute("tls.error.library", e.library)
                 tls_span.set_attribute("tls.error.message", str(e))
                 raise
 
@@ -110,9 +119,12 @@ def record_cert_attributes(span, cert):
     )
 
     # Check if certificate is close to expiration
-    from datetime import datetime
-    not_after = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
-    days_until_expiry = (not_after - datetime.utcnow()).days
+    from datetime import datetime, timezone
+    not_after = datetime.fromtimestamp(
+        ssl.cert_time_to_seconds(cert["notAfter"]),
+        timezone.utc,
+    )
+    days_until_expiry = (not_after - datetime.now(timezone.utc)).days
     span.set_attribute("tls.cert.days_until_expiry", days_until_expiry)
 
     if days_until_expiry < 30:
@@ -129,7 +141,6 @@ def record_cert_attributes(span, cert):
 tls.error.type = "certificate_verification"
 tls.error.verify_code = 10
 tls.error.verify_message = "certificate has expired"
-tls.cert.not_after = "Jan 15 00:00:00 2026 UTC"
 ```
 
 ### Certificate Name Mismatch
@@ -137,9 +148,8 @@ tls.cert.not_after = "Jan 15 00:00:00 2026 UTC"
 ```text
 tls.error.type = "certificate_verification"
 tls.error.verify_code = 62
-tls.error.verify_message = "hostname mismatch"
+tls.error.verify_message = "Hostname mismatch, certificate is not valid for 'api.example.com'."
 server.address = "api.example.com"
-tls.cert.subject.cn = "old.example.com"
 ```
 
 ### Protocol Version Mismatch
@@ -197,16 +207,18 @@ In service mesh environments, both sides present certificates. Instrument the cl
 ```python
 def create_mtls_context(client_cert_path, client_key_path, ca_cert_path):
     """Create an SSL context with client certificate instrumentation."""
+    from datetime import datetime, timezone
+    import cryptography.x509
+
     span = trace.get_current_span()
 
     context = ssl.create_default_context(cafile=ca_cert_path)
     context.load_cert_chain(client_cert_path, client_key_path)
 
     # Record client cert info
-    import cryptography.x509
     with open(client_cert_path, "rb") as f:
         cert = cryptography.x509.load_pem_x509_certificate(f.read())
-        days_left = (cert.not_valid_after - datetime.utcnow()).days
+        days_left = (cert.not_valid_after_utc - datetime.now(timezone.utc)).days
         span.set_attribute("tls.client_cert.subject", str(cert.subject))
         span.set_attribute("tls.client_cert.days_until_expiry", days_left)
 
