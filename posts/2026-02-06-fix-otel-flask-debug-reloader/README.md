@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Flask, Python, Debug Mode
 
 Description: Fix the issue where Flask debug mode reloader causes OpenTelemetry to initialize twice and produce duplicate or missing spans.
 
-Flask's debug mode uses a reloader that spawns a child process to watch for file changes. When OpenTelemetry is initialized in the main process, the child process (which actually serves requests) may not have OpenTelemetry initialized, or it may initialize it twice, leading to duplicate spans or no spans at all.
+Flask's debug mode uses a reloader that starts a subprocess to watch for file changes. When OpenTelemetry is initialized in the main process, the subprocess (which actually serves requests) may not have OpenTelemetry initialized, or it may initialize it twice, leading to duplicate spans or no spans at all.
 
 ## The Problem
 
@@ -37,20 +37,20 @@ if __name__ == '__main__':
 
 When you run this with `debug=True`:
 1. Flask starts the main process (OpenTelemetry initializes)
-2. Flask's reloader forks a child process (OpenTelemetry may or may not initialize)
-3. The child process serves requests
-4. On file change, the child process is killed and a new one is spawned
+2. Flask's reloader starts a subprocess (OpenTelemetry may or may not initialize)
+3. The subprocess serves requests
+4. On file change, the subprocess is killed and a new one is spawned
 
 ## What Goes Wrong
 
 - The main process initializes OpenTelemetry, but it does not serve requests
-- The child process may inherit the provider or may need its own initialization
-- If using `opentelemetry-instrument` CLI, it wraps the main process, but the reloader child may not pick up the instrumentation
+- The subprocess may inherit the provider or may need its own initialization
+- If using `opentelemetry-instrument` CLI, the reloader subprocess may run the instrumentation setup again
 - Dual initialization can cause duplicate span processors, leading to every span being exported twice
 
 ## Fix 1: Guard Initialization with WERKZEUG_RUN_MAIN
 
-Flask's reloader sets the `WERKZEUG_RUN_MAIN` environment variable in the child process. Use this to initialize OpenTelemetry only in the child:
+Flask's reloader sets the `WERKZEUG_RUN_MAIN` environment variable in the reloader subprocess. Use this to initialize OpenTelemetry only in that subprocess:
 
 ```python
 import os
@@ -77,14 +77,15 @@ def init_telemetry():
     FlaskInstrumentor().instrument_app(app)
 
 if __name__ == '__main__':
+    debug = True
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        # We are in the reloader child process - initialize here
+        # We are in the reloader subprocess - initialize here
         init_telemetry()
-    elif not app.debug:
+    elif not debug:
         # Not in debug mode - initialize normally
         init_telemetry()
 
-    app.run(debug=True)
+    app.run(debug=debug)
 ```
 
 ## Fix 2: Disable the Reloader
@@ -167,7 +168,7 @@ opentelemetry-instrument flask run --debug
 
 ## Production Setup (No Reloader)
 
-In production, the reloader is never used. The issue only affects development:
+In a normal production setup, the reloader is not used. The issue only affects development:
 
 ```bash
 # Production with gunicorn - no reloader issues
@@ -175,10 +176,10 @@ opentelemetry-instrument gunicorn wsgi:app -w 4 -b 0.0.0.0:8000
 ```
 
 ```bash
-# Production with direct Python
+# Running a Python entrypoint that starts the server
 OTEL_SERVICE_NAME=flask-app \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 \
-opentelemetry-instrument python wsgi.py
+opentelemetry-instrument python app.py
 ```
 
 ## Detecting Duplicate Initialization
@@ -204,11 +205,12 @@ Or check if a TracerProvider is already set:
 
 ```python
 from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 
 def init_telemetry():
     current_provider = trace.get_tracer_provider()
-    if not isinstance(current_provider, trace.ProxyTracerProvider):
-        # A real provider is already set - skip initialization
+    if isinstance(current_provider, TracerProvider):
+        # An SDK provider is already set - skip initialization
         return
 
     # ... initialization code
