@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Mezmo, Log Ingestion, Collector Exporter
 
 Description: Configure the Mezmo exporter in the OpenTelemetry Collector to ingest logs with proper hostname metadata and ingestion key authentication.
 
-Mezmo (formerly LogDNA) is a log management platform. The OpenTelemetry Collector has a dedicated Mezmo exporter that sends log data using Mezmo's ingestion API. This exporter handles batching, retries, and metadata enrichment specific to Mezmo's requirements.
+Mezmo (formerly LogDNA) is a log management platform. The OpenTelemetry Collector has a dedicated Mezmo exporter that sends log data using Mezmo's ingestion API. This exporter handles batching, retries, and hostname metadata from OpenTelemetry resource attributes.
 
 ## The Mezmo Exporter
 
@@ -51,7 +51,7 @@ processors:
 exporters:
   mezmo:
     # Your Mezmo ingestion key
-    ingest_key: "${MEZMO_INGESTION_KEY}"
+    ingest_key: "${env:MEZMO_INGESTION_KEY}"
 
     # The Mezmo ingestion endpoint (default is the US endpoint)
     ingest_url: "https://logs.mezmo.com/otel/ingest/rest"
@@ -90,18 +90,11 @@ processors:
     attributes:
       # Set the hostname that Mezmo will use for log grouping
       - key: host.name
-        value: "${HOSTNAME}"
-        action: upsert
-      # Additional metadata that Mezmo uses
-      - key: mezmo.hostname
-        value: "${HOSTNAME}"
-        action: upsert
-      - key: mezmo.app
-        value: "my-application"
+        value: "${env:HOSTNAME}"
         action: upsert
 
   # Use the resource detection processor for automatic hostname detection
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker]
     system:
       hostname_sources: ["os"]
@@ -110,7 +103,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp, filelog]
-      processors: [resourcedetection, resource/hostname, batch]
+      processors: [resource_detection, resource/hostname, batch]
       exporters: [mezmo]
 ```
 
@@ -123,7 +116,7 @@ processors:
   attributes/mezmo:
     actions:
       # Add application-level metadata
-      - key: app
+      - key: appname
         value: "payment-service"
         action: insert
       - key: env
@@ -134,16 +127,12 @@ processors:
         action: insert
 
   transform/mezmo:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Extract log level from the message body
-          - set(severity_text, "ERROR")
-            where IsMatch(body, "(?i)\\berror\\b|\\bfatal\\b")
-          - set(severity_text, "WARN")
-            where IsMatch(body, "(?i)\\bwarn\\b|\\bwarning\\b")
-          - set(severity_text, "INFO")
-            where severity_text == ""
+      # Extract log level from the message body
+      - set(log.severity_text, "ERROR") where IsString(log.body) and IsMatch(log.body, "(?i)\\berror\\b|\\bfatal\\b")
+      - set(log.severity_text, "WARN") where IsString(log.body) and IsMatch(log.body, "(?i)\\bwarn\\b|\\bwarning\\b")
+      - set(log.severity_text, "INFO") where log.severity_text == ""
 ```
 
 ## Multi-App Configuration
@@ -168,20 +157,26 @@ receivers:
 processors:
   resource/app1:
     attributes:
-      - key: mezmo.app
-        value: "app1"
-        action: upsert
-      - key: mezmo.hostname
-        value: "${HOSTNAME}"
+      - key: host.name
+        value: "${env:HOSTNAME}"
         action: upsert
 
   resource/app2:
     attributes:
-      - key: mezmo.app
-        value: "app2"
+      - key: host.name
+        value: "${env:HOSTNAME}"
         action: upsert
-      - key: mezmo.hostname
-        value: "${HOSTNAME}"
+
+  attributes/app1:
+    actions:
+      - key: appname
+        value: "app1"
+        action: upsert
+
+  attributes/app2:
+    actions:
+      - key: appname
+        value: "app2"
         action: upsert
 
   batch:
@@ -189,19 +184,19 @@ processors:
 
 exporters:
   mezmo:
-    ingest_key: "${MEZMO_INGESTION_KEY}"
+    ingest_key: "${env:MEZMO_INGESTION_KEY}"
     ingest_url: "https://logs.mezmo.com/otel/ingest/rest"
 
 service:
   pipelines:
     logs/app1:
       receivers: [otlp/app1, filelog/app1]
-      processors: [resource/app1, batch]
+      processors: [resource/app1, attributes/app1, batch]
       exporters: [mezmo]
 
     logs/app2:
       receivers: [filelog/app2]
-      processors: [resource/app2, batch]
+      processors: [resource/app2, attributes/app2, batch]
       exporters: [mezmo]
 ```
 
@@ -210,7 +205,8 @@ service:
 ```python
 import logging
 from opentelemetry import _logs
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
@@ -231,8 +227,8 @@ handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
 logging.getLogger().addHandler(handler)
 
 logger = logging.getLogger("payment-service")
-logger.info("Payment processed", extra={"order_id": "ORD-123", "amount": 49.99})
-logger.error("Payment failed", extra={"order_id": "ORD-456", "error": "insufficient_funds"})
+logger.info("Payment processed", extra={"appname": "payment-service", "order_id": "ORD-123", "amount": 49.99})
+logger.error("Payment failed", extra={"appname": "payment-service", "order_id": "ORD-456", "error": "insufficient_funds"})
 ```
 
 ## Docker Setup
@@ -252,4 +248,4 @@ services:
       - /var/log:/var/log:ro
 ```
 
-The Mezmo exporter handles all the API-specific details of sending logs to Mezmo. Your applications send standard OTLP logs to the Collector, and the exporter formats them with the hostname, app name, and other metadata that Mezmo needs for proper organization and indexing.
+The Mezmo exporter handles all the API-specific details of sending logs to Mezmo. Your applications send standard OTLP logs to the Collector, and the exporter formats them with the hostname from `host.name`, the app name from `appname`, and other log attributes that Mezmo needs for proper organization and indexing.
