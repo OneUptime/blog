@@ -36,8 +36,12 @@ Create a dedicated file to initialize OpenTelemetry. This separation keeps traci
 // src/tracing.js
 
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -45,18 +49,13 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 
 // Define your application's resource attributes
 // These attributes help identify traces from this specific application
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'react-frontend',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV,
   })
 );
-
-// Create the tracer provider with the resource configuration
-const provider = new WebTracerProvider({
-  resource: resource,
-});
 
 // Configure the OTLP exporter to send traces to your observability backend
 // Replace the URL with your actual collector endpoint
@@ -67,9 +66,12 @@ const exporter = new OTLPTraceExporter({
   },
 });
 
-// Use BatchSpanProcessor to batch traces before sending
-// This reduces network overhead compared to sending each span immediately
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+// Create the tracer provider with the resource configuration
+// BatchSpanProcessor batches traces before sending to reduce network overhead
+const provider = new WebTracerProvider({
+  resource: resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 
 // Register the provider globally
 provider.register();
@@ -106,9 +108,9 @@ Import the tracing configuration at the earliest point in your application lifec
 ```javascript
 // src/index.js
 
+import './tracing'; // Initialize tracing before anything else
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './tracing'; // Initialize tracing before anything else
 import App from './App';
 import './index.css';
 
@@ -146,10 +148,11 @@ Automatic instrumentation covers common scenarios, but you'll often want to trac
 ```javascript
 // src/components/DataProcessor.jsx
 
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { useState, useCallback } from 'react';
 
 const tracer = trace.getTracer('react-frontend');
+const someData = [1, 2, 3];
 
 function DataProcessor() {
   const [data, setData] = useState(null);
@@ -167,7 +170,7 @@ function DataProcessor() {
       const processed = await heavyComputation(rawData);
 
       span.setAttribute('result.size', processed.length);
-      span.setStatus({ code: 1 }); // OK status
+      span.setStatus({ code: SpanStatusCode.OK });
 
       setData(processed);
       return processed;
@@ -175,7 +178,7 @@ function DataProcessor() {
       // Record errors in the span
       span.recordException(error);
       span.setStatus({
-        code: 2, // ERROR status
+        code: SpanStatusCode.ERROR,
         message: error.message
       });
       throw error;
@@ -211,7 +214,7 @@ Encapsulate tracing logic in a custom React hook to make it reusable across your
 ```javascript
 // src/hooks/useTracing.js
 
-import { trace, context } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { useCallback, useRef } from 'react';
 
 const tracer = trace.getTracer('react-frontend');
@@ -252,7 +255,7 @@ export function useTracing(componentName) {
     const span = activeSpans.current.get(spanId);
     if (span) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     }
   }, []);
 
@@ -300,6 +303,15 @@ Different environments require different tracing configurations. Use environment
 ```javascript
 // src/tracing.js (environment-aware version)
 
+import {
+  AlwaysOnSampler,
+  BatchSpanProcessor,
+  ConsoleSpanExporter,
+  SimpleSpanProcessor,
+  TraceIdRatioBasedSampler,
+  WebTracerProvider,
+} from '@opentelemetry/sdk-trace-web';
+
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -312,14 +324,12 @@ const sampler = isProduction
 const provider = new WebTracerProvider({
   resource: resource,
   sampler: sampler,
+  spanProcessors: [
+    isDevelopment
+      ? new SimpleSpanProcessor(new ConsoleSpanExporter())
+      : new BatchSpanProcessor(exporter),
+  ],
 });
-
-// In development, log spans to console instead of sending to backend
-if (isDevelopment) {
-  provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
-} else {
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-}
 ```
 
 ## Monitoring Component Lifecycle
@@ -366,7 +376,7 @@ Verify your tracing setup by checking the browser console for OpenTelemetry logs
 // Enable verbose logging during development
 if (process.env.NODE_ENV === 'development') {
   // This helps debug instrumentation issues
-  import('@opentelemetry/core').then(({ diag, DiagConsoleLogger, DiagLogLevel }) => {
+  import('@opentelemetry/api').then(({ diag, DiagConsoleLogger, DiagLogLevel }) => {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   });
 }
@@ -377,4 +387,3 @@ if (process.env.NODE_ENV === 'development') {
 Browser tracing adds minimal overhead, but you should still be mindful of performance. Batching spans reduces network calls, and sampling controls data volume in production. Monitor the performance impact using browser developer tools and adjust configuration as needed.
 
 OpenTelemetry browser tracing transforms how you understand your React application's behavior in production. By combining automatic instrumentation with strategic manual tracing, you gain deep insights into user experiences and can quickly identify and resolve issues before they impact users.
-
