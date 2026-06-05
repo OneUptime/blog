@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Deduplication, High Availability, Log Dedup, Collector
 
 Description: Build a deduplication pipeline using the log dedup processor to handle duplicate telemetry from high-availability collector pair deployments.
 
-Running a single collector is a single point of failure. The natural solution is running two collectors in parallel, both receiving the same telemetry. But now you have a new problem: every piece of data arrives twice. The log dedup processor removes these duplicates so your backend stores clean, deduplicated data.
+Running a single collector is a single point of failure. The natural solution is running two collectors in parallel, both receiving the same telemetry through client-side fan-out. But now you have a new problem: every piece of data arrives twice. The log dedup processor removes these duplicates so your backend stores clean, deduplicated data.
 
 ## Why Duplicate Collectors?
 
@@ -22,11 +22,11 @@ The dedup collector sits downstream and removes the duplicates before exporting.
 
 ## How the Log Dedup Processor Works
 
-The log dedup processor identifies duplicate log records by comparing specific fields. When it sees two records with the same body, severity, and resource attributes within a time window, it keeps one and drops the other. It can also aggregate duplicates and emit a count.
+The log dedup processor identifies duplicate log records by comparing their body, resource attributes, scope, severity, event name, and log attributes. Timestamps are not part of the identity check. Within each interval, it aggregates identical records and emits one log with a count.
 
 ## Configuring the HA Pair
 
-First, set up two identical collectors that both receive from the same source:
+First, set up two collectors from the same template. Each collector receives the same telemetry from the application:
 
 ```yaml
 # collector-a-config.yaml and collector-b-config.yaml (identical)
@@ -42,7 +42,7 @@ processors:
   attributes/collector_id:
     actions:
       - key: collector.instance
-        value: "collector-a"  # Change to "collector-b" for the second one
+        value: "${env:COLLECTOR_ID}"
         action: insert
 
   batch:
@@ -63,12 +63,15 @@ service:
       exporters: [otlp/dedup]
 ```
 
-Applications send to both collectors using a client-side fan-out or a load balancer:
+Applications must send each log record to both collectors. A normal Kubernetes Service load-balances each connection to one backend; it does not duplicate traffic. Use client-side fan-out, or expose each collector behind its own endpoint and configure the client, sidecar, or local agent to export to both:
 
 ```yaml
-# Application OTLP config
-# Use a load balancer that sends to both collectors
-OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-ha-lb.monitoring.svc:4317"
+# Pseudocode: use the fan-out mechanism supported by your SDK,
+# sidecar, or local collector.
+otlp_fanout:
+  endpoints:
+    - "http://otel-ha-a.monitoring.svc:4317"
+    - "http://otel-ha-b.monitoring.svc:4317"
 ```
 
 ## The Deduplication Collector
@@ -90,21 +93,17 @@ processors:
     spike_limit_mib: 256
 
   # Deduplicate log records
-  logdedup:
-    # Time window to look for duplicates
+  log_dedup:
+    # Interval at which to aggregate deduplicated logs
     log_count_attribute: dedup.count
-    # Interval at which to flush deduplicated logs
     interval: 10s
-    # Which fields to use for identifying duplicates
+    # Only deduplicate application logs. Logs that do not match pass through.
     conditions:
-      - body
-      - severity_text
-      - resource["service.name"]
-      - attributes["log.file.path"]
+      - resource.attributes["service.name"] != nil
     # Exclude the collector instance tag from dedup comparison
     # because it will differ between the two HA collectors
-    exclude_keys:
-      - collector.instance
+    exclude_fields:
+      - attributes.collector\.instance
 
   # Remove the collector instance tag after dedup
   attributes/cleanup:
@@ -120,47 +119,23 @@ exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, logdedup, attributes/cleanup, batch]
+      processors: [memory_limiter, log_dedup, attributes/cleanup, batch]
       exporters: [otlp]
 ```
 
 ## Deduplicating Traces
 
-For traces, deduplication is different. You cannot use the log dedup processor. Instead, use a combination of the groupbytrace processor and custom logic:
-
-```yaml
-processors:
-  # Group spans by trace ID to detect duplicates
-  groupbytrace:
-    wait_duration: 15s
-    num_traces: 50000
-
-  # Use transform to mark and filter duplicates
-  transform/dedup_traces:
-    trace_statements:
-      - context: span
-        statements:
-          # If we see the same span ID twice, the second one is a duplicate
-          # The groupbytrace processor collects them together
-          - set(attributes["dedup.is_duplicate"], true)
-            where attributes["collector.instance"] == "collector-b"
-            and SpanID() != nil
-
-  filter/drop_dupes:
-    traces:
-      span:
-        - 'attributes["dedup.is_duplicate"] == true'
-```
+For traces, deduplication is different. You cannot use the log dedup processor, and the groupbytrace processor only waits for spans with the same trace ID before releasing them to the next processor. It does not identify duplicate spans by itself. If you need trace deduplication, handle it in a backend that can de-duplicate by trace ID and span ID, or build a custom Collector component with that stateful logic.
 
 ## Kubernetes Deployment
 
-Deploy the HA pair with a headless service so both pods receive traffic:
+Deploy the HA pair with a headless service for service discovery. The application or local agent still needs fan-out logic; the headless service only publishes the backing pod addresses.
 
 ```yaml
 # ha-collectors.yaml
@@ -191,9 +166,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: otel-ha-lb
+  name: otel-ha
   namespace: monitoring
 spec:
+  clusterIP: None
   selector:
     app: otel-ha
   ports:
@@ -209,17 +185,17 @@ Track how many duplicates are being removed:
 # Check dedup processor metrics
 curl -s http://dedup-collector:8888/metrics | grep dedup
 
-# otelcol_processor_logdedup_total_logs_in - total logs received
-# otelcol_processor_logdedup_total_logs_out - logs after dedup
-# Dedup ratio = 1 - (out / in)
-# For a perfect HA pair, this should be close to 50%
+# otelcol_dedup_processor_aggregated_logs_bucket - histogram of
+# the number of records aggregated into each emitted log
+# otelcol_processor_accepted_log_records{processor="log_dedup"} -
+# log records accepted by the processor
 ```
 
-If the dedup ratio drops significantly below 50%, one of the HA collectors might be failing to forward data, which defeats the purpose of the HA setup.
+For a perfect HA pair, most aggregated records should represent two input records. If the aggregation size frequently drops to one, one of the HA collectors might be failing to forward data, or the two paths are adding different attributes that are still part of the dedup comparison.
 
 ## Trade-Offs
 
-The dedup collector adds latency because it needs to buffer data for the dedup window (10 seconds in our example). It also consumes memory proportional to the number of unique log records in the window. Size the memory limiter accordingly. For most setups, the reliability gain from the HA pair far outweighs these costs.
+The dedup collector adds latency because it needs to buffer data for the dedup interval (10 seconds in our example). It also consumes memory proportional to the number of unique log records in the interval. Size the memory limiter accordingly. For most setups, the reliability gain from the HA pair far outweighs these costs.
 
 ## Wrapping Up
 
