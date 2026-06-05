@@ -43,7 +43,7 @@ def configure_tracing():
     provider = TracerProvider(resource=resource)
 
     # Export to your OpenTelemetry collector
-    exporter = OTLPSpanExporter(endpoint="otel-collector:4317")
+    exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
     trace.set_tracer_provider(provider)
@@ -62,8 +62,8 @@ tracer = trace.get_tracer("banking.transfer")
 
 def lookup_accounts(sender_id: str, receiver_id: str):
     with tracer.start_as_current_span("account.lookup.batch") as span:
-        span.set_attribute("transfer.sender_id", sender_id)
-        span.set_attribute("transfer.receiver_id", receiver_id)
+        span.set_attribute("transfer.sender_hash", hash_for_trace(sender_id))
+        span.set_attribute("transfer.receiver_hash", hash_for_trace(receiver_id))
 
         # Look up sender account
         with tracer.start_as_current_span("account.lookup.sender") as sender_span:
@@ -97,23 +97,20 @@ Balance checks need to account for pending holds and available balance. This is 
 # balance_service.py
 def check_balance(account, amount: Decimal, currency: str):
     with tracer.start_as_current_span("balance.check") as span:
-        span.set_attribute("balance.requested_amount", float(amount))
+        span.set_attribute("balance.requested_amount_bucket", amount_bucket(amount))
         span.set_attribute("balance.currency", currency)
 
-        # Get current balance with any pending holds
-        with tracer.start_as_current_span("balance.fetch_available"):
-            available = balance_repo.get_available_balance(account.id)
-            span.set_attribute("balance.available", float(available))
+        # Get current balance before applying active holds
+        with tracer.start_as_current_span("balance.fetch_current"):
+            current_balance = balance_repo.get_current_balance(account.id)
 
         # Check for pending holds that reduce available balance
         with tracer.start_as_current_span("balance.fetch_holds") as hold_span:
             holds = hold_repo.get_active_holds(account.id)
             total_holds = sum(h.amount for h in holds)
             hold_span.set_attribute("balance.hold_count", len(holds))
-            hold_span.set_attribute("balance.total_holds", float(total_holds))
 
-        effective_balance = available - total_holds
-        span.set_attribute("balance.effective", float(effective_balance))
+        effective_balance = current_balance - total_holds
 
         if effective_balance < amount:
             span.set_status(trace.StatusCode.ERROR, "Insufficient funds")
@@ -126,14 +123,15 @@ def check_balance(account, amount: Decimal, currency: str):
 
 ## Tracing the Transfer Execution
 
-The actual transfer is a two-phase operation. We debit the sender and credit the receiver within a database transaction. This is where things can go wrong, and having detailed traces is essential for debugging production issues.
+The actual transfer is a multi-step operation. We debit the sender and credit the receiver within a database transaction. This is where things can go wrong, and having detailed traces is essential for debugging production issues.
 
 ```python
 # transfer_service.py
 def execute_transfer(sender, receiver, amount: Decimal, reference: str):
     with tracer.start_as_current_span("transfer.execute") as span:
         span.set_attribute("transfer.reference", reference)
-        span.set_attribute("transfer.amount", float(amount))
+        span.set_attribute("transfer.currency", sender.currency)
+        span.set_attribute("transfer.amount_bucket", amount_bucket(amount))
 
         # Create a hold first to prevent double-spending
         with tracer.start_as_current_span("transfer.create_hold") as hold_span:
@@ -141,30 +139,28 @@ def execute_transfer(sender, receiver, amount: Decimal, reference: str):
             hold_span.set_attribute("transfer.hold_id", hold.id)
 
         try:
-            # Debit sender within a DB transaction
-            with tracer.start_as_current_span("transfer.debit") as debit_span:
-                debit_result = ledger.debit(sender.id, amount, reference)
-                debit_span.set_attribute("ledger.entry_id", debit_result.entry_id)
-                debit_span.set_attribute("ledger.new_balance", float(debit_result.new_balance))
+            with ledger.transaction():
+                # Debit sender within a DB transaction
+                with tracer.start_as_current_span("transfer.debit") as debit_span:
+                    debit_result = ledger.debit(sender.id, amount, reference)
+                    debit_span.set_attribute("ledger.debit_entry_id", debit_result.entry_id)
 
-            # Credit receiver
-            with tracer.start_as_current_span("transfer.credit") as credit_span:
-                credit_result = ledger.credit(receiver.id, amount, reference)
-                credit_span.set_attribute("ledger.entry_id", credit_result.entry_id)
-                credit_span.set_attribute("ledger.new_balance", float(credit_result.new_balance))
+                # Credit receiver
+                with tracer.start_as_current_span("transfer.credit") as credit_span:
+                    credit_result = ledger.credit(receiver.id, amount, reference)
+                    credit_span.set_attribute("ledger.credit_entry_id", credit_result.entry_id)
 
-            # Release the hold
-            with tracer.start_as_current_span("transfer.release_hold"):
-                hold_repo.release(hold.id)
+                # Release the hold
+                with tracer.start_as_current_span("transfer.release_hold"):
+                    hold_repo.release(hold.id)
 
             span.set_attribute("transfer.status", "completed")
 
         except Exception as e:
             span.set_status(trace.StatusCode.ERROR, str(e))
             span.record_exception(e)
-            # Rollback: reverse the debit if credit failed
-            with tracer.start_as_current_span("transfer.rollback"):
-                ledger.reverse(sender.id, amount, reference)
+            # The database transaction rolls back debit and credit changes.
+            with tracer.start_as_current_span("transfer.release_hold_after_failure"):
                 hold_repo.release(hold.id)
             raise
 ```
