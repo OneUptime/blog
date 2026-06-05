@@ -37,10 +37,12 @@ graph LR
     style Backend fill:#e8f5e9
 ```
 
-Each connection requires:
+Each TLS server requires:
 - **Certificate**: Identity of the server
 - **Private Key**: Proves ownership of certificate
-- **CA Certificate**: Trusted authority that signed the certificate
+- **CA Certificate**: Trusted authority that clients use to verify the certificate
+
+For mutual TLS (mTLS), the client also presents its own certificate and private key.
 
 ---
 
@@ -69,7 +71,7 @@ Error: x509: certificate has expired or is not yet valid
 Error: x509: certificate is valid for example.com, not oneuptime.com
 ```
 
-**Cause:** The certificate's Common Name (CN) or Subject Alternative Name (SAN) doesn't match the hostname.
+**Cause:** The certificate's Subject Alternative Name (SAN) doesn't match the hostname. Modern TLS clients generally require SANs instead of relying on the legacy Common Name (CN).
 
 ### Error 4: Self-Signed Certificate
 
@@ -178,7 +180,7 @@ exporters:
       ca_file: /etc/otelcol/certs/company-ca.crt
       # Verify the certificate
       insecure: false
-      # Optionally verify hostname
+      # Verify the server certificate and hostname
       insecure_skip_verify: false
       # Server name for SNI (if different from endpoint hostname)
       server_name_override: internal-backend.company.local
@@ -202,7 +204,7 @@ For development/testing with self-signed certificates:
 
 ```yaml
 exporters:
-  otlphttp:
+  otlphttp/trust_self_signed:
     endpoint: https://localhost:4318
 
     tls:
@@ -210,8 +212,11 @@ exporters:
       ca_file: /etc/otelcol/certs/self-signed.crt
       insecure: false
 
-      # Option 2: Disable verification (NOT for production!)
-      insecure: true
+  otlphttp/skip_verify:
+    endpoint: https://localhost:4318
+
+    tls:
+      # Option 2: Keep TLS but disable certificate verification (NOT for production!)
       insecure_skip_verify: true
 ```
 
@@ -219,7 +224,8 @@ exporters:
 ```bash
 # Generate self-signed cert
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes \
-  -subj "/C=US/ST=State/L=City/O=Company/CN=localhost"
+  -subj "/C=US/ST=State/L=City/O=Company/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
 # View certificate
 openssl x509 -in cert.pem -text -noout
@@ -288,9 +294,6 @@ receivers:
           cert_file: /etc/otelcol/certs/collector.crt
           key_file: /etc/otelcol/certs/collector.key
 
-          # Client authentication (optional)
-          client_ca_file: /etc/otelcol/certs/client-ca.crt
-
       # HTTP with TLS
       http:
         endpoint: 0.0.0.0:4318
@@ -337,16 +340,8 @@ receivers:
           cert_file: /etc/otelcol/certs/collector.crt
           key_file: /etc/otelcol/certs/collector.key
 
-          # Require client certificates
+          # Require and verify client certificates
           client_ca_file: /etc/otelcol/certs/client-ca.crt
-
-          # Client certificate policy
-          # - NoClientCert: Don't require client certs
-          # - RequestClientCert: Request but don't require
-          # - RequireAnyClientCert: Require but don't verify
-          # - VerifyClientCertIfGiven: Verify if provided
-          # - RequireAndVerifyClientCert: Require and verify (most secure)
-          client_auth_type: RequireAndVerifyClientCert
 ```
 
 ---
@@ -400,7 +395,8 @@ openssl req -x509 -newkey rsa:4096 \
   -keyout /etc/otelcol/certs/collector.key \
   -out /etc/otelcol/certs/collector.crt \
   -days 365 -nodes \
-  -subj "/CN=collector.example.com"
+  -subj "/CN=collector.example.com" \
+  -addext "subjectAltName=DNS:collector.example.com"
 
 # Restart Collector
 sudo systemctl restart otelcol
@@ -420,7 +416,7 @@ sudo chmod +x /etc/cron.daily/renew-collector-cert
 
 ### Fix 3: Hostname Mismatch
 
-**Problem:** Certificate CN/SAN doesn't match hostname.
+**Problem:** Certificate SAN doesn't match hostname.
 
 **Check Certificate Names:**
 ```bash
@@ -489,8 +485,8 @@ openssl req -x509 -newkey rsa:4096 \
 wget https://example.com/intermediate1.crt
 wget https://example.com/intermediate2.crt
 
-# Create full chain: server -> intermediate -> root
-cat collector.crt intermediate1.crt intermediate2.crt root.crt > fullchain.crt
+# Create full chain: server -> intermediate certificates
+cat collector.crt intermediate1.crt intermediate2.crt > fullchain.crt
 ```
 
 ```yaml
@@ -534,7 +530,6 @@ receivers:
 
           # Require and verify client certificates (mTLS)
           client_ca_file: /etc/otelcol/certs/client-ca.crt
-          client_auth_type: RequireAndVerifyClientCert
 
           # Use modern TLS version
           min_version: "1.2"
@@ -554,7 +549,6 @@ receivers:
           cert_file: /etc/otelcol/certs/collector.crt
           key_file: /etc/otelcol/certs/collector.key
           client_ca_file: /etc/otelcol/certs/client-ca.crt
-          client_auth_type: RequireAndVerifyClientCert
           min_version: "1.2"
 
 # Processors
@@ -674,7 +668,7 @@ kubectl create secret generic otel-collector-certs \
 
 ```yaml
 # Install cert-manager first
-# kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+# kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Create Certificate resource
 apiVersion: cert-manager.io/v1
@@ -722,6 +716,8 @@ openssl s_client -connect collector.example.com:4317 -servername collector.examp
 # Test with telemetrygen
 docker run --rm \
   -v $(pwd)/ca.crt:/ca.crt \
+  -v $(pwd)/client.crt:/client.crt \
+  -v $(pwd)/client.key:/client.key \
   ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest \
   traces \
   --otlp-endpoint collector.example.com:4317 \
@@ -745,17 +741,7 @@ kubectl logs -l app=opentelemetry-collector -n observability | grep "exporter.*s
 
 ## Monitoring Certificate Expiration
 
-Set up alerts for expiring certificates:
-
-```yaml
-# Add Prometheus exporter to expose certificate metrics
-extensions:
-  pprof:
-    endpoint: 0.0.0.0:1777
-
-# Query certificate expiration
-# This requires external monitoring of certificate files
-```
+Set up alerts for expiring certificates. The Collector does not expose certificate-file expiration metrics by default, so monitor certificate files or endpoints with an external check.
 
 **External Monitoring Script:**
 ```bash
