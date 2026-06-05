@@ -12,9 +12,9 @@ This guide walks through instrumenting Quarkus REST endpoints with OpenTelemetry
 
 ## Understanding Quarkus and OpenTelemetry Integration
 
-Quarkus provides first-class support for OpenTelemetry through the `quarkus-opentelemetry` extension. This extension automatically instruments JAX-RS endpoints, JDBC calls, and other framework components without requiring code changes. The integration leverages Quarkus's build-time optimization to minimize runtime overhead.
+Quarkus provides first-class support for OpenTelemetry through the `quarkus-opentelemetry` extension. This extension automatically instruments Jakarta REST endpoints and other framework components without requiring code changes; JDBC spans are available when JDBC datasource telemetry is enabled. The integration leverages Quarkus's build-time optimization to minimize runtime overhead.
 
-The instrumentation works by intercepting HTTP requests at the JAX-RS layer and creating spans that represent the execution of each endpoint. These spans capture essential information like HTTP method, path, status code, and timing data.
+The instrumentation works by intercepting HTTP requests at the Jakarta REST layer and creating spans that represent the execution of each endpoint. These spans capture essential information like HTTP method, route, status code, and timing data.
 
 ## Setting Up OpenTelemetry in Quarkus
 
@@ -41,7 +41,7 @@ quarkus.otel.exporter.otlp.endpoint=http://localhost:4317
 # Set the service name for your application
 quarkus.otel.service.name=quarkus-rest-service
 
-# Configure trace sampling (1.0 = 100% of requests)
+# Configure trace sampling
 quarkus.otel.traces.sampler=always_on
 ```
 
@@ -72,7 +72,7 @@ public class UserResource {
         return Response.ok(userService.getAllUsers()).build();
     }
 
-    // GET with path parameter - span includes the parameter
+    // GET with path parameter - span includes the route template
     @GET
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -84,7 +84,7 @@ public class UserResource {
         return Response.ok(user).build();
     }
 
-    // POST endpoint - captures request and response details
+    // POST endpoint - captures HTTP request and response metadata
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -95,7 +95,7 @@ public class UserResource {
 }
 ```
 
-With just the extension added and configuration in place, these endpoints are automatically instrumented. Each request generates a span with attributes like `http.method`, `http.route`, `http.status_code`, and timing information.
+With just the extension added and configuration in place, these endpoints are automatically instrumented. Each request generates a span with attributes like `http.request.method`, `http.route`, `http.response.status_code`, and timing information.
 
 ## Adding Custom Spans and Attributes
 
@@ -156,11 +156,16 @@ package com.example.api;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+
+import java.util.Optional;
+
+import static io.quarkus.opentelemetry.runtime.tracing.mutiny.MutinyTracingHelper.wrapWithSpan;
 
 @Path("/api/products")
 public class ProductResource {
@@ -178,11 +183,11 @@ public class ProductResource {
         // Add attribute to current span
         Span.current().setAttribute("product.id", id);
 
-        // The span context propagates through the Uni chain
+        // The Quarkus OpenTelemetry context propagates through the Uni chain
         return productService.findByIdAsync(id)
             .invoke(product -> {
                 // This executes when the product is retrieved
-                // The span is still active here
+                // The current span context is available here
                 Span.current().setAttribute("product.category", product.getCategory());
                 Span.current().setAttribute("product.in_stock", product.isInStock());
             });
@@ -192,19 +197,16 @@ public class ProductResource {
     @GET
     @Path("/{id}/details")
     public Uni<ProductDetails> getProductDetails(@PathParam("id") Long id) {
-        Span span = tracer.spanBuilder("fetch-product-details").startSpan();
+        Context context = Context.current();
 
-        return productService.findByIdAsync(id)
-            .chain(product -> {
-                // Chain additional async operations
-                span.setAttribute("product.name", product.getName());
-                return reviewService.getReviewsAsync(product.getId())
-                    .map(reviews -> new ProductDetails(product, reviews));
-            })
-            .eventually(() -> {
-                // Ensure span is ended regardless of success or failure
-                span.end();
-            });
+        return wrapWithSpan(tracer, Optional.of(context), "fetch-product-details",
+            productService.findByIdAsync(id)
+                .chain(product -> {
+                    // Chain additional async operations
+                    Span.current().setAttribute("product.name", product.getName());
+                    return reviewService.getReviewsAsync(product.getId())
+                        .map(reviews -> new ProductDetails(product, reviews));
+                }));
     }
 }
 ```
@@ -363,11 +365,15 @@ quarkus.otel.bsp.max.export.batch.size=512
 quarkus.otel.resource.attributes=deployment.environment=production,service.version=1.0.0
 
 # Propagation formats for context propagation
-quarkus.otel.propagators=tracecontext,baggage,b3
+quarkus.otel.propagators=tracecontext,baggage
 
 # Enable/disable specific instrumentations
-quarkus.otel.instrument.rest-client=true
+quarkus.otel.instrument.rest=true
 quarkus.otel.instrument.resteasy=true
+quarkus.otel.instrument.resteasy-client=true
+
+# Enable JDBC spans for a JDBC datasource
+quarkus.datasource.jdbc.telemetry=true
 ```
 
 ## Testing Instrumented Endpoints
@@ -377,23 +383,35 @@ Write tests to verify that your instrumentation works correctly.
 ```java
 package com.example.api;
 
-import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.quarkus.test.junit.QuarkusTest;
-import io.restassured.RestAssured;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.util.List;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @QuarkusTest
 public class UserResourceTest {
 
-    @RegisterExtension
-    static final OpenTelemetryExtension otelTesting = OpenTelemetryExtension.create();
+    @Inject
+    InMemorySpanExporter spanExporter;
+
+    @ApplicationScoped
+    static class InMemorySpanExporterProducer {
+        @Produces
+        @Singleton
+        InMemorySpanExporter inMemorySpanExporter() {
+            return InMemorySpanExporter.create();
+        }
+    }
 
     @Test
     public void testGetUserCreatesSpan() {
@@ -404,12 +422,12 @@ public class UserResourceTest {
             .statusCode(200);
 
         // Verify span was created with correct attributes
-        List<SpanData> spans = otelTesting.getSpans();
-        assert spans.size() > 0;
-
-        SpanData span = spans.get(0);
-        assert span.getName().equals("GET /api/users/{id}");
-        assert span.getAttributes().get("http.method").equals("GET");
+        List<SpanData> spans = spanExporter.getFinishedSpanItems();
+        SpanData span = spans.stream()
+            .filter(item -> item.getName().equals("GET /api/users/{id}"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected REST server span was not exported"));
+        assertEquals("GET", span.getAttributes().get(AttributeKey.stringKey("http.request.method")));
     }
 }
 ```
