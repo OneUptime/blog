@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Starlette, Python, ASGI, Tracing, Web Framework
 
 Description: Learn how to implement distributed tracing in Starlette ASGI applications using OpenTelemetry for complete observability of your async Python web services.
 
-Starlette is a lightweight ASGI framework for building high-performance async web services in Python. When you're running Starlette applications in production, understanding request flow, latency patterns, and error propagation becomes critical. OpenTelemetry provides automatic instrumentation for Starlette that captures HTTP requests, middleware execution, and route handling with minimal configuration.
+Starlette is a lightweight ASGI framework for building high-performance async web services in Python. When you're running Starlette applications in production, understanding request flow, latency patterns, and error propagation becomes critical. OpenTelemetry provides automatic instrumentation for Starlette that captures HTTP requests and ASGI receive/send events with minimal configuration.
 
 ## Why Trace Starlette Applications
 
@@ -17,7 +17,7 @@ Starlette applications often serve as API backends, microservices, or foundation
 - Process WebSocket connections and streaming responses
 - Execute complex middleware chains
 
-Without proper tracing, debugging performance issues in async code becomes nearly impossible. OpenTelemetry's automatic instrumentation captures the complete execution flow, including async context switches, making it straightforward to identify bottlenecks.
+Without proper tracing, debugging performance issues in async code becomes nearly impossible. OpenTelemetry's automatic instrumentation preserves trace context through async request handling, making it straightforward to identify bottlenecks.
 
 ## Installation and Dependencies
 
@@ -28,6 +28,9 @@ pip install starlette uvicorn
 pip install opentelemetry-api opentelemetry-sdk
 pip install opentelemetry-instrumentation-starlette
 pip install opentelemetry-exporter-otlp
+
+# Optional packages used in later examples
+pip install opentelemetry-instrumentation-sqlalchemy sqlalchemy aiosqlite
 ```
 
 The `opentelemetry-instrumentation-starlette` package provides automatic instrumentation that hooks into Starlette's ASGI lifecycle. The OTLP exporter sends traces to your observability backend.
@@ -94,7 +97,7 @@ When you run this application and make requests, OpenTelemetry automatically cre
 
 ## Tracing Middleware Execution
 
-Starlette's middleware system is powerful for cross-cutting concerns like authentication, rate limiting, and request logging. OpenTelemetry captures middleware execution as child spans:
+Starlette's middleware system is powerful for cross-cutting concerns like authentication, rate limiting, and request logging. Middleware runs inside the active request span, so you can add middleware-specific attributes or create custom spans where you need more detail:
 
 ```python
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -107,9 +110,9 @@ class TimingMiddleware(BaseHTTPMiddleware):
         span = trace.get_current_span()
         span.set_attribute("middleware.name", "TimingMiddleware")
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         response = await call_next(request)
-        process_time = asyncio.get_event_loop().time() - start_time
+        process_time = asyncio.get_running_loop().time() - start_time
 
         # Add timing as a span attribute
         span.set_attribute("middleware.process_time", process_time)
@@ -121,7 +124,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TimingMiddleware)
 ```
 
-Each middleware creates a child span under the main request span, showing you exactly where time is spent in the middleware chain.
+This middleware annotates the active request span with timing information, showing you where time is spent in the middleware chain. If you need a separate child span for a middleware block, wrap that block with `tracer.start_as_current_span(...)`.
 
 ## Custom Span Creation for Business Logic
 
@@ -162,28 +165,32 @@ This creates a hierarchical trace showing the request flow through validation an
 Starlette applications often use async database libraries. Here's how to trace database operations:
 
 ```python
-from databases import Database
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-# Instrument SQLAlchemy for database tracing
-SQLAlchemyInstrumentor().instrument()
+# Create and instrument a SQLAlchemy async engine
+engine = create_async_engine("sqlite+aiosqlite:///products.db")
+SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
-database = Database("postgresql://user:password@localhost/dbname")
+tracer = trace.get_tracer(__name__)
 
 async def get_products(request):
     # Database query will be automatically traced
-    query = "SELECT * FROM products WHERE category = :category"
+    query = text("SELECT * FROM products WHERE category = :category")
     category = request.query_params.get("category", "electronics")
 
     with tracer.start_as_current_span("fetch_products") as span:
         span.set_attribute("db.query.category", category)
-        results = await database.fetch_all(query=query, values={"category": category})
-        span.set_attribute("db.result.count", len(results))
+        async with engine.connect() as connection:
+            result = await connection.execute(query, {"category": category})
+            rows = result.mappings().all()
+        span.set_attribute("db.result.count", len(rows))
 
-    return JSONResponse([dict(row) for row in results])
+    return JSONResponse([dict(row) for row in rows])
 ```
 
-The SQLAlchemy instrumentation automatically creates child spans for each database query, showing query text, parameters, and execution time.
+The SQLAlchemy instrumentation automatically creates child spans for each database query executed through the instrumented engine, showing query text and execution time.
 
 ## WebSocket Tracing
 
@@ -192,6 +199,7 @@ Starlette supports WebSocket connections. Tracing these requires manual span man
 ```python
 from starlette.websockets import WebSocket
 from starlette.endpoints import WebSocketEndpoint
+from starlette.routing import WebSocketRoute
 
 class ChatEndpoint(WebSocketEndpoint):
     encoding = "json"
@@ -217,7 +225,7 @@ class ChatEndpoint(WebSocketEndpoint):
             span.set_attribute("websocket.close_code", close_code)
 
 # Add WebSocket route
-routes.append(Route("/ws", ChatEndpoint))
+routes.append(WebSocketRoute("/ws", ChatEndpoint))
 ```
 
 ## Error Tracking and Exception Handling
