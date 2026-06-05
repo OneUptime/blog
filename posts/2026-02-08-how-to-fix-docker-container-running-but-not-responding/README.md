@@ -65,9 +65,10 @@ docker logs my-container | tail -100
 For Node.js applications, check the event loop:
 
 ```bash
-# Inspect a Node.js process with diagnostic report
-docker exec my-container node -e "process.report.writeReport('/tmp/report.json')"
-docker cp my-container:/tmp/report.json ./report.json
+# If the app was started with --report-on-signal, trigger a report in the running Node.js process
+docker exec my-container kill -USR2 1
+REPORT_PATH=$(docker exec my-container sh -c "find / -maxdepth 3 -name 'report*.json' 2>/dev/null | head -1")
+docker cp "my-container:${REPORT_PATH}" ./report.json
 ```
 
 ## Cause 2: Out of Memory Inside the Container
@@ -161,7 +162,7 @@ For applications without curl installed:
 
 ```dockerfile
 # Dockerfile with a health check using wget (available in alpine)
-FROM node:18-alpine
+FROM node:24-alpine
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=30s \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 ```
@@ -247,12 +248,13 @@ docker restart my-container
 
 # Option 2: Kill and recreate (preserves volume data)
 docker rm -f my-container
-docker compose up -d my-container
+docker compose up -d app
 
 # Option 3: Scale to add a new instance while debugging the stuck one
+# This requires service networking that can run multiple replicas without host port conflicts.
 docker compose up -d --scale app=2
 ```
 
 ## Summary
 
-A Docker container that shows as running but does not respond is almost always an application-level problem, not a Docker problem. The container runtime is doing its job by keeping the process alive. Start by checking whether `docker exec` works. If it does, investigate inside the container: check the process state, memory usage, port bindings, and DNS. If `docker exec` hangs, the process is truly frozen, and a restart is your best immediate option. For long-term prevention, implement meaningful health checks that test actual application functionality, not just whether a port is open. Combine health checks with proper resource limits so Docker can detect and restart unhealthy containers automatically.
+A Docker container that shows as running but does not respond is almost always an application-level problem, not a Docker problem. The container runtime is doing its job by keeping the process alive. Start by checking whether `docker exec` works. If it does, investigate inside the container: check the process state, memory usage, port bindings, and DNS. If `docker exec` hangs, the process is truly frozen, and a restart is your best immediate option. For long-term prevention, implement meaningful health checks that test actual application functionality, not just whether a port is open. Combine health checks with proper resource limits so Docker and your monitoring or orchestration layer can detect unhealthy containers and take action.
