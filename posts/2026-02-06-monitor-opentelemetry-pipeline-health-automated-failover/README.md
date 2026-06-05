@@ -12,7 +12,7 @@ This post covers how to instrument your OpenTelemetry Collector for health monit
 
 ## The Collector's Built-in Health Signals
 
-The OpenTelemetry Collector exposes internal telemetry through a Prometheus-compatible endpoint on port 8888 by default. These metrics tell you everything about pipeline health.
+The OpenTelemetry Collector exposes internal telemetry through a Prometheus-compatible endpoint on port 8888 by default. These metrics give you direct visibility into pipeline health.
 
 Enable the health check extension and telemetry endpoint in your collector config:
 
@@ -21,15 +21,12 @@ Enable the health check extension and telemetry endpoint in your collector confi
 
 # Enable the health_check extension for liveness/readiness probes
 # and the zpages extension for debugging. The telemetry section
-# configures the Prometheus metrics endpoint.
+# exposes the Prometheus metrics endpoint on all interfaces.
 
 extensions:
   health_check:
     endpoint: "0.0.0.0:13133"
     path: "/health"
-    check_collector_pipeline:
-      enabled: true
-      exporter_failure_threshold: 5  # mark unhealthy after 5 consecutive export failures
   zpages:
     endpoint: "0.0.0.0:55679"
 
@@ -37,11 +34,17 @@ service:
   telemetry:
     metrics:
       level: detailed    # expose all internal metrics
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_units: true
   extensions: [health_check, zpages]
 ```
 
-The `check_collector_pipeline` option is important. It ties the health endpoint response to actual pipeline health, not just whether the process is running. After 5 consecutive export failures, the health endpoint returns unhealthy, which lets your load balancer or orchestrator react.
+The health endpoint is useful for process and component readiness checks. For pipeline degradation, rely on the Collector's internal metrics below; the older `check_collector_pipeline` setting is no longer recommended by the Collector maintainers because it does not work as expected.
 
 ## Key Metrics to Watch
 
@@ -90,15 +93,12 @@ groups:
 
       # Memory pressure - collector approaching OOM
       - alert: CollectorHighMemory
-        expr: >
-          otelcol_process_memory_rss
-          / otelcol_process_runtime_total_alloc_bytes
-          > 0.80
+        expr: otelcol_process_memory_rss > 1024 * 1024 * 1024
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Collector memory usage above 80%"
+          summary: "Collector RSS memory usage above 1 GiB"
 ```
 
 ## Automated Failover with a Health-Based Controller
@@ -133,6 +133,8 @@ class FailoverController:
         self.unhealthy_count = 0
         self.healthy_count = 0
         self.current_mode = "primary"
+        self.last_failed = None
+        self.last_sent = None
 
     def check_health(self):
         try:
@@ -147,7 +149,18 @@ class FailoverController:
             metrics = requests.get(METRICS_ENDPOINT, timeout=5).text
             failed = self._parse_metric(metrics, "otelcol_exporter_send_failed_spans_total")
             sent = self._parse_metric(metrics, "otelcol_exporter_sent_spans_total")
-            if sent > 0 and (failed / sent) > 0.10:
+            high_failure_rate = False
+
+            if self.last_failed is not None and self.last_sent is not None:
+                failed_delta = max(0, failed - self.last_failed)
+                sent_delta = max(0, sent - self.last_sent)
+                total_delta = failed_delta + sent_delta
+                if total_delta > 0 and (failed_delta / total_delta) > 0.10:
+                    high_failure_rate = True
+
+            self.last_failed = failed
+            self.last_sent = sent
+            if high_failure_rate:
                 return False
         except Exception:
             pass
@@ -155,10 +168,11 @@ class FailoverController:
         return True
 
     def _parse_metric(self, text, name):
+        total = 0
         for line in text.split('\n'):
             if line.startswith(name) and not line.startswith('#'):
-                return float(line.split()[-1])
-        return 0
+                total += float(line.split()[-1])
+        return total
 
     def switch_config(self, mode):
         config = CONFIG_PRIMARY if mode == "primary" else CONFIG_SECONDARY
@@ -203,7 +217,7 @@ If you run on Kubernetes, you can use the collector's health endpoint with a cus
 ```yaml
 # collector-service.yaml
 # The Service only routes traffic to collectors that pass readiness checks.
-# If a collector's pipeline is degraded, it gets removed from the service
+# If a collector is not ready, it gets removed from the service
 # endpoints and stops receiving new telemetry.
 
 apiVersion: v1
@@ -229,6 +243,9 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
     metadata:
       labels:
@@ -253,7 +270,7 @@ spec:
             failureThreshold: 5
 ```
 
-The readiness probe is more aggressive than the liveness probe on purpose. You want to stop sending traffic to a degraded collector quickly (3 checks at 10-second intervals), but you want to give it more time to recover before killing and restarting it (5 checks at 15-second intervals).
+The readiness probe is more aggressive than the liveness probe on purpose. You want to stop sending traffic to an unready collector quickly (3 checks at 10-second intervals), but you want to give it more time to recover before killing and restarting it (5 checks at 15-second intervals).
 
 ## Dashboarding Pipeline Health
 
