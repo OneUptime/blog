@@ -35,7 +35,7 @@ flowchart TD
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.26 or later.
+- An AKS cluster running a currently supported Kubernetes version.
 - `kubectl` configured to access your cluster.
 - Helm 3 installed.
 - Cluster admin permissions for installing operators and CRDs.
@@ -47,7 +47,7 @@ The OpenTelemetry Operator for Kubernetes manages Collector deployments and can 
 ```bash
 # Install cert-manager (required by the OpenTelemetry Operator)
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=120s
@@ -83,7 +83,9 @@ metadata:
 spec:
   mode: daemonset
   # Use the contrib image for additional receivers and exporters
-  image: otel/opentelemetry-collector-contrib:0.96.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
 
   # Mount the host filesystem for node-level metrics
   volumeMounts:
@@ -211,7 +213,14 @@ metadata:
 spec:
   mode: deployment
   replicas: 2
-  image: otel/opentelemetry-collector-contrib:0.96.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
+
+  env:
+    - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+      valueFrom:
+        secretKeyRef:
+          name: app-insights
+          key: connection-string
 
   config:
     receivers:
@@ -228,10 +237,9 @@ spec:
       # Filter out noisy health check spans
       filter:
         error_mode: ignore
-        traces:
-          span:
-            - 'attributes["http.route"] == "/healthz"'
-            - 'attributes["http.route"] == "/readyz"'
+        trace_conditions:
+          - 'span.attributes["http.route"] == "/healthz"'
+          - 'span.attributes["http.route"] == "/readyz"'
 
     exporters:
       # Export traces to an OTLP-compatible backend
@@ -244,7 +252,7 @@ spec:
       azuremonitor:
         connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
 
-      # Export metrics to Prometheus (if running Prometheus on AKS)
+      # Export metrics to Prometheus (if its remote write receiver is enabled)
       prometheusremotewrite:
         endpoint: "http://prometheus-server.monitoring.svc.cluster.local:9090/api/v1/write"
 
@@ -271,6 +279,11 @@ spec:
 Apply the gateway configuration.
 
 ```bash
+# Store your Application Insights connection string for the Azure Monitor exporter
+kubectl create secret generic app-insights \
+  -n opentelemetry \
+  --from-literal=connection-string="$APPLICATIONINSIGHTS_CONNECTION_STRING"
+
 # Deploy the gateway collector
 kubectl apply -f otel-gateway-collector.yaml
 
@@ -324,7 +337,7 @@ kubectl apply -f otel-rbac.yaml
 
 ## Step 5: Instrument Your Application
 
-With the Collector infrastructure in place, your applications just need to export telemetry to the local DaemonSet agent. Here is an example Kubernetes Deployment for a Python service.
+With the Collector infrastructure in place, your applications just need to export telemetry to the local DaemonSet agent. Because the DaemonSet Collector above uses `hostNetwork`, pods can reach the agent on their node's host IP. Here is an example Kubernetes Deployment for a Python service.
 
 ```yaml
 # sample-app.yaml
@@ -349,9 +362,14 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            # Use the node's IP to reach the DaemonSet agent directly
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             # Point the OTLP exporter to the DaemonSet agent on the same node
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-agent-collector.opentelemetry.svc.cluster.local:4317"
+              value: "http://$(NODE_IP):4317"
             # Set the service name for this application
             - name: OTEL_SERVICE_NAME
               value: "order-service"
@@ -363,17 +381,13 @@ spec:
               value: "tracecontext,baggage"
 ```
 
-If you want to use the DaemonSet agent via the node's host IP (to avoid going through kube-dns), you can use the downward API.
+If you prefer to use the Collector Service, you can point at it directly. This is simpler, but Kubernetes may load balance the request to an agent on another node.
 
 ```yaml
 env:
-  # Use the node's IP to reach the DaemonSet agent directly
-  - name: NODE_IP
-    valueFrom:
-      fieldRef:
-        fieldPath: status.hostIP
+  # Use the DaemonSet Collector Service
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://$(NODE_IP):4317"
+    value: "http://otel-agent-collector.opentelemetry.svc.cluster.local:4317"
 ```
 
 ## Step 6: Auto-Instrumentation (Optional)
@@ -389,7 +403,7 @@ metadata:
   namespace: default
 spec:
   exporter:
-    endpoint: http://otel-agent-collector.opentelemetry.svc.cluster.local:4317
+    endpoint: http://otel-agent-collector.opentelemetry.svc.cluster.local:4318
   propagators:
     - tracecontext
     - baggage
@@ -418,7 +432,7 @@ kubectl patch deployment order-service -n default -p '{"spec":{"template":{"meta
 kubectl patch deployment api-gateway -n default -p '{"spec":{"template":{"metadata":{"annotations":{"instrumentation.opentelemetry.io/inject-nodejs":"true"}}}}}'
 ```
 
-The operator will restart the pods and inject an init container that adds the OpenTelemetry SDK. Your application gets instrumented without any code changes.
+The operator will restart the pods and inject instrumentation. For Java, Python, Node.js, and .NET this uses an init container; Go auto-instrumentation uses a sidecar and also needs the target executable configured with `OTEL_GO_AUTO_TARGET_EXE` or the `instrumentation.opentelemetry.io/otel-go-auto-target-exe` annotation. Your application gets instrumented without code changes.
 
 ## Monitoring the Collectors Themselves
 
@@ -430,8 +444,13 @@ service:
   telemetry:
     metrics:
       # Expose Collector health and performance metrics
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to watch include `otelcol_exporter_sent_spans`, `otelcol_exporter_send_failed_spans`, `otelcol_processor_batch_batch_send_size`, and `otelcol_receiver_accepted_spans`. If the failed count is climbing, you have an export problem.
