@@ -24,8 +24,8 @@ public class Application {
         // - jvm.memory.used (by memory pool)
         // - jvm.memory.committed
         // - jvm.gc.duration
-        // - jvm.threads.count
-        // - jvm.classes.loaded
+        // - jvm.thread.count
+        // - jvm.class.loaded
         RuntimeMetrics runtimeMetrics = RuntimeMetrics.create(openTelemetry);
 
         // Start your application
@@ -55,11 +55,11 @@ const sdk = new NodeSDK({
 });
 
 // This provides metrics like:
-// - nodejs.memory.heap.used
-// - nodejs.memory.heap.total
-// - nodejs.memory.rss
-// - nodejs.event_loop.delay
-// - nodejs.gc.duration
+// - v8js.memory.heap.used
+// - v8js.memory.heap.limit
+// - nodejs.eventloop.delay.mean
+// - nodejs.eventloop.utilization
+// - v8js.gc.duration
 ```
 
 ### Python
@@ -73,8 +73,9 @@ from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrument
 SystemMetricsInstrumentor().instrument()
 
 # Provides metrics like:
-# - process.runtime.cpython.memory (RSS, VMS)
-# - process.runtime.cpython.gc_count
+# - process.memory.usage
+# - process.memory.virtual
+# - cpython.gc.collections
 # - system.memory.usage
 ```
 
@@ -84,12 +85,12 @@ Once runtime metrics are flowing, set up a dashboard and alert for memory growth
 
 ```promql
 # Dashboard query: heap memory usage over time, per pod
-process_runtime_jvm_memory_used_bytes{type="heap", service_name="order-service"}
+jvm_memory_used_bytes{jvm_memory_type="heap", service_name="order-service"}
 
 # Alert: memory usage growing steadily over 4 hours
 # This detects a positive trend in heap usage
 deriv(
-  process_runtime_jvm_memory_used_bytes{type="heap", service_name="order-service"}[4h]
+  jvm_memory_used_bytes{jvm_memory_type="heap", service_name="order-service"}[4h]
 ) > 0
 ```
 
@@ -118,11 +119,11 @@ When you suspect a leak, look at garbage collection metrics to confirm:
 ```promql
 # GC pause duration is increasing over time
 # This means the GC is working harder to reclaim memory
-rate(process_runtime_jvm_gc_duration_seconds_sum{service_name="order-service"}[5m])
+rate(jvm_gc_duration_seconds_sum{service_name="order-service"}[5m])
 
 # GC frequency is increasing
 # More frequent GC cycles indicate memory pressure
-rate(process_runtime_jvm_gc_duration_seconds_count{service_name="order-service"}[5m])
+rate(jvm_gc_duration_seconds_count{service_name="order-service"}[5m])
 
 # The amount of memory freed per GC cycle is decreasing
 # This strongly suggests retained objects are growing
@@ -142,7 +143,7 @@ kubectl exec -it order-service-pod-abc123 -- \
 # Copy the dump locally for analysis
 kubectl cp order-service-pod-abc123:/tmp/heapdump.hprof ./heapdump.hprof
 
-# Analyze with Eclipse MAT or jhat
+# Analyze with Eclipse MAT, VisualVM, or JDK Mission Control
 # Look for the "Leak Suspects" report in Eclipse MAT
 ```
 
@@ -151,12 +152,11 @@ kubectl cp order-service-pod-abc123:/tmp/heapdump.hprof ./heapdump.hprof
 ```javascript
 // Add an endpoint to trigger a heap snapshot (protect this with auth)
 const v8 = require('v8');
-const fs = require('fs');
 
 app.post('/debug/heapdump', authMiddleware, (req, res) => {
   const filename = `/tmp/heapdump-${Date.now()}.heapsnapshot`;
-  const snapshotStream = v8.writeHeapSnapshot(filename);
-  res.json({ file: snapshotStream });
+  const snapshotFile = v8.writeHeapSnapshot(filename);
+  res.json({ file: snapshotFile });
 });
 ```
 
@@ -205,6 +205,7 @@ def process_large_order(order):
         stats = snapshot_after.compare_to(snapshot_before, 'lineno')
 
         total_allocated = sum(s.size_diff for s in stats if s.size_diff > 0)
+        top_allocator = next((s for s in stats if s.size_diff > 0), None)
         span.set_attribute("memory.allocated_bytes", total_allocated)
 
         memory_allocated.record(total_allocated, {
@@ -214,7 +215,7 @@ def process_large_order(order):
         if total_allocated > 10_000_000:  # More than 10MB allocated
             span.add_event("high_memory_allocation", {
                 "bytes": total_allocated,
-                "top_allocator": str(stats[0]) if stats else "unknown",
+                "top_allocator": str(top_allocator) if top_allocator else "unknown",
             })
 
     tracemalloc.stop()
@@ -261,7 +262,7 @@ groups:
     rules:
       - alert: MemoryLeakSuspected
         expr: |
-          deriv(process_runtime_jvm_memory_used_bytes{type="heap"}[2h]) > 1000000
+          deriv(jvm_memory_used_bytes{jvm_memory_type="heap"}[2h]) > 1000000
         for: 1h
         labels:
           severity: warning
