@@ -55,9 +55,12 @@ extensions:
     compaction:
       on_start: true
       directory: /var/lib/otelcol/queue/compact
+
+service:
+  extensions: [file_storage/queue]
 ```
 
-The `file_storage` extension writes queued data to disk. If the collector process crashes, the data is still there when it restarts. Without this, you are relying on in-memory queues that vanish on restart.
+The `file_storage` extension writes queued data to disk when it is enabled under `service.extensions`. If the collector process crashes, the data is still there when it restarts. Without this, you are relying on in-memory queues that vanish on restart.
 
 ## Measuring Your Actual RPO and RTO
 
@@ -76,15 +79,16 @@ scrape_configs:
       - targets: ['localhost:8888']
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'otelcol_exporter_queue_size|otelcol_exporter_send_failed_metric_points|otelcol_processor_dropped_metric_points'
+        regex: 'otelcol_exporter_queue_size|otelcol_exporter_queue_capacity|otelcol_exporter_enqueue_failed_metric_points|otelcol_exporter_send_failed_metric_points'
         action: keep
 ```
 
 The key metrics to watch are:
 
 - `otelcol_exporter_queue_size` - if this hits your max, data is being dropped
-- `otelcol_exporter_send_failed_metric_points` - tracks how many data points failed to export
-- `otelcol_processor_dropped_metric_points` - data dropped before it even reaches the exporter
+- `otelcol_exporter_queue_capacity` - the configured capacity of the sending queue
+- `otelcol_exporter_enqueue_failed_metric_points` - metric points that could not enter the queue, often because the queue is full
+- `otelcol_exporter_send_failed_metric_points` - tracks failed export attempts; this indicates export problems, but not necessarily data loss while retries are still active
 
 ## Building Alerts Around RPO Violations
 
@@ -107,13 +111,13 @@ groups:
           summary: "OTel exporter queue at 80% capacity"
           description: "Queue size is {{ $value }}. RPO violation likely if backend does not recover within 60 seconds."
       - alert: DataPointsDropped
-        expr: rate(otelcol_exporter_send_failed_metric_points[5m]) > 0
+        expr: rate(otelcol_exporter_enqueue_failed_metric_points[5m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "Metric data points are being dropped"
-          description: "RPO has been violated. Investigate backend connectivity immediately."
+          description: "RPO has been violated because metric points could not enter the exporter queue. Investigate backend connectivity and collector capacity immediately."
 ```
 
 ## Designing for RTO
@@ -126,6 +130,7 @@ A minimal Kubernetes deployment spec with liveness probes:
 # collector-deployment.yaml
 # The liveness probe checks the collector's health endpoint every 15 seconds.
 # If 3 consecutive checks fail, Kubernetes restarts the pod, keeping RTO low.
+# This assumes the collector config enables the health_check extension on port 13133.
 
 apiVersion: apps/v1
 kind: Deployment
@@ -133,7 +138,13 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
