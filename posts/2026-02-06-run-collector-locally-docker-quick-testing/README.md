@@ -10,7 +10,7 @@ Description: Learn how to run the OpenTelemetry Collector locally in Docker for 
 
 When you are building or debugging an OpenTelemetry pipeline, the fastest feedback loop comes from running the Collector locally. Docker makes this trivial. You can spin up a fully configured Collector in seconds, point your application at it, and watch the telemetry flow through in real time. No Kubernetes clusters, no cloud accounts, no waiting for CI pipelines. Just a container, a config file, and your application.
 
-This guide walks through everything you need to get a local Collector running in Docker, from the basic one-liner to more advanced setups with custom configurations, multiple pipelines, and persistent storage.
+This guide walks through everything you need to get a local Collector running in Docker, from the basic one-liner to more advanced setups with custom configurations and multiple pipelines.
 
 ## The Simplest Possible Setup
 
@@ -109,15 +109,13 @@ services:
       - "4318:4318"   # OTLP HTTP
       - "8888:8888"   # Collector metrics
       - "8889:8889"   # Prometheus exporter
-      - "55679:55679" # zPages
     restart: unless-stopped
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
     container_name: jaeger
     ports:
       - "16686:16686" # Jaeger UI
-      - "14250:14250" # gRPC for Collector
 
   prometheus:
     image: prom/prometheus:latest
@@ -146,8 +144,8 @@ processors:
 
 exporters:
   # Send traces to Jaeger
-  otlp/jaeger:
-    endpoint: jaeger:14250
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -164,11 +162,24 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      exporters: [otlp_grpc/jaeger, debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [prometheus, debug]
+```
+
+Create a Prometheus config that scrapes the Collector's Prometheus exporter:
+
+```yaml
+# prometheus.yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
 ```
 
 Now when your application sends traces, you can view them in the Jaeger UI at `http://localhost:16686`. Metrics show up in Prometheus at `http://localhost:9090`.
@@ -249,7 +260,7 @@ otel/opentelemetry-collector        - Core distribution (minimal)
 otel/opentelemetry-collector-contrib - Contrib distribution (batteries included)
 ```
 
-The core distribution includes only the essential components: OTLP receiver, batch processor, and OTLP/debug exporters. The contrib distribution adds hundreds of additional receivers, processors, and exporters maintained by the community.
+The core distribution includes a smaller, curated set of widely used components. The contrib distribution adds many additional receivers, processors, exporters, connectors, and extensions maintained by the community.
 
 For local testing, the contrib distribution is usually the right choice because it includes everything you might need. In production, you would typically build a custom distribution with only the components you use.
 
@@ -257,14 +268,14 @@ For local testing, the contrib distribution is usually the right choice because 
 
 When things are not working, here are the most common problems and their solutions.
 
-If your application cannot connect to the Collector, check that you are using the right address. From the host machine, use `localhost:4317`. From another Docker container, use the container name or `host.docker.internal`:
+If your application cannot connect to the Collector, check that you are using the right address. From the host machine, use `localhost:4317`. From another Docker container on the same Compose network, use the Collector service name. If the Collector is running on the host instead of in the same Docker network, use `host.docker.internal` on platforms that support it:
 
 ```bash
 # From host machine, your app connects to localhost
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 # From another container in the same Docker network,
-# use the container name as the hostname
+# use the service name as the hostname
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 ```
 
@@ -282,7 +293,7 @@ service:
 
 ## Hot Reloading Configuration Changes
 
-During development, you will iterate on your Collector configuration frequently. Instead of stopping and restarting the container each time, you can use the `--config` flag with a file watcher or simply send a SIGHUP signal:
+During development, you will iterate on your Collector configuration frequently. Instead of recreating the container each time, you can mount the config file and send a SIGHUP signal to reload the Collector process:
 
 ```bash
 # Find the Collector container ID
@@ -292,7 +303,7 @@ docker ps
 docker kill --signal=SIGHUP otel-collector
 ```
 
-This reloads the configuration without dropping any in-flight telemetry. It is much faster than a full container restart.
+This reloads the configuration in place and is faster than recreating the container. For changes where you need the cleanest possible local test, a full restart is still the safest option.
 
 Resource Limits for Local Testing
 
