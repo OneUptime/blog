@@ -8,13 +8,13 @@ Description: A complete guide to understanding, configuring, and responding to P
 
 ---
 
-The OpenTelemetry Operator manages the lifecycle of OpenTelemetry Collectors and auto-instrumentation in Kubernetes. When things go wrong with the operator or the collectors it manages, Prometheus alerts fire. Knowing what each alert means and how to respond is the difference between a five-minute fix and a two-hour debugging session.
+The OpenTelemetry Operator manages the lifecycle of OpenTelemetry Collectors and auto-instrumentation in Kubernetes. When things go wrong with the operator or the collectors it manages, your Prometheus alerting rules fire. Knowing what each alert means and how to respond is the difference between a five-minute fix and a two-hour debugging session.
 
-This guide covers the key Prometheus alerts that the OpenTelemetry Operator generates, explains what triggers each one, and provides runbooks for resolving them.
+This guide covers key Prometheus alerts that teams commonly define for the OpenTelemetry Operator, explains what triggers each one, and provides runbooks for resolving them.
 
 ## How the OpenTelemetry Operator Exposes Metrics
 
-The OpenTelemetry Operator exposes metrics on a `/metrics` endpoint that Prometheus can scrape. These metrics cover the health of the operator itself, the reconciliation loop, and the status of managed collector instances.
+The OpenTelemetry Operator exposes controller metrics on a `/metrics` endpoint that Prometheus can scrape. Managed collectors expose their own internal telemetry, and kube-state-metrics reports the status of the Kubernetes workloads that the operator creates.
 
 ```mermaid
 flowchart LR
@@ -26,7 +26,7 @@ flowchart LR
     E --> G[Runbook Links]
 ```
 
-The operator uses the standard Kubernetes controller-runtime metrics plus custom metrics specific to OpenTelemetry resources. Prometheus scrapes these, evaluates alerting rules, and fires alerts when conditions are met.
+The operator uses the standard Kubernetes controller-runtime metrics. Prometheus scrapes those metrics, collector internal metrics, and kube-state-metrics, evaluates alerting rules, and fires alerts when conditions are met.
 
 ## Setting Up Prometheus Alerting Rules
 
@@ -51,7 +51,7 @@ spec:
       rules:
         # Operator pod is not running
         - alert: OTelOperatorDown
-          expr: absent(up{job="opentelemetry-operator"} == 1)
+          expr: up{job="opentelemetry-operator"} == 0 or absent(up{job="opentelemetry-operator"})
           for: 5m
           labels:
             severity: critical
@@ -64,7 +64,7 @@ spec:
         - alert: OTelOperatorReconcileErrors
           expr: |
             rate(controller_runtime_reconcile_errors_total{
-              controller="opentelemetrycollector"
+              controller=~"opentelemetrycollector|instrumentation"
             }[5m]) > 0.1
           for: 10m
           labels:
@@ -72,30 +72,48 @@ spec:
             runbook: "otel-operator-reconcile-errors"
           annotations:
             summary: "OTel Operator reconciliation errors"
-            description: "The operator is failing to reconcile collector resources."
+            description: "The operator is failing to reconcile collector or instrumentation resources."
 
         # Collector instances are not ready
         - alert: OTelCollectorNotReady
           expr: |
-            kube_statefulset_status_replicas_ready{
-              statefulset=~".*-collector"
-            } < kube_statefulset_replicas{
-              statefulset=~".*-collector"
-            }
+            (
+              kube_deployment_status_replicas_available{
+                deployment=~".*-collector"
+              } < kube_deployment_spec_replicas{
+                deployment=~".*-collector"
+              }
+            )
+            or
+            (
+              kube_statefulset_status_replicas_ready{
+                statefulset=~".*-collector"
+              } < kube_statefulset_replicas{
+                statefulset=~".*-collector"
+              }
+            )
+            or
+            (
+              kube_daemonset_status_number_available{
+                daemonset=~".*-collector"
+              } < kube_daemonset_status_desired_number_scheduled{
+                daemonset=~".*-collector"
+              }
+            )
           for: 10m
           labels:
             severity: warning
             runbook: "otel-collector-not-ready"
           annotations:
             summary: "OTel Collector replicas not ready"
-            description: "{{ $labels.statefulset }} has fewer ready replicas than desired."
+            description: "An OTel Collector workload has fewer ready replicas than desired."
 
         # Collector is dropping data
         - alert: OTelCollectorDroppedData
           expr: |
-            rate(otelcol_exporter_send_failed_spans[5m]) > 0
-            or rate(otelcol_exporter_send_failed_metric_points[5m]) > 0
-            or rate(otelcol_exporter_send_failed_log_records[5m]) > 0
+            rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+            or rate(otelcol_exporter_send_failed_metric_points_total[5m]) > 0
+            or rate(otelcol_exporter_send_failed_log_records_total[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -107,11 +125,17 @@ spec:
         # Collector memory is approaching limits
         - alert: OTelCollectorHighMemory
           expr: |
-            container_memory_working_set_bytes{
+            (
+              container_memory_working_set_bytes{
+                container="otc-container"
+              } / container_spec_memory_limit_bytes{
+                container="otc-container"
+              } > 0.85
+            )
+            and on(namespace, pod, container)
+            container_spec_memory_limit_bytes{
               container="otc-container"
-            } / container_spec_memory_limit_bytes{
-              container="otc-container"
-            } > 0.85
+            } > 0
           for: 5m
           labels:
             severity: warning
@@ -123,7 +147,11 @@ spec:
         # Collector queue is backing up
         - alert: OTelCollectorQueueFull
           expr: |
-            otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.8
+            (
+              otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.8
+            )
+            and
+            otelcol_exporter_queue_capacity > 0
           for: 5m
           labels:
             severity: warning
@@ -256,9 +284,10 @@ curl http://localhost:8888/metrics | grep otelcol_exporter_send_failed
 2. Verify connectivity to the backend from inside the collector pod.
 
 ```bash
-# Test connectivity to the backend
-kubectl exec -n observability <collector-pod-name> -- \
-  wget -qO- --timeout=5 http://your-backend:4317/health || echo "Connection failed"
+# Test TCP connectivity to the backend from the same namespace
+kubectl run backend-connectivity-check -n observability \
+  --rm -i --restart=Never --image=busybox:1.36 -- \
+  nc -vz your-backend 4317
 ```
 
 3. Common causes include backend being down, network policies blocking egress, DNS resolution failures, and TLS certificate issues. Check the collector logs for specific error messages about the export failures.
@@ -299,10 +328,10 @@ exporters:
 # Add memory_limiter processor to protect against OOM
 processors:
   memory_limiter:
-    # Start refusing data at 80% of the limit
+    # Hard memory limit as a percentage of the container limit
     limit_percentage: 80
-    # Resume accepting data at 70%
-    spike_limit_percentage: 70
+    # Expected memory spike above the soft limit
+    spike_limit_percentage: 20
     check_interval: 1s
 ```
 
