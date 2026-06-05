@@ -13,9 +13,9 @@ The TCP Log receiver in the OpenTelemetry Collector enables ingestion of log dat
 The TCP Log receiver operates as a TCP server that accepts connections from clients and reads log data. It provides flexible parsing capabilities through operators, allowing you to handle various log formats including plain text, JSON, multiline logs, and custom formats.
 
 TCP provides several advantages for log collection:
-- **Reliable delivery**: Connection-oriented protocol ensures logs arrive
+- **Reliable transport**: Connection-oriented delivery reduces packet-loss issues compared with UDP
 - **Backpressure**: Flow control prevents overwhelming the collector
-- **Connection tracking**: Monitor and manage client connections
+- **Connection metadata**: Optionally add network attributes for accepted logs
 - **TLS support**: Encrypt logs in transit
 
 The receiver buffers incoming data, applies parsing rules, converts logs to OpenTelemetry's format, and forwards them through the processing pipeline.
@@ -26,7 +26,7 @@ Here's a minimal configuration to receive logs over TCP:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     # TCP endpoint
     listen_address: "0.0.0.0:54525"
 
@@ -40,15 +40,15 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     logs:
-      receivers: [tcplog]
+      receivers: [tcp_log]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration sets up a TCP server on port 54525 that accepts log messages and forwards them through the pipeline.
@@ -57,23 +57,22 @@ This configuration sets up a TCP server on port 54525 that accepts log messages 
 
 ### Basic TCP Settings
 
-Configure connection handling parameters:
+Configure input size limits and connection metadata:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     # Listen address and port
     listen_address: "0.0.0.0:54525"
 
-    # Maximum concurrent connections
-    max_connections: 100
+    # Maximum size of a single log entry
+    max_log_size: 1MiB
 
-    # Connection read timeout
-    read_timeout: 30s
+    # Treat each packet as one log entry when logs are already framed
+    one_log_per_packet: false
 
-    # TCP keep-alive settings
-    tcp_keep_alive: true
-    tcp_keep_alive_period: 30s
+    # Add net.* connection attributes to entries
+    add_attributes: true
 
     operators:
       - type: regex_parser
@@ -86,7 +85,7 @@ Secure log transmission with TLS encryption:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     # TLS configuration
@@ -122,7 +121,7 @@ Parse simple line-based text logs:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     operators:
@@ -130,12 +129,7 @@ receivers:
       - type: regex_parser
         regex: '^(?P<message>.*)$'
         parse_from: body
-        parse_to: attributes.message
-
-      # Add timestamp
-      - type: add
-        field: timestamp
-        value: EXPR(now())
+        parse_to: attributes
 ```
 
 Example log:
@@ -151,7 +145,7 @@ Parse JSON-formatted log messages:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     operators:
@@ -163,17 +157,14 @@ receivers:
       # Extract timestamp
       - type: time_parser
         parse_from: attributes.timestamp
-        layout: '%Y-%m-%dT%H:%M:%S.%f%z'
+        layout: '%Y-%m-%dT%H:%M:%S.%LZ'
 
       # Extract severity
       - type: severity_parser
         parse_from: attributes.level
         mapping:
-          debug: debug
-          info: info
-          warning: warn
-          error: error
-          critical: fatal
+          warn: warning
+          fatal: critical
 ```
 
 Example JSON log:
@@ -187,7 +178,7 @@ Parse logs with key-value pairs:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     operators:
@@ -214,7 +205,7 @@ Handle multiline log entries like stack traces:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     operators:
@@ -268,7 +259,7 @@ Specify character encoding for incoming logs:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     # Character encoding
@@ -287,7 +278,7 @@ Enrich logs with additional attributes:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     # Add custom attributes to all logs
@@ -307,7 +298,7 @@ Map parsed fields to resource attributes:
 
 ```yaml
 receivers:
-  tcplog:
+  tcp_log:
     listen_address: "0.0.0.0:54525"
 
     operators:
@@ -340,14 +331,13 @@ Here's a comprehensive production-ready configuration:
 ```yaml
 receivers:
   # JSON logs over TCP with TLS
-  tcplog/json:
+  tcp_log/json:
     listen_address: "0.0.0.0:54525"
 
-    # Connection settings
-    max_connections: 200
-    read_timeout: 60s
-    tcp_keep_alive: true
-    tcp_keep_alive_period: 30s
+    # Input settings
+    max_log_size: 2MiB
+    one_log_per_packet: false
+    add_attributes: true
 
     # TLS encryption
     tls:
@@ -393,11 +383,11 @@ receivers:
         value: EXPR(attributes.version)
 
   # Plain text logs over TCP
-  tcplog/plaintext:
+  tcp_log/plaintext:
     listen_address: "0.0.0.0:54526"
 
-    max_connections: 100
-    read_timeout: 30s
+    max_log_size: 1MiB
+    add_attributes: true
 
     attributes:
       log.source: tcp
@@ -473,30 +463,24 @@ exporters:
       initial_interval: 1s
       max_interval: 30s
 
-  # Export to Loki
-  loki:
-    endpoint: http://loki.example.com:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        host.name: "host_name"
-      attributes:
-        level: "level"
+  # Export to Loki using its native OTLP endpoint
+  otlphttp/loki:
+    endpoint: http://loki.example.com:3100/otlp
     timeout: 10s
 
 service:
   pipelines:
     logs/json:
-      receivers: [tcplog/json]
+      receivers: [tcp_log/json]
       processors:
         - memory_limiter
         - batch
         - resource
         - attributes/logs
-      exporters: [otlp, loki]
+      exporters: [otlp, otlphttp/loki]
 
     logs/plaintext:
-      receivers: [tcplog/plaintext]
+      receivers: [tcp_log/plaintext]
       processors:
         - memory_limiter
         - batch
@@ -508,7 +492,7 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      level: detailed
 ```
 
 ## Client Configuration Examples
@@ -568,7 +552,7 @@ finally:
 ```python
 import socket
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 
 @contextmanager
@@ -584,7 +568,7 @@ def tcp_logger(host, port):
 def log(sock, level, message, **kwargs):
     """Send log entry"""
     log_entry = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "level": level,
         "message": message,
         **kwargs
@@ -736,6 +720,8 @@ For high-volume scenarios, use connection pooling in clients:
 
 ```python
 import socket
+import json
+import time
 from queue import Queue
 from contextlib import contextmanager
 
@@ -764,7 +750,7 @@ class TCPLoggerPool:
         """Send log using pooled connection"""
         with self.get_connection() as sock:
             log_entry = {
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                 "level": level,
                 "message": message,
                 **kwargs
@@ -805,7 +791,7 @@ class BatchedTCPLogger:
     def log(self, level, message, **kwargs):
         """Add log to buffer"""
         log_entry = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
             "level": level,
             "message": message,
             **kwargs
@@ -842,22 +828,21 @@ class BatchedTCPLogger:
 
 ## Monitoring and Troubleshooting
 
-### Connection Monitoring
+### Receiver Monitoring
 
-Monitor active connections:
+Enable detailed internal metrics:
 
 ```yaml
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
 ```
 
 Key metrics:
 - `otelcol_receiver_accepted_log_records`: Logs received
 - `otelcol_receiver_refused_log_records`: Logs refused
-- `tcplog_active_connections`: Active TCP connections
+- `otelcol_process_memory_rss`: Collector memory usage
 
 ### Debug Logging
 
@@ -901,7 +886,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [tcplog]
+      receivers: [tcp_log]
       processors: [batch, resource]
       exporters: [otlp]
 ```
@@ -918,6 +903,6 @@ Learn about related OpenTelemetry Collector receivers:
 
 The TCP Log receiver provides flexible and reliable log ingestion capabilities for the OpenTelemetry Collector. Its support for custom parsing through operators makes it suitable for diverse log formats and sources.
 
-Start with basic configuration and add TLS encryption for production deployments. Use operators to parse your specific log format and extract relevant attributes. Configure connection limits and timeouts based on your expected load.
+Start with basic configuration and add TLS encryption for production deployments. Use operators to parse your specific log format and extract relevant attributes. Configure log size limits and batching based on your expected load.
 
 With proper configuration and client implementation, the TCP Log receiver can handle high-volume log ingestion while providing reliable delivery and flexible parsing for various log formats and sources.
