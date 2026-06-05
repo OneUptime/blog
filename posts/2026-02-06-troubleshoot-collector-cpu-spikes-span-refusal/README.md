@@ -16,12 +16,23 @@ First, check which component is consuming the most CPU. The Collector exposes pr
 # collector-config.yaml
 
 service:
+  extensions: [pprof]
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
-    # Enable pprof for CPU profiling
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
     logs:
       level: info
+
+extensions:
+  pprof:
+    endpoint: 0.0.0.0:1777
 ```
 
 You can also enable the `zpages` extension for real-time debugging:
@@ -35,7 +46,7 @@ service:
   extensions: [zpages]
 ```
 
-Access `http://collector:55679/debug/tracez` to see active spans and pipeline stats.
+Access `http://collector:55679/debug/tracez` to debug trace operations, including latency issues, running spans that do not end, and errors.
 
 ## Common CPU Bottlenecks
 
@@ -72,7 +83,7 @@ processors:
   attributes:
     actions:
     - key: http.url
-      pattern: "^https?://[^/]+(/[^?]+).*$"
+      pattern: "^https?://[^/]+(?P<http_path>/[^?]+).*$"
       action: extract
 ```
 
@@ -116,8 +127,14 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   replicas: 3  # scale horizontally
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: collector
@@ -159,11 +176,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 
 # Load balancing exporter distributes to backend collectors
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         tls:
@@ -211,7 +228,7 @@ groups:
 - name: otel-collector
   rules:
   - alert: CollectorHighCPU
-    expr: rate(process_cpu_seconds_total{job="otel-collector"}[5m]) > 0.9
+    expr: rate(otelcol_process_cpu_seconds{job="otel-collector"}[5m]) > 0.9
     for: 5m
     labels:
       severity: warning
@@ -223,7 +240,7 @@ Also monitor the refused spans metric:
 
 ```yaml
   - alert: CollectorRefusingSpans
-    expr: rate(otelcol_processor_refused_spans[5m]) > 0
+    expr: rate(otelcol_receiver_refused_spans[5m]) > 0
     for: 2m
     labels:
       severity: critical
