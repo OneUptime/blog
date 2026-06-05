@@ -8,7 +8,7 @@ Description: Learn how to configure the Netflow Receiver in the OpenTelemetry Co
 
 ---
 
-The Netflow Receiver collects network flow data from routers, switches, and other network devices that export flow information. It supports Netflow v5, v9, IPFIX, and sFlow protocols, converting network flow records into OpenTelemetry logs and metrics for traffic analysis, security monitoring, and capacity planning.
+The Netflow Receiver collects network flow data from routers, switches, and other network devices that export flow information. It supports Netflow v5, v9, IPFIX, and sFlow protocols, converting network flow records into OpenTelemetry logs for traffic analysis, security monitoring, and capacity planning.
 
 For more on network observability, see our guide on [network monitoring with OpenTelemetry](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view).
 
@@ -21,7 +21,7 @@ graph LR
     A[Routers/Switches] -->|Netflow v5/v9| B[Netflow Receiver]
     A -->|IPFIX| B
     A -->|sFlow| B
-    B -->|Parse Flows| C[Log/Metric Pipeline]
+    B -->|Parse Flows| C[Log Pipeline]
     C --> D[Processors]
     D --> E[Exporters]
     E --> F[Backend]
@@ -36,16 +36,17 @@ Key capabilities:
 
 ## Basic Configuration
 
-Start with a simple configuration to receive Netflow v5 data.
+Start with a simple configuration to receive Netflow data. The `netflow` scheme can process Netflow v5, Netflow v9, and IPFIX messages.
 
 ```yaml
 receivers:
   netflow:
-    # UDP endpoint to listen for flow data
-    endpoint: 0.0.0.0:2055
+    # Flow scheme to receive (netflow or sflow)
+    scheme: netflow
 
-    # Protocol version (netflow5, netflow9, ipfix, sflow)
-    protocol: netflow5
+    # UDP address and port to listen for flow data
+    hostname: 0.0.0.0
+    port: 2055
 
 exporters:
   debug:
@@ -71,11 +72,9 @@ Netflow v5 is the most widely supported legacy version.
 ```yaml
 receivers:
   netflow/v5:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow5
-
-    # Optional: Specify network address translation
-    # Maps private IPs to public IPs if needed
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 ```
 
 **Netflow v5 Fields:**
@@ -93,11 +92,9 @@ Netflow v9 uses templates for flexible field definitions.
 ```yaml
 receivers:
   netflow/v9:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow9
-
-    # Template cache timeout
-    template_cache_ttl: 1h
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 ```
 
 **Netflow v9 Advantages:**
@@ -113,14 +110,12 @@ IPFIX is the IETF standard based on Netflow v9.
 ```yaml
 receivers:
   netflow/ipfix:
-    endpoint: 0.0.0.0:4739  # Standard IPFIX port
-    protocol: ipfix
-
-    # Template cache for IPFIX templates
-    template_cache_ttl: 1h
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 4739  # Standard IPFIX port
 ```
 
-IPFIX provides the same features as Netflow v9 with standardized field definitions.
+IPFIX uses a similar template-based model to Netflow v9 with standardized field definitions.
 
 ### sFlow
 
@@ -129,8 +124,9 @@ sFlow uses packet sampling for high-speed networks.
 ```yaml
 receivers:
   netflow/sflow:
-    endpoint: 0.0.0.0:6343  # Standard sFlow port
-    protocol: sflow
+    scheme: sflow
+    hostname: 0.0.0.0
+    port: 6343  # Standard sFlow port
 
     # sFlow samples packets rather than flows
 ```
@@ -139,7 +135,7 @@ receivers:
 - Packet-based sampling
 - Lower CPU overhead on network devices
 - Includes Layer 2 information
-- Counter samples for interface statistics
+- Supports `flow_sample` and `flow_sample_expanded` datagrams in the Collector receiver
 
 ## Multi-Protocol Configuration
 
@@ -147,36 +143,31 @@ Receive multiple flow protocols simultaneously.
 
 ```yaml
 receivers:
-  # Netflow v5 on port 2055
-  netflow/v5:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow5
-
-  # Netflow v9 on port 9996
-  netflow/v9:
-    endpoint: 0.0.0.0:9996
-    protocol: netflow9
+  # Netflow v5/v9 on port 2055
+  netflow:
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 
   # IPFIX on standard port
   netflow/ipfix:
-    endpoint: 0.0.0.0:4739
-    protocol: ipfix
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 4739
 
   # sFlow on standard port
   netflow/sflow:
-    endpoint: 0.0.0.0:6343
-    protocol: sflow
+    scheme: sflow
+    hostname: 0.0.0.0
+    port: 6343
 
 processors:
-  # Tag flows by protocol
+  # Tag flows by detected flow type
   transform/protocol:
     log_statements:
       - context: log
         statements:
-          - set(attributes["flow.protocol"], "netflow5") where resource.attributes["receiver"] == "netflow/v5"
-          - set(attributes["flow.protocol"], "netflow9") where resource.attributes["receiver"] == "netflow/v9"
-          - set(attributes["flow.protocol"], "ipfix") where resource.attributes["receiver"] == "netflow/ipfix"
-          - set(attributes["flow.protocol"], "sflow") where resource.attributes["receiver"] == "netflow/sflow"
+          - set(attributes["flow.protocol"], attributes["flow.type"]) where attributes["flow.type"] != nil
 
 exporters:
   otlp:
@@ -185,7 +176,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [netflow/v5, netflow/v9, netflow/ipfix, netflow/sflow]
+      receivers: [netflow, netflow/ipfix, netflow/sflow]
       processors: [transform/protocol]
       exporters: [otlp]
 ```
@@ -199,8 +190,9 @@ Extract and enrich flow data.
 ```yaml
 receivers:
   netflow:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow9
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 
 processors:
   # Extract flow attributes
@@ -209,20 +201,21 @@ processors:
       - context: log
         statements:
           # Network layer
-          - set(attributes["net.src.ip"], body["src_addr"]) where body["src_addr"] != nil
-          - set(attributes["net.dst.ip"], body["dst_addr"]) where body["dst_addr"] != nil
-          - set(attributes["net.protocol"], body["protocol"]) where body["protocol"] != nil
+          - set(attributes["net.src.ip"], attributes["source.address"]) where attributes["source.address"] != nil
+          - set(attributes["net.dst.ip"], attributes["destination.address"]) where attributes["destination.address"] != nil
+          - set(attributes["net.protocol.name"], attributes["network.transport"]) where attributes["network.transport"] != nil
+          - set(attributes["net.type"], attributes["network.type"]) where attributes["network.type"] != nil
 
           # Transport layer
-          - set(attributes["net.src.port"], body["src_port"]) where body["src_port"] != nil
-          - set(attributes["net.dst.port"], body["dst_port"]) where body["dst_port"] != nil
+          - set(attributes["net.src.port"], attributes["source.port"]) where attributes["source.port"] != nil
+          - set(attributes["net.dst.port"], attributes["destination.port"]) where attributes["destination.port"] != nil
 
           # Counters
-          - set(attributes["net.bytes"], body["in_bytes"]) where body["in_bytes"] != nil
-          - set(attributes["net.packets"], body["in_pkts"]) where body["in_pkts"] != nil
+          - set(attributes["net.bytes"], attributes["flow.io.bytes"]) where attributes["flow.io.bytes"] != nil
+          - set(attributes["net.packets"], attributes["flow.io.packets"]) where attributes["flow.io.packets"] != nil
 
           # Device info
-          - set(attributes["net.device.ip"], body["exporter_addr"]) where body["exporter_addr"] != nil
+          - set(attributes["net.device.ip"], attributes["flow.sampler_address"]) where attributes["flow.sampler_address"] != nil
 
 exporters:
   otlp:
@@ -244,13 +237,13 @@ processors:
     log_statements:
       - context: log
         statements:
-          # Classify by protocol number
-          - set(attributes["net.protocol.name"], "ICMP") where attributes["net.protocol"] == 1
-          - set(attributes["net.protocol.name"], "TCP") where attributes["net.protocol"] == 6
-          - set(attributes["net.protocol.name"], "UDP") where attributes["net.protocol"] == 17
-          - set(attributes["net.protocol.name"], "GRE") where attributes["net.protocol"] == 47
-          - set(attributes["net.protocol.name"], "ESP") where attributes["net.protocol"] == 50
-          - set(attributes["net.protocol.name"], "AH") where attributes["net.protocol"] == 51
+          # Normalize protocol names emitted by the receiver
+          - set(attributes["net.protocol.name"], "ICMP") where attributes["network.transport"] == "icmp"
+          - set(attributes["net.protocol.name"], "TCP") where attributes["network.transport"] == "tcp"
+          - set(attributes["net.protocol.name"], "UDP") where attributes["network.transport"] == "udp"
+          - set(attributes["net.protocol.name"], "GRE") where attributes["network.transport"] == "gre"
+          - set(attributes["net.protocol.name"], "ESP") where attributes["network.transport"] == "esp"
+          - set(attributes["net.protocol.name"], "AH") where attributes["network.transport"] == "ah"
 
           # Classify common applications by port
           - set(attributes["net.application"], "HTTP") where attributes["net.dst.port"] == 80 or attributes["net.dst.port"] == 8080
@@ -300,29 +293,29 @@ service:
       exporters: [otlp]
 ```
 
-## Metrics Generation
+## Traffic Analysis Fields
 
-Convert flow data to metrics for analysis.
+Add fields that make flow logs easier to query and aggregate in your backend.
 
-### Traffic Volume Metrics
+### Traffic Volume Fields
 
 ```yaml
 receivers:
   netflow:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow9
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 
 processors:
-  # Convert flows to metrics
-  transform/metrics:
+  # Add traffic volume fields from receiver attributes
+  transform/traffic:
     log_statements:
       - context: log
         statements:
-          # Extract byte count as metric value
-          - set(attributes["metric.bytes"], body["in_bytes"]) where body["in_bytes"] != nil
-          - set(attributes["metric.packets"], body["in_pkts"]) where body["in_pkts"] != nil
+          - set(attributes["traffic.bytes"], attributes["flow.io.bytes"]) where attributes["flow.io.bytes"] != nil
+          - set(attributes["traffic.packets"], attributes["flow.io.packets"]) where attributes["flow.io.packets"] != nil
 
-  # Aggregate by source IP
+  # Re-associate logs by selected attributes for backend aggregation
   groupbyattrs:
     keys:
       - net.src.ip
@@ -333,17 +326,12 @@ exporters:
   otlp:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
-  # Prometheus for metrics
-  prometheus:
-    endpoint: 0.0.0.0:9090
-    namespace: netflow
-
 service:
   pipelines:
     logs:
       receivers: [netflow]
-      processors: [transform/flows, transform/metrics, groupbyattrs]
-      exporters: [otlp, prometheus]
+      processors: [transform/flows, transform/traffic, groupbyattrs]
+      exporters: [otlp]
 ```
 
 ### Top Talkers
@@ -385,10 +373,9 @@ Use flow data to detect security threats.
 processors:
   # Detect potential port scans
   filter/port_scans:
-    logs:
-      log_record:
-        # TCP SYN packets without ACK (potential scan)
-        - attributes["net.protocol"] == 6 and attributes["tcp.flags.syn"] == true and attributes["tcp.flags.ack"] == false
+    log_conditions:
+      # Keep TCP SYN-only flows and drop everything else.
+      - log.attributes["network.transport"] != "tcp" or log.attributes["flow.tcp_flags"] != 2
 
   transform/port_scans:
     log_statements:
@@ -421,12 +408,11 @@ processors:
           - set(attributes["security.high_packet_rate"], true) where attributes["net.packets"] != nil and attributes["net.packets"] > 10000
 
           # Flag suspicious protocols
-          - set(attributes["security.suspicious_protocol"], true) where attributes["net.protocol"] == 1 and attributes["net.packets"] > 1000  # ICMP flood
+          - set(attributes["security.suspicious_protocol"], true) where attributes["network.transport"] == "icmp" and attributes["net.packets"] > 1000  # ICMP flood
 
   filter/ddos:
-    logs:
-      log_record:
-        - attributes["security.high_packet_rate"] == true or attributes["security.suspicious_protocol"] == true
+    log_conditions:
+      - log.attributes["security.high_packet_rate"] != true and log.attributes["security.suspicious_protocol"] != true
 
   transform/ddos_alert:
     log_statements:
@@ -460,12 +446,11 @@ processors:
           - set(attributes["anomaly.high_port"], true) where attributes["net.dst.port"] != nil and attributes["net.dst.port"] > 49152  # Ephemeral ports
 
           # Flag non-standard protocols
-          - set(attributes["anomaly.uncommon_protocol"], true) where attributes["net.protocol"] != 1 and attributes["net.protocol"] != 6 and attributes["net.protocol"] != 17
+          - set(attributes["anomaly.uncommon_protocol"], true) where attributes["network.transport"] != "icmp" and attributes["network.transport"] != "tcp" and attributes["network.transport"] != "udp"
 
   filter/anomalies:
-    logs:
-      log_record:
-        - attributes["anomaly.large_flow"] == true or attributes["anomaly.high_port"] == true or attributes["anomaly.uncommon_protocol"] == true
+    log_conditions:
+      - log.attributes["anomaly.large_flow"] != true and log.attributes["anomaly.high_port"] != true and log.attributes["anomaly.uncommon_protocol"] != true
 
 service:
   pipelines:
@@ -511,8 +496,9 @@ Add contextual information to flow data.
 ```yaml
 receivers:
   netflow:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow9
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 
 processors:
   # Add resource attributes
@@ -549,22 +535,23 @@ Full configuration for comprehensive network monitoring.
 
 ```yaml
 receivers:
-  # Netflow v9 from routers
-  netflow/v9:
-    endpoint: 0.0.0.0:2055
-    protocol: netflow9
-    template_cache_ttl: 1h
+  # Netflow v5/v9 from routers
+  netflow:
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 2055
 
   # IPFIX from switches
   netflow/ipfix:
-    endpoint: 0.0.0.0:4739
-    protocol: ipfix
-    template_cache_ttl: 1h
+    scheme: netflow
+    hostname: 0.0.0.0
+    port: 4739
 
   # sFlow for high-speed sampling
   netflow/sflow:
-    endpoint: 0.0.0.0:6343
-    protocol: sflow
+    scheme: sflow
+    hostname: 0.0.0.0
+    port: 6343
 
 processors:
   # Extract flow attributes
@@ -573,20 +560,21 @@ processors:
       - context: log
         statements:
           # Network layer
-          - set(attributes["net.src.ip"], body["src_addr"]) where body["src_addr"] != nil
-          - set(attributes["net.dst.ip"], body["dst_addr"]) where body["dst_addr"] != nil
-          - set(attributes["net.protocol"], body["protocol"]) where body["protocol"] != nil
+          - set(attributes["net.src.ip"], attributes["source.address"]) where attributes["source.address"] != nil
+          - set(attributes["net.dst.ip"], attributes["destination.address"]) where attributes["destination.address"] != nil
+          - set(attributes["net.protocol.name"], attributes["network.transport"]) where attributes["network.transport"] != nil
+          - set(attributes["net.type"], attributes["network.type"]) where attributes["network.type"] != nil
 
           # Transport layer
-          - set(attributes["net.src.port"], body["src_port"]) where body["src_port"] != nil
-          - set(attributes["net.dst.port"], body["dst_port"]) where body["dst_port"] != nil
+          - set(attributes["net.src.port"], attributes["source.port"]) where attributes["source.port"] != nil
+          - set(attributes["net.dst.port"], attributes["destination.port"]) where attributes["destination.port"] != nil
 
           # Counters
-          - set(attributes["net.bytes"], body["in_bytes"]) where body["in_bytes"] != nil
-          - set(attributes["net.packets"], body["in_pkts"]) where body["in_pkts"] != nil
+          - set(attributes["net.bytes"], attributes["flow.io.bytes"]) where attributes["flow.io.bytes"] != nil
+          - set(attributes["net.packets"], attributes["flow.io.packets"]) where attributes["flow.io.packets"] != nil
 
           # Device
-          - set(attributes["net.device.ip"], body["exporter_addr"]) where body["exporter_addr"] != nil
+          - set(attributes["net.device.ip"], attributes["flow.sampler_address"]) where attributes["flow.sampler_address"] != nil
 
   # Classify protocols
   transform/classify:
@@ -594,9 +582,9 @@ processors:
       - context: log
         statements:
           # Protocol names
-          - set(attributes["net.protocol.name"], "TCP") where attributes["net.protocol"] == 6
-          - set(attributes["net.protocol.name"], "UDP") where attributes["net.protocol"] == 17
-          - set(attributes["net.protocol.name"], "ICMP") where attributes["net.protocol"] == 1
+          - set(attributes["net.protocol.name"], "TCP") where attributes["network.transport"] == "tcp"
+          - set(attributes["net.protocol.name"], "UDP") where attributes["network.transport"] == "udp"
+          - set(attributes["net.protocol.name"], "ICMP") where attributes["network.transport"] == "icmp"
 
           # Applications
           - set(attributes["net.application"], "HTTPS") where attributes["net.dst.port"] == 443
@@ -648,13 +636,6 @@ exporters:
       authorization: Bearer ${env:OTEL_AUTH_TOKEN}
     compression: gzip
 
-  # Prometheus metrics
-  prometheus:
-    endpoint: 0.0.0.0:9090
-    namespace: netflow
-    const_labels:
-      datacenter: ${env:DATACENTER}
-
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -665,14 +646,14 @@ service:
   pipelines:
     # Main flow pipeline
     logs:
-      receivers: [netflow/v9, netflow/ipfix, netflow/sflow]
+      receivers: [netflow, netflow/ipfix, netflow/sflow]
       processors:
         - transform/flows
         - transform/classify
         - transform/security
         - resource/netflow
         - batch
-      exporters: [otlp, prometheus]
+      exporters: [otlp]
 
   telemetry:
     logs:
@@ -716,7 +697,7 @@ set forwarding-options sampling instance netflow-instance family inet output flo
 | **Protocols** | Netflow v5/v9, IPFIX, sFlow |
 | **Processing** | Protocol classification, direction analysis |
 | **Security** | Port scan, DDoS, anomaly detection |
-| **Metrics** | Traffic volume, top talkers, application usage |
+| **Analysis Fields** | Traffic volume, top talkers, application usage |
 | **Enrichment** | GeoIP, internal/external classification |
 | **Use Cases** | Traffic analysis, capacity planning, security monitoring |
 
