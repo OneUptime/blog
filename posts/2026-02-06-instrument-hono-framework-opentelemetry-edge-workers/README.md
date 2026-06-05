@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Hono, Edge Workers, Cloudflare, JavaScript, Tracing
 
 Description: Learn how to instrument Hono framework applications with OpenTelemetry for edge computing environments like Cloudflare Workers.
 
-Hono is a lightweight web framework designed for edge computing environments. It runs on Cloudflare Workers, Deno Deploy, Bun, and other edge platforms where traditional Node.js OpenTelemetry instrumentation doesn't work. Edge environments have unique constraints: no file system access, limited CPU time, cold starts, and restricted APIs.
+Hono is a lightweight web framework designed for edge computing environments. It runs on Cloudflare Workers, Deno Deploy, Bun, and other edge platforms where traditional Node.js OpenTelemetry auto-instrumentation often doesn't work without runtime-specific compatibility settings. Edge environments have unique constraints: restricted Node.js APIs, limited CPU time, cold starts, and platform-specific background task APIs.
 
 This guide shows how to instrument Hono applications with OpenTelemetry while respecting these constraints, focusing on Cloudflare Workers as the primary deployment target but with patterns applicable to other edge platforms.
 
@@ -14,10 +14,10 @@ This guide shows how to instrument Hono applications with OpenTelemetry while re
 
 Edge workers operate differently from traditional servers:
 
-1. **No Node.js APIs**: Many OpenTelemetry packages depend on Node.js APIs that don't exist in edge environments
+1. **Restricted Node.js APIs**: Many OpenTelemetry packages depend on Node.js APIs that are unavailable by default in edge environments
 2. **Cold Starts**: Workers may spin up for each request, making initialization critical
-3. **Limited Execution Time**: Requests must complete quickly (typically under 50ms CPU time)
-4. **No Background Tasks**: Can't use background threads or processes for span export
+3. **Limited CPU Time**: Cloudflare Workers Free plan requests have 10ms CPU time by default, while paid Workers can be configured up to 5 minutes
+4. **Limited Background Tasks**: Can't use background threads or processes for span export; use platform APIs like `waitUntil()` where available
 5. **Different Fetch API**: Edge environments use Web Standards fetch, not Node's http module
 
 These constraints require a specialized approach to instrumentation.
@@ -37,159 +37,59 @@ npm install hono
 # Install edge-compatible OpenTelemetry packages
 npm install @opentelemetry/api
 npm install @opentelemetry/core
+npm install @opentelemetry/context-async-hooks
+npm install @opentelemetry/exporter-trace-otlp-http
 npm install @opentelemetry/sdk-trace-base
 npm install @opentelemetry/resources
 npm install @opentelemetry/semantic-conventions
+npm install --save-dev @cloudflare/workers-types
 ```
 
-Avoid packages with Node.js dependencies like `@opentelemetry/sdk-node` or auto-instrumentation packages.
+Avoid packages with broader Node.js dependencies like `@opentelemetry/sdk-node` or auto-instrumentation packages. The `@opentelemetry/context-async-hooks` package uses `AsyncLocalStorage`; enable Cloudflare Workers' `nodejs_als` compatibility flag in `wrangler.toml` as shown later in this guide.
 
-## Creating a Custom Trace Exporter
+## Configuring an OTLP Trace Exporter
 
-Edge environments need custom exporters that use the fetch API:
+Use the official OTLP HTTP trace exporter, which has a browser/fetch implementation suitable for edge runtimes:
 
 ```typescript
 // src/telemetry/exporter.ts
-// Custom OTLP trace exporter for edge environments
+// OTLP HTTP trace exporter configuration for edge environments
 
-import {
-  SpanExporter,
-  ReadableSpan,
-  ExportResult,
-  ExportResultCode,
-} from "@opentelemetry/sdk-trace-base";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 
-interface OTLPSpan {
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-  name: string;
-  kind: number;
-  startTimeUnixNano: string;
-  endTimeUnixNano: string;
-  attributes: Record<string, unknown>;
-  status: {
-    code: number;
-    message?: string;
-  };
-  events: Array<{
-    name: string;
-    timeUnixNano: string;
-    attributes?: Record<string, unknown>;
-  }>;
-}
-
-export class EdgeOTLPExporter implements SpanExporter {
-  private endpoint: string;
-  private headers: Record<string, string>;
-
-  constructor(config: { endpoint: string; headers?: Record<string, string> }) {
-    this.endpoint = config.endpoint;
-    this.headers = config.headers || {};
-  }
-
-  async export(
-    spans: ReadableSpan[],
-    resultCallback: (result: ExportResult) => void
-  ): Promise<void> {
-    try {
-      const otlpSpans = spans.map((span) => this.convertSpan(span));
-
-      const payload = {
-        resourceSpans: [
-          {
-            resource: {
-              attributes: [],
-            },
-            scopeSpans: [
-              {
-                scope: {
-                  name: "hono-edge",
-                  version: "1.0.0",
-                },
-                spans: otlpSpans,
-              },
-            ],
-          },
-        ],
-      };
-
-      const response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...this.headers,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        resultCallback({ code: ExportResultCode.SUCCESS });
-      } else {
-        console.error("Export failed:", response.status, await response.text());
-        resultCallback({ code: ExportResultCode.FAILED });
-      }
-    } catch (error) {
-      console.error("Export error:", error);
-      resultCallback({ code: ExportResultCode.FAILED });
-    }
-  }
-
-  async shutdown(): Promise<void> {
-    // No cleanup needed for fetch-based exporter
-  }
-
-  private convertSpan(span: ReadableSpan): OTLPSpan {
-    return {
-      traceId: span.spanContext().traceId,
-      spanId: span.spanContext().spanId,
-      parentSpanId: span.parentSpanId,
-      name: span.name,
-      kind: span.kind,
-      startTimeUnixNano: this.hrTimeToNanos(span.startTime).toString(),
-      endTimeUnixNano: this.hrTimeToNanos(span.endTime).toString(),
-      attributes: this.convertAttributes(span.attributes),
-      status: {
-        code: span.status.code,
-        message: span.status.message,
-      },
-      events: span.events.map((event) => ({
-        name: event.name,
-        timeUnixNano: this.hrTimeToNanos(event.time).toString(),
-        attributes: this.convertAttributes(event.attributes || {}),
-      })),
-    };
-  }
-
-  private hrTimeToNanos(hrTime: [number, number]): bigint {
-    return BigInt(hrTime[0]) * BigInt(1e9) + BigInt(hrTime[1]);
-  }
-
-  private convertAttributes(attrs: any): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(attrs)) {
-      result[key] = value;
-    }
-    return result;
-  }
+export function createTraceExporter(config: {
+  endpoint: string;
+  headers?: Record<string, string>;
+}) {
+  return new OTLPTraceExporter({
+    url: config.endpoint,
+    headers: config.headers,
+  });
 }
 ```
 
 ## Initializing OpenTelemetry for Edge
 
-Create a lightweight tracer provider without Node.js dependencies:
+Create a lightweight tracer provider and register the Cloudflare-compatible async context manager:
 
 ```typescript
 // src/telemetry/provider.ts
 // Initialize OpenTelemetry for edge environment
 
-import { BatchSpanProcessor, BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
-import { Resource } from "@opentelemetry/resources";
+import { context, propagation, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
+  CompositePropagator,
+  W3CBaggagePropagator,
+  W3CTraceContextPropagator,
+} from "@opentelemetry/core";
+import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { EdgeOTLPExporter } from "./exporter";
+import { createTraceExporter } from "./exporter";
 
 let provider: BasicTracerProvider | null = null;
 
@@ -203,31 +103,32 @@ export function initTracing(config: {
     return provider;
   }
 
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: config.serviceName,
-    [SEMRESATTRS_SERVICE_VERSION]: config.serviceVersion,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: config.serviceName,
+    [ATTR_SERVICE_VERSION]: config.serviceVersion,
     "deployment.environment": "edge",
     "cloud.platform": "cloudflare-workers",
   });
 
-  provider = new BasicTracerProvider({
-    resource,
-  });
-
-  const exporter = new EdgeOTLPExporter({
+  const exporter = createTraceExporter({
     endpoint: config.otlpEndpoint,
   });
 
-  // Use BatchSpanProcessor with minimal batching for edge
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(exporter, {
-      maxQueueSize: 100,
-      maxExportBatchSize: 10,
-      scheduledDelayMillis: 1000,
+  provider = new BasicTracerProvider({
+    resource,
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+
+  trace.setGlobalTracerProvider(provider);
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+  propagation.setGlobalPropagator(
+    new CompositePropagator({
+      propagators: [
+        new W3CTraceContextPropagator(),
+        new W3CBaggagePropagator(),
+      ],
     })
   );
-
-  provider.register();
 
   return provider;
 }
@@ -237,6 +138,10 @@ export function getTracer(name: string, version: string = "1.0.0") {
     throw new Error("Tracing not initialized");
   }
   return provider.getTracer(name, version);
+}
+
+export function flushTracing(): Promise<void> {
+  return provider?.forceFlush() ?? Promise.resolve();
 }
 ```
 
@@ -249,19 +154,28 @@ Implement middleware to automatically trace HTTP requests:
 // Hono middleware for automatic request tracing
 
 import { Context, MiddlewareHandler } from "hono";
-import { trace, context, SpanStatusCode, type Span } from "@opentelemetry/api";
+import { trace, context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_URL_FULL,
+  ATTR_URL_PATH,
+  ATTR_USER_AGENT_ORIGINAL,
+} from "@opentelemetry/semantic-conventions";
+import { flushTracing } from "../telemetry/provider";
 
 const tracer = trace.getTracer("hono-http", "1.0.0");
 
 export const tracingMiddleware = (): MiddlewareHandler => {
   return async (c: Context, next) => {
-    const span = tracer.startSpan("http.request", {
+    const url = new URL(c.req.url);
+    const span = tracer.startSpan(`HTTP ${c.req.method}`, {
+      kind: SpanKind.SERVER,
       attributes: {
-        "http.method": c.req.method,
-        "http.url": c.req.url,
-        "http.target": c.req.path,
-        "http.scheme": new URL(c.req.url).protocol.replace(":", ""),
-        "http.user_agent": c.req.header("user-agent") || "unknown",
+        [ATTR_HTTP_REQUEST_METHOD]: c.req.method,
+        [ATTR_URL_FULL]: c.req.url,
+        [ATTR_URL_PATH]: url.pathname,
+        [ATTR_USER_AGENT_ORIGINAL]: c.req.header("user-agent") || "unknown",
       },
     });
 
@@ -275,7 +189,7 @@ export const tracingMiddleware = (): MiddlewareHandler => {
       });
 
       // Add response attributes
-      span.setAttribute("http.status_code", c.res.status);
+      span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, c.res.status);
 
       if (c.res.status >= 400) {
         span.setStatus({
@@ -294,6 +208,7 @@ export const tracingMiddleware = (): MiddlewareHandler => {
       throw error;
     } finally {
       span.end();
+      c.executionCtx.waitUntil(flushTracing());
     }
   };
 };
@@ -308,7 +223,7 @@ Create a Hono application with tracing enabled:
 // Main Hono application for Cloudflare Workers
 
 import { Hono } from "hono";
-import { initTracing, getTracer } from "./telemetry/provider";
+import { initTracing } from "./telemetry/provider";
 import { tracingMiddleware } from "./middleware/tracing";
 
 // Environment interface for type safety
@@ -358,7 +273,7 @@ Create custom spans for business logic within edge workers:
 // src/services/data-processor.ts
 // Service with custom span instrumentation
 
-import { trace, SpanStatusCode, context } from "@opentelemetry/api";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("data-processor", "1.0.0");
 
@@ -462,7 +377,12 @@ Instrument fetch calls to external services:
 // src/services/http-client.ts
 // Instrumented HTTP client for edge workers
 
-import { trace, SpanStatusCode } from "@opentelemetry/api";
+import { trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_URL_FULL,
+} from "@opentelemetry/semantic-conventions";
 
 const tracer = trace.getTracer("http-client", "1.0.0");
 
@@ -472,15 +392,16 @@ export class InstrumentedHTTPClient {
       "http.client.get",
       {
         attributes: {
-          "http.method": "GET",
-          "http.url": url,
+          [ATTR_HTTP_REQUEST_METHOD]: "GET",
+          [ATTR_URL_FULL]: url,
         },
+        kind: SpanKind.CLIENT,
       },
       async (span) => {
         try {
           const response = await fetch(url);
 
-          span.setAttribute("http.status_code", response.status);
+          span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
 
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -506,9 +427,10 @@ export class InstrumentedHTTPClient {
       "http.client.post",
       {
         attributes: {
-          "http.method": "POST",
-          "http.url": url,
+          [ATTR_HTTP_REQUEST_METHOD]: "POST",
+          [ATTR_URL_FULL]: url,
         },
+        kind: SpanKind.CLIENT,
       },
       async (span) => {
         try {
@@ -518,7 +440,7 @@ export class InstrumentedHTTPClient {
             body: JSON.stringify(body),
           });
 
-          span.setAttribute("http.status_code", response.status);
+          span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
 
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -723,7 +645,8 @@ Configure your Cloudflare Worker with required environment variables:
 # wrangler.toml
 name = "hono-edge-app"
 main = "src/worker.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_als"]
 
 [vars]
 OTEL_ENDPOINT = "https://your-collector.example.com/v1/traces"
@@ -747,6 +670,6 @@ wrangler login
 wrangler deploy
 ```
 
-Edge environments require careful consideration of performance and resource constraints. By using lightweight instrumentation and custom exporters, you can achieve comprehensive observability in Hono applications running on Cloudflare Workers and other edge platforms without sacrificing the performance benefits that make edge computing attractive.
+Edge environments require careful consideration of performance and resource constraints. By using lightweight instrumentation and fetch-compatible exporters, you can achieve comprehensive observability in Hono applications running on Cloudflare Workers and other edge platforms without sacrificing the performance benefits that make edge computing attractive.
 
 The patterns shown here work across different edge platforms with minor adjustments for platform-specific APIs like KV storage or Durable Objects.
