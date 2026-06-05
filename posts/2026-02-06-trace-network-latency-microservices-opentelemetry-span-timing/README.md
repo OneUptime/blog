@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Microservice, Network Latency, Distributed Tracing
 
-Description: Learn how to use OpenTelemetry span timing data to measure and trace network latency between microservices in distributed systems.
+Description: Learn how to use OpenTelemetry span timing data to estimate and trace service-to-service latency between microservices in distributed systems.
 
-When you run a distributed system with dozens of microservices talking to each other over the network, identifying where latency creeps in becomes a real challenge. A request might take 800ms end-to-end, but is that because the database query was slow, or because the network hop between Service A and Service B added 200ms of overhead? OpenTelemetry's distributed tracing gives you the tools to answer that question precisely.
+When you run a distributed system with dozens of microservices talking to each other over the network, identifying where latency creeps in becomes a real challenge. A request might take 800ms end-to-end, but is that because the database query was slow, or because the hop between Service A and Service B added 200ms of overhead? OpenTelemetry's distributed tracing gives you the tools to estimate that service-to-service overhead from span timing data.
 
-In this post, we will walk through how to instrument your services to capture span timing data and then use that data to calculate the actual network latency between service boundaries.
+In this post, we will walk through how to instrument your services to capture span timing data and then use that data to estimate application-layer latency between service boundaries.
 
 ## Understanding Span Timing and Network Gaps
 
-Every OpenTelemetry span records a start time and an end time. When Service A calls Service B, you get two spans: a client span on Service A and a server span on Service B. The gap between when the client span starts and when the server span starts represents the network transit time (plus any queuing on the receiving end).
+Every OpenTelemetry span records a start time and an end time. When Service A calls Service B, you get two spans: a client span on Service A and a server span on Service B. The gap between when the client span starts and when the server span starts estimates the request-side service-to-service delay, including network transit, connection setup or pool wait, client-side request handling, and any queuing on the receiving end.
 
 Here is a simplified timeline:
 
 ```text
 Service A (client span):  |-------- request --------|
-                              ^ client sends request
+                              ^ client span starts
 Network transit:              |====|
 Service B (server span):           |--- processing ---|
 Network transit (response):                           |====|
 ```
 
-The network latency for the request leg is roughly: `server_span.start_time - client_span.start_time`. For this to work, clock synchronization between hosts matters. NTP should be configured properly across your infrastructure.
+The request-side latency estimate is roughly: `server_span.start_time - client_span.start_time`. For this to work, clock synchronization between hosts matters. NTP should be configured properly across your infrastructure.
 
 ## Instrumenting Services with OpenTelemetry
 
@@ -140,17 +140,17 @@ service:
       exporters: [otlp]
 ```
 
-## Calculating Network Latency from Spans
+## Estimating Service-to-Service Latency from Spans
 
-Once spans are flowing into your backend, you can query for traces and compute the network latency. The key is matching the client span from Service A with the server span from Service B within the same trace.
+Once spans are flowing into your backend, you can use that backend's trace query API to retrieve spans and compute the latency estimate. The key is matching the client span from Service A with the server span from Service B within the same trace.
 
-Here is a Python script that pulls spans from an OTLP-compatible backend and calculates the network gap:
+Here is the core Python function you would run after retrieving the matching spans from your backend:
 
 ```python
 # calculate_latency.py
-def compute_network_latency(client_span, server_span):
+def compute_service_path_latency(client_span, server_span):
     """
-    Compute the estimated one-way network latency between two services.
+    Compute the estimated application-layer latency between two services.
     Both spans must belong to the same trace and have a parent-child relationship.
     """
     # Span times are in nanoseconds
@@ -161,20 +161,20 @@ def compute_network_latency(client_span, server_span):
     response_latency_ms = response_latency_ns / 1_000_000
 
     return {
-        "request_network_ms": round(request_latency_ms, 2),
-        "response_network_ms": round(response_latency_ms, 2),
-        "total_network_overhead_ms": round(request_latency_ms + response_latency_ms, 2),
+        "request_path_ms": round(request_latency_ms, 2),
+        "response_path_ms": round(response_latency_ms, 2),
+        "total_path_overhead_ms": round(request_latency_ms + response_latency_ms, 2),
     }
 ```
 
 ## Things to Watch Out For
 
-Clock skew is the biggest practical issue. If Service A's clock is 10ms ahead of Service B's clock, your network latency calculation will be off by 10ms. Use NTP with a tight sync interval, and consider running `chrony` instead of `ntpd` for better accuracy on cloud VMs.
+Clock skew is the biggest practical issue. If Service A's clock is 10ms ahead of Service B's clock, your latency estimate will be off by 10ms. Use NTP with a tight sync interval, and consider running `chrony` instead of `ntpd` for better accuracy on cloud VMs.
 
 Negative values in your calculations are a strong signal of clock skew. If you see `server_span.start_time` appearing before `client_span.start_time`, that is almost certainly a clock issue, not time travel.
 
-Another consideration is that the auto-instrumentation libraries measure at the application layer, not the TCP layer. The "network latency" you compute includes HTTP parsing overhead, thread scheduling delays, and connection pool wait times. For pure network measurements, combine this approach with infrastructure-level metrics from tools like `ping` or TCP connection timing.
+Another consideration is that the auto-instrumentation libraries measure at the application layer, not the TCP layer. The latency estimate you compute includes HTTP parsing overhead, thread scheduling delays, connection setup, and connection pool wait times. For pure network measurements, combine this approach with infrastructure-level metrics from tools like `ping` or TCP connection timing.
 
 ## Wrapping Up
 
-OpenTelemetry span timing gives you a practical way to decompose end-to-end latency into its component parts. By comparing client and server span timestamps across service boundaries, you can identify which network hops are contributing the most latency and focus your optimization efforts accordingly. Pair this with proper clock synchronization and you will have a reliable view into your inter-service communication performance.
+OpenTelemetry span timing gives you a practical way to decompose end-to-end latency into its component parts. By comparing client and server span timestamps across service boundaries, you can identify which service-to-service hops are contributing the most latency and focus your optimization efforts accordingly. Pair this with proper clock synchronization and you will have a useful view into your inter-service communication performance.
