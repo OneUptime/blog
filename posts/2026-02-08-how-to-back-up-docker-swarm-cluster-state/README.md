@@ -68,16 +68,16 @@ echo "Backup complete: ${BACKUP_DIR}/swarm_state_${TIMESTAMP}.tar.gz ($BACKUP_SI
 
 Stopping Docker is important because the Raft database can be inconsistent if backed up while Docker is writing to it. On a multi-manager cluster, the other managers maintain quorum during the brief downtime.
 
-## Non-Disruptive Backup Method
+## Hot Backup Method
 
-If you cannot tolerate stopping Docker, drain the manager node first so it stops accepting work, then back up.
+If you cannot tolerate stopping Docker, you can drain the manager node first so it stops running service tasks, then back up. This is a hot backup, so it is less predictable to restore than a backup taken after stopping Docker.
 
 Back up Swarm state without stopping Docker using a drain approach:
 
 ```bash
 #!/bin/bash
-# backup-swarm-nondisruptive.sh
-# Backs up Swarm state without stopping Docker by draining the node first
+# backup-swarm-hot.sh
+# Takes a hot backup of Swarm state by draining the node first
 
 BACKUP_DIR="/backups/swarm"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -86,13 +86,13 @@ HOSTNAME=$(hostname)
 
 mkdir -p "$BACKUP_DIR"
 
-echo "Draining node $HOSTNAME to minimize write activity..."
+echo "Draining node $HOSTNAME to move service tasks away before backup..."
 docker node update --availability drain "$NODE_ID"
 
 # Wait for tasks to migrate
 sleep 30
 
-# Lock the Swarm to create a consistent snapshot
+# Create the hot backup
 echo "Creating backup..."
 sudo tar czf "${BACKUP_DIR}/swarm_state_${TIMESTAMP}.tar.gz" \
   -C /var/lib/docker swarm
@@ -108,12 +108,12 @@ echo "Backup saved to ${BACKUP_DIR}/swarm_state_${TIMESTAMP}.tar.gz"
 
 Beyond the Raft state, export human-readable service definitions for quick manual recovery.
 
-Export all Swarm service definitions in a recoverable format:
+Export all Swarm service definitions and basic recreate commands:
 
 ```bash
 #!/bin/bash
 # export-swarm-services.sh
-# Exports all service definitions as docker service create commands
+# Exports all service definitions and basic docker service create commands
 
 BACKUP_DIR="/backups/swarm/services"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -131,13 +131,16 @@ for SERVICE in $(docker service ls --format '{{.Name}}'); do
 
   # Generate a recreate script
   IMAGE=$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "$SERVICE")
-  REPLICAS=$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "$SERVICE" 2>/dev/null || echo "global")
+  MODE=$(docker service inspect --format '{{if .Spec.Mode.Global}}global{{else}}replicated{{end}}' "$SERVICE")
+  REPLICAS=$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "$SERVICE" 2>/dev/null || true)
 
   echo "# Recreate service: $SERVICE" > "${BACKUP_DIR}/${TIMESTAMP}/${SERVICE}.sh"
   echo "docker service create \\" >> "${BACKUP_DIR}/${TIMESTAMP}/${SERVICE}.sh"
   echo "  --name $SERVICE \\" >> "${BACKUP_DIR}/${TIMESTAMP}/${SERVICE}.sh"
 
-  if [ "$REPLICAS" != "global" ] && [ -n "$REPLICAS" ]; then
+  if [ "$MODE" = "global" ]; then
+    echo "  --mode global \\" >> "${BACKUP_DIR}/${TIMESTAMP}/${SERVICE}.sh"
+  elif [ -n "$REPLICAS" ]; then
     echo "  --replicas $REPLICAS \\" >> "${BACKUP_DIR}/${TIMESTAMP}/${SERVICE}.sh"
   fi
 
@@ -169,7 +172,7 @@ echo "Service definitions exported to ${BACKUP_DIR}/${TIMESTAMP}"
 
 Docker secrets and configs are part of the Raft state, so they are included in the Raft backup. However, you should also maintain separate records of them since secrets cannot be read back from the Swarm.
 
-Export the list of secrets and configs (names only - values are encrypted):
+Export the list of secrets and configs:
 
 ```bash
 #!/bin/bash
@@ -197,11 +200,11 @@ done
 
 echo "Metadata exported to ${BACKUP_DIR}/${TIMESTAMP}"
 echo ""
-echo "IMPORTANT: Secret values are NOT exported (they are encrypted in the Raft state)."
+echo "IMPORTANT: Secret values are NOT exported by docker secret inspect."
 echo "Maintain a separate secure vault with the actual secret values."
 ```
 
-Keep a copy of your actual secret values in a secure vault (like HashiCorp Vault, AWS Secrets Manager, or an encrypted file). The Swarm backup contains the encrypted secrets, but having a separate copy makes manual recovery easier.
+Keep a copy of your actual secret values in a secure vault (like HashiCorp Vault, AWS Secrets Manager, or an encrypted file). Docker secrets are stored in the encrypted Raft log, but having a separate copy makes manual recovery easier. Docker configs are intended for non-sensitive data and are not encrypted like secrets.
 
 ## Backing Up Network Configurations
 
@@ -310,14 +313,19 @@ echo ""
 echo "--- Backing up Raft state ---"
 NODE_ID=$(docker info --format '{{.Swarm.NodeID}}')
 
-# Drain node to reduce write activity
+# Drain node to move service tasks away before stopping Docker
 docker node update --availability drain "$NODE_ID"
 sleep 15
+
+# Stop Docker so the Raft state is not changing during the backup
+sudo systemctl stop docker
 
 # Create the backup
 sudo tar czf "${BACKUP_DIR}/raft_state.tar.gz" -C /var/lib/docker swarm
 
-# Restore node
+# Restart Docker and restore node availability
+sudo systemctl start docker
+sleep 15
 docker node update --availability active "$NODE_ID"
 
 # 7. Create final archive
@@ -383,9 +391,10 @@ sudo rm -rf /var/lib/docker/swarm
 # Restore the Raft state
 sudo tar xzf "${TEMP_DIR}/${BACKUP_DIR}/raft_state.tar.gz" -C /var/lib/docker
 
-# Start Docker with force-new-cluster to initialize from the backup
-sudo dockerd --force-new-cluster &
+# Start Docker, then initialize a new single-manager swarm from the restored state
+sudo systemctl start docker
 sleep 15
+docker swarm init --force-new-cluster
 
 # Verify services are restored
 docker service ls
@@ -393,12 +402,9 @@ docker service ls
 echo "Swarm state restored. Re-join worker nodes using the new join token."
 docker swarm join-token worker
 
-# Stop the manual dockerd and restart normally
-kill %1
-sudo systemctl start docker
 ```
 
-The `--force-new-cluster` flag tells Docker to create a new single-node cluster from the existing Raft state. After this, re-join your worker and manager nodes using the new join tokens.
+The `--force-new-cluster` flag tells Docker to create a new single-node cluster from the existing Raft state. If the swarm uses autolock, unlock the manager after Docker starts and before running `docker swarm init --force-new-cluster`. After this, re-join your worker and manager nodes using the new join tokens.
 
 ### Scenario 3: Manual Recreation
 
