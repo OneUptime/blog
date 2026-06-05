@@ -32,7 +32,21 @@ To measure SDK overhead, compare resource usage with and without instrumentation
 # by timing a function with and without tracing enabled.
 import time
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import (
+    SimpleSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
+
+
+class DropSpanExporter(SpanExporter):
+    """Exporter that removes network and console I/O from the benchmark."""
+
+    def export(self, spans):
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self):
+        pass
 
 def work():
     """Simulate a unit of work."""
@@ -49,7 +63,7 @@ baseline = time.perf_counter() - start
 
 # With instrumentation
 provider = TracerProvider()
-provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+provider.add_span_processor(SimpleSpanProcessor(DropSpanExporter()))
 tracer = provider.get_tracer("benchmark")
 
 start = time.perf_counter()
@@ -60,14 +74,14 @@ instrumented = time.perf_counter() - start
 
 overhead_pct = ((instrumented - baseline) / baseline) * 100
 print(f"SDK overhead: {overhead_pct:.1f}%")
-# Typical result: 1-5% CPU overhead per service
+# Typical overhead varies by SDK, exporter, sampling, and workload.
 ```
 
 To convert this into dollars: if a service runs on a 4-vCPU instance costing $120/month and the SDK adds 3% overhead, that is $3.60/month per instance. Across 200 instances, that is $720/month just for collection.
 
 ## 2. Processing Cost (Collector Infrastructure)
 
-The Collector needs its own compute. A common sizing rule is that one Collector instance with 2 vCPUs and 4 GB RAM can handle roughly 10,000 spans per second.
+The Collector needs its own compute. For a lightweight trace pipeline, you might start by estimating that one Collector instance with 2 vCPUs and 4 GB RAM can handle roughly 10,000 spans per second, then validate that estimate with your actual processors, exporters, batching settings, and payload shape.
 
 Here is a formula to estimate Collector cost:
 
@@ -78,8 +92,8 @@ Here is a formula to estimate Collector cost:
 # throughput_spans_per_sec: 50000
 # spans_per_collector: 10000
 # collectors_needed: 50000 / 10000 = 5
-# cost_per_collector_monthly: $95  (c5.large on AWS)
-# total_collector_cost: 5 * $95 = $475/month
+# cost_per_collector_monthly: $62  (c5.large Linux on-demand in us-east-1; varies by region)
+# total_collector_cost: 5 * $62 = $310/month
 #
 # For logs, a similar Collector handles ~20,000 records/sec.
 # For metrics, throughput depends on series count more than volume.
@@ -87,21 +101,21 @@ Here is a formula to estimate Collector cost:
 
 ## 3. Transport Cost (Network Bandwidth)
 
-Telemetry data travels from your services to the Collector, and from the Collector to the backend. With compression enabled (zstd or gzip), OTLP data compresses at roughly 10:1 for traces and 15:1 for logs.
+Telemetry data travels from your services to the Collector, and from the Collector to the backend. With gzip compression enabled for OTLP, telemetry can compress substantially, but the actual ratio depends on payload shape, attribute cardinality, and batching.
 
 Estimate monthly network cost:
 
 ```python
 # Calculate monthly network transfer cost for telemetry.
 raw_gb_per_day = 500          # Uncompressed telemetry volume
-compression_ratio = 10         # zstd compression for OTLP protobuf
+compression_ratio = 10         # Example gzip ratio for OTLP protobuf; measure your own
 compressed_gb_per_day = raw_gb_per_day / compression_ratio  # 50 GB/day
 
 monthly_transfer_gb = compressed_gb_per_day * 30  # 1,500 GB/month
 
 # AWS data transfer pricing (same-region)
-intra_az_cost_per_gb = 0.01   # $0.01/GB within same AZ
-cross_az_cost_per_gb = 0.02   # $0.02/GB across AZs
+same_az_cost_per_gb = 0.00    # $0.00/GB within the same AZ over private networking
+cross_az_cost_per_gb = 0.02   # $0.01/GB each direction across AZs
 
 # If Collector runs in a different AZ than most services:
 monthly_network_cost = monthly_transfer_gb * cross_az_cost_per_gb
@@ -117,8 +131,8 @@ This is the number most people focus on, and it varies wildly by vendor:
 |---------|----------------------|---------------------|---------------------------|
 | Managed vendor A | $0.30 | Included | $4,500 |
 | Managed vendor B | $0.10 | $0.03 | $1,950 |
-| Self-hosted ClickHouse | $0.00 (compute only) | $0.023 (EBS) | $800 (compute + storage) |
-| S3 cold storage | N/A | $0.023 | $345 |
+| Self-hosted ClickHouse | $0.00 (compute only) | $0.08 (EBS gp3, region-dependent) | $1,200 + compute |
+| S3 Standard storage | N/A | $0.023 | $345 |
 
 ## 5. Query Cost (Dashboard and Alert Compute)
 
@@ -136,7 +150,7 @@ daily_raw_gb = 500
 collection_monthly = 200 * 3.60  # $720
 
 # 2. Processing: 5 Collector instances
-processing_monthly = 5 * 95  # $475
+processing_monthly = 5 * 62  # $310
 
 # 3. Transport: compressed data across AZs
 transport_monthly = (daily_raw_gb / 10) * 30 * 0.02  # $30
@@ -154,9 +168,9 @@ monthly_gb = daily_raw_gb * 30
 true_cost_per_gb = total_monthly / monthly_gb
 print(f"Total monthly cost: ${total_monthly:,.2f}")
 print(f"True cost per GB: ${true_cost_per_gb:.4f}")
-# Total monthly cost: $3,875.00
-# True cost per GB: $0.2583
-# Vendor-only cost per GB: $0.1500 (42% undercount)
+# Total monthly cost: $3,710.00
+# True cost per GB: $0.2473
+# Vendor-only cost per GB: $0.1500 (39% undercount)
 ```
 
 ## Automating Cost Tracking
