@@ -54,9 +54,9 @@ graph TB
 ```
 
 The connector generates three primary metrics:
-- `calls_total`: Total number of spans (Rate)
-- `calls_total` with error status: Failed spans (Error)
-- `duration_milliseconds`: Span duration histogram (Duration)
+- `traces.span.metrics.calls` (or `<namespace>.calls`): Total number of spans (Rate)
+- `traces.span.metrics.calls` with `status.code=Error`: Failed spans (Error)
+- `traces.span.metrics.duration` (or `<namespace>.duration`): Span duration histogram (Duration)
 
 ## Basic Configuration
 
@@ -81,9 +81,11 @@ exporters:
     endpoint: metrics-backend:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
     # Histogram buckets for duration metrics
-    latency_histogram_buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s, 15s]
+    histogram:
+      explicit:
+        buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s, 15s]
 
     # Dimensions to include in metrics
     dimensions:
@@ -96,11 +98,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     # Metrics pipeline receives generated RED metrics
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -113,12 +115,14 @@ Latency histogram buckets should align with your service level objectives (SLOs)
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     # Fine-grained buckets for low-latency APIs
-    latency_histogram_buckets: [
-      1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms,
-      200ms, 500ms, 1s, 2s, 5s
-    ]
+    histogram:
+      explicit:
+        buckets: [
+          1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms,
+          200ms, 500ms, 1s, 2s, 5s
+        ]
 
     dimensions:
       - name: http.method
@@ -146,10 +150,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -162,8 +166,10 @@ Dimensions determine how metrics are labeled and aggregated. Choose dimensions t
 
 ```yaml
 connectors:
-  spanmetrics:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
 
     # Rich dimensions for detailed analysis
     dimensions:
@@ -208,10 +214,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -223,29 +229,6 @@ Be cautious with dimension cardinality. Each unique combination of dimension val
 Generate metrics only for specific span types to reduce cardinality and focus on important operations:
 
 ```yaml
-processors:
-  # Filter to only server spans (entry points)
-  filter/server-spans:
-    traces:
-      span:
-        - 'attributes["span.kind"] == "server"'
-
-  # Additional filter for specific services
-  filter/critical-services:
-    traces:
-      span:
-        - 'resource.attributes["service.namespace"] == "production"'
-        - 'resource.attributes["service.importance"] == "critical"'
-
-connectors:
-  spanmetrics:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
-
-    dimensions:
-      - name: http.method
-      - name: http.status_code
-      - name: service.name
-
 receivers:
   otlp:
     protocols:
@@ -253,8 +236,32 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  # Drop non-server spans so only entry points generate metrics
+  filter/server-spans:
+    error_mode: ignore
+    trace_conditions:
+      - 'span.kind != SPAN_KIND_SERVER'
+
+  # Drop spans outside the selected production critical services
+  filter/critical-services:
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.namespace"] != "production"'
+      - 'resource.attributes["service.importance"] != "critical"'
+
   batch:
     timeout: 10s
+
+connectors:
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: service.name
 
 exporters:
   otlp/traces:
@@ -274,10 +281,10 @@ service:
     traces/metrics:
       receivers: [otlp]
       processors: [filter/server-spans, filter/critical-services, batch]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -290,8 +297,10 @@ Map span attributes to custom dimension names for cleaner metric labels:
 
 ```yaml
 connectors:
-  spanmetrics:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
 
     dimensions:
       # Standard dimensions
@@ -306,8 +315,8 @@ connectors:
       - name: endpoint
         # This would need attribute transformation in processors
 
-    # Exclude specific dimensions even if present
-    dimensions_cache_size: 1000
+    # Limit unique dimension combinations to control cardinality
+    aggregation_cardinality_limit: 1000
 
     # Metric namespace
     namespace: span.metrics
@@ -321,17 +330,22 @@ receivers:
 processors:
   # Transform attributes to match dimension names
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Create environment dimension from deployment.environment
-          - set(attributes["environment"], resource.attributes["deployment.environment"])
+          - set(span.attributes["environment"], resource.attributes["deployment.environment"])
 
           # Create endpoint dimension from http.route
-          - set(attributes["endpoint"], attributes["http.route"]) where attributes["http.route"] != nil
+          - set(span.attributes["endpoint"], span.attributes["http.route"]) where span.attributes["http.route"] != nil
 
           # Normalize status codes into classes
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"])) where attributes["http.status_code"] != nil
+          - set(span.attributes["http.status_class"], "1xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 100 and span.attributes["http.status_code"] < 200
+          - set(span.attributes["http.status_class"], "2xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 200 and span.attributes["http.status_code"] < 300
+          - set(span.attributes["http.status_class"], "3xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 300 and span.attributes["http.status_code"] < 400
+          - set(span.attributes["http.status_class"], "4xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 400 and span.attributes["http.status_code"] < 500
+          - set(span.attributes["http.status_class"], "5xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 500 and span.attributes["http.status_code"] < 600
 
   batch:
     timeout: 10s
@@ -347,10 +361,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform, batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -362,8 +376,10 @@ Generate different metrics for different span kinds (server, client, internal):
 ```yaml
 connectors:
   # Server-side RED metrics
-  spanmetrics/server:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics/server:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -372,8 +388,10 @@ connectors:
     namespace: server
 
   # Client-side RED metrics (outgoing calls)
-  spanmetrics/client:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics/client:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -382,8 +400,10 @@ connectors:
     namespace: client
 
   # Database operation metrics
-  spanmetrics/database:
-    latency_histogram_buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s]
+  span_metrics/database:
+    histogram:
+      explicit:
+        buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s]
     dimensions:
       - name: db.system
       - name: db.operation
@@ -392,21 +412,23 @@ connectors:
     namespace: database
 
 processors:
-  # Route spans by kind
+  # Drop non-server spans in this pipeline
   filter/server:
-    traces:
-      span:
-        - 'attributes["span.kind"] == "server"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.kind != SPAN_KIND_SERVER'
 
+  # Drop non-client spans in this pipeline
   filter/client:
-    traces:
-      span:
-        - 'attributes["span.kind"] == "client"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.kind != SPAN_KIND_CLIENT'
 
+  # Drop spans that are not database operations in this pipeline
   filter/database:
-    traces:
-      span:
-        - 'attributes["db.system"] != nil'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["db.system"] == nil'
 
   batch:
     timeout: 10s
@@ -435,23 +457,23 @@ service:
     traces/server:
       receivers: [otlp]
       processors: [filter/server, batch]
-      exporters: [spanmetrics/server]
+      exporters: [span_metrics/server]
 
     # Client spans to client metrics
     traces/client:
       receivers: [otlp]
       processors: [filter/client, batch]
-      exporters: [spanmetrics/client]
+      exporters: [span_metrics/client]
 
     # Database spans to database metrics
     traces/database:
       receivers: [otlp]
       processors: [filter/database, batch]
-      exporters: [spanmetrics/database]
+      exporters: [span_metrics/database]
 
     # Collect all generated metrics
     metrics:
-      receivers: [spanmetrics/server, spanmetrics/client, spanmetrics/database]
+      receivers: [span_metrics/server, span_metrics/client, span_metrics/database]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -464,8 +486,10 @@ Link metrics to traces using exemplars for deep dive analysis:
 
 ```yaml
 connectors:
-  spanmetrics:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
 
     dimensions:
       - name: http.method
@@ -505,10 +529,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics, prometheus]
 ```
@@ -551,33 +575,40 @@ processors:
 
   # Normalize attributes for consistent metrics
   transform/normalize:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Normalize HTTP status codes into classes for lower cardinality
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"])) where attributes["http.status_code"] != nil
+          - set(span.attributes["http.status_class"], "1xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 100 and span.attributes["http.status_code"] < 200
+          - set(span.attributes["http.status_class"], "2xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 200 and span.attributes["http.status_code"] < 300
+          - set(span.attributes["http.status_class"], "3xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 300 and span.attributes["http.status_code"] < 400
+          - set(span.attributes["http.status_class"], "4xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 400 and span.attributes["http.status_code"] < 500
+          - set(span.attributes["http.status_class"], "5xx") where span.attributes["http.status_code"] != nil and span.attributes["http.status_code"] >= 500 and span.attributes["http.status_code"] < 600
 
           # Create operation dimension from span name
-          - set(attributes["operation"], name)
+          - set(span.attributes["operation"], span.name)
 
           # Limit http.route cardinality by removing IDs
-          - replace_pattern(attributes["http.route"], "/[0-9]+", "/{id}") where attributes["http.route"] != nil
-          - replace_pattern(attributes["http.route"], "/[a-f0-9-]{36}", "/{uuid}") where attributes["http.route"] != nil
+          - replace_pattern(span.attributes["http.route"], "/[0-9]+", "/{id}") where span.attributes["http.route"] != nil
+          - replace_pattern(span.attributes["http.route"], "/[a-f0-9-]{36}", "/{uuid}") where span.attributes["http.route"] != nil
 
   # Filter to server spans only
   filter/server:
-    traces:
-      span:
-        - 'attributes["span.kind"] == "server"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.kind != SPAN_KIND_SERVER'
 
 connectors:
-  spanmetrics:
+  span_metrics:
     # Buckets aligned with SLOs
-    latency_histogram_buckets: [
-      10ms, 25ms, 50ms, 75ms, 100ms,
-      200ms, 300ms, 500ms, 750ms, 1s,
-      2s, 3s, 5s, 10s
-    ]
+    histogram:
+      explicit:
+        buckets: [
+          10ms, 25ms, 50ms, 75ms, 100ms,
+          200ms, 300ms, 500ms, 750ms, 1s,
+          2s, 3s, 5s, 10s
+        ]
 
     # Carefully selected dimensions to balance detail and cardinality
     dimensions:
@@ -602,8 +633,8 @@ connectors:
     # Metric namespace
     namespace: service
 
-    # Cache size for dimension combinations
-    dimensions_cache_size: 10000
+    # Cardinality limit for dimension combinations
+    aggregation_cardinality_limit: 10000
 
 exporters:
   otlp/traces:
@@ -624,7 +655,6 @@ exporters:
 
   prometheus:
     endpoint: 0.0.0.0:9090
-    namespace: otel
 
 service:
   telemetry:
@@ -634,7 +664,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     # All traces to storage
@@ -655,11 +690,11 @@ service:
         - transform/normalize
         - filter/server
         - batch
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
 
     # Generated RED metrics
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics, prometheus]
 ```
@@ -671,7 +706,7 @@ RED metrics are perfect for SLO-based alerting. Here are example Prometheus quer
 ```promql
 # Error rate exceeding 1%
 
-sum(rate(service_calls_total{status_code=~"5.."}[5m]))
+sum(rate(service_calls_total{status_code="STATUS_CODE_ERROR"}[5m]))
 /
 sum(rate(service_calls_total[5m]))
 > 0.01
@@ -687,7 +722,7 @@ sum(rate(service_calls_total[5m])) by (service_name)
 < 10
 
 # High error rate on specific endpoint
-sum(rate(service_calls_total{http_route="/api/payment", status_code=~"5.."}[5m]))
+sum(rate(service_calls_total{http_route="/api/payment", http_status_class="5xx"}[5m]))
 /
 sum(rate(service_calls_total{http_route="/api/payment"}[5m]))
 > 0.001
@@ -700,8 +735,10 @@ Use Span Metrics alongside the Service Graph Connector for comprehensive observa
 ```yaml
 connectors:
   # RED metrics per service
-  spanmetrics:
-    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -709,7 +746,7 @@ connectors:
     namespace: service
 
   # Service dependency topology
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - service.namespace
@@ -739,15 +776,15 @@ service:
       receivers: [otlp]
       processors: [batch]
       # Generate both RED metrics and service graph
-      exporters: [spanmetrics, servicegraph, otlp/traces]
+      exporters: [span_metrics, service_graph, otlp/traces]
 
     metrics/red:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 
     metrics/servicegraph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -763,16 +800,21 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
