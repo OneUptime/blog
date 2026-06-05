@@ -75,6 +75,7 @@ metadata:
   namespace: observability
 spec:
   mode: deployment
+  image: otel/opentelemetry-collector-k8s:latest
   replicas: 2
   config:
     receivers:
@@ -132,7 +133,10 @@ metadata:
   namespace: observability
 spec:
   selector:
-    app.kubernetes.io/name: otel-gateway-collector
+    app.kubernetes.io/component: opentelemetry-collector
+    app.kubernetes.io/instance: observability.otel-gateway
+    app.kubernetes.io/managed-by: opentelemetry-operator
+    app.kubernetes.io/part-of: opentelemetry
   ports:
     - name: otlp-grpc
       port: 4317
@@ -156,6 +160,7 @@ metadata:
   namespace: frontend  # Deploy one per namespace or cluster-wide
 spec:
   mode: daemonset
+  image: otel/opentelemetry-collector-k8s:latest
   config:
     receivers:
       otlp:
@@ -257,14 +262,21 @@ Sometimes you want different behavior for different namespaces. The `filter` pro
 For example, you might want to sample more aggressively in staging namespaces while keeping full fidelity for production.
 
 ```yaml
-# Routing processor to send telemetry to different pipelines based on namespace
+# Filtering processors to send telemetry through different pipelines based on namespace
 processors:
   # Filter for production namespaces - keep everything
   filter/production:
     error_mode: ignore
     traces:
       span:
-        - 'resource.attributes["k8s.namespace.name"] == "staging"'
+        - 'resource.attributes["k8s.namespace.name"] != "production"'
+
+  # Filter for staging namespaces before sampling
+  filter/staging:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["k8s.namespace.name"] != "staging"'
 
   # Tail sampling for staging namespaces - keep only errors and slow spans
   tail_sampling:
@@ -289,7 +301,7 @@ service:
     # Staging traces - sampled
     traces/staging:
       receivers: [otlp]
-      processors: [tail_sampling, batch]
+      processors: [filter/staging, tail_sampling, batch]
       exporters: [otlp]
 ```
 
@@ -314,6 +326,9 @@ spec:
             # Point to the local agent's OTLP endpoint
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-agent-collector.backend.svc.cluster.local:4317"
+            # Match the 4317 endpoint to OTLP/gRPC
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
             # Service name for identifying this application
             - name: OTEL_SERVICE_NAME
               value: "my-service"
@@ -333,7 +348,7 @@ metadata:
   namespace: backend
 spec:
   exporter:
-    endpoint: http://otel-agent-collector.backend.svc.cluster.local:4317
+    endpoint: http://otel-agent-collector.backend.svc.cluster.local:4318
   propagators:
     - tracecontext
     - baggage
@@ -346,6 +361,9 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+    env:
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: http/protobuf
 ```
 
 ## Verifying Cross-Namespace Traces
