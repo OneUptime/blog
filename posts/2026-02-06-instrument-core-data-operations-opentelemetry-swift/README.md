@@ -15,7 +15,7 @@ Core Data operations can significantly impact your app's performance. Fetch requ
 - Fetch request execution times and result counts
 - Save operation duration and affected object counts
 - Batch operation performance
-- Context merge times
+- Context save notifications across multiple contexts
 - Faulting behavior and relationship traversal
 
 This visibility allows you to identify performance issues before they affect users and validate optimizations with real data.
@@ -27,17 +27,16 @@ First, add the OpenTelemetry Swift SDK to your project. You can use Swift Packag
 ```swift
 // Package.swift dependencies
 dependencies: [
-    .package(url: "https://github.com/open-telemetry/opentelemetry-swift", from: "1.0.0")
+    .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.4.1")
 ]
 ```
 
-Create a tracer provider configuration that will handle span creation and export. This example uses the OTLP exporter to send traces to your observability backend.
+Create a tracer provider configuration that will handle span creation and export. This example uses the stdout exporter for local debugging. For production, use an OTLP exporter from the OpenTelemetry Swift package to send traces to your observability backend.
 
 ```swift
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import StdoutExporter
-import ResourceExtension
 
 class TelemetryManager {
     static let shared = TelemetryManager()
@@ -51,13 +50,13 @@ class TelemetryManager {
     func setupTelemetry() {
         // Configure resource attributes for your app
         let resource = Resource(attributes: [
-            ResourceAttributes.serviceName.rawValue: AttributeValue.string("MyiOSApp"),
-            ResourceAttributes.serviceVersion.rawValue: AttributeValue.string("1.0.0"),
-            "deployment.environment": AttributeValue.string("production")
+            SemanticConventions.Service.name.rawValue: AttributeValue.string("MyiOSApp"),
+            SemanticConventions.Service.version.rawValue: AttributeValue.string("1.0.0"),
+            SemanticConventions.Deployment.environmentName.rawValue: AttributeValue.string("production")
         ])
 
         // Create span processor and exporter
-        let spanExporter = StdoutExporter()
+        let spanExporter = StdoutSpanExporter()
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
 
         // Initialize tracer provider
@@ -129,11 +128,13 @@ extension InstrumentedCoreDataStack {
             span.setAttribute(key: "db.predicate", value: predicate.predicateFormat)
         }
 
-        if let limit = request.fetchLimit, limit > 0 {
+        if request.fetchLimit > 0 {
+            let limit = request.fetchLimit
             span.setAttribute(key: "db.fetch_limit", value: limit)
         }
 
-        if let batchSize = request.fetchBatchSize, batchSize > 0 {
+        if request.fetchBatchSize > 0 {
+            let batchSize = request.fetchBatchSize
             span.setAttribute(key: "db.batch_size", value: batchSize)
         }
 
@@ -146,7 +147,7 @@ extension InstrumentedCoreDataStack {
             // Record success metrics
             span.setAttribute(key: "db.result_count", value: results.count)
             span.setAttribute(key: "db.duration_ms", value: duration * 1000)
-            span.setStatus(status: .ok)
+            span.status = .ok
 
             span.end()
             return results
@@ -154,7 +155,7 @@ extension InstrumentedCoreDataStack {
             // Record error information
             span.setAttribute(key: "error", value: true)
             span.setAttribute(key: "error.message", value: error.localizedDescription)
-            span.setStatus(status: .error(description: error.localizedDescription))
+            span.status = .error(description: error.localizedDescription)
             span.end()
             throw error
         }
@@ -195,12 +196,12 @@ extension InstrumentedCoreDataStack {
             let duration = Date().timeIntervalSince(startTime)
 
             span.setAttribute(key: "db.duration_ms", value: duration * 1000)
-            span.setStatus(status: .ok)
+            span.status = .ok
             span.end()
         } catch {
             span.setAttribute(key: "error", value: true)
             span.setAttribute(key: "error.message", value: error.localizedDescription)
-            span.setStatus(status: .error(description: error.localizedDescription))
+            span.status = .error(description: error.localizedDescription)
             span.end()
             throw error
         }
@@ -224,7 +225,7 @@ extension InstrumentedCoreDataStack {
 
         span.setAttribute(key: "db.system", value: "sqlite")
         span.setAttribute(key: "db.operation", value: "BATCH_UPDATE")
-        span.setAttribute(key: "db.entity", value: request.entityName ?? "unknown")
+        span.setAttribute(key: "db.entity", value: request.entityName)
 
         if let predicate = request.predicate {
             span.setAttribute(key: "db.predicate", value: predicate.predicateFormat)
@@ -240,17 +241,19 @@ extension InstrumentedCoreDataStack {
 
             if let count = result.result as? Int {
                 span.setAttribute(key: "db.affected_rows", value: count)
+            } else if let count = result.result as? NSNumber {
+                span.setAttribute(key: "db.affected_rows", value: count.intValue)
             }
 
             span.setAttribute(key: "db.duration_ms", value: duration * 1000)
-            span.setStatus(status: .ok)
+            span.status = .ok
             span.end()
 
             return result
         } catch {
             span.setAttribute(key: "error", value: true)
             span.setAttribute(key: "error.message", value: error.localizedDescription)
-            span.setStatus(status: .error(description: error.localizedDescription))
+            span.status = .error(description: error.localizedDescription)
             span.end()
             throw error
         }
@@ -258,13 +261,13 @@ extension InstrumentedCoreDataStack {
 }
 ```
 
-## Monitoring Context Merges
+## Monitoring Context Save Notifications
 
-When working with multiple contexts, merge operations can impact performance. Track these to understand the cost of synchronizing data between contexts.
+When working with multiple contexts, save notifications help you understand how data changes move through the app. Track these notifications to understand how many objects are changing in each context.
 
 ```swift
 extension InstrumentedCoreDataStack {
-    func setupContextMergeMonitoring() {
+    func setupContextSaveMonitoring() {
         NotificationCenter.default.addObserver(
             forName: .NSManagedObjectContextDidSave,
             object: nil,
@@ -275,14 +278,14 @@ extension InstrumentedCoreDataStack {
     }
 
     private func handleContextSave(_ notification: Notification) {
-        guard let context = notification.object as? NSManagedObjectContext else { return }
+        guard notification.object is NSManagedObjectContext else { return }
 
-        let span = tracer.spanBuilder(spanName: "core_data.merge")
+        let span = tracer.spanBuilder(spanName: "core_data.context_save")
             .setSpanKind(spanKind: .internal)
             .startSpan()
 
         span.setAttribute(key: "db.system", value: "sqlite")
-        span.setAttribute(key: "db.operation", value: "MERGE")
+        span.setAttribute(key: "db.operation", value: "CONTEXT_SAVE")
 
         // Extract change counts from notification
         if let inserted = notification.userInfo?[NSInsertedObjectsKey] as? Set<NSManagedObject> {
@@ -297,7 +300,7 @@ extension InstrumentedCoreDataStack {
             span.setAttribute(key: "db.deleted_count", value: deleted.count)
         }
 
-        span.setStatus(status: .ok)
+        span.status = .ok
         span.end()
     }
 }
@@ -314,7 +317,7 @@ graph TD
     B --> D[core_data.fetch: Posts]
     A --> E[Save Changes]
     E --> F[core_data.save]
-    F --> G[core_data.merge]
+    F --> G[core_data.context_save]
     A --> H[Bulk Update]
     H --> I[core_data.batch_update]
 ```
@@ -332,7 +335,7 @@ class UserRepository {
             containerName: "MyApp",
             tracer: TelemetryManager.shared.tracer
         )
-        coreDataStack.setupContextMergeMonitoring()
+        coreDataStack.setupContextSaveMonitoring()
     }
 
     func fetchUsers(matching predicate: NSPredicate?) throws -> [User] {
