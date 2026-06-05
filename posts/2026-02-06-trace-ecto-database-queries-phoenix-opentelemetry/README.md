@@ -31,12 +31,13 @@ defp deps do
   [
     {:phoenix, "~> 1.7"},
     {:ecto_sql, "~> 3.11"},
-    {:postgrex, "~> 0.17"},
+    {:postgrex, "~> 0.22"},
     # Core OpenTelemetry libraries
     {:opentelemetry, "~> 1.4"},
     {:opentelemetry_api, "~> 1.3"},
     # Phoenix instrumentation (from previous setup)
-    {:opentelemetry_phoenix, "~> 1.2"},
+    {:opentelemetry_phoenix, "~> 2.0"},
+    {:opentelemetry_cowboy, "~> 1.0"},
     # Ecto instrumentation for database tracing
     {:opentelemetry_ecto, "~> 1.2"},
     {:opentelemetry_exporter, "~> 1.7"}
@@ -77,6 +78,7 @@ defmodule MyApp.Application do
   @impl true
   def start(_type, _args) do
     # Attach Phoenix instrumentation
+    :opentelemetry_cowboy.setup()
     OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     # Attach Ecto instrumentation
@@ -106,31 +108,28 @@ The `setup/2` function takes your repo's telemetry prefix and configuration opti
 
 Once configured, every database operation creates a span with detailed attributes. Here's what gets captured:
 
-**Span Name**: Follows the pattern `<repo_name>.query` (e.g., `my_app.repo.query`)
+**Span Name**: Follows the pattern `<telemetry_prefix>.query:<source>` (e.g., `my_app.repo.query:users`)
 
 **Database Attributes**:
 - `db.system`: Database type (postgresql, mysql, etc.)
 - `db.name`: Database name
 - `db.statement`: The actual SQL query
-- `db.operation`: Operation type (SELECT, INSERT, UPDATE, DELETE)
+- `source`: The Ecto source, such as the table name
 
 **Performance Metrics**:
-- `db.total_time`: Total execution time in microseconds
-- `db.queue_time`: Time waiting for a connection from the pool
-- `db.query_time`: Actual database execution time
-- `db.decode_time`: Time spent decoding the result
-
-**Connection Pool**:
-- `db.pool.size`: Current pool size
-- `db.pool.checked_out`: Number of connections in use
+- `total_time_microseconds`: Total execution time in microseconds
+- `queue_time_microseconds`: Time waiting for a connection from the pool
+- `query_time_microseconds`: Actual database execution time
+- `decode_time_microseconds`: Time spent decoding the result
+- `idle_time_microseconds`: Time the connection spent waiting before checkout
 
 Here's how database spans integrate with Phoenix request spans:
 
 ```mermaid
 graph TD
     A[phoenix.request - GET /users] --> B[phoenix.controller - UserController.index]
-    B --> C[my_app.repo.query - SELECT * FROM users]
-    B --> D[my_app.repo.query - SELECT COUNT FROM users]
+    B --> C[my_app.repo.query:users - SELECT * FROM users]
+    B --> D[my_app.repo.query:users - SELECT COUNT FROM users]
     B --> E[phoenix.render - index.html]
 ```
 
@@ -145,7 +144,7 @@ users = MyApp.Repo.all(MyApp.Accounts.User)
 ```
 
 Creates a span with:
-- Operation: SELECT
+- Operation: inferred from the SQL statement
 - Statement: `SELECT u0."id", u0."email", u0."name" FROM "users" AS u0`
 - Timing breakdown for queue, query, and decode
 
@@ -168,6 +167,8 @@ Each span shows the exact SQL and timing, making it easy to spot inefficient pre
 **Complex Query with Joins**:
 ```elixir
 # Complex query with joins and filters
+import Ecto.Query, only: [from: 2]
+
 query =
   from u in MyApp.Accounts.User,
     join: p in assoc(u, :posts),
@@ -197,31 +198,20 @@ OpentelemetryEcto.setup(
   time_unit: :microsecond,
 
   # Add custom attributes to all database spans
-  span_attributes: fn query_meta ->
-    %{
-      # Add the table name being queried
-      "db.table" => extract_table_name(query_meta),
-      # Tag queries by source/context
-      "db.query_source" => query_meta.source,
-      # Add custom labels for filtering
-      "environment" => System.get_env("MIX_ENV")
-    }
-  end
-)
+  additional_attributes: %{
+    "environment" => System.get_env("MIX_ENV")
+  },
 
-defp extract_table_name(query_meta) do
-  case query_meta do
-    %{source: {table, _schema}} -> table
-    _ -> "unknown"
-  end
-end
+  # Customize the first part of the span name
+  span_prefix: "my_app.repo.query"
+)
 ```
 
 This configuration adds context that helps filter and analyze traces in your observability platform.
 
 ## Filtering Sensitive Data
 
-Database queries often contain sensitive information. Implement filtering to protect user data:
+Ecto SQL queries are parameterized for the major adapters, so parameter values are normally reported separately from the query text. If your application uses raw SQL or you still need extra filtering, pass a sanitizer function as the `:db_statement` option:
 
 ```elixir
 # Create a custom Ecto instrumenter module
@@ -229,9 +219,8 @@ defmodule MyApp.SecureEctoInstrumenter do
   def setup do
     OpentelemetryEcto.setup(
       [:my_app, :repo],
-      db_statement: :enabled,
-      # Add custom filtering function
-      sql_filter: &sanitize_sql/1
+      # Store a sanitized SQL statement in the span
+      db_statement: &sanitize_sql/1
     )
   end
 
@@ -259,7 +248,7 @@ This approach ensures traces remain useful for debugging while protecting sensit
 
 ## Monitoring Connection Pool Health
 
-Database connection pool issues often manifest as slow queries. Ecto instrumentation captures pool metrics:
+Database connection pool issues often manifest as slow queries. Ecto instrumentation captures query timing, including time spent waiting for a connection:
 
 ```elixir
 # Example controller action that monitors pool health
@@ -270,7 +259,7 @@ defmodule MyAppWeb.HealthController do
     # Start a custom span to monitor pool checkout
     require OpenTelemetry.Tracer
     OpenTelemetry.Tracer.with_span "health.database" do
-      # This will show pool queue time in the span
+      # This will show queue time in the database query span
       case MyApp.Repo.query("SELECT 1") do
         {:ok, _} ->
           json(conn, %{status: "healthy", database: "connected"})
@@ -284,24 +273,32 @@ defmodule MyAppWeb.HealthController do
 end
 ```
 
-The span will include `db.queue_time`, which spikes when the pool is exhausted. High queue times indicate you need more connections or have connection leaks.
+The database query span will include `queue_time_microseconds`, which spikes when the pool is exhausted. High queue times indicate you need more connections or have connection leaks.
 
 ## Tracing Transactions
 
-Ecto transactions create parent spans that group all operations:
+Ecto emits query events for transaction management statements, so transaction boundaries can appear alongside the queries inside the transaction:
 
 ```elixir
 # Multi-step transaction with proper tracing
+import Ecto.Query, only: [from: 2]
+
 def transfer_funds(from_account_id, to_account_id, amount) do
-  MyApp.Repo.transaction(fn ->
-    # Each query becomes a child span of the transaction span
+  MyApp.Repo.transact(fn ->
+    # Each database operation becomes a query span
     from_account =
-      MyApp.Repo.get!(MyApp.Accounts.Account, from_account_id)
-      |> MyApp.Repo.lock("FOR UPDATE")
+      from(a in MyApp.Accounts.Account,
+        where: a.id == ^from_account_id,
+        lock: "FOR UPDATE"
+      )
+      |> MyApp.Repo.one!()
 
     to_account =
-      MyApp.Repo.get!(MyApp.Accounts.Account, to_account_id)
-      |> MyApp.Repo.lock("FOR UPDATE")
+      from(a in MyApp.Accounts.Account,
+        where: a.id == ^to_account_id,
+        lock: "FOR UPDATE"
+      )
+      |> MyApp.Repo.one!()
 
     # Debit operation
     from_account
@@ -327,9 +324,8 @@ end
 
 The trace shows:
 - Transaction BEGIN
-- All queries within the transaction as child spans
+- Queries executed within the transaction
 - Transaction COMMIT or ROLLBACK
-- Total transaction duration
 
 This visibility helps identify long-running transactions that hold locks and impact concurrency.
 
@@ -359,7 +355,11 @@ For production deployments, consider these practices:
 # In config/runtime.exs
 config :opentelemetry,
   sampler: {:parent_based, %{
-    root: {:trace_id_ratio_based, 0.1}  # Sample 10% of traces
+    root: {:trace_id_ratio_based, 0.1},  # Sample 10% of traces
+    remote_parent_sampled: :always_on,
+    remote_parent_not_sampled: :always_off,
+    local_parent_sampled: :always_on,
+    local_parent_not_sampled: :always_off
   }}
 ```
 
