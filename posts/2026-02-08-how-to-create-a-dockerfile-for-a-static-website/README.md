@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating optimized Dockerfiles for static web
 
 ---
 
-Serving a static website from a Docker container is one of the simplest and most practical uses of Docker. You get a consistent deployment artifact, easy scaling, and the ability to run your site anywhere Docker runs. Whether your site is a hand-crafted collection of HTML files or the output of a static site generator like Hugo, Jekyll, or Next.js, the approach is straightforward.
+Serving a static website from a Docker container is one of the simplest and most practical uses of Docker. You get a consistent deployment artifact, easy scaling, and the ability to run your site anywhere Docker runs. Whether your site is a hand-crafted collection of HTML files or the output of a static site generator like Hugo, Jekyll, or a statically exported Next.js app, the approach is straightforward.
 
 This guide covers several Dockerfile patterns for static websites, from the most basic setup to optimized multi-stage builds with custom server configurations.
 
@@ -37,7 +37,7 @@ docker build -t my-static-site .
 docker run -d -p 8080:80 my-static-site
 ```
 
-Visit `http://localhost:8080` in your browser and your site is live. The Nginx Alpine image is about 40MB, making it one of the smallest options for serving static content.
+Visit `http://localhost:8080` in your browser and your site is live. The Nginx Alpine image is much smaller than the standard Nginx image, making it one of the smaller options for serving static content.
 
 ## Project Structure
 
@@ -126,11 +126,11 @@ CMD ["nginx", "-g", "daemon off;"]
 
 React, Vue, and Angular projects need a build step before they produce static files. A multi-stage Dockerfile keeps the build tools out of the final image.
 
-Build a React app and serve it with Nginx:
+Build a Vite-based React app and serve it with Nginx:
 
 ```dockerfile
 # Stage 1: Build the React application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -151,13 +151,13 @@ FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built files from the builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-The first stage installs Node.js, all dependencies, and runs the build. The second stage starts fresh with only Nginx and the compiled output. Your final image will be around 40-50MB instead of the 1GB+ that a Node.js image with all dependencies would be.
+The first stage installs Node.js, all dependencies, and runs the build. The second stage starts fresh with only Nginx and the compiled output. Your final image will be much smaller than a Node.js image with all dependencies would be.
 
 ## Multi-Stage Build for Hugo Sites
 
@@ -200,6 +200,7 @@ RUN sed -i \
     -e 's/^#LoadModule deflate_module/LoadModule deflate_module/' \
     -e 's/^#LoadModule expires_module/LoadModule expires_module/' \
     -e 's/^#LoadModule rewrite_module/LoadModule rewrite_module/' \
+    -e '/<Directory "\/usr\/local\/apache2\/htdocs">/,/<\/Directory>/s/AllowOverride None/AllowOverride All/' \
     /usr/local/apache2/conf/httpd.conf
 
 # Copy static files to Apache's document root
@@ -317,7 +318,7 @@ Changes to files in the `./site` directory appear immediately without rebuilding
 
 A few techniques keep your static site images as small as possible.
 
-First, always use Alpine-based images. The standard `nginx` image is around 140MB, while `nginx:alpine` is about 40MB.
+First, prefer Alpine-based images when they are compatible with your dependencies. The standard `nginx` image is significantly larger than `nginx:alpine`.
 
 Second, use a `.dockerignore` file to exclude unnecessary files from the build context:
 
