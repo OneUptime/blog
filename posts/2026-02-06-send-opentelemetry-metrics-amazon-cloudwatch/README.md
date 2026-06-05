@@ -16,7 +16,7 @@ The trick is that CloudWatch does not natively speak OTLP. You need the CloudWat
 
 CloudWatch accepts metrics through several mechanisms. The EMF exporter takes an interesting approach: instead of calling the `PutMetricData` API directly, it writes structured JSON log entries in Embedded Metric Format to CloudWatch Logs. CloudWatch then automatically extracts the metrics from those log entries and makes them available as CloudWatch metrics.
 
-Why this roundabout path? EMF supports high-cardinality dimensions better than `PutMetricData`, and it lets you correlate metrics with log context. You also avoid the `PutMetricData` rate limits, which can be a bottleneck for high-throughput applications.
+Why this roundabout path? EMF lets you keep high-cardinality context in logs while selecting low-cardinality fields as metric dimensions, and it lets you correlate metrics with log context. You also avoid the `PutMetricData` rate limits, which can be a bottleneck for high-throughput applications.
 
 ```mermaid
 graph LR
@@ -33,7 +33,7 @@ You need the contrib distribution of the collector, which includes the `awsemf` 
 ```bash
 # Pull the contrib collector that includes AWS exporters
 
-docker pull otel/opentelemetry-collector-contrib:0.98.0
+docker pull otel/opentelemetry-collector-contrib:0.153.0
 ```
 
 Here is the collector configuration for receiving OTLP metrics and exporting them to CloudWatch via EMF:
@@ -67,22 +67,32 @@ exporters:
     region: us-east-1
     # Log group where EMF entries will be written
     log_group_name: /aws/otel/metrics
-    # Use the service name as the log stream to separate services
-    log_stream_name: otel-metrics-{ServiceName}
+    # Log stream where EMF entries will be written
+    log_stream_name: otel-metrics
     # Controls which resource attributes become CloudWatch dimensions
     dimension_rollup_option: NoDimensionRollup
+    # Convert resource attributes such as service.name into metric labels
+    resource_to_telemetry_conversion:
+      enabled: true
     # Map OpenTelemetry metric attributes to CloudWatch dimensions
     metric_declarations:
       - dimensions:
-          - [service.name, http.method, http.status_code]
+          - [service.name, http.request.method, http.response.status_code]
           - [service.name]
         metric_name_selectors:
-          - "http.server.request.duration"
-          - "http.server.active_requests"
+          - "^http\\.server\\.request\\.duration$"
+          - "^http\\.server\\.request\\.count$"
+          - "^http\\.server\\.active_requests$"
       - dimensions:
           - [service.name, db.system]
         metric_name_selectors:
-          - "db.client.connections.*"
+          - "^db\\.client\\.connections\\..*$"
+      - dimensions:
+          - [service.name, payment.method, payment.status]
+          - [service.name]
+        metric_name_selectors:
+          - "^payment\\.processing\\.duration$"
+          - "^payment\\.processed\\.total$"
 
   # Debug exporter for development
   debug:
@@ -98,11 +108,11 @@ service:
 
 ### Understanding metric_declarations
 
-The `metric_declarations` section is important. CloudWatch charges per unique metric (combination of metric name and dimensions), so you want to control which attribute combinations become dimensions. Without explicit declarations, every attribute on every metric becomes a dimension, which can lead to a combinatorial explosion and a large CloudWatch bill.
+The `metric_declarations` section is important. CloudWatch charges per unique metric (combination of metric name and dimensions), so you want to control which attribute combinations become dimensions. Without explicit declarations, every metric label becomes a dimension, which can lead to a combinatorial explosion and a large CloudWatch bill. Resource attributes such as `service.name` only become eligible for dimensions when `resource_to_telemetry_conversion.enabled` is set to `true`.
 
 Each declaration specifies:
 - `dimensions`: Lists of attribute names that become CloudWatch dimensions. Each list is a separate dimension set.
-- `metric_name_selectors`: Which metrics this declaration applies to. Supports wildcards.
+- `metric_name_selectors`: Regular expressions for the metric names this declaration applies to.
 
 ## Step 2: Run the Collector
 
@@ -110,14 +120,14 @@ Start the collector with appropriate AWS credentials:
 
 ```bash
 # Run the collector with an IAM instance profile or explicit credentials
-# The EMF exporter writes to CloudWatch Logs, so it needs logs:* permissions
+# The EMF exporter writes to CloudWatch Logs, so it needs CloudWatch Logs permissions
 docker run -d \
   --name otel-collector \
   -p 4317:4317 \
   -p 4318:4318 \
   -e AWS_REGION=us-east-1 \
   -v $(pwd)/otel-collector-config.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector-contrib:0.98.0 \
+  otel/opentelemetry-collector-contrib:0.153.0 \
   --config /etc/otelcol/config.yaml
 ```
 
@@ -134,8 +144,7 @@ The IAM permissions needed for the EMF exporter:
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:DescribeLogStreams",
-        "logs:DescribeLogGroups",
-        "cloudwatch:PutMetricData"
+        "logs:DescribeLogGroups"
       ],
       "Resource": "*"
     }
@@ -194,8 +203,8 @@ meter = metrics.get_meter("order-service")
 # Create a histogram for request duration
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
-    description="Duration of HTTP requests in milliseconds",
-    unit="ms"
+    description="Duration of HTTP requests in seconds",
+    unit="s"
 )
 
 # Create a counter for total requests
@@ -216,9 +225,9 @@ def handle_request(method, path, status_code):
     """Record metrics for an HTTP request."""
     # Common attributes that will become CloudWatch dimensions
     attrs = {
-        "http.method": method,
+        "http.request.method": method,
         "http.route": path,
-        "http.status_code": status_code
+        "http.response.status_code": status_code
     }
 
     active_requests.add(1, attrs)
@@ -228,8 +237,8 @@ def handle_request(method, path, status_code):
         # ... handle the request ...
         pass
     finally:
-        duration_ms = (time.time() - start) * 1000
-        request_duration.record(duration_ms, attrs)
+        duration_seconds = time.time() - start
+        request_duration.record(duration_seconds, attrs)
         request_count.add(1, attrs)
         active_requests.add(-1, attrs)
 ```
@@ -241,14 +250,16 @@ def handle_request(method, path, status_code):
 // Sets up OpenTelemetry metrics with OTLP export for a Node.js application
 const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { defaultResource, resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Configure the resource to identify this service in CloudWatch
-const resource = new Resource({
-  'service.name': 'payment-service',
-  'service.version': '2.0.1',
-  'deployment.environment': 'production',
-});
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    'service.name': 'payment-service',
+    'service.version': '2.0.1',
+    'deployment.environment': 'production',
+  }),
+);
 
 // Export metrics to the collector every 30 seconds
 const exporter = new OTLPMetricExporter({
@@ -269,8 +280,8 @@ const meter = meterProvider.getMeter('payment-service');
 
 // Create metrics instruments
 const paymentDuration = meter.createHistogram('payment.processing.duration', {
-  description: 'Time to process a payment in milliseconds',
-  unit: 'ms',
+  description: 'Time to process a payment in seconds',
+  unit: 's',
 });
 
 const paymentTotal = meter.createCounter('payment.processed.total', {
@@ -279,12 +290,12 @@ const paymentTotal = meter.createCounter('payment.processed.total', {
 });
 
 // Record a payment processing event
-function recordPayment(method, status, durationMs) {
+function recordPayment(method, status, durationSeconds) {
   const attributes = {
     'payment.method': method,   // "credit_card", "bank_transfer", etc.
     'payment.status': status,   // "success", "failed", "pending"
   };
-  paymentDuration.record(durationMs, attributes);
+  paymentDuration.record(durationSeconds, attributes);
   paymentTotal.add(1, attributes);
 }
 
@@ -317,7 +328,7 @@ aws cloudwatch get-metric-data \
       "Stat": "Average"
     }
   }]' \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
   --region us-east-1
 ```
@@ -337,7 +348,7 @@ aws logs filter-log-events \
 Once metrics are flowing, you can create alarms just like any other CloudWatch metric.
 
 ```bash
-# Create an alarm that triggers when average request duration exceeds 500ms
+# Create an alarm that triggers when average request duration exceeds 0.5 seconds
 # This works on metrics exported from OpenTelemetry through the EMF exporter
 aws cloudwatch put-metric-alarm \
   --alarm-name "HighRequestDuration-OrderService" \
@@ -346,7 +357,7 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=service.name,Value=order-service \
   --statistic Average \
   --period 300 \
-  --threshold 500 \
+  --threshold 0.5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts \
@@ -357,7 +368,7 @@ aws cloudwatch put-metric-alarm \
 
 CloudWatch pricing for custom metrics is per metric per month. Each unique combination of metric name and dimension values counts as a separate metric. This is why the `metric_declarations` section in the collector config matters so much.
 
-For example, if you have a request duration metric with dimensions `service.name`, `http.method`, and `http.status_code`, and you have 5 services, 4 HTTP methods, and 10 status codes, that is 5 x 4 x 10 = 200 custom metrics just for request duration. At around $0.30 per metric per month, that is $60/month for one metric name.
+For example, if you have a request duration metric with dimensions `service.name`, `http.request.method`, and `http.response.status_code`, and you have 5 services, 4 HTTP methods, and 10 status codes, that is 5 x 4 x 10 = 200 custom metrics just for request duration. At around $0.30 per metric per month, that is $60/month for one metric name.
 
 Keep your dimension cardinality low. Avoid putting request IDs, user IDs, or other high-cardinality values as metric attributes if those attributes will become CloudWatch dimensions.
 
