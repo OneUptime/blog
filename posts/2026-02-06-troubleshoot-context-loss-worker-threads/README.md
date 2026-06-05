@@ -59,7 +59,7 @@ You need to serialize the trace context in the main thread and deserialize it in
 ```javascript
 // main.js
 const { Worker } = require('worker_threads');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('main');
 
@@ -83,7 +83,7 @@ function processInWorker(data) {
       });
 
       worker.on('error', (error) => {
-        span.setStatus({ code: trace.SpanStatusCode.ERROR });
+        span.setStatus({ code: SpanStatusCode.ERROR });
         span.recordException(error);
         span.end();
         reject(error);
@@ -98,7 +98,7 @@ function processInWorker(data) {
 ```javascript
 // worker.js
 const { workerData, parentPort } = require('worker_threads');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 // Initialize OpenTelemetry in the worker too
 require('./tracing');
@@ -116,7 +116,7 @@ context.with(parentContext, () => {
       span.end();
       parentPort.postMessage(result);
     } catch (error) {
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       span.recordException(error);
       span.end();
       parentPort.postMessage({ error: error.message });
@@ -133,11 +133,11 @@ Each worker thread needs its own SDK initialization:
 // tracing.js (used by both main thread and workers)
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { isMainThread, threadId } = require('worker_threads');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-service',
     'thread.id': threadId,
     'thread.type': isMainThread ? 'main' : 'worker',
@@ -153,9 +153,10 @@ If you use a worker pool library like `workerpool` or `piscina`, wrap the dispat
 
 ```javascript
 const Piscina = require('piscina');
+const path = require('path');
 const { context, propagation } = require('@opentelemetry/api');
 
-const pool = new Piscina({ filename: './worker.js' });
+const pool = new Piscina({ filename: path.resolve(__dirname, 'worker.js') });
 
 async function runInPool(taskData) {
   // Inject current context
@@ -183,7 +184,7 @@ The `worker_process` span is now a child of `process_data`, connected in the sam
 ## Important Caveats
 
 1. **Each worker needs its own SDK**: Workers have separate V8 isolates, so the SDK must be initialized in each one.
-2. **Exporter connections multiply**: Each worker creates its own exporter connection. With 10 workers, that is 10 connections to your Collector.
+2. **Exporter overhead multiplies**: Each worker creates its own exporter and span processor. With 10 workers, that is 10 independent export pipelines sending data to your Collector.
 3. **Shutdown must be coordinated**: When the main thread shuts down, it should signal workers to flush their span processors before exiting.
 
 ```javascript
