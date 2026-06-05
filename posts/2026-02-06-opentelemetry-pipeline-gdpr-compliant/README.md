@@ -141,50 +141,40 @@ The layered approach is deliberate. The `attributes` processor handles known PII
 
 ## Step 2: Pseudonymization with Hashing
 
-GDPR distinguishes between anonymization (irreversible, data is no longer personal data) and pseudonymization (reversible with additional information, still personal data but with reduced risk). Hashing without a salt is closer to pseudonymization because the hash can theoretically be reversed for low-entropy values.
+GDPR distinguishes between anonymization (irreversible, data is no longer personal data) and pseudonymization (data cannot be attributed to a specific person without additional information, but is still personal data with reduced risk). Hashing without a salt is closer to pseudonymization because the hash can theoretically be reversed for low-entropy values.
 
 For GDPR purposes, use hashing with a secret salt at the SDK level to provide stronger pseudonymization. The Collector's built-in hash action does not support salts, so you need a custom approach.
 
-This Python SDK example adds a salted hash processor.
+This Python SDK example adds a helper for setting pseudonymized attributes. Use it wherever your application would otherwise set raw user or session identifiers on a span.
 
 ```python
 # salted_hash_processor.py
 # Pseudonymize user IDs with a salted SHA-256 hash
 import hashlib
 import os
-from opentelemetry.sdk.trace import SpanProcessor
+from opentelemetry.trace import Span
 
 # Load salt from environment variable - keep this secret
-HASH_SALT = os.environ.get('OTEL_PII_HASH_SALT', 'change-this-default-salt')
+HASH_SALT = os.environ["OTEL_PII_HASH_SALT"]
 
-class SaltedHashProcessor(SpanProcessor):
-    """Replaces specified attribute values with salted SHA-256 hashes.
+# Attributes to pseudonymize
+HASH_KEYS = {"user.id", "session.id", "account.id", "device.id"}
 
-    This provides GDPR-compliant pseudonymization. The salt must be
-    kept separate from the hashed data to maintain pseudonymization
-    properties. If the salt is compromised, re-salt all data.
+def set_pseudonymous_attribute(span: Span, key: str, value: str) -> None:
+    """Sets a span attribute, hashing configured identifier keys first.
+
+    The salt must be kept separate from the hashed data to maintain
+    pseudonymization properties. If the salt is compromised, rotate it
+    and treat previously hashed values as potentially linkable.
     """
 
-    # Attributes to pseudonymize
-    HASH_KEYS = {'user.id', 'session.id', 'account.id', 'device.id'}
+    raw_value = str(value)
+    if key in HASH_KEYS:
+        # Combine salt + value and hash
+        salted = f"{HASH_SALT}:{raw_value}"
+        raw_value = hashlib.sha256(salted.encode()).hexdigest()
 
-    def on_end(self, span):
-        for key in self.HASH_KEYS:
-            if key in span.attributes:
-                raw_value = str(span.attributes[key])
-                # Combine salt + value and hash
-                salted = f"{HASH_SALT}:{raw_value}"
-                hashed = hashlib.sha256(salted.encode()).hexdigest()
-                span.attributes[key] = hashed
-
-    def on_start(self, span, parent_context=None):
-        pass
-
-    def shutdown(self):
-        pass
-
-    def force_flush(self, timeout_millis=None):
-        pass
+    span.set_attribute(key, raw_value)
 ```
 
 Store the salt securely (in a secrets manager, not in code or config files). If you ever need to rotate the salt, be aware that the hash values will change, breaking correlation with historical data.
@@ -270,7 +260,7 @@ There are three strategies, ranging from practical to ideal.
 flowchart TD
     A["Data Subject Requests Erasure"] --> B{Strategy?}
     B --> C["Strategy 1: Prevent Collection<br/>(best - no data to delete)"]
-    B --> D["Strategy 2: Pseudonymization<br/>(hash makes data non-identifying)"]
+    B --> D["Strategy 2: Pseudonymization<br/>(hash reduces direct identifiability)"]
     B --> E["Strategy 3: Selective Deletion<br/>(hardest to implement)"]
     C --> F["Data minimization at Collector<br/>means no PII reaches backend"]
     D --> G["Rotate hash salt to<br/>break correlation"]
@@ -279,11 +269,11 @@ flowchart TD
 
 **Strategy 1: Prevention.** If you aggressively minimize data collection so that no personal data reaches your backend, erasure requests become trivial. There is nothing to delete. This is why data minimization is the most important control.
 
-**Strategy 2: Pseudonymization with salt rotation.** If you hash user identifiers with a salt, you can "erase" a user's data by rotating the salt. Old hashes become meaningless because they cannot be correlated back to the user. The data still physically exists, but it is no longer personal data because it cannot be linked to an identified individual without the old salt (which you have destroyed).
+**Strategy 2: Pseudonymization with salt rotation.** If you hash user identifiers with a salt, destroying or rotating the old salt can break future correlation for records that only contain the salted identifier. This can reduce identifiability, but it is not a universal substitute for deletion: the data may still be personal data if other attributes can identify the person.
 
 **Strategy 3: Selective deletion.** If your backend supports it, you can query for all telemetry associated with a specific user and delete it. This is the most direct approach but requires that your backend supports deletion by attribute value, which many time-series and tracing backends do not natively support.
 
-In practice, most organizations combine strategies 1 and 2. Minimize collection so that very little personal data reaches the backend, pseudonymize what remains, and rely on short retention periods to automatically delete everything.
+In practice, most organizations combine strategies 1 and 2. Minimize collection so that very little personal data reaches the backend, pseudonymize what remains, document the residual risk, and rely on short retention periods to automatically delete everything.
 
 ## Step 5: Encryption and Transport Security
 
@@ -326,7 +316,7 @@ Also ensure your backend encrypts data at rest. For cloud-hosted backends, enabl
 
 ## Step 6: Data Residency and Cross-Border Transfer
 
-GDPR restricts transferring personal data outside the European Economic Area (EEA). If your Collector or backend is running in a US region, you may be in violation.
+GDPR restricts transferring personal data outside the European Economic Area (EEA) unless you have an appropriate transfer mechanism in place. If telemetry from EU users is exported to a US region without those safeguards, you may be in violation.
 
 Deploy your Collectors and backends in EU regions. If you use a managed observability SaaS, confirm that they offer EU data residency and have appropriate data processing agreements.
 
