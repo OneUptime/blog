@@ -8,14 +8,14 @@ Description: A complete reference guide to Docker container exit codes, explaini
 
 ---
 
-When a Docker container stops, it leaves behind an exit code. That number tells you why the container stopped and whether something went wrong. An exit code of 0 means everything went fine. Anything else signals a problem. But what does 137 mean versus 139? Why did your container exit with 1 instead of 126? This guide breaks down every exit code you are likely to encounter, what causes it, and what to do about it.
+When a Docker container stops, it leaves behind an exit code. That number tells you why the container stopped and whether something went wrong. An exit code of 0 means everything went fine. Anything else usually signals a problem. But what does 137 mean versus 139? Why did your container exit with 1 instead of 126? This guide breaks down every exit code you are likely to encounter, what causes it, and what to do about it.
 
 ## How to Check Exit Codes
 
 Before diving into the codes themselves, here is how to find the exit code of a stopped container:
 
 ```bash
-# Check the exit code of the last run
+# Check the exit code of a specific container
 
 docker inspect my-container --format '{{.State.ExitCode}}'
 
@@ -110,7 +110,7 @@ RUN chmod +x /entrypoint.sh
 
 ## Exit Code 127 - Command Not Found
 
-The command specified in CMD, ENTRYPOINT, or a RUN instruction does not exist in the container's PATH.
+The command specified in CMD, ENTRYPOINT, or another container command does not exist in the container's PATH.
 
 ```bash
 # Example: command does not exist
@@ -151,21 +151,21 @@ docker run --memory=invalid alpine
 
 This happens when Docker cannot create or start the container due to invalid options, missing images, or resource constraints.
 
-## Exit Code 128 - Invalid Exit Code Argument
+## Exit Code 128 - Application-Specific Exit Code
 
-The application called `exit()` with an invalid argument.
+Exit code 128 can be returned by an application intentionally.
 
 ```bash
-# Example: exit with a non-numeric code
-docker run alpine sh -c "exit abc"
-# Exit code: 2 (shell interprets this as an error)
+# Example: application exits with 128
+docker run alpine sh -c "exit 128"
+# Exit code: 128
 ```
 
-In practice, you rarely see exactly 128. Most codes in the 128+ range are signal-related.
+Do not treat 128 itself as a signal exit. Signal-related codes start at 129 because they use 128 plus the signal number.
 
 ## Signal-Related Exit Codes (128 + N)
 
-When a process is killed by a signal, the exit code is 128 plus the signal number. Here are all the signal-related exit codes:
+When a process is killed by a signal, shells commonly report the exit code as 128 plus the signal number. Here are common Linux signal-related exit codes:
 
 | Exit Code | Signal | Name | Meaning |
 |-----------|--------|------|---------|
@@ -229,13 +229,13 @@ uname -m
 
 ### Exit Code 143 - SIGTERM (Graceful Shutdown)
 
-Normal result of `docker stop`. The process received SIGTERM and exited.
+Common result of `docker stop` when the process does not override the default SIGTERM behavior. The process received SIGTERM and exited. If the application handles SIGTERM and exits with its own status, you may see a different code, such as 0.
 
 ```bash
-# This is expected after docker stop
+# This is common after docker stop if the process terminates on SIGTERM
 docker stop my-container
 docker inspect my-container --format '{{.State.ExitCode}}'
-# Output: 143
+# Common output: 143
 ```
 
 ## Application-Specific Exit Codes
@@ -314,7 +314,7 @@ case $EXIT_CODE in
     139) echo "Status: SIGSEGV - segmentation fault (architecture mismatch?)" ;;
     143) echo "Status: SIGTERM - gracefully terminated (normal docker stop)" ;;
     *)
-        if [ "$EXIT_CODE" -gt 128 ] && [ "$EXIT_CODE" -lt 165 ]; then
+        if [ "$EXIT_CODE" -gt 128 ] && [ "$EXIT_CODE" -le 192 ]; then
             SIGNAL=$((EXIT_CODE - 128))
             echo "Status: Killed by signal $SIGNAL"
         else
@@ -352,4 +352,4 @@ services:
 
 ## Summary
 
-Docker exit codes follow a simple pattern: 0 means success, 1-127 are application errors, and 128+ are signal-related (128 + signal number). The most common ones you will encounter are 0 (success), 1 (application error), 127 (command not found), 137 (killed/OOM), 139 (segfault), and 143 (graceful shutdown). When debugging, always check `docker logs` first for application-level errors, then `docker inspect` for the OOM flag, and `dmesg` for kernel-level events. Keep the diagnostic script handy for quick triage when containers stop unexpectedly.
+Docker exit codes follow a simple pattern: 0 means success, 125-127 are special `docker run` failures, other non-zero codes are usually application errors, and many 129+ codes are signal-related (128 + signal number). The most common ones you will encounter are 0 (success), 1 (application error), 127 (command not found), 137 (killed/OOM), 139 (segfault), and 143 (terminated by SIGTERM). When debugging, always check `docker logs` first for application-level errors, then `docker inspect` for the OOM flag, and `dmesg` for kernel-level events. Keep the diagnostic script handy for quick triage when containers stop unexpectedly.
