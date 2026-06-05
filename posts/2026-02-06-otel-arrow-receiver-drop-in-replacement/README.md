@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Collector, Receiver
 
-Description: Configure the OTel Arrow receiver as a drop-in replacement for the OTLP receiver with full backward compatibility.
+Description: Configure the OTel Arrow receiver as a drop-in replacement for the OTLP gRPC receiver with backward compatibility.
 
-The OTel Arrow receiver is designed to be a seamless replacement for the standard OTLP gRPC receiver. It listens on the same port, accepts the same OTLP connections, and additionally supports the Arrow-optimized protocol. This means you can swap the receiver without breaking any existing exporters. Agents using standard OTLP continue to work. Agents upgraded to the OTel Arrow exporter get the bandwidth benefits automatically.
+The OTel Arrow receiver is designed to be a seamless replacement for the standard OTLP gRPC receiver. It listens on the same port, accepts the same OTLP/gRPC connections, and additionally supports the Arrow-optimized protocol. This means you can swap the gRPC receiver without breaking any existing gRPC exporters. Agents using standard OTLP/gRPC continue to work. Agents upgraded to the OTel Arrow exporter get the bandwidth benefits automatically.
 
 ## The Standard OTLP Receiver Configuration
 
@@ -25,7 +25,7 @@ receivers:
 
 ## Replacing with the OTel Arrow Receiver
 
-The swap is minimal. Replace `otlp` with `otelarrow` and keep the same settings:
+The swap is minimal for the gRPC endpoint. Replace the OTLP gRPC receiver with `otelarrow` and keep OTLP/HTTP on a regular OTLP receiver if you still need port 4318:
 
 ```yaml
 receivers:
@@ -34,11 +34,13 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
         max_recv_msg_size_mib: 4
+  otlp/http:
+    protocols:
       http:
         endpoint: 0.0.0.0:4318
 ```
 
-That is it. The `otelarrow` receiver binds to the same port and accepts both standard OTLP and Arrow-encoded connections. The HTTP endpoint continues to handle OTLP/HTTP as before, since OTel Arrow only applies to the gRPC protocol.
+That is it for the gRPC side. The `otelarrow` receiver binds to the same OTLP/gRPC port and accepts both standard OTLP/gRPC and Arrow-encoded connections. The HTTP endpoint remains on the standard OTLP receiver, since the OTel Arrow receiver only supports gRPC.
 
 ## How the Protocol Negotiation Works
 
@@ -69,13 +71,15 @@ receivers:
           enforcement_policy:
             min_time: 10s
             permit_without_stream: true
+      arrow:
         # Arrow-specific settings
-        arrow:
-          # Memory limit for Arrow record batches
-          memory_limit_mib: 128
+        # Memory limit for Arrow record batches
+        memory_limit_mib: 128
+  otlp/http:
+    protocols:
       http:
         endpoint: 0.0.0.0:4318
-        # HTTP endpoint remains unchanged
+        # HTTP endpoint remains on the OTLP receiver
 
 processors:
   batch:
@@ -91,28 +95,29 @@ exporters:
 service:
   pipelines:
     traces:
-      receivers: [otelarrow]
+      receivers: [otelarrow, otlp/http]
       processors: [batch]
       exporters: [otlp]
     metrics:
-      receivers: [otelarrow]
+      receivers: [otelarrow, otlp/http]
       processors: [batch]
       exporters: [otlp]
     logs:
-      receivers: [otelarrow]
+      receivers: [otelarrow, otlp/http]
       processors: [batch]
       exporters: [otlp]
 ```
 
 ## Arrow-Specific Receiver Settings
 
-The `arrow` block under the gRPC protocol contains settings specific to Arrow stream handling:
+The `arrow` block under `protocols` contains settings specific to Arrow stream handling:
 
 ```yaml
-arrow:
-  # Maximum memory for buffering Arrow record batches
-  # Prevents OOM from large incoming batches
-  memory_limit_mib: 128
+protocols:
+  arrow:
+    # Maximum memory for buffering Arrow record batches
+    # Prevents OOM from large incoming batches
+    memory_limit_mib: 128
 ```
 
 The `memory_limit_mib` controls how much memory the receiver allocates for decoding Arrow record batches. Arrow data is typically larger in its decoded form than its compressed wire format, so this limit protects against memory spikes when receiving large batches.
@@ -122,7 +127,8 @@ The `memory_limit_mib` controls how much memory the receiver allocates for decod
 After swapping the receiver, verify that existing OTLP clients still work:
 
 ```bash
-# Send a test trace using grpcurl (standard OTLP format)
+# Send a test trace using grpcurl (standard OTLP format).
+# If reflection is not enabled, add the OTLP proto files with -import-path and -proto.
 
 grpcurl -plaintext \
   -d '{
@@ -135,8 +141,8 @@ grpcurl -plaintext \
       },
       "scope_spans": [{
         "spans": [{
-          "trace_id": "0af7651916cd43dd8448eb211c80319c",
-          "span_id": "b7ad6b7169203331",
+          "trace_id": "CvdlGRbNQ92ESOshHIAxnA==",
+          "span_id": "t61rcWkgMzE=",
           "name": "test-span",
           "kind": 1,
           "start_time_unix_nano": 1706000000000000000,
@@ -151,26 +157,29 @@ grpcurl -plaintext \
 
 If this returns a success response, your existing OTLP clients will continue to work without any changes.
 
-## Monitoring Connection Types
+## Monitoring Receiver Metrics
 
-The OTel Arrow receiver exposes metrics that tell you how many connections use each protocol:
+The OTel Arrow receiver exposes standard receiver metrics plus Arrow-specific network and memory metrics:
 
 ```promql
-# Count of active Arrow streams
-otelcol_receiver_otelarrow_active_streams
+# Standard receiver metric for accepted spans
+otelcol_receiver_accepted_spans{receiver="otelarrow"}
 
-# Count of standard OTLP connections
-otelcol_receiver_accepted_spans{receiver="otelarrow", transport="grpc"}
+# Uncompressed bytes received before compression
+otelcol_receiver_recv{receiver="otelarrow"}
 
-# Count of Arrow-transported spans
-otelcol_receiver_accepted_spans{receiver="otelarrow", transport="arrow"}
+# Compressed bytes received on the wire
+otelcol_receiver_recv_wire{receiver="otelarrow"}
+
+# Arrow memory currently in use by streams
+arrow_memory_inuse
 ```
 
-These metrics help you track the migration progress. As you upgrade agents from standard OTLP to OTel Arrow, you should see the `transport="arrow"` counter increase and the `transport="grpc"` counter decrease.
+These metrics help you track receiver throughput and Arrow memory pressure. The OTel Arrow receiver documentation does not define a built-in `transport="arrow"` versus `transport="grpc"` label for accepted spans, so use the network-level metrics to monitor Arrow efficiency.
 
 ## Rollback Plan
 
-If you need to roll back, simply replace `otelarrow` with `otlp` in the receiver config and restart the Collector. All agents using standard OTLP will reconnect without issues. Agents using the OTel Arrow exporter will fall back to standard OTLP automatically, since the `otelarrow` exporter includes a fallback mechanism that detects when the receiver does not support Arrow and switches to standard OTLP on the same connection.
+If you need to roll back, replace `otelarrow` with `otlp` for the gRPC receiver config and restart the Collector. All agents using standard OTLP/gRPC will reconnect without issues. Agents using the OTel Arrow exporter will fall back to standard OTLP automatically unless `arrow.disable_downgrade` is set to `true`.
 
 ```yaml
 # Rollback: just change the receiver name back
@@ -183,4 +192,4 @@ receivers:
         endpoint: 0.0.0.0:4318
 ```
 
-The drop-in nature of the OTel Arrow receiver makes it a low-risk upgrade. You get the option to use Arrow without forcing anything to change until you are ready.
+The drop-in nature of the OTel Arrow receiver for OTLP/gRPC makes it a low-risk upgrade. You get the option to use Arrow without forcing anything to change until you are ready.
