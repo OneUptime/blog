@@ -12,7 +12,7 @@ Chromebooks have come a long way from simple web browsers. With ChromeOS's built
 
 ## Prerequisites
 
-- A Chromebook with Linux development environment support (most models from 2019 onwards)
+- A Chromebook with Linux development environment support (all devices launched in 2019 or later, plus some earlier models)
 - At least 8 GB of storage free (16 GB or more recommended)
 - At least 4 GB of RAM (8 GB strongly recommended for Docker)
 - ChromeOS updated to the latest version
@@ -22,8 +22,8 @@ Chromebooks have come a long way from simple web browsers. With ChromeOS's built
 If you have not already enabled Linux on your Chromebook, do so first.
 
 1. Open **Settings**
-2. Navigate to **Advanced** > **Developers**
-3. Click **Turn on** next to "Linux development environment"
+2. Navigate to **About ChromeOS** > **Developers**
+3. Click **Set up** next to "Linux development environment"
 4. Choose your disk size (allocate at least 10 GB, more if possible)
 5. Wait for the setup to complete
 
@@ -43,7 +43,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 ```bash
 # Install prerequisites for Docker's repository
-sudo apt-get install -y ca-certificates curl gnupg lsb-release
+sudo apt-get install -y ca-certificates curl
 ```
 
 ## Step 4: Add Docker's GPG Key and Repository
@@ -59,7 +59,14 @@ sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyring
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Add Docker's repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Update package lists
 sudo apt-get update
@@ -88,17 +95,18 @@ If systemd is not available, start Docker manually.
 sudo dockerd &
 ```
 
-To make this persistent, you can add the command to your shell profile.
+If systemd works in your Linux environment, enable Docker so it starts when the Linux container starts.
 
 ```bash
-# Auto-start Docker when you open the terminal
-echo 'sudo dockerd > /dev/null 2>&1 &' >> ~/.bashrc
+# Enable Docker startup through systemd
+sudo systemctl enable docker
 ```
 
 ## Step 7: Configure Non-Root Access
 
 ```bash
 # Add your user to the docker group
+sudo groupadd docker 2>/dev/null || true
 sudo usermod -aG docker $USER
 
 # Apply the group change
@@ -281,9 +289,10 @@ Use Alpine-based images whenever possible to minimize disk usage and memory cons
 Alpine images are significantly smaller than their Debian or Ubuntu counterparts.
 
 ```bash
-# Compare image sizes
-docker pull node:20          # ~350 MB
-docker pull node:20-alpine   # ~50 MB
+# Compare image sizes after pulling
+docker pull node:20
+docker pull node:20-alpine
+docker images node:20 node:20-alpine
 ```
 
 ### Avoid Running Too Many Containers
