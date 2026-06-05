@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Audit Trail, Compliance, Security
 
-Description: Use OpenTelemetry span events to build a structured security audit trail that satisfies compliance requirements like SOC 2 and HIPAA.
+Description: Use OpenTelemetry span events to build a structured security audit trail that supports compliance requirements like SOC 2 and HIPAA.
 
-Compliance frameworks like SOC 2, HIPAA, and PCI DSS require organizations to maintain detailed audit trails of security-relevant actions. Who accessed what data, when, and from where. Traditionally, audit logging is implemented as a separate system with its own SDK, database, and retention policies. But if you are already using OpenTelemetry for observability, you can leverage span events to build your audit trail directly within your existing telemetry pipeline.
+Compliance frameworks like SOC 2, HIPAA, and PCI DSS often require organizations to maintain detailed audit trails of security-relevant actions. Who accessed what data, when, and from where. Traditionally, audit logging is implemented as a separate system with its own SDK, database, and retention policies. But if you are already using OpenTelemetry for observability, you can leverage span events to build your audit trail directly within your existing telemetry pipeline.
 
 ## Why Span Events for Audit Trails
 
@@ -16,7 +16,7 @@ The advantages over a standalone audit log system:
 
 - Audit entries are linked to traces, so you can jump from an audit finding to the full request context.
 - No separate SDK or library to maintain.
-- Same export pipeline, same retention policies, same query interface.
+- Same export pipeline and query interface, with the option to route audit events to a separate retention policy.
 - Structured attributes make the data machine-queryable.
 
 ## Defining an Audit Event Schema
@@ -113,6 +113,7 @@ Here is how you would use this in a healthcare application that needs HIPAA-comp
 
 ```python
 from flask import Flask, request, g
+from opentelemetry import trace
 from audit_logger import AuditLogger
 
 app = Flask(__name__)
@@ -188,7 +189,7 @@ def update_patient(patient_id):
 
 ## Collector Configuration for Audit Retention
 
-Compliance often requires longer retention for audit data. Use the Collector to route audit events to a separate storage backend with appropriate retention:
+Compliance often requires longer retention for audit data. Use the Collector to route audit spans to a separate storage backend with appropriate retention. Make sure your tracing configuration records and exports spans that carry audit events; sampled-out spans will not preserve their span events.
 
 ```yaml
 receivers:
@@ -198,21 +199,18 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Filter spans that contain audit events
+  # Drop spans that do not contain audit events from this pipeline
   filter/audit:
-    traces:
-      include:
-        match_type: strict
-        attributes:
-          - key: audit.has_audit_events
-            value: true
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["audit.has_audit_events"] != true
 
 exporters:
   # Regular observability backend (30-day retention)
   otlp/observability:
     endpoint: "https://otel-backend:4317"
 
-  # Long-term audit storage (7-year retention for compliance)
+  # Long-term audit storage with retention configured for your compliance needs
   otlp/audit:
     endpoint: "https://audit-storage:4317"
 
@@ -224,7 +222,7 @@ service:
     traces/audit:
       receivers: [otlp]
       processors: [filter/audit]
-      exporters: [otlp/audit, otlp/observability]
+      exporters: [otlp/audit]
 ```
 
 ## Querying for Compliance Reports
@@ -250,4 +248,4 @@ ORDER BY events.timestamp DESC;
 
 ## Summary
 
-OpenTelemetry span events provide a natural way to implement audit trails that are automatically correlated with your application traces. Instead of maintaining a separate audit logging system, you get structured, queryable audit data that flows through your existing telemetry pipeline. The key is defining a consistent schema for your audit attributes and using the Collector to route audit data to long-term storage that meets your compliance retention requirements.
+OpenTelemetry span events provide a natural way to implement audit trails that are automatically correlated with your application traces. Instead of maintaining a separate audit logging system, you get structured, queryable audit data that flows through your existing telemetry pipeline. The key is defining a consistent schema for your audit attributes, making sure audit spans are recorded and exported, and using the Collector to route audit data to long-term storage that meets your compliance retention requirements.
