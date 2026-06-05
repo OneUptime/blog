@@ -18,35 +18,39 @@ The SDK provides several built-in samplers that cover common use cases. The Alwa
 
 ## Basic Sampling Configuration
 
-Start by adding the necessary dependencies to your Spring Boot project. The OpenTelemetry SDK autoconfigure module handles most of the heavy lifting.
+Start by adding the necessary dependencies to your Spring Boot project. The OpenTelemetry Spring Boot starter handles most of the heavy lifting and should be used with the OpenTelemetry instrumentation BOM so dependency versions stay aligned.
 
 ```xml
-<dependency>
-    <groupId>io.opentelemetry</groupId>
-    <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
-    <version>1.35.0</version>
-</dependency>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.1.0-alpha</version>
+</dependency>
+<dependency>
+    <groupId>io.opentelemetry.semconv</groupId>
+    <artifactId>opentelemetry-semconv</artifactId>
 </dependency>
 ```
 
-Configure basic ratio-based sampling in your application.yml. This configuration samples 10% of all traces.
+Configure basic ratio-based sampling in your application.yml. This configuration samples 10% of root traces and respects upstream parent sampling decisions.
 
 ```yaml
-otel:
-  traces:
-    sampler:
-      # Use ratio-based sampling to collect 10% of traces
-      type: traceidratio
-      arg: 0.1
-  service:
-    name: payment-service
-  exporter:
-    otlp:
-      endpoint: http://localhost:4318
+# Use parent-based ratio sampling to collect 10% of root traces
+otel.traces.sampler: parentbased_traceidratio
+otel.traces.sampler.arg: 0.1
+otel.service.name: payment-service
+otel.exporter.otlp.endpoint: http://localhost:4318
 ```
 
 For more control, implement custom sampling logic using the Java SDK directly. Create a configuration class that defines your sampling strategy.
@@ -54,10 +58,8 @@ For more control, implement custom sampling logic using the Java SDK directly. C
 ```java
 package com.oneuptime.config;
 
-import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
-import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
-import io.opentelemetry.sdk.autoconfigure.spi.traces.ConfigurableSamplerProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -69,10 +71,11 @@ public class SamplingConfiguration {
      * while applying ratio-based sampling for root spans
      */
     @Bean
-    public Sampler customSampler() {
-        // Sample 20% of root spans, but always respect parent decisions
-        return Sampler.parentBased(
-            Sampler.traceIdRatioBased(0.2)
+    public AutoConfigurationCustomizerProvider customSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> Sampler.parentBased(
+                Sampler.traceIdRatioBased(0.2)
+            )
         );
     }
 }
@@ -80,7 +83,7 @@ public class SamplingConfiguration {
 
 ## Advanced Sampling Strategies
 
-Real production environments often require sophisticated sampling logic based on request characteristics. You might want to always sample error traces while applying aggressive sampling to successful health checks.
+Real production environments often require sophisticated sampling logic based on request characteristics. With head-based sampling, you can route decisions based on data available when the span starts, such as the span name, kind, and initial attributes. If you need to always keep completed error or high-latency traces, use tail-based sampling in the OpenTelemetry Collector or your backend.
 
 Create a custom sampler that implements business logic for sampling decisions.
 
@@ -93,27 +96,24 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.data.LinkData;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
-import io.opentelemetry.semconv.SemanticAttributes;
+import io.opentelemetry.semconv.UrlAttributes;
 
 import java.util.List;
 
 /**
  * Custom sampler that applies different sampling rates based on
- * endpoint patterns, HTTP status codes, and span characteristics
+ * endpoint patterns and span characteristics available at span start
  */
 public class RuleBasedSampler implements Sampler {
 
     private final Sampler defaultSampler;
     private final double healthCheckSampleRate;
-    private final double errorSampleRate;
 
     public RuleBasedSampler(
             double defaultRate,
-            double healthCheckRate,
-            double errorRate) {
+            double healthCheckRate) {
         this.defaultSampler = Sampler.traceIdRatioBased(defaultRate);
         this.healthCheckSampleRate = healthCheckRate;
-        this.errorSampleRate = errorRate;
     }
 
     @Override
@@ -125,16 +125,10 @@ public class RuleBasedSampler implements Sampler {
             Attributes attributes,
             List<LinkData> parentLinks) {
 
-        // Always sample errors regardless of other rules
-        Long statusCode = attributes.get(SemanticAttributes.HTTP_STATUS_CODE);
-        if (statusCode != null && statusCode >= 400) {
-            return SamplingResult.recordAndSample();
-        }
-
         // Apply reduced sampling for health check endpoints
-        String httpTarget = attributes.get(SemanticAttributes.HTTP_TARGET);
-        if (httpTarget != null &&
-            (httpTarget.equals("/health") || httpTarget.equals("/actuator/health"))) {
+        String urlPath = attributes.get(UrlAttributes.URL_PATH);
+        if (urlPath != null &&
+            (urlPath.equals("/health") || urlPath.equals("/actuator/health"))) {
             double random = Math.random();
             if (random < healthCheckSampleRate) {
                 return SamplingResult.recordAndSample();
@@ -143,7 +137,7 @@ public class RuleBasedSampler implements Sampler {
         }
 
         // Sample high-value endpoints more aggressively
-        if (httpTarget != null && httpTarget.startsWith("/api/payment")) {
+        if (urlPath != null && urlPath.startsWith("/api/payment")) {
             return SamplingResult.recordAndSample();
         }
 
@@ -155,7 +149,7 @@ public class RuleBasedSampler implements Sampler {
 
     @Override
     public String getDescription() {
-        return "RuleBasedSampler{default=0.1, healthCheck=0.01, errors=1.0}";
+        return "RuleBasedSampler{default=0.1, healthCheck=0.01}";
     }
 }
 ```
@@ -166,6 +160,7 @@ Wire up the custom sampler in your configuration.
 package com.oneuptime.config;
 
 import com.oneuptime.sampling.RuleBasedSampler;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -180,17 +175,16 @@ public class AdvancedSamplingConfiguration {
     @Value("${sampling.healthcheck.rate:0.01}")
     private double healthCheckRate;
 
-    @Value("${sampling.error.rate:1.0}")
-    private double errorRate;
-
     /**
      * Configure rule-based sampler with different rates for different
      * types of requests
      */
     @Bean
-    public Sampler ruleSampler() {
-        return Sampler.parentBased(
-            new RuleBasedSampler(defaultRate, healthCheckRate, errorRate)
+    public AutoConfigurationCustomizerProvider ruleSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> Sampler.parentBased(
+                new RuleBasedSampler(defaultRate, healthCheckRate)
+            )
         );
     }
 }
@@ -205,6 +199,7 @@ Create a configuration that adapts sampling strategy based on active Spring prof
 ```java
 package com.oneuptime.config;
 
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -218,8 +213,10 @@ public class EnvironmentSamplingConfiguration {
      */
     @Bean
     @Profile("dev")
-    public Sampler devSampler() {
-        return Sampler.alwaysOn();
+    public AutoConfigurationCustomizerProvider devSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> Sampler.alwaysOn()
+        );
     }
 
     /**
@@ -227,9 +224,11 @@ public class EnvironmentSamplingConfiguration {
      */
     @Bean
     @Profile("staging")
-    public Sampler stagingSampler() {
-        return Sampler.parentBased(
-            Sampler.traceIdRatioBased(0.5)
+    public AutoConfigurationCustomizerProvider stagingSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> Sampler.parentBased(
+                Sampler.traceIdRatioBased(0.5)
+            )
         );
     }
 
@@ -238,9 +237,11 @@ public class EnvironmentSamplingConfiguration {
      */
     @Bean
     @Profile("prod")
-    public Sampler prodSampler() {
-        return Sampler.parentBased(
-            Sampler.traceIdRatioBased(0.1)
+    public AutoConfigurationCustomizerProvider prodSampler() {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> Sampler.parentBased(
+                Sampler.traceIdRatioBased(0.1)
+            )
         );
     }
 }
@@ -258,7 +259,7 @@ graph TD
     C -->|Yes| E[Record and Sample]
     C -->|No| F[Drop]
     D --> G{Custom Rules Match?}
-    G -->|Error/Priority| E
+    G -->|Priority Endpoint| E
     G -->|Health Check| H{Random < Rate?}
     G -->|Default| I[Ratio-Based Decision]
     H -->|Yes| E
@@ -267,9 +268,9 @@ graph TD
     I -->|Out of Ratio| F
 ```
 
-## Dynamic Sampling with Spring Boot Actuator
+## Dynamic Sampling with Spring Cloud Actuator Refresh
 
-For production systems, the ability to adjust sampling rates without restarting services proves invaluable. Implement dynamic sampling configuration using Spring Boot properties.
+For production systems, the ability to adjust sampling rates without restarting services proves invaluable. Implement dynamic sampling configuration using Spring Boot properties and Spring Cloud's refresh support.
 
 ```java
 package com.oneuptime.sampling;
@@ -296,7 +297,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @ConfigurationProperties(prefix = "sampling")
 public class DynamicSampler implements Sampler {
 
-    private final AtomicReference<Sampler> delegate = new AtomicReference<>();
+    private final AtomicReference<Sampler> delegate =
+        new AtomicReference<>(Sampler.traceIdRatioBased(0.1));
 
     private double rate = 0.1;
 
@@ -319,10 +321,6 @@ public class DynamicSampler implements Sampler {
             List<LinkData> parentLinks) {
 
         Sampler currentSampler = delegate.get();
-        if (currentSampler == null) {
-            currentSampler = Sampler.traceIdRatioBased(rate);
-            delegate.set(currentSampler);
-        }
 
         return currentSampler.shouldSample(
             parentContext, traceId, name, spanKind, attributes, parentLinks
@@ -332,6 +330,29 @@ public class DynamicSampler implements Sampler {
     @Override
     public String getDescription() {
         return String.format("DynamicSampler{rate=%.3f}", rate);
+    }
+}
+```
+
+Register the dynamic sampler with OpenTelemetry autoconfiguration.
+
+```java
+package com.oneuptime.config;
+
+import com.oneuptime.sampling.DynamicSampler;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class DynamicSamplingConfiguration {
+
+    @Bean
+    public AutoConfigurationCustomizerProvider dynamicSamplerCustomizer(
+            DynamicSampler dynamicSampler) {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> dynamicSampler
+        );
     }
 }
 ```
@@ -356,13 +377,12 @@ Validate your sampling configuration with integration tests that verify sampling
 ```java
 package com.oneuptime.sampling;
 
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
 import io.opentelemetry.sdk.trace.samplers.SamplingDecision;
-import io.opentelemetry.semconv.SemanticAttributes;
+import io.opentelemetry.semconv.UrlAttributes;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -375,18 +395,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class RuleBasedSamplerTest {
 
     @Test
-    void shouldAlwaysSampleErrors() {
-        RuleBasedSampler sampler = new RuleBasedSampler(0.1, 0.01, 1.0);
+    void shouldSamplePaymentEndpoints() {
+        RuleBasedSampler sampler = new RuleBasedSampler(0.1, 0.01);
 
         Attributes attributes = Attributes.of(
-            SemanticAttributes.HTTP_STATUS_CODE, 500L,
-            SemanticAttributes.HTTP_TARGET, "/api/users"
+            UrlAttributes.URL_PATH, "/api/payment/process"
         );
 
         SamplingResult result = sampler.shouldSample(
             Context.root(),
             "trace-id-123",
-            "GET /api/users",
+            "POST /api/payment/process",
             SpanKind.SERVER,
             attributes,
             Collections.emptyList()
@@ -397,11 +416,10 @@ class RuleBasedSamplerTest {
 
     @Test
     void shouldReduceSamplingForHealthChecks() {
-        RuleBasedSampler sampler = new RuleBasedSampler(0.1, 0.0, 1.0);
+        RuleBasedSampler sampler = new RuleBasedSampler(0.1, 0.0);
 
         Attributes attributes = Attributes.of(
-            SemanticAttributes.HTTP_STATUS_CODE, 200L,
-            SemanticAttributes.HTTP_TARGET, "/health"
+            UrlAttributes.URL_PATH, "/health"
         );
 
         SamplingResult result = sampler.shouldSample(
@@ -416,26 +434,6 @@ class RuleBasedSamplerTest {
         assertEquals(SamplingDecision.DROP, result.getDecision());
     }
 
-    @Test
-    void shouldSamplePaymentEndpoints() {
-        RuleBasedSampler sampler = new RuleBasedSampler(0.1, 0.01, 1.0);
-
-        Attributes attributes = Attributes.of(
-            SemanticAttributes.HTTP_STATUS_CODE, 200L,
-            SemanticAttributes.HTTP_TARGET, "/api/payment/process"
-        );
-
-        SamplingResult result = sampler.shouldSample(
-            Context.root(),
-            "trace-id-789",
-            "POST /api/payment/process",
-            SpanKind.SERVER,
-            attributes,
-            Collections.emptyList()
-        );
-
-        assertEquals(SamplingDecision.RECORD_AND_SAMPLE, result.getDecision());
-    }
 }
 ```
 
@@ -453,15 +451,14 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.data.LinkData;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
+import io.opentelemetry.sdk.trace.samplers.SamplingDecision;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /**
  * Wrapper sampler that tracks sampling decisions as metrics
  */
-@Component
 public class MonitoredSampler implements Sampler {
 
     private final Sampler delegate;
@@ -492,7 +489,7 @@ public class MonitoredSampler implements Sampler {
         );
 
         // Track the decision in metrics
-        if (result.getDecision().isSampled()) {
+        if (result.getDecision() == SamplingDecision.RECORD_AND_SAMPLE) {
             sampledCounter.increment();
         } else {
             droppedCounter.increment();
@@ -508,4 +505,28 @@ public class MonitoredSampler implements Sampler {
 }
 ```
 
-Proper sampling configuration requires understanding your application's traffic patterns, cost constraints, and observability requirements. Start conservative with low sampling rates and increase selectively for high-value endpoints. Always sample errors to maintain visibility into failures. Use parent-based sampling to maintain consistency across service boundaries. Monitor your sampling metrics to ensure the strategy achieves the right balance between observability and efficiency.
+Register the monitored sampler through the same OpenTelemetry autoconfiguration hook.
+
+```java
+package com.oneuptime.config;
+
+import com.oneuptime.metrics.MonitoredSampler;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class MonitoringSamplingConfiguration {
+
+    @Bean
+    public AutoConfigurationCustomizerProvider monitoredSampler(
+            MeterRegistry meterRegistry) {
+        return customizer -> customizer.addSamplerCustomizer(
+            (fallback, config) -> new MonitoredSampler(fallback, meterRegistry)
+        );
+    }
+}
+```
+
+Proper sampling configuration requires understanding your application's traffic patterns, cost constraints, and observability requirements. Start conservative with low sampling rates and increase selectively for high-value endpoints. Use tail-based sampling when you need to keep completed error or high-latency traces. Use parent-based sampling to maintain consistency across service boundaries. Monitor your sampling metrics to ensure the strategy achieves the right balance between observability and efficiency.
