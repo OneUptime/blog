@@ -32,14 +32,13 @@ The runbook engine sits between your alerting system and the on-call engineer. W
 
 ## Defining Runbook Templates
 
-Each runbook is a template that knows which signals to query and how to interpret them.
+Each runbook is a template that knows which signals to query and how to interpret them. OpenTelemetry standardizes the telemetry signals and semantic attribute names; the exact query shape depends on your observability backend or query adapter.
 
 ```python
 # runbook_template.py
 
 from dataclasses import dataclass, field
 from typing import List, Callable, Optional
-from datetime import datetime, timedelta
 
 @dataclass
 class DiagnosticStep:
@@ -75,8 +74,12 @@ high_error_rate_runbook = RunbookTemplate(
             name="Check current error rate",
             description="Query the current error rate and compare to baseline",
             query={
-                "metric": "http.server.errors",
-                "labels": {"service.name": "api-gateway"},
+                "metric": "http.server.request.duration",
+                "attributes": {
+                    "service.name": "api-gateway",
+                    "http.response.status_code": "5xx",
+                },
+                "aggregation": "count",
                 "function": "rate",
                 "window": "5m",
             },
@@ -89,8 +92,12 @@ high_error_rate_runbook = RunbookTemplate(
             name="Identify affected endpoints",
             description="Break down errors by endpoint to find the source",
             query={
-                "metric": "http.server.errors",
-                "labels": {"service.name": "api-gateway"},
+                "metric": "http.server.request.duration",
+                "attributes": {
+                    "service.name": "api-gateway",
+                    "http.response.status_code": "5xx",
+                },
+                "aggregation": "count",
                 "group_by": ["http.route"],
                 "function": "sum",
                 "window": "15m",
@@ -112,8 +119,8 @@ high_error_rate_runbook = RunbookTemplate(
                 "type": "trace",
                 "attributes": {
                     "service.name": "api-gateway",
-                    "otel.status_code": "ERROR",
                 },
+                "status": "ERROR",
                 "limit": 20,
             },
             evaluate=lambda traces, _: {
@@ -163,7 +170,7 @@ The engine takes a runbook template and executes it against live telemetry data.
 ```python
 # runbook_engine.py
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 @dataclass
@@ -201,14 +208,14 @@ class RunbookEngine:
 
     def execute(self, runbook: RunbookTemplate) -> RunbookExecution:
         """Execute a runbook and return the diagnostic report."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         step_results = []
 
         for step in runbook.steps:
             result = self._execute_step(step, runbook.service)
             step_results.append(result)
 
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(timezone.utc)
 
         # Determine overall status (worst status among steps)
         severity_order = {"info": 0, "warning": 1, "critical": 2}
@@ -256,7 +263,7 @@ class RunbookEngine:
             status=evaluation["status"],
             message=evaluation["message"],
             raw_data={"query": query, "result_summary": str(data)[:500]},
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         )
 
     def _select_actions(self, all_actions: List[str], results: List[StepResult]) -> List[str]:
