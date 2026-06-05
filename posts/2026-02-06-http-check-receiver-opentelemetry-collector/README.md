@@ -20,10 +20,10 @@ The HTTP Check receiver is an OpenTelemetry Collector component that acts as a s
 
 The receiver generates several key metrics:
 - **Response time** - Time taken to complete the request
-- **Status code** - HTTP status code returned by the endpoint
-- **Success/failure status** - Binary metric indicating if the request succeeded
-- **Response size** - Size of the response body in bytes
-- **TLS information** - Certificate validity and expiration (for HTTPS endpoints)
+- **Status class** - Whether the HTTP response status code matched each status class
+- **Check errors** - Errors encountered while making the request
+- **Response size** - Size of the response body in bytes (optional)
+- **TLS information** - Certificate expiration details for HTTPS endpoints (optional)
 
 **Primary use cases:**
 
@@ -64,7 +64,7 @@ This architecture allows you to monitor endpoint health from within your infrast
 
 Before configuring the HTTP Check receiver, ensure you have:
 
-1. **OpenTelemetry Collector** version 0.80.0 or later with the HTTP Check receiver component (may require the `otelcol-contrib` distribution)
+1. **OpenTelemetry Collector** with the HTTP Check receiver component (use the `otelcol-contrib` or `otelcol-k8s` distribution)
 2. **List of endpoints to monitor** with expected behavior and thresholds
 3. **Network connectivity** from the Collector to all monitored endpoints
 4. **Understanding of your SLA requirements** for response time and uptime
@@ -80,7 +80,7 @@ The HTTP Check receiver requires configuring target endpoints and check interval
 
 receivers:
   # HTTP Check receiver performs synthetic monitoring
-  httpcheck:
+  http_check:
     # Targets to monitor
     targets:
       # Monitor a web service homepage
@@ -107,7 +107,7 @@ service:
   pipelines:
     # Metrics pipeline: receive from HTTP Check, export to OneUptime
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       exporters: [otlphttp]
 ```
 
@@ -121,11 +121,20 @@ service:
 
 ## Production Configuration with Advanced Features
 
-For production deployments, configure timeouts, custom headers, expected status codes, and body validation:
+For production deployments, configure timeouts, custom headers, optional metrics, and body validation:
 
 ```yaml
 receivers:
-  httpcheck:
+  http_check:
+    metrics:
+      httpcheck.response.size:
+        enabled: true
+      httpcheck.tls.cert_remaining:
+        enabled: true
+      httpcheck.validation.passed:
+        enabled: true
+      httpcheck.validation.failed:
+        enabled: true
     # List of endpoints to monitor
     targets:
       # API endpoint with authentication and expected response
@@ -137,14 +146,13 @@ receivers:
           Authorization: Bearer ${API_TOKEN}
           Accept: application/json
 
-        # Expected HTTP status code (alerts if different)
-        expected_status_code: 200
-
         # Timeout for the request
         timeout: 10s
 
-        # Expected response body pattern (regex)
-        expected_body_pattern: '"status":"healthy"'
+        # Expected response body validation
+        validations:
+          - json_path: "$.status"
+            equals: "healthy"
 
       # POST request with body
       - endpoint: https://api.example.com/v1/webhook
@@ -152,7 +160,6 @@ receivers:
         headers:
           Content-Type: application/json
         body: '{"test": true}'
-        expected_status_code: 202
 
       # HTTPS endpoint with TLS verification
       - endpoint: https://secure.example.com
@@ -172,7 +179,6 @@ receivers:
       - endpoint: https://third-party-service.com/api
         method: GET
         timeout: 30s
-        expected_status_code: 200
 
     # Check interval for all targets
     collection_interval: 30s
@@ -202,9 +208,9 @@ processors:
         action: update
         new_name: http.check.duration_ms
 
-      - include: httpcheck.status
+      - include: httpcheck.error
         action: update
-        new_name: http.check.success
+        new_name: http.check.error
 
 exporters:
   # Export to OneUptime with retry configuration
@@ -226,11 +232,16 @@ service:
     logs:
       level: info
     metrics:
-      address: localhost:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [memory_limiter, resource, metricstransform]
       exporters: [otlphttp]
 ```
@@ -238,7 +249,7 @@ service:
 **Advanced features:**
 
 1. **Custom headers:** Add authentication tokens, API keys, or custom headers
-2. **Expected status codes:** Alert when the response code doesn't match expectations
+2. **Status class alerts:** Alert when the response does not fall into the expected status class
 3. **Body pattern matching:** Validate response content using regex patterns
 4. **TLS configuration:** Handle self-signed certificates and client authentication
 5. **Variable timeouts:** Configure different timeouts for different endpoints
@@ -254,26 +265,27 @@ The HTTP Check receiver generates several metrics for each target:
 | Metric Name | Type | Description |
 |-------------|------|-------------|
 | `httpcheck.duration` | Gauge | Response time in milliseconds |
-| `httpcheck.status` | Gauge | HTTP status code returned |
-| `httpcheck.success` | Gauge | 1 if check succeeded, 0 if failed |
-| `httpcheck.response_size` | Gauge | Size of response body in bytes |
-| `httpcheck.tls_cert_expiry` | Gauge | Days until TLS certificate expires (HTTPS only) |
+| `httpcheck.status` | Sum | 1 if the response status code matches the `http.status_class` label, otherwise 0 |
+| `httpcheck.error` | Sum | Errors that occurred during HTTP checks |
+| `httpcheck.response.size` | Gauge | Size of response body in bytes (optional) |
+| `httpcheck.tls.cert_remaining` | Gauge | Seconds until TLS certificate expires (optional, HTTPS only) |
 
 **Metric labels:**
 
 Each metric includes labels for filtering and aggregation:
-- `endpoint`: The URL being checked
-- `method`: HTTP method used (GET, POST, etc.)
-- `status_code`: HTTP status code returned
+- `http.url`: The URL being checked
+- `http.method`: HTTP method used (GET, POST, etc.)
+- `http.status_code`: HTTP status code returned
+- `http.status_class`: HTTP status class such as `2xx`, `3xx`, `4xx`, or `5xx`
 
 **Example metric output:**
 
 ```text
-httpcheck.duration{endpoint="https://api.example.com/health",method="GET",status_code="200"} 145.2
-httpcheck.status{endpoint="https://api.example.com/health",method="GET"} 200
-httpcheck.success{endpoint="https://api.example.com/health",method="GET"} 1
-httpcheck.response_size{endpoint="https://api.example.com/health",method="GET"} 256
-httpcheck.tls_cert_expiry{endpoint="https://api.example.com/health",method="GET"} 87
+httpcheck.duration{http.url="https://api.example.com/health"} 145
+httpcheck.status{http.url="https://api.example.com/health",http.method="GET",http.status_code="200",http.status_class="2xx"} 1
+httpcheck.error{http.url="https://api.example.com/health",error.message="connection refused"} 1
+httpcheck.response.size{http.url="https://api.example.com/health"} 256
+httpcheck.tls.cert_remaining{http.url="https://api.example.com/health",http.tls.issuer="Example CA"} 7516800
 ```
 
 ---
@@ -305,7 +317,7 @@ Each Collector in different regions uses the same configuration but adds a regio
 ```yaml
 # Collector in US East
 receivers:
-  httpcheck:
+  http_check:
     targets:
       - endpoint: https://api.example.com/health
         method: GET
@@ -327,7 +339,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource]
       exporters: [otlphttp]
 ```
@@ -342,42 +354,42 @@ Configure your observability backend to alert when HTTP checks fail or performan
 
 **Example alert conditions:**
 
-1. **Endpoint down:** `httpcheck.success == 0`
-2. **Slow response:** `httpcheck.duration > 1000` (1 second)
-3. **Wrong status code:** `httpcheck.status != 200`
-4. **Certificate expiring:** `httpcheck.tls_cert_expiry < 30` (30 days)
+1. **Endpoint down:** `{"httpcheck.status", "http.status_class"="2xx"} == 0` or `{"httpcheck.error"} > 0`
+2. **Slow response:** `{"httpcheck.duration"} > 1000` (1 second)
+3. **Wrong status class:** `{"httpcheck.status", "http.status_class"="2xx"} == 0`
+4. **Certificate expiring:** `{"httpcheck.tls.cert_remaining"} < 2592000` (30 days)
 
 **OneUptime alert configuration example:**
 
 ```yaml
 # Alert when endpoint is down for 2 consecutive checks
 - alert: EndpointDown
-  expr: httpcheck.success == 0
+  expr: '{"httpcheck.status", "http.status_class"="2xx"} == 0 or {"httpcheck.error"} > 0'
   for: 2m
   labels:
     severity: critical
   annotations:
-    summary: "Endpoint {{ $labels.endpoint }} is down"
-    description: "HTTP check for {{ $labels.endpoint }} has failed for 2 minutes"
+    summary: 'Endpoint {{ index $labels "http.url" }} is down'
+    description: 'HTTP check for {{ index $labels "http.url" }} has failed for 2 minutes'
 
 # Alert when response time exceeds threshold
 - alert: SlowResponse
-  expr: httpcheck.duration > 1000
+  expr: '{"httpcheck.duration"} > 1000'
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "Endpoint {{ $labels.endpoint }} is slow"
-    description: "Response time for {{ $labels.endpoint }} is {{ $value }}ms (threshold: 1000ms)"
+    summary: 'Endpoint {{ index $labels "http.url" }} is slow'
+    description: 'Response time for {{ index $labels "http.url" }} is {{ $value }}ms (threshold: 1000ms)'
 
 # Alert on certificate expiration
 - alert: CertificateExpiringSoon
-  expr: httpcheck.tls_cert_expiry < 30
+  expr: '{"httpcheck.tls.cert_remaining"} < 2592000'
   labels:
     severity: warning
   annotations:
-    summary: "TLS certificate for {{ $labels.endpoint }} expires soon"
-    description: "Certificate expires in {{ $value }} days"
+    summary: 'TLS certificate for {{ index $labels "http.url" }} expires soon'
+    description: "Certificate expires in {{ $value }} seconds"
 ```
 
 ---
@@ -388,36 +400,39 @@ Use the HTTP Check receiver to monitor critical dependencies and track their imp
 
 ```yaml
 receivers:
-  httpcheck:
+  http_check:
+    metrics:
+      httpcheck.validation.passed:
+        enabled: true
+      httpcheck.validation.failed:
+        enabled: true
     targets:
       # Database API health check
       - endpoint: https://db-proxy.internal.example.com/health
         method: GET
-        expected_status_code: 200
-        expected_body_pattern: '"status":"ok"'
+        validations:
+          - json_path: "$.status"
+            equals: "ok"
 
       # Payment gateway availability
       - endpoint: https://api.payment-provider.com/status
         method: GET
-        expected_status_code: 200
 
       # External authentication service
       - endpoint: https://auth.external-provider.com/health
         method: GET
-        expected_status_code: 200
 
       # CDN availability
       - endpoint: https://cdn.example.com/health.txt
         method: GET
-        expected_status_code: 200
-        expected_body_pattern: "OK"
+        validations:
+          - contains: "OK"
 
       # Message queue management API
       - endpoint: https://queue.internal.example.com/api/health
         method: GET
         headers:
           Authorization: Bearer ${QUEUE_API_TOKEN}
-        expected_status_code: 200
 
     collection_interval: 30s
 
@@ -437,7 +452,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource]
       exporters: [otlphttp]
 ```
@@ -448,21 +463,19 @@ This configuration provides visibility into external dependencies, helping you i
 
 ## Synthetic User Journey Monitoring
 
-Chain multiple HTTP checks to simulate user journeys through your application:
+Configure multiple HTTP checks to cover important steps in a user journey through your application:
 
 ```yaml
 receivers:
-  httpcheck:
+  http_check:
     targets:
       # Step 1: Load homepage
       - endpoint: https://app.example.com
         method: GET
-        expected_status_code: 200
 
       # Step 2: Load login page
       - endpoint: https://app.example.com/login
         method: GET
-        expected_status_code: 200
 
       # Step 3: Submit login (would need session handling in real scenario)
       - endpoint: https://api.example.com/auth/login
@@ -470,21 +483,18 @@ receivers:
         headers:
           Content-Type: application/json
         body: '{"username":"test","password":"test"}'
-        expected_status_code: 200
 
       # Step 4: Load dashboard
       - endpoint: https://app.example.com/dashboard
         method: GET
         headers:
           Cookie: session=test-session
-        expected_status_code: 200
 
       # Step 5: API request
       - endpoint: https://api.example.com/v1/data
         method: GET
         headers:
           Authorization: Bearer ${TEST_TOKEN}
-        expected_status_code: 200
 
     collection_interval: 300s  # Check every 5 minutes
 
@@ -507,12 +517,12 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource]
       exporters: [otlphttp]
 ```
 
-This approach simulates critical user workflows, ensuring the entire application stack functions correctly from an end-user perspective.
+This approach monitors the critical endpoints used by a workflow. The HTTP Check receiver runs each target independently, so use purpose-built synthetic monitoring if you need shared session state or strict step-by-step execution.
 
 ---
 
@@ -543,7 +553,7 @@ For high-volume monitoring (100+ endpoints), consider:
 
 ```yaml
 receivers:
-  httpcheck:
+  http_check:
     targets:
       # ... many endpoints ...
     collection_interval: 60s
@@ -556,7 +566,7 @@ processors:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [memory_limiter]
       exporters: [otlphttp]
 ```
@@ -569,7 +579,7 @@ service:
 
 ```yaml
 receivers:
-  httpcheck/internal:
+  http_check/internal:
     targets:
       - endpoint: http://service-a.internal:8080/health
         method: GET
@@ -593,7 +603,7 @@ processors:
 
 ```yaml
 receivers:
-  httpcheck/external:
+  http_check/external:
     targets:
       - endpoint: https://external-api.com/status
         method: GET
@@ -624,7 +634,7 @@ HTTP Check works well alongside other receivers for comprehensive monitoring:
 ```yaml
 receivers:
   # Synthetic HTTP monitoring
-  httpcheck:
+  http_check:
     targets:
       - endpoint: https://api.example.com/health
         method: GET
@@ -658,7 +668,7 @@ service:
   pipelines:
     # Synthetic monitoring metrics
     metrics/synthetic:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [batch]
       exporters: [otlphttp]
 
@@ -710,7 +720,7 @@ Checks fail with TLS verification errors.
 
 ```yaml
 receivers:
-  httpcheck:
+  http_check:
     targets:
       - endpoint: https://self-signed.example.com
         method: GET
@@ -765,7 +775,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource, batch]
       exporters: [otlphttp]
 ```
