@@ -46,7 +46,6 @@ kubectl get apiservice | grep custom
 
 # You should see:
 # v1beta1.custom.metrics.k8s.io   prometheus-adapter/custom-metrics-apiserver   True   15d
-# v1beta2.custom.metrics.k8s.io   prometheus-adapter/custom-metrics-apiserver   True   15d
 
 # If these are missing, the custom metrics API is not available
 ```
@@ -61,7 +60,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Add a ServiceMonitor or scrape config for Prometheus:
@@ -122,7 +126,7 @@ rules:
       name:
         matches: "^(.*)_total$"
         as: "${1}_per_second"
-      metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 ```
 
 Apply the updated configuration:
