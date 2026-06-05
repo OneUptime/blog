@@ -41,6 +41,7 @@ Install the required packages for a Node.js application.
 # Install OpenTelemetry packages and the AWS SDK instrumentation
 
 npm install @opentelemetry/sdk-node \
+  @opentelemetry/api \
   @opentelemetry/instrumentation-aws-sdk \
   @opentelemetry/exporter-metrics-otlp-http \
   @opentelemetry/sdk-metrics \
@@ -55,10 +56,10 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { AwsInstrumentation } = require('@opentelemetry/instrumentation-aws-sdk');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
   }),
   // Instrument all AWS SDK calls automatically
@@ -67,13 +68,15 @@ const sdk = new NodeSDK({
       suppressInternalInstrumentation: true,
     }),
   ],
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: 'http://localhost:4318/v1/metrics',
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: 'http://localhost:4318/v1/metrics',
+      }),
+      // Export metrics every 30 seconds
+      exportIntervalMillis: 30000,
     }),
-    // Export metrics every 30 seconds
-    exportIntervalMillis: 30000,
-  }),
+  ],
 });
 
 sdk.start();
@@ -89,7 +92,7 @@ const { metrics } = require('@opentelemetry/api');
 // Create a meter for DynamoDB capacity metrics
 const meter = metrics.getMeter('dynamodb-capacity');
 
-// Define gauges for consumed capacity tracking
+// Define counters for consumed capacity tracking
 const consumedReadCapacity = meter.createCounter('dynamodb.consumed_read_capacity_units', {
   description: 'Total consumed read capacity units',
   unit: 'units',
@@ -107,6 +110,14 @@ const throttledRequests = meter.createCounter('dynamodb.throttled_requests', {
 
 const client = new DynamoDBClient({ region: 'us-east-1' });
 
+function isThrottlingError(error) {
+  return [
+    'ProvisionedThroughputExceededException',
+    'RequestLimitExceeded',
+    'ThrottlingException',
+  ].includes(error.name);
+}
+
 // Wrapper function that tracks capacity consumption after each query
 async function queryWithMetrics(tableName, params) {
   try {
@@ -121,16 +132,19 @@ async function queryWithMetrics(tableName, params) {
 
     // Record the consumed read capacity from the response
     if (response.ConsumedCapacity) {
-      consumedReadCapacity.add(response.ConsumedCapacity.CapacityUnits, {
-        'dynamodb.table': tableName,
-        'dynamodb.operation': 'Query',
-      });
+      consumedReadCapacity.add(
+        response.ConsumedCapacity.ReadCapacityUnits ?? response.ConsumedCapacity.CapacityUnits,
+        {
+          'dynamodb.table': tableName,
+          'dynamodb.operation': 'Query',
+        }
+      );
     }
 
     return response;
   } catch (error) {
     // Track throttled requests separately
-    if (error.name === 'ProvisionedThroughputExceededException') {
+    if (isThrottlingError(error)) {
       throttledRequests.add(1, {
         'dynamodb.table': tableName,
         'dynamodb.operation': 'Query',
@@ -152,15 +166,18 @@ async function putItemWithMetrics(tableName, item) {
     const response = await client.send(command);
 
     if (response.ConsumedCapacity) {
-      consumedWriteCapacity.add(response.ConsumedCapacity.CapacityUnits, {
-        'dynamodb.table': tableName,
-        'dynamodb.operation': 'PutItem',
-      });
+      consumedWriteCapacity.add(
+        response.ConsumedCapacity.WriteCapacityUnits ?? response.ConsumedCapacity.CapacityUnits,
+        {
+          'dynamodb.table': tableName,
+          'dynamodb.operation': 'PutItem',
+        }
+      );
     }
 
     return response;
   } catch (error) {
-    if (error.name === 'ProvisionedThroughputExceededException') {
+    if (isThrottlingError(error)) {
       throttledRequests.add(1, {
         'dynamodb.table': tableName,
         'dynamodb.operation': 'PutItem',
@@ -177,76 +194,66 @@ module.exports = { queryWithMetrics, putItemWithMetrics };
 
 If you want table-level metrics without modifying application code, you can use the OpenTelemetry Collector with the AWS CloudWatch receiver. This pulls DynamoDB metrics directly from CloudWatch and converts them to OpenTelemetry format.
 
-Here is a collector configuration that pulls DynamoDB metrics.
+Here is a collector configuration that pulls DynamoDB metrics for the `Orders` table. Repeat the queries for additional tables, or use the receiver's metric discovery mode if you want broader collection.
 
 ```yaml
 # otel-collector-config.yaml
 receivers:
   # Pull DynamoDB metrics from AWS CloudWatch
-  awscloudwatch:
+  awscloudwatch/consumed:
     region: us-east-1
-    # Poll CloudWatch every 60 seconds
-    poll_interval: 60s
     metrics:
-      named:
+      # Poll CloudWatch every 60 seconds
+      collection_interval: 60s
+      period: 60s
+      queries:
         # Track consumed read capacity vs provisioned
-        dynamodb_consumed_rcus:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: ConsumedReadCapacityUnits
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: ""  # Empty string means all tables
+            TableName: Orders
 
         # Track consumed write capacity vs provisioned
-        dynamodb_consumed_wcus:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: ConsumedWriteCapacityUnits
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: ""
+            TableName: Orders
 
         # Track read throttle events
-        dynamodb_read_throttles:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: ReadThrottleEvents
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: ""
+            TableName: Orders
 
         # Track write throttle events
-        dynamodb_write_throttles:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: WriteThrottleEvents
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: ""
+            TableName: Orders
 
+  awscloudwatch/provisioned:
+    region: us-east-1
+    metrics:
+      # Provisioned capacity metrics are published at five-minute intervals
+      collection_interval: 5m
+      period: 5m
+      queries:
         # Provisioned capacity limits for comparison
-        dynamodb_provisioned_rcus:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: ProvisionedReadCapacityUnits
-          period: 300s
-          statistics: [Average]
+          stats: [Average]
           dimensions:
-            - name: TableName
-              value: ""
+            TableName: Orders
 
-        dynamodb_provisioned_wcus:
-          namespace: AWS/DynamoDB
+        - namespace: AWS/DynamoDB
           metric_name: ProvisionedWriteCapacityUnits
-          period: 300s
-          statistics: [Average]
+          stats: [Average]
           dimensions:
-            - name: TableName
-              value: ""
+            TableName: Orders
 
 processors:
   batch:
@@ -262,7 +269,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [awscloudwatch]
+      receivers: [awscloudwatch/consumed, awscloudwatch/provisioned]
       processors: [batch]
       exporters: [otlphttp]
 ```
@@ -273,6 +280,8 @@ For serverless applications, you can instrument your Lambda functions to report 
 
 ```python
 # lambda_handler.py
+import json
+
 import boto3
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
@@ -317,17 +326,18 @@ def handler(event, context):
     consumed = response.get("ConsumedCapacity", {})
     if consumed:
         rcu_counter.add(
-            consumed.get("CapacityUnits", 0),
+            consumed.get("ReadCapacityUnits", consumed.get("CapacityUnits", 0)),
             attributes={
                 "dynamodb.table": "Orders",
                 "dynamodb.operation": "Query",
                 "aws.lambda.function": context.function_name,
             }
         )
+        provider.force_flush()
 
     return {
         "statusCode": 200,
-        "body": response["Items"]
+        "body": json.dumps(response["Items"])
     }
 ```
 
