@@ -172,7 +172,7 @@ Windows images are inherently larger than Linux images, but you can still reduce
 ### Choose the smallest suitable base image
 
 ```dockerfile
-# Nano Server is ~260 MB - use for .NET 6+ and Go apps
+# Nano Server is ~260 MB - use for modern .NET and Go apps
 FROM mcr.microsoft.com/windows/nanoserver:ltsc2022
 
 # Server Core is ~1.8 GB - use for .NET Framework and IIS
@@ -297,11 +297,12 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2022
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Create a non-admin user for running the application
-RUN net user /add appuser; \
+RUN net user appuser /add; \
     net localgroup Users appuser /add
 
 WORKDIR C:/app
-COPY --chown=appuser . .
+COPY . .
+RUN icacls C:\app /grant 'appuser:(OI)(CI)RX' /T
 
 # Switch to the non-admin user
 USER appuser
