@@ -6,7 +6,7 @@ Tags: OpenTelemetry, .NET, Channel, Pipeline, System.IO.Pipelines, C#
 
 Description: Learn to instrument System.Threading.Channels and System.IO.Pipelines with OpenTelemetry for visibility into high-performance async data flows.
 
-System.Threading.Channels and System.IO.Pipelines are foundational building blocks for high-performance .NET applications. Channels provide producer-consumer patterns without locks, while Pipelines optimize I/O operations by minimizing allocations. When you build data processing systems with these primitives, observability becomes critical for understanding throughput, latency, and backpressure.
+System.Threading.Channels and System.IO.Pipelines are foundational building blocks for high-performance .NET applications. Channels provide low-overhead async producer-consumer patterns, while Pipelines optimize I/O operations by minimizing allocations. When you build data processing systems with these primitives, observability becomes critical for understanding throughput, latency, and backpressure.
 
 ## Why Monitor Channels and Pipelines
 
@@ -156,29 +156,28 @@ public class InstrumentedChannel<T>
 
         try
         {
-            var written = await _channel.Writer.WaitToWriteAsync(cancellationToken);
-
-            if (!written)
+            while (await _channel.Writer.WaitToWriteAsync(cancellationToken))
             {
-                activity?.SetTag("write.success", false);
-                activity?.SetTag("write.reason", "channel_closed");
-                return false;
+                if (_channel.Writer.TryWrite(item))
+                {
+                    Interlocked.Increment(ref _currentDepth);
+
+                    var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
+
+                    _itemsWritten.Add(1, new KeyValuePair<string, object?>("channel", _channelName));
+                    _writeLatency.Record(duration, new KeyValuePair<string, object?>("channel", _channelName));
+
+                    activity?.SetTag("write.success", true);
+                    activity?.SetTag("write.latency_ms", duration);
+                    activity?.SetTag("queue.depth", _currentDepth);
+
+                    return true;
+                }
             }
 
-            _channel.Writer.TryWrite(item);
-
-            Interlocked.Increment(ref _currentDepth);
-
-            var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-            _itemsWritten.Add(1, new KeyValuePair<string, object?>("channel", _channelName));
-            _writeLatency.Record(duration, new KeyValuePair<string, object?>("channel", _channelName));
-
-            activity?.SetTag("write.success", true);
-            activity?.SetTag("write.latency_ms", duration);
-            activity?.SetTag("queue.depth", _currentDepth);
-
-            return true;
+            activity?.SetTag("write.success", false);
+            activity?.SetTag("write.reason", "channel_closed");
+            return false;
         }
         catch (Exception ex)
         {
@@ -206,31 +205,27 @@ public class InstrumentedChannel<T>
 
         try
         {
-            var available = await _channel.Reader.WaitToReadAsync(cancellationToken);
-
-            if (!available)
+            while (await _channel.Reader.WaitToReadAsync(cancellationToken))
             {
-                activity?.SetTag("read.success", false);
-                activity?.SetTag("read.reason", "channel_empty_and_closed");
-                return (false, default);
+                if (_channel.Reader.TryRead(out var item))
+                {
+                    Interlocked.Decrement(ref _currentDepth);
+
+                    var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
+
+                    _itemsRead.Add(1, new KeyValuePair<string, object?>("channel", _channelName));
+                    _readLatency.Record(duration, new KeyValuePair<string, object?>("channel", _channelName));
+
+                    activity?.SetTag("read.success", true);
+                    activity?.SetTag("read.latency_ms", duration);
+                    activity?.SetTag("queue.depth", _currentDepth);
+
+                    return (true, item);
+                }
             }
 
-            if (_channel.Reader.TryRead(out var item))
-            {
-                Interlocked.Decrement(ref _currentDepth);
-
-                var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-                _itemsRead.Add(1, new KeyValuePair<string, object?>("channel", _channelName));
-                _readLatency.Record(duration, new KeyValuePair<string, object?>("channel", _channelName));
-
-                activity?.SetTag("read.success", true);
-                activity?.SetTag("read.latency_ms", duration);
-                activity?.SetTag("queue.depth", _currentDepth);
-
-                return (true, item);
-            }
-
+            activity?.SetTag("read.success", false);
+            activity?.SetTag("read.reason", "channel_empty_and_closed");
             return (false, default);
         }
         catch (Exception ex)
@@ -294,96 +289,115 @@ public class DataProcessingPipeline
         activity?.SetTag("data.id", data.Id);
         activity?.SetTag("data.source", data.Source);
 
-        await _rawDataChannel.WriteAsync(data, cancellationToken);
+        var written = await _rawDataChannel.WriteAsync(data, cancellationToken);
 
-        activity?.AddEvent(new ActivityEvent("DataIngested"));
+        activity?.SetTag("ingest.success", written);
+
+        if (written)
+        {
+            activity?.AddEvent(new ActivityEvent("DataIngested"));
+        }
     }
 
     private async Task ProcessStageAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            var (success, rawData) = await _rawDataChannel.ReadAsync(cancellationToken);
-
-            if (!success)
-                break;
-
-            using var activity = ActivitySource.StartActivity(
-                "Pipeline.Process",
-                ActivityKind.Internal);
-
-            activity?.SetTag("data.id", rawData.Id);
-            activity?.SetTag("stage", "processing");
-
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                // Simulate processing work
-                await Task.Delay(Random.Shared.Next(10, 50), cancellationToken);
+                var (success, rawData) = await _rawDataChannel.ReadAsync(cancellationToken);
 
-                var processedData = new ProcessedData
+                if (!success)
+                    break;
+
+                using var activity = ActivitySource.StartActivity(
+                    "Pipeline.Process",
+                    ActivityKind.Internal);
+
+                activity?.SetTag("data.id", rawData.Id);
+                activity?.SetTag("stage", "processing");
+
+                try
                 {
-                    Id = rawData.Id,
-                    Source = rawData.Source,
-                    ProcessedValue = rawData.RawValue.ToUpper(),
-                    ProcessedAt = DateTime.UtcNow
-                };
+                    // Simulate processing work
+                    await Task.Delay(Random.Shared.Next(10, 50), cancellationToken);
 
-                await _processedDataChannel.WriteAsync(processedData, cancellationToken);
+                    var processedData = new ProcessedData
+                    {
+                        Id = rawData.Id,
+                        Source = rawData.Source,
+                        ProcessedValue = rawData.RawValue.ToUpper(),
+                        ProcessedAt = DateTime.UtcNow
+                    };
 
-                activity?.SetTag("processing.success", true);
-                activity?.AddEvent(new ActivityEvent("DataProcessed"));
+                    await _processedDataChannel.WriteAsync(processedData, cancellationToken);
+
+                    activity?.SetTag("processing.success", true);
+                    activity?.AddEvent(new ActivityEvent("DataProcessed"));
+                }
+                catch (Exception ex)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    activity?.RecordException(ex);
+                    _logger.LogError(ex, "Failed to process data {DataId}", rawData.Id);
+                }
             }
-            catch (Exception ex)
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity?.RecordException(ex);
-                _logger.LogError(ex, "Failed to process data {DataId}", rawData.Id);
-            }
+        }
+        finally
+        {
+            _processedDataChannel.Complete();
         }
     }
 
     private async Task EnrichmentStageAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            var (success, processedData) = await _processedDataChannel.ReadAsync(cancellationToken);
-
-            if (!success)
-                break;
-
-            using var activity = ActivitySource.StartActivity(
-                "Pipeline.Enrich",
-                ActivityKind.Internal);
-
-            activity?.SetTag("data.id", processedData.Id);
-            activity?.SetTag("stage", "enrichment");
-
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                // Simulate enrichment work
-                await Task.Delay(Random.Shared.Next(20, 100), cancellationToken);
+                var (success, processedData) = await _processedDataChannel.ReadAsync(cancellationToken);
 
-                var enrichedData = new EnrichedData
+                if (!success)
+                    break;
+
+                using var activity = ActivitySource.StartActivity(
+                    "Pipeline.Enrich",
+                    ActivityKind.Internal);
+
+                activity?.SetTag("data.id", processedData.Id);
+                activity?.SetTag("stage", "enrichment");
+
+                try
                 {
-                    Id = processedData.Id,
-                    Source = processedData.Source,
-                    ProcessedValue = processedData.ProcessedValue,
-                    EnrichedMetadata = $"Enriched-{processedData.Id}",
-                    ProcessedAt = processedData.ProcessedAt,
-                    EnrichedAt = DateTime.UtcNow
-                };
+                    // Simulate enrichment work
+                    await Task.Delay(Random.Shared.Next(20, 100), cancellationToken);
 
-                await _enrichedDataChannel.WriteAsync(enrichedData, cancellationToken);
+                    var enrichedData = new EnrichedData
+                    {
+                        Id = processedData.Id,
+                        Source = processedData.Source,
+                        ProcessedValue = processedData.ProcessedValue,
+                        EnrichedMetadata = $"Enriched-{processedData.Id}",
+                        ProcessedAt = processedData.ProcessedAt,
+                        EnrichedAt = DateTime.UtcNow
+                    };
 
-                activity?.SetTag("enrichment.success", true);
-                activity?.AddEvent(new ActivityEvent("DataEnriched"));
+                    await _enrichedDataChannel.WriteAsync(enrichedData, cancellationToken);
+
+                    activity?.SetTag("enrichment.success", true);
+                    activity?.AddEvent(new ActivityEvent("DataEnriched"));
+                }
+                catch (Exception ex)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    activity?.RecordException(ex);
+                    _logger.LogError(ex, "Failed to enrich data {DataId}", processedData.Id);
+                }
             }
-            catch (Exception ex)
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity?.RecordException(ex);
-                _logger.LogError(ex, "Failed to enrich data {DataId}", processedData.Id);
-            }
+        }
+        finally
+        {
+            _enrichedDataChannel.Complete();
         }
     }
 
@@ -524,7 +538,7 @@ public class InstrumentedPipelineProcessor
         {
             var bytes = Encoding.UTF8.GetBytes(message + "\n");
             var memory = _pipe.Writer.GetMemory(bytes.Length);
-            bytes.CopyTo(memory);
+            bytes.CopyTo(memory.Span);
             _pipe.Writer.Advance(bytes.Length);
 
             var result = await _pipe.Writer.FlushAsync(cancellationToken);
@@ -612,7 +626,7 @@ public class InstrumentedPipelineProcessor
         }
 
         var lineBuffer = buffer.Slice(0, position.Value);
-        line = Encoding.UTF8.GetString(lineBuffer);
+        line = Encoding.UTF8.GetString(lineBuffer.ToArray());
 
         buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
 
@@ -631,6 +645,7 @@ Create a high-performance stream processor using instrumented pipelines:
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Buffers;
 
 public class NetworkStreamProcessor
 {
@@ -726,11 +741,14 @@ public class NetworkStreamProcessor
                 var result = await reader.ReadAsync(cancellationToken);
                 var buffer = result.Buffer;
 
+                SequencePosition consumed = buffer.Start;
+
                 using (var messageActivity = ActivitySource.StartActivity(
                     "Pipeline.ProcessBatch",
                     ActivityKind.Internal))
                 {
                     var (position, processed) = ProcessBuffer(buffer);
+                    consumed = position;
 
                     messagesProcessed += processed;
                     totalBytesProcessed += buffer.Slice(0, position).Length;
@@ -739,7 +757,7 @@ public class NetworkStreamProcessor
                     messageActivity?.SetTag("batch.bytes", buffer.Slice(0, position).Length);
                 }
 
-                reader.AdvanceTo(result.Buffer.Start, result.Buffer.End);
+                reader.AdvanceTo(consumed, result.Buffer.End);
 
                 if (result.IsCompleted)
                     break;
