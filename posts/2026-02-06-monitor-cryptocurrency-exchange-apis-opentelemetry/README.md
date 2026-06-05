@@ -41,6 +41,7 @@ import time
 import hmac
 import hashlib
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -103,6 +104,10 @@ class InstrumentedExchangeClient:
         self.api_secret = api_secret
         self.base_url = f"https://api.{exchange_name}.com"
         self.client = httpx.AsyncClient(timeout=10.0)
+
+    async def close(self):
+        """Close the underlying HTTP client."""
+        await self.client.aclose()
 
     async def _request(self, method: str, endpoint: str, params: dict = None,
                        signed: bool = False):
@@ -175,7 +180,7 @@ class InstrumentedExchangeClient:
                     "error_type": "timeout",
                 })
                 span.record_exception(e)
-                span.set_status(trace.StatusCode.ERROR, "Request timed out")
+                span.set_status(Status(StatusCode.ERROR, "Request timed out"))
                 raise
 
             except httpx.HTTPStatusError as e:
@@ -184,11 +189,11 @@ class InstrumentedExchangeClient:
                     "error_type": f"http_{e.response.status_code}",
                 })
                 span.record_exception(e)
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
 
     def _sign_request(self, endpoint, params):
-        """Create HMAC signature for authenticated requests."""
+        """Create an example HMAC signature for authenticated requests."""
         message = f"{endpoint}{str(params or '')}"
         return hmac.new(
             self.api_secret.encode(),
@@ -197,7 +202,7 @@ class InstrumentedExchangeClient:
         ).hexdigest()
 ```
 
-The API client wraps every exchange call with a span that captures the endpoint, response code, latency, and rate limit state. The rate limit tracking is especially important because most exchanges enforce strict rate limits, and hitting them means your orders will not go through.
+The API client wraps every exchange call with a span that captures the endpoint, response code, latency, and rate limit state. The rate limit tracking is especially important because most exchanges enforce strict rate limits, and hitting them means your orders will not go through. For a real exchange integration, use the base URL, authentication headers, timestamp fields, and signing payload format from that exchange's API documentation. Exchanges use different HMAC payloads and header names.
 
 ## Order Lifecycle Tracking
 
@@ -205,6 +210,9 @@ Placing an order is just the beginning. You need to track the full lifecycle fro
 
 ```python
 # order_tracker.py - Full order lifecycle instrumentation
+import asyncio
+import time
+
 async def place_and_track_order(self, symbol: str, side: str, order_type: str,
                                 quantity: float, price: float = None):
     """Place an order and track it through its complete lifecycle."""
@@ -309,6 +317,9 @@ import asyncio
 import json
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
+from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed
 
 tracer = trace.get_tracer("ws-price-feed")
 meter = metrics.get_meter("ws-price-feed")
@@ -363,13 +374,14 @@ class InstrumentedPriceFeed:
                 try:
                     self.connection_start = time.monotonic()
 
-                    async with websockets.connect(ws_url) as ws:
+                    async with connect(ws_url) as ws:
                         session_span.add_event("connected")
 
                         # Subscribe to price channels
                         subscribe_msg = json.dumps({
                             "method": "SUBSCRIBE",
                             "params": [f"{s.lower()}@ticker" for s in self.symbols],
+                            "id": 1,
                         })
                         await ws.send(subscribe_msg)
 
@@ -377,10 +389,10 @@ class InstrumentedPriceFeed:
                         async for raw_message in ws:
                             self._process_message(raw_message)
 
-                except websockets.ConnectionClosed as e:
+                except ConnectionClosed as e:
                     session_span.add_event("disconnected", {
-                        "code": e.code,
-                        "reason": e.reason or "unknown",
+                        "close_rcvd": str(e.rcvd) if e.rcvd else "unknown",
+                        "close_sent": str(e.sent) if e.sent else "unknown",
                         "session_duration_s": time.monotonic() - self.connection_start,
                     })
                     ws_reconnections.add(1, {"exchange": self.exchange, "reason": "closed"})
@@ -416,28 +428,30 @@ class InstrumentedPriceFeed:
                 "symbol": symbol,
             })
 
-        # Detect sequence gaps that indicate missed messages
-        sequence = message.get("u", 0)
-        if symbol in self.last_sequence:
-            expected = self.last_sequence[symbol] + 1
-            if sequence > expected:
-                gap_size = sequence - expected
-                ws_gaps.add(1, {
-                    "exchange": self.exchange,
-                    "symbol": symbol,
-                })
-                # Create a span for the detected gap
-                with tracer.start_as_current_span("ws.sequence_gap", attributes={
-                    "exchange.name": self.exchange,
-                    "symbol": symbol,
-                    "gap.size": gap_size,
-                    "gap.expected_seq": expected,
-                    "gap.received_seq": sequence,
-                }) as gap_span:
-                    gap_span.set_status(trace.StatusCode.ERROR,
-                                        f"Missed {gap_size} messages")
+        # Detect sequence gaps on feeds that expose update ID ranges.
+        first_update_id = message.get("U")
+        final_update_id = message.get("u")
+        if first_update_id is not None and final_update_id is not None:
+            if symbol in self.last_sequence:
+                expected = self.last_sequence[symbol] + 1
+                if first_update_id > expected:
+                    gap_size = first_update_id - expected
+                    ws_gaps.add(1, {
+                        "exchange": self.exchange,
+                        "symbol": symbol,
+                    })
+                    # Create a span for the detected gap
+                    with tracer.start_as_current_span("ws.sequence_gap", attributes={
+                        "exchange.name": self.exchange,
+                        "symbol": symbol,
+                        "gap.size": gap_size,
+                        "gap.expected_seq": expected,
+                        "gap.received_seq": first_update_id,
+                    }) as gap_span:
+                        gap_span.set_status(Status(StatusCode.ERROR,
+                                                   f"Missed {gap_size} messages"))
 
-        self.last_sequence[symbol] = sequence
+            self.last_sequence[symbol] = final_update_id
         self.last_update_time[symbol] = now_ms
 
     def check_staleness(self):
@@ -452,7 +466,7 @@ class InstrumentedPriceFeed:
             })
 ```
 
-The WebSocket monitoring tracks three critical signals. Message lag tells you how much time passes between when the exchange generates a price update and when your system receives it. Sequence gaps tell you that messages were lost, which means your local order book or price data is incomplete. Price staleness tells you when a symbol has not received an update in an unusually long time, which could indicate a feed problem or a very illiquid market.
+The WebSocket monitoring tracks three critical signals. Message lag tells you how much time passes between when the exchange generates a price update and when your system receives it. For feeds that expose sequence numbers or update ID ranges, sequence gaps tell you that messages were lost, which means your local order book or stream state may be incomplete. Price staleness tells you when a symbol has not received an update in an unusually long time, which could indicate a feed problem or a very illiquid market.
 
 ## Alerting Configuration
 
