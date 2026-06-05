@@ -31,7 +31,7 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.89.0"),
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.98.0"),
     ],
     targets: [
         .executableTarget(
@@ -93,8 +93,8 @@ FROM swift:5.9-jammy
 
 WORKDIR /app
 
-# Copy the package manifest first for dependency caching
-COPY Package.swift Package.resolved ./
+# Copy the package manifest files first for dependency caching
+COPY Package.* ./
 
 # Resolve dependencies (cached unless Package.swift changes)
 RUN swift package resolve
@@ -124,7 +124,7 @@ FROM swift:5.9-jammy AS builder
 WORKDIR /app
 
 # Copy manifest files for dependency resolution
-COPY Package.swift Package.resolved ./
+COPY Package.* ./
 RUN swift package resolve
 
 # Copy source and build in release mode
@@ -139,6 +139,7 @@ WORKDIR /app
 # Install only the runtime libraries Swift needs
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    curl \
     libcurl4 \
     libxml2 \
     ca-certificates \
@@ -171,7 +172,7 @@ For maximum security and minimum size, use a distroless base:
 FROM swift:5.9-jammy AS builder
 
 WORKDIR /app
-COPY Package.swift Package.resolved ./
+COPY Package.* ./
 RUN swift package resolve
 
 COPY Sources/ Sources/
@@ -186,7 +187,7 @@ EXPOSE 8080
 CMD ["/App"]
 ```
 
-This gets the image under 50 MB. The trade-off is that you cannot shell into the container for debugging, which is actually a security benefit in production.
+This can get the image under 50 MB for simple services, but test it with your app's dynamic library requirements. The trade-off is that you cannot shell into the container for debugging, which is actually a security benefit in production.
 
 ## The .dockerignore File
 
@@ -205,11 +206,10 @@ docker-compose.yml
 
 ## Docker Compose for Development
 
-Set up a development workflow with automatic rebuilding:
+Set up a development workflow with source mounting for quick rebuilds after restarting the app container:
 
 ```yaml
 # docker-compose.yml - development setup for Swift Vapor app
-version: "3.8"
 services:
   app:
     build:
@@ -250,7 +250,7 @@ FROM swift:5.9-jammy
 
 WORKDIR /app
 
-COPY Package.swift Package.resolved ./
+COPY Package.* ./
 RUN swift package resolve
 
 COPY . /app
@@ -263,7 +263,7 @@ CMD ["swift", "run", "App"]
 
 ## Handling Swift Dependencies
 
-Swift Package Manager resolves dependencies during `swift package resolve`. The `Package.resolved` file locks dependency versions. Always commit this file to your repository:
+Swift Package Manager resolves dependencies during `swift package resolve`. For a top-level application, the `Package.resolved` file records the resolved dependency versions so other builds can use the same versions. Always commit this file to your repository:
 
 ```bash
 # Ensure the lockfile is tracked
@@ -277,7 +277,7 @@ If you have packages from private repositories, pass SSH keys into the build:
 FROM swift:5.9-jammy AS builder
 
 WORKDIR /app
-COPY Package.swift Package.resolved ./
+COPY Package.* ./
 
 # Use BuildKit secrets to access private repos
 RUN --mount=type=ssh swift package resolve
@@ -304,7 +304,7 @@ Use BuildKit cache mounts for the SPM cache:
 FROM swift:5.9-jammy AS builder
 
 WORKDIR /app
-COPY Package.swift Package.resolved ./
+COPY Package.* ./
 
 # Mount a persistent cache for SPM packages
 RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
