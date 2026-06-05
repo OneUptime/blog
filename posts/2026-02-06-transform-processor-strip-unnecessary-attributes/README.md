@@ -12,7 +12,7 @@ The OpenTelemetry Collector's `transform` processor uses the OpenTelemetry Trans
 
 ## Understanding OTTL
 
-OTTL is a domain-specific language designed for transforming telemetry within the Collector pipeline. It operates on specific contexts - `span`, `metric`, `log`, `resource`, and `scope` - and provides functions for deleting attributes, truncating values, replacing strings, and more.
+OTTL is a domain-specific language designed for transforming telemetry within the Collector pipeline. It operates on signal-specific path contexts such as `span`, `metric`, `datapoint`, `log`, `resource`, and `instrumentation_scope`, and provides functions for deleting attributes, truncating values, replacing strings, and more.
 
 The basic syntax is:
 
@@ -24,7 +24,7 @@ The basic syntax is:
 
 Before you start deleting attributes, figure out which ones are actually used. Query your backend for the most common attribute keys and cross-reference them with your dashboards and alert rules.
 
-Here is a PromQL query to find the most common span attribute keys (if your backend supports it):
+Here is a PromQL-style query to find the most common span attribute keys if your backend exposes a metric like this. Replace `span_attribute_keys_total` with the metric your backend provides:
 
 ```promql
 # Count distinct attribute keys across spans in the last 7 days
@@ -53,21 +53,20 @@ Here is a transform processor config that removes common unnecessary attributes 
 processors:
   transform/strip-spans:
     trace_statements:
-      - context: span
-        statements:
-          # Remove HTTP headers that contain sensitive or bulky data
-          - delete_key(attributes, "http.request.header.cookie")
-          - delete_key(attributes, "http.request.header.authorization")
-          - delete_key(attributes, "http.request.header.user-agent")
-          - delete_key(attributes, "http.response.header.set-cookie")
+      # Remove HTTP headers that contain sensitive or bulky data
+      - delete_key(span.attributes, "http.request.header.cookie")
+      - delete_key(span.attributes, "http.request.header.authorization")
+      - delete_key(span.attributes, "http.request.header.user-agent")
+      - delete_key(span.attributes, "http.response.header.set-cookie")
 
-          # Remove thread info - rarely useful for distributed tracing
-          - delete_key(attributes, "thread.id")
-          - delete_key(attributes, "thread.name")
+      # Remove thread info - rarely useful for distributed tracing
+      - delete_key(span.attributes, "thread.id")
+      - delete_key(span.attributes, "thread.name")
 
-          # Remove the full URL if you already have the route template
-          # The route template (http.route) is more useful for grouping
-          - delete_key(attributes, "http.url") where attributes["http.route"] != nil
+      # Remove the full URL if you already have the route template
+      # The route template (http.route) is more useful for grouping
+      - delete_key(span.attributes, "url.full") where span.attributes["http.route"] != nil
+      - delete_key(span.attributes, "http.url") where span.attributes["http.route"] != nil
 ```
 
 ## Conditional Deletion
@@ -78,17 +77,15 @@ OTTL supports conditions, so you can selectively remove attributes based on othe
 processors:
   transform/conditional-strip:
     trace_statements:
-      - context: span
-        statements:
-          # Keep detailed attributes on error spans for debugging
-          # but strip them from successful spans to save space
-          - delete_key(attributes, "db.statement") where status.code == 0
-          - delete_key(attributes, "http.request.body") where status.code == 0
-          - delete_key(attributes, "http.response.body") where status.code == 0
+      # Keep detailed attributes on error spans for debugging
+      # but strip them from spans that do not have an error status
+      - delete_key(span.attributes, "db.statement") where span.status.code != STATUS_CODE_ERROR
+      - delete_key(span.attributes, "http.request.body") where span.status.code != STATUS_CODE_ERROR
+      - delete_key(span.attributes, "http.response.body") where span.status.code != STATUS_CODE_ERROR
 
-          # Remove verbose attributes from health check spans entirely
-          - delete_key(attributes, "http.request.header.accept")
-            where attributes["http.route"] == "/healthz"
+      # Remove verbose attributes from health check spans entirely
+      - delete_key(span.attributes, "http.request.header.accept")
+        where span.attributes["http.route"] == "/healthz"
 ```
 
 ## Truncating Long Values
@@ -99,18 +96,14 @@ Sometimes you want to keep an attribute but reduce its size. OTTL's `truncate_al
 processors:
   transform/truncate:
     trace_statements:
-      - context: span
-        statements:
-          # Truncate all string attribute values to 256 characters max
-          # This catches unexpectedly large values like serialized objects
-          - truncate_all(attributes, 256)
+      # Truncate all string attribute values to 256 bytes max
+      # This catches unexpectedly large values like serialized objects
+      - truncate_all(span.attributes, 256)
 
     log_statements:
-      - context: log
-        statements:
-          # Truncate log body to 4096 characters
-          # Some log libraries serialize entire request/response bodies
-          - truncate_all(attributes, 256)
+      # Truncate all string log attribute values to 256 bytes max
+      # Some log libraries attach entire request/response bodies as attributes
+      - truncate_all(log.attributes, 256)
 ```
 
 ## Stripping Log Attributes
@@ -121,22 +114,20 @@ Logs often carry the most bloat. Here is a config focused on cleaning up log rec
 processors:
   transform/strip-logs:
     log_statements:
-      - context: log
-        statements:
-          # Remove stack trace from non-error logs
-          # Some frameworks attach stack traces to warning-level logs
-          - delete_key(attributes, "exception.stacktrace")
-            where severity_number < 17
+      # Remove stack trace from non-error logs
+      # Some frameworks attach stack traces to warning-level logs
+      - delete_key(log.attributes, "exception.stacktrace")
+        where log.severity_number < SEVERITY_NUMBER_ERROR
 
-          # Remove source code location for production logs
-          # File, line, and function info is useful in dev but inflates prod data
-          - delete_key(attributes, "code.filepath")
-          - delete_key(attributes, "code.lineno")
-          - delete_key(attributes, "code.function")
+      # Remove source code location for production logs
+      # File, line, and function info is useful in dev but inflates prod data
+      - delete_key(log.attributes, "code.filepath")
+      - delete_key(log.attributes, "code.lineno")
+      - delete_key(log.attributes, "code.function")
 
-          # Strip internal logger metadata
-          - delete_key(attributes, "log.logger")
-          - delete_key(attributes, "log.file.path")
+      # Strip internal logger metadata
+      - delete_key(log.attributes, "log.logger")
+      - delete_key(log.attributes, "log.file.path")
 ```
 
 ## Cleaning Up Resource Attributes
@@ -147,18 +138,23 @@ Resource attributes are attached to every telemetry item from a given source. Re
 processors:
   transform/strip-resource:
     trace_statements:
-      - context: resource
-        statements:
-          # Remove Kubernetes metadata that duplicates information
-          # or is not used in queries
-          - delete_key(attributes, "k8s.pod.uid")
-          - delete_key(attributes, "k8s.replicaset.name")
-          - delete_key(attributes, "k8s.replicaset.uid")
+      # Remove Kubernetes metadata that duplicates information
+      # or is not used in queries
+      - delete_key(resource.attributes, "k8s.pod.uid")
+      - delete_key(resource.attributes, "k8s.replicaset.name")
+      - delete_key(resource.attributes, "k8s.replicaset.uid")
 
-          # Remove process-level details
-          - delete_key(attributes, "process.command_args")
-          - delete_key(attributes, "process.executable.path")
-          - delete_key(attributes, "process.runtime.description")
+      # Remove process-level details
+      - delete_key(resource.attributes, "process.command_args")
+      - delete_key(resource.attributes, "process.executable.path")
+      - delete_key(resource.attributes, "process.runtime.description")
+    log_statements:
+      - delete_key(resource.attributes, "k8s.pod.uid")
+      - delete_key(resource.attributes, "k8s.replicaset.name")
+      - delete_key(resource.attributes, "k8s.replicaset.uid")
+      - delete_key(resource.attributes, "process.command_args")
+      - delete_key(resource.attributes, "process.executable.path")
+      - delete_key(resource.attributes, "process.runtime.description")
 ```
 
 ## Putting It All Together
@@ -177,27 +173,24 @@ receivers:
 processors:
   transform/strip-resource:
     trace_statements:
-      - context: resource
-        statements:
-          - delete_key(attributes, "k8s.pod.uid")
-          - delete_key(attributes, "process.command_args")
+      - delete_key(resource.attributes, "k8s.pod.uid")
+      - delete_key(resource.attributes, "process.command_args")
+    log_statements:
+      - delete_key(resource.attributes, "k8s.pod.uid")
+      - delete_key(resource.attributes, "process.command_args")
 
   transform/strip-spans:
     trace_statements:
-      - context: span
-        statements:
-          - delete_key(attributes, "http.request.header.cookie")
-          - delete_key(attributes, "thread.id")
-          - delete_key(attributes, "thread.name")
-          - truncate_all(attributes, 256)
+      - delete_key(span.attributes, "http.request.header.cookie")
+      - delete_key(span.attributes, "thread.id")
+      - delete_key(span.attributes, "thread.name")
+      - truncate_all(span.attributes, 256)
 
   transform/strip-logs:
     log_statements:
-      - context: log
-        statements:
-          - delete_key(attributes, "code.filepath")
-          - delete_key(attributes, "code.lineno")
-          - truncate_all(attributes, 256)
+      - delete_key(log.attributes, "code.filepath")
+      - delete_key(log.attributes, "code.lineno")
+      - truncate_all(log.attributes, 256)
 
   batch:
     send_batch_size: 8192
@@ -217,7 +210,7 @@ service:
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [transform/strip-logs, batch]
+      processors: [transform/strip-resource, transform/strip-logs, batch]
       exporters: [otlp]
 ```
 
