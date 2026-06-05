@@ -32,7 +32,7 @@ The key insight is that with proper sampling, 10 traces can tell you almost as m
 
 ## Head Sampling: SDK-Level Decisions
 
-Head sampling makes decisions at trace creation time, before any spans are generated. This is the most efficient approach because unsampled traces never consume resources.
+Head sampling makes decisions at trace creation time, before spans are recorded and exported. This is the most efficient approach because unsampled traces consume minimal SDK resources and are not sent to your backend.
 
 ### Basic Head Sampling Configuration
 
@@ -69,7 +69,7 @@ trace.set_tracer_provider(provider)
 # Usage in code remains unchanged
 tracer = trace.get_tracer(__name__)
 with tracer.start_as_current_span("operation"):
-    # This span will only be created 10% of the time
+    # This span will only be recorded and exported 10% of the time
     pass
 ```
 
@@ -82,7 +82,8 @@ from opentelemetry.sdk.trace.sampling import (
     SamplingResult,
     Decision,
 )
-from opentelemetry.trace import SpanKind
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import get_current_span
 import hashlib
 
 class SmartProbabilisticSampler(Sampler):
@@ -115,12 +116,18 @@ class SmartProbabilisticSampler(Sampler):
         """
         Make sampling decision based on trace attributes.
         """
-        # Always follow parent's sampling decision
-        if parent_context and parent_context.trace_flags.sampled:
+        # Always follow a valid parent's sampling decision
+        parent_span_context = get_current_span(parent_context).get_span_context()
+        if parent_span_context.is_valid:
+            decision = (
+                Decision.RECORD_AND_SAMPLE
+                if parent_span_context.trace_flags.sampled
+                else Decision.DROP
+            )
             return SamplingResult(
-                Decision.RECORD_AND_SAMPLE,
+                decision,
                 attributes=attributes,
-                trace_state=trace_state,
+                trace_state=parent_span_context.trace_state,
             )
 
         # Check for error indicators
@@ -180,12 +187,10 @@ provider = TracerProvider(
 package main
 
 import (
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/sdk/trace"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-func initTracerProvider() *sdktrace.TracerProvider {
+func initTracerProvider(exporter sdktrace.SpanExporter) *sdktrace.TracerProvider {
     // Simple probabilistic sampling: 10%
     sampler := sdktrace.TraceIDRatioBased(0.1)
 
@@ -208,7 +213,7 @@ func initTracerProvider() *sdktrace.TracerProvider {
 
 ## Tail Sampling: Collector-Level Decisions
 
-Tail sampling makes decisions after seeing complete traces. This allows sampling based on trace content (errors, latency, specific attributes) but requires more collector resources.
+Tail sampling makes decisions after seeing complete traces. This allows sampling based on trace content (errors, latency, specific attributes) but requires more collector resources and a Collector distribution that includes the tail sampling processor.
 
 ### Basic Tail Sampling Configuration
 
@@ -234,7 +239,7 @@ processors:
     # Used for memory allocation optimization
     expected_new_traces_per_sec: 1000
 
-    # Sampling policies (evaluated in order)
+    # Sampling policies
     policies:
       # Policy 1: Always sample errors (100%)
       - name: errors-policy
@@ -242,7 +247,6 @@ processors:
         status_code:
           status_codes:
             - ERROR
-            - UNSET
 
       # Policy 2: Always sample slow traces (100%)
       - name: latency-policy
@@ -255,8 +259,8 @@ processors:
         type: probabilistic
         probabilistic:
           sampling_percentage: 10
-          # Hash seed for deterministic sampling
-          hash_seed: 22
+          # Hash salt for deterministic sampling
+          hash_salt: cost-control
 
   batch:
     timeout: 10s
@@ -285,19 +289,19 @@ processors:
     expected_new_traces_per_sec: 1000
 
     policies:
-      # Policy 1: Always keep errors (Priority 1)
+      # Policy 1: Always keep errors
       - name: errors
         type: status_code
         status_code:
-          status_codes: [ERROR, UNSET]
+          status_codes: [ERROR]
 
-      # Policy 2: Always keep slow requests (Priority 2)
+      # Policy 2: Always keep slow requests
       - name: slow-traces
         type: latency
         latency:
           threshold_ms: 2000
 
-      # Policy 3: Sample by service name (Priority 3)
+      # Policy 3: Sample by service name
       # Critical services get higher sampling
       - name: critical-services
         type: and
@@ -314,7 +318,7 @@ processors:
               probabilistic:
                 sampling_percentage: 50  # 50% for critical services
 
-      # Policy 4: Sample by endpoint (Priority 4)
+      # Policy 4: Sample by endpoint
       # Important endpoints get higher sampling
       - name: important-endpoints
         type: string_attribute
@@ -327,33 +331,21 @@ processors:
           enabled_regex_matching: true
           invert_match: false
 
-      # Policy 5: Composite policy - errors OR slow requests
-      - name: errors-or-slow
-        type: or
-        or:
-          or_sub_policy:
-            - type: status_code
-              status_code:
-                status_codes: [ERROR]
-            - type: latency
-              latency:
-                threshold_ms: 1000
-
-      # Policy 6: Rate limiting (Priority 6)
-      # Maximum 500 traces per second regardless of other policies
+      # Policy 5: Rate limiting
+      # Samples traces up to 500 spans per second for this policy
       - name: rate-limit
         type: rate_limiting
         rate_limiting:
           spans_per_second: 500
 
-      # Policy 7: Span count policy
+      # Policy 6: Span count policy
       # Keep traces with many spans (might indicate complexity)
       - name: complex-traces
         type: span_count
         span_count:
           min_spans: 20
 
-      # Policy 8: Numeric attribute policy
+      # Policy 7: Numeric attribute policy
       # Sample based on numeric attributes
       - name: high-value-transactions
         type: numeric_attribute
@@ -362,22 +354,22 @@ processors:
           min_value: 1000
           max_value: 999999
 
-      # Policy 9: String attribute with regex
+      # Policy 8: String attribute matching
       - name: specific-users
         type: string_attribute
         string_attribute:
           key: user.tier
           values: [premium, enterprise]
 
-      # Policy 10: Probabilistic baseline (Priority 10)
+      # Policy 9: Probabilistic baseline
       # Catch remaining traces at 5%
       - name: probabilistic-baseline
         type: probabilistic
         probabilistic:
           sampling_percentage: 5
-          hash_seed: 22
+          hash_salt: cost-control
 
-      # Policy 11: Always sample (for testing)
+      # Policy 10: Always sample (for testing)
       # Useful for specific trace IDs during debugging
       - name: always-sample-test
         type: always_sample
@@ -550,7 +542,7 @@ controller.run(interval=300)  # Update every 5 minutes
 
 ## Consistent Sampling Across Services
 
-For distributed traces, all services must make consistent sampling decisions:
+For distributed traces, services should either follow the propagated parent sampling decision or use a compatible deterministic sampler:
 
 ```python
 # Consistent sampling using trace ID
@@ -559,7 +551,7 @@ from opentelemetry.sdk.trace.sampling import (
     SamplingResult,
     Decision,
 )
-import hashlib
+from opentelemetry.trace import get_current_span
 
 class ConsistentProbabilisticSampler(Sampler):
     """
@@ -585,12 +577,18 @@ class ConsistentProbabilisticSampler(Sampler):
         """
         Make deterministic sampling decision based on trace ID.
         """
-        # Always follow parent's decision if present
-        if parent_context and parent_context.trace_flags.sampled:
+        # Always follow a valid parent's decision if present
+        parent_span_context = get_current_span(parent_context).get_span_context()
+        if parent_span_context.is_valid:
+            decision = (
+                Decision.RECORD_AND_SAMPLE
+                if parent_span_context.trace_flags.sampled
+                else Decision.DROP
+            )
             return SamplingResult(
-                Decision.RECORD_AND_SAMPLE,
+                decision,
                 attributes=attributes,
-                trace_state=trace_state,
+                trace_state=parent_span_context.trace_state,
             )
 
         # Use trace_id as hash input for deterministic sampling
@@ -626,7 +624,6 @@ Track these metrics to validate your sampling strategy:
 # Metrics to monitor sampling effectiveness
 
 # 1. Sampling rate metrics
-- otelcol_processor_tail_sampling_sampling_decision_latency
 - otelcol_processor_tail_sampling_sampling_decision_timer_latency
 - otelcol_processor_tail_sampling_count_traces_sampled
 
@@ -636,9 +633,9 @@ Track these metrics to validate your sampling strategy:
 # Calculate: reduction = (accepted - sent) / accepted
 
 # 3. Policy effectiveness metrics
-- otelcol_processor_tail_sampling_policy_decision{policy="errors"}
-- otelcol_processor_tail_sampling_policy_decision{policy="latency"}
-- otelcol_processor_tail_sampling_policy_decision{policy="probabilistic"}
+- otelcol_processor_tail_sampling_count_traces_sampled{policy="errors"}
+- otelcol_processor_tail_sampling_count_traces_sampled{policy="latency"}
+- otelcol_processor_tail_sampling_count_traces_sampled{policy="probabilistic"}
 
 # 4. Cost metrics
 # cost_per_day = sent_spans_per_day * cost_per_span
@@ -674,7 +671,7 @@ Track these metrics to validate your sampling strategy:
         "title": "Sampling Policy Breakdown",
         "targets": [
           {
-            "expr": "otelcol_processor_tail_sampling_policy_decision",
+            "expr": "otelcol_processor_tail_sampling_count_traces_sampled",
             "legendFormat": "{{policy}}"
           }
         ]
@@ -713,7 +710,7 @@ processors:
       - name: errors
         type: status_code
         status_code:
-          status_codes: [ERROR, UNSET]
+          status_codes: [ERROR]
 
       - name: slow
         type: latency
@@ -738,15 +735,15 @@ processors:
         type: probabilistic
         probabilistic:
           sampling_percentage: 10
-          hash_seed: 22
+          hash_salt: cost-control
 
-      # Tier 4: Rate limit to prevent cost spikes
+      # Tier 4: Rate limit to reduce cost spikes
       - name: rate-limit
         type: rate_limiting
         rate_limiting:
           spans_per_second: 1000
 
-# Result: 18% effective sampling rate
+# Approximate result if tiers are mutually exclusive: 18% effective sampling rate
 # (5% * 1.0) + (20% * 0.25) + (75% * 0.10) = 18%
 ```
 
