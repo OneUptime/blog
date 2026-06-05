@@ -10,13 +10,13 @@ You have both traces and logs flowing through the OpenTelemetry Collector to Gra
 
 ## How Log-Trace Correlation Works in Grafana
 
-Grafana can link logs to traces when log entries contain a `traceID` field (or a field configured as the trace ID in the Loki data source). When you click a log line, Grafana uses this field to query Tempo for the corresponding trace.
+Grafana can link logs to traces when log entries contain a trace ID field such as `trace_id` or `traceID` (or a field configured as the trace ID in the Loki data source). When you click a log line, Grafana uses this field to query Tempo for the corresponding trace.
 
 The chain is:
 1. Application emits logs with trace context
-2. OpenTelemetry Collector receives logs with `trace_id` in the log record
+2. OpenTelemetry Collector receives logs with the trace ID in the log record
 3. Collector exports logs to Loki, preserving the `trace_id`
-4. Grafana reads `traceID` from Loki logs and links to Tempo
+4. Grafana reads the configured trace ID field from Loki logs and links to Tempo
 
 If any link in this chain is broken, correlation fails.
 
@@ -43,26 +43,17 @@ slog.InfoContext(ctx, "processing order",
 
 A better approach is to use OpenTelemetry's log bridge, which handles this automatically.
 
-### Cause 2: Collector Does Not Preserve trace_id When Exporting to Loki
+### Cause 2: Collector Is Still Using the Old Loki Exporter Path
 
-The Collector's Loki exporter needs to be configured to include trace_id as a label or structured metadata:
+For Loki 3.0 and later, use Loki's native OTLP endpoint with the Collector's `otlphttp` exporter. Trace IDs are high-cardinality values, so they should be preserved as structured metadata, not promoted to Loki index labels:
 
 ```yaml
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: false
-      job: true
-    labels:
-      attributes:
-        service.name: "service_name"
-      record:
-        trace_id: "traceID"     # map trace_id to Loki label
-        span_id: "spanID"
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
 ```
 
-### Cause 3: Using OTLP to Loki but Missing Label Configuration
+### Cause 3: Using OTLP to Loki but Structured Metadata Is Disabled
 
 If you send logs to Loki via OTLP (Loki 3.0+), trace_id should be preserved automatically. But you need to configure Loki to accept structured metadata:
 
@@ -92,11 +83,11 @@ import (
     "go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
-// Create a logger that automatically includes trace context
+// Create a logger backed by the configured OpenTelemetry LoggerProvider.
 logger := otelslog.NewLogger("my-service")
 
 func handleRequest(ctx context.Context) {
-    // trace_id and span_id are automatically included
+    // The active trace context is carried on the OTLP log record.
     logger.InfoContext(ctx, "processing request",
         "user_id", userID)
 }
@@ -113,39 +104,43 @@ LoggingInstrumentor().instrument(set_logging_format=True)
 import logging
 logger = logging.getLogger(__name__)
 
-# trace_id and span_id are automatically added to every log record
+# otelTraceID and otelSpanID are added to the standard logging record
 logger.info("processing request", extra={"user_id": user_id})
 ```
 
-## Fix 2: Configure the Collector Loki Exporter
+## Fix 2: Configure the Collector OTLP HTTP Exporter
 
 ```yaml
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      attributes:
-        service.name: ""
-      resource:
-        service.name: ""
-        deployment.environment: ""
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/logs]
 ```
 
-With the Loki exporter, trace_id from the OTLP log record is automatically mapped to Loki's structured metadata when Loki supports it.
+With Loki's native OTLP endpoint, `TraceId` and `SpanId` from the OTLP log record are mapped to Loki structured metadata as `trace_id` and `span_id`.
 
-## Fix 3: Use the Resource/Attributes Processor
+## Fix 3: Use the Transform Processor
 
-If trace_id is in the log body but not in attributes, move it:
+If `trace_id` and `span_id` were parsed into log attributes but the OTLP log record fields are empty, copy them into the log record:
 
 ```yaml
 processors:
   transform/logs:
+    error_mode: ignore
     log_statements:
     - context: log
       statements:
-      # Ensure trace_id is set as an attribute
-      - set(attributes["traceID"], TraceID().String)
-        where TraceID() != TraceID(0x00000000000000000000000000000000)
+      # Ensure trace_id and span_id are set on the OTLP log record
+      - set(log.trace_id, TraceID(log.attributes["trace_id"]))
+        where log.trace_id == TraceID(0x00000000000000000000000000000000) and log.attributes["trace_id"] != nil
+      - set(log.span_id, SpanID(log.attributes["span_id"]))
+        where log.span_id == SpanID(0x0000000000000000) and log.attributes["span_id"] != nil
 ```
 
 ## Fix 4: Configure Grafana Loki Data Source
@@ -156,17 +151,20 @@ In Grafana, configure the Loki data source to recognize the trace ID field:
 Settings -> Data Sources -> Loki
   -> Derived fields
     -> Name: traceID
-    -> Regex: "traceID":"([a-f0-9]+)"
+    -> Regex: "trace_id":"([a-f0-9]+)"
     -> Internal link -> Tempo
+    -> Query: ${__value.raw}
 ```
 
-Or if trace_id is a label:
+Or if `trace_id` is available as a label or structured metadata:
 
 ```text
   -> Derived fields
     -> Name: TraceID
-    -> Label: traceID
+    -> Type: Label
+    -> Label: trace[_]?id
     -> Internal link -> Tempo
+    -> Query: ${__value.raw}
 ```
 
 ## Verifying Correlation
@@ -178,12 +176,12 @@ After configuration, send a test request and check:
 {service_name="my-service"} | json
 ```
 
-2. Look for `traceID` in the parsed fields
+2. Look for `trace_id` in the parsed fields or returned labels
 3. Click on a log line - you should see a "View Trace" button
 4. Clicking it should open the trace in Tempo
 
-If `traceID` does not appear in the parsed fields, the trace context is not being included in the log records. Go back and check the application's logging configuration.
+If `trace_id` does not appear in the parsed fields or returned labels, the trace context is not being included in the log records. Go back and check the application's logging configuration.
 
 ## Summary
 
-Log-trace correlation requires trace_id to flow from the application through the Collector to Loki. Use OpenTelemetry log bridges to automatically inject trace context into logs. Configure the Collector's Loki exporter to preserve trace_id. Enable structured metadata in Loki. And configure Grafana's Loki data source with a derived field that links to Tempo.
+Log-trace correlation requires trace_id to flow from the application through the Collector to Loki. Use OpenTelemetry log bridges to automatically inject trace context into logs. Configure the Collector's OTLP HTTP exporter to send logs to Loki's native OTLP endpoint. Enable structured metadata in Loki. And configure Grafana's Loki data source with a derived field that links to Tempo.
