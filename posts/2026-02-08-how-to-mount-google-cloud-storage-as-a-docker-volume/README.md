@@ -12,7 +12,7 @@ Google Cloud Storage (GCS) is Google's object storage service, comparable to AWS
 
 ## Prerequisites
 
-You need a Google Cloud project with a GCS bucket created. You also need authentication credentials - either a service account key file or workload identity (when running on GCP).
+You need a Google Cloud project with a GCS bucket created. You also need authentication credentials - either a service account key file, Workload Identity Federation for GKE, or an attached service account when running on Compute Engine.
 
 Create a bucket if you do not have one:
 
@@ -49,12 +49,14 @@ FROM ubuntu:22.04
 
 # Install gcsfuse dependencies and the gcsfuse binary
 RUN apt-get update && apt-get install -y \
-    gnupg \
     curl \
     fuse \
-    && echo "deb https://packages.cloud.google.com/apt gcsfuse-jammy main" \
+    lsb-release \
+    && export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+       > /usr/share/keyrings/cloud.google.asc \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" \
        > /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && apt-get update \
     && apt-get install -y gcsfuse \
     && rm -rf /var/lib/apt/lists/*
@@ -69,9 +71,11 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     --implicit-dirs \
     $GCS_BUCKET /mnt/gcs & \
     GCSFUSE_PID=$! && \
+    trap 'kill $GCSFUSE_PID' EXIT && \
     sleep 2 && \
-    exec \"$@\" && \
-    kill $GCSFUSE_PID", "--"]
+    \"$@\"; \
+    STATUS=$?; \
+    exit $STATUS", "--"]
 ```
 
 Build and run the image:
@@ -92,7 +96,7 @@ docker run --rm \
 
 ## Method 2: gcsfuse Sidecar with Docker Compose
 
-A sidecar pattern separates the mount concern from your application. The gcsfuse container handles the mount, and your app container reads from a shared volume.
+A sidecar pattern separates the mount concern from your application. The gcsfuse container handles the mount, and your app container reads from a shared bind mount.
 
 Create a dedicated gcsfuse image:
 
@@ -101,10 +105,12 @@ Create a dedicated gcsfuse image:
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
-    gnupg curl fuse \
-    && echo "deb https://packages.cloud.google.com/apt gcsfuse-jammy main" \
+    curl fuse lsb-release \
+    && export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+       > /usr/share/keyrings/cloud.google.asc \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" \
        > /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && apt-get update && apt-get install -y gcsfuse \
     && rm -rf /var/lib/apt/lists/*
 
@@ -114,12 +120,15 @@ RUN mkdir -p /mnt/gcs
 CMD gcsfuse --foreground \
     --key-file=/credentials/key.json \
     --implicit-dirs \
-    --stat-cache-ttl=60s \
-    --type-cache-ttl=60s \
+    --metadata-cache-ttl-secs=60 \
     ${GCS_BUCKET} /mnt/gcs
 ```
 
-Docker Compose setup:
+Create a host directory for the shared mount, then configure Docker Compose:
+
+```bash
+sudo mkdir -p /srv/gcs-data
+```
 
 ```yaml
 # docker-compose.yml - Application with GCS sidecar
@@ -136,13 +145,22 @@ services:
       GCS_BUCKET: my-app-storage-bucket
     volumes:
       - ./gcs-key.json:/credentials/key.json:ro
-      - gcs-data:/mnt/gcs:shared
+      - type: bind
+        source: /srv/gcs-data
+        target: /mnt/gcs
+        bind:
+          propagation: rshared
     restart: unless-stopped
 
   app:
     image: my-app:latest
     volumes:
-      - gcs-data:/data:ro
+      - type: bind
+        source: /srv/gcs-data
+        target: /data
+        read_only: true
+        bind:
+          propagation: rslave
     depends_on:
       - gcs-mount
     environment:
@@ -151,21 +169,22 @@ services:
   processor:
     image: my-processor:latest
     volumes:
-      - gcs-data:/data
+      - type: bind
+        source: /srv/gcs-data
+        target: /data
+        bind:
+          propagation: rslave
     depends_on:
       - gcs-mount
     environment:
       INPUT_PATH: /data/input
       OUTPUT_PATH: /data/output
 
-volumes:
-  gcs-data:
-    driver: local
 ```
 
-The `:shared` mount propagation on the gcs-mount service ensures the FUSE mount is visible to other containers sharing the volume.
+The shared bind propagation on the gcs-mount service, plus rslave propagation on the application services, lets the FUSE submount become visible to the other containers on Linux hosts. Named Docker volumes use private propagation and cannot propagate a FUSE mount this way.
 
-## Method 3: Using the GCS FUSE CSI Driver (GKE-style on Docker)
+## Method 3: Using Application Default Credentials on GCE
 
 For Docker hosts running on Google Compute Engine, you can leverage the instance's default credentials:
 
@@ -198,7 +217,8 @@ rclone is a versatile tool that supports dozens of cloud storage backends, inclu
 
 ```bash
 # Install the rclone Docker volume plugin
-docker plugin install rclone/docker-volume-rclone:latest \
+docker plugin install rclone/docker-volume-rclone:amd64 \
+  --alias rclone \
   --grant-all-permissions \
   args="-v --allow-other"
 ```
@@ -208,13 +228,15 @@ Configure rclone for GCS:
 ```bash
 # Create rclone config directory
 mkdir -p /var/lib/docker-plugins/rclone/config
+mkdir -p /var/lib/docker-plugins/rclone/cache
+cp ./gcs-key.json /var/lib/docker-plugins/rclone/config/gcs-key.json
 
 # Create rclone configuration for GCS
 cat > /var/lib/docker-plugins/rclone/config/rclone.conf << 'EOF'
 [gcs]
 type = google cloud storage
 project_number = YOUR_PROJECT_NUMBER
-service_account_file = /credentials/key.json
+service_account_file = /data/config/gcs-key.json
 bucket_policy_only = true
 EOF
 ```
@@ -247,21 +269,20 @@ gcsfuse \
   --foreground \
   --key-file=/credentials/key.json \
   --implicit-dirs \
-  --stat-cache-ttl=120s \
-  --type-cache-ttl=120s \
-  --stat-cache-capacity=20000 \
+  --metadata-cache-ttl-secs=120 \
+  --stat-cache-max-size-mb=34 \
   --max-conns-per-host=100 \
   --kernel-list-cache-ttl-secs=60 \
+  --cache-dir=/tmp/gcsfuse-cache \
   --file-cache-max-size-mb=4096 \
-  --temp-dir=/tmp/gcsfuse-cache \
   my-bucket /mnt/gcs
 ```
 
 Key tuning parameters:
-- `stat-cache-ttl`: How long to cache file metadata (increase for read-heavy workloads)
-- `stat-cache-capacity`: Number of metadata entries to cache
+- `metadata-cache-ttl-secs`: How long to cache file metadata (increase for read-heavy workloads)
+- `stat-cache-max-size-mb`: Maximum in-memory size for the stat cache
 - `max-conns-per-host`: Connection pool size for parallel operations
-- `file-cache-max-size-mb`: Local disk cache for recently accessed files
+- `cache-dir` and `file-cache-max-size-mb`: Local disk cache for recently accessed files
 
 For Docker Compose:
 
@@ -279,7 +300,7 @@ services:
       GCS_BUCKET: my-bucket
     volumes:
       - ./gcs-key.json:/credentials/key.json:ro
-      - gcs-data:/mnt/gcs:shared
+      - /srv/gcs-data:/mnt/gcs:rshared
       # Mount a fast local disk for the file cache
       - /ssd-cache:/tmp/gcsfuse-cache
     tmpfs:
@@ -305,7 +326,7 @@ services:
   app:
     image: my-app
     volumes:
-      - gcs-data:/data:ro
+      - /srv/gcs-data:/data:ro,rslave
 ```
 
 ## Health Checking
@@ -346,7 +367,7 @@ gsutil iam ch \
 
 2. **Never embed credentials in Docker images.** Always mount key files or use environment variables.
 
-3. **Use workload identity on GKE or GCE** to avoid managing key files entirely.
+3. **Use Workload Identity Federation for GKE or an attached service account on GCE** to avoid managing key files entirely.
 
 4. **Rotate service account keys** periodically:
 
@@ -387,7 +408,7 @@ gsutil iam get gs://my-bucket
 Increase the stat cache and enable kernel list cache:
 
 ```bash
-gcsfuse --stat-cache-capacity=50000 --kernel-list-cache-ttl-secs=120 my-bucket /mnt/gcs
+gcsfuse --stat-cache-max-size-mb=85 --kernel-list-cache-ttl-secs=120 my-bucket /mnt/gcs
 ```
 
 **FUSE mount fails with "Operation not permitted":**
@@ -400,4 +421,4 @@ docker run --cap-add SYS_ADMIN --device /dev/fuse ...
 
 ## Summary
 
-Mounting Google Cloud Storage as a Docker volume brings cloud object storage into your container workflows. gcsfuse is the most straightforward tool, providing a FUSE-based mount that translates filesystem operations to GCS API calls. Use a sidecar pattern in Docker Compose to separate the mount concern from your application. Tune cache settings for your workload, mount read-only when possible, and use workload identity instead of key files when running on Google Cloud. While object storage will never match local disk performance, the right caching configuration makes it practical for many workloads.
+Mounting Google Cloud Storage as a Docker volume brings cloud object storage into your container workflows. gcsfuse is the most straightforward tool, providing a FUSE-based mount that translates filesystem operations to GCS API calls. Use a sidecar pattern in Docker Compose to separate the mount concern from your application. Tune cache settings for your workload, mount read-only when possible, and use attached service accounts or Workload Identity Federation instead of key files when running on Google Cloud. While object storage will never match local disk performance, the right caching configuration makes it practical for many workloads.
