@@ -16,19 +16,22 @@ Without active monitoring, the only notification you get is the browser warning 
 
 ## Using the HTTP Check Receiver for Certificate Monitoring
 
-The OpenTelemetry Collector's `httpcheck` receiver already connects to HTTPS endpoints, which means it performs TLS handshakes. By default, it reports whether the connection succeeded, but you can extract certificate metadata by combining it with custom processing.
+The OpenTelemetry Collector's `http_check` receiver already connects to HTTPS endpoints, which means it performs TLS handshakes. By default, it reports whether the connection succeeded. Enable its TLS certificate metric to collect the time remaining until certificate expiry.
 
-However, for dedicated certificate monitoring, the Collector Contrib distribution includes more direct approaches. Here is a setup that monitors certificate expiration for all your HTTPS endpoints:
+Here is a setup that monitors certificate expiration for all your HTTPS endpoints:
 
 ```yaml
 # collector-cert-monitor.yaml
 
 # Monitor SSL/TLS certificate expiration for all public and internal endpoints.
-# The httpcheck receiver connects via TLS and we track certificate-related
+# The http_check receiver connects via TLS and we track certificate-related
 # connection metrics. Combine with a script-based approach for detailed cert info.
 
 receivers:
-  httpcheck/certs:
+  http_check/certs:
+    metrics:
+      httpcheck.tls.cert_remaining:
+        enabled: true
     targets:
       - endpoint: "https://api.example.com"
         method: GET
@@ -63,7 +66,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck/certs]
+      receivers: [http_check/certs]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -122,9 +125,10 @@ def check_certificate(host, port):
             with context.wrap_socket(sock, server_hostname=host) as ssock:
                 cert = ssock.getpeercert()
                 expiry_str = cert['notAfter']
-                # Parse the expiry date - format is 'Mon DD HH:MM:SS YYYY GMT'
-                expiry_date = datetime.strptime(expiry_str, '%b %d %H:%M:%S %Y %Z')
-                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+                expiry_date = datetime.fromtimestamp(
+                    ssl.cert_time_to_seconds(expiry_str),
+                    timezone.utc
+                )
                 now = datetime.now(timezone.utc)
                 remaining = (expiry_date - now).days
                 return remaining, cert.get('subject', ''), cert.get('issuer', '')
@@ -140,7 +144,7 @@ def run_checks():
 
         attrs = {
             "server.address": host,
-            "server.port": str(port),
+            "server.port": port,
         }
 
         if remaining is not None:
@@ -243,13 +247,16 @@ receivers:
               namespaces:
                 names: ['cert-manager']
           relabel_configs:
-            - source_labels: [__meta_kubernetes_pod_label_app]
+            - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
               regex: cert-manager
               action: keep
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
               regex: (.+)
-              replacement: "${1}:9402"
+              replacement: "$${1}:9402"
+
+processors:
+  batch:
 
 exporters:
   otlp:
