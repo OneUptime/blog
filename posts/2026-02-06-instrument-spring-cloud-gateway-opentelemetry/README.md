@@ -75,7 +75,7 @@ That's it for the basics. The agent will create spans for incoming HTTP requests
 
 ## Configuring via application.yml
 
-You can also configure OpenTelemetry through Spring Boot's configuration system. If you prefer `application.yml` over JVM flags, add these properties:
+If you use the OpenTelemetry Spring Boot starter instead of the Java agent, you can also configure OpenTelemetry through Spring Boot's configuration system. If you prefer `application.yml` over JVM flags, add these properties:
 
 ```yaml
 # application.yml - OpenTelemetry configuration for Spring Cloud Gateway
@@ -111,6 +111,7 @@ otel:
   exporter:
     otlp:
       endpoint: http://otel-collector:4317
+      protocol: grpc
   resource:
     attributes:
       service.name: api-gateway
@@ -134,7 +135,6 @@ If you want programmatic control rather than using the Java agent, you can use t
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        <version>2.12.0</version>
     </dependency>
 
     <!-- OTLP exporter for sending traces to the collector -->
@@ -149,7 +149,7 @@ If you want programmatic control rather than using the Java agent, you can use t
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-instrumentation-bom</artifactId>
-            <version>2.12.0</version>
+            <version>2.28.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -239,8 +239,9 @@ package com.example.gateway.filters;
 import io.opentelemetry.api.trace.Span;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 @Component
 public class RateLimitTracingFilter extends AbstractGatewayFilterFactory<Object> {
@@ -251,11 +252,11 @@ public class RateLimitTracingFilter extends AbstractGatewayFilterFactory<Object>
             Span span = Span.current();
 
             return chain.filter(exchange).then(
-                reactor.core.publisher.Mono.fromRunnable(() -> {
-                    HttpStatus status = (HttpStatus) exchange.getResponse().getStatusCode();
+                Mono.fromRunnable(() -> {
+                    HttpStatusCode status = exchange.getResponse().getStatusCode();
 
                     // Check if the request was rate limited (HTTP 429)
-                    if (status != null && status == HttpStatus.TOO_MANY_REQUESTS) {
+                    if (status != null && status.value() == 429) {
                         span.setAttribute("gateway.rate_limited", true);
                         span.addEvent("gateway.rate_limit.triggered");
                     } else {
@@ -373,7 +374,7 @@ public class GatewayMetrics {
     public void recordRequest(String routeId, double durationMs, int statusCode) {
         Attributes attrs = Attributes.of(
             AttributeKey.stringKey("route.id"), routeId,
-            AttributeKey.longKey("http.status_code"), (long) statusCode
+            AttributeKey.longKey("http.response.status_code"), (long) statusCode
         );
 
         routeLatency.record(durationMs, attrs);
@@ -415,11 +416,11 @@ processors:
         value: production
         action: upsert
 
-  # Sample aggressively for health check routes to reduce noise
+  # Drop health check spans to reduce noise
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/actuator/health"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/actuator/health" or span.attributes["url.path"] == "/actuator/health"'
 
 exporters:
   otlp:
@@ -429,11 +430,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [filter, batch, resource]
+      processors: [resource, filter, batch]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [resource, batch]
       exporters: [otlp]
 ```
 
@@ -499,8 +500,8 @@ Once everything is in place, a single request trace through the gateway will sho
 
 ```mermaid
 flowchart TD
-    A["Gateway Span: GET /api/users/42 (85ms)"] --> B["Filter: TracingGlobalFilter (1ms)"]
-    A --> C["Filter: HeaderExtractionFilter (0.5ms)"]
+    A["Gateway Span: GET /api/users/42 (85ms)"] --> B["Attributes: route, client IP, headers"]
+    A --> C["Events: rate limit or circuit breaker"]
     A --> D["Proxy Span: GET user-service:8080/users/42 (78ms)"]
     D --> E["User Service Span: GET /users/42 (70ms)"]
     E --> F["DB Span: SELECT * FROM users (12ms)"]
@@ -511,7 +512,7 @@ flowchart TD
     style E fill:#e8f5e9,stroke:#333
 ```
 
-The gateway span wraps everything. Inside it, you see the filter execution and the proxy call. The proxy call then continues into the backend service where the trace shows the actual work being done. This end-to-end view is incredibly valuable for understanding where time is really spent.
+The gateway span wraps everything. On that span, you see the route, header, rate limiting, and circuit breaker context added by your custom filters, plus the proxy call. The proxy call then continues into the backend service where the trace shows the actual work being done. This end-to-end view is incredibly valuable for understanding where time is really spent.
 
 ## Wrapping Up
 
