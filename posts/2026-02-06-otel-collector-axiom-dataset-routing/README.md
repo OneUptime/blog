@@ -34,7 +34,7 @@ processors:
 
 exporters:
   # Separate exporter for traces
-  otlphttp/axiom-traces:
+  otlp_http/axiom-traces:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
@@ -45,18 +45,18 @@ exporters:
       max_interval: 30s
 
   # Separate exporter for metrics
-  otlphttp/axiom-metrics:
+  otlp_http/axiom-metrics:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
-      X-Axiom-Dataset: "otel-metrics"
+      X-Axiom-Metrics-Dataset: "otel-metrics"
     retry_on_failure:
       enabled: true
       initial_interval: 1s
       max_interval: 30s
 
   # Separate exporter for logs
-  otlphttp/axiom-logs:
+  otlp_http/axiom-logs:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
@@ -71,57 +71,58 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/axiom-traces]
+      exporters: [otlp_http/axiom-traces]
 
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/axiom-metrics]
+      exporters: [otlp_http/axiom-metrics]
 
     logs:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/axiom-logs]
+      exporters: [otlp_http/axiom-logs]
 ```
 
 ## Service-Based Dataset Routing
 
-You can also route different services to different datasets using the routing processor:
+You can also route different services to different datasets using the routing connector:
 
 ```yaml
-processors:
+connectors:
   routing/traces:
-    from_attribute: service.name
-    attribute_source: resource
+    default_pipelines: [traces/default]
     table:
-      frontend-service:
-        exporters: [otlphttp/axiom-frontend]
-      backend-api:
-        exporters: [otlphttp/axiom-backend]
-      payment-service:
-        exporters: [otlphttp/axiom-payments]
-    default_exporters: [otlphttp/axiom-default]
+      - context: resource
+        condition: attributes["service.name"] == "frontend-service"
+        pipelines: [traces/frontend]
+      - context: resource
+        condition: attributes["service.name"] == "backend-api"
+        pipelines: [traces/backend]
+      - context: resource
+        condition: attributes["service.name"] == "payment-service"
+        pipelines: [traces/payments]
 
 exporters:
-  otlphttp/axiom-frontend:
+  otlp_http/axiom-frontend:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
       X-Axiom-Dataset: "frontend-traces"
 
-  otlphttp/axiom-backend:
+  otlp_http/axiom-backend:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
       X-Axiom-Dataset: "backend-traces"
 
-  otlphttp/axiom-payments:
+  otlp_http/axiom-payments:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
       X-Axiom-Dataset: "payment-traces"
 
-  otlphttp/axiom-default:
+  otlp_http/axiom-default:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_API_TOKEN}"
@@ -129,11 +130,25 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing/traces]
-      exporters: [otlphttp/axiom-frontend, otlphttp/axiom-backend,
-                   otlphttp/axiom-payments, otlphttp/axiom-default]
+      exporters: [routing/traces]
+    traces/frontend:
+      receivers: [routing/traces]
+      processors: [batch]
+      exporters: [otlp_http/axiom-frontend]
+    traces/backend:
+      receivers: [routing/traces]
+      processors: [batch]
+      exporters: [otlp_http/axiom-backend]
+    traces/payments:
+      receivers: [routing/traces]
+      processors: [batch]
+      exporters: [otlp_http/axiom-payments]
+    traces/default:
+      receivers: [routing/traces]
+      processors: [batch]
+      exporters: [otlp_http/axiom-default]
 ```
 
 ## Adding Sampling to Reduce Volume
@@ -148,9 +163,8 @@ processors:
 
   # Filter out debug-level logs
   filter/logs:
-    logs:
-      log_record:
-        - 'severity_number < 9'  # Drop TRACE and DEBUG level
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'  # Drop TRACE and DEBUG level
 
   batch:
     timeout: 5s
@@ -160,12 +174,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [probabilistic_sampler, batch]
-      exporters: [otlphttp/axiom-traces]
+      exporters: [otlp_http/axiom-traces]
 
     logs:
       receivers: [otlp]
       processors: [filter/logs, batch]
-      exporters: [otlphttp/axiom-logs]
+      exporters: [otlp_http/axiom-logs]
 ```
 
 ## Environment-Based Routing
@@ -173,29 +187,41 @@ service:
 Route staging and production data to different datasets:
 
 ```yaml
-processors:
+connectors:
   routing/env:
-    from_attribute: deployment.environment
-    attribute_source: resource
+    default_pipelines: [traces/prod]
     table:
-      production:
-        exporters: [otlphttp/axiom-prod]
-      staging:
-        exporters: [otlphttp/axiom-staging]
-    default_exporters: [otlphttp/axiom-prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/staging]
 
 exporters:
-  otlphttp/axiom-prod:
+  otlp_http/axiom-prod:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_PROD_TOKEN}"
       X-Axiom-Dataset: "prod-traces"
 
-  otlphttp/axiom-staging:
+  otlp_http/axiom-staging:
     endpoint: "https://api.axiom.co"
     headers:
       Authorization: "Bearer ${AXIOM_STAGING_TOKEN}"
       X-Axiom-Dataset: "staging-traces"
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing/env]
+    traces/prod:
+      receivers: [routing/env]
+      exporters: [otlp_http/axiom-prod]
+    traces/staging:
+      receivers: [routing/env]
+      exporters: [otlp_http/axiom-staging]
 ```
 
 ## Docker Compose for Local Testing
