@@ -20,108 +20,27 @@ Without instrumentation, these issues remain invisible until users complain abou
 
 ## Creating a Twig Runtime Profiler Extension
 
-Twig allows you to hook into the rendering process through extensions and runtime loaders. We'll create an extension that wraps template rendering with OpenTelemetry spans.
+Twig allows you to hook into the rendering process through extensions and node visitors. A low-level implementation can wrap compiled template nodes with OpenTelemetry spans, but that requires a custom Twig node that compiles the tracing calls. A simpler approach is to extend Twig's profiler extension and add OpenTelemetry spans when Twig enters and leaves profiled template, block, and macro executions:
 
 ```php
-// src/Twig/Extension/OpenTelemetryExtension.php
-
-namespace App\Twig\Extension;
-
-use App\Twig\Runtime\OpenTelemetryRuntime;
-use Twig\Extension\AbstractExtension;
-use Twig\Extension\ProfilerExtension;
-
-class OpenTelemetryExtension extends AbstractExtension
-{
-    public function __construct(
-        private OpenTelemetryRuntime $runtime
-    ) {}
-
-    public function getNodeVisitors(): array
-    {
-        return [
-            new OpenTelemetryNodeVisitor($this->runtime),
-        ];
-    }
-}
-```
-
-The node visitor intercepts template compilation to inject our tracing code:
-
-```php
-// src/Twig/Extension/OpenTelemetryNodeVisitor.php
-
-namespace App\Twig\Extension;
-
-use Twig\Environment;
-use Twig\Node\Node;
-use Twig\Node\ModuleNode;
-use Twig\Node\BlockNode;
-use Twig\Node\BodyNode;
-use Twig\NodeVisitor\NodeVisitorInterface;
-
-class OpenTelemetryNodeVisitor implements NodeVisitorInterface
-{
-    public function __construct(
-        private $runtime
-    ) {}
-
-    public function enterNode(Node $node, Environment $env): Node
-    {
-        return $node;
-    }
-
-    public function leaveNode(Node $node, Environment $env): Node
-    {
-        if ($node instanceof ModuleNode) {
-            // Wrap the entire template body
-            $node->setNode('body', $this->wrapNode($node->getNode('body'), $node->getTemplateName()));
-        }
-
-        if ($node instanceof BlockNode) {
-            // Wrap individual blocks
-            $node->setNode('body', $this->wrapNode($node->getNode('body'), 'block:' . $node->getAttribute('name')));
-        }
-
-        return $node;
-    }
-
-    public function getPriority(): int
-    {
-        return 0;
-    }
-
-    private function wrapNode(Node $node, string $name): Node
-    {
-        // Inject tracing calls around the node
-        return new OpenTelemetryNode($node, $name, $this->runtime);
-    }
-}
-```
-
-However, a simpler approach uses Twig's profiler extension as a foundation and extends it with OpenTelemetry:
-
-```php
-// src/Twig/Profiler/OpenTelemetryProfile.php
+// src/Twig/Profiler/OpenTelemetryProfilerExtension.php
 
 namespace App\Twig\Profiler;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
-use OpenTelemetry\API\Trace\SpanInterface;
+use OpenTelemetry\API\Trace\TracerInterface;
+use Twig\Extension\ProfilerExtension;
 use Twig\Profiler\Profile;
 
-class OpenTelemetryProfile extends Profile
+class OpenTelemetryProfilerExtension extends ProfilerExtension
 {
-    private $tracer;
     private array $spans = [];
     private array $scopes = [];
 
     public function __construct(
-        TracerProviderInterface $tracerProvider,
+        private TracerInterface $tracer,
         private bool $captureTemplateVariables = false
     ) {
-        parent::__construct();
-        $this->tracer = $tracerProvider->getTracer('twig.template');
+        parent::__construct(new Profile());
     }
 
     public function enter(Profile $profile): void
@@ -179,22 +98,18 @@ class OpenTelemetryProfile extends Profile
 }
 ```
 
-Register the profile as a service and enable it in Twig:
+Register the profiler extension as a Twig extension service. This example uses the default tracer service ID created by the FriendsOfOpenTelemetry Symfony bundle:
 
 ```yaml
 # config/services.yaml
 
 services:
-  App\Twig\Profiler\OpenTelemetryProfile:
+  App\Twig\Profiler\OpenTelemetryProfilerExtension:
     arguments:
-      $tracerProvider: '@opentelemetry.trace.tracer_provider'
+      $tracer: '@open_telemetry.traces.tracers.default_tracer'
       $captureTemplateVariables: '%env(bool:OTEL_TWIG_CAPTURE_VARIABLES)%'
-
-# config/packages/twig.yaml
-
-twig:
-  profiler:
-    class: App\Twig\Profiler\OpenTelemetryProfile
+    tags:
+      - { name: twig.extension }
 ```
 
 ## Instrumenting Template Includes and Embeds
@@ -206,18 +121,13 @@ Twig's include and embed tags create nested template rendering that should appea
 
 namespace App\Twig\Runtime;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use Twig\Environment;
 
 class TemplateIncludeTracer
 {
-    private $tracer;
-
-    public function __construct(TracerProviderInterface $tracerProvider)
-    {
-        $this->tracer = $tracerProvider->getTracer('twig.includes');
-    }
+    public function __construct(private TracerInterface $tracer) {}
 
     public function traceInclude(Environment $env, string $template, array $variables = []): string
     {
@@ -246,7 +156,7 @@ class TemplateIncludeTracer
 }
 ```
 
-Register this as a Twig function to use in templates:
+Register this as a Twig function to use in templates. Because the function points to a runtime class, tag that runtime service so Twig can lazy-load it:
 
 ```php
 // src/Twig/Extension/TracingExtension.php
@@ -264,10 +174,20 @@ class TracingExtension extends AbstractExtension
         return [
             new TwigFunction('trace_include', [TemplateIncludeTracer::class, 'traceInclude'], [
                 'needs_environment' => true,
+                'is_safe' => ['html'],
             ]),
         ];
     }
 }
+```
+
+```yaml
+# config/services.yaml
+
+services:
+  App\Twig\Runtime\TemplateIncludeTracer:
+    tags:
+      - { name: twig.runtime }
 ```
 
 Now you can explicitly trace specific includes that you suspect are slow:
@@ -297,18 +217,14 @@ Large or complex variables passed to templates can impact performance, especiall
 
 namespace App\Twig\Runtime;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Trace\TracerInterface;
 
 class VariableProfiler
 {
-    private $tracer;
-
     public function __construct(
-        TracerProviderInterface $tracerProvider,
+        private TracerInterface $tracer,
         private int $sizeThreshold = 1048576 // 1MB
-    ) {
-        $this->tracer = $tracerProvider->getTracer('twig.variables');
-    }
+    ) {}
 
     public function profileVariables(array $variables): array
     {
@@ -389,7 +305,7 @@ abstract class BaseController extends AbstractController
         private VariableProfiler $variableProfiler
     ) {}
 
-    protected function render(string $view, array $parameters = [], Response $response = null): Response
+    protected function render(string $view, array $parameters = [], ?Response $response = null): Response
     {
         // Profile variables before passing to Twig
         $parameters = $this->variableProfiler->profileVariables($parameters);
@@ -408,18 +324,13 @@ If you have custom Twig extensions with filters or functions that perform expens
 
 namespace App\Twig\Extension;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Trace\TracerInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFilter;
 
 class DataProcessingExtension extends AbstractExtension
 {
-    private $tracer;
-
-    public function __construct(TracerProviderInterface $tracerProvider)
-    {
-        $this->tracer = $tracerProvider->getTracer('twig.extensions');
-    }
+    public function __construct(private TracerInterface $tracer) {}
 
     public function getFilters(): array
     {
@@ -462,7 +373,7 @@ class DataProcessingExtension extends AbstractExtension
 
         try {
             // Price formatting logic that might make API calls
-            $formatted = $this->priceFormatter->format($amount, $currency);
+            $formatted = $this->formatCurrency($amount, $currency);
             return $formatted;
 
         } finally {
@@ -475,6 +386,12 @@ class DataProcessingExtension extends AbstractExtension
     {
         // Actual markdown conversion implementation
         return $text; // Simplified
+    }
+
+    private function formatCurrency(float $amount, string $currency): string
+    {
+        // Actual price formatting implementation
+        return sprintf('%s %.2f', $currency, $amount); // Simplified
     }
 }
 ```
@@ -494,6 +411,7 @@ use OpenTelemetry\SDK\Trace\SpanProcessorInterface;
 use OpenTelemetry\SDK\Trace\ReadWriteSpanInterface;
 use OpenTelemetry\SDK\Trace\ReadableSpanInterface;
 use OpenTelemetry\Context\ContextInterface;
+use OpenTelemetry\SDK\Common\Future\CancellationInterface;
 use Psr\Log\LoggerInterface;
 
 class SlowTemplateProcessor implements SpanProcessorInterface
@@ -515,45 +433,31 @@ class SlowTemplateProcessor implements SpanProcessorInterface
             return;
         }
 
-        $duration = ($span->getEndEpochNanos() - $span->getStartEpochNanos()) / 1_000_000;
+        $duration = $span->getDuration() / 1_000_000;
 
         if ($duration > $this->thresholdMs) {
-            $attributes = $span->getAttributes()->toArray();
-
             $this->logger->warning('Slow template rendering detected', [
                 'span_name' => $span->getName(),
                 'duration_ms' => $duration,
-                'template' => $attributes['twig.template'] ?? 'unknown',
+                'template' => $span->getAttribute('twig.template') ?? 'unknown',
                 'trace_id' => $span->getContext()->getTraceId(),
             ]);
         }
     }
 
-    public function forceFlush(): bool
+    public function forceFlush(?CancellationInterface $cancellation = null): bool
     {
         return true;
     }
 
-    public function shutdown(): bool
+    public function shutdown(?CancellationInterface $cancellation = null): bool
     {
         return true;
     }
 }
 ```
 
-Register this processor in your OpenTelemetry configuration:
-
-```yaml
-# config/services.yaml
-
-services:
-  App\OpenTelemetry\SlowTemplateProcessor:
-    arguments:
-      $logger: '@logger'
-      $thresholdMs: '%env(int:OTEL_TWIG_SLOW_THRESHOLD_MS)%'
-    tags:
-      - { name: opentelemetry.span_processor }
-```
+Register this processor with the `TracerProvider` used by your OpenTelemetry PHP SDK setup. If you use a Symfony OpenTelemetry bundle, add it through that bundle's trace provider or processor configuration rather than through Twig configuration.
 
 ## Visualizing Template Rendering Hierarchy
 
