@@ -70,20 +70,21 @@ docker volume inspect mydata --format '{{.Mountpoint}}'
 # Output: /var/lib/docker/volumes/mydata/_data
 ```
 
-Use rsync to synchronize to the destination:
-
-```bash
-# Sync the volume data to the destination host using rsync
-sudo rsync -avz --progress \
-  /var/lib/docker/volumes/mydata/_data/ \
-  user@destination:/var/lib/docker/volumes/mydata/_data/
-```
-
 On the destination host, create the volume first so Docker tracks it:
 
 ```bash
 # On destination: create the volume before rsync
 docker volume create mydata
+```
+
+Use rsync to synchronize to the destination:
+
+```bash
+# Sync the volume data to the destination host using rsync
+sudo rsync -avz --progress \
+  --rsync-path="sudo rsync" \
+  /var/lib/docker/volumes/mydata/_data/ \
+  user@destination:/var/lib/docker/volumes/mydata/_data/
 ```
 
 The rsync approach is ideal for large volumes where you need regular synchronization. After the initial full sync, subsequent runs only transfer changed files.
@@ -93,8 +94,9 @@ The rsync approach is ideal for large volumes where you need regular synchroniza
 If you want to bundle volume data into a Docker image for transfer, you can create a temporary image:
 
 ```bash
-# On source: create a container with the volume data, commit it as an image
-docker run --name temp-export -v mydata:/data alpine true
+# On source: copy the volume data into the container filesystem, then commit it
+docker run --name temp-export -v mydata:/source alpine \
+  sh -c "mkdir /snapshot && cp -a /source/. /snapshot/"
 docker commit temp-export mydata-snapshot
 docker rm temp-export
 
@@ -113,10 +115,7 @@ docker load < /tmp/mydata-snapshot.tar
 
 # Create the volume and copy data from the image
 docker volume create mydata
-docker run --rm -v mydata:/data mydata-snapshot sh -c "cp -a /data/. /dest/"
-# This won't work as-is because the data is at /data in the snapshot
-# Better approach: extract from the committed container
-docker run --rm -v mydata:/dest mydata-snapshot sh -c "cp -a /data/. /dest/"
+docker run --rm -v mydata:/dest mydata-snapshot sh -c "cp -a /snapshot/. /dest/"
 ```
 
 This method is useful when you want to version your volume data or store it in a registry.
@@ -156,7 +155,7 @@ If both hosts can access an NFS share, use it as an intermediate:
 docker run --rm \
   -v mydata:/source \
   -v /mnt/nfs-share:/dest \
-  alpine cp -a /source/. /dest/mydata-backup/
+  alpine sh -c "mkdir -p /dest/mydata-backup && cp -a /source/. /dest/mydata-backup/"
 ```
 
 On the destination:
