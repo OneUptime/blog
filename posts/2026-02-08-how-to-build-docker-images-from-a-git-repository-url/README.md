@@ -44,7 +44,7 @@ docker build https://github.com/your-org/your-app.git#feature/new-api
 docker build https://github.com/your-org/your-app.git#v2.1.0
 
 # Build from a specific commit hash
-docker build https://github.com/your-org/your-app.git#a3f2b1c
+docker build https://github.com/your-org/your-app.git#a3f2b1c4d5e6f7890a1234567890abcdef123456
 
 # Build from a subdirectory on the main branch
 docker build https://github.com/your-org/your-app.git#main:services/backend
@@ -53,7 +53,7 @@ docker build https://github.com/your-org/your-app.git#main:services/backend
 docker build https://github.com/your-org/your-app.git#develop:docker/production
 ```
 
-The ref portion supports anything that `git checkout` understands. Branches, tags, and full or abbreviated commit SHAs all work.
+The ref portion supports branches, tags, pull request refs, and commit SHAs. When you use a commit SHA in a URL fragment, use the full 40-character hash; short hashes are only supported with Buildx URL query parameters such as `?checksum=`.
 
 ## Working with Private Repositories
 
@@ -81,21 +81,28 @@ docker build git@github.com:your-org/private-app.git
 
 ### HTTPS with Token Authentication
 
-For HTTPS URLs, you can embed a personal access token directly:
-
-```bash
-# Use a personal access token in the URL
-docker build https://oauth2:YOUR_TOKEN@github.com/your-org/private-app.git
-```
-
-This works but embeds the token in your shell history. A safer approach uses an environment variable:
+For HTTPS URLs, pass the token as a BuildKit secret:
 
 ```bash
 # Store the token in an environment variable
-export GIT_TOKEN="ghp_your_token_here"
+export GIT_AUTH_TOKEN="ghp_your_token_here"
 
-# Reference the variable in the build command
-docker build "https://oauth2:${GIT_TOKEN}@github.com/your-org/private-app.git#main"
+# Pass the token to the builder as a secret
+docker build \
+  --secret id=GIT_AUTH_TOKEN \
+  https://github.com/your-org/private-app.git#main
+```
+
+This avoids putting the token directly in the Git URL or passing it as a build argument. If your Git provider requires a custom authorization header, BuildKit also supports the `GIT_AUTH_HEADER` secret:
+
+```bash
+# Store the authorization header in an environment variable
+export GIT_AUTH_HEADER="Bearer your_token_here"
+
+# Pass the header to the builder as a secret
+docker build \
+  --secret id=GIT_AUTH_HEADER \
+  https://github.com/your-org/private-app.git#main
 ```
 
 ## Adding Build Arguments and Tags
