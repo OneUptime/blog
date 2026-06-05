@@ -25,7 +25,7 @@ Tutorial
 - MDN Retry-After header reference: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After
 
 ## Issues Found
-- The rate limiter read the Redis counter but never incremented it, so it would not actually enforce a moving request count. Updated it to use Redis `INCR`, set a 60-second expiry for new windows, read the TTL, and calculate reset and retry values from that TTL.
+- The rate limiter read the Redis counter but never incremented it, so it would not actually enforce a per-window request count. Updated it to use Redis `INCR`, set a 60-second expiry for new windows, read the TTL, and calculate reset and retry values from that TTL.
 - The rate limiter referenced `_get_reset_time(key)`, but no such method existed. Replaced it with an inline `reset_at` calculation based on the Redis TTL.
 - The limit comparison used `current_count < limit`, which rejected the request that exactly reached the configured limit. Changed it to `current_count <= limit` after incrementing the counter.
 - The `rate_limit.allowed` metric attribute was recorded as a string. Changed it to a boolean attribute, which is supported by OpenTelemetry attributes.
