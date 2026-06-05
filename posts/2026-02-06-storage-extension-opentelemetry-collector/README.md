@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Extension, Storage, Persistence, Reliability, Da
 
 Description: Master the Storage extension configuration in OpenTelemetry Collector to implement persistent queuing, prevent data loss, and ensure reliable telemetry delivery during network outages.
 
-The Storage extension in the OpenTelemetry Collector provides persistent storage capabilities that prevent telemetry data loss during temporary network outages, backend unavailability, or collector restarts. By buffering data to disk, the extension enables collectors to continue accepting telemetry even when exporters cannot deliver data to their destinations.
+The Storage extension in the OpenTelemetry Collector provides persistent storage capabilities that help prevent telemetry data loss during temporary network outages, backend unavailability, or collector restarts. By backing exporter queues with disk storage, the extension enables collectors to continue accepting telemetry until the configured queue or storage capacity is exhausted.
 
 ## Understanding the Storage Extension
 
-The Storage extension implements a persistent queue that stores telemetry data on disk when exporters encounter delivery failures. This capability is critical for production deployments where data loss is unacceptable and network reliability cannot be guaranteed.
+Exporter sending queues can use the Storage extension as a persistent queue backend, storing queued telemetry data on disk instead of only in memory. This capability is critical for production deployments where data loss is unacceptable and network reliability cannot be guaranteed.
 
 Unlike in-memory queuing which loses data during collector restarts or crashes, persistent storage ensures data survives these events. When the collector restarts or backends become available again, buffered data is automatically replayed from storage.
 
@@ -26,7 +26,7 @@ Modern observability systems must handle various failure scenarios gracefully. T
 
 **Traffic spikes**: Temporary spikes that exceed backend capacity are absorbed by the storage layer and delivered when capacity is available.
 
-**Cost optimization**: By buffering data during high-cost periods, you can implement strategies to send data during lower-cost time windows.
+**Backpressure tolerance**: Persistent queues give downstream systems time to recover without immediately forcing the collector to drop queued telemetry.
 
 ## Basic Configuration
 
@@ -46,15 +46,13 @@ extensions:
 
     # Optional: compaction configuration
     compaction:
-      # Enable compaction to reclaim space
-      enabled: true
       # Directory for temporary files during compaction
       directory: /var/lib/otelcol/compaction
-      # Trigger compaction when this much space can be reclaimed
+      # Enable online compaction after storage rebounds
       on_rebound: true
-      # Maximum time for compaction operation
-      rebound_needed_threshold_mib: 5
-      rebound_trigger_threshold_mib: 10
+      # Trigger compaction after storage grows and then drains
+      rebound_needed_threshold_mib: 10
+      rebound_trigger_threshold_mib: 5
 
 receivers:
   otlp:
@@ -99,7 +97,7 @@ service:
       exporters: [otlp]
 ```
 
-This configuration creates a persistent queue in the specified directory. When the exporter cannot send data, batches are written to disk and replayed when the backend becomes available.
+This configuration creates a persistent queue in the specified directory. Queued batches are stored on disk and replayed when the backend becomes available.
 
 ## Storage Extension Configuration Options
 
@@ -116,17 +114,17 @@ extensions:
 
     # Compaction reduces disk space by removing deleted entries
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction
+      on_rebound: true
 
       # Compaction triggers based on reclaimable space
-      rebound_needed_threshold_mib: 5
-      rebound_trigger_threshold_mib: 10
+      rebound_needed_threshold_mib: 10
+      rebound_trigger_threshold_mib: 5
 
       # Compaction frequency
       check_interval: 5m
 
-      # Maximum concurrent compaction operations
+      # Maximum size of the compaction transaction
       max_transaction_size: 65536
 
 receivers:
@@ -170,24 +168,24 @@ extensions:
     directory: /var/lib/otelcol/storage/high-priority
     timeout: 10s
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction/high-priority
+      on_rebound: true
 
   # Standard priority storage
   file_storage/standard:
     directory: /var/lib/otelcol/storage/standard
     timeout: 10s
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction/standard
+      on_rebound: true
 
   # Low-priority storage with aggressive limits
   file_storage/low_priority:
     directory: /var/lib/otelcol/storage/low-priority
     timeout: 5s
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction/low-priority
+      on_rebound: true
 
 receivers:
   otlp:
@@ -199,15 +197,17 @@ processors:
   batch:
     timeout: 10s
 
-  # Route by attributes to different priorities
+connectors:
+  # Route by resource attributes to different priorities
   routing:
-    from_attribute: "priority"
-    default_exporters: [otlp/standard]
+    default_pipelines: [traces/standard]
     table:
-      - value: "high"
-        exporters: [otlp/high_priority]
-      - value: "low"
-        exporters: [otlp/low_priority]
+      - context: resource
+        condition: attributes["priority"] == "high"
+        pipelines: [traces/high_priority]
+      - context: resource
+        condition: attributes["priority"] == "low"
+        pipelines: [traces/low_priority]
 
 exporters:
   # High priority exporter
@@ -240,13 +240,22 @@ exporters:
 service:
   extensions: [file_storage/high_priority, file_storage/standard, file_storage/low_priority]
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing, batch]
-      exporters: [otlp/high_priority, otlp/standard, otlp/low_priority]
+      processors: [batch]
+      exporters: [routing]
+    traces/high_priority:
+      receivers: [routing]
+      exporters: [otlp/high_priority]
+    traces/standard:
+      receivers: [routing]
+      exporters: [otlp/standard]
+    traces/low_priority:
+      receivers: [routing]
+      exporters: [otlp/low_priority]
 ```
 
-This configuration implements priority-based storage and delivery, ensuring critical telemetry is preserved and delivered first during resource constraints.
+This configuration gives each priority class its own persistent queue, preventing lower-priority telemetry from consuming the same queue as higher-priority telemetry.
 
 ## Storage Flow Visualization
 
@@ -265,6 +274,8 @@ sequenceDiagram
 
     R->>P: Receive telemetry
     P->>Q: Process and enqueue
+    Q->>S: Store queued batch
+    S->>Q: Dequeue batch
     Q->>E: Send batch
     E->>B: Export data
     B->>E: Success
@@ -273,18 +284,19 @@ sequenceDiagram
 
     R->>P: Receive telemetry
     P->>Q: Process and enqueue
+    Q->>S: Store queued batch
+    S->>Q: Dequeue batch
     Q->>E: Send batch
     E->>B: Export data
     B->>E: Connection failed
-    E->>Q: Retry signal
-    Q->>S: Persist batch to disk
+    E->>Q: Retry later
 
     Note over S: Data stored persistently
 
     Note over R,B: Backend Recovery
 
     B->>E: Connection restored
-    S->>Q: Load persisted batch
+    S->>Q: Load queued batch
     Q->>E: Send batch
     E->>B: Export data
     B->>E: Success
@@ -301,15 +313,12 @@ extensions:
     directory: /var/lib/otelcol/storage
     timeout: 10s
 
-    # Maximum storage size
-    max_size_mib: 10240  # 10 GB
-
     # Compaction configuration
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction
+      on_rebound: true
       rebound_needed_threshold_mib: 100
-      rebound_trigger_threshold_mib: 200
+      rebound_trigger_threshold_mib: 10
       check_interval: 5m
 
 receivers:
@@ -331,12 +340,12 @@ exporters:
       queue_size: 5000
       storage: file_storage
 
-      # Configure retry behavior
-      retry_on_failure:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 30s
-        max_elapsed_time: 5m
+    # Configure retry behavior
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
 
 service:
   extensions: [file_storage]
@@ -347,7 +356,7 @@ service:
       exporters: [otlp]
 ```
 
-The max_size_mib parameter prevents storage from consuming all available disk space. When this limit is reached, the oldest data is dropped to make room for new data.
+The sending_queue.queue_size parameter limits the number of batches the persistent queue can store. The file storage extension itself does not enforce a byte-size disk quota, so use a dedicated volume, filesystem quota, or container storage limit to prevent it from consuming all available disk space. If data cannot be added to the queue because the queue or storage is full, it is rejected unless block_on_overflow is configured to wait for space.
 
 ## Performance Tuning
 
@@ -363,12 +372,12 @@ extensions:
     # Configure on a dedicated volume for predictable performance
 
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction
+      on_rebound: true
 
       # More aggressive compaction for high throughput
       rebound_needed_threshold_mib: 50
-      rebound_trigger_threshold_mib: 100
+      rebound_trigger_threshold_mib: 10
       check_interval: 2m
 
       # Larger transaction size for better throughput
@@ -426,8 +435,8 @@ extensions:
     directory: /var/lib/otelcol/storage
     timeout: 10s
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction
+      on_rebound: true
 
 receivers:
   otlp:
@@ -486,21 +495,16 @@ graph TB
     B --> C[Processors]
     C --> D[Sending Queue]
 
-    D --> E{Export Success?}
-
-    E -->|Yes| F[Backend]
-    E -->|No| G[Storage Extension]
-
+    D --> G[Storage Extension]
     G --> H[Disk Storage]
-
-    H --> I{Backend Available?}
-    I -->|Yes| D
-    I -->|No| H
+    H --> E{Exporter Can Send?}
+    E -->|Yes| F[Backend]
+    E -->|No| H
 
     J[Compaction Process] --> H
 
     K[Memory Limit] -.->|Prevents OOM| D
-    L[Disk Limit] -.->|Prevents full disk| G
+    L[Dedicated Volume or Quota] -.->|Prevents full disk| G
 ```
 
 ## Monitoring Storage Health
@@ -513,8 +517,8 @@ extensions:
     directory: /var/lib/otelcol/storage
     timeout: 10s
     compaction:
-      enabled: true
       directory: /var/lib/otelcol/compaction
+      on_rebound: true
 
 receivers:
   otlp:
@@ -553,8 +557,13 @@ service:
   # Expose internal metrics
   telemetry:
     metrics:
-      address: ":8888"
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 
   pipelines:
     traces:
@@ -582,19 +591,6 @@ Deploy storage-enabled collectors in Kubernetes with persistent volumes:
 
 ```yaml
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: otel-collector-storage
-  namespace: monitoring
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 20Gi
-  storageClassName: fast-ssd
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-collector-config
@@ -605,10 +601,9 @@ data:
       file_storage:
         directory: /var/lib/otelcol/storage
         timeout: 10s
-        max_size_mib: 15360  # 15 GB (leave space for overhead)
         compaction:
-          enabled: true
           directory: /var/lib/otelcol/compaction
+          on_rebound: true
 
     receivers:
       otlp:
@@ -655,7 +650,8 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:latest
+        image: otel/opentelemetry-collector-contrib:0.153.0
+        args: ["--config=/etc/otel/config.yaml"]
         volumeMounts:
         - name: config
           mountPath: /etc/otel
@@ -672,12 +668,19 @@ spec:
       - name: config
         configMap:
           name: otel-collector-config
-      - name: storage
-        persistentVolumeClaim:
-          claimName: otel-collector-storage
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: fast-ssd
 ```
 
-Using StatefulSet with PersistentVolumeClaims ensures each collector instance has dedicated persistent storage that survives pod restarts.
+Using StatefulSet volumeClaimTemplates ensures each collector instance has dedicated persistent storage that survives pod restarts.
 
 ## Storage Migration
 
@@ -692,16 +695,25 @@ NEW_COLLECTOR_POD="otel-collector-new-0"
 NAMESPACE="monitoring"
 STORAGE_PATH="/var/lib/otelcol/storage"
 
+# Keep one old collector pod available for the copy operation and stop sending it new traffic.
+kubectl scale statefulset otel-collector-old -n $NAMESPACE --replicas=1
+kubectl wait --for=condition=Ready pod/$OLD_COLLECTOR_POD -n $NAMESPACE --timeout=120s
+
+# Copy storage data before deleting the old pod
+kubectl exec -n $NAMESPACE $OLD_COLLECTOR_POD -- tar czf /tmp/storage.tar.gz -C $STORAGE_PATH .
+kubectl cp $NAMESPACE/$OLD_COLLECTOR_POD:/tmp/storage.tar.gz ./storage.tar.gz
+
 # Stop old collector
 kubectl scale statefulset otel-collector-old -n $NAMESPACE --replicas=0
 
-# Copy storage data
-kubectl exec -n $NAMESPACE $OLD_COLLECTOR_POD -- tar czf /tmp/storage.tar.gz -C $STORAGE_PATH .
-kubectl cp $NAMESPACE/$OLD_COLLECTOR_POD:/tmp/storage.tar.gz ./storage.tar.gz
+# Start one new collector pod so the archive can be copied into its mounted volume
+kubectl scale statefulset otel-collector-new -n $NAMESPACE --replicas=1
+kubectl wait --for=condition=Ready pod/$NEW_COLLECTOR_POD -n $NAMESPACE --timeout=120s
+
 kubectl cp ./storage.tar.gz $NAMESPACE/$NEW_COLLECTOR_POD:/tmp/storage.tar.gz
 kubectl exec -n $NAMESPACE $NEW_COLLECTOR_POD -- tar xzf /tmp/storage.tar.gz -C $STORAGE_PATH
 
-# Start new collector
+# Scale new collector
 kubectl scale statefulset otel-collector-new -n $NAMESPACE --replicas=3
 
 echo "Storage migration completed"
@@ -709,9 +721,9 @@ echo "Storage migration completed"
 
 ## Best Practices
 
-**Use fast storage**: Deploy storage directories on SSD volumes for optimal performance. Avoid network-attached storage which adds latency.
+**Use fast storage**: Deploy storage directories on SSD volumes for optimal performance. Avoid high-latency storage where possible.
 
-**Set appropriate limits**: Configure max_size_mib to prevent disk exhaustion while allowing sufficient buffering for expected outage durations.
+**Set appropriate limits**: Configure sending_queue.queue_size and place the storage directory on a dedicated volume or quota-limited filesystem sized for expected outage durations.
 
 **Monitor disk usage**: Alert on high disk usage to detect prolonged backend outages or configuration issues before storage fills.
 
@@ -727,7 +739,7 @@ echo "Storage migration completed"
 
 ## Troubleshooting
 
-**Disk full errors**: Increase max_size_mib or enable more aggressive compaction. Consider adding disk space or adjusting retention.
+**Disk full errors**: Increase the storage volume size, reduce queue_size, or enable more aggressive compaction. Consider adding disk space or adjusting retention.
 
 **High latency**: Slow storage devices cause increased latency. Use SSD storage and verify disk I/O performance.
 
