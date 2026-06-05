@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Honeycomb, Dataset Routing
 
-Description: Configure the OpenTelemetry Collector to export traces, metrics, and logs to Honeycomb with per-signal dataset routing and team tokens.
+Description: Configure the OpenTelemetry Collector to export traces, metrics, and logs to Honeycomb with signal-specific routing and team tokens.
 
-Running the OpenTelemetry Collector as a gateway between your services and Honeycomb gives you centralized control over routing, sampling, and enrichment. You can route different signals (traces, metrics, logs) to different Honeycomb datasets and manage team tokens in one place.
+Running the OpenTelemetry Collector as a gateway between your services and Honeycomb gives you centralized control over routing, sampling, and enrichment. You can route metrics, and optionally logs or Honeycomb Classic traces, to specific Honeycomb datasets and manage team tokens in one place.
 
 ## Basic Collector Configuration
 
@@ -37,7 +37,6 @@ exporters:
     endpoint: "api.honeycomb.io:443"
     headers:
       "x-honeycomb-team": "${HONEYCOMB_API_KEY}"
-      "x-honeycomb-dataset": "traces"
 
   otlp/honeycomb-metrics:
     endpoint: "api.honeycomb.io:443"
@@ -49,6 +48,7 @@ exporters:
     endpoint: "api.honeycomb.io:443"
     headers:
       "x-honeycomb-team": "${HONEYCOMB_API_KEY}"
+      # If OTLP logs include service.name, Honeycomb uses that instead of this header.
       "x-honeycomb-dataset": "logs"
 
 service:
@@ -84,16 +84,17 @@ processors:
   batch:
     timeout: 5s
 
+connectors:
   # Route to different teams based on environment
   routing:
-    from_attribute: deployment.environment
-    attribute_source: resource
+    default_pipelines: [traces/prod]
     table:
-      production:
-        exporters: [otlp/honeycomb-prod]
-      staging:
-        exporters: [otlp/honeycomb-staging]
-    default_exporters: [otlp/honeycomb-prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/staging]
 
 exporters:
   otlp/honeycomb-prod:
@@ -108,10 +109,16 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [otlp/honeycomb-prod, otlp/honeycomb-staging]
+      processors: [batch]
+      exporters: [routing]
+    traces/prod:
+      receivers: [routing]
+      exporters: [otlp/honeycomb-prod]
+    traces/staging:
+      receivers: [routing]
+      exporters: [otlp/honeycomb-staging]
 ```
 
 ## Adding Sampling Before Honeycomb
@@ -167,11 +174,10 @@ processors:
         action: upsert
 
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Add a human-readable duration field
-          - set(attributes["duration_ms"], end_time_unix_nano - start_time_unix_nano)
+      # Add a human-readable duration field
+      - set(span.attributes["duration_ms"], (span.end_time_unix_nano - span.start_time_unix_nano) / 1000000)
 ```
 
 ## Docker Compose Deployment
