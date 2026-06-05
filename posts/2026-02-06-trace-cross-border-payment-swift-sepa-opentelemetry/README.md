@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Cross-Border Payments, Swift, SEPA
 
 Description: Trace SWIFT and SEPA cross-border payment message flows end-to-end using OpenTelemetry distributed tracing and metrics.
 
-Cross-border payments are inherently complex. A single payment might pass through the originating bank, a correspondent bank, a clearing system like SWIFT or SEPA, another correspondent bank, and finally the beneficiary bank. At each hop, the message can be delayed, transformed, or rejected. Without proper tracing, investigating a failed or slow payment means manually correlating logs across multiple systems. This post shows how to use OpenTelemetry to trace these message flows end-to-end.
+Cross-border payments are inherently complex. A single payment might pass through the originating bank, a correspondent bank, a messaging network like Swift, a clearing and settlement mechanism for SEPA payments, another correspondent bank, and finally the beneficiary bank. At each hop, the message can be delayed, transformed, or rejected. Without proper tracing, investigating a failed or slow payment means manually correlating logs across multiple systems. This post shows how to use OpenTelemetry to trace these message flows end-to-end.
 
 ## Understanding the Message Flow
 
@@ -22,8 +22,9 @@ Each leg involves message creation, validation, compliance screening, and forwar
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -31,7 +32,7 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -67,7 +68,7 @@ def initiate_cross_border_payment(payment_request):
             validation = validate_payment(payment_request)
             val_span.set_attribute("validation.passed", validation.passed)
             if not validation.passed:
-                span.set_status(trace.StatusCode.ERROR, "Validation failed")
+                span.set_status(Status(StatusCode.ERROR, "Validation failed"))
                 return {"status": "rejected", "reason": validation.errors}
 
         # Step 2: Run compliance screening (sanctions, AML)
@@ -164,33 +165,42 @@ def handle_gpi_status_update(status_update):
     uetr = status_update.uetr
     status = status_update.transaction_status
 
-    payment_status_counter.add(1, attributes={
-        "status": status,
-        "corridor": f"{status_update.from_country}-{status_update.to_country}",
-    })
+    originator_ctx = retrieve_trace_context(uetr)
+    links = [Link(originator_ctx)] if originator_ctx else []
 
-    if status == "ACCC":  # Accepted and credited
-        payment = load_payment(uetr)
-        duration_min = (
-            status_update.timestamp - payment.initiated_at
-        ).total_seconds() / 60
+    with tracer.start_as_current_span("payment.gpi.status_update", links=links) as span:
+        span.set_attribute("payment.uetr", uetr)
+        span.set_attribute("payment.status", status)
 
-        payment_duration.record(duration_min, attributes={
-            "corridor": f"{payment.from_country}-{payment.to_country}",
-            "currency": payment.currency,
+        payment_status_counter.add(1, attributes={
+            "status": status,
+            "corridor": f"{status_update.from_country}-{status_update.to_country}",
         })
-        payments_in_flight.add(-1)
 
-    elif status == "RJCT":  # Rejected
-        payments_in_flight.add(-1)
-        record_payment_rejection(uetr, status_update.reason)
+        if status == "ACCC":  # Accepted and credited
+            payment = load_payment(uetr)
+            duration_min = (
+                status_update.timestamp - payment.initiated_at
+            ).total_seconds() / 60
+
+            payment_duration.record(duration_min, attributes={
+                "corridor": f"{payment.from_country}-{payment.to_country}",
+                "currency": payment.currency,
+            })
+            payments_in_flight.add(-1)
+
+        elif status == "RJCT":  # Rejected
+            payments_in_flight.add(-1)
+            record_payment_rejection(uetr, status_update.reason)
 ```
 
 ## SEPA-Specific Monitoring
 
-For SEPA payments, the flow is simpler but the SLA is tighter (same-day or instant). You should track whether payments meet the SCT Inst 10-second deadline.
+For SEPA payments, the flow is simpler but the SLA is tighter (one banking business day for SCT, or instant). You should track whether payments meet the SCT Inst 10-second regulatory deadline.
 
 ```python
+import time
+
 sepa_sla_breaches = meter.create_counter(
     name="payment.sepa.sla_breaches",
     description="SEPA payments that exceeded the processing time SLA"
