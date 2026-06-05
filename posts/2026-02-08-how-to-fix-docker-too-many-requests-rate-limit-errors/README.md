@@ -18,16 +18,16 @@ Docker Hub applies different limits based on your authentication status:
 
 | Account Type | Pull Limit | Window |
 |-------------|-----------|--------|
-| Anonymous (unauthenticated) | 100 pulls per 6 hours | Per source IP |
-| Authenticated (free account) | 200 pulls per 6 hours | Per account |
-| Docker Pro/Team/Business | 5,000+ pulls per day | Per account |
+| Anonymous (unauthenticated) | 100 pulls per 6 hours | Per IPv4 address or IPv6 /64 subnet |
+| Authenticated Docker Personal account | 200 pulls per 6 hours | Per account |
+| Docker Pro/Team/Business | Unlimited, subject to fair use | Per account |
 
-The critical detail is how "per source IP" works for anonymous pulls. If multiple developers, CI runners, or Kubernetes nodes share the same public IP (common behind NAT or a corporate proxy), they share the same 100-pull quota. A busy CI system can burn through that in minutes.
+The critical detail is how Docker attributes anonymous pulls. If multiple developers, CI runners, or Kubernetes nodes share the same public IPv4 address or IPv6 /64 subnet (common behind NAT or a corporate proxy), they share the same 100-pull quota. A busy CI system can burn through that in minutes.
 
 ## What the Error Looks Like
 
 ```text
-Error response from daemon: toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit
+Error response from daemon: toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limits
 
 Error response from daemon: toomanyrequests: Too Many Requests.
 ```
@@ -78,7 +78,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Fix 1: Authenticate Your Pulls
 
-The simplest fix. Authenticating doubles your quota from 100 to 200 pulls per 6 hours, and the limit applies per account rather than per IP.
+The simplest fix. Authenticating with a Docker Personal account doubles your quota from 100 to 200 pulls per 6 hours, and the limit applies per account rather than per IP.
 
 ```bash
 # Log in to Docker Hub
@@ -129,7 +129,7 @@ kubectl patch serviceaccount default \
 
 ## Fix 2: Use a Registry Mirror or Cache
 
-A pull-through cache stores images locally after the first pull. Subsequent pulls from the same image come from the cache, consuming zero Docker Hub quota.
+A pull-through cache stores images locally after the first pull. Subsequent pulls from the same cached image can come from local storage, reducing Docker Hub quota usage.
 
 Set up a pull-through cache using Docker's own registry:
 
@@ -270,7 +270,7 @@ skopeo copy \
 
 CI pipelines are the biggest rate limit offenders because they pull images frequently and often from scratch.
 
-**Cache Docker images between CI runs:**
+**Cache Docker build layers between CI runs:**
 
 ```yaml
 # GitHub Actions - cache Docker layers
@@ -283,7 +283,7 @@ CI pipelines are the biggest rate limit offenders because they pull images frequ
       ${{ runner.os }}-buildx-
 
 - name: Build with cache
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     cache-from: type=local,src=/tmp/.buildx-cache
     cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -310,9 +310,9 @@ FROM node:20-alpine@sha256:abc123...
 
 If the other solutions are too complex or if your usage simply requires more pulls, upgrading is the direct fix.
 
-- **Docker Pro**: $5/month, 5,000 pulls/day
-- **Docker Team**: $7/user/month, 5,000 pulls/day per member
-- **Docker Business**: $24/user/month, unlimited pulls
+- **Docker Pro**: $9/user/month on an annual plan or $11/user/month monthly, unlimited pull rate subject to fair use
+- **Docker Team**: $15/user/month on an annual plan or $16/user/month monthly, unlimited pull rate subject to fair use
+- **Docker Business**: $24/user/month on an annual plan, unlimited pull rate subject to fair use
 
 For organizations, the Team or Business plan often costs less than the engineering time spent working around rate limits.
 
