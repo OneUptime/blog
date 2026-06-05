@@ -16,7 +16,7 @@ Docker needs to be installed on your machine. Basic Dart knowledge is helpful. W
 
 ## Creating a Sample Dart Backend
 
-Let's create a REST API using the Shelf framework, which is Dart's standard HTTP middleware library.
+Let's create a REST API using the Shelf framework, which is a widely used HTTP middleware package for Dart.
 
 Initialize the project:
 
@@ -140,7 +140,7 @@ RUN dart compile exe bin/server.dart -o bin/server
 # Stage 2: Minimal runtime image
 FROM scratch
 
-# Copy the compiled binary - it is self-contained
+# Copy the compiled binary and required runtime files
 COPY --from=builder /runtime/ /
 COPY --from=builder /app/bin/server /app/bin/server
 
@@ -158,17 +158,17 @@ The official Dart Docker image provides a `/runtime/` directory containing only 
 
 Using `FROM scratch` means the image contains nothing except your binary and the required runtime libraries. There is no shell, no package manager, no utilities. This is excellent for security because there is almost nothing for an attacker to exploit.
 
-If you need a shell for debugging, use Alpine instead:
+If you need a shell for debugging, use a small Debian runtime image instead:
 
 ```dockerfile
-# Alternative: Alpine-based runtime for debugging access
-FROM alpine:3.19
+# Alternative: Debian-based runtime for debugging access
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache libstdc++ ca-certificates
+COPY --from=builder /runtime/ /
 
 COPY --from=builder /app/bin/server /app/bin/server
 
-RUN adduser -D appuser
+RUN useradd --system --create-home appuser
 USER appuser
 
 EXPOSE 8080
@@ -192,11 +192,10 @@ docker-compose.yml
 
 ## Docker Compose for Development
 
-Set up a development environment with hot reload:
+Set up a development environment with mounted source files:
 
 ```yaml
 # docker-compose.yml - development setup with database
-version: "3.8"
 services:
   app:
     build:
@@ -204,6 +203,7 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8080:8080"
+      - "8181:8181"
     volumes:
       - ./bin:/app/bin
       - ./lib:/app/lib
@@ -231,7 +231,7 @@ volumes:
 Create a development Dockerfile:
 
 ```dockerfile
-# Dockerfile.dev - development image with hot reload support
+# Dockerfile.dev - development image with VM service support
 FROM dart:stable
 
 WORKDIR /app
@@ -241,10 +241,10 @@ RUN dart pub get
 
 COPY . .
 
-EXPOSE 8080
+EXPOSE 8080 8181
 
-# Use dart run for development (supports hot reload with tools)
-CMD ["dart", "run", "--enable-vm-service", "bin/server.dart"]
+# Use dart run for development and expose Dart DevTools support
+CMD ["dart", "run", "--observe=0.0.0.0:8181", "bin/server.dart"]
 ```
 
 ## Dependency Caching with BuildKit
@@ -279,15 +279,18 @@ CMD ["/app/bin/server"]
 
 ## Adding Health Checks
 
-Since `FROM scratch` has no curl or wget, use a custom health check approach:
+Since `FROM scratch` has no curl or wget, use a runtime image that includes a probe tool if you want Docker to run the health check inside the container:
 
 ```dockerfile
-# For Alpine-based images, use wget for health checks
+# For Debian-based runtime images, install wget for health checks
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 ```
 
-For `scratch`-based images, rely on your orchestrator's health check mechanism (Kubernetes liveness probes, Docker Swarm health checks via external tools).
+For `scratch`-based images, rely on your orchestrator's health check mechanism, such as Kubernetes liveness and readiness probes, or include a dedicated health-check helper binary in the image.
 
 ## Running Tests in Docker
 
@@ -327,14 +330,16 @@ docker build --target test -t dart-app-test .
 
 ## Performance Characteristics
 
-AOT-compiled Dart binaries start in milliseconds, which is ideal for containerized deployments. They also have predictable memory usage since there is no JIT warmup period.
+AOT-compiled Dart binaries can start very quickly, which is ideal for containerized deployments. They also have predictable memory usage since there is no JIT warmup period.
 
 ```bash
-# Benchmark startup time
-time docker run --rm dart-app:latest /app/bin/server --help
+# Benchmark time until the health endpoint responds
+container_id=$(docker run -d -p 8080:8080 dart-app:latest)
+time sh -c 'until curl -fsS http://localhost:8080/health >/dev/null; do sleep 0.01; done'
+docker rm -f "$container_id"
 ```
 
-You will typically see startup times under 50ms, making Dart containers excellent candidates for auto-scaling scenarios where fast cold starts matter.
+AOT-compiled Dart services often start quickly, making Dart containers good candidates for auto-scaling scenarios where fast cold starts matter.
 
 Resource Limits
 
@@ -348,7 +353,7 @@ docker run -d \
   dart-app:latest
 ```
 
-Dart's AOT binaries are efficient with memory. A basic HTTP server typically uses less than 30 MB, so 128 MB gives plenty of headroom.
+Dart's AOT binaries are efficient with memory. A basic HTTP server can fit comfortably within modest memory limits, but measure your own application before setting production limits.
 
 ## Monitoring and Observability
 
@@ -356,4 +361,4 @@ Once deployed, monitor your Dart services with [OneUptime](https://oneuptime.com
 
 ## Summary
 
-Dart's AOT compilation makes it one of the best languages for Docker containerization. The multi-stage build from `dart:stable` to `scratch` produces images under 20 MB with sub-50ms startup times. There is no runtime, no interpreter, and no virtual machine in the final image, just a single native binary and its minimal dependencies. This combination of small images, fast startup, and low memory usage makes Dart an excellent choice for containerized microservices.
+Dart's AOT compilation makes it a strong option for Docker containerization. The multi-stage build from `dart:stable` to `scratch` can produce very small images by copying only the native binary and the minimal runtime libraries and configuration it needs. There is no full SDK or JIT toolchain in the final image. This combination of small images, fast startup, and low memory usage makes Dart an excellent choice for containerized microservices.
