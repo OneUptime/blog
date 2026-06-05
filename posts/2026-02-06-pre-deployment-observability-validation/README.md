@@ -16,7 +16,7 @@ Most teams add observability after the fact, usually after something breaks in p
 
 Here are the checks you should run before allowing a merge:
 
-1. **OTel SDK dependency exists** in the project manifest.
+1. **OTel API or SDK dependency exists** in the project manifest.
 2. **Tracer initialization** code is present.
 3. **Key spans are defined** for HTTP handlers and database calls.
 4. **Resource attributes** include `service.name` and `service.version`.
@@ -38,29 +38,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check OTel SDK dependency
+      - name: Check OTel API/SDK dependency
         run: |
           # Detect language and check for OTel dependency
+          detected=false
           if [ -f "package.json" ]; then
+            detected=true
             echo "Checking Node.js project..."
             if ! grep -q "@opentelemetry/sdk-node\|@opentelemetry/api" package.json; then
-              echo "FAIL: Missing OpenTelemetry SDK dependency in package.json"
+              echo "FAIL: Missing OpenTelemetry API/SDK dependency in package.json"
               exit 1
             fi
           elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
+            detected=true
             echo "Checking Python project..."
             if ! grep -rq "opentelemetry-sdk\|opentelemetry-api" requirements.txt pyproject.toml 2>/dev/null; then
-              echo "FAIL: Missing OpenTelemetry SDK dependency"
+              echo "FAIL: Missing OpenTelemetry API/SDK dependency"
               exit 1
             fi
           elif [ -f "go.mod" ]; then
+            detected=true
             echo "Checking Go project..."
             if ! grep -q "go.opentelemetry.io/otel" go.mod; then
-              echo "FAIL: Missing OpenTelemetry SDK dependency in go.mod"
+              echo "FAIL: Missing OpenTelemetry API/SDK dependency in go.mod"
               exit 1
             fi
           fi
-          echo "PASS: OTel SDK dependency found"
+          if [ "$detected" = false ]; then
+            echo "FAIL: No supported project manifest found"
+            exit 1
+          fi
+          echo "PASS: OTel API/SDK dependency found"
 
       - name: Check tracer initialization
         run: |
@@ -74,11 +82,11 @@ jobs:
               # Node.js
               r'NodeSDK|TracerProvider|registerInstrumentations',
               # Python
-              r'TracerProvider|configure_opentelemetry|trace\.get_tracer',
+              r'TracerProvider|trace\.set_tracer_provider',
               # Go
               r'sdktrace\.NewTracerProvider|otel\.SetTracerProvider',
               # Java
-              r'OpenTelemetrySdk\.builder|GlobalOpenTelemetry',
+              r'OpenTelemetrySdk\.builder|buildAndRegisterGlobal',
           ]
 
           found = False
@@ -174,10 +182,9 @@ For more sophisticated checks, write a dedicated validation script:
 
 ```python
 # scripts/validate_instrumentation.py
-import ast
 import sys
 import os
-import json
+import re
 
 class InstrumentationValidator:
     def __init__(self, project_root):
@@ -192,9 +199,57 @@ class InstrumentationValidator:
         self.check_error_handling()
         return len(self.errors) == 0
 
+    def check_sdk_dependency(self):
+        """Check that the project declares an OpenTelemetry API or SDK."""
+        manifests = {
+            "package.json": ["@opentelemetry/sdk-node", "@opentelemetry/api"],
+            "requirements.txt": ["opentelemetry-sdk", "opentelemetry-api"],
+            "pyproject.toml": ["opentelemetry-sdk", "opentelemetry-api"],
+            "go.mod": ["go.opentelemetry.io/otel"],
+        }
+        found_manifest = False
+
+        for manifest, dependencies in manifests.items():
+            path = os.path.join(self.root, manifest)
+            if not os.path.exists(path):
+                continue
+
+            found_manifest = True
+            with open(path) as fh:
+                content = fh.read()
+            if any(dep in content for dep in dependencies):
+                return
+
+        if found_manifest:
+            self.errors.append("Missing OpenTelemetry API/SDK dependency.")
+        else:
+            self.errors.append("No supported project manifest found.")
+
+    def check_tracer_init(self):
+        """Check for common tracer provider initialization patterns."""
+        patterns = [
+            r'NodeSDK|TracerProvider|registerInstrumentations',
+            r'TracerProvider|trace\.set_tracer_provider',
+            r'sdktrace\.NewTracerProvider|otel\.SetTracerProvider',
+            r'OpenTelemetrySdk\.builder|buildAndRegisterGlobal',
+        ]
+
+        for root, dirs, files in os.walk(self.root):
+            dirs[:] = [d for d in dirs
+                       if d not in ['node_modules', 'vendor', '.git']]
+            for f in files:
+                if f.endswith(('.ts', '.js', '.py', '.go', '.java')):
+                    filepath = os.path.join(root, f)
+                    with open(filepath) as fh:
+                        content = fh.read()
+                    if any(re.search(pattern, content)
+                           for pattern in patterns):
+                        return
+
+        self.errors.append("No tracer initialization found in source code.")
+
     def check_span_coverage(self):
         """Check that HTTP handlers have spans."""
-        handler_files = []
         for root, dirs, files in os.walk(self.root):
             dirs[:] = [d for d in dirs
                        if d not in ['node_modules', 'vendor', '.git']]
