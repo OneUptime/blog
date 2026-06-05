@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logging, Structured Logging, Migration, Observability, Log4j, Serilog
 
-Description: A practical guide for replacing custom and framework-specific logging with OpenTelemetry structured logging, including bridge integrations for Log4j, SLF4J, Serilog, and Python logging.
+Description: A practical guide for replacing custom and framework-specific logging with OpenTelemetry structured logging, including bridge integrations for Log4j, Logback, Serilog, and Python logging.
 
 ---
 
@@ -44,9 +44,9 @@ An OpenTelemetry log record carries much more context:
 
 The trace and span IDs are the killer feature. They let you click on a log line in your backend and jump directly to the distributed trace that produced it. Resource attributes identify which service, version, and environment the log came from without relying on parsing the log message text.
 
-## Step 1: Java - Bridge Log4j/SLF4J to OpenTelemetry
+## Step 1: Java - Bridge Log4j/Logback to OpenTelemetry
 
-Java applications typically use Log4j2 or SLF4J (often with Logback). OpenTelemetry provides appenders for both that intercept log records and send them through the OpenTelemetry pipeline.
+Java applications typically use Log4j2 or SLF4J with a backend such as Logback. OpenTelemetry provides appenders for Log4j2 and Logback that intercept log records and send them through the OpenTelemetry pipeline.
 
 ### Log4j2 Bridge Setup
 
@@ -54,9 +54,9 @@ Java applications typically use Log4j2 or SLF4J (often with Logback). OpenTeleme
 <!-- Add these dependencies to your Maven pom.xml -->
 <!-- The Log4j2 appender bridges Log4j to OpenTelemetry -->
 <!--
-  io.opentelemetry.instrumentation:opentelemetry-log4j-appender-2.17:2.2.0
-  io.opentelemetry:opentelemetry-sdk:1.35.0
-  io.opentelemetry:opentelemetry-exporter-otlp:1.35.0
+  io.opentelemetry.instrumentation:opentelemetry-log4j-appender-2.17:2.28.1-alpha
+  io.opentelemetry:opentelemetry-sdk-extension-autoconfigure
+  io.opentelemetry:opentelemetry-exporter-otlp
 -->
 ```
 
@@ -65,7 +65,7 @@ Configure the OpenTelemetry appender in your Log4j2 configuration:
 ```xml
 <!-- log4j2.xml - Add OpenTelemetry appender alongside your existing appenders -->
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN">
+<Configuration status="WARN" packages="io.opentelemetry.instrumentation.log4j.appender.v2_17">
   <Appenders>
     <!-- Keep your existing console or file appender -->
     <Console name="Console" target="SYSTEM_OUT">
@@ -88,6 +88,18 @@ Configure the OpenTelemetry appender in your Log4j2 configuration:
     </Root>
   </Loggers>
 </Configuration>
+```
+
+For a manual SDK setup, install your configured `OpenTelemetrySdk` into the appender during application startup:
+
+```java
+import io.opentelemetry.instrumentation.log4j.appender.v2_17.OpenTelemetryAppender;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
+
+OpenTelemetrySdk openTelemetrySdk =
+    AutoConfiguredOpenTelemetrySdk.initialize().getOpenTelemetrySdk();
+OpenTelemetryAppender.install(openTelemetrySdk);
 ```
 
 Your existing application code does not need to change at all:
@@ -123,7 +135,7 @@ The OpenTelemetry appender automatically attaches trace context (trace ID and sp
 
 ## Step 2: .NET - Bridge Serilog/ILogger to OpenTelemetry
 
-.NET applications commonly use Serilog or the built-in ILogger interface. OpenTelemetry for .NET integrates at the ILogger level, which means it works regardless of which underlying provider you use.
+.NET applications commonly use Serilog or the built-in ILogger interface. OpenTelemetry for .NET integrates at the ILogger level, so it works for logs emitted through `ILogger` when the OpenTelemetry logging provider is registered. Direct Serilog API calls should use the Serilog OpenTelemetry sink.
 
 ```csharp
 // Program.cs - Configure OpenTelemetry log export
@@ -154,8 +166,8 @@ builder.Logging.AddOpenTelemetry(options =>
     options.ParseStateValues = true;
 });
 
-// If using Serilog, keep it as the logging provider
-// OpenTelemetry hooks into ILogger, so Serilog output goes through both
+// If using Serilog for ILogger, keep it registered as another provider.
+// Direct Serilog Log.* calls need Serilog.Sinks.OpenTelemetry.
 // builder.Host.UseSerilog();
 ```
 
@@ -205,8 +217,9 @@ Python's built-in logging module can be bridged to OpenTelemetry with a log hand
 # setup_logging.py - Configure OpenTelemetry logging bridge
 
 import logging
-from opentelemetry import trace
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
@@ -225,16 +238,13 @@ logger_provider.add_log_record_processor(
         OTLPLogExporter(endpoint="http://localhost:4317")
     )
 )
+set_logger_provider(logger_provider)
 
-# Create the OpenTelemetry logging handler
-# This handler translates Python log records to OpenTelemetry log records
-otel_handler = LoggingHandler(
-    level=logging.INFO,
-    logger_provider=logger_provider,
-)
+# Instrument Python logging with the OpenTelemetry logging handler
+LoggingInstrumentor().instrument(log_handler_level=logging.INFO)
 
-# Attach the handler to the root logger so all loggers in the app use it
-logging.getLogger().addHandler(otel_handler)
+# Make sure the root logger allows records at the desired level
+logging.getLogger().setLevel(logging.INFO)
 ```
 
 Your application logging code stays the same:
