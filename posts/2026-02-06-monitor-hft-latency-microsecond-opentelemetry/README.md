@@ -10,7 +10,7 @@ In high-frequency trading, every microsecond matters. A delay of just 10 microse
 
 ## Why Standard OpenTelemetry Isn't Enough for HFT
 
-The default OpenTelemetry SDK uses millisecond timestamps internally. For most applications, that is perfectly fine. But HFT systems process orders in single-digit microseconds, and the overhead of standard instrumentation can actually introduce more latency than the operations you are trying to measure.
+OpenTelemetry can represent timestamps with nanosecond precision, but typical SDK instrumentation, batching, exporting, and backend dashboards are not designed for deterministic measurement on an HFT hot path. HFT systems process orders in single-digit microseconds, and the overhead of standard instrumentation can actually introduce more latency than the operations you are trying to measure.
 
 The solution is to build a custom exporter that uses high-resolution clocks and exports timing data in a format suitable for microsecond analysis.
 
@@ -25,7 +25,7 @@ First, let's create a utility that reads from the system's high-resolution clock
 #include <time.h>
 
 struct HRTimestamp {
-    uint64_t epoch_micros;
+    uint64_t monotonic_micros;
     uint64_t nanos_remainder;
 };
 
@@ -35,10 +35,7 @@ inline HRTimestamp get_hr_timestamp() {
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 
     uint64_t total_nanos = (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-    return HRTimestamp{
-        .epoch_micros = total_nanos / 1000,
-        .nanos_remainder = total_nanos % 1000
-    };
+    return {total_nanos / 1000, total_nanos % 1000};
 }
 ```
 
@@ -51,7 +48,10 @@ The default `BatchSpanProcessor` introduces buffering delays. For HFT, we want a
 ```cpp
 // hft_span_processor.cpp
 #include <opentelemetry/sdk/trace/span_processor.h>
+#include <opentelemetry/sdk/trace/span_data.h>
 #include <atomic>
+#include <condition_variable>
+#include <string>
 
 class HFTSpanProcessor : public opentelemetry::sdk::trace::SpanProcessor {
 private:
@@ -60,16 +60,24 @@ private:
     SpanRecord buffer_[BUFFER_SIZE];
     std::atomic<uint64_t> write_pos_{0};
     std::atomic<uint64_t> read_pos_{0};
+    std::condition_variable export_signal_;
 
 public:
-    void OnEnd(std::unique_ptr<opentelemetry::sdk::trace::Recordable> span) noexcept override {
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> MakeRecordable() noexcept override {
+        return std::unique_ptr<opentelemetry::sdk::trace::Recordable>(
+            new opentelemetry::sdk::trace::SpanData());
+    }
+
+    void OnEnd(std::unique_ptr<opentelemetry::sdk::trace::Recordable> &&span) noexcept override {
+        auto* span_data = static_cast<opentelemetry::sdk::trace::SpanData*>(span.get());
+
         // Record the span with microsecond timestamp
         uint64_t pos = write_pos_.fetch_add(1, std::memory_order_relaxed) % BUFFER_SIZE;
 
         buffer_[pos].timestamp = get_hr_timestamp();
-        buffer_[pos].span_name = span->GetName();
-        buffer_[pos].duration_micros = span->GetDuration().count() / 1000;
-        buffer_[pos].trace_id = span->GetTraceId();
+        buffer_[pos].span_name = std::string(span_data->GetName());
+        buffer_[pos].duration_micros = span_data->GetDuration().count() / 1000;
+        buffer_[pos].trace_id = span_data->GetTraceId();
 
         // Signal the exporter thread (non-blocking)
         export_signal_.notify_one();
@@ -78,7 +86,15 @@ public:
     void OnStart(opentelemetry::sdk::trace::Recordable &span,
                  const opentelemetry::trace::SpanContext &parent) noexcept override {
         // Attach high-resolution start time as span attribute
-        span.SetAttribute("hft.start_micros", get_hr_timestamp().epoch_micros);
+        span.SetAttribute("hft.start_micros", get_hr_timestamp().monotonic_micros);
+    }
+
+    bool ForceFlush(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override {
+        return true;
+    }
+
+    bool Shutdown(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override {
+        return true;
     }
 };
 ```
@@ -90,6 +106,7 @@ Now we need an exporter that writes these microsecond-precision records to a tim
 ```cpp
 // hft_exporter.cpp
 #include <opentelemetry/sdk/trace/exporter.h>
+#include <opentelemetry/sdk/trace/span_data.h>
 #include <fstream>
 
 class HFTMicrosecondExporter : public opentelemetry::sdk::trace::SpanExporter {
@@ -99,27 +116,34 @@ private:
     int shm_fd_;
 
 public:
-    ExportResult Export(
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> MakeRecordable() noexcept override {
+        return std::unique_ptr<opentelemetry::sdk::trace::Recordable>(
+            new opentelemetry::sdk::trace::SpanData());
+    }
+
+    opentelemetry::sdk::common::ExportResult Export(
         const opentelemetry::nostd::span<std::unique_ptr<opentelemetry::sdk::trace::Recordable>>& spans
     ) noexcept override {
-        for (auto& span : spans) {
+        for (auto& recordable : spans) {
+            auto* span = static_cast<opentelemetry::sdk::trace::SpanData*>(recordable.get());
+
             MicrosecondRecord record;
-            record.operation = span->GetName();
+            record.operation = std::string(span->GetName());
             record.latency_us = extract_microsecond_duration(span);
-            record.order_id = span->GetAttribute("hft.order_id");
-            record.venue = span->GetAttribute("hft.venue");
+            record.attributes = span->GetAttributes();
 
             // Write directly to shared memory - the collector picks it up
             write_to_shm(record);
         }
-        return ExportResult::kSuccess;
+        return opentelemetry::sdk::common::ExportResult::kSuccess;
     }
 
-    uint64_t extract_microsecond_duration(const auto& span) {
-        // Calculate from our custom high-res attributes
-        uint64_t start = span->GetAttribute("hft.start_micros");
-        uint64_t end = get_hr_timestamp().epoch_micros;
-        return end - start;
+    uint64_t extract_microsecond_duration(const opentelemetry::sdk::trace::SpanData* span) {
+        return span->GetDuration().count() / 1000;
+    }
+
+    bool Shutdown(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override {
+        return true;
     }
 };
 ```
@@ -143,14 +167,15 @@ void process_order(const Order& order) {
         {"hft.symbol", order.symbol},
         {"hft.side", order.is_buy ? "BUY" : "SELL"},
         {"hft.quantity", order.quantity},
-        {"hft.start_micros", get_hr_timestamp().epoch_micros}
+        {"hft.start_micros", get_hr_timestamp().monotonic_micros}
     });
 
     // Market data lookup - typically 1-3 microseconds
+    uint64_t md_start = get_hr_timestamp().monotonic_micros;
     auto md_span = tracer->StartSpan("order.market_data_lookup");
     auto price = get_market_data(order.symbol);
     md_span->SetAttribute("hft.duration_micros",
-        get_hr_timestamp().epoch_micros - md_span->GetAttribute("hft.start_micros"));
+        get_hr_timestamp().monotonic_micros - md_start);
     md_span->End();
 
     // Risk check - typically 2-5 microseconds
@@ -181,9 +206,9 @@ The key insight is that at microsecond granularity, you start seeing patterns th
 
 ## Overhead Considerations
 
-The instrumentation itself needs to be fast. Our lock-free ring buffer approach adds roughly 50-100 nanoseconds per span, which is acceptable for most HFT use cases. If even that is too much, consider sampling strategies that instrument every Nth order or only instrument when latency exceeds a threshold.
+The instrumentation itself needs to be fast. A lock-free ring buffer approach can keep per-span overhead low, but you should benchmark the exact implementation on your production CPU, compiler, and kernel configuration before putting it on the trading hot path. If even that is too much, consider sampling strategies that instrument every Nth order or only record detailed telemetry when latency exceeds a threshold.
 
-You can set up threshold-based instrumentation by wrapping span creation in a conditional that checks elapsed time against a configurable threshold. This way, the fast path through your system remains nearly untouched, and you only pay the instrumentation cost when something interesting happens.
+You can set up threshold-based instrumentation by measuring elapsed time with the high-resolution timer first, then creating a span or event only when the operation crosses a configurable threshold. This way, the fast path through your system remains nearly untouched, and you only pay the full instrumentation cost when something interesting happens.
 
 ## Wrapping Up
 
