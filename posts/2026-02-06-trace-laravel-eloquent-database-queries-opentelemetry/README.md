@@ -79,7 +79,7 @@ class DatabaseTracing
     /**
      * Create a span for each database query
      */
-    private function traceQuery(QueryExecuted $query): void
+    protected function traceQuery(QueryExecuted $query): void
     {
         $span = $this->tracer->spanBuilder('database.query')
             ->setSpanKind(SpanKind::KIND_CLIENT)
@@ -89,17 +89,17 @@ class DatabaseTracing
 
         try {
             // Add database operation attributes
-            $span->setAttribute('db.system', $query->connection->getDriverName());
-            $span->setAttribute('db.name', $query->connection->getDatabaseName());
-            $span->setAttribute('db.statement', $query->sql);
-            $span->setAttribute('db.operation', $this->extractOperation($query->sql));
+            $span->setAttribute('db.system.name', $query->connection->getDriverName());
+            $span->setAttribute('db.namespace', $query->connection->getDatabaseName());
+            $span->setAttribute('db.query.text', $query->sql);
+            $span->setAttribute('db.operation.name', $this->extractOperation($query->sql));
 
             // Add query performance metrics
             $span->setAttribute('db.execution_time_ms', $query->time);
             $span->setAttribute('db.connection_name', $query->connectionName);
 
-            // Add bindings (sanitized)
-            $span->setAttribute('db.bindings', json_encode($this->sanitizeBindings($query->bindings)));
+            // Avoid recording binding values by default; they may contain sensitive data
+            $span->setAttribute('db.query.parameter_count', count($query->bindings));
 
             // Mark slow queries
             if ($query->time > 100) {
@@ -112,13 +112,13 @@ class DatabaseTracing
 
             // Mark very slow queries as errors
             if ($query->time > 1000) {
-                $span->setStatus(StatusCode::ERROR, 'Query exceeded 1000ms threshold');
+                $span->setStatus(StatusCode::STATUS_ERROR, 'Query exceeded 1000ms threshold');
             }
 
             $span->end();
         } catch (\Throwable $e) {
             $span->recordException($e);
-            $span->setStatus(StatusCode::ERROR, $e->getMessage());
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             $span->end();
             throw $e;
         } finally {
@@ -144,19 +144,6 @@ class DatabaseTracing
         return 'UNKNOWN';
     }
 
-    /**
-     * Sanitize query bindings to avoid leaking sensitive data
-     */
-    private function sanitizeBindings(array $bindings): array
-    {
-        return array_map(function ($binding) {
-            // Redact potential passwords or tokens
-            if (is_string($binding) && strlen($binding) > 20) {
-                return substr($binding, 0, 10) . '...[redacted]';
-            }
-            return $binding;
-        }, $bindings);
-    }
 }
 ```
 
@@ -308,7 +295,7 @@ public function index()
 }
 ```
 
-Now your trace shows 4 queries instead of 61, and all execute in parallel where possible.
+Now your trace shows 4 queries instead of 61, with related records fetched in batched eager-loading queries.
 
 ## Tracing Complex Query Builders
 
@@ -370,8 +357,8 @@ class QueryBuilderTracing
             $sql = $query->toSql();
             $bindings = $query->getBindings();
 
-            $span->setAttribute('db.statement', $sql);
-            $span->setAttribute('db.bindings_count', count($bindings));
+            $span->setAttribute('db.query.text', $sql);
+            $span->setAttribute('db.query.parameter_count', count($bindings));
 
             // Execute the query
             $result = match($operation) {
@@ -522,7 +509,7 @@ class OrderService
             ]);
 
             $span->recordException($e);
-            $span->setStatus(StatusCode::ERROR, 'Transaction failed');
+            $span->setStatus(StatusCode::STATUS_ERROR, 'Transaction failed');
 
             throw $e;
         } finally {
