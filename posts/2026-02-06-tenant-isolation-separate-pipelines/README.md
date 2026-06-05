@@ -12,13 +12,13 @@ This post covers how to set up complete tenant isolation in the OpenTelemetry Co
 
 ## Architecture Overview
 
-The pattern is straightforward: one shared receiver accepts all incoming data, a routing connector splits it by tenant, and then each tenant gets a completely independent pipeline with its own processors and exporters.
+The pattern is straightforward: one shared receiver accepts all incoming data, routing connectors split each signal by tenant, and then each tenant gets a completely independent pipeline with its own processors and exporters.
 
 ```text
-OTLP Receiver --> Routing Connector --> Tenant A Pipeline --> Tenant A Exporter
-                                    --> Tenant B Pipeline --> Tenant B Exporter
-                                    --> Tenant C Pipeline --> Tenant C Exporter
-                                    --> Default Pipeline   --> Default Exporter
+OTLP Receiver --> Routing Connectors --> Tenant A Pipeline --> Tenant A Exporter
+                                     --> Tenant B Pipeline --> Tenant B Exporter
+                                     --> Tenant C Pipeline --> Tenant C Exporter
+                                     --> Default Pipeline   --> Default Exporter
 ```
 
 ## Complete Configuration
@@ -37,16 +37,42 @@ receivers:
         include_metadata: true
 
 connectors:
-  routing/tenant:
-    default_pipelines: [traces/default, metrics/default, logs/default]
-    match_once: true
+  routing/traces:
+    default_pipelines: [traces/default]
     table:
-      - statement: request["X-Tenant-ID"] == "acme-corp"
-        pipelines: [traces/acme, metrics/acme, logs/acme]
-      - statement: request["X-Tenant-ID"] == "globex"
-        pipelines: [traces/globex, metrics/globex, logs/globex]
-      - statement: request["X-Tenant-ID"] == "initech"
-        pipelines: [traces/initech, metrics/initech, logs/initech]
+      - context: request
+        condition: request["X-Tenant-ID"] == "acme-corp"
+        pipelines: [traces/acme]
+      - context: request
+        condition: request["X-Tenant-ID"] == "globex"
+        pipelines: [traces/globex]
+      - context: request
+        condition: request["X-Tenant-ID"] == "initech"
+        pipelines: [traces/initech]
+  routing/metrics:
+    default_pipelines: [metrics/default]
+    table:
+      - context: request
+        condition: request["X-Tenant-ID"] == "acme-corp"
+        pipelines: [metrics/acme]
+      - context: request
+        condition: request["X-Tenant-ID"] == "globex"
+        pipelines: [metrics/globex]
+      - context: request
+        condition: request["X-Tenant-ID"] == "initech"
+        pipelines: [metrics/initech]
+  routing/logs:
+    default_pipelines: [logs/default]
+    table:
+      - context: request
+        condition: request["X-Tenant-ID"] == "acme-corp"
+        pipelines: [logs/acme]
+      - context: request
+        condition: request["X-Tenant-ID"] == "globex"
+        pipelines: [logs/globex]
+      - context: request
+        condition: request["X-Tenant-ID"] == "initech"
+        pipelines: [logs/initech]
 
 processors:
   # Each tenant can have different batch settings
@@ -119,67 +145,67 @@ service:
     # Ingress pipelines (shared entry point)
     traces/ingress:
       receivers: [otlp]
-      exporters: [routing/tenant]
+      exporters: [routing/traces]
     metrics/ingress:
       receivers: [otlp]
-      exporters: [routing/tenant]
+      exporters: [routing/metrics]
     logs/ingress:
       receivers: [otlp]
-      exporters: [routing/tenant]
+      exporters: [routing/logs]
 
     # Acme Corp pipelines
     traces/acme:
-      receivers: [routing/tenant]
+      receivers: [routing/traces]
       processors: [attributes/acme, probabilistic_sampler/acme, batch/acme]
       exporters: [otlp/acme]
     metrics/acme:
-      receivers: [routing/tenant]
+      receivers: [routing/metrics]
       processors: [attributes/acme, batch/acme]
       exporters: [otlp/acme]
     logs/acme:
-      receivers: [routing/tenant]
+      receivers: [routing/logs]
       processors: [attributes/acme, batch/acme]
       exporters: [otlp/acme]
 
     # Globex pipelines
     traces/globex:
-      receivers: [routing/tenant]
+      receivers: [routing/traces]
       processors: [attributes/globex, probabilistic_sampler/globex, batch/globex]
       exporters: [otlp/globex]
     metrics/globex:
-      receivers: [routing/tenant]
+      receivers: [routing/metrics]
       processors: [attributes/globex, batch/globex]
       exporters: [otlp/globex]
     logs/globex:
-      receivers: [routing/tenant]
+      receivers: [routing/logs]
       processors: [attributes/globex, batch/globex]
       exporters: [otlp/globex]
 
     # Initech pipelines
     traces/initech:
-      receivers: [routing/tenant]
+      receivers: [routing/traces]
       processors: [attributes/initech, probabilistic_sampler/initech, batch/initech]
       exporters: [otlp/initech]
     metrics/initech:
-      receivers: [routing/tenant]
+      receivers: [routing/metrics]
       processors: [attributes/initech, batch/initech]
       exporters: [otlp/initech]
     logs/initech:
-      receivers: [routing/tenant]
+      receivers: [routing/logs]
       processors: [attributes/initech, batch/initech]
       exporters: [otlp/initech]
 
     # Default pipelines
     traces/default:
-      receivers: [routing/tenant]
+      receivers: [routing/traces]
       processors: [batch/default]
       exporters: [otlp/default]
     metrics/default:
-      receivers: [routing/tenant]
+      receivers: [routing/metrics]
       processors: [batch/default]
       exporters: [otlp/default]
     logs/default:
-      receivers: [routing/tenant]
+      receivers: [routing/logs]
       processors: [batch/default]
       exporters: [otlp/default]
 ```
@@ -212,14 +238,21 @@ print(yaml.dump({"exporters": exporters}, default_flow_style=False))
 
 ## Memory and Resource Isolation
 
-Each pipeline runs its own set of processors, which means memory usage scales linearly with the number of tenants. Monitor the Collector's own metrics to track per-pipeline queue sizes:
+Each pipeline runs its own set of processors, which means memory usage scales linearly with the number of tenants. Monitor the Collector's own metrics to track per-exporter queue sizes:
 
 ```yaml
 service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Watch `otelcol_exporter_queue_size` and `otelcol_exporter_queue_capacity` per exporter to spot tenants that are backing up.
