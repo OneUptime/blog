@@ -8,13 +8,13 @@ Description: Compare WebAssembly containers with traditional Linux containers ac
 
 ---
 
-The container world is getting a new runtime. WebAssembly (Wasm) started as a browser technology for running near-native-speed code on the web, but it has expanded beyond browsers into server-side workloads. Docker now supports Wasm containers alongside traditional Linux containers, and the technology is backed by standards like WASI (WebAssembly System Interface). Solomon Hykes, Docker's co-founder, famously said that if Wasm had existed in 2008, Docker might not have been created.
+The container world is getting a new runtime. WebAssembly (Wasm) started as a browser technology for running near-native-speed code on the web, but it has expanded beyond browsers into server-side workloads. Docker Desktop can run Wasm workloads alongside traditional Linux containers through a beta feature, although Docker currently documents that feature as deprecated and no longer actively maintained. The technology is backed by standards like WASI (WebAssembly System Interface). Solomon Hykes, Docker's co-founder, famously said that if Wasm had existed in 2008, Docker might not have been created.
 
 But should you drop Linux containers for Wasm? Probably not yet, at least not for everything. This guide compares the two approaches across the dimensions that matter: performance, security, portability, ecosystem maturity, and practical use cases.
 
 ## What Are Wasm Containers?
 
-A Wasm container packages a WebAssembly module along with its metadata and runs it using a Wasm runtime instead of a Linux kernel. The Wasm module is compiled from languages like Rust, Go, C/C++, or Python into the portable `.wasm` binary format.
+A Wasm container packages a WebAssembly module along with its metadata and runs it using a Wasm runtime instead of starting a normal Linux process through `runc`. The Wasm module is compiled from languages like Rust, Go, C/C++, or Python into the portable `.wasm` binary format.
 
 ```mermaid
 graph TD
@@ -35,13 +35,13 @@ Docker integrates Wasm through containerd shims. When you run a Wasm container, 
 
 ## Running Your First Wasm Container in Docker
 
-Docker Desktop supports Wasm containers through the containerd integration.
+Docker Desktop supports Wasm containers through the containerd integration, but the Docker Desktop Wasm workloads feature is currently beta and marked as deprecated in the Docker documentation.
 
 ```bash
 # Enable Wasm support in Docker Desktop
 
 # Go to Settings > Features in development > Enable Wasm
-# Or use the CLI to enable containerd image store
+# Also enable "Use containerd for pulling and storing images" in Settings > General
 
 # Run a Wasm container
 docker run --rm --runtime=io.containerd.wasmedge.v1 \
@@ -68,20 +68,20 @@ fn main() {
 
 ```dockerfile
 # Dockerfile.wasm - Build a Wasm container
-FROM rust:1.75 AS build
+FROM rust:1.84 AS build
 
-# Install the wasm32-wasi target
-RUN rustup target add wasm32-wasi
+# Install the WASI Preview 1 target
+RUN rustup target add wasm32-wasip1
 
 WORKDIR /src
 COPY . .
 
 # Compile to WebAssembly
-RUN cargo build --target wasm32-wasi --release
+RUN cargo build --target wasm32-wasip1 --release
 
 # The "runtime" stage - just the wasm binary
 FROM scratch
-COPY --from=build /src/target/wasm32-wasi/release/myapp.wasm /myapp.wasm
+COPY --from=build /src/target/wasm32-wasip1/release/myapp.wasm /myapp.wasm
 ENTRYPOINT ["/myapp.wasm"]
 ```
 
@@ -120,20 +120,20 @@ The size difference comes from Wasm containers not needing a Linux userspace, fi
 
 ## Startup Time
 
-Wasm containers start significantly faster than Linux containers.
+Wasm containers often start significantly faster than Linux containers, especially for small modules and serverless-style workloads.
 
 ```bash
 # Benchmark Linux container startup
 time docker run --rm alpine echo "done"
-# Typical: 300-800ms
+# Typical results vary by host and Docker configuration
 
 # Benchmark Wasm container startup
 time docker run --rm --runtime=io.containerd.wasmedge.v1 --platform wasi/wasm \
   my-wasm-hello
-# Typical: 10-50ms
+# Typical results vary by runtime and module size
 ```
 
-Wasm modules are designed for instant startup. There is no kernel boot, no init system, and no process tree to set up. The runtime loads the module and begins execution immediately.
+Wasm modules are designed for fast startup. There is no Linux userspace image to initialize and no container process tree to set up. The runtime loads the module and begins execution immediately.
 
 This makes Wasm ideal for:
 - Serverless functions where cold start time matters
@@ -179,8 +179,8 @@ docker run --rm \
 
 Security advantages of Wasm:
 - Deny-by-default capability model
-- Memory safety enforced by the Wasm runtime (no buffer overflows)
-- No kernel sharing between host and modules
+- Runtime-enforced sandboxing and bounds checks for Wasm memory
+- Wasm modules do not run as ordinary Linux processes with direct access to the full host kernel ABI
 - Smaller attack surface (no OS libraries to exploit)
 - Sandboxed execution with formal verification possible
 
@@ -200,11 +200,11 @@ time docker run --rm --runtime=io.containerd.wasmedge.v1 --platform wasi/wasm \
 
 | Metric | Linux Containers | Wasm Containers |
 |--------|-----------------|-----------------|
-| CPU throughput | Native speed | 80-95% of native |
+| CPU throughput | Native speed | Near-native, benchmark-dependent |
 | Memory usage | OS + app | App only |
 | I/O performance | Native kernel I/O | WASI abstraction layer |
 | Networking | Full TCP/IP stack | Limited WASI sockets |
-| Startup latency | 300ms-2s | 10-50ms |
+| Startup latency | Higher startup overhead | Lower startup overhead for small modules |
 
 Wasm computation speed is close to native but not quite there. The WASI interface for I/O adds a small overhead. For I/O-bound applications the difference is negligible, while for CPU-bound workloads Linux containers retain a slight edge.
 
@@ -225,7 +225,7 @@ This is where Linux containers have a massive advantage.
 Languages with good Wasm/WASI support:
 - **Rust** - first-class support, best ecosystem
 - **C/C++** - supported through Emscripten and wasi-sdk
-- **Go** - TinyGo has wasi target, standard Go has experimental support
+- **Go** - TinyGo has WASI Preview 1 and Preview 2 support, and standard Go has `GOOS=wasip1` support
 - **Python** - works through componentize-py but limited
 - **JavaScript** - works through engines like SpiderMonkey compiled to Wasm
 
@@ -237,7 +237,7 @@ Languages with limited or no Wasm support:
 
 ```bash
 # Building a Go app for Wasm with TinyGo
-tinygo build -target=wasi -o myapp.wasm main.go
+GOOS=wasip1 GOARCH=wasm tinygo build -o myapp.wasm main.go
 
 # Building a C app for Wasm with wasi-sdk
 /opt/wasi-sdk/bin/clang --sysroot=/opt/wasi-sdk/share/wasi-sysroot \
@@ -250,7 +250,7 @@ Wasm containers make sense for specific use cases today:
 
 **Edge computing.** Small binary sizes and fast startup times are critical at the edge where resources are limited and scaling needs to be instant.
 
-**Serverless functions.** Cold start time dominates serverless costs. Wasm functions start in milliseconds versus hundreds of milliseconds for Linux containers.
+**Serverless functions.** Cold start time dominates serverless costs. Wasm functions can start in milliseconds versus hundreds of milliseconds for Linux containers, depending on the runtime and workload.
 
 **Plugin systems.** Wasm provides a safe way to run untrusted third-party code with capability-based permissions.
 
@@ -310,7 +310,7 @@ volumes:
 
 ## The Future Outlook
 
-The Wasm container ecosystem is growing rapidly. The Component Model standard will enable Wasm modules written in different languages to interoperate. WASI Preview 2 significantly expands the system interface to cover HTTP, sockets, and filesystems more completely. Kubernetes is adding native Wasm support through projects like Spin, Fermyon, and runwasi.
+The Wasm container ecosystem is growing rapidly. The Component Model standard will enable Wasm modules written in different languages to interoperate. WASI Preview 2 significantly expands the system interface to cover HTTP, sockets, and filesystems more completely. Kubernetes deployments can run Wasm workloads through RuntimeClass and containerd shims, with projects like runwasi and SpinKube building on that model.
 
 Linux containers are not going anywhere. They run the overwhelming majority of containerized workloads and will continue to do so. Wasm containers will grow alongside them, taking over specific niches where their strengths - tiny size, instant startup, strong sandboxing, and cross-platform portability - provide clear advantages.
 
