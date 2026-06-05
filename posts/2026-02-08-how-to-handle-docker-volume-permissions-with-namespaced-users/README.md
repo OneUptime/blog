@@ -37,7 +37,7 @@ Configure Docker to use user namespaces by editing the daemon config:
 
 ```bash
 # Add userns-remap to Docker daemon configuration
-cat > /etc/docker/daemon.json << 'EOF'
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "userns-remap": "default"
 }
@@ -53,7 +53,7 @@ Verify it is working:
 
 ```bash
 # Run a container and check what UID root actually maps to
-docker run --rm alpine id
+docker run --rm alpine cat /proc/self/uid_map
 
 # Check the actual UID on the host side
 docker run --rm alpine sleep 60 &
@@ -68,26 +68,32 @@ Here is the problem in action. Create a bind mount and try to use it:
 
 ```bash
 # Create a directory owned by your regular user
-mkdir /tmp/testdata
+mkdir -p /tmp/testdata
 echo "hello" > /tmp/testdata/file.txt
+chmod 700 /tmp/testdata
+chmod 600 /tmp/testdata/file.txt
 
-# Try to read it from a namespaced container - this fails
+# Try to read a private host file from a namespaced container - this fails
 docker run --rm -v /tmp/testdata:/data alpine cat /data/file.txt
 ```
 
 The container cannot read the file because:
 - The file is owned by your host UID (e.g., 1000)
-- The container sees UID 1000 as a high UID outside its namespace
+- The container sees unmapped host UIDs as the overflow UID (usually 65534)
 - The container process (running as remapped root) has no permission
 
 Going the other direction, files created by the container have unexpected ownership on the host:
 
 ```bash
+# Create a directory where the container can write
+mkdir -p /tmp/containerdata
+chmod 777 /tmp/containerdata
+
 # Create a file from inside a namespaced container
-docker run --rm -v /tmp/testdata:/data alpine touch /data/from-container.txt
+docker run --rm -v /tmp/containerdata:/data alpine touch /data/from-container.txt
 
 # Check ownership on the host
-ls -la /tmp/testdata/from-container.txt
+ls -la /tmp/containerdata/from-container.txt
 # Output: -rw-r--r-- 1 100000 100000 ... from-container.txt
 ```
 
@@ -126,8 +132,6 @@ In Docker Compose, use an init service to set permissions before the main app st
 
 ```yaml
 # docker-compose.yml with init container for permission fixing
-version: "3.8"
-
 services:
   # This runs first and sets correct permissions
   init-permissions:
@@ -221,18 +225,22 @@ When multiple containers with different UIDs need access to the same volume:
 
 ```yaml
 # docker-compose.yml - multiple users sharing a volume
-version: "3.8"
-
 services:
   writer:
     image: myapp:latest
     user: "1000:2000"    # UID 1000, GID 2000 (shared group)
+    depends_on:
+      init:
+        condition: service_completed_successfully
     volumes:
       - shared_data:/data
 
   reader:
     image: myapp:latest
     user: "1001:2000"    # UID 1001, same GID 2000
+    depends_on:
+      init:
+        condition: service_completed_successfully
     volumes:
       - shared_data:/data:ro
 
@@ -266,7 +274,9 @@ ls -lan /var/lib/docker/100000.100000/volumes/myapp_data/_data/
 docker run --rm -v myapp_data:/data alpine ls -lan /data
 
 # Check the user namespace mapping in use
-docker inspect --format '{{.HostConfig.UsernsMode}}' my_container
+PID=$(docker inspect --format '{{.State.Pid}}' my_container)
+sudo cat /proc/${PID}/uid_map
+sudo cat /proc/${PID}/gid_map
 
 # Check the effective user inside the container
 docker exec my_container id
