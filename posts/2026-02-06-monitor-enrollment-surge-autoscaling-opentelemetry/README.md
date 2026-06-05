@@ -44,7 +44,7 @@ error_count = meter.create_counter(
 )
 
 # Track active pod/instance count
-active_instances = meter.create_observable_gauge(
+active_instances = meter.create_gauge(
     "enrollment.active_instances",
     description="Number of active service instances",
 )
@@ -54,6 +54,9 @@ scaling_events = meter.create_counter(
     "enrollment.scaling_events_total",
     description="Number of autoscaling events triggered",
 )
+
+def record_infrastructure_snapshot():
+    active_instances.record(get_active_instance_count())
 ```
 
 ## Instrumenting the Request Pipeline
@@ -117,18 +120,19 @@ def enrollment_middleware(request, next_handler):
 If you are running on Kubernetes, instrument the Horizontal Pod Autoscaler (HPA) decisions:
 
 ```python
-from kubernetes import client, watch
+import time
+from kubernetes import client
 from opentelemetry import trace, metrics
 
 tracer = trace.get_tracer("enrollment.autoscaler")
 meter = metrics.get_meter("enrollment.autoscaler")
 
-hpa_desired_replicas = meter.create_observable_gauge(
+hpa_desired_replicas = meter.create_gauge(
     "enrollment.hpa_desired_replicas",
     description="Number of replicas the HPA wants",
 )
 
-hpa_current_replicas = meter.create_observable_gauge(
+hpa_current_replicas = meter.create_gauge(
     "enrollment.hpa_current_replicas",
     description="Current number of running replicas",
 )
@@ -150,6 +154,8 @@ def monitor_hpa_events(namespace, hpa_name):
 
         current = hpa.status.current_replicas
         desired = hpa.status.desired_replicas
+        hpa_current_replicas.record(current, {"enrollment.hpa_name": hpa_name})
+        hpa_desired_replicas.record(desired, {"enrollment.hpa_name": hpa_name})
 
         if desired > current:
             # Scale-up in progress
@@ -185,7 +191,7 @@ def monitor_hpa_events(namespace, hpa_name):
 During surges, request queues build up. Monitor queue depth to detect when you need to scale faster:
 
 ```python
-queue_depth = meter.create_observable_gauge(
+queue_depth = meter.create_gauge(
     "enrollment.queue_depth",
     description="Number of enrollment requests waiting in the queue",
 )
@@ -200,6 +206,7 @@ def process_enrollment_queue():
     while True:
         # Record current queue depth
         current_depth = get_queue_length()
+        queue_depth.record(current_depth)
 
         # Dequeue and process
         message = queue.get()
