@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, React Native, JavaScript, Mobile, Performance
 
-Description: Master performance monitoring in React Native applications using OpenTelemetry spans to track JavaScript execution, bridge communication, native module calls, and UI rendering across iOS and Android.
+Description: Master performance monitoring in React Native applications using OpenTelemetry spans to track JavaScript execution, JavaScript/native communication, native module calls, and UI rendering across iOS and Android.
 
-React Native enables building mobile apps with JavaScript while delivering native performance. However, the architecture introduces unique performance considerations. JavaScript runs in one thread, native UI operations in another, and communication between them happens over a bridge. Understanding where time is spent requires instrumenting all three layers with OpenTelemetry.
+React Native enables building mobile apps with JavaScript while delivering native performance. However, the architecture introduces unique performance considerations. JavaScript runs in its own runtime, native UI operations run on native threads, and communication between the JavaScript and native layers happens through the legacy bridge or, in the New Architecture, through JSI-backed native modules and Fabric. Understanding where time is spent requires instrumenting these layers with OpenTelemetry.
 
 ## Understanding React Native Performance Characteristics
 
-React Native apps have distinct performance characteristics that differ from both web and native applications. JavaScript execution happens in a separate runtime (JavaScriptCore on iOS, Hermes or V8 on Android), while UI rendering occurs in native threads. The bridge serializes data between these environments, creating potential bottlenecks.
+React Native apps have distinct performance characteristics that differ from both web and native applications. JavaScript execution happens in a separate runtime, most commonly Hermes in current React Native versions, while UI rendering occurs in native threads. Older React Native apps and compatibility paths may still use the asynchronous bridge, where serialized communication can become a bottleneck. Newer apps use the New Architecture's JSI, TurboModules, and Fabric paths, which reduce bridge overhead but still benefit from tracing JavaScript, native module calls, and UI work separately.
 
-Common performance issues include excessive bridge traffic, slow JavaScript execution, inefficient React component renders, and blocking native operations. OpenTelemetry spans help identify which layer causes problems by tracking execution time across the entire stack.
+Common performance issues include excessive JavaScript/native communication, slow JavaScript execution, inefficient React component renders, and blocking native operations. OpenTelemetry spans help identify which layer causes problems by tracking execution time across the entire stack.
 
 ## Installing OpenTelemetry in React Native
 
@@ -21,15 +21,14 @@ React Native requires special consideration for OpenTelemetry dependencies since
 ```bash
 # Install core OpenTelemetry packages
 
-npm install @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/core
+npm install @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-trace-web @opentelemetry/core
+npm install @opentelemetry/resources @opentelemetry/semantic-conventions
 
-# Install React Native specific packages
+# Install exporter package
 npm install @opentelemetry/exporter-trace-otlp-http
-npm install @opentelemetry/instrumentation-fetch-node
-npm install @opentelemetry/react-native
 
-# Install peer dependencies
-npm install @react-native-async-storage/async-storage
+# Install device metadata helper used in the examples
+npm install react-native-device-info
 ```
 
 For iOS, install CocoaPods dependencies:
@@ -45,14 +44,26 @@ Create a telemetry configuration file that initializes OpenTelemetry when your a
 ```javascript
 // telemetry/config.js
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import {
+  CompositePropagator,
+  W3CBaggagePropagator,
+  W3CTraceContextPropagator,
+} from '@opentelemetry/core';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_DEVICE_MODEL_NAME,
+  ATTR_DEVICE_MANUFACTURER,
+  ATTR_OS_NAME,
+  ATTR_OS_VERSION,
+} from '@opentelemetry/semantic-conventions/incubating';
 import {
   BatchSpanProcessor,
   ConsoleSpanExporter,
 } from '@opentelemetry/sdk-trace-base';
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { registerGlobals } from '@opentelemetry/react-native';
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
@@ -61,14 +72,14 @@ let tracer;
 
 export function initializeTelemetry() {
   // Create resource with app and device information
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'MyReactNativeApp',
-    [SemanticResourceAttributes.SERVICE_VERSION]: DeviceInfo.getVersion(),
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: __DEV__ ? 'development' : 'production',
-    'device.platform': Platform.OS,
-    'device.os.version': Platform.Version,
-    'device.model': DeviceInfo.getModel(),
-    'device.brand': DeviceInfo.getBrand(),
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'MyReactNativeApp',
+    [ATTR_SERVICE_VERSION]: DeviceInfo.getVersion(),
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: __DEV__ ? 'development' : 'production',
+    [ATTR_OS_NAME]: Platform.OS,
+    [ATTR_OS_VERSION]: String(Platform.Version),
+    [ATTR_DEVICE_MODEL_NAME]: DeviceInfo.getModel(),
+    [ATTR_DEVICE_MANUFACTURER]: DeviceInfo.getBrand(),
     'app.build.number': DeviceInfo.getBuildNumber(),
   });
 
@@ -93,12 +104,18 @@ export function initializeTelemetry() {
   // Create and configure tracer provider
   provider = new WebTracerProvider({
     resource,
+    spanProcessors: [spanProcessor],
   });
 
-  provider.addSpanProcessor(spanProcessor);
-
   // Register as global provider
-  registerGlobals(provider);
+  provider.register({
+    propagator: new CompositePropagator({
+      propagators: [
+        new W3CTraceContextPropagator(),
+        new W3CBaggagePropagator(),
+      ],
+    }),
+  });
 
   // Get tracer instance
   tracer = provider.getTracer('react-native-app', '1.0.0');
@@ -142,7 +159,8 @@ React components are the building blocks of React Native apps. Instrument compon
 ```javascript
 // components/InstrumentedComponent.js
 import React, { Component } from 'react';
-import { trace, context } from '@opentelemetry/api';
+import { context, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { Text, View } from 'react-native';
 import { getTracer } from '../telemetry/config';
 
 // Higher-order component that adds instrumentation
@@ -155,10 +173,16 @@ export function withInstrumentation(WrappedComponent, componentName) {
       this.lifecycleSpan = null;
     }
 
+    getLifecycleContext() {
+      return this.lifecycleSpan
+        ? trace.setSpan(context.active(), this.lifecycleSpan)
+        : context.active();
+    }
+
     componentDidMount() {
       // Start span for component lifecycle
       this.lifecycleSpan = this.tracer.startSpan(`Component.${this.componentName}`, {
-        kind: trace.SpanKind.INTERNAL,
+        kind: SpanKind.INTERNAL,
         attributes: {
           'component.type': 'React',
           'component.name': this.componentName,
@@ -168,18 +192,16 @@ export function withInstrumentation(WrappedComponent, componentName) {
       // Create span for mount phase
       const mountSpan = this.tracer.startSpan(
         `Component.${this.componentName}.mount`,
-        { parent: this.lifecycleSpan },
+        undefined,
+        this.getLifecycleContext(),
       );
 
       try {
-        if (super.componentDidMount) {
-          super.componentDidMount();
-        }
-        mountSpan.setStatus({ code: trace.SpanStatusCode.OK });
+        mountSpan.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         mountSpan.recordException(error);
         mountSpan.setStatus({
-          code: trace.SpanStatusCode.ERROR,
+          code: SpanStatusCode.ERROR,
           message: error.message,
         });
         throw error;
@@ -193,23 +215,20 @@ export function withInstrumentation(WrappedComponent, componentName) {
       const updateSpan = this.tracer.startSpan(
         `Component.${this.componentName}.update`,
         {
-          parent: this.lifecycleSpan,
           attributes: {
             'update.props_changed': JSON.stringify(prevProps) !== JSON.stringify(this.props),
             'update.state_changed': JSON.stringify(prevState) !== JSON.stringify(this.state),
           },
         },
+        this.getLifecycleContext(),
       );
 
       try {
-        if (super.componentDidUpdate) {
-          super.componentDidUpdate(prevProps, prevState);
-        }
-        updateSpan.setStatus({ code: trace.SpanStatusCode.OK });
+        updateSpan.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         updateSpan.recordException(error);
         updateSpan.setStatus({
-          code: trace.SpanStatusCode.ERROR,
+          code: SpanStatusCode.ERROR,
           message: error.message,
         });
         throw error;
@@ -221,18 +240,16 @@ export function withInstrumentation(WrappedComponent, componentName) {
     componentWillUnmount() {
       const unmountSpan = this.tracer.startSpan(
         `Component.${this.componentName}.unmount`,
-        { parent: this.lifecycleSpan },
+        undefined,
+        this.getLifecycleContext(),
       );
 
       try {
-        if (super.componentWillUnmount) {
-          super.componentWillUnmount();
-        }
-        unmountSpan.setStatus({ code: trace.SpanStatusCode.OK });
+        unmountSpan.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         unmountSpan.recordException(error);
         unmountSpan.setStatus({
-          code: trace.SpanStatusCode.ERROR,
+          code: SpanStatusCode.ERROR,
           message: error.message,
         });
         throw error;
@@ -240,34 +257,37 @@ export function withInstrumentation(WrappedComponent, componentName) {
         unmountSpan.end();
 
         if (this.lifecycleSpan) {
-          this.lifecycleSpan.setStatus({ code: trace.SpanStatusCode.OK });
+          this.lifecycleSpan.setStatus({ code: SpanStatusCode.OK });
           this.lifecycleSpan.end();
         }
       }
     }
 
     render() {
-      // Track render duration
-      const renderSpan = this.tracer.startSpan(
-        `Component.${this.componentName}.render`,
-        { parent: this.lifecycleSpan },
-      );
+      return (
+        <React.Profiler
+          id={this.componentName}
+          onRender={(id, phase, actualDuration, baseDuration) => {
+            const renderSpan = this.tracer.startSpan(
+              `Component.${id}.render`,
+              {
+                kind: SpanKind.INTERNAL,
+                attributes: {
+                  'render.phase': phase,
+                  'render.actual_duration_ms': actualDuration,
+                  'render.base_duration_ms': baseDuration,
+                },
+              },
+              this.getLifecycleContext(),
+            );
 
-      try {
-        const result = <WrappedComponent {...this.props} />;
-        renderSpan.setStatus({ code: trace.SpanStatusCode.OK });
-        return result;
-      } catch (error) {
-        renderSpan.recordException(error);
-        renderSpan.setStatus({
-          code: trace.SpanStatusCode.ERROR,
-          message: error.message,
-        });
-        throw error;
-      } finally {
-        // End render span after frame is committed
-        setImmediate(() => renderSpan.end());
-      }
+            renderSpan.setStatus({ code: SpanStatusCode.OK });
+            renderSpan.end();
+          }}
+        >
+          <WrappedComponent {...this.props} />
+        </React.Profiler>
+      );
     }
   };
 }
@@ -292,8 +312,8 @@ For functional components with hooks, create custom hooks that provide tracing c
 
 ```javascript
 // hooks/useTracing.js
-import { useEffect, useRef, useCallback } from 'react';
-import { trace } from '@opentelemetry/api';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../telemetry/config';
 
 export function useComponentTracing(componentName) {
@@ -303,7 +323,7 @@ export function useComponentTracing(componentName) {
   useEffect(() => {
     // Start component lifecycle span
     spanRef.current = tracer.startSpan(`Component.${componentName}`, {
-      kind: trace.SpanKind.INTERNAL,
+      kind: SpanKind.INTERNAL,
       attributes: {
         'component.type': 'React.Functional',
         'component.name': componentName,
@@ -317,7 +337,7 @@ export function useComponentTracing(componentName) {
     return () => {
       if (spanRef.current) {
         spanRef.current.addEvent('component_unmounting');
-        spanRef.current.setStatus({ code: trace.SpanStatusCode.OK });
+        spanRef.current.setStatus({ code: SpanStatusCode.OK });
         spanRef.current.end();
       }
     };
@@ -326,28 +346,33 @@ export function useComponentTracing(componentName) {
   return spanRef.current;
 }
 
-export function useTracedCallback(name, callback, deps) {
+export function useTracedCallback(name, callback, deps = []) {
   const tracer = getTracer();
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   return useCallback((...args) => {
     const span = tracer.startSpan(`Callback.${name}`, {
-      kind: trace.SpanKind.INTERNAL,
+      kind: SpanKind.INTERNAL,
     });
 
     try {
-      const result = callback(...args);
+      const result = callbackRef.current(...args);
 
       // Handle async results
       if (result instanceof Promise) {
         return result
           .then(value => {
-            span.setStatus({ code: trace.SpanStatusCode.OK });
+            span.setStatus({ code: SpanStatusCode.OK });
             return value;
           })
           .catch(error => {
             span.recordException(error);
             span.setStatus({
-              code: trace.SpanStatusCode.ERROR,
+              code: SpanStatusCode.ERROR,
               message: error.message,
             });
             throw error;
@@ -355,46 +380,46 @@ export function useTracedCallback(name, callback, deps) {
           .finally(() => span.end());
       }
 
-      span.setStatus({ code: trace.SpanStatusCode.OK });
+      span.setStatus({ code: SpanStatusCode.OK });
       span.end();
       return result;
     } catch (error) {
       span.recordException(error);
       span.setStatus({
-        code: trace.SpanStatusCode.ERROR,
+        code: SpanStatusCode.ERROR,
         message: error.message,
       });
       span.end();
       throw error;
     }
-  }, deps);
+  }, [name, tracer, ...deps]);
 }
 
-export function useTracedEffect(name, effect, deps) {
+export function useTracedEffect(name, effect, deps = []) {
   const tracer = getTracer();
 
   useEffect(() => {
     const span = tracer.startSpan(`Effect.${name}`, {
-      kind: trace.SpanKind.INTERNAL,
+      kind: SpanKind.INTERNAL,
     });
 
     try {
       const cleanup = effect();
-      span.setStatus({ code: trace.SpanStatusCode.OK });
+      span.setStatus({ code: SpanStatusCode.OK });
 
       return () => {
-        if (cleanup) {
+        if (typeof cleanup === 'function') {
           const cleanupSpan = tracer.startSpan(`Effect.${name}.cleanup`, {
-            kind: trace.SpanKind.INTERNAL,
+            kind: SpanKind.INTERNAL,
           });
 
           try {
             cleanup();
-            cleanupSpan.setStatus({ code: trace.SpanStatusCode.OK });
+            cleanupSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             cleanupSpan.recordException(error);
             cleanupSpan.setStatus({
-              code: trace.SpanStatusCode.ERROR,
+              code: SpanStatusCode.ERROR,
               message: error.message,
             });
           } finally {
@@ -406,16 +431,15 @@ export function useTracedEffect(name, effect, deps) {
     } catch (error) {
       span.recordException(error);
       span.setStatus({
-        code: trace.SpanStatusCode.ERROR,
+        code: SpanStatusCode.ERROR,
         message: error.message,
       });
       span.end();
       throw error;
     }
-  }, deps);
+  }, [name, tracer, ...deps]);
 }
 
-// Usage example
 function UserProfileScreen({ userId }) {
   // Trace component lifecycle
   useComponentTracing('UserProfileScreen');
@@ -423,20 +447,9 @@ function UserProfileScreen({ userId }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Traced effect for data fetching
-  useTracedEffect(
-    'fetchUserData',
-    () => {
-      fetchUser(userId)
-        .then(setUser)
-        .finally(() => setLoading(false));
-    },
-    [userId],
-  );
-
-  // Traced callback for button press
-  const handleRefresh = useTracedCallback(
-    'refreshUser',
+  // Traced callback for data fetching
+  const loadUser = useTracedCallback(
+    'loadUser',
     async () => {
       setLoading(true);
       const userData = await fetchUser(userId);
@@ -446,8 +459,12 @@ function UserProfileScreen({ userId }) {
     [userId],
   );
 
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
   if (loading) return <LoadingSpinner />;
-  return <UserProfile user={user} onRefresh={handleRefresh} />;
+  return <UserProfile user={user} onRefresh={loadUser} />;
 }
 ```
 
@@ -457,9 +474,9 @@ React Native apps typically use React Navigation. Instrument navigation to track
 
 ```javascript
 // navigation/InstrumentedNavigator.js
-import { useEffect, useRef } from 'react';
+import { createRef, useEffect, useRef } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { trace } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../telemetry/config';
 
 export function useNavigationTracing() {
@@ -471,8 +488,12 @@ export function useNavigationTracing() {
   useEffect(() => {
     // Start span when screen comes into focus
     const startScreenSpan = () => {
+      if (screenSpanRef.current) {
+        return;
+      }
+
       screenSpanRef.current = tracer.startSpan(`Screen.${route.name}`, {
-        kind: trace.SpanKind.INTERNAL,
+        kind: SpanKind.INTERNAL,
         attributes: {
           'screen.name': route.name,
           'screen.params': JSON.stringify(route.params),
@@ -486,7 +507,7 @@ export function useNavigationTracing() {
     const endScreenSpan = () => {
       if (screenSpanRef.current) {
         screenSpanRef.current.addEvent('screen_blurred');
-        screenSpanRef.current.setStatus({ code: trace.SpanStatusCode.OK });
+        screenSpanRef.current.setStatus({ code: SpanStatusCode.OK });
         screenSpanRef.current.end();
         screenSpanRef.current = null;
       }
@@ -511,8 +532,8 @@ export function useNavigationTracing() {
 
 // Create a custom navigation container with instrumentation
 export function createInstrumentedNavigator() {
-  const navigationRef = React.createRef();
-  const routeNameRef = React.useRef();
+  const navigationRef = createRef();
+  const routeNameRef = { current: undefined };
   const tracer = getTracer();
 
   return {
@@ -527,7 +548,7 @@ export function createInstrumentedNavigator() {
       if (previousRouteName !== currentRouteName) {
         // Track navigation transition
         const span = tracer.startSpan('Navigation.transition', {
-          kind: trace.SpanKind.INTERNAL,
+          kind: SpanKind.INTERNAL,
           attributes: {
             'navigation.from': previousRouteName,
             'navigation.to': currentRouteName,
@@ -535,7 +556,7 @@ export function createInstrumentedNavigator() {
         });
 
         span.addEvent('navigation_completed');
-        span.setStatus({ code: trace.SpanStatusCode.OK });
+        span.setStatus({ code: SpanStatusCode.OK });
         span.end();
       }
 
@@ -551,7 +572,7 @@ Network requests are critical to track. Create an instrumented fetch wrapper tha
 
 ```javascript
 // api/tracedFetch.js
-import { trace } from '@opentelemetry/api';
+import { context, propagation, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../telemetry/config';
 
 export async function tracedFetch(url, options = {}) {
@@ -561,7 +582,7 @@ export async function tracedFetch(url, options = {}) {
   const urlObj = new URL(url);
 
   const span = tracer.startSpan(`HTTP ${options.method || 'GET'} ${urlObj.pathname}`, {
-    kind: trace.SpanKind.CLIENT,
+    kind: SpanKind.CLIENT,
     attributes: {
       'http.method': options.method || 'GET',
       'http.url': url,
@@ -577,8 +598,8 @@ export async function tracedFetch(url, options = {}) {
   };
 
   // Add W3C trace context headers for propagation
-  const spanContext = span.spanContext();
-  headers['traceparent'] = `00-${spanContext.traceId}-${spanContext.spanId}-01`;
+  const spanContext = trace.setSpan(context.active(), span);
+  propagation.inject(spanContext, headers);
 
   try {
     const startTime = Date.now();
@@ -592,11 +613,11 @@ export async function tracedFetch(url, options = {}) {
     // Check if response indicates an error
     if (response.status >= 400) {
       span.setStatus({
-        code: trace.SpanStatusCode.ERROR,
+        code: SpanStatusCode.ERROR,
         message: `HTTP ${response.status}`,
       });
     } else {
-      span.setStatus({ code: trace.SpanStatusCode.OK });
+      span.setStatus({ code: SpanStatusCode.OK });
     }
 
     span.end();
@@ -605,7 +626,7 @@ export async function tracedFetch(url, options = {}) {
     // Record network errors
     span.recordException(error);
     span.setStatus({
-      code: trace.SpanStatusCode.ERROR,
+      code: SpanStatusCode.ERROR,
       message: error.message,
     });
     span.end();
@@ -642,12 +663,12 @@ export class ApiClient {
 
 ## Instrumenting Native Module Calls
 
-React Native's bridge to native code can be a performance bottleneck. Instrument native module calls to understand their overhead.
+React Native's calls into native code can be a performance bottleneck, especially for legacy bridge modules or frequently called native APIs. Instrument native module calls to understand their overhead.
 
 ```javascript
 // telemetry/nativeModuleTracer.js
 import { NativeModules } from 'react-native';
-import { trace } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from './config';
 
 export function instrumentNativeModule(moduleName) {
@@ -671,7 +692,7 @@ export function instrumentNativeModule(moduleName) {
 
     instrumentedModule[methodName] = function(...args) {
       const span = tracer.startSpan(`NativeModule.${moduleName}.${methodName}`, {
-        kind: trace.SpanKind.CLIENT,
+        kind: SpanKind.CLIENT,
         attributes: {
           'native_module.name': moduleName,
           'native_module.method': methodName,
@@ -686,14 +707,14 @@ export function instrumentNativeModule(moduleName) {
         if (result instanceof Promise) {
           return result
             .then(value => {
-              span.setStatus({ code: trace.SpanStatusCode.OK });
+              span.setStatus({ code: SpanStatusCode.OK });
               span.end();
               return value;
             })
             .catch(error => {
               span.recordException(error);
               span.setStatus({
-                code: trace.SpanStatusCode.ERROR,
+                code: SpanStatusCode.ERROR,
                 message: error.message,
               });
               span.end();
@@ -701,13 +722,13 @@ export function instrumentNativeModule(moduleName) {
             });
         }
 
-        span.setStatus({ code: trace.SpanStatusCode.OK });
+        span.setStatus({ code: SpanStatusCode.OK });
         span.end();
         return result;
       } catch (error) {
         span.recordException(error);
         span.setStatus({
-          code: trace.SpanStatusCode.ERROR,
+          code: SpanStatusCode.ERROR,
           message: error.message,
         });
         span.end();
@@ -720,14 +741,11 @@ export function instrumentNativeModule(moduleName) {
 }
 
 // Usage
-const InstrumentedAsyncStorage = instrumentNativeModule('AsyncStorage');
+const InstrumentedCalendarModule = instrumentNativeModule('CalendarModule');
 
-// Now use InstrumentedAsyncStorage instead of direct AsyncStorage
-async function saveUserData(userId, data) {
-  await InstrumentedAsyncStorage.setItem(
-    `user:${userId}`,
-    JSON.stringify(data),
-  );
+// Now use InstrumentedCalendarModule instead of direct NativeModules.CalendarModule
+async function createCalendarEvent(title, location) {
+  await InstrumentedCalendarModule.createCalendarEvent(title, location);
 }
 ```
 
@@ -742,7 +760,7 @@ graph TD
     C --> D[Component.mount]
     D --> E[Effect.fetchProductData]
     E --> F[HTTP GET /products/123]
-    F --> G[Bridge Call]
+    F --> G[Native Boundary Call]
     G --> H[NativeModule.NetworkRequest]
     E --> I[Component.render]
     I --> J[Effect.loadImages]
@@ -753,7 +771,7 @@ graph TD
 
 When monitoring React Native performance with OpenTelemetry, follow these practices:
 
-**Focus on bridge crossings**. The JavaScript-to-native bridge is often a bottleneck. Track how frequently your app crosses the bridge and the data volume being serialized.
+**Focus on native boundary crossings**. Legacy bridge calls can be bottlenecks, and New Architecture native module calls can still become expensive when they are frequent or move large payloads. Track how often your app crosses the JavaScript/native boundary and how much data is passed.
 
 **Monitor render performance**. Use spans to identify components that re-render excessively or take too long to render. This helps optimize React component design.
 
@@ -765,4 +783,4 @@ When monitoring React Native performance with OpenTelemetry, follow these practi
 
 **Correlate with native metrics**. Combine OpenTelemetry traces with native performance metrics like memory usage, CPU load, and frame drops for complete visibility.
 
-Monitoring React Native applications with OpenTelemetry provides unprecedented visibility into your app's performance across the JavaScript runtime, bridge communication, and native modules. This comprehensive instrumentation helps you deliver fast, responsive experiences to your users.
+Monitoring React Native applications with OpenTelemetry provides visibility into your app's performance across the JavaScript runtime, JavaScript/native communication, and native modules. This comprehensive instrumentation helps you deliver fast, responsive experiences to your users.
