@@ -24,7 +24,7 @@ A View is a configuration rule that modifies how the SDK aggregates metric data.
 # metrics_setup.py
 
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import Histogram, MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -35,6 +35,7 @@ http_latency_buckets = [1, 2, 5, 10, 15, 20, 30, 50, 75, 100, 200, 500, 1000, 50
 
 # View that applies custom buckets to any histogram matching "http.server.duration"
 http_latency_view = View(
+    instrument_type=Histogram,
     instrument_name="http.server.duration",
     aggregation=ExplicitBucketHistogramAggregation(
         boundaries=http_latency_buckets
@@ -45,6 +46,7 @@ http_latency_view = View(
 db_latency_buckets = [0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000]
 
 db_latency_view = View(
+    instrument_type=Histogram,
     instrument_name="db.client.duration",
     aggregation=ExplicitBucketHistogramAggregation(
         boundaries=db_latency_buckets
@@ -55,6 +57,7 @@ db_latency_view = View(
 queue_latency_buckets = [10, 50, 100, 500, 1000, 5000, 10000, 30000, 60000]
 
 queue_view = View(
+    instrument_type=Histogram,
     instrument_name="messaging.process.duration",
     aggregation=ExplicitBucketHistogramAggregation(
         boundaries=queue_latency_buckets
@@ -77,11 +80,13 @@ metrics.set_meter_provider(provider)
 You can use wildcard patterns to match multiple instruments:
 
 ```python
+from opentelemetry.sdk.metrics import Histogram
 from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 
 # Apply custom buckets to ALL histograms matching a pattern
 # The * wildcard matches any characters
 latency_view = View(
+    instrument_type=Histogram,
     instrument_name="*.duration",
     aggregation=ExplicitBucketHistogramAggregation(
         boundaries=[1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000]
@@ -90,6 +95,7 @@ latency_view = View(
 
 # Apply to all histograms from a specific meter (library)
 http_view = View(
+    instrument_type=Histogram,
     instrument_name="*",
     meter_name="opentelemetry.instrumentation.flask",
     aggregation=ExplicitBucketHistogramAggregation(
@@ -111,37 +117,41 @@ import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 import java.time.Duration;
 import java.util.List;
 
-SdkMeterProvider meterProvider = SdkMeterProvider.builder()
-    // Custom buckets for HTTP server latency
-    .registerView(
-        InstrumentSelector.builder()
-            .setName("http.server.duration")
-            .build(),
-        View.builder()
-            .setAggregation(Aggregation.explicitBucketHistogram(
-                List.of(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0)
-            ))
-            .build()
-    )
-    // Custom buckets for database operations
-    .registerView(
-        InstrumentSelector.builder()
-            .setName("db.client.operation.duration")
-            .build(),
-        View.builder()
-            .setAggregation(Aggregation.explicitBucketHistogram(
-                List.of(0.5, 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 500.0, 1000.0)
-            ))
-            .build()
-    )
-    .registerMetricReader(
-        PeriodicMetricReader.builder(
-            OtlpGrpcMetricExporter.builder()
-                .setEndpoint("http://collector:4317")
-                .build()
-        ).setInterval(Duration.ofSeconds(15)).build()
-    )
-    .build();
+public class MetricsSetup {
+    public static SdkMeterProvider setupMeterProvider() {
+        return SdkMeterProvider.builder()
+            // Custom buckets for HTTP server latency
+            .registerView(
+                InstrumentSelector.builder()
+                    .setName("http.server.duration")
+                    .build(),
+                View.builder()
+                    .setAggregation(Aggregation.explicitBucketHistogram(
+                        List.of(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0)
+                    ))
+                    .build()
+            )
+            // Custom buckets for database operations
+            .registerView(
+                InstrumentSelector.builder()
+                    .setName("db.client.operation.duration")
+                    .build(),
+                View.builder()
+                    .setAggregation(Aggregation.explicitBucketHistogram(
+                        List.of(0.5, 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 500.0, 1000.0)
+                    ))
+                    .build()
+            )
+            .registerMetricReader(
+                PeriodicMetricReader.builder(
+                    OtlpGrpcMetricExporter.builder()
+                        .setEndpoint("http://collector:4317")
+                        .build()
+                ).setInterval(Duration.ofSeconds(15)).build()
+            )
+            .build();
+    }
+}
 ```
 
 ## Go: Views Configuration
@@ -182,7 +192,7 @@ Follow these guidelines:
 
 3. **Fewer buckets at the extremes.** You do not need fine resolution above your p99.
 
-4. **Keep total bucket count reasonable.** Each bucket creates a time series. 10-20 buckets is typical. Going above 30 starts to impact performance and storage.
+4. **Keep total bucket count reasonable.** Each bucket adds work and data to each histogram point, and some backends expose each bucket as a separate time series. 10-20 buckets is typical. Going above 30 starts to impact performance and storage.
 
 ```python
 # Example: SLO-focused bucket selection
