@@ -8,7 +8,7 @@ Description: How to move Docker's data directory from the default /var/lib/docke
 
 ---
 
-Docker stores everything under `/var/lib/docker` by default: images, containers, volumes, networks, and build cache. On servers where the root partition is small, this directory can quickly consume all available space. Moving Docker's data to a larger or faster disk is a common operation. This guide covers the safe way to do it without losing any data.
+Docker stores its persistent daemon data under `/var/lib/docker` by default: images, containers, volumes, networks, and build cache. On Docker Engine 29.0 and later fresh installations that use the containerd image store, image contents and container snapshots are stored under `/var/lib/containerd` instead, while volumes and other daemon data remain under `/var/lib/docker`. On servers where the root partition is small, these directories can quickly consume all available space. Moving Docker's data to a larger or faster disk is a common operation. This guide covers the safe way to do it without losing any data.
 
 ## Why Move Docker's Data Directory?
 
@@ -19,7 +19,7 @@ Docker stores everything under `/var/lib/docker` by default: images, containers,
 
 ## Understanding Docker's Data Layout
 
-Before moving anything, understand what lives under `/var/lib/docker`.
+Before moving anything, understand what lives under `/var/lib/docker`. If your system uses Docker's containerd image store, also check `/var/lib/containerd`.
 
 ```bash
 # View the top-level directory structure
@@ -99,14 +99,14 @@ sudo systemctl stop containerd
 
 ### Step 3: Copy Existing Data
 
-Use `rsync` to copy the existing Docker data. This preserves permissions, ownership, and symlinks.
+Use `rsync` to copy the existing Docker data. This preserves permissions, ownership, symlinks, hard links, ACLs, and extended attributes.
 
 ```bash
 # Copy all Docker data to the new location
-sudo rsync -aP /var/lib/docker/ /mnt/docker-data/
+sudo rsync -aHAX --numeric-ids --info=progress2 /var/lib/docker/ /mnt/docker-data/
 ```
 
-The `-a` flag enables archive mode (preserves everything), and `-P` shows progress.
+The `-a` flag enables archive mode, `-HAX` preserves hard links, ACLs, and extended attributes, `--numeric-ids` keeps numeric user and group IDs unchanged, and `--info=progress2` shows overall progress.
 
 For large data directories, this can take a while. Use `tmux` or `screen` to prevent SSH disconnections from interrupting the copy.
 
@@ -137,6 +137,8 @@ EOF
 ```
 
 If you already have a `daemon.json` with other settings, add the `"data-root"` key to the existing file rather than overwriting it.
+
+If your system uses Docker Engine 29.0 or later with the containerd image store, `data-root` does not move image contents and container snapshots from `/var/lib/containerd`. Configure containerd's `root` setting in `/etc/containerd/config.toml` and migrate `/var/lib/containerd` separately if you need that data off the root disk too.
 
 ### Step 5: Start Docker
 
@@ -185,7 +187,7 @@ sudo mv /var/lib/docker /var/lib/docker.old
 # sudo rm -rf /var/lib/docker.old
 ```
 
-## Method 2: Using a Bind Mount
+## Method 2: Mounting the Disk at /var/lib/docker
 
 Instead of changing Docker's config, you can mount the new disk directly at `/var/lib/docker`.
 
@@ -200,12 +202,15 @@ sudo systemctl stop containerd
 ### Step 2: Move Data and Create Mount
 
 ```bash
-# Move Docker data to the new disk temporarily
+# Move Docker data out of the way
 sudo mv /var/lib/docker /var/lib/docker.backup
-sudo rsync -aP /var/lib/docker.backup/ /mnt/docker-data/
 
-# Mount the new disk at /var/lib/docker
+# Create the mount point and mount the new disk at /var/lib/docker
+sudo mkdir -p /var/lib/docker
 sudo mount /dev/sdb1 /var/lib/docker
+
+# Copy Docker data onto the new disk
+sudo rsync -aHAX --numeric-ids --info=progress2 /var/lib/docker.backup/ /var/lib/docker/
 
 # Add to fstab
 echo "UUID=your-uuid-here /var/lib/docker ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
@@ -256,7 +261,7 @@ The filesystem on your new disk affects Docker's performance and features.
 | Filesystem | Pros | Cons |
 |-----------|------|------|
 | ext4 | Universally supported, stable, good performance | No built-in compression |
-| XFS | Great for large files, high throughput | Cannot shrink partitions |
+| XFS | Great for large files, high throughput | Cannot shrink partitions; for `overlay2`, format with `ftype=1` |
 | Btrfs | Snapshots, compression, native Docker driver | More complex, metadata overhead |
 | ZFS | Snapshots, checksums, excellent for data integrity | Higher memory usage |
 
@@ -344,7 +349,7 @@ Check permissions on the new directory.
 
 ```bash
 # Docker data should be owned by root
-sudo chown -R root:root /mnt/docker-data
+sudo chown root:root /mnt/docker-data
 sudo chmod 711 /mnt/docker-data
 ```
 
@@ -353,12 +358,9 @@ sudo chmod 711 /mnt/docker-data
 On RHEL-based systems, SELinux may block Docker from accessing the new location.
 
 ```bash
-# Restore SELinux context for Docker data
-sudo restorecon -R /mnt/docker-data
-
-# Or set the correct context manually
-sudo semanage fcontext -a -t container_var_lib_t "/mnt/docker-data(/.*)?"
-sudo restorecon -R /mnt/docker-data
+# Map the new Docker data path to the same SELinux labels as /var/lib/docker
+sudo semanage fcontext -a -e /var/lib/docker /mnt/docker-data
+sudo restorecon -R -v /mnt/docker-data
 ```
 
 ### Images and containers missing after migration
@@ -393,4 +395,4 @@ sudo smartctl -a /dev/sdb
 
 ## Summary
 
-Moving Docker's data directory is a common operation that prevents disk space problems and can improve performance. The recommended approach is to use the `data-root` setting in `daemon.json` after copying the data with `rsync`. The bind mount method is a good alternative that avoids configuration changes. Whichever method you choose, the process is the same: stop Docker, copy data, update configuration (or mount), start Docker, verify, then clean up the old data.
+Moving Docker's data directory is a common operation that prevents disk space problems and can improve performance. The recommended approach is to use the `data-root` setting in `daemon.json` after copying the data with `rsync`. Mounting the disk directly at `/var/lib/docker` is a good alternative that avoids configuration changes. Whichever method you choose, the process is the same: stop Docker, copy data, update configuration (or mount), start Docker, verify, then clean up the old data.
