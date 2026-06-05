@@ -12,31 +12,31 @@ This post walks you through building that file from scratch.
 
 ## The Structure of a Declarative Configuration File
 
-Every OpenTelemetry declarative configuration file has a standard top-level structure:
+Every OpenTelemetry declarative configuration file uses a standard set of top-level sections. Only `file_format` is required; provider sections need their required child fields when you enable them:
 
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 # Disabled flag - set to true to disable the SDK entirely
 disabled: false
 
 # Resource attributes shared by all signals
 resource:
-  attributes: {}
+  attributes: []
 
 # Trace pipeline
-tracer_provider: {}
+# tracer_provider: ...
 
 # Metric pipeline
-meter_provider: {}
+# meter_provider: ...
 
 # Log pipeline
-logger_provider: {}
+# logger_provider: ...
 
 # Context propagation
-propagator: {}
+# propagator: ...
 ```
 
 Let us fill in each section with a practical setup that sends all three signals to an OTLP-compatible backend.
@@ -48,10 +48,14 @@ The resource block defines attributes that get attached to every piece of teleme
 ```yaml
 resource:
   attributes:
-    service.name: "order-service"
-    service.version: "1.8.0"
-    deployment.environment: "staging"
-    service.namespace: "ecommerce"
+    - name: service.name
+      value: "order-service"
+    - name: service.version
+      value: "1.8.0"
+    - name: deployment.environment.name
+      value: "staging"
+    - name: service.namespace
+      value: "ecommerce"
 ```
 
 These attributes show up on every trace span, every metric data point, and every log record. They are how you filter and group telemetry in your observability backend.
@@ -69,9 +73,8 @@ tracer_provider:
         max_queue_size: 2048       # max spans queued in memory
         max_export_batch_size: 512 # max spans per export call
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
             timeout: 10000  # export timeout in ms
             compression: "gzip"
 
@@ -104,9 +107,8 @@ meter_provider:
         interval: 30000       # collect every 30 seconds
         timeout: 15000        # timeout for each collection
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
             temporality_preference: "delta"  # or "cumulative"
             default_histogram_aggregation: "explicit_bucket_histogram"
 
@@ -134,9 +136,8 @@ logger_provider:
         max_queue_size: 2048
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
 
   # Limits for log records
   limits:
@@ -150,10 +151,12 @@ The propagator section defines which context propagation formats your applicatio
 
 ```yaml
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
-If you need to interoperate with services using B3 headers (common in Zipkin-based systems), add `b3multi` to the list.
+If you need to interoperate with services using B3 headers (common in Zipkin-based systems), add `- b3multi:` to the list.
 
 ## The Complete File
 
@@ -161,15 +164,19 @@ Here is everything put together:
 
 ```yaml
 # otel-config.yaml - Full three-signal configuration
-file_format: "0.3"
+file_format: "1.0"
 disabled: false
 
 resource:
   attributes:
-    service.name: "order-service"
-    service.version: "1.8.0"
-    deployment.environment: "staging"
-    service.namespace: "ecommerce"
+    - name: service.name
+      value: "order-service"
+    - name: service.version
+      value: "1.8.0"
+    - name: deployment.environment.name
+      value: "staging"
+    - name: service.namespace
+      value: "ecommerce"
 
 tracer_provider:
   processors:
@@ -178,9 +185,8 @@ tracer_provider:
         max_queue_size: 2048
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
             compression: "gzip"
   sampler:
     parent_based:
@@ -198,9 +204,8 @@ meter_provider:
         interval: 30000
         timeout: 15000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
             temporality_preference: "delta"
 
 logger_provider:
@@ -209,12 +214,13 @@ logger_provider:
         schedule_delay: 5000
         max_queue_size: 2048
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Running Your Application with the Config
@@ -222,7 +228,7 @@ propagator:
 Point your SDK to this file with a single environment variable:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE="./otel-config.yaml"
+export OTEL_CONFIG_FILE="./otel-config.yaml"
 java -jar order-service.jar
 ```
 
