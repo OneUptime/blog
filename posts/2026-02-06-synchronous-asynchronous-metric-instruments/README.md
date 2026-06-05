@@ -8,7 +8,7 @@ Description: Understand the differences between synchronous and asynchronous met
 
 ---
 
-OpenTelemetry offers two flavors of every metric instrument: synchronous and asynchronous. Choosing the wrong one does not break anything, but it can lead to unnecessary complexity, wasted resources, or metrics that do not capture what you actually need. The distinction is simple once you understand it, but the documentation can make it feel more complicated than it is.
+OpenTelemetry offers synchronous and asynchronous metric instruments. Choosing the wrong one does not break anything, but it can lead to unnecessary complexity, wasted resources, or metrics that do not capture what you actually need. The distinction is simple once you understand it, but the documentation can make it feel more complicated than it is.
 
 This guide explains the difference clearly, shows you when to use each type, and walks through practical examples that cover the most common scenarios.
 
@@ -41,13 +41,14 @@ The mental model is push vs. pull. Synchronous instruments push data into the SD
 
 ## Synchronous Instruments
 
-There are three synchronous instrument types:
+There are four synchronous instrument types:
 
 | Instrument | Method | Use Case |
 |---|---|---|
 | Counter | `add(value)` | Counting events (requests, errors, bytes) |
 | UpDownCounter | `add(value)` | Values that increase and decrease (active sessions) |
 | Histogram | `record(value)` | Distributions (latencies, sizes) |
+| Gauge | `set(value)` | Point-in-time values recorded when they change |
 
 ### When to Use Synchronous Instruments
 
@@ -120,7 +121,7 @@ Notice how each metric recording is tied to a specific point in the application 
 
 ## Asynchronous Instruments
 
-The asynchronous instrument types mirror the synchronous ones:
+There are three asynchronous instrument types:
 
 | Instrument | Callback Returns | Use Case |
 |---|---|---|
@@ -162,7 +163,7 @@ cpu_gauge = meter.create_observable_gauge(
 def read_disk_io(options):
     """Reports cumulative disk I/O bytes.
     Since disk I/O counters only increase, this is an observable counter.
-    The SDK computes the rate of change between collections."""
+    Metric readers or backends can derive rates from the cumulative values."""
     counters = psutil.disk_io_counters()
     yield metrics.Observation(
         value=counters.read_bytes,
@@ -220,7 +221,8 @@ If yes, use a synchronous instrument. If the value exists independently and you 
 - If it only goes up, use a Counter (sync) or ObservableCounter (async).
 - If it goes up and down, use an UpDownCounter (sync) or ObservableUpDownCounter (async).
 - If you need the distribution of values, use a Histogram (sync only, there is no async histogram).
-- If it is a point-in-time snapshot, use an ObservableGauge (async).
+- If it is a point-in-time value recorded when it changes, use a Gauge (sync).
+- If it is a point-in-time snapshot read by callback, use an ObservableGauge (async).
 
 ```mermaid
 flowchart TD
@@ -231,6 +233,7 @@ flowchart TD
     C -->|Only increases| E[Counter]
     C -->|Up and down| F[UpDownCounter]
     C -->|Distribution needed| G[Histogram]
+    C -->|Value on change| K[Gauge]
 
     D -->|Only increases| H[ObservableCounter]
     D -->|Up and down| I[ObservableUpDownCounter]
@@ -284,7 +287,7 @@ def on_error():
     error_counter.add(1, {"error.source": "payment"})
 ```
 
-**Forgetting that there is no async histogram.** Histograms are always synchronous in OpenTelemetry. If you need distribution data, you must record each value as it happens. This is by design: a histogram needs every individual value to compute percentiles, so sampling at intervals would lose data.
+**Forgetting that there is no async histogram.** Histograms are always synchronous in OpenTelemetry. If you need distribution data, you must record each value as it happens. This is by design: a histogram needs individual measurements to populate distribution buckets accurately, so sampling at intervals would lose data.
 
 ---
 
