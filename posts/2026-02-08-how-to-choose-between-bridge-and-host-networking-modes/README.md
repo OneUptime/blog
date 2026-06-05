@@ -86,7 +86,7 @@ services:
     # No "ports" section needed - the container IS the host network
 ```
 
-Important limitation: host networking only works on Linux. On macOS and Windows, Docker runs inside a VM, so `--network host` connects to the VM's network, not your actual machine's network. This makes it essentially useless for local development on non-Linux systems.
+Important limitation: host networking behaves differently across platforms. It works natively on Docker Engine for Linux. Docker Desktop 4.34 and later also supports host networking as an opt-in feature, but it still runs through Docker Desktop's VM and has limitations compared with native Linux host networking.
 
 ## Network Isolation Comparison
 
@@ -121,8 +121,8 @@ Host networking avoids the NAT overhead that bridge mode introduces. For most ap
 # Start iperf3 server on the host
 iperf3 -s -p 5201 &
 
-# Run client in bridge mode
-docker run --rm -it networkstatic/iperf3 -c host.docker.internal -p 5201
+# Run client in bridge mode on Linux
+docker run --rm -it --add-host host.docker.internal=host-gateway networkstatic/iperf3 -c host.docker.internal -p 5201
 
 # Run client in host mode
 docker run --rm -it --network host networkstatic/iperf3 -c localhost -p 5201
@@ -191,11 +191,11 @@ services:
   # Internal service has no port exposure to the host
   api:
     image: myapi
-    # No ports section - only reachable from nginx on the internal network
+    # No ports section - only reachable from other services on the internal network
     expose:
       - "3000"
 
-  # Database is completely isolated
+  # Database is isolated from the host
   db:
     image: postgres:16
     # No ports, no expose - only reachable by service name within the network
@@ -209,7 +209,7 @@ Use bridge mode (the default) when:
 - You need to control which ports are exposed
 - You run multiple services that might use the same port numbers
 - Security and multi-tenancy matter
-- You develop on macOS or Windows (host mode does not work properly)
+- You need the most portable behavior across Linux, macOS, and Windows
 - You use Docker Compose (it creates bridge networks automatically)
 
 This covers the vast majority of use cases. Bridge networking is the right default.
@@ -222,7 +222,7 @@ Use host mode when:
 - Your application binds to many dynamic ports (media servers, SIP applications)
 - You run network monitoring tools that need to see host interfaces
 - Performance benchmarks show that bridge NAT is a measurable bottleneck
-- You run on Linux exclusively (host mode on Docker Desktop is ineffective)
+- You run on Linux, or you have enabled host networking in Docker Desktop 4.34 or later and its limitations are acceptable
 
 ```yaml
 # Legitimate host networking use cases
