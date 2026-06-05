@@ -18,10 +18,12 @@ This code creates an observable gauge that checks the queue depth every time the
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 import boto3
+from typing import Iterable
 
 exporter = OTLPMetricExporter(endpoint="http://otel-collector:4317")
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=15000)
@@ -33,7 +35,7 @@ meter = metrics.get_meter("queue.monitor", version="1.0.0")
 sqs_client = boto3.client("sqs", region_name="us-east-1")
 QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/123456789/order-processing"
 
-def observe_queue_depth(options):
+def observe_queue_depth(options: CallbackOptions) -> Iterable[Observation]:
     """Fetch the approximate message count from SQS."""
     response = sqs_client.get_queue_attributes(
         QueueUrl=QUEUE_URL,
@@ -43,11 +45,11 @@ def observe_queue_depth(options):
     visible = int(attrs["ApproximateNumberOfMessages"])
     in_flight = int(attrs["ApproximateNumberOfMessagesNotVisible"])
 
-    yield metrics.Observation(
+    yield Observation(
         value=visible,
         attributes={"queue": "order-processing", "state": "visible"}
     )
-    yield metrics.Observation(
+    yield Observation(
         value=in_flight,
         attributes={"queue": "order-processing", "state": "in_flight"}
     )
@@ -75,7 +77,7 @@ meter = metrics.get_meter("queue.consumer", version="1.0.0")
 messages_processed = meter.create_counter(
     name="messaging.consumer.messages_processed",
     description="Total messages processed by this consumer",
-    unit="messages"
+    unit="{message}"
 )
 
 processing_duration = meter.create_histogram(
@@ -125,20 +127,18 @@ service:
 
 Now set up the Prometheus Adapter to make your queue depth metric available to the HPA.
 
-This adapter configuration maps the `messaging_queue_depth` Prometheus metric to a Kubernetes custom metric:
+This adapter configuration maps the `messaging_queue_depth` Prometheus metric to a Kubernetes external metric:
 
 ```yaml
 # prometheus-adapter-config.yaml
-rules:
-  - seriesQuery: 'messaging_queue_depth{state="visible"}'
+externalRules:
+  - seriesQuery: 'messaging_queue_depth{state="visible",queue!=""}'
     resources:
-      overrides:
-        namespace:
-          resource: namespace
+      namespaced: false
     name:
       matches: "^(.*)$"
       as: "queue_depth_visible"
-    metricsQuery: 'sum(messaging_queue_depth{state="visible",queue="order-processing"})'
+    metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>,state="visible"}) by (queue)'
 ```
 
 Finally, create the HPA that scales your consumer deployment based on queue depth.
@@ -205,7 +205,7 @@ rate(messaging_consumer_messages_processed_total{queue="order-processing"}[5m])
 
 One problem teams run into is the auto-scaler oscillating - scaling up, then immediately scaling down, then up again. Here are some concrete ways to prevent that:
 
-- **Set a stabilization window.** The HPA behavior section above includes `stabilizationWindowSeconds`. The scaler waits this long before acting on a new metric reading.
+- **Set a stabilization window.** The HPA behavior section above includes `stabilizationWindowSeconds`, which makes the HPA consider past scaling recommendations before changing replica count.
 - **Scale down more slowly than you scale up.** In the config above, we allow adding 4 pods per minute but only remove 2 pods every 2 minutes. This asymmetry is intentional.
 - **Use average queue depth over a window**, not the instantaneous value. A 5-minute average smooths out bursts that your current consumers can handle.
 - **Set sensible min/max bounds.** The minimum replica count should handle your baseline load without any scaling events. The maximum should reflect the actual capacity of your downstream dependencies.
