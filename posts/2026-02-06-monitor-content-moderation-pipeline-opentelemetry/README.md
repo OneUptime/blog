@@ -11,16 +11,27 @@ Content moderation pipelines must balance speed with accuracy. When a user uploa
 ## Setting Up Tracing
 
 ```python
+from typing import Iterable
+
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(BatchSpanProcessor(
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(tracer_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("moderation.pipeline")
 meter = metrics.get_meter("moderation.pipeline")
@@ -93,7 +104,7 @@ def moderate_content(content_id: str, content_type: str, content_data: dict):
 
 ## Tracing AI Classifier Details
 
-The AI classification stage often involves multiple models running in parallel: one for nudity detection, another for hate speech, another for violence, etc.
+The AI classification stage often involves multiple models: one for nudity detection, another for hate speech, another for violence, etc.
 
 ```python
 def run_ai_classifiers(content_id: str, content_type: str, content_data: dict):
@@ -152,6 +163,10 @@ def complete_human_review(ticket_id: str, reviewer_id: str, decision: str):
 ## Key Moderation Metrics
 
 ```python
+def observe_review_queue_depth(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_human_review_queue_depth())
+
+
 moderation_latency = meter.create_histogram(
     "moderation.pipeline.latency_ms",
     description="End-to-end moderation pipeline latency",
@@ -164,14 +179,16 @@ ai_classification_latency = meter.create_histogram(
     unit="ms"
 )
 
-human_review_queue_depth = meter.create_up_down_counter(
+human_review_queue_depth = meter.create_observable_gauge(
     "moderation.review_queue.depth",
-    description="Current number of items awaiting human review"
+    callbacks=[observe_review_queue_depth],
+    description="Current number of items awaiting human review",
+    unit="1"
 )
 
 ai_accuracy = meter.create_counter(
-    "moderation.ai.accuracy",
-    description="AI classifier agreement with human reviewers"
+    "moderation.ai.agreements",
+    description="Count of AI classifier decisions that agreed with human reviewers"
 )
 ```
 
