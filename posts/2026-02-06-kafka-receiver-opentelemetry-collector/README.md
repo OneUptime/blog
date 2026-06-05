@@ -30,14 +30,15 @@ receivers:
     brokers:
       - localhost:9092
 
-    # Protocol version for telemetry data
+    # Kafka protocol version
     protocol_version: 2.0.0
 
-    # Topic to consume from
-    topic: otlp_spans
+    traces:
+      # Topic to consume from
+      topics: [otlp_spans]
 
-    # Encoding of messages in Kafka
-    encoding: otlp_proto
+      # Encoding of messages in Kafka
+      encoding: otlp_proto
 
     # Consumer group ID
     group_id: otel-collector
@@ -48,7 +49,7 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -56,7 +57,7 @@ service:
     traces:
       receivers: [kafka]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration connects to a local Kafka broker, consumes messages from the `otlp_spans` topic using the OTLP Protobuf encoding, and forwards them through the pipeline.
@@ -73,53 +74,60 @@ receivers:
       - kafka-2.example.com:9092
 
     # OTLP Protobuf encoding (recommended for traces and metrics)
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
 
   kafka/jaeger:
     brokers:
       - kafka-1.example.com:9092
 
     # Jaeger Protobuf encoding
-    topic: jaeger_spans
-    encoding: jaeger_proto
+    traces:
+      topics: [jaeger_spans]
+      encoding: jaeger_proto
 
   kafka/zipkin:
     brokers:
       - kafka-1.example.com:9092
 
     # Zipkin JSON or Protobuf encoding
-    topic: zipkin_spans
-    encoding: zipkin_proto
+    traces:
+      topics: [zipkin_spans]
+      encoding: zipkin_proto
 
   kafka/logs:
     brokers:
       - kafka-1.example.com:9092
 
     # Raw text logs
-    topic: application_logs
-    encoding: raw
+    logs:
+      topics: [application_logs]
+      encoding: raw
 
 service:
   pipelines:
     traces:
       receivers: [kafka, kafka/jaeger, kafka/zipkin]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 
     logs:
       receivers: [kafka/logs]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Available encodings:
 - `otlp_proto`: OTLP Protobuf format (recommended)
+- `otlp_json`: OTLP JSON format
 - `jaeger_proto`: Jaeger Protobuf format
 - `jaeger_json`: Jaeger JSON format
 - `zipkin_proto`: Zipkin Protobuf format
 - `zipkin_json`: Zipkin JSON format
+- `zipkin_thrift`: Zipkin Thrift format
 - `raw`: Raw text (for logs)
+- `text`: Text format (for logs)
 - `json`: Generic JSON format
 
 ## Authentication Configuration
@@ -134,8 +142,9 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # SASL PLAIN authentication
@@ -162,8 +171,9 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # SASL SCRAM-SHA-256 authentication
@@ -184,22 +194,22 @@ receivers:
     brokers:
       - kafka.example.com:9093
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # TLS configuration
-    auth:
-      tls:
-        # CA certificate for broker verification
-        ca_file: /etc/otel/certs/ca-cert.pem
+    tls:
+      # CA certificate for broker verification
+      ca_file: /etc/otel/certs/ca-cert.pem
 
-        # Client certificate (mutual TLS)
-        cert_file: /etc/otel/certs/client-cert.pem
-        key_file: /etc/otel/certs/client-key.pem
+      # Client certificate (mutual TLS)
+      cert_file: /etc/otel/certs/client-cert.pem
+      key_file: /etc/otel/certs/client-key.pem
 
-        # Skip hostname verification (not recommended for production)
-        insecure_skip_verify: false
+      # Skip hostname verification (not recommended for production)
+      insecure_skip_verify: false
 ```
 
 ### Combined SASL and TLS
@@ -212,8 +222,9 @@ receivers:
     brokers:
       - kafka.example.com:9093
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # Combined SASL and TLS
@@ -223,10 +234,10 @@ receivers:
         username: collector-user
         password: ${KAFKA_PASSWORD}
 
-      tls:
-        ca_file: /etc/otel/certs/ca-cert.pem
-        cert_file: /etc/otel/certs/client-cert.pem
-        key_file: /etc/otel/certs/client-key.pem
+    tls:
+      ca_file: /etc/otel/certs/ca-cert.pem
+      cert_file: /etc/otel/certs/client-cert.pem
+      key_file: /etc/otel/certs/client-key.pem
 ```
 
 ## Consumer Group Configuration
@@ -241,8 +252,9 @@ receivers:
       - kafka-2.example.com:9092
       - kafka-3.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
 
     # Consumer group configuration
     group_id: otel-collector-traces
@@ -296,16 +308,17 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # Metadata configuration
     metadata:
       # How often to refresh metadata
-      refresh_frequency: 10m
+      refresh_interval: 10m
 
-      # Allow auto topic creation
+      # Maintain full metadata for all topics
       full: true
 
       # Retry settings
@@ -324,16 +337,17 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
-    # Partition assignment strategy
-    # Options: range, roundrobin, sticky
-    partition_assignment_strategy: roundrobin
+    # Partition assignment strategies
+    # Options: range, roundrobin, sticky, cooperative-sticky
+    group_rebalance_strategies: [roundrobin]
 
     # Enable auto-commit of offsets
-    auto_commit:
+    autocommit:
       enable: true
       interval: 1s
 ```
@@ -348,18 +362,17 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # Extract headers as resource attributes
     header_extraction:
       extract_headers: true
       headers:
-        - key: client_id
-          from: client-id
-        - key: kafka_partition
-          from: partition
+        - client-id
+        - tenant-id
 ```
 
 ## Complete Production Configuration
@@ -377,8 +390,9 @@ receivers:
 
     protocol_version: 2.8.0
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
 
     # Consumer group settings
     group_id: otel-collector-traces
@@ -396,22 +410,22 @@ receivers:
         username: otel-collector
         password: ${KAFKA_PASSWORD}
 
-      tls:
-        ca_file: /etc/otel/certs/ca.pem
-        cert_file: /etc/otel/certs/client.pem
-        key_file: /etc/otel/certs/client-key.pem
-        insecure_skip_verify: false
+    tls:
+      ca_file: /etc/otel/certs/ca.pem
+      cert_file: /etc/otel/certs/client.pem
+      key_file: /etc/otel/certs/client-key.pem
+      insecure_skip_verify: false
 
     # Metadata
     metadata:
-      refresh_frequency: 10m
+      refresh_interval: 10m
       full: true
       retry:
         max: 3
         backoff: 250ms
 
     # Auto-commit settings
-    auto_commit:
+    autocommit:
       enable: true
       interval: 1s
 
@@ -424,8 +438,9 @@ receivers:
 
     protocol_version: 2.8.0
 
-    topic: otlp_metrics
-    encoding: otlp_proto
+    metrics:
+      topics: [otlp_metrics]
+      encoding: otlp_proto
 
     group_id: otel-collector-metrics
     client_id: collector-metrics-01
@@ -436,10 +451,10 @@ receivers:
         username: otel-collector
         password: ${KAFKA_PASSWORD}
 
-      tls:
-        ca_file: /etc/otel/certs/ca.pem
-        cert_file: /etc/otel/certs/client.pem
-        key_file: /etc/otel/certs/client-key.pem
+    tls:
+      ca_file: /etc/otel/certs/ca.pem
+      cert_file: /etc/otel/certs/client.pem
+      key_file: /etc/otel/certs/client-key.pem
 
   # Logs from Kafka
   kafka/logs:
@@ -450,8 +465,9 @@ receivers:
 
     protocol_version: 2.8.0
 
-    topic: application_logs
-    encoding: raw
+    logs:
+      topics: [application_logs]
+      encoding: raw
 
     group_id: otel-collector-logs
     client_id: collector-logs-01
@@ -462,8 +478,8 @@ receivers:
         username: otel-collector
         password: ${KAFKA_PASSWORD}
 
-      tls:
-        ca_file: /etc/otel/certs/ca.pem
+    tls:
+      ca_file: /etc/otel/certs/ca.pem
 
 processors:
   # Protect against memory overload
@@ -521,7 +537,12 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Producing Data to Kafka
@@ -533,16 +554,22 @@ Configure applications to export directly to Kafka:
 ```yaml
 # Application's OpenTelemetry Collector configuration
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 exporters:
   kafka:
     brokers:
       - kafka.example.com:9093
 
-    # Topic to write to
-    topic: otlp_spans
+    traces:
+      # Topic to write to
+      topic: otlp_spans
 
-    # Encoding
-    encoding: otlp_proto
+      # Encoding
+      encoding: otlp_proto
 
     # Authentication
     auth:
@@ -551,8 +578,8 @@ exporters:
         username: app-user
         password: ${KAFKA_PASSWORD}
 
-      tls:
-        ca_file: /etc/certs/ca.pem
+    tls:
+      ca_file: /etc/certs/ca.pem
 
 service:
   pipelines:
@@ -569,7 +596,6 @@ Example using Python with kafka-python:
 ```python
 from kafka import KafkaProducer
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
-import json
 
 # Create Kafka producer
 producer = KafkaProducer(
@@ -604,25 +630,25 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # Fetch configuration
-    fetch:
-      # Minimum bytes to fetch
-      min: 1048576  # 1 MB
+    # Minimum bytes to fetch
+    min_fetch_size: 1048576  # 1 MB
 
-      # Maximum bytes to fetch
-      max: 52428800  # 50 MB
+    # Maximum bytes to fetch
+    max_fetch_size: 52428800  # 50 MB
 
-      # Maximum wait time
-      wait_time: 500ms
+    # Maximum wait time
+    max_fetch_wait: 500ms
 ```
 
 ### Parallel Processing
 
-Configure multiple consumers for parallel processing:
+Run multiple collector instances with the same consumer group for parallel processing. Kafka assigns partitions across the active consumers in the group:
 
 ```yaml
 receivers:
@@ -630,17 +656,18 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
-    # Number of consumer goroutines
-    consumers: 10
+    # Prefer cooperative rebalancing during rolling updates
+    group_rebalance_strategies: [cooperative-sticky]
 ```
 
 ### Offset Management
 
-Control offset commit behavior for reliability:
+Control when messages are marked for offset commit:
 
 ```yaml
 receivers:
@@ -648,16 +675,20 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
-    # Manual offset management for reliability
-    auto_commit:
-      enable: false
+    # Commit offsets periodically
+    autocommit:
+      enable: true
+      interval: 1s
 
-    # Commit offsets after successful processing
-    offset_retention: 168h  # 7 days
+    # Mark messages after successful pipeline processing
+    message_marking:
+      after: true
+      on_error: false
 ```
 
 ## Monitoring and Observability
@@ -680,15 +711,21 @@ Key metrics for the Kafka receiver:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Important metrics:
 - `otelcol_receiver_accepted_spans`: Spans accepted from Kafka
 - `otelcol_receiver_refused_spans`: Spans refused (errors)
-- `kafka_consumer_lag`: Consumer lag per partition
-- `kafka_consumer_offset`: Current offset per partition
+- `otelcol_receiver_accepted_log_records`: Log records accepted from Kafka
+- `otelcol_receiver_accepted_metric_points`: Metric points accepted from Kafka
+- `kafka_receiver_records_delay`: Optional Kafka receiver metric for the time between producing and receiving records
 
 ## Troubleshooting Common Issues
 
@@ -702,8 +739,9 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
-    encoding: otlp_proto
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_proto
     group_id: otel-collector
 
     # Increase timeouts to reduce rebalancing
@@ -734,10 +772,11 @@ receivers:
     brokers:
       - kafka.example.com:9092
 
-    topic: otlp_spans
+    traces:
+      topics: [otlp_spans]
 
-    # Match encoding with producer
-    encoding: otlp_proto  # or jaeger_proto, zipkin_json, etc.
+      # Match encoding with producer
+      encoding: otlp_proto  # or jaeger_proto, zipkin_json, etc.
 
 service:
   telemetry:
@@ -751,9 +790,11 @@ Export telemetry consumed from Kafka to OneUptime:
 
 ```yaml
 exporters:
-  otlp:
-    endpoint: otlp.oneuptime.com:4317
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: "your-token-here"
 
 service:
@@ -761,7 +802,7 @@ service:
     traces:
       receivers: [kafka]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ## Related Resources
