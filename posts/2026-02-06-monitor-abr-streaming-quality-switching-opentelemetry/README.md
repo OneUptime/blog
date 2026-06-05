@@ -26,9 +26,9 @@ const qualitySwitchCounter = meter.createCounter("abr.quality.switches", {
   description: "Number of ABR quality switch events",
 });
 
-// Histogram for the bitrate the player is currently rendering
-const currentBitrate = meter.createHistogram("abr.current.bitrate", {
-  description: "Current playback bitrate in kbps",
+// Histogram for bitrates selected after quality switches
+const selectedBitrate = meter.createHistogram("abr.selected.bitrate", {
+  description: "Selected playback bitrate after a quality switch in kbps",
   unit: "kbps",
 });
 
@@ -82,8 +82,13 @@ hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
       "quality.bitrate_kbps": Math.round(previousLevel.bitrate / 1000),
     });
 
-    // Determine if this was an upswitch or downswitch
-    const direction = newLevel.bitrate > previousLevel.bitrate ? "up" : "down";
+    // Determine if this was an upswitch, downswitch, or same-bitrate switch
+    const direction =
+      newLevel.bitrate > previousLevel.bitrate
+        ? "up"
+        : newLevel.bitrate < previousLevel.bitrate
+          ? "down"
+          : "same";
 
     qualitySwitchCounter.add(1, {
       ...commonAttrs,
@@ -111,8 +116,8 @@ hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
     switchHistory = switchHistory.filter((s) => now - s.time < 60000);
   }
 
-  // Record the current bitrate
-  currentBitrate.record(Math.round(newLevel.bitrate / 1000), commonAttrs);
+  // Record the bitrate selected after this switch
+  selectedBitrate.record(Math.round(newLevel.bitrate / 1000), commonAttrs);
 
   lastQualityLevel = data.level;
   lastSwitchTime = now;
@@ -132,7 +137,7 @@ function detectOscillation() {
   // Look for direction changes in recent switch history
   if (switchHistory.length < 3) return;
 
-  const recent = switchHistory.slice(-5);
+  const recent = switchHistory.filter((s) => s.direction !== "same").slice(-5);
   let directionChanges = 0;
 
   for (let i = 1; i < recent.length; i++) {
@@ -161,8 +166,12 @@ A single number that summarizes the viewing experience is useful for dashboards 
 
 ```javascript
 function computeQualityScore() {
+  if (hls.levels.length === 0) return 0;
+
   const maxBitrate = Math.max(...hls.levels.map((l) => l.bitrate));
   const current = hls.levels[hls.currentLevel]?.bitrate || 0;
+
+  if (maxBitrate <= 0) return 0;
 
   // Bitrate component: what percentage of max quality are we at
   const bitrateScore = (current / maxBitrate) * 100;
