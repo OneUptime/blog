@@ -60,14 +60,14 @@ exporters:
     endpoint: critical-backend:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/critical.pem
+      ca_file: /etc/certs/critical-ca.pem
 
   # Standard backend (moderate retention)
   otlp/standard:
     endpoint: standard-backend:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/standard.pem
+      ca_file: /etc/certs/standard-ca.pem
 
   # Catch-all backend (low-cost storage)
   otlp/catchall:
@@ -145,14 +145,15 @@ exporters:
     endpoint: https://prod-observability.company.com:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/prod.pem
-      key_file: /etc/certs/prod-key.pem
+      ca_file: /etc/certs/prod-ca.pem
+      cert_file: /etc/certs/prod-client.pem
+      key_file: /etc/certs/prod-client-key.pem
 
   otlp/staging:
     endpoint: https://staging-observability.company.com:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/staging.pem
+      ca_file: /etc/certs/staging-ca.pem
 
   otlp/development:
     endpoint: http://dev-observability.company.internal:4317
@@ -160,7 +161,7 @@ exporters:
       insecure: true
 
   # Fallback for unclassified telemetry
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -187,7 +188,7 @@ service:
     traces/default:
       receivers: [routing]
       processors: [batch/nonprod]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Notice how each environment pipeline can have different batch settings, processors, and exporter configurations tailored to that environment's requirements.
@@ -269,7 +270,7 @@ exporters:
       X-API-Key: ${TENANT_C_API_KEY}
 
   # Log unidentified tenant data for investigation
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -296,7 +297,7 @@ service:
     traces/unidentified:
       receivers: [routing]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration ensures complete tenant isolation at the collector level, with each tenant's data going to dedicated backends with tenant-specific authentication.
@@ -318,13 +319,16 @@ connectors:
     error_mode: ignore
     table:
       # Route error traces immediately
-      - statement: route() where attributes["error"] == true
+      - context: span
+        statement: route() where attributes["error"] == true
         pipelines: [traces/errors]
       # Route slow traces (>1s) to performance analysis
-      - statement: route() where attributes["duration_ms"] > 1000
+      - context: span
+        statement: route() where attributes["duration_ms"] > 1000
         pipelines: [traces/slow]
       # Route sampled traces
-      - statement: route() where attributes["sampled"] == true
+      - context: span
+        statement: route() where attributes["sampled"] == true
         pipelines: [traces/sampled]
 
 processors:
@@ -415,26 +419,30 @@ connectors:
     error_mode: ignore
     table:
       # Route production payment service errors to high-priority pipeline
-      - statement: |
+      - context: span
+        statement: |
           route() where resource.attributes["deployment.environment"] == "production"
-          and attributes["service.name"] == "payment-service"
+          and resource.attributes["service.name"] == "payment-service"
           and attributes["error"] == true
         pipelines: [traces/critical-errors]
 
       # Route any production errors to standard error pipeline
-      - statement: |
+      - context: span
+        statement: |
           route() where resource.attributes["deployment.environment"] == "production"
           and attributes["error"] == true
         pipelines: [traces/production-errors]
 
       # Route high-throughput services to dedicated pipeline
-      - statement: |
-          route() where attributes["service.name"] == "api-gateway"
-          or attributes["service.name"] == "load-balancer"
+      - context: span
+        statement: |
+          route() where resource.attributes["service.name"] == "api-gateway"
+          or resource.attributes["service.name"] == "load-balancer"
         pipelines: [traces/high-throughput]
 
       # Route external API calls for cost analysis
-      - statement: route() where attributes["span.kind"] == "client" and attributes["http.url"] matches "^https://api\\.external\\.com"
+      - context: span
+        statement: route() where span.kind.string == "Client" and IsMatch(attributes["url.full"], "^https://api\\.external\\.com")
         pipelines: [traces/external-apis]
 
 processors:
@@ -525,15 +533,18 @@ connectors:
     error_mode: ignore
     table:
       # Route business metrics to analytics
-      - statement: route() where metric.name matches "^business_.*"
+      - context: metric
+        statement: route() where IsMatch(metric.name, "^business_.*")
         pipelines: [metrics/business]
 
       # Route infrastructure metrics to monitoring
-      - statement: route() where metric.name matches "^(cpu|memory|disk|network)_.*"
+      - context: metric
+        statement: route() where IsMatch(metric.name, "^(cpu|memory|disk|network)_.*")
         pipelines: [metrics/infrastructure]
 
       # Route custom application metrics
-      - statement: route() where metric.name matches "^app_.*"
+      - context: metric
+        statement: route() where IsMatch(metric.name, "^app_.*")
         pipelines: [metrics/application]
 
 processors:
@@ -590,7 +601,7 @@ When implementing routing connector patterns, consider these best practices:
 
 3. **Order matters**: The routing connector evaluates rules in order. Place more specific rules before general ones.
 
-4. **Monitor routing performance**: Track metrics like `otelcol_connector_routing_routed_spans` to understand routing patterns.
+4. **Monitor routing performance**: Track the Collector's connector metrics, such as accepted and refused span, metric, or log counts, to understand routing patterns.
 
 5. **Test routing logic**: Validate your routing statements with representative telemetry before deploying to production.
 
