@@ -32,7 +32,7 @@ import (
     "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -160,7 +160,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "sync"
     "time"
 
@@ -223,6 +222,7 @@ import (
     "context"
     "fmt"
     "sync"
+    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -365,8 +365,8 @@ package main
 
 import (
     "context"
-    "fmt"
     "sync"
+    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -434,7 +434,6 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -468,13 +467,13 @@ func pipelineExample(ctx context.Context, inputs []int) []int {
     go func() {
         defer close(stage2)
         for item := range stage1 {
-            _, transformSpan := tracer.Start(item.Ctx, "stage2-transform")
+            transformCtx, transformSpan := tracer.Start(item.Ctx, "stage2-transform")
             transformed := item.Value * 2
             transformSpan.SetAttributes(
                 attribute.Int("input", item.Value),
                 attribute.Int("output", transformed),
             )
-            stage2 <- PipelineItem{Ctx: item.Ctx, Value: transformed}
+            stage2 <- PipelineItem{Ctx: transformCtx, Value: transformed}
             transformSpan.End()
         }
     }()
@@ -549,21 +548,24 @@ package main
 import (
     "context"
     "sync"
+    "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
 )
 
-// PITFALL 1: Using loop variable directly
+// PITFALL 1: Reusing a variable declared outside the loop
 func pitfallLoopVariable(ctx context.Context, items []string) {
     tracer := otel.Tracer("examples")
     ctx, span := tracer.Start(ctx, "loop-pitfall")
     defer span.End()
 
-    for _, item := range items {
-        // WRONG: 'item' variable is reused in each iteration
+    var item string
+    for _, item = range items {
+        // WRONG: all goroutines capture the same variable
         go func(ctx context.Context) {
             _, span := tracer.Start(ctx, "process")
-            // All goroutines see the last value of 'item'
+            // Goroutines may see a later value of 'item'
             span.SetAttributes(attribute.String("item", item))
             span.End()
         }(ctx)
