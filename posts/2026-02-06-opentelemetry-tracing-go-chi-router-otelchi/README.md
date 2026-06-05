@@ -12,7 +12,7 @@ The otelchi package provides seamless OpenTelemetry integration for Chi routers 
 
 ## Why Instrument Chi with OpenTelemetry
 
-Chi routers handle HTTP routing and middleware composition, making them the perfect place to inject observability. By instrumenting at the router level, you gain visibility into every request that enters your application, including middleware execution time, route matching performance, and handler processing duration.
+Chi routers handle HTTP routing and middleware composition, making them the perfect place to inject observability. By instrumenting at the router level, you gain visibility into every request that enters your application, including downstream middleware execution time and handler processing duration.
 
 OpenTelemetry tracing helps you answer questions like: Which endpoints are slowest? Where do errors occur in the request lifecycle? How do requests flow through middleware chains? What's the performance impact of each middleware component?
 
@@ -25,7 +25,7 @@ go get -u github.com/go-chi/chi/v5
 go get -u go.opentelemetry.io/otel
 go get -u go.opentelemetry.io/otel/sdk/trace
 go get -u go.opentelemetry.io/otel/exporters/stdout/stdouttrace
-go get -u go.opentelemetry.io/contrib/instrumentation/github.com/go-chi/chi/v5/otelchi
+go get -u github.com/riandyrn/otelchi
 ```
 
 These packages provide the core Chi router, OpenTelemetry SDK components, a stdout exporter for development, and the Chi-specific instrumentation middleware.
@@ -46,7 +46,7 @@ import (
     "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -63,7 +63,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
         semconv.SchemaURL,
         semconv.ServiceName("chi-api-service"),
         semconv.ServiceVersion("1.0.0"),
-        semconv.DeploymentEnvironment("development"),
+        semconv.DeploymentEnvironmentName("development"),
     )
 
     // Create tracer provider with batch span processor
@@ -90,12 +90,14 @@ Now add otelchi middleware to your Chi router. The middleware automatically crea
 package main
 
 import (
+    "context"
+    "log"
     "net/http"
     "time"
 
     "github.com/go-chi/chi/v5"
     "github.com/go-chi/chi/v5/middleware"
-    "go.opentelemetry.io/contrib/instrumentation/github.com/go-chi/chi/v5/otelchi"
+    "github.com/riandyrn/otelchi"
 )
 
 func main() {
@@ -135,7 +137,7 @@ func main() {
 }
 ```
 
-The `otelchi.Middleware()` call accepts a service name and returns Chi middleware that wraps every request in a span. Place it after recovery and logging middleware but before your application routes.
+The `otelchi.Middleware()` call accepts a service name and returns Chi middleware that wraps every request in a server span. Place it after recovery and logging middleware but before your application routes.
 
 ## Implementing Traced Handlers
 
@@ -146,7 +148,9 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
     "net/http"
+    "time"
 
     "github.com/go-chi/chi/v5"
     "go.opentelemetry.io/otel"
@@ -249,9 +253,11 @@ The otelchi middleware accepts configuration options for fine-tuning instrumenta
 package main
 
 import (
+    "encoding/json"
+    "net/http"
+
     "github.com/go-chi/chi/v5"
-    "go.opentelemetry.io/contrib/instrumentation/github.com/go-chi/chi/v5/otelchi"
-    "go.opentelemetry.io/otel/trace"
+    "github.com/riandyrn/otelchi"
 )
 
 func setupAdvancedRouter() *chi.Mux {
@@ -290,7 +296,7 @@ func getProductHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-The `WithChiRoutes()` option captures route patterns in span names, making traces more readable. The `WithFilter()` option excludes specific endpoints from tracing to reduce noise.
+The `WithChiRoutes()` option lets otelchi resolve route patterns before the handler runs, making traces more readable and allowing handler code to override the span name if needed. The `WithFilter()` option excludes specific endpoints from tracing to reduce noise.
 
 ## Trace Visualization
 
@@ -300,16 +306,16 @@ Here's how your traces flow through the Chi router with middleware and handlers:
 graph TD
     A[Incoming HTTP Request] --> B[Chi Router]
     B --> C[otelchi Middleware]
-    C --> D[Create Root Span]
+    C --> D[Create Server Span]
     D --> E[Request Handler]
     E --> F[Child Span: DB Query]
     F --> G[Child Span: External API]
     G --> H[Response]
-    H --> I[End Root Span]
+    H --> I[End Server Span]
     I --> J[Export Trace]
 ```
 
-Each request creates a root span that contains child spans for database queries, external API calls, and other operations performed during request handling.
+Each request creates a server span that contains child spans for database queries, external API calls, and other operations performed during request handling.
 
 ## Production Considerations
 
@@ -317,7 +323,13 @@ When deploying Chi applications with OpenTelemetry to production, replace the st
 
 ```go
 import (
+    "context"
+
+    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/sdk/resource"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initProductionTracer() (*sdktrace.TracerProvider, error) {
@@ -352,6 +364,20 @@ This configuration sends traces to an OpenTelemetry Collector via gRPC. The samp
 Verify your instrumentation works correctly by examining trace output during development.
 
 ```go
+package main
+
+import (
+    "net/http"
+    "net/http/httptest"
+    "testing"
+
+    "github.com/go-chi/chi/v5"
+    "github.com/riandyrn/otelchi"
+    "go.opentelemetry.io/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel/sdk/trace/tracetest"
+)
+
 // Test helper to inspect traces
 func TestChiTracing(t *testing.T) {
     // Setup in-memory exporter
@@ -363,7 +389,11 @@ func TestChiTracing(t *testing.T) {
 
     // Create test router
     r := chi.NewRouter()
-    r.Use(otelchi.Middleware("test-service"))
+    r.Use(otelchi.Middleware(
+        "test-service",
+        otelchi.WithChiRoutes(r),
+        otelchi.WithRequestMethodInSpanName(true),
+    ))
     r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusOK)
     })
@@ -375,8 +405,12 @@ func TestChiTracing(t *testing.T) {
 
     // Verify trace was created
     spans := exporter.GetSpans()
-    assert.Equal(t, 1, len(spans))
-    assert.Equal(t, "GET /test", spans[0].Name)
+    if len(spans) != 1 {
+        t.Fatalf("expected 1 span, got %d", len(spans))
+    }
+    if spans[0].Name != "GET /test" {
+        t.Fatalf("expected span name GET /test, got %q", spans[0].Name)
+    }
 }
 ```
 
