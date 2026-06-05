@@ -37,6 +37,7 @@ Let's start with a Node.js application. Install the OpenTelemetry SDK and the au
 # Install OpenTelemetry SDK and common instrumentations
 
 npm install @opentelemetry/sdk-node \
+  @opentelemetry/api \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/exporter-metrics-otlp-http \
@@ -58,11 +59,11 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Build a resource that identifies this service and its Fly.io context
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'fly-app',
   'deployment.environment': process.env.FLY_APP_NAME ? 'production' : 'development',
   // Fly.io sets these environment variables automatically on every Machine
@@ -144,7 +145,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -199,7 +200,7 @@ Beyond auto-instrumentation, add custom spans for your application's key operati
 
 ```javascript
 // Custom instrumentation for business-critical operations
-const { trace, metrics } = require('@opentelemetry/api');
+const { trace, metrics, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('fly-app.orders');
 const meter = metrics.getMeter('fly-app.orders');
@@ -227,27 +228,33 @@ async function createOrder(orderData) {
 
       // Validate the order
       await tracer.startActiveSpan('validate-order', async (validateSpan) => {
-        await validateOrderData(orderData);
-        validateSpan.end();
+        try {
+          await validateOrderData(orderData);
+        } finally {
+          validateSpan.end();
+        }
       });
 
       // Save to database
       const order = await tracer.startActiveSpan('save-to-database', async (dbSpan) => {
-        const result = await db.orders.create(orderData);
-        dbSpan.setAttribute('db.order_id', result.id);
-        dbSpan.end();
-        return result;
+        try {
+          const result = await db.orders.create(orderData);
+          dbSpan.setAttribute('db.order_id', result.id);
+          return result;
+        } finally {
+          dbSpan.end();
+        }
       });
 
       // Record metrics
-      orderCounter.add(1, { region: process.env.FLY_REGION, type: orderData.type });
-      processingDuration.record(Date.now() - startTime, { region: process.env.FLY_REGION });
+      orderCounter.add(1, { region: process.env.FLY_REGION || 'unknown', type: orderData.type });
+      processingDuration.record(Date.now() - startTime, { region: process.env.FLY_REGION || 'unknown' });
 
       span.setAttribute('order.id', order.id);
       return order;
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -256,11 +263,11 @@ async function createOrder(orderData) {
 }
 ```
 
-## Running the Collector as a Sidecar
+## Running the Collector on Fly.io
 
-For high-throughput applications, you might want to run an OpenTelemetry Collector alongside your application on Fly.io instead of exporting directly to a remote backend. This reduces latency for telemetry export and gives you a local buffer.
+For high-throughput applications, you might want to run an OpenTelemetry Collector near your application on Fly.io instead of exporting directly to a remote backend. This reduces latency for telemetry export and gives you a Fly.io-hosted buffer.
 
-You can run the Collector as a separate Fly.io app or as a process within the same Machine using a process group. Here's an example using Fly.io's multi-process support in `fly.toml`:
+You can run the Collector as a separate Fly.io app or as a separate process group within the same Fly App. Process groups run in their own Machines, so this is not a same-VM sidecar. Here's an example pointing your app at a Collector running as a separate Fly.io app:
 
 ```toml
 # fly.toml - Application configuration with process groups
@@ -292,23 +299,23 @@ If you deploy the Collector as a separate Fly.io app, it's accessible via the `.
 
 ## Health Checks and Readiness
 
-Configure Fly.io health checks in your `fly.toml` to make sure your application (and its telemetry pipeline) is healthy.
+Configure Fly.io health checks in your `fly.toml` to make sure your application is healthy.
 
 ```toml
 # Health check configuration
-[[services.http_checks]]
-  interval = 10000
+[[http_service.checks]]
+  interval = "10s"
   grace_period = "10s"
-  method = "get"
+  method = "GET"
   path = "/health"
   protocol = "http"
-  timeout = 2000
+  timeout = "2s"
 ```
 
-Your health check endpoint should verify that the OpenTelemetry SDK is initialized:
+Your health check endpoint can include Fly.io context for quick diagnostics:
 
 ```javascript
-// Health check endpoint that verifies OTel is running
+// Health check endpoint with Fly.io runtime context
 app.get('/health', (req, res) => {
   // Basic health check - verify the app and its dependencies are working
   res.status(200).json({
