@@ -14,7 +14,7 @@ OpenTelemetry gives you a way to capture detailed trace and metric data from Arg
 
 ## How ArgoCD Deployments Work
 
-Before diving into instrumentation, it helps to understand the ArgoCD sync process. When ArgoCD detects a change in your Git repository, it starts a sync operation.
+Before diving into instrumentation, it helps to understand the ArgoCD sync process. When ArgoCD detects a change in your Git repository, it marks the application out of sync. If automated sync is enabled, or if a user starts a sync manually, ArgoCD starts a sync operation.
 
 ```mermaid
 graph TD
@@ -71,7 +71,7 @@ receivers:
               action: keep
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: "$1:8082"
+              replacement: "$$1:8082"
 
         # Server metrics (API requests, auth)
         - job_name: 'argocd-server'
@@ -86,7 +86,7 @@ receivers:
               action: keep
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: "$1:8083"
+              replacement: "$$1:8083"
 
         # Repo server metrics (Git operations, manifest generation)
         - job_name: 'argocd-repo-server'
@@ -101,7 +101,7 @@ receivers:
               action: keep
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: "$1:8084"
+              replacement: "$$1:8084"
 
 processors:
   batch:
@@ -141,16 +141,20 @@ The `argocd_app_info` metric gives you the current state of every application ma
 # Important ArgoCD metrics and what they tell you:
 #
 # argocd_app_sync_total
-#   Count of sync operations by application, phase, and result.
+#   Count of sync operations by application and phase.
 #   Use this to track deployment frequency and failure rates.
 #
-# argocd_app_health_status
-#   Current health status of each application (Healthy, Degraded, Missing, etc).
-#   Alert when applications are not Healthy.
+# argocd_app_info
+#   Current sync and health status of each application, exposed as labels
+#   such as sync_status and health_status.
 #
-# argocd_app_sync_status
-#   Whether each application is in sync with Git (Synced, OutOfSync).
-#   OutOfSync for extended periods indicates deployment issues.
+# argocd_app_sync_duration_seconds_total
+#   Total sync duration by application and phase.
+#   Use this to track deployment duration trends.
+#
+# argocd_app_reconcile
+#   Application reconciliation duration in seconds.
+#   Slow reconciliation can delay drift detection and sync feedback.
 #
 # argocd_git_request_total
 #   Count of Git operations (ls-remote, fetch) by repo and result.
@@ -159,9 +163,9 @@ The `argocd_app_info` metric gives you the current state of every application ma
 # argocd_git_request_duration_seconds
 #   How long Git operations take. Slow Git fetches delay sync operations.
 #
-# argocd_repo_server_render_duration_seconds
-#   Time to render manifests (Helm template, Kustomize build).
-#   Slow rendering delays the entire sync cycle.
+# argocd_repo_parallelism_wait_duration_seconds
+#   Time spent waiting for the repo-server manifest generation parallelism semaphore.
+#   High wait time can indicate repo-server parallelism saturation.
 #
 # argocd_kubectl_exec_total
 #   Count of kubectl operations by command and result.
@@ -280,6 +284,15 @@ data:
       - name: Content-Type
         value: application/json
 
+  # Subscribe all applications to the webhook triggers
+  subscriptions: |
+    - recipients:
+        - otel-tracer
+      triggers:
+        - on-sync-running
+        - on-sync-succeeded
+        - on-sync-failed
+
   # Template for sync started events
   template.sync-started: |
     webhook:
@@ -314,13 +327,13 @@ data:
 
   # Triggers that fire the templates
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
       send: [sync-started]
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [sync-finished]
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-finished]
 ```
 
@@ -339,45 +352,53 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace import StatusCode
 from datetime import datetime
-import hashlib
 
 app = Flask(__name__)
 
 # Configure the OpenTelemetry tracer
 provider = TracerProvider()
-exporter = OTLPSpanExporter(endpoint="otel-collector.argocd.svc:4317")
+exporter = OTLPSpanExporter(
+    endpoint="otel-collector.argocd.svc:4317",
+    insecure=True,
+)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("argocd-trace-bridge")
 
-# Store active sync spans keyed by application name
+# Store active sync spans keyed by application name and revision
 active_syncs = {}
+
+def parse_rfc3339_ns(value):
+    if not value:
+        return None
+
+    timestamp = value.replace("Z", "+00:00")
+    return int(datetime.fromisoformat(timestamp).timestamp() * 1_000_000_000)
 
 @app.route("/sync-event", methods=["POST"])
 def sync_event():
     data = request.json
     app_name = data["app"]
+    revision = data.get("revision", "")
+    sync_key = (app_name, revision)
 
     if data["event"] == "sync_started":
-        # Create a new trace for this sync operation
-        # Use app name + revision as a deterministic trace ID
-        trace_seed = f"{app_name}-{data['revision']}-{data['timestamp']}"
-        ctx = trace.set_span_in_context(trace.INVALID_SPAN)
-
+        # Create a new span for this sync operation using ArgoCD's timestamp.
         span = tracer.start_span(
             name=f"argocd-sync-{app_name}",
+            start_time=parse_rfc3339_ns(data.get("timestamp")),
             attributes={
                 "argocd.app.name": app_name,
                 "argocd.project": data["project"],
                 "argocd.repo": data["repo"],
-                "argocd.revision": data["revision"],
+                "argocd.revision": revision,
                 "deployment.environment": "production",
             },
         )
-        active_syncs[app_name] = span
+        active_syncs[sync_key] = span
 
     elif data["event"] == "sync_finished":
-        span = active_syncs.pop(app_name, None)
+        span = active_syncs.pop(sync_key, None)
         if span:
             # Set the final status based on the sync result
             if data["status"] == "Succeeded":
@@ -387,7 +408,7 @@ def sync_event():
 
             span.set_attribute("argocd.sync.status", data["status"])
             span.set_attribute("argocd.sync.message", data.get("message", ""))
-            span.end()
+            span.end(end_time=parse_rfc3339_ns(data.get("finished_at")))
 
     return "ok", 200
 
@@ -399,7 +420,7 @@ This gives you a span for every ArgoCD sync operation, with accurate timing, sta
 
 ## Monitoring Application Health Over Time
 
-ArgoCD health status changes are important signals. You can track health transitions by monitoring the `argocd_app_health_status` metric over time.
+ArgoCD health status changes are important signals. You can track health transitions by monitoring the `argocd_app_info` metric's `health_status` label over time.
 
 Create alerts for health status changes that indicate problems.
 
@@ -410,7 +431,7 @@ Create alerts for health status changes that indicate problems.
 
 # Alert when an application is out of sync for more than 10 minutes
 - alert: ArgoCD_AppOutOfSync
-  expr: argocd_app_sync_status{sync_status="OutOfSync"} == 1
+  expr: argocd_app_info{sync_status="OutOfSync"} == 1
   for: 10m
   labels:
     severity: warning
@@ -420,7 +441,7 @@ Create alerts for health status changes that indicate problems.
 
 # Alert when an application is unhealthy
 - alert: ArgoCD_AppUnhealthy
-  expr: argocd_app_health_status{health_status!="Healthy"} == 1
+  expr: argocd_app_info{health_status!="Healthy"} == 1
   for: 5m
   labels:
     severity: critical
@@ -430,7 +451,7 @@ Create alerts for health status changes that indicate problems.
 
 # Alert when sync operations are failing
 - alert: ArgoCD_SyncFailureRate
-  expr: rate(argocd_app_sync_total{phase="Error"}[1h]) > 0.1
+  expr: rate(argocd_app_sync_total{phase=~"Error|Failed"}[1h]) > 0.1
   for: 5m
   labels:
     severity: warning
@@ -464,7 +485,7 @@ processors:
   resource:
     attributes:
       - key: deployment.version
-        from_attribute: DEPLOYMENT_VERSION
+        value: ${env:DEPLOYMENT_VERSION}
         action: upsert
       - key: deployment.argocd.app
         value: my-application
