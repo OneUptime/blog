@@ -51,7 +51,7 @@ resource = Resource.create({
     "service.name": "etl-pipeline",
     "service.version": "2.0.0",
     "etl.pipeline_name": "user-events-to-warehouse",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Set up tracing with a batch processor
@@ -101,7 +101,7 @@ batch_size_histogram = meter.create_histogram(
 )
 ```
 
-The `atexit` handler is critical for batch jobs. Without it, your last batch of spans and metrics might never get exported because the process exits before the batch processor has a chance to flush.
+The `atexit` handler is critical for batch jobs. Without it, your last batch of spans and metrics might never get exported because the process exits before the telemetry providers have a chance to flush.
 
 ## Tracing the Extract Stage
 
@@ -162,7 +162,6 @@ async def extract_from_source(source_config, job_context):
             stage_duration.record(duration, {"etl.stage": "extract"})
 
         except Exception as e:
-            span.record_exception(e)
             span.set_attribute("etl.extract.failed_at_batch", batches)
             span.set_attribute("etl.extract.records_before_failure", total_records)
             raise
@@ -267,6 +266,8 @@ Tracking validation error types as span events is particularly useful. Over time
 The load stage writes transformed data to the destination. This is where you encounter issues like constraint violations, write timeouts, and throughput bottlenecks.
 
 ```python
+import asyncio
+
 async def load_to_warehouse(batches, load_config, job_context):
     """Load transformed data into the warehouse with progress tracking."""
     with tracer.start_as_current_span("etl.load") as span:
@@ -314,7 +315,8 @@ async def load_to_warehouse(batches, load_config, job_context):
                             })
 
                         # Exponential backoff between retries
-                        await asyncio.sleep(2 ** attempt)
+                        if attempt < load_config.max_retries:
+                            await asyncio.sleep(2 ** attempt)
 
                     except NonRetryableError as e:
                         batch_span.record_exception(e)
@@ -359,7 +361,7 @@ async def run_etl_pipeline(pipeline_config):
         span.set_attribute("etl.job_id", job_id)
         span.set_attribute("etl.run_id", run_id)
         span.set_attribute("etl.pipeline_name", pipeline_config.name)
-        span.set_attribute("etl.scheduled_time", pipeline_config.scheduled_time)
+        span.set_attribute("etl.scheduled_time", str(pipeline_config.scheduled_time))
 
         job_context = JobContext(job_id=job_id, run_id=run_id)
         pipeline_start = time.monotonic()
@@ -392,7 +394,6 @@ async def run_etl_pipeline(pipeline_config):
 
         except Exception as e:
             total_duration = time.monotonic() - pipeline_start
-            span.record_exception(e)
             span.set_attribute("etl.pipeline.status", "failed")
             span.set_attribute("etl.pipeline.total_duration_seconds", total_duration)
             span.set_attribute("etl.pipeline.failure_stage",
