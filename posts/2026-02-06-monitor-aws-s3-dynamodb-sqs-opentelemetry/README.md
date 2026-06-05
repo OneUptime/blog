@@ -47,55 +47,41 @@ S3 publishes request-level metrics to CloudWatch when you enable request metrics
 receivers:
   awscloudwatch:
     region: us-east-1
-    poll_interval: 60s   # How often to query CloudWatch
     metrics:
-      named:
+      collection_interval: 60s  # How often to query CloudWatch
+      period: 300s              # CloudWatch aggregation period
+      delay: 10m                # Allow time for CloudWatch data to arrive
+      queries:
         # Track total number of HTTP requests to your S3 bucket
-        s3_all_requests:
+        - namespace: AWS/S3
           metric_name: AllRequests
-          namespace: AWS/S3
-          period: 300s   # CloudWatch aggregation period
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: BucketName
-              value: my-app-bucket
-            - name: FilterId
-              value: EntireBucket
+            BucketName: my-app-bucket
+            FilterId: EntireBucket
 
         # Track first byte latency for GET requests
-        s3_first_byte_latency:
+        - namespace: AWS/S3
           metric_name: FirstByteLatency
-          namespace: AWS/S3
-          period: 300s
-          statistics: [Average, p99]
+          stats: [Average, p99]
           dimensions:
-            - name: BucketName
-              value: my-app-bucket
-            - name: FilterId
-              value: EntireBucket
+            BucketName: my-app-bucket
+            FilterId: EntireBucket
 
         # Track 4xx and 5xx errors
-        s3_4xx_errors:
+        - namespace: AWS/S3
           metric_name: 4xxErrors
-          namespace: AWS/S3
-          period: 300s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: BucketName
-              value: my-app-bucket
-            - name: FilterId
-              value: EntireBucket
+            BucketName: my-app-bucket
+            FilterId: EntireBucket
 
-        s3_5xx_errors:
+        - namespace: AWS/S3
           metric_name: 5xxErrors
-          namespace: AWS/S3
-          period: 300s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: BucketName
-              value: my-app-bucket
-            - name: FilterId
-              value: EntireBucket
+            BucketName: my-app-bucket
+            FilterId: EntireBucket
 ```
 
 Remember to enable S3 request metrics in the bucket configuration first, otherwise CloudWatch will not have data to report.
@@ -105,48 +91,36 @@ Remember to enable S3 request metrics in the bucket configuration first, otherwi
 DynamoDB publishes several critical metrics to CloudWatch by default. The most important ones are consumed capacity, throttled requests, and latency.
 
 ```yaml
-# Add these to the awscloudwatch receiver metrics section
+# Add these to the awscloudwatch receiver metrics.queries list
         # Track consumed read capacity units on your table
-        dynamodb_consumed_rcu:
+        - namespace: AWS/DynamoDB
           metric_name: ConsumedReadCapacityUnits
-          namespace: AWS/DynamoDB
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: my-users-table
+            TableName: my-users-table
 
         # Track consumed write capacity units
-        dynamodb_consumed_wcu:
+        - namespace: AWS/DynamoDB
           metric_name: ConsumedWriteCapacityUnits
-          namespace: AWS/DynamoDB
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: my-users-table
+            TableName: my-users-table
 
         # Track throttled requests - critical for detecting capacity issues
-        dynamodb_throttled_requests:
+        - namespace: AWS/DynamoDB
           metric_name: ThrottledRequests
-          namespace: AWS/DynamoDB
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: TableName
-              value: my-users-table
+            TableName: my-users-table
+            Operation: GetItem
 
         # Track successful request latency
-        dynamodb_latency:
+        - namespace: AWS/DynamoDB
           metric_name: SuccessfulRequestLatency
-          namespace: AWS/DynamoDB
-          period: 60s
-          statistics: [Average, p99]
+          stats: [Average, p99]
           dimensions:
-            - name: TableName
-              value: my-users-table
-            - name: Operation
-              value: GetItem
+            TableName: my-users-table
+            Operation: GetItem
 ```
 
 DynamoDB throttling is one of the most common production issues. Having this metric in your observability platform, right next to your application traces, makes debugging much faster.
@@ -158,57 +132,42 @@ SQS metrics tell you about queue depth, message age, and throughput. These are e
 ```yaml
 # SQS metrics configuration for the awscloudwatch receiver
         # Number of messages available for retrieval
-        sqs_visible_messages:
+        - namespace: AWS/SQS
           metric_name: ApproximateNumberOfMessagesVisible
-          namespace: AWS/SQS
-          period: 60s
-          statistics: [Average]
+          stats: [Average]
           dimensions:
-            - name: QueueName
-              value: my-processing-queue
+            QueueName: my-processing-queue
 
         # Age of oldest message in queue - indicates processing lag
-        sqs_oldest_message_age:
+        - namespace: AWS/SQS
           metric_name: ApproximateAgeOfOldestMessage
-          namespace: AWS/SQS
-          period: 60s
-          statistics: [Maximum]
+          stats: [Maximum]
           dimensions:
-            - name: QueueName
-              value: my-processing-queue
+            QueueName: my-processing-queue
 
         # Number of messages sent to the queue
-        sqs_messages_sent:
+        - namespace: AWS/SQS
           metric_name: NumberOfMessagesSent
-          namespace: AWS/SQS
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: QueueName
-              value: my-processing-queue
+            QueueName: my-processing-queue
 
         # Number of messages received from the queue
-        sqs_messages_received:
+        - namespace: AWS/SQS
           metric_name: NumberOfMessagesReceived
-          namespace: AWS/SQS
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: QueueName
-              value: my-processing-queue
+            QueueName: my-processing-queue
 
         # Number of messages deleted (successfully processed)
-        sqs_messages_deleted:
+        - namespace: AWS/SQS
           metric_name: NumberOfMessagesDeleted
-          namespace: AWS/SQS
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: QueueName
-              value: my-processing-queue
+            QueueName: my-processing-queue
 ```
 
-The gap between `NumberOfMessagesReceived` and `NumberOfMessagesDeleted` tells you about processing failures. If messages are received but not deleted, your consumers are either failing or timing out.
+The gap between `NumberOfMessagesReceived` and `NumberOfMessagesDeleted` can be a useful signal for processing failures. Because SQS can return the same message more than once and counts repeated deletes, use this as an operational signal rather than an exact count of unique failed messages.
 
 ## Complete Collector Pipeline
 
@@ -228,9 +187,11 @@ receivers:
   # Pull metrics from CloudWatch for S3, DynamoDB, and SQS
   awscloudwatch:
     region: us-east-1
-    poll_interval: 60s
     metrics:
-      named:
+      collection_interval: 60s
+      period: 60s
+      delay: 10m
+      queries:
         # ... all the metrics defined above ...
 
 processors:
@@ -272,7 +233,7 @@ For Python applications using boto3, install the AWS SDK instrumentation library
 pip install opentelemetry-instrumentation-botocore
 ```
 
-The instrumentation wraps every boto3 call with a span that includes the service name, operation, and request parameters.
+The instrumentation wraps botocore calls made by boto3 with spans that include botocore-specific attributes such as the AWS service, operation, region, request ID, retry attempts, and HTTP status code. You can add selected request parameters with a request hook when that is useful and safe.
 
 ```python
 # app.py - Example showing traced S3, DynamoDB, and SQS operations
@@ -338,7 +299,6 @@ The collector needs CloudWatch read permissions to scrape metrics. Here is a min
       "Effect": "Allow",
       "Action": [
         "cloudwatch:GetMetricData",
-        "cloudwatch:GetMetricStatistics",
         "cloudwatch:ListMetrics"
       ],
       "Resource": "*"
