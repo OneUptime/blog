@@ -48,15 +48,15 @@ processors:
       - context: log
         statements:
           # Map common severity strings to OpenTelemetry severity numbers
-          - set(severity_number, 1) where severity_text == "TRACE"
-          - set(severity_number, 5) where severity_text == "DEBUG"
-          - set(severity_number, 9) where severity_text == "INFO"
-          - set(severity_number, 13) where severity_text == "WARN"
-          - set(severity_number, 13) where severity_text == "WARNING"
-          - set(severity_number, 17) where severity_text == "ERROR"
-          - set(severity_number, 21) where severity_text == "FATAL"
-          - set(severity_number, 21) where severity_text == "CRITICAL"
-          - set(severity_number, 21) where severity_text == "PANIC"
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where log.severity_text == "TRACE"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "DEBUG"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "INFO"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARN"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARNING"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "ERROR"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "FATAL"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "CRITICAL"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "PANIC"
 ```
 
 ## Handling Case Variations
@@ -70,27 +70,27 @@ processors:
       - context: log
         statements:
           # Uppercase variants
-          - set(severity_number, 5) where severity_text == "DEBUG"
-          - set(severity_number, 9) where severity_text == "INFO"
-          - set(severity_number, 13) where severity_text == "WARN"
-          - set(severity_number, 13) where severity_text == "WARNING"
-          - set(severity_number, 17) where severity_text == "ERROR"
-          - set(severity_number, 21) where severity_text == "FATAL"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "DEBUG"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "INFO"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARN"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARNING"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "ERROR"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "FATAL"
 
           # Lowercase variants
-          - set(severity_number, 5) where severity_text == "debug"
-          - set(severity_number, 9) where severity_text == "info"
-          - set(severity_number, 13) where severity_text == "warn"
-          - set(severity_number, 13) where severity_text == "warning"
-          - set(severity_number, 17) where severity_text == "error"
-          - set(severity_number, 21) where severity_text == "fatal"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "debug"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "info"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "warn"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "warning"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "error"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "fatal"
 
           # Mixed case (Java/log4j style)
-          - set(severity_number, 5) where severity_text == "Debug"
-          - set(severity_number, 9) where severity_text == "Info"
-          - set(severity_number, 13) where severity_text == "Warn"
-          - set(severity_number, 17) where severity_text == "Error"
-          - set(severity_number, 21) where severity_text == "Fatal"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "Debug"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "Info"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "Warn"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "Error"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "Fatal"
 ```
 
 A cleaner approach using `IsMatch` with case-insensitive regex:
@@ -101,12 +101,12 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(severity_number, 1) where IsMatch(severity_text, "(?i)^trace$")
-          - set(severity_number, 5) where IsMatch(severity_text, "(?i)^debug$")
-          - set(severity_number, 9) where IsMatch(severity_text, "(?i)^info$")
-          - set(severity_number, 13) where IsMatch(severity_text, "(?i)^warn(ing)?$")
-          - set(severity_number, 17) where IsMatch(severity_text, "(?i)^err(or)?$")
-          - set(severity_number, 21) where IsMatch(severity_text, "(?i)^(fatal|critical|panic|emerg(ency)?)$")
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsMatch(log.severity_text, "(?i)^trace$")
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsMatch(log.severity_text, "(?i)^debug$")
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where IsMatch(log.severity_text, "(?i)^info$")
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.severity_text, "(?i)^warn(ing)?$")
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsMatch(log.severity_text, "(?i)^err(or)?$")
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.severity_text, "(?i)^(fatal|critical|panic|emerg(ency)?)$")
 ```
 
 ## Python Logging Level Mapping
@@ -121,18 +121,18 @@ processors:
         statements:
           # Python logging levels to OTel severity numbers
           # Python DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50
-          - set(severity_number, 5) where attributes["python.logging.level"] == 10
-          - set(severity_number, 9) where attributes["python.logging.level"] == 20
-          - set(severity_number, 13) where attributes["python.logging.level"] == 30
-          - set(severity_number, 17) where attributes["python.logging.level"] == 40
-          - set(severity_number, 21) where attributes["python.logging.level"] == 50
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.attributes["python.logging.level"] == 10
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.attributes["python.logging.level"] == 20
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.attributes["python.logging.level"] == 30
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["python.logging.level"] == 40
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.attributes["python.logging.level"] == 50
 
-          # Also set severity_text for consistency
-          - set(severity_text, "DEBUG") where attributes["python.logging.level"] == 10
-          - set(severity_text, "INFO") where attributes["python.logging.level"] == 20
-          - set(severity_text, "WARN") where attributes["python.logging.level"] == 30
-          - set(severity_text, "ERROR") where attributes["python.logging.level"] == 40
-          - set(severity_text, "FATAL") where attributes["python.logging.level"] == 50
+          # Also set log.severity_text for consistency
+          - set(log.severity_text, "DEBUG") where log.attributes["python.logging.level"] == 10
+          - set(log.severity_text, "INFO") where log.attributes["python.logging.level"] == 20
+          - set(log.severity_text, "WARN") where log.attributes["python.logging.level"] == 30
+          - set(log.severity_text, "ERROR") where log.attributes["python.logging.level"] == 40
+          - set(log.severity_text, "FATAL") where log.attributes["python.logging.level"] == 50
 ```
 
 ## Extracting Severity from Log Body
@@ -147,18 +147,18 @@ processors:
         statements:
           # Extract severity from log body patterns like:
           # "2026-02-06 10:30:00 ERROR Something went wrong"
-          - set(severity_text, "ERROR") where severity_text == "" and IsMatch(body, "(?i)\\bERROR\\b")
-          - set(severity_text, "WARN") where severity_text == "" and IsMatch(body, "(?i)\\bWARN(ING)?\\b")
-          - set(severity_text, "INFO") where severity_text == "" and IsMatch(body, "(?i)\\bINFO\\b")
-          - set(severity_text, "DEBUG") where severity_text == "" and IsMatch(body, "(?i)\\bDEBUG\\b")
-          - set(severity_text, "FATAL") where severity_text == "" and IsMatch(body, "(?i)\\b(FATAL|CRITICAL)\\b")
+          - set(log.severity_text, "ERROR") where log.severity_text == "" and IsString(log.body) and IsMatch(log.body, "(?i)\\bERROR\\b")
+          - set(log.severity_text, "WARN") where log.severity_text == "" and IsString(log.body) and IsMatch(log.body, "(?i)\\bWARN(ING)?\\b")
+          - set(log.severity_text, "INFO") where log.severity_text == "" and IsString(log.body) and IsMatch(log.body, "(?i)\\bINFO\\b")
+          - set(log.severity_text, "DEBUG") where log.severity_text == "" and IsString(log.body) and IsMatch(log.body, "(?i)\\bDEBUG\\b")
+          - set(log.severity_text, "FATAL") where log.severity_text == "" and IsString(log.body) and IsMatch(log.body, "(?i)\\b(FATAL|CRITICAL)\\b")
 
           # Then map text to number
-          - set(severity_number, 5) where severity_text == "DEBUG"
-          - set(severity_number, 9) where severity_text == "INFO"
-          - set(severity_number, 13) where severity_text == "WARN"
-          - set(severity_number, 17) where severity_text == "ERROR"
-          - set(severity_number, 21) where severity_text == "FATAL"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "DEBUG"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "INFO"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARN"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "ERROR"
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_text == "FATAL"
 ```
 
 ## Full Pipeline Configuration
@@ -180,20 +180,20 @@ processors:
       - context: log
         statements:
           # Case-insensitive severity mapping
-          - set(severity_number, 1) where IsMatch(severity_text, "(?i)^trace$")
-          - set(severity_number, 5) where IsMatch(severity_text, "(?i)^debug$")
-          - set(severity_number, 9) where IsMatch(severity_text, "(?i)^info$")
-          - set(severity_number, 13) where IsMatch(severity_text, "(?i)^warn(ing)?$")
-          - set(severity_number, 17) where IsMatch(severity_text, "(?i)^err(or)?$")
-          - set(severity_number, 21) where IsMatch(severity_text, "(?i)^(fatal|critical|panic)$")
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsMatch(log.severity_text, "(?i)^trace$")
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsMatch(log.severity_text, "(?i)^debug$")
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where IsMatch(log.severity_text, "(?i)^info$")
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.severity_text, "(?i)^warn(ing)?$")
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsMatch(log.severity_text, "(?i)^err(or)?$")
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.severity_text, "(?i)^(fatal|critical|panic)$")
 
-          # Normalize severity_text to uppercase
-          - set(severity_text, "TRACE") where severity_number >= 1 and severity_number <= 4
-          - set(severity_text, "DEBUG") where severity_number >= 5 and severity_number <= 8
-          - set(severity_text, "INFO") where severity_number >= 9 and severity_number <= 12
-          - set(severity_text, "WARN") where severity_number >= 13 and severity_number <= 16
-          - set(severity_text, "ERROR") where severity_number >= 17 and severity_number <= 20
-          - set(severity_text, "FATAL") where severity_number >= 21 and severity_number <= 24
+          # Normalize log.severity_text to uppercase
+          - set(log.severity_text, "TRACE") where log.severity_number >= SEVERITY_NUMBER_TRACE and log.severity_number <= SEVERITY_NUMBER_TRACE4
+          - set(log.severity_text, "DEBUG") where log.severity_number >= SEVERITY_NUMBER_DEBUG and log.severity_number <= SEVERITY_NUMBER_DEBUG4
+          - set(log.severity_text, "INFO") where log.severity_number >= SEVERITY_NUMBER_INFO and log.severity_number <= SEVERITY_NUMBER_INFO4
+          - set(log.severity_text, "WARN") where log.severity_number >= SEVERITY_NUMBER_WARN and log.severity_number <= SEVERITY_NUMBER_WARN4
+          - set(log.severity_text, "ERROR") where log.severity_number >= SEVERITY_NUMBER_ERROR and log.severity_number <= SEVERITY_NUMBER_ERROR4
+          - set(log.severity_text, "FATAL") where log.severity_number >= SEVERITY_NUMBER_FATAL and log.severity_number <= SEVERITY_NUMBER_FATAL4
 
   batch:
     send_batch_size: 1024
@@ -220,9 +220,8 @@ Once severity numbers are set, you can filter logs by severity in subsequent pro
 ```yaml
 processors:
   filter/drop_debug:
-    logs:
-      log_record:
-        - 'severity_number < 9'  # Drop TRACE and DEBUG logs
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'  # Drop TRACE and DEBUG logs
 ```
 
 Mapping severity strings to numbers in the Collector normalizes log severity across all your applications and log sources. This gives you consistent severity-based filtering, routing, and alerting regardless of which logging framework each service uses.
