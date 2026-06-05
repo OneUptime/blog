@@ -63,8 +63,8 @@ def inspect_span_context():
         # Each span has a unique span_id
         print(f"Span ID: {format(span_ctx.span_id, '016x')}")
 
-        # Trace Flags: 8-bit field containing sampling decision
-        # 0x01 means sampled, 0x00 means not sampled
+        # Trace Flags: 8-bit field containing trace options
+        # The 0x01 sampled bit means sampled; 0x00 means not sampled
         print(f"Trace Flags: {span_ctx.trace_flags}")
         print(f"Is Sampled: {span_ctx.trace_flags.sampled}")
 
@@ -122,7 +122,7 @@ span_id = "00f067aa0ba902b7"
 
 manual_context = create_manual_span_context(trace_id, span_id)
 print(f"Created manual context: {manual_context}")
-print(f"Valid: {manual_context.is_valid()}")
+print(f"Valid: {manual_context.is_valid}")
 ```
 
 ## Using Manual Context as Parent Span
@@ -206,7 +206,7 @@ def serialize_span_context(span: trace.Span) -> Dict[str, str]:
         "trace_id": format(span_ctx.trace_id, '032x'),
         "span_id": format(span_ctx.span_id, '016x'),
         "trace_flags": format(span_ctx.trace_flags, '02x'),
-        "trace_state": str(span_ctx.trace_state) if span_ctx.trace_state else "",
+        "trace_state": span_ctx.trace_state.to_header() if span_ctx.trace_state else "",
         "is_remote": str(span_ctx.is_remote)
     }
 
@@ -224,13 +224,7 @@ def deserialize_span_context(data: Dict[str, str]) -> Optional[SpanContext]:
         trace_state_str = data.get("trace_state", "")
         trace_state = None
         if trace_state_str:
-            # Parse trace state format: key1=value1,key2=value2
-            pairs = []
-            for item in trace_state_str.split(","):
-                if "=" in item:
-                    key, value = item.split("=", 1)
-                    pairs.append((key.strip(), value.strip()))
-            trace_state = TraceState(pairs) if pairs else None
+            trace_state = TraceState.from_header([trace_state_str])
 
         return SpanContext(
             trace_id=trace_id,
@@ -274,7 +268,7 @@ def receive_custom_message(message_json: str):
     context_data = message.get("trace_context", {})
     parent_context = deserialize_span_context(context_data)
 
-    if parent_context and parent_context.is_valid():
+    if parent_context and parent_context.is_valid:
         # Create a non-recording span with the parent context
         parent_span = trace.NonRecordingSpan(parent_context)
         ctx = set_span_in_context(parent_span)
@@ -369,7 +363,7 @@ def process_task_from_database(db_connection, task_id: int):
 
     parent_context = deserialize_span_context(context_dict)
 
-    if parent_context and parent_context.is_valid():
+    if parent_context and parent_context.is_valid:
         parent_span = trace.NonRecordingSpan(parent_context)
         ctx = set_span_in_context(parent_span)
 
@@ -465,7 +459,7 @@ def handle_legacy_callback(callback_data: dict):
     if context_data:
         parent_context = deserialize_span_context(context_data)
 
-        if parent_context and parent_context.is_valid():
+        if parent_context and parent_context.is_valid:
             parent_span = trace.NonRecordingSpan(parent_context)
             ctx = set_span_in_context(parent_span)
 
@@ -524,7 +518,7 @@ def safe_context_extraction(message: dict, context_key: str = "trace_context"):
         span_context = deserialize_span_context(context_data)
 
         # Validate the context
-        if span_context and span_context.is_valid():
+        if span_context and span_context.is_valid:
             return span_context
         else:
             print("Invalid span context received")
