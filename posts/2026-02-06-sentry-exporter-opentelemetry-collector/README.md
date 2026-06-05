@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Exporter, Sentry, Error Tracking, Performance Mo
 
 Description: Comprehensive guide to configuring the Sentry exporter in OpenTelemetry Collector for error tracking, performance monitoring, and application health insights.
 
-Sentry is a leading error tracking and performance monitoring platform that helps developers identify, diagnose, and resolve issues in production applications. The OpenTelemetry Collector's Sentry exporter enables you to send traces and error events to Sentry, combining OpenTelemetry's vendor-neutral instrumentation with Sentry's powerful debugging and workflow features. This integration is particularly valuable for teams who want to maintain OpenTelemetry standards while leveraging Sentry's developer-friendly interface and issue management capabilities.
+Sentry is a leading error tracking and performance monitoring platform that helps developers identify, diagnose, and resolve issues in production applications. The OpenTelemetry Collector's Sentry exporter enables you to send traces and logs to Sentry, combining OpenTelemetry's vendor-neutral instrumentation with Sentry's powerful debugging and workflow features. This integration is particularly valuable for teams who want to maintain OpenTelemetry standards while leveraging Sentry's developer-friendly interface and issue management capabilities.
 
 ## Understanding Sentry Integration
 
-Sentry organizes data around projects, which represent individual applications or services. Each project has a unique Data Source Name (DSN) that serves as both an endpoint URL and authentication credential. The Sentry exporter converts OpenTelemetry spans into Sentry transactions and error events, mapping trace attributes to Sentry's data model for optimal display in the Sentry UI.
+Sentry organizes data around projects, which represent individual applications or services. The OpenTelemetry Collector's Sentry exporter uses the Sentry organization URL, organization slug, and an auth token to discover each project's OTLP ingestion endpoint. The exporter groups telemetry by project, using a resource attribute such as `service.name` by default, and sends each group to the matching Sentry project.
 
 Unlike traditional logging platforms, Sentry focuses on exceptions, errors, and performance issues. It groups similar errors together, tracks error frequency and impact, identifies regression patterns, and provides release-based tracking to see when issues were introduced. The platform also offers breadcrumbs (contextual events leading up to errors), stack traces with source code context, and integration with issue trackers like Jira and GitHub.
 
@@ -20,10 +20,10 @@ Here's how telemetry flows from applications through the OpenTelemetry Collector
 
 ```mermaid
 graph LR
-    A[Applications] -->|OTLP Traces| B[OTel Collector]
+    A[Applications] -->|OTLP Traces and Logs| B[OTel Collector]
     B -->|Receivers| C[Processors]
     C -->|Filter/Transform| D[Sentry Exporter]
-    D -->|DSN Endpoint| E[Sentry Ingestion]
+    D -->|Project OTLP Endpoint| E[Sentry Ingestion]
     E --> F[Issue Grouping]
     F --> G[Alerts & Notifications]
     E --> H[Performance Monitoring]
@@ -48,13 +48,16 @@ receivers:
 # Sentry exporter configuration
 exporters:
   sentry:
-    # Sentry DSN (contains project ID and authentication)
-    dsn: "${SENTRY_DSN}"
+    # Base URL for Sentry SaaS or your self-hosted Sentry instance
+    url: https://sentry.io
 
-    # Environment name (appears in Sentry UI)
-    environment: "production"
+    # Organization slug in Sentry
+    org_slug: "${SENTRY_ORG_SLUG}"
 
-    # Timeout for API requests
+    # Sentry auth token with org:read and project:read scopes
+    auth_token: "${SENTRY_AUTH_TOKEN}"
+
+    # Timeout for export requests
     timeout: 30s
 
 # Processors for data handling
@@ -72,7 +75,7 @@ service:
       exporters: [sentry]
 ```
 
-This basic configuration sends all traces to Sentry. You can obtain your DSN from the Sentry project settings page. The DSN format is: `https://<key>@<organization>.ingest.sentry.io/<project_id>`
+This basic configuration sends traces to Sentry projects based on the `service.name` resource attribute. The project slug in Sentry must match the value of `service.name`, unless you configure an explicit mapping. The auth token is separate from a Sentry DSN and must have access to read the organization and projects.
 
 ## Production Configuration with Error Filtering
 
@@ -90,24 +93,13 @@ receivers:
 
 exporters:
   sentry:
-    # Sentry DSN from environment variable
-    dsn: "${SENTRY_DSN}"
-
-    # Environment for filtering in Sentry UI
-    environment: "production"
-
-    # Release version for tracking regressions
-    release: "${APP_VERSION}"
+    # Sentry organization configuration
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
     # Timeout configuration
     timeout: 30s
-
-    # Retry configuration
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
 
     # Queue settings for handling backpressure
     sending_queue:
@@ -122,22 +114,16 @@ processors:
     limit_mib: 512
     spike_limit_mib: 128
 
-  # Filter to send only errors and slow traces
+  # Drop spans that are not errors, are not slow, and are not critical operations
   filter/errors_and_slow:
     error_mode: ignore
-    traces:
-      span:
-        # Keep spans with errors
-        - 'status.code == STATUS_CODE_ERROR'
-        # Keep slow spans (over 1 second)
-        - 'duration_ms > 1000'
-        # Keep specific operations
-        - 'attributes["http.target"] == "/api/payment"'
+    trace_conditions:
+      - 'span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) <= Duration("1s") and span.attributes["http.route"] != "/api/payment"'
 
   # Add resource attributes
   resource:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
       - key: service.version
@@ -188,15 +174,15 @@ service:
 
 This production configuration includes several important features:
 
-**Error Filtering**: Only sends spans with errors or high latency to Sentry, reducing noise and focusing on actionable issues.
+**Error Filtering**: Drops routine spans while preserving error spans, slow spans, and selected critical operations, reducing noise and focusing on actionable issues.
 
-**User Context**: Maps user identifiers to Sentry's user model, enabling you to see which users are affected by issues.
+**User Context**: Maps user identifiers to attributes that can be used as Sentry context, enabling you to see which users are affected by issues.
 
-**Release Tracking**: Associates errors with specific releases, making it easy to identify when regressions were introduced.
+**Release Tracking**: Associates telemetry with `service.version`, making it easier to correlate errors with application versions.
 
 **Security**: Removes sensitive headers and data before sending to Sentry.
 
-**Backpressure Handling**: Queues traces when Sentry is temporarily unavailable, preventing data loss.
+**Backpressure Handling**: Queues telemetry when Sentry is temporarily unavailable, reducing data loss during short outages.
 
 ## Multi-Project Configuration
 
@@ -204,52 +190,25 @@ Large organizations often have multiple Sentry projects for different services o
 
 ```yaml
 exporters:
-  # Frontend service project
-  sentry/frontend:
-    dsn: "${SENTRY_DSN_FRONTEND}"
-    environment: "production"
-    release: "${FRONTEND_VERSION}"
-
-  # Backend API project
-  sentry/backend:
-    dsn: "${SENTRY_DSN_BACKEND}"
-    environment: "production"
-    release: "${BACKEND_VERSION}"
-
-  # Mobile app project
-  sentry/mobile:
-    dsn: "${SENTRY_DSN_MOBILE}"
-    environment: "production"
-    release: "${MOBILE_VERSION}"
-
-  # Infrastructure project
-  sentry/infrastructure:
-    dsn: "${SENTRY_DSN_INFRA}"
-    environment: "production"
-    release: "${INFRA_VERSION}"
+  sentry:
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
+    routing:
+      project_from_attribute: service.name
+      attribute_to_project_mapping:
+        frontend: frontend
+        api-gateway: backend-api
+        payment-service: backend-api
+        mobile-app: mobile-app
+        kubernetes-monitor: infrastructure
 
 processors:
-  # Route to appropriate project based on service name
-  routing:
-    from_attribute: service.name
-    default_exporters: [sentry/backend]
-    table:
-      - value: frontend
-        exporters: [sentry/frontend]
-      - value: api-gateway
-        exporters: [sentry/backend]
-      - value: payment-service
-        exporters: [sentry/backend]
-      - value: mobile-app
-        exporters: [sentry/mobile]
-      - value: kubernetes-monitor
-        exporters: [sentry/infrastructure]
-
-  # Filter errors only
+  # Drop non-error spans
   filter/errors:
-    traces:
-      span:
-        - 'status.code == STATUS_CODE_ERROR'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.status.code != STATUS_CODE_ERROR'
 
   batch:
     timeout: 10s
@@ -259,15 +218,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [filter/errors, routing, batch]
-      exporters:
-        - sentry/frontend
-        - sentry/backend
-        - sentry/mobile
-        - sentry/infrastructure
+      processors: [filter/errors, batch]
+      exporters: [sentry]
 ```
 
-The routing processor directs traces to the correct Sentry project based on service name, ensuring issues are organized properly in the Sentry UI.
+The Sentry exporter directs traces to the correct Sentry project based on the configured resource attribute, ensuring issues are organized properly in the Sentry UI.
 
 ## Enhanced Error Context
 
@@ -302,7 +257,7 @@ processors:
 
       # Add message queue context
       - key: messaging.operation
-        from_attribute: messaging.operation
+        from_attribute: messaging.operation.name
         action: upsert
       - key: messaging.destination
         from_attribute: messaging.destination.name
@@ -317,35 +272,21 @@ processors:
       - key: server.instance
         from_attribute: host.name
         action: upsert
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: insert
 
-  # Transform exception information
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          # Extract exception type
-          - set(attributes["exception.type"], attributes["exception.type"]) where attributes["exception.type"] != nil
-
-          # Extract exception message
-          - set(attributes["exception.message"], attributes["exception.message"]) where attributes["exception.message"] != nil
-
-          # Extract stack trace
-          - set(attributes["exception.stacktrace"], attributes["exception.stacktrace"]) where attributes["exception.stacktrace"] != nil
-
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
-    release: "${APP_VERSION}"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/breadcrumbs, attributes/tags, transform, batch]
+      processors: [attributes/breadcrumbs, attributes/tags, batch]
       exporters: [sentry]
 ```
 
@@ -353,14 +294,14 @@ This configuration enriches errors with context about HTTP requests, database qu
 
 ## Sampling for Cost Control
 
-Sentry pricing is based on transaction volume. Implement sampling to control costs while maintaining visibility into critical issues.
+Sentry pricing is based on event and transaction volume. Implement sampling to control costs while maintaining visibility into critical issues.
 
 ```yaml
 processors:
   # Tail sampling with intelligent policies
   tail_sampling:
     decision_wait: 10s
-    num_traces: 100
+    num_traces: 10000
     expected_new_traces_per_sec: 50
     policies:
       # Always sample errors (100%)
@@ -375,27 +316,11 @@ processors:
         latency:
           threshold_ms: 5000
 
-      # Sample slow operations (1-5 seconds) at 50%
-      - name: slow
-        type: composite
-        composite:
-          max_total_spans_per_second: 100
-          policy_order: [slow-filter, slow-sample]
-          composite_sub_policy:
-            - name: slow-filter
-              type: latency
-              latency:
-                threshold_ms: 1000
-            - name: slow-sample
-              type: probabilistic
-              probabilistic:
-                sampling_percentage: 50.0
-
       # Sample critical endpoints at 100%
       - name: critical-endpoints
         type: string_attribute
         string_attribute:
-          key: http.target
+          key: http.route
           values:
             - /api/payment
             - /api/checkout
@@ -419,8 +344,9 @@ processors:
 
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 service:
   pipelines:
@@ -434,23 +360,13 @@ This sampling strategy ensures you capture all errors and critical operations wh
 
 ## Performance Monitoring Configuration
 
-Sentry's performance monitoring requires specific span attributes. Here's how to optimize for performance insights.
+Sentry's performance monitoring works best with well-formed OpenTelemetry span names and semantic convention attributes. Here's how to optimize for performance insights.
 
 ```yaml
 processors:
   # Enrich spans for Sentry performance monitoring
   attributes/performance:
     actions:
-      # Transaction name (appears as operation in Sentry)
-      - key: transaction
-        from_attribute: http.route
-        action: upsert
-
-      # Operation type
-      - key: op
-        value: http.server
-        action: insert
-
       # Add performance-related tags
       - key: http.method
         from_attribute: http.request.method
@@ -464,29 +380,25 @@ processors:
         from_attribute: browser.name
         action: upsert
 
-      # Add user satisfaction metrics
-      - key: user_satisfaction
-        value: satisfactory
-        action: insert
-
-  # Calculate derived metrics
+  # Calculate derived attributes
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Mark slow transactions
-          - set(attributes["performance.slow"], true) where duration_ms > 1000
+          - set(span.attributes["performance.slow"], true) where (span.end_time - span.start_time) > Duration("1s")
 
           # Categorize by latency
-          - set(attributes["latency.bucket"], "fast") where duration_ms < 100
-          - set(attributes["latency.bucket"], "medium") where duration_ms >= 100 and duration_ms < 500
-          - set(attributes["latency.bucket"], "slow") where duration_ms >= 500
+          - set(span.attributes["latency.bucket"], "fast") where (span.end_time - span.start_time) < Duration("100ms")
+          - set(span.attributes["latency.bucket"], "medium") where (span.end_time - span.start_time) >= Duration("100ms") and (span.end_time - span.start_time) < Duration("500ms")
+          - set(span.attributes["latency.bucket"], "slow") where (span.end_time - span.start_time) >= Duration("500ms")
 
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
-    release: "${APP_VERSION}"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 service:
   pipelines:
@@ -496,7 +408,7 @@ service:
       exporters: [sentry]
 ```
 
-This configuration ensures spans are properly formatted for Sentry's performance monitoring features, including transaction names, operations, and latency categorization.
+This configuration preserves semantic convention attributes and adds derived latency context for Sentry's performance monitoring features.
 
 ## Kubernetes Integration
 
@@ -505,9 +417,9 @@ Deploy the collector in Kubernetes to automatically enrich traces with cluster m
 ```yaml
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
-    release: "${APP_VERSION}"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 processors:
   # Add Kubernetes metadata
@@ -521,7 +433,6 @@ processors:
         - k8s.pod.name
         - k8s.pod.uid
         - k8s.node.name
-        - k8s.cluster.name
       labels:
         - tag_name: app
           key: app
@@ -546,15 +457,12 @@ processors:
       - key: k8s.pod
         from_attribute: k8s.pod.name
         action: upsert
-      - key: k8s.cluster
-        from_attribute: k8s.cluster.name
-        action: upsert
 
-  # Filter errors only
+  # Drop non-error spans
   filter/errors:
-    traces:
-      span:
-        - 'status.code == STATUS_CODE_ERROR'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.status.code != STATUS_CODE_ERROR'
 
   batch:
     timeout: 10s
@@ -568,7 +476,7 @@ service:
       exporters: [sentry]
 ```
 
-This configuration enriches errors with Kubernetes context, making it easier to identify which pods, deployments, and clusters are experiencing issues.
+This configuration enriches errors with Kubernetes context, making it easier to identify which pods and deployments are experiencing issues.
 
 ## Release Health Tracking
 
@@ -577,14 +485,9 @@ Track release adoption and health by correlating errors with specific versions.
 ```yaml
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
-
-    # Release from environment variable (set in deployment)
-    release: "${APP_VERSION}"
-
-    # Enable release health tracking
-    enable_release_health: true
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 processors:
   # Add release metadata
@@ -595,25 +498,20 @@ processors:
         action: upsert
 
       # Git commit SHA for source code mapping
-      - key: git.commit.sha
+      - key: vcs.revision
         value: ${GIT_COMMIT}
         action: upsert
 
-  # Track release metrics
+  # Add session-related attributes when they already exist in telemetry
   attributes/release:
     actions:
-      - key: release
-        value: ${APP_VERSION}
-        action: upsert
-
-      # Track session information
       - key: session.id
         from_attribute: session.id
         action: upsert
 
       - key: session.status
-        value: ok
-        action: insert
+        from_attribute: session.status
+        action: upsert
 
   batch:
     timeout: 10s
@@ -627,7 +525,7 @@ service:
       exporters: [sentry]
 ```
 
-Sentry uses release information to track crash-free sessions, identify regressions, and show which releases have the most errors.
+Sentry uses release information from events and telemetry to help identify regressions and show which application versions have the most errors. Session and release-health data usually comes from Sentry SDKs; the collector can preserve relevant attributes but does not create Sentry sessions from traces by itself.
 
 ## Alert Integration
 
@@ -638,11 +536,6 @@ processors:
   # Add alert metadata
   attributes/alerts:
     actions:
-      # Fingerprint for issue grouping
-      - key: fingerprint
-        value: "{{ service.name }}-{{ exception.type }}"
-        action: insert
-
       # Alert severity
       - key: level
         value: error
@@ -657,22 +550,21 @@ processors:
         from_attribute: exception.message
         action: upsert
 
-  # Calculate error frequency
+  # Add derived error context
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
-          # Add timestamp for time-based grouping
-          - set(attributes["error.timestamp"], Now())
-
           # Mark critical errors
-          - set(attributes["critical"], true) where attributes["exception.type"] == "OutOfMemoryError"
-          - set(attributes["critical"], true) where attributes["http.status_code"] == "500"
+          - set(span.attributes["critical"], true) where span.attributes["exception.type"] == "OutOfMemoryError"
+          - set(span.attributes["critical"], true) where span.attributes["http.status_code"] == 500
 
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
 service:
   pipelines:
@@ -682,7 +574,7 @@ service:
       exporters: [sentry]
 ```
 
-This configuration helps Sentry group similar errors together and prioritize critical issues.
+This configuration adds attributes that can help identify and prioritize critical issues in Sentry.
 
 ## High Availability Setup
 
@@ -691,22 +583,17 @@ Configure the collector for reliability with persistent queues.
 ```yaml
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
     timeout: 30s
-
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
 
     # Enable persistent queue
     sending_queue:
       enabled: true
       num_consumers: 20
       queue_size: 10000
-      persistent_storage: file_storage
+      storage: file_storage
 
 # File storage extension for persistent queue
 extensions:
@@ -734,7 +621,7 @@ service:
       exporters: [sentry]
 ```
 
-The persistent queue ensures errors aren't lost during collector restarts or Sentry outages.
+The persistent queue reduces data loss during collector restarts or short Sentry outages.
 
 ## Performance Optimization
 
@@ -743,8 +630,9 @@ Optimize for high-throughput scenarios while managing Sentry quota.
 ```yaml
 exporters:
   sentry:
-    dsn: "${SENTRY_DSN}"
-    environment: "production"
+    url: https://sentry.io
+    org_slug: "${SENTRY_ORG_SLUG}"
+    auth_token: "${SENTRY_AUTH_TOKEN}"
 
     # Aggressive timeout
     timeout: 15s
@@ -809,9 +697,9 @@ Common issues:
 
 **429 Rate Limited**: Reduce sampling rate or upgrade Sentry plan. Check quota usage in Sentry dashboard.
 
-**Invalid DSN**: Verify DSN format and project exists. Ensure environment variable is set correctly.
+**Invalid Sentry Configuration**: Verify `url`, `org_slug`, and `auth_token`. Ensure the token has `org:read` and `project:read` scopes, and `project:write` if `auto_create_projects` is enabled.
 
-**Missing Errors**: Check filter processors aren't excluding errors. Verify error status codes are set correctly in spans.
+**Missing Errors**: Check filter processors aren't excluding errors. Verify error status codes are set correctly in spans, and confirm `service.name` maps to an existing Sentry project.
 
 **Poor Performance**: Reduce batch size or increase timeout. Check network latency to Sentry ingestion endpoints.
 
