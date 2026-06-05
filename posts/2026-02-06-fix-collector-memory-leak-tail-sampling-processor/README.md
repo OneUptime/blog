@@ -33,7 +33,7 @@ processors:
         sampling_percentage: 10
 ```
 
-With `decision_wait: 30s` and `expected_new_traces_per_sec: 100`, the processor buffers up to `30 * 100 = 3000` traces at any time. But if your actual trace rate is 10,000 per second, you are buffering `30 * 10,000 = 300,000` traces. Each trace can have dozens of spans, each with attributes. This easily consumes gigabytes of memory.
+With `decision_wait: 30s`, the processor may need to hold roughly `decision_wait * actual_trace_rate` traces while it waits to make decisions. `expected_new_traces_per_sec` only helps pre-allocate internal data structures; `num_traces` is the cap on traces kept in memory. If your actual trace rate is 10,000 per second, the processor would need room for about `30 * 10,000 = 300,000` traces to avoid early drops. Each trace can have dozens of spans, each with attributes. This easily consumes gigabytes of memory.
 
 ## Diagnosing the Leak
 
@@ -54,7 +54,8 @@ Check the Collector's internal metrics:
 
 ```text
 # Prometheus query for traces in the tail sampling buffer
-otelcol_processor_tail_sampling_count_traces_sampled
+otelcol_processor_tail_sampling_sampling_traces_on_memory
+otelcol_processor_tail_sampling_sampling_trace_dropped_too_early
 otelcol_processor_tail_sampling_sampling_decision_timer_latency
 ```
 
@@ -83,7 +84,7 @@ With 10 seconds, you hold fewer traces but risk making decisions before all span
 
 ## Fix 2: Set num_traces Appropriately
 
-`num_traces` is the maximum number of traces to buffer. When this limit is reached, the oldest traces are force-sampled (kept or dropped based on incomplete information):
+`num_traces` is the maximum number of traces to keep in memory. When this limit is reached, the oldest traces are removed before the configured wait time and dropped before a sampling decision is made:
 
 ```yaml
 processors:
@@ -95,9 +96,9 @@ processors:
     expected_new_traces_per_sec: 10000
 ```
 
-## Fix 3: Use Composite Policies to Reduce Buffer Size
+## Fix 3: Use Selective Policies to Reduce Exported Volume
 
-Instead of keeping all traces and sampling at the end, use composite policies that can make faster decisions:
+Tail sampling still buffers traces before making a decision, but selective policies let you keep important traces and reduce the volume exported downstream:
 
 ```yaml
 processors:
@@ -130,16 +131,16 @@ For high-traffic deployments, use a two-tier Collector setup:
 
 ```yaml
 # Tier 1: Gateway collectors (many replicas)
-# These do head sampling to reduce volume
+# These route traces consistently before tail sampling
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 
 exporters:
-  loadbalancing:
+  load_balancing:
     # Route traces by trace ID to ensure all spans
     # of a trace go to the same backend collector
     routing_key: traceID
