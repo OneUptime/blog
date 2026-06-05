@@ -68,12 +68,12 @@ helm repo update
 helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
   --namespace opentelemetry-operator-system \
   --create-namespace \
-  --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
+  --set "manager.collectorImage.repository=ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s" \
   --set admissionWebhooks.certManager.enabled=false \
   --set admissionWebhooks.autoGenerateCert.enabled=true
 ```
 
-You also need the OpenTelemetry Collector Contrib image, since the Target Allocator integration requires the contrib Prometheus receiver.
+You also need a collector image that includes the Prometheus receiver. The OpenTelemetry Collector Kubernetes image includes it; the Contrib image also works if you need additional components.
 
 ## Deploying the Collector with Target Allocator
 
@@ -95,11 +95,10 @@ spec:
     enabled: true
     # Use the consistent-hashing strategy for stable target assignment
     allocationStrategy: consistent-hashing
-    # How often the allocator re-evaluates target assignments
+    # Apply Prometheus relabel_configs before allocating targets
     filterStrategy: relabel-config
     # The allocator runs as its own pod
     replicas: 1
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:latest
     # Prometheus CR integration - discovers targets from ServiceMonitors and PodMonitors
     prometheusCR:
       enabled: true
@@ -110,15 +109,15 @@ spec:
       prometheus:
         config:
           scrape_configs:
-            # This placeholder config is required but the Target Allocator
-            # will override it with dynamically discovered targets
+            # Optional self-scrape job. The operator moves scrape configs to the
+            # Target Allocator and rewrites the receiver to use target_allocator.
             - job_name: 'otel-collector'
               scrape_interval: 30s
               static_configs:
                 - targets: ['localhost:8888']
         # This tells the Prometheus receiver to get targets from the allocator
         target_allocator:
-          endpoint: http://prometheus-fleet-targetallocator
+          endpoint: http://prometheus-fleet-targetallocator:80
           interval: 30s
           collector_id: ${POD_NAME}
     processors:
@@ -152,11 +151,13 @@ The operator will create two things: a StatefulSet for the collector replicas an
 
 ## Understanding Allocation Strategies
 
-The Target Allocator supports two main strategies for distributing targets across collectors.
+The Target Allocator supports three strategies for distributing targets across collectors.
 
-**least-weighted** is the default. It assigns each new target to the collector that currently has the fewest targets. This works well for most cases, but when a collector pod restarts or the fleet scales, many targets get reassigned. That can cause brief gaps in scraping.
+**consistent-hashing** is the default. It uses a hash ring to assign targets. When a collector is added or removed, only the affected portion of the target set gets reassigned. This is the better choice for production environments where you want minimal disruption during scaling events.
 
-**consistent-hashing** uses a hash ring to assign targets. When a collector is added or removed, only the targets that hash to that specific collector get reassigned. The rest stay put. This is the better choice for production environments where you want minimal disruption during scaling events.
+**least-weighted** assigns each target to the collector that currently has the fewest targets. It can provide stable assignment when the collector count changes, but the distribution may be less even.
+
+**per-node** assigns targets to a collector running on the same Kubernetes node. Use it only with a DaemonSet collector, and be aware that targets without an associated node, such as some control plane components, are ignored.
 
 ```mermaid
 flowchart LR
@@ -227,7 +228,13 @@ metadata:
   name: target-allocator
 rules:
   - apiGroups: [""]
-    resources: ["pods", "nodes", "services", "endpoints", "namespaces"]
+    resources: ["pods", "nodes", "nodes/metrics", "services", "endpoints", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["monitoring.coreos.com"]
     resources: ["servicemonitors", "podmonitors"]
@@ -235,6 +242,8 @@ rules:
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
