@@ -14,7 +14,7 @@ Vue.js has earned its place as a go-to framework for building reactive user inte
 
 You will need these tools installed:
 
-- Node.js 18+ and npm (or yarn/pnpm)
+- Node.js 22.12+ and npm (or yarn/pnpm)
 - Docker Engine 20.10+
 - Basic familiarity with Vue.js and the terminal
 
@@ -68,7 +68,7 @@ This Dockerfile handles the full build-to-serve pipeline:
 
 ```dockerfile
 # Stage 1: Build the Vue.js application
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -85,7 +85,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve with Nginx
-FROM nginx:1.25-alpine
+FROM nginx:stable-alpine
 
 # Remove default Nginx welcome page
 RUN rm -rf /usr/share/nginx/html/*
@@ -180,8 +180,6 @@ Docker Compose simplifies running and rebuilding the container.
 This Compose file adds restart policies and a health check:
 
 ```yaml
-version: "3.8"
-
 services:
   vue-app:
     build:
@@ -210,7 +208,7 @@ Rebuilding the Docker image on every code change is painfully slow. For developm
 This development Dockerfile runs Vite with HMR enabled:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -228,8 +226,6 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 Pair it with a development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   vue-dev:
     build:
@@ -253,7 +249,7 @@ Vue.js (with Vite) supports `.env` files for environment-specific configuration.
 Pass environment variables as build arguments:
 
 ```dockerfile
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -300,7 +296,7 @@ nginx -g "daemon off;"
 Update the Dockerfile to use this entrypoint:
 
 ```dockerfile
-FROM nginx:1.25-alpine
+FROM nginx:stable-alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -326,7 +322,7 @@ A Vue.js app served from Nginx Alpine typically weighs between 20-40MB. To squee
 
 - Use `npm ci --ignore-scripts` if you do not need postinstall hooks.
 - Add only production-relevant files in the build stage.
-- Use `nginx:1.25-alpine` rather than the full Nginx image.
+- Use `nginx:stable-alpine` rather than the full Nginx image.
 
 ## Security Best Practices
 
@@ -336,7 +332,6 @@ Add security headers in your Nginx config:
 # Add security headers to all responses
 add_header X-Frame-Options "SAMEORIGIN" always;
 add_header X-Content-Type-Options "nosniff" always;
-add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 ```
 
