@@ -25,7 +25,7 @@ dotnet add package OpenTelemetry
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
-Create a meter provider that exports to your OTLP endpoint:
+Create a meter and the instruments your game loop will record:
 
 ```csharp
 using OpenTelemetry;
@@ -108,8 +108,7 @@ public class GameLoop
         {
             _overbudgetCounter.Add(1, new TagList
             {
-                { "map", state.CurrentMap },
-                { "overage_ms", Math.Round(elapsed - _targetTickMs, 1).ToString() }
+                { "map", state.CurrentMap }
             });
         }
 
@@ -163,12 +162,12 @@ Wire up the meter provider to export metrics via OTLP:
 ```csharp
 var meterProvider = Sdk.CreateMeterProviderBuilder()
     .AddMeter("GameServer.TickMetrics")
-    .AddOtlpExporter(options =>
+    .AddOtlpExporter((exporterOptions, metricReaderOptions) =>
     {
-        options.Endpoint = new Uri("https://otel-collector.yourgame.com:4317");
+        exporterOptions.Endpoint = new Uri("https://otel-collector.yourgame.com:4317");
         // Export every 5 seconds; fast enough for alerting,
         // not so fast it overwhelms the collector
-        options.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 5000;
+        metricReaderOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 5000;
     })
     .Build();
 ```
