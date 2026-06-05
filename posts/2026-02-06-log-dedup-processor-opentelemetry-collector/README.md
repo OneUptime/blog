@@ -10,7 +10,7 @@ Description: Learn how to configure the log deduplication processor in OpenTelem
 
 Applications often generate duplicate log entries. A service might log the same error message hundreds of times per second when a downstream dependency fails. Database connection pools log identical errors for each failed connection attempt. Health check endpoints generate repetitive log entries every few seconds.
 
-The log dedup processor (logdedup) in the OpenTelemetry Collector identifies and eliminates duplicate log entries, keeping only the first occurrence and optionally a count of how many times it repeated. This dramatically reduces log volume, cuts storage costs, and makes log analysis more manageable without losing critical information.
+The log dedup processor (log_dedup) in the OpenTelemetry Collector identifies duplicate log entries, aggregates them over a configured interval, and emits one log record with a count of how many times it appeared. This dramatically reduces log volume, cuts storage costs, and makes log analysis more manageable without losing critical information.
 
 ## Understanding Log Duplication
 
@@ -29,7 +29,7 @@ graph LR
     A --> D[2024-02-06 10:00:02 ERROR Database connection failed]
     A --> E[... 1000 more identical errors ...]
 
-    F[After logdedup Processor] --> G[2024-02-06 10:00:00 ERROR Database connection failed
+    F[After log_dedup Processor] --> G[2024-02-06 10:00:00 ERROR Database connection failed
     Repeated 1003 times]
 ```
 
@@ -49,9 +49,9 @@ The log dedup processor solves several production problems:
 
 ## Basic Configuration
 
-The processor requires you to specify which log attributes to use for identifying duplicates. Logs with identical values for these attributes are considered duplicates.
+By default, the processor identifies duplicates by comparing the log body, resource attributes, instrumentation scope, severity, and log attributes. You can use `include_fields` or `exclude_fields` to control which log body map fields or log attributes participate in matching.
 
-Here is a basic configuration that deduplicates based on log message:
+Here is a basic configuration that aggregates identical log records:
 
 ```yaml
 # RECEIVERS: Accept logs via OTLP
@@ -64,41 +64,40 @@ receivers:
 
 # PROCESSORS: Deduplicate logs
 processors:
-  # Deduplicate logs based on message body
-  logdedup:
-    # Log records are considered duplicates if these fields match
-    log_record_key:
-      - body    # The log message itself
-
+  # Deduplicate identical log records
+  log_dedup:
     # Time window for deduplication
-    # Logs are deduplicated within this window
+    # Aggregated logs are emitted at this interval
     interval: 60s
 
     # Timezone for interval calculations (optional)
     timezone: "UTC"
 
+    # Attribute added to the emitted aggregated log
+    log_count_attribute: "duplicate_count"
+
   # Batch for efficiency
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 # EXPORTERS: Send to backend
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # SERVICE: Define the logs pipeline
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
-This configuration deduplicates logs based on their message body. If two logs have identical messages within a 60-second window, only the first is kept. The processor adds a count attribute indicating how many duplicates were found.
+This configuration aggregates identical logs over 60-second windows. The emitted log has the same body, resource attributes, severity, and log attributes as the original log, plus a `duplicate_count` attribute indicating how many matching records were seen.
 
 ## Deduplication Based on Multiple Attributes
 
@@ -109,39 +108,41 @@ Here is a configuration that deduplicates on multiple attributes:
 ```yaml
 processors:
   # Deduplicate based on severity, service, and message
-  logdedup:
-    log_record_key:
-      - attributes["severity"]      # Log level (ERROR, WARN, INFO)
-      - resource["service.name"]    # Which service produced it
-      - body                        # The actual message
+  log_dedup:
+    # Only these log attributes participate in the log-record portion
+    # of the duplicate key. Resource attributes are still grouped separately.
+    include_fields:
+      - attributes.severity         # Log level (ERROR, WARN, INFO)
+      - attributes.error\.type      # Error category
+      - attributes.message_hash     # Stable hash of the log message
 
     # Deduplicate within 5-minute windows
     interval: 300s
 
     # Add count of duplicates as an attribute
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
-This configuration considers logs duplicates only if they match on all three criteria: same severity level, same service name, and same message body. An ERROR from service A and an ERROR from service B with the same message are treated as distinct logs.
+This configuration considers logs duplicates only if the selected log attributes match within the same resource and scope. Because resource attributes are part of the processor's grouping, an ERROR from service A and an ERROR from service B are treated as distinct logs when `service.name` is present as a resource attribute.
 
-The `count_attribute` parameter adds an attribute to deduplicated logs showing how many times they occurred. If a log appeared 47 times, the exported log includes `duplicate_count: 47`.
+The `log_count_attribute` parameter adds an attribute to deduplicated logs showing how many times they occurred. If a log appeared 47 times, the exported log includes `duplicate_count: 47`.
 
 ## Time Window Management
 
@@ -158,138 +159,116 @@ Here is a configuration with time window tuning:
 ```yaml
 processors:
   # Short window for high-frequency error logs
-  logdedup/errors:
-    log_record_key:
-      - attributes["severity"]
-      - body
+  log_dedup/errors:
+    conditions:
+      - log.severity_text == "ERROR" or log.severity_text == "FATAL"
     interval: 30s              # Short window for fast-moving errors
 
   # Longer window for INFO logs (less critical)
-  logdedup/info:
-    log_record_key:
-      - body
+  log_dedup/info:
+    conditions:
+      - log.severity_text == "INFO"
     interval: 600s             # 10-minute window for INFO logs
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
-    # Pipeline for ERROR logs (short dedup window)
-    logs/errors:
+    logs:
       receivers: [otlp]
-      processors: [logdedup/errors, batch]
-      exporters: [otlphttp]
-
-    # Pipeline for INFO logs (long dedup window)
-    logs/info:
-      receivers: [otlp]
-      processors: [logdedup/info, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup/errors, log_dedup/info, batch]
+      exporters: [otlp_http]
 ```
 
-This configuration uses different deduplication windows based on log severity. Error logs get a short 30-second window (because they're time-sensitive), while info logs get a longer 10-minute window (because they're less critical).
+This configuration uses different deduplication windows based on log severity. Error logs get a short 30-second window (because they're time-sensitive), while info logs get a longer 10-minute window (because they're less critical). Logs that do not match a processor's `conditions` pass through that processor unchanged.
 
 ## Filtering Before Deduplication
 
-Not all logs should be deduplicated. Unique transaction logs, audit logs, and security logs should be preserved exactly as generated. Use filtering to select which logs to deduplicate.
+Not all logs should be deduplicated. Unique transaction logs, audit logs, and security logs should be preserved exactly as generated. Use `conditions` to select which logs to deduplicate.
 
 Here is a configuration that deduplicates only application errors:
 
 ```yaml
 processors:
-  # Filter to select only application error logs
-  filter/errors:
-    logs:
-      include:
-        match_type: regexp
-        # Only include logs matching these patterns
-        resource_attributes:
-          - key: log.level
-            value: "^(ERROR|FATAL)$"
-
-  # Deduplicate the filtered error logs
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - attributes["error.type"]
-      - body
+  # Deduplicate only application error logs
+  log_dedup:
+    conditions:
+      - log.severity_text == "ERROR" or log.severity_text == "FATAL"
     interval: 120s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
       processors:
-        - filter/errors    # First filter
-        - logdedup         # Then deduplicate
+        - log_dedup         # Deduplicate only matching errors
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This configuration only deduplicates ERROR and FATAL logs. INFO, DEBUG, and WARN logs pass through without deduplication, preserving their full detail for analysis.
 
 ## Handling Structured Logs with Complex Attributes
 
-Modern applications emit structured logs with nested attributes. The logdedup processor can deduplicate based on specific nested fields.
+Modern applications emit structured logs with nested attributes. The log_dedup processor can deduplicate based on specific nested fields.
 
 Here is a configuration for structured logs:
 
 ```yaml
 processors:
   # Deduplicate based on structured log attributes
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - attributes["http.method"]         # HTTP method (GET, POST, etc.)
-      - attributes["http.route"]          # Route pattern (/api/users/:id)
-      - attributes["http.status_code"]    # Status code (200, 404, 500)
-      - body                              # Error message
+  log_dedup:
+    include_fields:
+      - attributes.http\.method         # HTTP method (GET, POST, etc.)
+      - attributes.http\.route          # Route pattern (/api/users/:id)
+      - attributes.http\.status_code    # Status code (200, 404, 500)
+      - attributes.error\.type          # Error category
 
     interval: 300s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
-This configuration deduplicates HTTP error logs based on the combination of service, HTTP method, route pattern, status code, and message. An error on `POST /api/users/:id` with status 500 is deduplicated separately from a 404 on `GET /api/orders/:id`.
+This configuration deduplicates HTTP error logs based on the combination of resource identity, HTTP method, route pattern, status code, and error type. An error on `POST /api/users/:id` with status 500 is deduplicated separately from a 404 on `GET /api/orders/:id`.
 
 ## Memory Management and Performance Tuning
 
-The logdedup processor maintains in-memory state for every unique log signature it sees within the time window. In high-cardinality scenarios, this can consume significant memory.
+The log_dedup processor maintains in-memory state for every unique log signature it sees within the time window. In high-cardinality scenarios, this can consume significant memory.
 
 Here is a production configuration with memory protection:
 
@@ -313,17 +292,19 @@ processors:
         action: delete
 
   # Deduplicate with controlled cardinality
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - attributes["severity"]
-      - body
+  log_dedup:
     interval: 120s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
+
+exporters:
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
+    headers:
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -332,9 +313,9 @@ service:
       processors:
         - memory_limiter                    # First line of defense
         - attributes/drop_high_cardinality  # Reduce cardinality
-        - logdedup                          # Then deduplicate
+        - log_dedup                          # Then deduplicate
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The attributes processor removes high-cardinality fields like request IDs and user IDs before deduplication. This ensures logs that differ only in these fields are considered duplicates, significantly improving deduplication effectiveness and reducing memory usage.
@@ -348,41 +329,36 @@ Here is a configuration that preserves timing information:
 ```yaml
 processors:
   # Deduplicate and track first/last occurrence
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - body
+  log_dedup:
     interval: 300s
 
     # Add attributes for timing
-    count_attribute: "duplicate_count"
-    first_occurrence_attribute: "first_seen"
-    last_occurrence_attribute: "last_seen"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
 The exported log includes:
 - `duplicate_count`: Total number of occurrences (e.g., 47)
-- `first_seen`: Timestamp of the first occurrence
-- `last_seen`: Timestamp of the most recent occurrence
+- `first_observed_timestamp`: Timestamp of the first occurrence observed by the processor
+- `last_observed_timestamp`: Timestamp of the most recent occurrence observed by the processor
 
-This information helps you understand whether an error occurred in a burst (first_seen and last_seen close together) or persistently over time (first_seen and last_seen far apart).
+This information helps you understand whether an error occurred in a burst (`first_observed_timestamp` and `last_observed_timestamp` close together) or persistently over time (`first_observed_timestamp` and `last_observed_timestamp` far apart).
 
 ## Multi-Service Deduplication Strategy
 
@@ -393,53 +369,47 @@ Here is a configuration for service-specific deduplication:
 ```yaml
 processors:
   # Deduplicate per service (errors in different services are separate)
-  logdedup:
-    log_record_key:
-      - resource["service.name"]      # Include service name in key
-      - resource["service.version"]   # Also include version
-      - attributes["severity"]
-      - body
-
+  log_dedup:
     interval: 300s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
 This configuration treats the same error from different services as distinct. An error in the API service and the same error in the database service are deduplicated separately.
 
-For cross-service deduplication (treating the same error across services as one):
+For cross-service deduplication (treating the same error across services as one), normalize the resource identity before the log dedup processor. This removes the service-specific resource values from the deduplication grouping, so only do this in a pipeline where losing per-service resource identity is acceptable:
 
 ```yaml
 processors:
-  # Deduplicate across services (same error anywhere is a duplicate)
-  logdedup:
-    log_record_key:
-      # Do NOT include service.name - ignore which service produced it
-      - attributes["severity"]
-      - attributes["error.type"]
-      - body
+  # Normalize service identity before deduplication
+  transform/normalize_service:
+    log_statements:
+      - set(resource.attributes["service.name"], "all-services")
+      - delete_key(resource.attributes, "service.version")
 
+  # Deduplicate after resource normalization
+  log_dedup:
     interval: 300s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 ```
 
-This configuration deduplicates based only on severity, error type, and message, regardless of which service produced the log. Use this when cascading failures produce the same error across multiple services and you want to see it once.
+This configuration deduplicates after rewriting `service.name` and removing `service.version`. Use this only when cascading failures produce the same error across multiple services and you explicitly want those records grouped together.
 
 ## Handling Periodic Logs with Timestamps
 
@@ -455,29 +425,26 @@ processors:
       - context: log
         statements:
           # Remove timestamps like "2024-02-06 10:30:45" from message
-          - replace_pattern(body, "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", "TIMESTAMP")
+          - replace_pattern(log.body, "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", "TIMESTAMP") where IsString(log.body)
           # Remove millisecond timestamps like "1707217845123"
-          - replace_pattern(body, "\\d{13}", "TIMESTAMP")
+          - replace_pattern(log.body, "\\d{13}", "TIMESTAMP") where IsString(log.body)
           # Remove request IDs like "req-abc-123-def"
-          - replace_pattern(body, "req-[a-f0-9-]+", "REQUEST_ID")
+          - replace_pattern(log.body, "req-[a-f0-9-]+", "REQUEST_ID") where IsString(log.body)
 
   # Now deduplicate the normalized logs
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - body                    # Body now has TIMESTAMP instead of actual times
+  log_dedup:
     interval: 300s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -485,9 +452,9 @@ service:
       receivers: [otlp]
       processors:
         - transform/remove_timestamps   # First normalize
-        - logdedup                      # Then deduplicate
+        - log_dedup                      # Then deduplicate
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The transform processor uses regex patterns to replace timestamps and request IDs with placeholder text, making logs that differ only in these values appear identical for deduplication purposes.
@@ -501,37 +468,33 @@ Here is a configuration combining both techniques:
 ```yaml
 processors:
   # Step 1: Deduplicate exact duplicates
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - attributes["severity"]
-      - body
+  log_dedup:
     interval: 120s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   # Step 2: Sample the deduplicated logs
   probabilistic_sampler:
     sampling_percentage: 10    # Keep 10% of deduplicated logs
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
       processors:
-        - logdedup              # First deduplicate
+        - log_dedup              # First deduplicate
         - probabilistic_sampler # Then sample
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This two-stage approach first eliminates exact duplicates (potentially reducing volume by 80%), then samples the remaining logs (reducing by another 90%). The combined effect can reduce log volume by 98% while preserving error patterns and diversity.
@@ -544,56 +507,55 @@ Here is a configuration with monitoring enabled:
 
 ```yaml
 processors:
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - body
+  log_dedup:
     interval: 300s
-    count_attribute: "duplicate_count"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-  # Export collector internal metrics
-  prometheus:
-    endpoint: 0.0.0.0:8888
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
-      exporters: [otlphttp]
+      processors: [log_dedup, batch]
+      exporters: [otlp_http]
 ```
 
 Monitor these collector metrics:
-- `otelcol_processor_logdedup_logs_processed`: Total logs seen by the processor
-- `otelcol_processor_logdedup_logs_dropped`: Logs dropped as duplicates
-- Deduplication rate: `logs_dropped / logs_processed * 100%`
+- `otelcol_dedup_processor_aggregated_logs`: Histogram of how many log records were aggregated into each emitted log
+- `otelcol_processor_incoming_items{processor="log_dedup"}`: Log records entering the processor
+- `otelcol_processor_outgoing_items{processor="log_dedup"}`: Log records emitted by the processor
+- Approximate deduplication effect: compare incoming log records to outgoing log records and inspect the aggregation histogram
 
-A 70-80% deduplication rate is common in production systems with repetitive errors. If you see lower rates, review your `log_record_key` configuration - you might be including too many attributes that make logs appear unique.
+High deduplication rates are common in production systems with repetitive errors. If you see lower rates, review your duplicate matching configuration - you might be retaining attributes that make logs appear unique.
 
 ## Common Pitfalls and Solutions
 
 **Problem**: Deduplication isn't reducing volume as much as expected.
 
-**Solution**: Check your `log_record_key` configuration. If you include high-cardinality attributes like timestamps, request IDs, or user IDs, every log appears unique. Use the transform processor to normalize or remove these before deduplication.
+**Solution**: Check which fields participate in duplicate matching. If you retain high-cardinality attributes like timestamps, request IDs, or user IDs, every log appears unique. Use the transform processor to normalize them or `exclude_fields` to remove log attributes from matching before deduplication.
 
 **Problem**: Important distinct errors are being deduplicated together.
 
-**Solution**: Add more attributes to your `log_record_key`. If different errors are being deduplicated because they have similar messages, include error type, error code, or stack trace hash in the deduplication key.
+**Solution**: Use `include_fields` with stable log attributes such as error type, error code, or stack trace hash. If those fields are not present, add them before deduplication.
 
 **Problem**: Collector memory usage is very high.
 
@@ -634,26 +596,19 @@ processors:
         action: delete
 
   # Deduplicate with timing info
-  logdedup:
-    log_record_key:
-      - resource["service.name"]
-      - resource["deployment.environment"]
-      - attributes["severity"]
-      - body
+  log_dedup:
     interval: 300s
-    count_attribute: "duplicate_count"
-    first_occurrence_attribute: "first_seen"
-    last_occurrence_attribute: "last_seen"
+    log_count_attribute: "duplicate_count"
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/logs
+  otlp_http:
+    logs_endpoint: https://oneuptime.com/otlp/v1/logs
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -666,12 +621,12 @@ service:
       processors:
         - memory_limiter
         - attributes/cleanup
-        - logdedup
+        - log_dedup
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-This configuration removes high-cardinality attributes, deduplicates logs with timing information, and exports to OneUptime. You can then query OneUptime to find logs with high duplicate counts, indicating persistent or high-frequency errors.
+This configuration removes high-cardinality attributes, deduplicates logs with count and observed timestamp information, and exports to OneUptime. You can then query OneUptime to find logs with high duplicate counts, indicating persistent or high-frequency errors.
 
 ## Related Resources
 
@@ -686,4 +641,4 @@ For more information on log processing and optimization in OpenTelemetry:
 
 The log dedup processor is essential for managing log volume in production systems. By eliminating duplicate log entries while preserving occurrence counts and timing information, it dramatically reduces storage costs and processing overhead without losing critical observability data.
 
-Configure it with appropriate log_record_key attributes based on your log structure, set reasonable time intervals balancing memory usage and deduplication effectiveness, and combine it with filtering and transformation processors for maximum efficiency. With OneUptime as your backend, you get a platform that efficiently stores deduplicated logs and makes duplicate counts queryable for identifying persistent issues.
+Configure it with appropriate `conditions`, `include_fields`, or `exclude_fields` based on your log structure, set reasonable time intervals balancing memory usage and deduplication effectiveness, and combine it with filtering and transformation processors for maximum efficiency. With OneUptime as your backend, you get a platform that efficiently stores deduplicated logs and makes duplicate counts queryable for identifying persistent issues.
