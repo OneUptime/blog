@@ -15,9 +15,10 @@ Here is a job processing system that routes jobs to per-tenant queues and instru
 ```python
 # job_processor.py
 
-from opentelemetry import trace, metrics, context
+from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode, Link
 import json
+import time
 
 tracer = trace.get_tracer("jobs.processor")
 meter = metrics.get_meter("jobs.processor")
@@ -80,6 +81,7 @@ class TenantJobQueue:
                 "enqueued_at": time.time(),
                 "trace_id": format(span_context.trace_id, '032x'),
                 "span_id": format(span_context.span_id, '016x'),
+                "trace_flags": int(span_context.trace_flags),
             }
 
             # Route to tenant-specific queue with priority
@@ -105,10 +107,25 @@ class TenantJobQueue:
 
 ## Fair Scheduling Worker
 
-The worker uses weighted fair queuing to prevent any single tenant from monopolizing the processor:
+The worker uses tenant-aware fair scheduling to prevent any single tenant from monopolizing the processor:
 
 ```python
 # job_worker.py
+import asyncio
+import json
+import time
+
+from opentelemetry import trace
+from opentelemetry.trace import Link, StatusCode, TraceFlags
+
+from job_processor import (
+    job_duration,
+    job_processed,
+    job_queue_depth,
+    job_wait_time,
+    tracer,
+)
+
 class FairSchedulingWorker:
     def __init__(self, redis_client, max_concurrent_per_tenant: int = 5):
         self.redis = redis_client
@@ -132,6 +149,7 @@ class FairSchedulingWorker:
                 job_data = await self.redis.rpop(queue_name)
                 if job_data:
                     job = json.loads(job_data)
+                    self.tenant_semaphores[tenant_id] = current + 1
                     asyncio.create_task(self._process_job(job))
 
     async def _process_job(self, job: dict):
@@ -141,6 +159,7 @@ class FairSchedulingWorker:
             trace_id=int(job["trace_id"], 16),
             span_id=int(job["span_id"], 16),
             is_remote=True,
+            trace_flags=TraceFlags(job.get("trace_flags", TraceFlags.DEFAULT)),
         )
 
         wait_time = (time.time() - job["enqueued_at"]) * 1000
@@ -156,9 +175,6 @@ class FairSchedulingWorker:
                 "job.wait_time_ms": wait_time,
             }
         ) as span:
-            self.tenant_semaphores[job["tenant_id"]] = \
-                self.tenant_semaphores.get(job["tenant_id"], 0) + 1
-
             job_wait_time.record(wait_time, {
                 "tenant.id": job["tenant_id"],
                 "job.type": job["type"],
