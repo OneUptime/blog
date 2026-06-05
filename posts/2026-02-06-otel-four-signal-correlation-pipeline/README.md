@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Four Signals, Correlation, Collector, Profiling
 
 Description: Build a single OpenTelemetry Collector pipeline that receives, correlates, and exports traces, metrics, logs, and profiles together.
 
-The OpenTelemetry Collector has evolved from handling just traces to supporting all four observability signals: traces, metrics, logs, and profiles. Running a single collector that receives all four signals means you can correlate them in the pipeline itself, using connectors to derive metrics from traces, enrich logs with trace context, and link profiles to spans. This post shows how to build that four-signal pipeline.
+The OpenTelemetry Collector has evolved from handling just traces to supporting all four observability signals: traces, metrics, logs, and profiles. Profiles support is still gated in the Collector, so enable `service.profilesSupport` when you run a profile pipeline. Running a single collector that receives all four signals means you can correlate them in the pipeline itself, using connectors to derive metrics from traces, enrich logs with trace context, and link profiles to spans. This post shows how to build that four-signal pipeline.
 
 ## Architecture Overview
 
@@ -43,7 +43,7 @@ receivers:
 
 connectors:
   # Generate RED metrics from trace spans
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
@@ -56,7 +56,7 @@ connectors:
     metrics_flush_interval: 15s
 
   # Build service dependency graph from traces
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [5ms, 10ms, 50ms, 100ms, 500ms, 1s, 5s]
     dimensions:
       - http.request.method
@@ -81,10 +81,6 @@ processors:
   batch/logs:
     send_batch_size: 1024
     timeout: 5s
-
-  batch/profiles:
-    send_batch_size: 256
-    timeout: 10s
 
   # Ensure consistent resource attributes across all signals
   resource/normalize:
@@ -123,7 +119,7 @@ processors:
 exporters:
   # Traces to Tempo
   otlp/traces:
-    endpoint: "http://tempo:4317"
+    endpoint: "tempo:4317"
     tls:
       insecure: true
     sending_queue:
@@ -144,7 +140,7 @@ exporters:
       insecure: true
 
   # Logs to Loki
-  otlp/logs:
+  otlp_http/logs:
     endpoint: "http://loki:3100/otlp"
     tls:
       insecure: true
@@ -154,7 +150,7 @@ exporters:
 
   # Profiles to Pyroscope
   otlp/profiles:
-    endpoint: "http://pyroscope:4040"
+    endpoint: "pyroscope:4040"
     tls:
       insecure: true
 
@@ -169,18 +165,23 @@ service:
     logs:
       level: info
     metrics:
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 
   pipelines:
     # Trace pipeline
     traces:
       receivers: [otlp]
       processors: [memory_limiter, filter/health, resource/normalize, batch/traces]
-      exporters: [otlp/traces, spanmetrics, servicegraph]
+      exporters: [otlp/traces, span_metrics, service_graph]
 
     # Metric pipeline (receives both app metrics AND connector-generated metrics)
     metrics:
-      receivers: [otlp, spanmetrics, servicegraph]
+      receivers: [otlp, span_metrics, service_graph]
       processors: [memory_limiter, resource/normalize, batch/metrics]
       exporters: [prometheusremotewrite]
 
@@ -188,12 +189,12 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, transform/logs, resource/normalize, batch/logs]
-      exporters: [otlp/logs]
+      exporters: [otlp_http/logs]
 
     # Profile pipeline
     profiles:
       receivers: [otlp]
-      processors: [memory_limiter, batch/profiles]
+      processors: [memory_limiter]
       exporters: [otlp/profiles]
 ```
 
@@ -213,27 +214,29 @@ Log records with trace_id attributes get their OTLP trace context fields populat
 **Profiles to Traces (via shared resource attributes):**
 Profiles carry the same `service.name` and can be filtered by trace ID if your profiling agent supports it.
 
-## SDK Configuration for Four Signals
+## SDK Configuration for Application Signals
 
-Your application SDK needs to send all four signals to the collector:
+Your application SDK needs to send traces, metrics, and logs to the collector. Profiles usually come from a profiling agent or runtime-specific profiler that exports OTLP profiles to the same collector:
 
 ```yaml
 # otel-config.yaml (application side)
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
   sampler:
     parent_based:
       root:
@@ -246,20 +249,20 @@ meter_provider:
     - periodic:
         interval: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://otel-collector:4317"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Kubernetes Deployment
@@ -285,7 +288,9 @@ spec:
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:latest
-          args: ["--config=/etc/otel/collector-config.yaml"]
+          args:
+            - "--config=/etc/otel/collector-config.yaml"
+            - "--feature-gates=service.profilesSupport"
           ports:
             - containerPort: 4317  # gRPC
             - containerPort: 4318  # HTTP
@@ -312,15 +317,15 @@ The collector exposes its own metrics on port 8888. Monitor these to ensure your
 
 ```promql
 # Accepted spans per second
-rate(otelcol_receiver_accepted_spans[5m])
+rate(otelcol_receiver_accepted_spans_total[5m])
 
 # Dropped spans (indicates backpressure)
-rate(otelcol_receiver_refused_spans[5m])
+rate(otelcol_receiver_refused_spans_total[5m])
 
 # Export failures
-rate(otelcol_exporter_send_failed_spans[5m])
-rate(otelcol_exporter_send_failed_metric_points[5m])
-rate(otelcol_exporter_send_failed_log_records[5m])
+rate(otelcol_exporter_send_failed_spans_total[5m])
+rate(otelcol_exporter_send_failed_metric_points_total[5m])
+rate(otelcol_exporter_send_failed_log_records_total[5m])
 
 # Queue utilization
 otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
