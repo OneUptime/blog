@@ -17,14 +17,14 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "grafana" {
   url  = var.grafana_url
-  auth = var.grafana_api_key
+  auth = var.grafana_service_account_token
 }
 
 variable "grafana_url" {
@@ -32,7 +32,7 @@ variable "grafana_url" {
   default = "https://grafana.internal:3000"
 }
 
-variable "grafana_api_key" {
+variable "grafana_service_account_token" {
   type      = string
   sensitive = true
 }
@@ -45,22 +45,31 @@ First, set up the Tempo data source for traces and Prometheus for OTel metrics:
 ```hcl
 # datasources.tf
 
+locals {
+  datasource_uids = {
+    tempo      = "otel-tempo"
+    prometheus = "otel-prometheus"
+    loki       = "otel-loki"
+  }
+}
+
 resource "grafana_data_source" "tempo" {
   type = "tempo"
   name = "OpenTelemetry Traces"
+  uid  = local.datasource_uids.tempo
   url  = "http://tempo:3200"
 
   json_data_encoded = jsonencode({
     tracesToLogsV2 = {
-      datasourceUid = grafana_data_source.loki.uid
+      datasourceUid = local.datasource_uids.loki
       filterByTraceID = true
       filterBySpanID  = true
     }
     tracesToMetrics = {
-      datasourceUid = grafana_data_source.prometheus.uid
+      datasourceUid = local.datasource_uids.prometheus
     }
     serviceMap = {
-      datasourceUid = grafana_data_source.prometheus.uid
+      datasourceUid = local.datasource_uids.prometheus
     }
   })
 }
@@ -68,11 +77,12 @@ resource "grafana_data_source" "tempo" {
 resource "grafana_data_source" "prometheus" {
   type = "prometheus"
   name = "OpenTelemetry Metrics"
+  uid  = local.datasource_uids.prometheus
   url  = "http://prometheus:9090"
 
   json_data_encoded = jsonencode({
     exemplarTraceIdDestinations = [{
-      datasourceUid = grafana_data_source.tempo.uid
+      datasourceUid = local.datasource_uids.tempo
       name          = "trace_id"
     }]
   })
@@ -81,11 +91,12 @@ resource "grafana_data_source" "prometheus" {
 resource "grafana_data_source" "loki" {
   type = "loki"
   name = "OpenTelemetry Logs"
+  uid  = local.datasource_uids.loki
   url  = "http://loki:3100"
 
   json_data_encoded = jsonencode({
     derivedFields = [{
-      datasourceUid = grafana_data_source.tempo.uid
+      datasourceUid = local.datasource_uids.tempo
       matcherRegex  = "trace_id=(\\w+)"
       name          = "TraceID"
       url           = "$${__value.raw}"
@@ -142,7 +153,7 @@ resource "grafana_dashboard" "service" {
         gridPos  = { h = 8, w = 12, x = 0, y = 0 }
         datasource = { uid = var.prometheus_uid }
         targets = [{
-          expr = "sum(rate(http_server_request_duration_seconds_count{service_name=\"${var.service_name}\"}[5m]))"
+          expr = "sum(rate(http_server_request_duration_seconds_count{job=\"${var.service_name}\"}[5m]))"
           legendFormat = "requests/sec"
         }]
       },
@@ -154,7 +165,7 @@ resource "grafana_dashboard" "service" {
         gridPos  = { h = 8, w = 12, x = 12, y = 0 }
         datasource = { uid = var.prometheus_uid }
         targets = [{
-          expr = "sum(rate(http_server_request_duration_seconds_count{service_name=\"${var.service_name}\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"${var.service_name}\"}[5m])) * 100"
+          expr = "sum(rate(http_server_request_duration_seconds_count{job=\"${var.service_name}\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{job=\"${var.service_name}\"}[5m])) * 100"
           legendFormat = "error %"
         }]
         fieldConfig = {
@@ -178,15 +189,15 @@ resource "grafana_dashboard" "service" {
         datasource = { uid = var.prometheus_uid }
         targets = [
           {
-            expr = "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"${var.service_name}\"}[5m])) by (le))"
+            expr = "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket{job=\"${var.service_name}\"}[5m])) by (le))"
             legendFormat = "p50"
           },
           {
-            expr = "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"${var.service_name}\"}[5m])) by (le))"
+            expr = "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{job=\"${var.service_name}\"}[5m])) by (le))"
             legendFormat = "p95"
           },
           {
-            expr = "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"${var.service_name}\"}[5m])) by (le))"
+            expr = "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job=\"${var.service_name}\"}[5m])) by (le))"
             legendFormat = "p99"
           }
         ]
@@ -200,7 +211,7 @@ resource "grafana_dashboard" "service" {
         datasource = { uid = var.tempo_uid }
         targets = [{
           queryType = "traceql"
-          query = "{ resource.service.name = \"${var.service_name}\" } | select(duration, status)"
+          query = "{ resource.service.name = \"${var.service_name}\" } | select(span:duration, span:status)"
           limit = 20
         }]
       }
