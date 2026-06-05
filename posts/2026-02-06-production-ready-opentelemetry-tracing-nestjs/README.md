@@ -47,7 +47,8 @@ npm install @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
             @opentelemetry/exporter-trace-otlp-http \
             @opentelemetry/resources \
-            @opentelemetry/semantic-conventions
+            @opentelemetry/semantic-conventions \
+            @opentelemetry/sdk-trace-base
 ```
 
 ## Creating the Tracing Configuration Module
@@ -60,26 +61,34 @@ Create a dedicated configuration file that handles all tracing setup. This keeps
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
-import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_NAMESPACE,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
+import {
+  BatchSpanProcessor,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 export class TracingConfig {
   private sdk: NodeSDK;
 
   constructor() {
     // Define service resource with metadata
-    const resource = new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'nestjs-app',
-      [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
-      [SemanticResourceAttributes.SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'nestjs-app',
+      [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
+      [ATTR_SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
     });
 
     // Configure OTLP exporter with retry and timeout settings
     const traceExporter = new OTLPTraceExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+      url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
       headers: {
         // Add authentication if needed
         'Authorization': process.env.OTEL_EXPORTER_AUTH_HEADER || '',
@@ -100,7 +109,7 @@ export class TracingConfig {
 
     this.sdk = new NodeSDK({
       resource,
-      spanProcessor,
+      spanProcessors: [spanProcessor],
       sampler,
       instrumentations: [
         getNodeAutoInstrumentations({
@@ -109,7 +118,10 @@ export class TracingConfig {
           },
           '@opentelemetry/instrumentation-http': {
             enabled: true,
-            ignoreIncomingPaths: ['/health', '/metrics', '/ready'],
+            ignoreIncomingRequestHook: (request) => {
+              const url = request.url || '';
+              return url === '/health' || url === '/metrics' || url === '/ready';
+            },
           },
           '@opentelemetry/instrumentation-express': {
             enabled: true,
@@ -136,11 +148,6 @@ export class TracingConfig {
     try {
       await this.sdk.start();
       console.log('OpenTelemetry tracing initialized successfully');
-
-      // Graceful shutdown on process termination
-      process.on('SIGTERM', async () => {
-        await this.shutdown();
-      });
     } catch (error) {
       console.error('Failed to initialize OpenTelemetry:', error);
       // Don't crash the app if tracing fails
@@ -229,7 +236,7 @@ SERVICE_NAMESPACE=production
 NODE_ENV=production
 
 # OpenTelemetry collector endpoint
-OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example.com:4318/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.example.com:4318/v1/traces
 
 # Authentication (if needed)
 OTEL_EXPORTER_AUTH_HEADER=Bearer your-token-here
@@ -330,7 +337,7 @@ Add metrics to monitor your tracing infrastructure:
 ```typescript
 // src/tracing/tracing-metrics.ts
 
-import { trace } from '@opentelemetry/api';
+import { getTracingInstance } from './tracing';
 
 export class TracingMetrics {
   private static spanCount = 0;
@@ -348,7 +355,7 @@ export class TracingMetrics {
     return {
       totalSpans: this.spanCount,
       exportErrors: this.exportErrors,
-      tracingActive: trace.getTracer('default') !== undefined,
+      tracingActive: getTracingInstance() !== null,
     };
   }
 
