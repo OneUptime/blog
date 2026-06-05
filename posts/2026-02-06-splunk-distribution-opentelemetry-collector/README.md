@@ -18,9 +18,9 @@ The Splunk distribution bundles the standard OTel Collector components plus seve
 
 - **SignalFx Exporter** for metrics to Splunk Observability Cloud
 - **Splunk HEC Exporter** for logs to Splunk Enterprise/Cloud
-- **Splunk APM Exporter** for traces
+- **OTLP HTTP Exporter** for traces to Splunk APM
 - **Smart Agent Receiver** for backward compatibility with the older Splunk Smart Agent
-- **Fluentd integration** for log collection
+- **File log and Fluent Forward receivers** for log collection
 - Pre-configured host metrics collection
 - Auto-discovery for common services
 
@@ -28,7 +28,7 @@ The Splunk distribution bundles the standard OTel Collector components plus seve
 flowchart TD
     A[Applications] -->|OTLP| B[Splunk OTel Collector]
     C[Infrastructure] -->|Host Metrics| B
-    D[Logs] -->|Fluentd / Filelog| B
+    D[Logs] -->|Filelog / Fluent Forward| B
     B --> E[Splunk Observability Cloud]
     B --> F[Splunk Enterprise / Cloud]
     B --> G[Splunk APM]
@@ -39,18 +39,17 @@ flowchart TD
 
 ### Linux Installer Script
 
-Splunk provides a one-liner installer that handles everything. It sets up the collector, Fluentd for log collection, and auto-instrumentation:
+Splunk provides a one-liner installer that sets up the collector and systemd services. You can also use installer flags to enable discovery and zero-code instrumentation:
 
 ```bash
 # Download and run the Splunk OTel Collector installer
 
 # This configures the collector, sets up systemd services, and starts collection
-curl -sSL https://dl.signalfx.com/splunk-otel-collector.sh > /tmp/splunk-otel-collector.sh
+curl -sSL https://dl.observability.splunkcloud.com/splunk-otel-collector.sh > /tmp/splunk-otel-collector.sh
 sudo sh /tmp/splunk-otel-collector.sh \
   --realm us1 \
   --memory 512 \
-  --access-token YOUR_SPLUNK_ACCESS_TOKEN \
-  --with-fluentd
+  -- YOUR_SPLUNK_ACCESS_TOKEN
 ```
 
 The `--realm` flag sets your Splunk Observability Cloud realm (us0, us1, eu0, etc.). The `--memory` flag sets the memory limit in MiB.
@@ -90,8 +89,7 @@ helm install splunk-otel-collector splunk-otel-collector-chart/splunk-otel-colle
   --set distribution=eks \
   --set splunkObservability.accessToken=YOUR_TOKEN \
   --set splunkObservability.realm=us1 \
-  --set clusterName=my-cluster \
-  --set splunkObservability.logsEnabled=true
+  --set clusterName=my-cluster
 ```
 
 ## Configuration Deep Dive
@@ -116,7 +114,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
   # Collect host-level metrics (CPU, memory, disk, network)
-  hostmetrics:
+  host_metrics:
     collection_interval: 10s
     scrapers:
       cpu:
@@ -134,10 +132,6 @@ receivers:
     type: collectd/nginx
     host: localhost
     port: 8080
-
-  # Collect Kubernetes events when running in k8s
-  signalfx:
-    endpoint: 0.0.0.0:9943
 
 processors:
   # Batch data to reduce export calls
@@ -166,9 +160,10 @@ processors:
 
 exporters:
   # Send traces to Splunk APM
-  sapm:
-    access_token: "${SPLUNK_ACCESS_TOKEN}"
-    endpoint: "https://ingest.${SPLUNK_REALM}.signalfx.com/v2/trace"
+  otlp_http:
+    traces_endpoint: "https://ingest.${SPLUNK_REALM}.observability.splunkcloud.com/v2/trace/otlp"
+    headers:
+      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
 
   # Send metrics to Splunk Infrastructure Monitoring
   signalfx:
@@ -178,7 +173,7 @@ exporters:
   # Send logs to Splunk Cloud or Enterprise via HEC
   splunk_hec:
     token: "${SPLUNK_HEC_TOKEN}"
-    endpoint: "https://input-${SPLUNK_REALM}.splunkcloud.com:8088"
+    endpoint: "${SPLUNK_HEC_URL}"
     source: "otel"
     sourcetype: "otel"
     index: "main"
@@ -188,9 +183,9 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, k8sattributes, batch]
-      exporters: [sapm]
+      exporters: [otlp_http]
     metrics:
-      receivers: [otlp, hostmetrics, signalfx]
+      receivers: [otlp, host_metrics]
       processors: [memory_limiter, resourcedetection, k8sattributes, batch]
       exporters: [signalfx]
     logs:
@@ -214,15 +209,6 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
-  # Receive SAPM traces from agents
-  sapm:
-    endpoint: 0.0.0.0:7276
-
-  # Receive SignalFx metrics from agents
-  signalfx:
-    endpoint: 0.0.0.0:9943
-
 processors:
   batch:
     timeout: 10s
@@ -244,9 +230,10 @@ processors:
           sampling_percentage: 10
 
 exporters:
-  sapm:
-    access_token: "${SPLUNK_ACCESS_TOKEN}"
-    endpoint: "https://ingest.${SPLUNK_REALM}.signalfx.com/v2/trace"
+  otlp_http:
+    traces_endpoint: "https://ingest.${SPLUNK_REALM}.observability.splunkcloud.com/v2/trace/otlp"
+    headers:
+      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
 
   signalfx:
     access_token: "${SPLUNK_ACCESS_TOKEN}"
@@ -254,16 +241,16 @@ exporters:
 
   splunk_hec:
     token: "${SPLUNK_HEC_TOKEN}"
-    endpoint: "https://input-${SPLUNK_REALM}.splunkcloud.com:8088"
+    endpoint: "${SPLUNK_HEC_URL}"
 
 service:
   pipelines:
     traces:
-      receivers: [otlp, sapm]
+      receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [sapm]
+      exporters: [otlp_http]
     metrics:
-      receivers: [otlp, signalfx]
+      receivers: [otlp]
       processors: [batch]
       exporters: [signalfx]
     logs:
@@ -341,12 +328,13 @@ You can export to Splunk and a second OTLP backend at the same time:
 ```yaml
 exporters:
   # Splunk APM for traces
-  sapm:
-    access_token: "${SPLUNK_ACCESS_TOKEN}"
-    endpoint: "https://ingest.${SPLUNK_REALM}.signalfx.com/v2/trace"
+  otlp_http:
+    traces_endpoint: "https://ingest.${SPLUNK_REALM}.observability.splunkcloud.com/v2/trace/otlp"
+    headers:
+      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
 
   # Also send traces to OneUptime via OTLP
-  otlphttp/oneuptime:
+  otlp_http/oneuptime:
     endpoint: "https://otlp.oneuptime.com"
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
@@ -357,7 +345,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       # Export to both backends simultaneously
-      exporters: [sapm, otlphttp/oneuptime]
+      exporters: [otlp_http, otlp_http/oneuptime]
 ```
 
 ## Splunk Distribution vs Upstream Collector
@@ -366,10 +354,10 @@ service:
 |---------|-------------------|-----------------|
 | Smart Agent receiver | Yes | No |
 | Pre-built Splunk dashboards | Yes | No |
-| Fluentd integration | Bundled | Manual setup |
+| File log and Fluent Forward receivers | Included | Included in contrib |
 | Auto-discovery | Yes | Limited |
 | Installer scripts | Yes (Linux, Windows) | Manual |
-| SAPM exporter | Included | In contrib |
+| OTLP HTTP exporter for Splunk APM | Included | Included |
 | Splunk HEC exporter | Included | In contrib |
 | Support | Splunk support | Community |
 
