@@ -89,11 +89,11 @@ The entrypoint script captures the environment before starting cron:
 #!/bin/bash
 # entrypoint.sh - Capture environment and start cron
 
-# Dump all current environment variables to a file
-# This makes them available to cron jobs
-printenv | grep -v "no_proxy" >> /etc/environment
+# Dump current environment variables as shell exports
+# This makes them available to cron jobs after they source the file
+printenv | grep -v "no_proxy" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g; s/^\([^=]*\)=\(.*\)$/export \1="\2"/' > /etc/cron.env
 
-# Start cron in the foreground
+# Start cron, then keep the container alive by following the cron log
 cron && tail -f /var/log/cron.log
 ```
 
@@ -101,7 +101,7 @@ Update your crontab to source the environment file:
 
 ```text
 # crontab - Source environment variables before running the job
-0 * * * * . /etc/environment; /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1
+0 * * * * . /etc/cron.env; /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1
 
 ```
 
@@ -211,24 +211,25 @@ COPY crontab /etc/crontabs/root
 
 # Alpine's crond runs in foreground with -f flag
 # -l 2 sets log level (0=most verbose, 8=least)
-CMD ["crond", "-f", "-l", "2"]
+# -d 8 sends crond logs to stderr
+CMD ["crond", "-f", "-l", "2", "-d", "8"]
 ```
 
 The crontab file for Alpine goes in `/etc/crontabs/root`:
 
 ```text
 # Alpine crontab format is the same
-*/5 * * * * /usr/local/bin/health-check.sh
-0 2 * * * /usr/local/bin/cleanup.sh
+*/5 * * * * /usr/local/bin/health-check.sh >> /proc/1/fd/1 2>> /proc/1/fd/2
+0 2 * * * /usr/local/bin/cleanup.sh >> /proc/1/fd/1 2>> /proc/1/fd/2
 ```
 
-Alpine's crond sends output to the container's stderr by default, so you can view it with `docker logs` without needing to tail a log file. This is actually a better approach for container environments.
+With the job output redirected to PID 1's stdout and stderr, you can view it with `docker logs` without needing to tail a log file. This is a better approach for container environments.
 
 ## Logging Best Practices
 
 In containers, logs should go to stdout/stderr so Docker's logging driver can capture them. Tailing a log file works but is not ideal.
 
-A better logging approach using named pipes:
+A better logging approach redirects job output to the container's stdout and stderr:
 
 ```dockerfile
 # Cron with proper stdout logging
@@ -255,14 +256,19 @@ The improved entrypoint:
 # entrypoint.sh - Cron with stdout logging
 
 # Capture environment for cron jobs
-printenv | grep -v "no_proxy" >> /etc/environment
+printenv | grep -v "no_proxy" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g; s/^\([^=]*\)=\(.*\)$/export \1="\2"/' > /etc/cron.env
 
 # Start cron
 cron
 
-# Follow the syslog for cron entries (shows job execution)
-tail -f /var/log/syslog 2>/dev/null || tail -f /var/log/cron.log 2>/dev/null || \
-    echo "No log file found, waiting..." && sleep infinity
+# Keep the container running; cron job output is redirected in the crontab
+tail -f /dev/null
+```
+
+Update your crontab entries to redirect output to Docker's captured streams:
+
+```text
+0 * * * * . /etc/cron.env; /usr/local/bin/backup.sh >> /proc/1/fd/1 2>> /proc/1/fd/2
 ```
 
 ## Adding Health Checks
@@ -272,6 +278,11 @@ A health check verifies that crond is still running inside the container.
 Add a health check that verifies the cron daemon is alive:
 
 ```dockerfile
+# Install procps if your image does not already include pgrep
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends procps && \
+    rm -rf /var/lib/apt/lists/*
+
 # Health check to verify cron daemon is running
 HEALTHCHECK --interval=60s --timeout=5s --start-period=10s --retries=3 \
     CMD pgrep cron > /dev/null || exit 1
