@@ -165,7 +165,10 @@ class ErrorChainAnalyzer:
                             "error.is_root_cause", False
                         ),
                         span_id=span.get("spanId", ""),
-                        timestamp=span.get("startTimeUnixNano", 0),
+                        timestamp=event.get(
+                            "timeUnixNano",
+                            span.get("startTimeUnixNano", 0)
+                        ),
                     )
                     error_nodes.append(node)
 
@@ -192,6 +195,10 @@ class ErrorChainAnalyzer:
     def format_chain(self, chain):
         """Format the error chain for human reading."""
         lines = [f"Error Chain for trace {chain.trace_id}:"]
+        if not chain.root_cause:
+            lines.append("No error spans found.")
+            return "\n".join(lines)
+
         lines.append(f"Root cause: {chain.root_cause.service} - "
                       f"{chain.root_cause.exception_type}")
         lines.append("")
@@ -217,7 +224,7 @@ If you use Grafana Tempo, you can find traces with multiple error spans using Tr
   >> { status = error && resource.service.name = "payment-service" }
 ```
 
-This query finds traces where errors propagated from the payment service through the order service to the API gateway.
+This query finds traces where the API gateway has an error span with downstream error spans in the order service and payment service, matching the call path where the payment failure propagated back up to the API gateway.
 
 ## Visualizing Propagation
 
