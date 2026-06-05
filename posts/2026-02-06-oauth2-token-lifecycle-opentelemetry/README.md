@@ -68,6 +68,7 @@ active_tokens = meter.create_up_down_counter(
 import jwt
 import time
 import secrets
+from opentelemetry.trace import Status, StatusCode
 
 class OAuth2TokenService:
     def issue_token(self, client_id: str, user_id: str, scopes: list,
@@ -133,7 +134,7 @@ class OAuth2TokenService:
 Refresh operations are particularly important to monitor because token theft often manifests as unexpected refresh attempts:
 
 ```python
-    def refresh_token(self, refresh_token: str, client_id: str) -> dict:
+    async def refresh_token(self, refresh_token: str, client_id: str) -> dict:
         """Refresh an access token using a refresh token."""
         with tracer.start_as_current_span(
             "oauth2.token.refresh",
@@ -145,7 +146,7 @@ Refresh operations are particularly important to monitor because token theft oft
             token_data = get_refresh_token_data(refresh_token)
 
             if not token_data:
-                span.set_status(StatusCode.ERROR, "Invalid refresh token")
+                span.set_status(Status(StatusCode.ERROR, "Invalid refresh token"))
                 span.set_attribute("oauth2.refresh.error", "invalid_token")
                 token_validated.add(1, {
                     "oauth2.client_id": client_id,
@@ -252,7 +253,7 @@ async def validate_token_middleware(request: Request, call_next):
         with tracer.start_as_current_span("oauth2.token.validate") as span:
             try:
                 claims = jwt.decode(token, public_key, algorithms=["RS256"])
-                span.set_attribute("oauth2.client_id", claims.get("client_id"))
+                span.set_attribute("oauth2.client_id", claims.get("client_id", "unknown"))
                 span.set_attribute("oauth2.token_age",
                                  time.time() - claims.get("iat", 0))
 
