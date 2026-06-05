@@ -14,12 +14,12 @@ OpenTelemetry provides a way to collect PersistentVolume performance data from m
 
 ## Understanding PersistentVolume Metrics
 
-Kubernetes itself exposes limited storage metrics. The kubelet provides volume stats for mounted PVCs through the `/metrics` and `/stats/summary` endpoints. These include capacity, available space, and inode counts. For deeper metrics like IOPS and latency, you need to pull from the node level or the storage provider.
+Kubernetes itself exposes limited storage metrics. The kubelet provides volume stats for mounted PVCs through the `/stats/summary` endpoint, and also exposes Prometheus-format volume stats from its metrics endpoint. These include capacity, available space, and inode counts. For deeper metrics like IOPS and latency, you need to pull from the node level or the storage provider.
 
 ```mermaid
 flowchart TB
     subgraph "Metrics Sources"
-        A[Kubelet /metrics/resource]
+        A[Kubelet metrics endpoint]
         B[Kubelet /stats/summary]
         C[Node /proc/diskstats]
         D[CSI Driver Metrics]
@@ -46,7 +46,7 @@ flowchart TB
 
 ## Step 1: Collect Kubelet Volume Metrics
 
-The kubelet stats receiver in the OpenTelemetry Collector pulls volume statistics directly from the kubelet. It gives you PVC capacity, used space, available space, and inode metrics.
+The kubelet stats receiver in the OpenTelemetry Collector pulls volume statistics directly from the kubelet. It gives you PVC capacity, available space, and inode metrics; used space can be computed from capacity minus available space.
 
 This configuration sets up the kubelet stats receiver to collect volume metrics from the local kubelet. The receiver authenticates using the service account token.
 
@@ -125,6 +125,7 @@ receivers:
   # Host metrics for disk I/O performance
   hostmetrics:
     collection_interval: 30s
+    root_path: /hostfs
     scrapers:
       # Disk I/O metrics from /proc/diskstats
       disk:
@@ -132,9 +133,9 @@ receivers:
         # Adjust these patterns for your storage setup
         include:
           devices:
-            - "sd*"    # SCSI disks
-            - "nvme*"  # NVMe disks
-            - "xvd*"   # AWS EBS volumes
+            - "sd.*"    # SCSI disks
+            - "nvme.*"  # NVMe disks
+            - "xvd.*"   # AWS EBS volumes
           match_type: regexp
       # Filesystem capacity and usage
       filesystem:
@@ -143,7 +144,7 @@ receivers:
             - ext4
             - xfs
           mount_points:
-            - "/var/lib/kubelet/pods/*"
+            - "/var/lib/kubelet/pods/.*"
           match_type: regexp
 ```
 
@@ -159,12 +160,12 @@ The host metrics receiver produces these performance metrics:
 
 One challenge is connecting node-level disk metrics to specific PersistentVolumes. The host metrics receiver gives you device names like `sda` or `nvme0n1p1`, but you need to know which PVC they belong to.
 
-The approach depends on your storage driver. For CSI drivers, you can often map the volume handle to a device using attributes. Here is a transform processor configuration that helps correlate the data.
+The approach depends on your storage driver. For CSI drivers, you can often map the volume handle to a device using attributes from the driver or cloud provider. The Kubernetes attributes processor can add pod metadata to telemetry that already has a pod IP or UID; it does not automatically map a raw block device to a PVC by itself.
 
 ```yaml
-# Transform processor to add PV context to disk metrics
+# Kubernetes attributes processor for pod-level correlation
 processors:
-  # Use the k8s attributes processor to link disk devices to pods
+  # Add Kubernetes metadata when telemetry already has a pod UID or IP.
   k8sattributes:
     auth_type: "serviceAccount"
     extract:
@@ -176,25 +177,16 @@ processors:
       - sources:
           - from: resource_attribute
             name: k8s.pod.uid
-
-  # Add computed metrics for easier alerting
-  transform:
-    metric_statements:
-      - context: datapoint
-        statements:
-          # Calculate volume usage percentage from kubelet stats
-          # Helps set threshold-based alerts
-          - set(attributes["volume.usage_percent"],
-              (attributes["k8s.volume.capacity"] - attributes["k8s.volume.available"])
-              / attributes["k8s.volume.capacity"] * 100.0)
-            where resource.attributes["k8s.volume.capacity"] != nil
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
 ```
 
 ## Step 4: Deploy as a DaemonSet
 
 The collector needs to run on every node to collect both kubelet stats and host-level disk metrics. Here is the DaemonSet configuration with the necessary RBAC permissions.
 
-This deployment gives the collector access to the kubelet API and the host proc filesystem for disk metrics.
+This deployment gives the collector access to the kubelet API and the host filesystem for disk metrics.
 
 ```yaml
 # pv-monitor-daemonset.yaml
@@ -212,12 +204,20 @@ metadata:
 rules:
   # Access kubelet stats endpoint
   - apiGroups: [""]
-    resources: ["nodes/stats", "nodes/proxy"]
+    resources: ["nodes/stats"]
     verbs: ["get"]
+  # Required when extra_metadata_labels is enabled
+  - apiGroups: [""]
+    resources: ["nodes/pods"]
+    verbs: ["get"]
+  # Required when using the k8sattributes processor
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
   # Read PV and PVC information
   - apiGroups: [""]
-    resources: ["persistentvolumes", "persistentvolumeclaims", "pods"]
-    verbs: ["get", "list", "watch"]
+    resources: ["persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -249,7 +249,7 @@ spec:
       serviceAccountName: otel-pv-monitor
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           env:
             # Pass node IP for kubelet connection
@@ -260,10 +260,11 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
-            # Mount host proc for disk metrics
-            - name: proc
-              mountPath: /hostfs/proc
+            # Mount host filesystem for hostmetrics root_path
+            - name: hostfs
+              mountPath: /hostfs
               readOnly: true
+              mountPropagation: HostToContainer
           resources:
             requests:
               cpu: 100m
@@ -275,9 +276,9 @@ spec:
         - name: config
           configMap:
             name: otel-pv-monitor-config
-        - name: proc
+        - name: hostfs
           hostPath:
-            path: /proc
+            path: /
 ```
 
 ## Step 5: Build Alerts for Common Storage Issues
@@ -292,7 +293,7 @@ With metrics flowing, you should set up alerts for the storage problems that cat
 
 **IOPS throttling.** Cloud storage providers impose IOPS limits based on volume size and type. If your measured IOPS from `system.disk.operations` plateaus at the limit, you need a larger or faster volume.
 
-Here is a Prometheus-compatible recording rule you can generate from the collector metrics to make alerting easier.
+Here is a Prometheus-compatible alerting rule you can generate from the collector metrics to make alerting easier. The exact metric and label names depend on your Prometheus or OTLP translation settings; this example assumes dots are translated to underscores without unit suffixes and the relevant Kubernetes resource attributes are promoted to labels.
 
 ```yaml
 # Example alerting rules (for use with a Prometheus-compatible backend)
