@@ -31,15 +31,15 @@ graph TD
     G --> H{Memory Limit Reached?}
     H -->|No GOMEMLIMIT| I[OOM Kill]
     H -->|With GOMEMLIMIT| J[GC Pressure]
-    J --> K[Soft Limit: Drop Data]
-    K --> L[Hard Limit: Reject Data]
+    J --> K[Soft Limit: Refuse Data]
+    K --> L[Hard Limit: Force GC]
 ```
 
 Three layers of defense prevent OOM:
 
 1. **GOMEMLIMIT**: Tells Go runtime when to increase GC pressure
-2. **Memory Limiter Soft Limit**: Starts dropping data proactively
-3. **Memory Limiter Hard Limit**: Rejects new data completely
+2. **Memory Limiter Soft Limit**: Starts refusing data proactively
+3. **Memory Limiter Hard Limit**: Forces garbage collection while data is refused
 
 ## Setting Up GOMEMLIMIT
 
@@ -56,24 +56,30 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         env:
           # Set GOMEMLIMIT to 80% of container memory limit
           # If container limit is 2GB, set GOMEMLIMIT to ~1600MB
           - name: GOMEMLIMIT
             value: "1600MiB"
 
-          # Alternative: Use downward API to calculate dynamically
-          # This sets GOMEMLIMIT to 80% of memory limit automatically
-          - name: GOMEMLIMIT
-            valueFrom:
-              resourceFieldRef:
-                resource: limits.memory
-                divisor: "1.25"  # 1/0.8 = 1.25, gives us 80%
+          # Alternative: replace the fixed value above with the downward API.
+          # A memory resourceFieldRef without a suffix is exposed as bytes,
+          # which GOMEMLIMIT also accepts.
+          # valueFrom:
+          #   resourceFieldRef:
+          #     resource: limits.memory
+          #     divisor: "1.25"  # 1/0.8 = 1.25, gives us 80%
 
         resources:
           requests:
@@ -139,19 +145,19 @@ processors:
     # How often to check memory usage
     check_interval: 1s
 
-    # Soft limit (start refusing data)
-    # Set to 75% of GOMEMLIMIT
-    # If GOMEMLIMIT is 1600MiB, set to 1200MiB
+    # Hard limit for the Collector process heap
+    # Set below GOMEMLIMIT so the memory limiter acts first
+    # If GOMEMLIMIT is 1600MiB, start with 1200MiB
     limit_mib: 1200
 
     # Spike limit (temporary spike allowance)
     # Set to 20% of limit_mib
-    # Allows short bursts above the soft limit
+    # Soft limit = limit_mib - spike_limit_mib
     spike_limit_mib: 240
 
-    # Hard limit (calculated as limit_mib + spike_limit_mib)
-    # When memory exceeds hard limit, Collector refuses all new data
-    # Hard limit = 1200 + 240 = 1440 MiB
+    # Soft limit (calculated as limit_mib - spike_limit_mib)
+    # When memory exceeds the soft limit, Collector refuses new data
+    # Soft limit = 1200 - 240 = 960 MiB
 
   # Other processors follow memory limiter
   batch:
@@ -205,22 +211,21 @@ processors:
     # Recommended: 1s for production
     check_interval: 1s
 
-    # limit_mib: Soft limit in MiB
-    # When memory exceeds this, Collector starts refusing data
-    # Calculation: GOMEMLIMIT * 0.75
+    # limit_mib: Hard limit in MiB
+    # When memory exceeds this, Collector refuses data and forces GC
+    # Calculation: set below GOMEMLIMIT
     # Example: GOMEMLIMIT=1600MiB → limit_mib=1200
     limit_mib: 1200
 
     # spike_limit_mib: Temporary burst allowance
-    # Short spikes above limit_mib are allowed up to this amount
+    # Soft limit is limit_mib minus spike_limit_mib
     # Calculation: limit_mib * 0.20
-    # Example: limit_mib=1200 → spike_limit_mib=240
+    # Example: limit_mib=1200 and spike_limit_mib=240 → soft limit=960
     spike_limit_mib: 240
 
     # limit_percentage: Alternative to limit_mib
-    # Percentage of total system memory to use as limit
-    # Only use this if you control the entire system
-    # Not recommended in containers
+    # Percentage of total available memory to use as the hard limit
+    # Useful in containers where cgroup memory limits are available
     # limit_percentage: 75
 
     # spike_limit_percentage: Alternative to spike_limit_mib
@@ -257,7 +262,7 @@ spec:
       # Use init container to validate configuration
       initContainers:
       - name: validate-config
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         command: ["/otelcol-contrib"]
         args: ["validate", "--config=/etc/otel-collector/config.yaml"]
         volumeMounts:
@@ -266,7 +271,7 @@ spec:
 
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         command: ["/otelcol-contrib"]
         args: ["--config=/etc/otel-collector/config.yaml"]
 
@@ -354,9 +359,10 @@ data:
       # Memory limiter MUST be first processor
       memory_limiter:
         check_interval: 1s
-        # 75% of GOMEMLIMIT (3200 * 0.75 = 2400)
+        # Hard memory limiter threshold below GOMEMLIMIT
         limit_mib: 2400
         # 20% of limit_mib (2400 * 0.20 = 480)
+        # Soft limit = 2400 - 480 = 1920 MiB
         spike_limit_mib: 480
 
       # Batch processor to reduce export frequency
@@ -366,8 +372,8 @@ data:
         send_batch_max_size: 2048
 
       # Resource detection for better observability
-      resourcedetection:
-        detectors: [env, system, docker, k8s]
+      resource_detection:
+        detectors: [env, system, docker]
         timeout: 5s
 
     exporters:
@@ -408,17 +414,17 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, batch, resourcedetection]
+          processors: [memory_limiter, batch, resource_detection]
           exporters: [otlp]
 
         metrics:
           receivers: [otlp, prometheus]
-          processors: [memory_limiter, batch, resourcedetection]
+          processors: [memory_limiter, batch, resource_detection]
           exporters: [otlp, prometheus]
 
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, batch, resourcedetection]
+          processors: [memory_limiter, batch, resource_detection]
           exporters: [otlp]
 
       # Configure telemetry for the Collector itself
@@ -427,7 +433,12 @@ data:
           level: info
         metrics:
           level: detailed
-          address: 0.0.0.0:8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 ```
 
 ## Monitoring Memory Usage
@@ -438,10 +449,9 @@ Monitor these metrics to validate your memory configuration:
 # Key metrics to monitor
 metrics:
   # Go runtime metrics
-  - runtime.go.mem.heap_alloc  # Current heap memory
-  - runtime.go.mem.heap_sys    # Total heap memory from OS
-  - runtime.go.gc.count        # GC execution count
-  - runtime.go.gc.pause_ns     # GC pause duration
+  - otelcol_process_runtime_heap_alloc_bytes  # Current heap memory
+  - otelcol_process_runtime_total_sys_memory_bytes  # Total runtime memory from OS
+  - otelcol_process_memory_rss  # Resident set size
 
   # Memory limiter metrics
   - otelcol_processor_refused_spans        # Spans refused by memory limiter
@@ -456,16 +466,16 @@ metrics:
 # Alert on these conditions
 alerts:
   - name: CollectorMemoryHigh
-    expression: runtime.go.mem.heap_alloc > GOMEMLIMIT * 0.85
+    expression: otelcol_process_runtime_heap_alloc_bytes > 2852126720
     message: "Collector memory usage above 85% of GOMEMLIMIT"
 
   - name: CollectorRefusingData
     expression: rate(otelcol_processor_refused_spans[5m]) > 0
     message: "Collector memory limiter is refusing data"
 
-  - name: CollectorGCPressure
-    expression: rate(runtime.go.gc.count[1m]) > 10
-    message: "Collector experiencing high GC pressure"
+  - name: CollectorHighAllocationRate
+    expression: rate(otelcol_process_runtime_total_alloc_bytes[1m]) > 100000000
+    message: "Collector allocation rate is high"
 ```
 
 ### Grafana Dashboard for Memory Monitoring
@@ -479,21 +489,21 @@ alerts:
         "title": "Memory Usage",
         "targets": [
           {
-            "expr": "runtime_go_mem_heap_alloc_bytes",
+            "expr": "otelcol_process_runtime_heap_alloc_bytes",
             "legendFormat": "Heap Allocated"
           },
           {
-            "expr": "runtime_go_mem_heap_sys_bytes",
-            "legendFormat": "Heap System"
+            "expr": "otelcol_process_runtime_total_sys_memory_bytes",
+            "legendFormat": "Runtime System Memory"
           }
         ]
       },
       {
-        "title": "GC Rate",
+        "title": "Allocation Rate",
         "targets": [
           {
-            "expr": "rate(runtime_go_gc_count[1m])",
-            "legendFormat": "GC Per Second"
+            "expr": "rate(otelcol_process_runtime_total_alloc_bytes[1m])",
+            "legendFormat": "Bytes Allocated/sec"
           }
         ]
       },
@@ -530,7 +540,7 @@ env:
 
 processors:
   memory_limiter:
-    limit_mib: 4800  # 75% of GOMEMLIMIT
+    limit_mib: 4800  # Hard limit below GOMEMLIMIT
     spike_limit_mib: 960  # 20% of limit_mib
 ```
 
@@ -647,7 +657,7 @@ processors:
   # Tail sampling uses significant memory
   tail_sampling:
     # Reduce num_traces to lower memory
-    num_traces: 50000  # Default is 100000
+    num_traces: 25000  # Default is 50000
     decision_wait: 5s  # Reduce wait time
 
     # Memory usage: num_traces * avg_trace_size
@@ -655,9 +665,8 @@ processors:
 
   # Cumulative to delta uses memory for state
   cumulativetodelta:
-    # Limit series tracked
-    max_stale: 50000  # Default is unlimited
-    max_staleness: 5m
+    # Drop state for series that have not been seen recently
+    max_staleness: 5m  # Set to 0 to retain state indefinitely
 ```
 
 ## Related Resources
