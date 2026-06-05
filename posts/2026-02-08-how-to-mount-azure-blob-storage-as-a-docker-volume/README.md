@@ -56,7 +56,8 @@ RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-p
     rm packages-microsoft-prod.deb
 
 # Create mount point and cache directories
-RUN mkdir -p /mnt/blobstorage /tmp/blobfuse-cache
+RUN mkdir -p /mnt/blobstorage /tmp/blobfuse-cache && \
+    echo "user_allow_other" >> /etc/fuse.conf
 
 # Copy the configuration file
 COPY blobfuse-config.yaml /etc/blobfuse-config.yaml
@@ -96,8 +97,9 @@ azstorage:
   type: block
   account-name: mystorageaccount
   account-key: YOUR_STORAGE_ACCOUNT_KEY
+  mode: key
   container: mycontainer
-  endpoint: https://mystorageaccount.blob.core.windows.net
+  endpoint: blob.core.windows.net
 ```
 
 Build and run:
@@ -148,7 +150,7 @@ docker volume create \
   --driver local \
   --opt type=cifs \
   --opt device=//mystorageaccount.file.core.windows.net/myfileshare \
-  --opt o=vers=3.0,username=mystorageaccount,password=YOUR_KEY,dir_mode=0777,file_mode=0777,serverino \
+  --opt o=addr=mystorageaccount.file.core.windows.net,vers=3.0,username=mystorageaccount,password=YOUR_KEY,dir_mode=0777,file_mode=0777,serverino \
   azure-files
 ```
 
@@ -178,7 +180,7 @@ volumes:
     driver_opts:
       type: cifs
       device: "//mystorageaccount.file.core.windows.net/myfileshare"
-      o: "vers=3.0,username=mystorageaccount,password=YOUR_KEY,dir_mode=0777,file_mode=0777,serverino"
+      o: "addr=mystorageaccount.file.core.windows.net,vers=3.0,username=mystorageaccount,password=YOUR_KEY,dir_mode=0777,file_mode=0777,serverino"
 ```
 
 ## Method 3: Shared Volume with blobfuse2 Sidecar
@@ -199,43 +201,44 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - blob-data:/mnt/blobstorage:shared
+      - ./blob-data:/mnt/blobstorage:rshared
 
   app:
     image: my-app:latest
     volumes:
-      - blob-data:/data
+      - ./blob-data:/data:rshared
     depends_on:
       - blob-mount
-
-volumes:
-  blob-data:
-    driver: local
 ```
 
-The `:shared` mount propagation flag ensures the FUSE mount inside the sidecar is visible to other containers using the same volume.
+The `:rshared` mount propagation flag is available for bind mounts on Linux and lets the FUSE mount inside the sidecar become visible to other containers using the same host path. Docker named volumes use private propagation, so use a bind-mounted host directory for this pattern.
 
 ## Method 4: Using the Azure Blob Storage CSI Driver (Kubernetes-style)
 
-For Docker hosts running on Azure VMs, you can use Azure's managed identity and the Azure Volume Driver plugin:
+For Kubernetes workloads on AKS, use the Azure Blob Storage CSI driver rather than a Docker volume plugin. Enable the driver on an AKS cluster:
 
 ```bash
-# Install the Azure file volume driver plugin
-docker plugin install --alias azure --grant-all-permissions \
-  docker4x/cloudstor:latest \
-  CLOUD_PLATFORM=AZURE \
-  AZURE_STORAGE_ACCOUNT_KEY="YOUR_KEY" \
-  AZURE_STORAGE_ACCOUNT="mystorageaccount"
+# Enable the Azure Blob Storage CSI driver
+az aks update \
+  --name myAKSCluster \
+  --resource-group myResourceGroup \
+  --enable-blob-driver
 ```
 
-Create a volume:
+Create a PVC using the built-in blobfuse storage class:
 
-```bash
-# Create a volume using the Azure driver
-docker volume create \
-  --driver azure \
-  --name azure-blob-vol \
-  --opt share=myfileshare
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-blob-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azureblob-fuse-premium
+  resources:
+    requests:
+      storage: 5Gi
 ```
 
 ## Securely Managing Credentials
@@ -251,18 +254,17 @@ docker run -d \
   --cap-add SYS_ADMIN \
   --device /dev/fuse \
   -e AZURE_STORAGE_ACCOUNT=mystorageaccount \
-  -e AZURE_STORAGE_KEY=YOUR_KEY \
+  -e AZURE_STORAGE_ACCESS_KEY=YOUR_KEY \
   blobfuse-mount
 ```
 
-Update the blobfuse config to use environment variables:
+Update the blobfuse config to use key authentication and let the environment variables provide the account and key:
 
 ```yaml
 # blobfuse-config.yaml using environment variables
 azstorage:
   type: block
-  account-name: ${AZURE_STORAGE_ACCOUNT}
-  account-key: ${AZURE_STORAGE_KEY}
+  mode: key
   container: mycontainer
 ```
 
@@ -306,17 +308,18 @@ file_cache:
   # Larger cache reduces round trips to Azure
   max-size-mb: 8192
 
-# Enable streaming for large files
-stream:
-  block-size-mb: 8
-  max-buffers: 16
-  buffer-size-mb: 16
+# For streaming mode, replace file_cache with block_cache
+block_cache:
+  block-size-mb: 16
+  mem-size-mb: 4096
+  prefetch: 80
+  parallelism: 128
 
 # Use SSD-backed local storage for the cache
 # Mount a fast local drive at /tmp/blobfuse-cache
 ```
 
-Use SSD storage for the blobfuse cache directory:
+Use fast local storage for the blobfuse cache directory:
 
 ```yaml
 # docker-compose.yml with fast cache storage
@@ -326,7 +329,7 @@ services:
       context: .
       dockerfile: Dockerfile.blobfuse
     volumes:
-      - blob-data:/mnt/blobstorage:shared
+      - ./blob-data:/mnt/blobstorage:rshared
       - /dev/shm:/tmp/blobfuse-cache
     cap_add:
       - SYS_ADMIN
@@ -334,7 +337,7 @@ services:
       - /dev/fuse
 ```
 
-Using `/dev/shm` (shared memory) as the cache location puts the cache in RAM, which provides the best performance for read-heavy workloads.
+Using `/dev/shm` (shared memory) as the cache location puts the cache in RAM, which can improve read-heavy workloads when the cache fits in available memory.
 
 ## Health Checking the Mount
 
@@ -360,9 +363,8 @@ services:
 **Permission denied when accessing mounted files:**
 
 ```bash
-# Run blobfuse with allow-other to permit access from other users/containers
-# Ensure /etc/fuse.conf has user_allow_other uncommented
-docker exec blob-mount sh -c "echo 'user_allow_other' >> /etc/fuse.conf"
+# Ensure /etc/fuse.conf has user_allow_other before starting blobfuse
+docker exec blob-mount grep user_allow_other /etc/fuse.conf
 ```
 
 **Mount point appears empty:**
