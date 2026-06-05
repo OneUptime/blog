@@ -6,7 +6,7 @@ Tags: OpenTelemetry, BOM, Dependencies, Java, Version Management
 
 Description: Master OpenTelemetry dependency management using the BOM to avoid version conflicts and simplify your Java project configuration.
 
-Managing dependencies in Java projects can become a nightmare when dealing with complex libraries like OpenTelemetry. The OpenTelemetry BOM (Bill of Materials) solves this problem by providing a centralized way to manage all OpenTelemetry dependency versions.
+Managing dependencies in Java projects can become a nightmare when dealing with complex libraries like OpenTelemetry. The OpenTelemetry BOM (Bill of Materials) solves this problem by providing a centralized way to manage related OpenTelemetry Java dependency versions.
 
 ## What is a BOM?
 
@@ -16,7 +16,7 @@ Think of it as a curated package of compatible library versions. Instead of hunt
 
 ## Why OpenTelemetry Needs a BOM
 
-OpenTelemetry consists of dozens of separate artifacts. The core library includes the API, SDK, exporters, instrumentations, and extensions. Each has its own versioning, but they need to work together seamlessly.
+OpenTelemetry consists of dozens of separate artifacts. The Java ecosystem includes core API, SDK, exporters, extensions, and separately released instrumentation artifacts. These artifacts need to work together seamlessly.
 
 Without a BOM, your `pom.xml` might look like this mess:
 
@@ -142,19 +142,12 @@ You can view exactly what's included by checking the BOM POM file in the Maven r
 
 ## The OpenTelemetry Instrumentation BOM
 
-OpenTelemetry maintains a separate BOM for instrumentation libraries. These are the auto-instrumentation agents for frameworks like Spring Boot, JDBC, Apache HttpClient, and others.
+OpenTelemetry maintains separate BOMs for instrumentation libraries. These cover artifacts from the OpenTelemetry Java instrumentation project, including the Java agent, the Spring Boot starter, and library instrumentation for frameworks and libraries like JDBC, Apache HttpClient, and others.
 
 ```xml
-<!-- Add the instrumentation BOM separately -->
+<!-- Use the instrumentation BOM when you need instrumentation artifacts -->
 <dependencyManagement>
     <dependencies>
-        <dependency>
-            <groupId>io.opentelemetry</groupId>
-            <artifactId>opentelemetry-bom</artifactId>
-            <version>1.34.1</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
@@ -166,7 +159,7 @@ OpenTelemetry maintains a separate BOM for instrumentation libraries. These are 
 </dependencyManagement>
 ```
 
-The instrumentation BOM uses a different versioning scheme because many instrumentations are still in alpha. This separate BOM allows them to evolve independently from the stable core API.
+The instrumentation BOM uses a different versioning scheme because it comes from a separate repository and many instrumentation artifacts are still in alpha. The instrumentation BOMs are hierarchical and import the matching core OpenTelemetry BOMs, so you normally import the instrumentation BOM you need rather than importing both BOMs separately.
 
 Now you can add instrumentations without version numbers:
 
@@ -229,7 +222,7 @@ Keep these principles in mind when using the OpenTelemetry BOM:
 
 **Update regularly.** OpenTelemetry evolves quickly. Check for BOM updates monthly. New versions often include important bug fixes and performance improvements.
 
-**Use one BOM version.** Don't mix multiple BOM versions in the same project. Pick one version and stick with it until you're ready to upgrade everything.
+**Use one BOM for each dependency family.** Don't import redundant OpenTelemetry BOMs in the same project. Pick the core or instrumentation BOM that covers the artifacts you need, and stick with it until you're ready to upgrade everything.
 
 **Avoid version overrides.** Only override BOM-managed versions when absolutely necessary. Each override is a potential source of bugs.
 
