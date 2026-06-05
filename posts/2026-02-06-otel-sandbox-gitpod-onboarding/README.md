@@ -48,7 +48,7 @@ ports:
     visibility: public
 ```
 
-The configuration starts the observability stack automatically and opens the Jaeger UI in a preview pane. New developers see traces immediately.
+The configuration starts the observability stack automatically and opens the Jaeger UI in a preview pane. Once new developers start the sample app and hit an endpoint, they can see traces immediately.
 
 ## The Gitpod Dockerfile
 
@@ -61,12 +61,7 @@ FROM gitpod/workspace-full
 
 RUN sudo apt-get update && sudo apt-get install -y docker-compose-plugin
 
-# Pre-install OpenTelemetry packages
-RUN npm install -g \
-  @opentelemetry/api \
-  @opentelemetry/sdk-node \
-  @opentelemetry/exporter-trace-otlp-http \
-  @opentelemetry/auto-instrumentations-node
+# Application dependencies are installed by the npm install task in .gitpod.yml
 ```
 
 ## The Observability Stack
@@ -74,13 +69,11 @@ RUN npm install -g \
 Create `docker-compose.otel.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0
     volumes:
-      - ./sandbox/collector-config.yaml:/etc/otelcol/config.yaml
+      - ./sandbox/collector-config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - "4317:4317"
       - "4318:4318"
@@ -129,6 +122,23 @@ service:
 ## The Sample Application
 
 Create a simple application that new developers can modify. This is the hands-on part of the sandbox.
+
+Create a `package.json` so the Gitpod `npm install` task installs the dependencies locally:
+
+```json
+{
+  "scripts": {
+    "start": "node sandbox/app.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "latest",
+    "@opentelemetry/auto-instrumentations-node": "latest",
+    "@opentelemetry/exporter-trace-otlp-http": "latest",
+    "@opentelemetry/sdk-node": "latest",
+    "express": "latest"
+  }
+}
+```
 
 ```javascript
 // sandbox/app.js - Sample instrumented application
@@ -238,18 +248,8 @@ Put this link in your onboarding documentation, team wiki, or Slack channel. A n
 
 Update the sandbox periodically to reflect your team's current practices. If you adopt new instrumentation patterns or switch to a different collector configuration, update the sandbox so new team members learn the current approach from day one.
 
-Pre-build the workspace to speed up startup times:
+Pre-build the workspace to speed up startup times. Gitpod prebuilds run the `init` tasks in `.gitpod.yml` ahead of time, so the `docker compose pull` and `npm install` steps can be completed before a developer opens the workspace. Import the repository in Gitpod, enable prebuilds in the repository settings, and use `gp validate --prebuild` to test the configuration.
 
-```yaml
-# Add to .gitpod.yml
-github:
-  prebuilds:
-    master: true
-    branches: true
-    pullRequests: true
-    addBadge: true
-```
-
-This tells Gitpod to build the workspace image ahead of time. When someone opens the workspace, it starts in seconds instead of minutes.
+When someone opens the workspace, the prebuilt `init` tasks are already done, which can reduce startup time from minutes to seconds.
 
 A well-maintained sandbox reduces onboarding time from days to hours and ensures every developer on your team has a solid understanding of how OpenTelemetry works in your system.
