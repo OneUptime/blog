@@ -36,7 +36,7 @@ service:
 
 ## Why Ballast Was Replaced
 
-Go 1.19 introduced `GOMEMLIMIT`, which provides a better mechanism for controlling GC behavior. Instead of tricking the GC by inflating the heap size, `GOMEMLIMIT` directly tells the GC the maximum amount of memory it should use. This is more efficient and predictable.
+Go 1.19 introduced `GOMEMLIMIT`, which provides a better mechanism for controlling GC behavior. Instead of tricking the GC by inflating the heap size, `GOMEMLIMIT` sets a soft memory limit for the Go runtime. This is more efficient and predictable.
 
 ## Migration Steps
 
@@ -173,13 +173,14 @@ config:
     extensions: [memory_ballast]
 
 # NEW values.yaml
-extraEnvs:
-- name: GOMEMLIMIT
-  value: "820MiB"
+useGOMEMLIMIT: true
+resources:
+  limits:
+    memory: 1Gi
 config:
   # No ballast extension needed
   service:
-    extensions: []
+    extensions: [health_check]
 ```
 
 ## Verifying the Migration
@@ -205,8 +206,8 @@ kubectl exec <pod> -- env | grep GOMEMLIMIT
 4. The Collector's memory metrics look healthy:
 ```text
 # Check these Prometheus metrics
-process_resident_memory_bytes
-go_memstats_heap_inuse_bytes
+otelcol_process_memory_rss
+otelcol_process_runtime_heap_alloc_bytes
 ```
 
 ## What If You Cannot Upgrade Yet
