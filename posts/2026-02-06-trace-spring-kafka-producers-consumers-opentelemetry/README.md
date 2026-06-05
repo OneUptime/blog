@@ -18,17 +18,17 @@ Begin by adding the necessary dependencies to your Spring Boot project. The Open
 <dependency>
     <groupId>org.springframework.kafka</groupId>
     <artifactId>spring-kafka</artifactId>
-    <version>3.1.2</version>
+    <version>3.3.15</version>
 </dependency>
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.1.0-alpha</version>
+    <version>2.28.1</version>
 </dependency>
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-kafka-clients-2.6</artifactId>
-    <version>2.1.0-alpha</version>
+    <version>2.28.1-alpha</version>
 </dependency>
 ```
 
@@ -49,6 +49,8 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       group-id: order-consumer-group
       auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: com.oneuptime.model
 
 otel:
   service:
@@ -109,7 +111,7 @@ public class KafkaProducerConfiguration {
 
         // Wrap producer factory with telemetry
         KafkaTelemetry telemetry = KafkaTelemetry.create(openTelemetry);
-        factory.setProducerPostProcessor(telemetry::wrap);
+        factory.addPostProcessor(telemetry::wrap);
 
         return factory;
     }
@@ -126,6 +128,8 @@ Create a service that produces messages with automatic trace context propagation
 ```java
 package com.oneuptime.service;
 
+import com.oneuptime.model.OrderEvent;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
@@ -148,9 +152,9 @@ public class OrderProducerService {
 
     public OrderProducerService(
             KafkaTemplate<String, Object> kafkaTemplate,
-            Tracer tracer) {
+            OpenTelemetry openTelemetry) {
         this.kafkaTemplate = kafkaTemplate;
-        this.tracer = tracer;
+        this.tracer = openTelemetry.getTracer(OrderProducerService.class.getName());
     }
 
     /**
@@ -170,18 +174,24 @@ public class OrderProducerService {
                 kafkaTemplate.send(TOPIC, order.getOrderId(), order);
 
             future.whenComplete((result, ex) -> {
-                if (ex != null) {
-                    span.recordException(ex);
-                    logger.error("Failed to send order: {}", order.getOrderId(), ex);
-                } else {
-                    logger.info("Order sent successfully: {} to partition {}",
-                        order.getOrderId(),
-                        result.getRecordMetadata().partition());
-                    span.addEvent("order.sent");
+                try {
+                    if (ex != null) {
+                        span.recordException(ex);
+                        logger.error("Failed to send order: {}", order.getOrderId(), ex);
+                    } else {
+                        logger.info("Order sent successfully: {} to partition {}",
+                            order.getOrderId(),
+                            result.getRecordMetadata().partition());
+                        span.addEvent("order.sent");
+                    }
+                } finally {
+                    span.end();
                 }
             });
-        } finally {
+        } catch (Exception e) {
+            span.recordException(e);
             span.end();
+            throw e;
         }
     }
 
@@ -199,15 +209,23 @@ public class OrderProducerService {
         try (Scope scope = span.makeCurrent()) {
             kafkaTemplate.send(TOPIC, order.getOrderId(), order)
                 .whenComplete((result, ex) -> {
-                    if (ex == null) {
-                        span.setAttribute("messaging.kafka.partition",
-                            result.getRecordMetadata().partition());
-                        span.setAttribute("messaging.kafka.offset",
-                            result.getRecordMetadata().offset());
+                    try {
+                        if (ex == null) {
+                            span.setAttribute("messaging.kafka.partition",
+                                result.getRecordMetadata().partition());
+                            span.setAttribute("messaging.kafka.offset",
+                                result.getRecordMetadata().offset());
+                        } else {
+                            span.recordException(ex);
+                        }
+                    } finally {
+                        span.end();
                     }
                 });
-        } finally {
+        } catch (Exception e) {
+            span.recordException(e);
             span.end();
+            throw e;
         }
     }
 }
@@ -229,6 +247,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -253,13 +273,14 @@ public class KafkaConsumerConfiguration {
         configProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
             "org.springframework.kafka.support.serializer.JsonDeserializer");
         configProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        configProps.put(JsonDeserializer.TRUSTED_PACKAGES, "com.oneuptime.model");
 
         // Apply OpenTelemetry instrumentation
         DefaultKafkaConsumerFactory<String, Object> factory =
             new DefaultKafkaConsumerFactory<>(configProps);
 
         KafkaTelemetry telemetry = KafkaTelemetry.create(openTelemetry);
-        factory.setConsumerPostProcessor(telemetry::wrap);
+        factory.addPostProcessor(telemetry::wrap);
 
         return factory;
     }
@@ -274,6 +295,35 @@ public class KafkaConsumerConfiguration {
         factory.setConcurrency(3);
         return factory;
     }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object>
+            manualAckKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object> batchFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        factory.setBatchListener(true);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object>
+            resilientKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        factory.getContainerProperties().setDeliveryAttemptHeader(true);
+        return factory;
+    }
 }
 ```
 
@@ -282,6 +332,9 @@ Implement a consumer that automatically continues the trace from the producer.
 ```java
 package com.oneuptime.consumer;
 
+import com.oneuptime.model.OrderEvent;
+import com.oneuptime.service.OrderProcessingService;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
@@ -304,9 +357,9 @@ public class OrderConsumerService {
     private final OrderProcessingService processingService;
 
     public OrderConsumerService(
-            Tracer tracer,
+            OpenTelemetry openTelemetry,
             OrderProcessingService processingService) {
-        this.tracer = tracer;
+        this.tracer = openTelemetry.getTracer(OrderConsumerService.class.getName());
         this.processingService = processingService;
     }
 
@@ -355,7 +408,7 @@ public class OrderConsumerService {
     @KafkaListener(
         topics = "orders.priority",
         groupId = "order-priority-consumer",
-        containerFactory = "kafkaListenerContainerFactory"
+        containerFactory = "manualAckKafkaListenerContainerFactory"
     )
     public void consumePriorityOrder(
             ConsumerRecord<String, OrderEvent> record,
@@ -425,9 +478,11 @@ Kafka consumers often process messages in batches for efficiency. Each message i
 ```java
 package com.oneuptime.consumer;
 
+import com.oneuptime.model.OrderEvent;
+import com.oneuptime.service.OrderProcessingService;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
@@ -445,8 +500,8 @@ public class BatchOrderConsumer {
     private final Tracer tracer;
     private final OrderProcessingService processingService;
 
-    public BatchOrderConsumer(Tracer tracer, OrderProcessingService processingService) {
-        this.tracer = tracer;
+    public BatchOrderConsumer(OpenTelemetry openTelemetry, OrderProcessingService processingService) {
+        this.tracer = openTelemetry.getTracer(BatchOrderConsumer.class.getName());
         this.processingService = processingService;
     }
 
@@ -517,6 +572,9 @@ When consumers fail to process messages, traces should capture the error path in
 ```java
 package com.oneuptime.consumer;
 
+import com.oneuptime.model.OrderEvent;
+import com.oneuptime.service.OrderProcessingService;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -542,10 +600,10 @@ public class ResilientOrderConsumer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public ResilientOrderConsumer(
-            Tracer tracer,
+            OpenTelemetry openTelemetry,
             OrderProcessingService processingService,
             KafkaTemplate<String, Object> kafkaTemplate) {
-        this.tracer = tracer;
+        this.tracer = openTelemetry.getTracer(ResilientOrderConsumer.class.getName());
         this.processingService = processingService;
         this.kafkaTemplate = kafkaTemplate;
     }
@@ -554,16 +612,21 @@ public class ResilientOrderConsumer {
      * Consumer with retry logic and dead letter queue handling
      * Maintains trace context through retry attempts
      */
-    @KafkaListener(topics = "orders.resilient", groupId = "resilient-consumer")
+    @KafkaListener(
+        topics = "orders.resilient",
+        groupId = "resilient-consumer",
+        containerFactory = "resilientKafkaListenerContainerFactory"
+    )
     public void consumeOrderWithRetry(
             @Payload OrderEvent order,
-            @Header(value = "retry-count", required = false) Integer retryCount) {
+            @Header(value = KafkaHeaders.DELIVERY_ATTEMPT, required = false)
+                    Integer deliveryAttempt) {
 
-        int currentRetry = retryCount != null ? retryCount : 0;
+        int currentAttempt = deliveryAttempt != null ? deliveryAttempt : 1;
 
         Span span = tracer.spanBuilder("consume.order.with.retry")
             .setAttribute("order.id", order.getOrderId())
-            .setAttribute("retry.count", currentRetry)
+            .setAttribute("retry.attempt", currentAttempt)
             .setAttribute("retry.max", MAX_RETRIES)
             .startSpan();
 
@@ -575,11 +638,11 @@ public class ResilientOrderConsumer {
             span.recordException(e);
             span.setStatus(StatusCode.ERROR, "Order processing failed");
 
-            if (currentRetry < MAX_RETRIES) {
+            if (currentAttempt < MAX_RETRIES) {
                 // Retry the message
                 span.addEvent("order.retry.scheduled");
                 logger.warn("Retrying order: {} (attempt {}/{})",
-                    order.getOrderId(), currentRetry + 1, MAX_RETRIES);
+                    order.getOrderId(), currentAttempt + 1, MAX_RETRIES);
                 throw e; // Let Kafka retry mechanism handle it
 
             } else {
@@ -604,17 +667,23 @@ public class ResilientOrderConsumer {
         try (Scope scope = dlqSpan.makeCurrent()) {
             kafkaTemplate.send(DLQ_TOPIC, order.getOrderId(), order)
                 .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        dlqSpan.recordException(ex);
-                        dlqSpan.setStatus(StatusCode.ERROR);
-                        logger.error("Failed to send to DLQ: {}", order.getOrderId(), ex);
-                    } else {
-                        dlqSpan.addEvent("message.sent.to.dlq");
-                        logger.info("Order sent to DLQ: {}", order.getOrderId());
+                    try {
+                        if (ex != null) {
+                            dlqSpan.recordException(ex);
+                            dlqSpan.setStatus(StatusCode.ERROR);
+                            logger.error("Failed to send to DLQ: {}", order.getOrderId(), ex);
+                        } else {
+                            dlqSpan.addEvent("message.sent.to.dlq");
+                            logger.info("Order sent to DLQ: {}", order.getOrderId());
+                        }
+                    } finally {
+                        dlqSpan.end();
                     }
                 });
-        } finally {
+        } catch (Exception e) {
+            dlqSpan.recordException(e);
             dlqSpan.end();
+            throw e;
         }
     }
 }
@@ -627,6 +696,7 @@ Add domain-specific attributes to spans for better observability and filtering.
 ```java
 package com.oneuptime.tracing;
 
+import com.oneuptime.model.OrderEvent;
 import io.opentelemetry.api.trace.Span;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
