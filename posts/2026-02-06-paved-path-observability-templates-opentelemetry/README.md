@@ -36,7 +36,7 @@ flowchart LR
 
 ## Python Template: FastAPI Service
 
-Here is a production-ready template for a Python FastAPI service. It initializes tracing, metrics, and logging with sensible defaults.
+Here is a production-ready template for a Python FastAPI service. It initializes tracing and metrics with sensible defaults.
 
 ```python
 # otel_paved_path/setup.py
@@ -54,6 +54,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from .standard_metrics import _register_standard_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def init_observability(app=None):
     """Initialize OpenTelemetry with organization-standard configuration.
 
     Reads configuration from environment variables:
-      OTEL_SERVICE_NAME - required, your service name
+      OTEL_SERVICE_NAME - recommended, your service name
       OTEL_EXPORTER_OTLP_ENDPOINT - defaults to http://localhost:4317
       OTEL_RESOURCE_ATTRIBUTES - additional resource attributes
     """
@@ -124,7 +125,7 @@ def _register_standard_metrics(meter_provider):
     _instruments["request_duration"] = _meter.create_histogram(
         name="http.server.request.duration",
         description="HTTP server request duration",
-        unit="ms",
+        unit="s",
     )
 
     _instruments["active_requests"] = _meter.create_up_down_counter(
@@ -134,9 +135,9 @@ def _register_standard_metrics(meter_provider):
     )
 
     _instruments["db_query_duration"] = _meter.create_histogram(
-        name="db.client.query.duration",
-        description="Database query duration",
-        unit="ms",
+        name="db.client.operation.duration",
+        description="Database client operation duration",
+        unit="s",
     )
 
     _instruments["cache_hit_ratio"] = _meter.create_counter(
@@ -169,10 +170,10 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'unknown-service',
   [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
   'deployment.environment': process.env.DEPLOYMENT_ENV || 'development',
@@ -257,6 +258,8 @@ processors:
 exporters:
   otlp/gateway:
     endpoint: "otel-gateway.platform:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -290,7 +293,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317  # gRPC
@@ -334,8 +337,8 @@ For collector configs, use a shared Helm chart or Kustomize base:
 resources:
   - deployment.yaml
 
-patchesStrategicMerge:
-  - https://git.internal/platform/otel-paved-path/k8s-sidecar-patch.yaml
+patches:
+  - path: k8s-sidecar-patch.yaml
 ```
 
 ## Versioning and Updates
