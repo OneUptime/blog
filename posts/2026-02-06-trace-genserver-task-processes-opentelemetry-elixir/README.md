@@ -21,10 +21,9 @@ First, add the required dependencies to your `mix.exs` file:
 ```elixir
 defp deps do
   [
-    {:opentelemetry, "~> 1.3"},
-    {:opentelemetry_api, "~> 1.2"},
-    {:opentelemetry_exporter, "~> 1.6"},
-    {:opentelemetry_telemetry, "~> 1.0"}
+    {:opentelemetry, "~> 1.6"},
+    {:opentelemetry_api, "~> 1.5"},
+    {:opentelemetry_exporter, "~> 1.9"}
   ]
 end
 ```
@@ -52,8 +51,7 @@ defmodule MyApp.Application do
   use Application
 
   def start(_type, _args) do
-    # Configure the tracer for your application
-    OpentelemetryTelemetry.register_application_tracer(:my_app)
+    # Application tracers are created automatically by default when the SDK starts.
 
     children = [
       # Your other supervisors and workers
@@ -73,6 +71,7 @@ GenServers have well-defined lifecycle callbacks that make excellent span bounda
 defmodule MyApp.UserCache do
   use GenServer
   require OpenTelemetry.Tracer, as: Tracer
+  alias OpenTelemetry.Ctx
 
   # Client API with tracing
   def start_link(opts) do
@@ -87,7 +86,8 @@ defmodule MyApp.UserCache do
         {"call_type", "sync"}
       ])
 
-      GenServer.call(__MODULE__, {:get_user, user_id})
+      parent_ctx = Ctx.get_current()
+      GenServer.call(__MODULE__, {:get_user, user_id, parent_ctx})
     end
   end
 
@@ -99,7 +99,8 @@ defmodule MyApp.UserCache do
         {"call_type", "async"}
       ])
 
-      GenServer.cast(__MODULE__, {:refresh, user_id})
+      parent_ctx = Ctx.get_current()
+      GenServer.cast(__MODULE__, {:refresh, user_id, parent_ctx})
     end
   end
 
@@ -113,36 +114,48 @@ defmodule MyApp.UserCache do
   end
 
   @impl true
-  def handle_call({:get_user, user_id}, _from, state) do
-    # Trace the actual work being done inside the callback
-    Tracer.with_span "user_cache.handle_call.get_user" do
-      Tracer.set_attributes([
-        {"user_id", user_id},
-        {"cache_size", map_size(state.users)}
-      ])
+  def handle_call({:get_user, user_id, parent_ctx}, _from, state) do
+    token = Ctx.attach(parent_ctx)
 
-      case Map.get(state.users, user_id) do
-        nil ->
-          Tracer.add_event("cache_miss", %{user_id: user_id})
-          user = fetch_user_from_db(user_id)
-          new_state = put_in(state.users[user_id], user)
-          {:reply, user, new_state}
+    try do
+      # Trace the actual work being done inside the callback
+      Tracer.with_span "user_cache.handle_call.get_user" do
+        Tracer.set_attributes([
+          {"user_id", user_id},
+          {"cache_size", map_size(state.users)}
+        ])
 
-        user ->
-          Tracer.add_event("cache_hit", %{user_id: user_id})
-          {:reply, user, state}
+        case Map.get(state.users, user_id) do
+          nil ->
+            Tracer.add_event("cache_miss", %{user_id: user_id})
+            user = fetch_user_from_db(user_id)
+            new_state = put_in(state.users[user_id], user)
+            {:reply, user, new_state}
+
+          user ->
+            Tracer.add_event("cache_hit", %{user_id: user_id})
+            {:reply, user, state}
+        end
       end
+    after
+      Ctx.detach(token)
     end
   end
 
   @impl true
-  def handle_cast({:refresh, user_id}, state) do
-    Tracer.with_span "user_cache.handle_cast.refresh" do
-      Tracer.set_attributes([{"user_id", user_id}])
+  def handle_cast({:refresh, user_id, parent_ctx}, state) do
+    token = Ctx.attach(parent_ctx)
 
-      user = fetch_user_from_db(user_id)
-      new_state = put_in(state.users[user_id], user)
-      {:noreply, new_state}
+    try do
+      Tracer.with_span "user_cache.handle_cast.refresh" do
+        Tracer.set_attributes([{"user_id", user_id}])
+
+        user = fetch_user_from_db(user_id)
+        new_state = put_in(state.users[user_id], user)
+        {:noreply, new_state}
+      end
+    after
+      Ctx.detach(token)
     end
   end
 
@@ -162,6 +175,7 @@ This instrumentation captures several important aspects:
 
 - The client API calls show when code requests data from the GenServer
 - Server callbacks show the actual processing time inside the GenServer
+- Passing the context in the GenServer message links server-side callback spans to the client span
 - Cache hit/miss events provide insight into cache effectiveness
 - Attributes like cache size help correlate performance with state growth
 
@@ -191,16 +205,20 @@ defmodule MyApp.DataProcessor do
 
     Task.async(fn ->
       # Attach the parent context in the new process
-      Ctx.attach(parent_ctx)
+      token = Ctx.attach(parent_ctx)
 
-      # Create a child span for this Task's work
-      Tracer.with_span "data_processor.process_item" do
-        Tracer.set_attributes([
-          {"item_id", item.id},
-          {"item_type", item.type}
-        ])
+      try do
+        # Create a child span for this Task's work
+        Tracer.with_span "data_processor.process_item" do
+          Tracer.set_attributes([
+            {"item_id", item.id},
+            {"item_type", item.type}
+          ])
 
-        process_item(item)
+          process_item(item)
+        end
+      after
+        Ctx.detach(token)
       end
     end)
   end
@@ -216,9 +234,10 @@ defmodule MyApp.DataProcessor do
             transformed
 
           {:error, reason} ->
-            Tracer.set_status(:error, inspect(reason))
-            Tracer.record_exception(reason)
-            raise "Validation failed: #{inspect(reason)}"
+            error = RuntimeError.exception("Validation failed: #{inspect(reason)}")
+            Tracer.set_status(:error, Exception.message(error))
+            Tracer.record_exception(error)
+            raise error
         end
       end
     end
@@ -235,7 +254,7 @@ defmodule MyApp.DataProcessor do
 end
 ```
 
-The key to Task tracing is context propagation. The parent context must be captured before spawning the Task and attached inside the Task's function. Without this, the Task's spans would be orphaned and not connected to the parent operation.
+The key to Task tracing is context propagation. The parent context must be captured before spawning the Task and attached inside the Task's function. Detaching the token afterward restores the previous process context. Without this, the Task's spans would be orphaned and not connected to the parent operation.
 
 ## Tracing Supervised Task Workflows
 
@@ -274,10 +293,14 @@ defmodule MyApp.ReportGenerator do
 
   defp start_supervised_task(parent_ctx, fun, span_name) do
     Task.Supervisor.async(MyApp.TaskSupervisor, fn ->
-      Ctx.attach(parent_ctx)
+      token = Ctx.attach(parent_ctx)
 
-      Tracer.with_span "report_generator.#{span_name}" do
-        fun.()
+      try do
+        Tracer.with_span "report_generator.#{span_name}" do
+          fun.()
+        end
+      after
+        Ctx.detach(token)
       end
     end)
   end
@@ -429,7 +452,7 @@ Sampling trades complete visibility for acceptable performance. Choose sample ra
 
 ## Monitoring the Full Process Lifecycle
 
-For critical GenServers, you might want to trace the entire lifecycle including initialization and termination:
+For critical GenServers, you might want to trace initialization and the cases where `terminate/2` is invoked. To run `terminate/2` during supervised shutdown, the GenServer must trap exits:
 
 ```elixir
 defmodule MyApp.CriticalService do
@@ -438,6 +461,8 @@ defmodule MyApp.CriticalService do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
+
     Tracer.with_span "critical_service.init" do
       Tracer.set_attributes([{"opts", inspect(opts)}])
 
