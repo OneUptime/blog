@@ -32,7 +32,7 @@ The fix is to switch the exporter to HTTP/protobuf, which works over HTTP/1.1:
 # collector-config.yaml
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://otlp.backend.example.com"
     # HTTP/protobuf works through HTTP/1.1 proxies
     headers:
@@ -43,12 +43,11 @@ If you must use gRPC, configure the proxy to support CONNECT tunneling for HTTP/
 
 ```yaml
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: "otlp.backend.example.com:4317"
     tls:
       insecure: false
-    # Some proxies need the CONNECT method
-    proxy_url: "http://corporate-proxy.internal:3128"
+    # Set HTTPS_PROXY/NO_PROXY at Collector startup for proxy routing
 ```
 
 ## Issue 2: Load Balancer Terminating gRPC Connections
@@ -72,7 +71,7 @@ resource "aws_lb_target_group" "otel_grpc" {
   name        = "otel-grpc"
   port        = 4317
   protocol    = "HTTP"
-  protocol_version = "gRPC"  # This is the key setting
+  protocol_version = "GRPC"  # This is the key setting
   vpc_id      = var.vpc_id
 
   health_check {
@@ -88,7 +87,8 @@ For **NGINX**, add gRPC-specific configuration:
 
 ```nginx
 server {
-    listen 4317 http2;
+    listen 4317;
+    http2 on;
 
     location / {
         grpc_pass grpc://otel-backend:4317;
@@ -125,7 +125,7 @@ Load balancers have idle connection timeouts. If the Collector does not send dat
 ```yaml
 # Configure the Collector to send data more frequently
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: "otlp.backend.example.com:4317"
     sending_queue:
       enabled: true
