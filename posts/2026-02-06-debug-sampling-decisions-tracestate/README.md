@@ -18,14 +18,14 @@ This guide shows you how to make sampling decisions visible using the W3C `trace
 
 ## Understanding TraceState
 
-The W3C Trace Context specification defines two headers: `traceparent` and `tracestate`. Most people know `traceparent`, which carries the trace ID, span ID, and sampled flag. Fewer people use `tracestate`, which is a vendor-neutral key-value store that propagates alongside the trace.
+The W3C Trace Context specification defines two headers: `traceparent` and `tracestate`. Most people know `traceparent`, which carries the trace ID, span ID, and sampled flag. Fewer people use `tracestate`, which is an interoperable key-value store for vendor-specific data that propagates alongside the trace.
 
 ```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
-tracestate: ot=s:1;r:0.1;d:error_sampler,company=sampling_debug
+tracestate: company=s:1;r:0.1;d:error_sampler
 ```
 
-The `tracestate` header travels with every request in the trace, from the first service to the last. Anything you put in it is available to every downstream service. This makes it the perfect place to record sampling decisions.
+The `tracestate` header travels with every request in the trace, from the first service to the last, as long as services propagate W3C Trace Context. Values must stay within the W3C `tracestate` syntax and size limits, but this makes it a useful place to record compact sampling decisions.
 
 ---
 
@@ -40,7 +40,7 @@ A useful sampling debug record should answer these questions:
 
 ```mermaid
 flowchart LR
-    A[Root Service] --> B[tracestate: ot=s:1,r:0.1,d:ratio]
+    A[Root Service] --> B[tracestate: company=s:1;r:0.1;d:ratio]
     B --> C[Service B reads tracestate]
     C --> D[Service B respects parent decision]
     D --> E[tracestate unchanged, propagated]
@@ -57,16 +57,19 @@ Modify your sampler to write decision metadata into the `tracestate` field of th
 ```typescript
 // debug-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
   createTraceState,
+  trace,
 } from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 export class DebuggableRatioSampler implements Sampler {
   private inner: TraceIdRatioBasedSampler;
@@ -87,11 +90,9 @@ export class DebuggableRatioSampler implements Sampler {
     attributes: Attributes,
     links: Link[]
   ): SamplingResult {
-    const result = this.inner.shouldSample(
-      context, traceId, spanName, spanKind, attributes, links
-    );
+    const result = this.inner.shouldSample(context, traceId);
 
-    const sampled = result.decision === SamplingDecision.RECORD_AND_SAMPLE;
+    const sampled = result.decision === SamplingDecision.RECORD_AND_SAMPLED;
 
     // Encode sampling debug info into tracestate
     // Format: s=<sampled>, r=<ratio>, d=<decision_reason>
@@ -101,12 +102,15 @@ export class DebuggableRatioSampler implements Sampler {
       `d:${this.samplerName}`,
     ].join(';');
 
-    // Create tracestate with our debug info
-    const traceState = createTraceState().set('ot', debugValue);
+    // Preserve existing tracestate and add our debug info under our vendor key
+    const parentTraceState =
+      result.traceState ?? trace.getSpanContext(context)?.traceState ?? createTraceState();
+    const traceState = parentTraceState.set('company', debugValue);
 
     return {
       decision: result.decision,
       attributes: {
+        ...result.attributes,
         // Also add as span attributes for easy querying
         'sampling.sampled': sampled,
         'sampling.ratio': this.ratio,
@@ -122,7 +126,7 @@ export class DebuggableRatioSampler implements Sampler {
 }
 ```
 
-The key design choice here is to store debug info in both `tracestate` (for cross-service propagation) and span attributes (for querying in your backend). The `tracestate` ensures downstream services can see the decision. The attributes ensure you can filter and search for specific sampling reasons.
+The key design choice here is to store debug info in both `tracestate` (for cross-service propagation) and span attributes (for querying in your backend). The `tracestate` ensures downstream services can see the decision. The attributes ensure you can filter and search for specific sampling reasons on recorded spans.
 
 ---
 
@@ -133,16 +137,18 @@ When you have multiple samplers in a chain, each one should record its contribut
 ```typescript
 // debug-composite-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
-  TraceState,
   createTraceState,
+  trace,
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+} from '@opentelemetry/sdk-trace-base';
 
 interface NamedSampler {
   name: string;
@@ -174,7 +180,7 @@ export class DebugCompositeSampler implements Sampler {
         context, traceId, spanName, spanKind, attributes, links
       );
 
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         evaluationLog.push(`${name}:SAMPLE`);
 
         // Build tracestate with full evaluation log
@@ -184,10 +190,12 @@ export class DebugCompositeSampler implements Sampler {
           `e:${evaluationLog.join('|')}`,
         ].join(';');
 
-        const traceState = createTraceState().set('ot', debugValue);
+        const parentTraceState =
+          result.traceState ?? trace.getSpanContext(context)?.traceState ?? createTraceState();
+        const traceState = parentTraceState.set('company', debugValue);
 
         return {
-          decision: SamplingDecision.RECORD_AND_SAMPLE,
+          decision: SamplingDecision.RECORD_AND_SAMPLED,
           attributes: {
             ...result.attributes,
             'sampling.decision_by': name,
@@ -208,7 +216,8 @@ export class DebugCompositeSampler implements Sampler {
       `e:${evaluationLog.join('|')}`,
     ].join(';');
 
-    const traceState = createTraceState().set('ot', debugValue);
+    const parentTraceState = trace.getSpanContext(context)?.traceState ?? createTraceState();
+    const traceState = parentTraceState.set('company', debugValue);
 
     return {
       decision: SamplingDecision.NOT_RECORD,
@@ -256,7 +265,7 @@ Downstream services can read the tracestate to understand why the trace was samp
 
 ```typescript
 // sampling-debug-middleware.ts
-import { trace, context, propagation } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 function extractSamplingDebug(traceStateValue: string | undefined): Record<string, string> {
   if (!traceStateValue) return {};
@@ -286,9 +295,9 @@ export function samplingDebugMiddleware(req: any, res: any, next: any) {
   const traceState = spanContext.traceState;
 
   if (traceState) {
-    // Read the 'ot' key from tracestate
-    const otValue = traceState.get('ot');
-    const debug = extractSamplingDebug(otValue);
+    // Read our vendor key from tracestate
+    const companyValue = traceState.get('company');
+    const debug = extractSamplingDebug(companyValue);
 
     // Log for debugging
     console.log(
@@ -327,7 +336,7 @@ import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 ```
 
-The SDK debug logs will show every sampling decision with its inputs and outputs.
+The SDK debug logs can help confirm when spans are not recording or context propagation is not behaving as expected. If you need every decision with its inputs and outputs, add explicit logging inside your custom sampler.
 
 ### Problem: Too many traces being dropped
 
@@ -351,22 +360,23 @@ app.get('/debug/sampling', (req, res) => {
 
 ---
 
-## Using Span Events for Decision Auditing
+## Using Span Attributes for Decision Auditing
 
-For even more detail, record sampling decisions as span events.
+For even more detail, record sampling decisions as sampler attributes.
 
 ```typescript
 // audit-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
-  trace,
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+} from '@opentelemetry/sdk-trace-base';
 
 export class AuditingSampler implements Sampler {
   private inner: Sampler;
@@ -389,9 +399,8 @@ export class AuditingSampler implements Sampler {
       context, traceId, spanName, spanKind, attributes, links
     );
 
-    // If sampled, the span will exist and we can add an event to it later
-    // For now, record the decision in attributes
-    const decisionName = result.decision === SamplingDecision.RECORD_AND_SAMPLE
+    // Record the decision in attributes on spans that are recorded
+    const decisionName = result.decision === SamplingDecision.RECORD_AND_SAMPLED
       ? 'SAMPLE'
       : result.decision === SamplingDecision.RECORD
         ? 'RECORD_ONLY'
@@ -428,9 +437,9 @@ Find all traces sampled because of errors:
 sampling.decision_by = "error_sampler"
 ```
 
-Find traces where the rate limiter dropped spans:
+Find sampled traces where the rate limiter decided to keep the trace:
 ```text
-sampling.rate_limited = true
+sampling.decision_by = "rate_limiter"
 ```
 
 Find traces where no specialized sampler matched (fell through to baseline):
@@ -443,7 +452,7 @@ Find traces with a specific evaluation path:
 sampling.evaluation_log contains "error_sampler:PASS"
 ```
 
-These queries let you build dashboards that show the distribution of sampling decisions over time. You can see at a glance whether your error sampler is catching errors, whether your rate limiter is active, and how much traffic falls through to the baseline.
+These queries let you build dashboards that show the distribution of sampling decisions on traces that were kept. You can see at a glance whether your error sampler is catching errors, whether your rate limiter is active, and how much traffic falls through to the baseline.
 
 ---
 
@@ -453,7 +462,7 @@ These queries let you build dashboards that show the distribution of sampling de
 2. Record the sampler name, configured ratio, and decision reason in both `tracestate` and span attributes
 3. Span attributes enable querying and dashboarding in your backend; tracestate enables cross-service propagation
 4. Build evaluation logs into composite samplers so you can see the full decision chain
-5. Use debug logging (`DiagConsoleLogger`) during development to see every sampling decision the SDK makes
+5. Use debug logging (`DiagConsoleLogger`) during development to troubleshoot SDK behavior, and add sampler logging when you need every decision
 6. Expose diagnostic endpoints to check sampler state (token counts, drop counts) at runtime
 7. Query `sampling.decision_by` and `sampling.evaluation_log` attributes to understand your sampling distribution
 
