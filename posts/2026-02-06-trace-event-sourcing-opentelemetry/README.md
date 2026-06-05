@@ -114,8 +114,8 @@ class TracedEventStore:
             "event_store.append",
             kind=trace.SpanKind.CLIENT,
             attributes={
-                "db.system": "postgresql",
-                "db.operation": "INSERT",
+                "db.system.name": "postgresql",
+                "db.operation.name": "INSERT",
                 "event.type": event.event_type,
                 "event.aggregate_id": aggregate_id,
                 "event.sequence_number": event.sequence_number,
@@ -133,8 +133,8 @@ class TracedEventStore:
             "event_store.load",
             kind=trace.SpanKind.CLIENT,
             attributes={
-                "db.system": "postgresql",
-                "db.operation": "SELECT",
+                "db.system.name": "postgresql",
+                "db.operation.name": "SELECT",
                 "event.aggregate_id": aggregate_id,
             }
         ) as span:
