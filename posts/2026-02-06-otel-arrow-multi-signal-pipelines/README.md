@@ -4,31 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Multi-Signal, Pipeline
 
-Description: Set up OTel Arrow to transport traces, metrics, and logs on a single Arrow stream for maximum transport efficiency.
+Description: Set up OTel Arrow to transport traces, metrics, and logs through coordinated Arrow pipelines for better transport efficiency.
 
-Standard OTLP uses separate gRPC service definitions for traces, metrics, and logs. Each signal type gets its own connection and its own serialization overhead. OTel Arrow can multiplex all three signal types over a single set of Arrow streams, which improves compression efficiency and reduces the number of connections your agents need to maintain. This post shows how to configure multi-signal Arrow pipelines.
+Standard OTLP uses separate gRPC service definitions for traces, metrics, and logs. Each signal type gets its own serialization overhead. OTel Arrow provides corresponding Arrow services for traces, metrics, and logs, using Apache Arrow's columnar encoding and stream compression to reduce transport cost. This post shows how to configure Arrow pipelines for all three signals.
 
 ## Why Multi-Signal Matters for Compression
 
-When traces, metrics, and logs flow over separate streams, each stream builds its own dictionary. But these signals share many of the same attribute values: `service.name`, `host.name`, `k8s.pod.name`, `deployment.environment`. When all signals share a single dictionary, common values are encoded once and referenced by all three signal types.
+Traces, metrics, and logs often repeat the same attribute keys and values: `service.name`, `host.name`, `k8s.pod.name`, `deployment.environment`. OTel Arrow uses columnar Arrow records and dictionary encoding within Arrow streams, so repeated values inside each signal can be encoded compactly.
 
 ```text
-Separate streams:
-  Traces dictionary:  {service.name, http.method, http.url, ...}
-  Metrics dictionary:  {service.name, metric.name, k8s.pod.name, ...}
-  Logs dictionary:     {service.name, severity, log.source, ...}
-  Total unique entries: ~150
+Standard OTLP/gRPC:
+  Traces:  row-oriented protobuf messages
+  Metrics: row-oriented protobuf messages
+  Logs:    row-oriented protobuf messages
 
-Shared stream:
-  Combined dictionary: {service.name, http.method, metric.name, severity, ...}
-  Total unique entries: ~100 (shared values counted once)
+OTel Arrow:
+  Traces:  Arrow records with repeated values encoded compactly
+  Metrics: Arrow records with repeated values encoded compactly
+  Logs:    Arrow records with repeated values encoded compactly
 ```
 
-The dictionary is smaller, compression is better, and you use fewer connections.
+The result is better compression for each signal pipeline, especially over long-lived streams and larger batches.
 
 ## Configuring Multi-Signal Export
 
-The OTel Arrow exporter handles multi-signal transport by default when all pipelines point to the same exporter instance:
+The OTel Arrow exporter supports traces, metrics, and logs. You can use the same exporter component ID in all three pipelines when they go to the same Arrow-capable collector:
 
 ```yaml
 receivers:
@@ -49,7 +49,7 @@ processors:
     send_batch_size: 1000
 
 exporters:
-  # Single OTel Arrow exporter instance for all signals
+  # Shared OTel Arrow exporter configuration for all signals
   otelarrow:
     endpoint: gateway:4317
     tls:
@@ -75,7 +75,7 @@ service:
       exporters: [otelarrow]
 ```
 
-All three pipelines reference the same `otelarrow` exporter. The exporter multiplexes the three signal types over its Arrow streams.
+All three pipelines reference the same `otelarrow` exporter configuration. The Collector creates signal-specific Arrow exporters and uses the corresponding Arrow service for each signal type.
 
 ## Receiver Configuration
 
@@ -87,8 +87,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-        arrow:
-          memory_limit_mib: 256
+      arrow:
+        memory_limit_mib: 256
 
 processors:
   batch:
@@ -101,8 +101,10 @@ exporters:
       insecure: true
   prometheusremotewrite:
     endpoint: http://mimir:9009/api/v1/push
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -117,42 +119,45 @@ service:
     logs:
       receivers: [otelarrow]
       processors: [batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
-The `otelarrow` receiver demultiplexes the incoming Arrow stream and routes each signal type to its appropriate pipeline and backend.
+The `otelarrow` receiver accepts the Arrow trace, metric, and log services and passes each signal type to its configured pipeline and backend.
 
 ## How the Multiplexing Works Internally
 
-Each Arrow batch includes a schema that describes its contents. The schema contains metadata indicating the signal type (traces, metrics, or logs). The receiver reads this metadata and routes the decoded records to the correct pipeline.
+Each Arrow stream carries Arrow records with schemas that describe the data being transported. OTel Arrow uses signal-specific services, so traces, metrics, and logs are received through their corresponding Arrow service and then decoded back into Collector pdata.
 
 ```text
-Arrow Stream:
-  Batch 1: [traces schema]  -> 500 spans
-  Batch 2: [metrics schema] -> 1000 data points
-  Batch 3: [logs schema]    -> 800 log records
-  Batch 4: [traces schema]  -> 450 spans
-  ...
+Arrow trace stream:
+  Batch 1: [spans schema]   -> 500 spans
+  Batch 2: [spans schema]   -> 450 spans
+
+Arrow metrics stream:
+  Batch 1: [metrics schema] -> 1000 data points
+
+Arrow logs stream:
+  Batch 1: [logs schema]    -> 800 log records
 ```
 
-The batches interleave naturally based on which signal type has data ready to send. High-throughput signals (often metrics) get more batches, while lower-throughput signals (traces) get fewer.
+Batches are sent based on which signal pipelines have data ready. High-throughput signals often produce more Arrow batches than lower-throughput signals.
 
 ## Stream Allocation Strategy
 
-With `num_streams: 4` and three signal types, the exporter does not dedicate specific streams to specific signals. Instead, all four streams are available to all signal types. The exporter picks the next available stream for each batch, regardless of signal type.
+With `num_streams: 4`, each signal-specific Arrow exporter can use four concurrent Arrow streams. When `num_streams` is greater than one, the exporter uses its prioritizer policy to distribute load across streams.
 
-If you want to ensure that a high-volume signal (like metrics) does not starve lower-volume signals:
+If you want more parallelism for a high-volume signal like metrics, configure a separate exporter for that signal and give it a higher stream count:
 
 ```yaml
 exporters:
-  otelarrow:
+  otelarrow/metrics:
     endpoint: gateway:4317
     arrow:
       num_streams: 6  # More streams give better parallelism
       max_stream_lifetime: 10m
 ```
 
-Increasing `num_streams` reduces contention between signals competing for stream access.
+Increasing `num_streams` gives that exporter more concurrent Arrow streams. Separate exporters also let you tune traces, metrics, and logs independently.
 
 ## Monitoring Multi-Signal Streams
 
@@ -169,11 +174,13 @@ rate(otelcol_exporter_sent_metric_points{exporter="otelarrow"}[5m])
 # Log records exported via Arrow
 rate(otelcol_exporter_sent_log_records{exporter="otelarrow"}[5m])
 
-# Overall compression ratio (all signals combined)
-otelcol_exporter_otelarrow_compression_ratio
+# Compression ratio from OTel Arrow network metrics
+rate(otelcol_exporter_sent{exporter="otelarrow"}[5m])
+/
+rate(otelcol_exporter_sent_wire{exporter="otelarrow"}[5m])
 ```
 
-The combined compression ratio should be slightly better than individual signal ratios because of the shared dictionary.
+The `otelcol_exporter_sent` metric reports uncompressed bytes before compression, and `otelcol_exporter_sent_wire` reports compressed bytes on the wire.
 
 ## When to Use Separate Exporters Instead
 
@@ -200,4 +207,4 @@ exporters:
       num_streams: 2
 ```
 
-For most deployments where all signals go to the same gateway, a single multi-signal exporter is simpler and more efficient. You get better compression from the shared dictionary, fewer connections to manage, and a simpler configuration to maintain.
+For most deployments where all signals go to the same gateway, reusing one exporter configuration is simpler to maintain. Use separate exporters when you need different destinations, queues, retry behavior, or stream counts per signal.
