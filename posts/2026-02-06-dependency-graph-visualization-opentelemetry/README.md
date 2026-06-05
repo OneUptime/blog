@@ -10,7 +10,7 @@ Description: Learn how to build dynamic service dependency graphs from OpenTelem
 
 In a microservices architecture, understanding which services talk to which other services is surprisingly difficult. Documentation goes stale within weeks of being written. Architecture diagrams reflect how things were designed, not how they actually work in production.
 
-OpenTelemetry traces contain all the information you need to build accurate, up-to-date dependency graphs. Every trace captures the path of a request through your system, including which services called which other services and how they communicated. By aggregating this information across all your traces, you can generate a dependency graph that always reflects reality.
+OpenTelemetry traces contain the information you need to build accurate, up-to-date dependency graphs when your services are instrumented and context is propagated correctly. Each trace captures the path of a request through your system, including which services called which other services and how they communicated. By aggregating this information across your sampled traces, you can generate a dependency graph that reflects observed production behavior.
 
 This guide covers how to extract dependency relationships from OpenTelemetry trace data, how to build a graph data structure from those relationships, and how to visualize the result.
 
@@ -29,7 +29,7 @@ flowchart TD
     G --> H["Email Provider"]
 ```
 
-Each span in a trace has a parent span. When a span's service name differs from its parent span's service name, that tells you there is a dependency between those two services. By processing all traces over a time window, you build the complete dependency map.
+Each non-root span in a trace has a parent span. When a span's service name differs from its parent span's service name, that tells you there is a dependency between those two services. By processing traces over a time window, you build a dependency map from observed calls. For asynchronous messaging, spans may also use span links instead of direct parent-child relationships, so include links if your tracing backend exposes them.
 
 ---
 
@@ -41,8 +41,7 @@ The first step is processing your trace data to extract service-to-service relat
 # dependency_extractor.py
 
 from dataclasses import dataclass, field
-from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 @dataclass
@@ -77,7 +76,7 @@ class DependencyExtractor:
         Build a dependency graph from traces collected over
         the specified lookback period.
         """
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=lookback_hours)
 
         graph = DependencyGraph(generated_at=end_time)
@@ -121,10 +120,10 @@ class DependencyExtractor:
 
                     edge = graph.edges[edge_key]
                     edge.call_count += 1
-                    edge.last_seen = datetime.utcnow()
+                    edge.last_seen = datetime.now(timezone.utc)
 
                     # Track errors
-                    if span.get("status", {}).get("code") == "ERROR":
+                    if self._is_error(span):
                         edge.error_count += 1
 
                     # Update average duration
@@ -137,18 +136,30 @@ class DependencyExtractor:
     def _detect_protocol(self, span: dict) -> str:
         """Detect the communication protocol from span attributes."""
         attrs = span.get("attributes", {})
+        if "rpc.system.name" in attrs:
+            return attrs["rpc.system.name"]  # e.g., "grpc"
         if "rpc.system" in attrs:
-            return attrs["rpc.system"]  # e.g., "grpc"
-        if "http.method" in attrs:
+            return attrs["rpc.system"]  # legacy semantic conventions
+        if "http.request.method" in attrs:
             return "http"
+        if "http.method" in attrs:
+            return "http"  # legacy semantic conventions
         if "messaging.system" in attrs:
             return attrs["messaging.system"]  # e.g., "kafka", "rabbitmq"
+        if "db.system.name" in attrs:
+            return attrs["db.system.name"]  # e.g., "postgresql", "redis"
         if "db.system" in attrs:
-            return attrs["db.system"]  # e.g., "postgresql", "redis"
+            return attrs["db.system"]  # legacy semantic conventions
         return "unknown"
+
+    def _is_error(self, span: dict) -> bool:
+        """Return True when the span status is an OpenTelemetry error status."""
+        status_code = span.get("status", {}).get("code")
+        otel_status_code = span.get("attributes", {}).get("otel.status_code")
+        return status_code in {"ERROR", "STATUS_CODE_ERROR"} or otel_status_code == "ERROR"
 ```
 
-The extractor processes each trace by looking at parent-child span relationships. When a child span belongs to a different service than its parent, that indicates a cross-service dependency. The protocol detection uses standard OpenTelemetry semantic conventions to classify the type of communication.
+The extractor processes each trace by looking at parent-child span relationships. When a child span belongs to a different service than its parent, that indicates a cross-service dependency. The protocol detection uses standard OpenTelemetry semantic conventions, with fallbacks for older attribute names, to classify the type of communication.
 
 ---
 
@@ -204,8 +215,10 @@ Dependencies change as your system evolves. New services get added, old ones get
 ```python
 # dependency_tracker.py
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
 meter = metrics.get_meter("dependency.tracking")
+current_graph = DependencyGraph()
 
 # Track the number of unique service dependencies
 dependency_count = meter.create_observable_gauge(
@@ -213,7 +226,7 @@ dependency_count = meter.create_observable_gauge(
     description="Number of unique service-to-service dependencies",
     unit="edges",
     callbacks=[lambda options: [
-        metrics.Observation(len(current_graph.edges))
+        Observation(len(current_graph.edges))
     ]],
 )
 
@@ -287,6 +300,6 @@ flowchart LR
 
 Dependency graphs built from trace data serve several purposes beyond just visualization. They help with impact analysis (if service X goes down, which other services are affected), change management (understanding the blast radius of a deployment), and architecture governance (verifying that services follow the intended communication patterns).
 
-The graphs are always accurate because they reflect what is actually happening in production, not what someone drew on a whiteboard six months ago. And because they are generated automatically from data you are already collecting with OpenTelemetry, they require no additional instrumentation effort.
+The graphs are useful because they reflect what is actually observed in production, not what someone drew on a whiteboard six months ago. And because they are generated automatically from trace data you are already collecting with OpenTelemetry, they usually require no additional instrumentation effort for already instrumented service calls.
 
 Start by building the graph from a 24-hour window of traces. As you gain confidence in the data, expand to weekly views for a more complete picture and daily diffs for change tracking.
