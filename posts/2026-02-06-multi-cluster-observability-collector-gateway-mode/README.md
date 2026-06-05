@@ -73,6 +73,7 @@ metadata:
   namespace: observability
 spec:
   mode: daemonset
+  image: otel/opentelemetry-collector-k8s:0.153.0
   tolerations:
     - operator: Exists
   resources:
@@ -194,6 +195,7 @@ metadata:
   namespace: observability
 spec:
   mode: deployment
+  image: otel/opentelemetry-collector-k8s:0.153.0
   replicas: 3
   autoscaler:
     minReplicas: 3
@@ -242,12 +244,12 @@ spec:
             type: latency
             latency:
               threshold_ms: 3000
-          # Keep traces that cross cluster boundaries
+          # Keep traces that your applications explicitly mark as cross-cluster
           - name: cross-cluster
             type: string_attribute
             string_attribute:
-              key: k8s.cluster.name
-              values: ["us-east-production", "us-west-production", "eu-central-production"]
+              key: trace.cross_cluster
+              values: ["true"]
               enabled_regex_matching: false
               invert_match: false
           # Sample a percentage of routine traces
@@ -377,15 +379,19 @@ There are two ways to handle this:
 
 ### Using a Load Balancer with Trace ID Affinity
 
-Some load balancers support consistent hashing based on request headers. You can configure them to route all spans with the same trace ID to the same backend pod. This is the cleanest solution but requires load balancer support.
+Some load balancers support consistent hashing based on request metadata. You can use this only if your agents or an intermediate proxy expose a stable trace-based routing key to the load balancer. With plain OTLP/gRPC, the trace ID is inside the request payload, so most teams use the Collector load balancing exporter instead.
 
 ### Using the Load Balancing Exporter
 
 The OpenTelemetry Collector has a `loadbalancing` exporter that distributes traces across gateway pods using trace-ID-based consistent hashing.
 
 ```yaml
-# In your local agent config, replace the otlp exporter with:
+# In your local agent config, add a loadbalancing exporter for traces:
 exporters:
+  otlp:
+    endpoint: "gateway.observability.example.com:4317"
+    tls:
+      insecure: false
   loadbalancing:
     routing_key: "traceID"
     protocol:
@@ -394,12 +400,27 @@ exporters:
           insecure: false
     resolver:
       dns:
-        # Use a headless service that returns all gateway pod IPs
-        hostname: otel-gateway-headless.observability.svc.cluster.local
-        port: 4317
+        # Use DNS that returns all gateway pod IPs
+        hostname: otel-gateway-pods.observability.example.com
+        port: "4317"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, resource, batch]
+      exporters: [loadbalancing]
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, k8sattributes, resource, batch]
+      exporters: [otlp]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, resource, batch]
+      exporters: [otlp]
 ```
 
-For cross-cluster scenarios, the DNS resolver needs to return the IPs of gateway pods, which means you'll need a headless service on the gateway side:
+For cross-cluster scenarios, the DNS resolver needs to return the IPs of gateway pods. A Kubernetes headless service can provide those records inside the gateway cluster; remote clusters also need a resolvable DNS name for those pod IPs, such as multi-cluster DNS or private DNS records:
 
 ```yaml
 # gateway-headless-service.yaml
@@ -463,8 +484,13 @@ A gateway processing telemetry from multiple clusters is a critical piece of inf
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
     logs:
       level: info
 ```
