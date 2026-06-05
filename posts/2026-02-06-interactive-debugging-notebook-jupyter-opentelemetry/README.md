@@ -16,16 +16,15 @@ First, install the necessary packages and set up the connection to your trace ba
 # Cell 1: Setup
 
 # Install dependencies (run once)
-# !pip install opentelemetry-api opentelemetry-sdk requests pandas matplotlib
+# !pip install requests pandas matplotlib
 
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
-import json
+from datetime import datetime, timedelta, timezone
 
-# Configuration for your trace backend
-TRACE_API_URL = "https://otel.oneuptime.com/api/v1"
+# Configuration for your trace backend's query API
+TRACE_API_URL = "https://your-trace-backend.example.com/api/v1"
 API_KEY = "your-api-key"  # Use environment variable in practice
 
 class TraceClient:
@@ -62,6 +61,7 @@ class TraceClient:
             headers=self.headers,
             params=params,
         )
+        response.raise_for_status()
         return response.json()
 
     def get_trace(self, trace_id):
@@ -70,6 +70,7 @@ class TraceClient:
             f"{self.base_url}/traces/{trace_id}",
             headers=self.headers,
         )
+        response.raise_for_status()
         return response.json()
 
 
@@ -83,7 +84,7 @@ Build reusable query cells that let you explore different dimensions of your tra
 
 ```python
 # Cell 2: Find recent error traces
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 error_traces = client.search_traces(
@@ -103,7 +104,7 @@ for trace_data in error_traces:
         "operation": root_span["name"],
         "duration_ms": (root_span["endTime"] - root_span["startTime"]) / 1e6,
         "error_message": root_span.get("status", {}).get("message", ""),
-        "timestamp": datetime.fromtimestamp(root_span["startTime"] / 1e9),
+        "timestamp": datetime.fromtimestamp(root_span["startTime"] / 1e9, tz=timezone.utc),
         "span_count": len(trace_data["spans"]),
     })
 
@@ -221,7 +222,7 @@ ax1.legend()
 trace_df = pd.DataFrame({
     "duration": durations,
     "timestamp": [
-        datetime.fromtimestamp(t["spans"][0]["startTime"] / 1e9)
+        datetime.fromtimestamp(t["spans"][0]["startTime"] / 1e9, tz=timezone.utc)
         for t in all_traces
     ],
 })
