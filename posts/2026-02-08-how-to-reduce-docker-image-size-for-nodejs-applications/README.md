@@ -17,7 +17,7 @@ Here is a common Dockerfile that produces an unnecessarily large image:
 ```dockerfile
 # Starting point: typically 1GB+
 
-FROM node:20
+FROM node:24
 WORKDIR /app
 COPY . .
 RUN npm install
@@ -38,23 +38,23 @@ Let's systematically reduce this.
 
 ## Step 1: Use a Slim Base Image
 
-The `node:20` image is based on Debian with a full set of system packages. Switch to the slim variant:
+The `node:24` image is based on Debian with a full set of system packages. Switch to the slim variant:
 
 ```bash
 # Compare base image sizes
-docker pull node:20 && docker images node:20 --format "{{.Size}}"
+docker pull node:24 && docker images node:24 --format "{{.Size}}"
 # 1.1GB
 
-docker pull node:20-slim && docker images node:20-slim --format "{{.Size}}"
+docker pull node:24-slim && docker images node:24-slim --format "{{.Size}}"
 # 200MB
 
-docker pull node:20-alpine && docker images node:20-alpine --format "{{.Size}}"
+docker pull node:24-alpine && docker images node:24-alpine --format "{{.Size}}"
 # 130MB
 ```
 
 ```dockerfile
 # Swap to slim: saves ~900MB immediately
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 COPY . .
 RUN npm install
@@ -71,7 +71,7 @@ Separate the build environment from the production image. The build stage needs 
 
 ```dockerfile
 # Stage 1: Build with all dependencies
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -79,7 +79,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production with only what's needed to run
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 
 # Install production dependencies only
@@ -102,7 +102,7 @@ If your dependencies work on Alpine, the size savings are substantial:
 
 ```dockerfile
 # Stage 1: Build on Alpine
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -110,7 +110,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Run on Alpine with production deps
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
@@ -125,7 +125,7 @@ CMD ["node", "dist/index.js"]
 Even with `--omit=dev`, `node_modules` contains files you do not need at runtime:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && \
@@ -133,7 +133,6 @@ RUN npm ci --omit=dev && \
     # Remove unnecessary files from node_modules
     find /app/node_modules -name "*.md" -delete && \
     find /app/node_modules -name "*.txt" -delete && \
-    find /app/node_modules -name "LICENSE*" -delete && \
     find /app/node_modules -name "CHANGELOG*" -delete && \
     find /app/node_modules -name "*.ts" ! -name "*.d.ts" -delete && \
     find /app/node_modules -name "*.map" -delete && \
@@ -144,21 +143,21 @@ RUN npm ci --omit=dev && \
     true
 ```
 
-This removes markdown files, license files, TypeScript source maps, test directories, and documentation from installed packages. It typically saves 10-30% of `node_modules` size.
+This removes markdown files, changelogs, TypeScript source maps, test directories, and documentation from installed packages. It typically saves 10-30% of `node_modules` size.
 
 ## Step 5: Use node-prune
 
 `node-prune` automates the cleanup of unnecessary files from `node_modules`:
 
 ```dockerfile
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS production-deps
+FROM node:24-alpine AS production-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -167,7 +166,7 @@ RUN npm ci --omit=dev
 RUN wget -qO- https://gobinaries.com/tj/node-prune | sh
 RUN node-prune /app/node_modules
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -183,7 +182,7 @@ For the most aggressive size reduction, bundle your application into a single fi
 
 ```dockerfile
 # Stage 1: Install dependencies and bundle everything
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -191,11 +190,10 @@ COPY . .
 RUN npm run build
 
 # Bundle the application with esbuild - includes all deps in one file
-RUN npx esbuild dist/index.js --bundle --platform=node --outfile=bundle.js \
-    --external:sharp --external:bcrypt
+RUN npx esbuild dist/index.js --bundle --platform=node --outfile=bundle.js
 
 # Stage 2: No node_modules needed at all (unless you have native modules)
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Only copy the bundled file
@@ -255,8 +253,8 @@ Typical results for a medium Express/TypeScript API with 50 production dependenc
 
 | Approach | Image Size |
 |---|---|
-| node:20, all deps | 1.2 GB |
-| node:20-slim, all deps | 400 MB |
+| node:24, all deps | 1.2 GB |
+| node:24-slim, all deps | 400 MB |
 | Multi-stage, prod deps only | 200 MB |
 | Alpine, prod deps only | 150 MB |
 | Alpine + node-prune | 120 MB |
@@ -270,7 +268,7 @@ Here is a Dockerfile that combines the most practical techniques:
 # syntax=docker/dockerfile:1
 
 # Stage 1: Install ALL dependencies and build
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -279,7 +277,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production dependencies only, cleaned up
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -287,11 +285,12 @@ RUN --mount=type=cache,target=/root/.npm \
     npm cache clean --force
 
 # Stage 3: Final slim image
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
-# Security: add non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Install init and add non-root user
+RUN apk add --no-cache dumb-init && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy production dependencies
 COPY --from=deps /app/node_modules ./node_modules
@@ -308,7 +307,6 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # Use dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/index.js"]
 ```
