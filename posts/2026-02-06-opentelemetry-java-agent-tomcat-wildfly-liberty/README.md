@@ -40,14 +40,14 @@ Before configuring application servers, download the latest OpenTelemetry Java a
 curl -L -o opentelemetry-javaagent.jar \
   https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
 
-# Verify the download (check file size is reasonable, typically 50-60MB)
+# Verify the download (check file size is reasonable, typically 20-30MB)
 ls -lh opentelemetry-javaagent.jar
 
-# Optional: Verify the SHA256 checksum
-curl -L -o opentelemetry-javaagent.jar.sha256 \
-  https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar.sha256
+# Optional: Download the release signature for GPG verification
+curl -L -o opentelemetry-javaagent.jar.asc \
+  https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar.asc
 
-sha256sum -c opentelemetry-javaagent.jar.sha256
+gpg --verify opentelemetry-javaagent.jar.asc opentelemetry-javaagent.jar
 ```
 
 Place the agent JAR in a stable location that your application server can access. Common locations include `/opt/opentelemetry/`, `/usr/local/lib/`, or within your application server's installation directory.
@@ -107,7 +107,7 @@ REM Path to the OpenTelemetry Java agent
 set OTEL_AGENT_PATH=C:\opt\opentelemetry\opentelemetry-javaagent.jar
 
 REM Basic OpenTelemetry configuration
-set CATALINA_OPTS=%CATALINA_OPTS% -javaagent:%OTEL_AGENT_PATH%
+set CATALINA_OPTS=%CATALINA_OPTS% -javaagent:"%OTEL_AGENT_PATH%"
 set CATALINA_OPTS=%CATALINA_OPTS% -Dotel.service.name=my-tomcat-app
 set CATALINA_OPTS=%CATALINA_OPTS% -Dotel.resource.attributes=service.namespace=production
 
@@ -119,17 +119,14 @@ set CATALINA_OPTS=%CATALINA_OPTS% -Dotel.exporter.otlp.endpoint=http://localhost
 
 ### Tomcat as a Service
 
-When running Tomcat as a Windows service, use the Tomcat configuration tool:
+When running Tomcat as a Windows service, use the Tomcat configuration tool and add the `-javaagent` and `-D` entries to the Java Options field:
 
 ```batch
 REM Stop the service first
 net stop Tomcat9
 
-REM Configure Java options using the Tomcat service manager
-%TOMCAT_HOME%\bin\tomcat9w.exe //US//Tomcat9 ^
-  ++JvmOptions=-javaagent:C:\opt\opentelemetry\opentelemetry-javaagent.jar ^
-  ++JvmOptions=-Dotel.service.name=my-tomcat-app ^
-  ++JvmOptions=-Dotel.exporter.otlp.endpoint=http://localhost:4317
+REM Open the Tomcat service manager
+%TOMCAT_HOME%\bin\tomcat9w.exe //ES//Tomcat9
 
 REM Start the service
 net start Tomcat9
@@ -147,9 +144,7 @@ tail -f $TOMCAT_HOME/logs/catalina.out
 You should see output indicating the OpenTelemetry agent has loaded:
 
 ```text
-[otel.javaagent 2026-02-06 10:15:30:123] OpenTelemetry Javaagent started
-[otel.javaagent 2026-02-06 10:15:30:124] Service name: my-tomcat-app
-[otel.javaagent 2026-02-06 10:15:30:125] Instrumentation enabled: [servlet, jdbc, httpclient, ...]
+[otel.javaagent 2026-02-06 10:15:30:123] [main] INFO io.opentelemetry.javaagent.tooling.VersionLogger - opentelemetry-javaagent - version: 2.x.x
 ```
 
 ## Configuring WildFly
@@ -176,9 +171,6 @@ JAVA_OPTS="$JAVA_OPTS -Dotel.traces.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.metrics.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.logs.exporter=otlp"
 JAVA_OPTS="$JAVA_OPTS -Dotel.exporter.otlp.endpoint=http://localhost:4317"
-
-# WildFly-specific: Ensure module system compatibility
-JAVA_OPTS="$JAVA_OPTS -Dotel.instrumentation.jboss-modules.enabled=true"
 
 # Configure batch span processing for better performance
 JAVA_OPTS="$JAVA_OPTS -Dotel.bsp.schedule.delay=5000"
@@ -311,15 +303,14 @@ The recommended way to configure the Java agent in Open Liberty is using the `jv
 -Dotel.bsp.max.queue.size=2048
 -Dotel.metric.export.interval=60000
 
-# Liberty-specific optimizations
--Dotel.instrumentation.liberty.enabled=true
+# Enable specific instrumentations explicitly if you disabled automatic instrumentation elsewhere
 -Dotel.instrumentation.jaxrs.enabled=true
 -Dotel.instrumentation.servlet.enabled=true
 ```
 
 ### Open Liberty server.xml Configuration
 
-You can also set system properties in `server.xml`:
+You can also enable MicroProfile Telemetry features in `server.xml`, while keeping the Java agent and OpenTelemetry system properties in `jvm.options`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -331,7 +322,7 @@ You can also set system properties in `server.xml`:
         <feature>jsonb-3.0</feature>
         <feature>mpConfig-3.1</feature>
         <!-- MicroProfile Telemetry can work alongside the agent -->
-        <feature>mpTelemetry-1.1</feature>
+        <feature>mpTelemetry-2.0</feature>
     </featureManager>
 
     <httpEndpoint id="defaultHttpEndpoint"
@@ -341,10 +332,6 @@ You can also set system properties in `server.xml`:
     <webApplication location="myapp.war" contextRoot="/">
         <classloader delegation="parentLast" />
     </webApplication>
-
-    <!-- Application-specific OpenTelemetry configuration -->
-    <variable name="otel.service.name" value="liberty-application"/>
-    <variable name="otel.exporter.otlp.endpoint" value="http://localhost:4317"/>
 
 </server>
 ```
@@ -381,37 +368,20 @@ CMD ["/opt/ol/wlp/bin/server", "run", "defaultServer"]
 
 Instead of passing all configuration as system properties, use a configuration file for better maintainability:
 
-```yaml
-# otel-config.yaml
-resource:
-  attributes:
-    service.name: my-application
-    service.namespace: production
-    service.version: "1.0.0"
-    deployment.environment: prod
-    host.name: ${HOSTNAME}
-
-exporter:
-  otlp:
-    endpoint: http://localhost:4317
-    protocol: grpc
-    compression: gzip
-    timeout: 10000
-    headers:
-      api-key: ${OTEL_API_KEY}
-
-traces:
-  exporter: otlp
-  sampler:
-    type: parentbased_traceidratio
-    argument: 1.0
-
-metrics:
-  exporter: otlp
-  interval: 60000
-
-logs:
-  exporter: otlp
+```properties
+# otel-config.properties
+otel.service.name=my-application
+otel.resource.attributes=service.namespace=production,service.version=1.0.0,deployment.environment=prod
+otel.traces.exporter=otlp
+otel.metrics.exporter=otlp
+otel.logs.exporter=otlp
+otel.exporter.otlp.endpoint=http://localhost:4317
+otel.exporter.otlp.protocol=grpc
+otel.exporter.otlp.compression=gzip
+otel.exporter.otlp.timeout=10000
+otel.traces.sampler=parentbased_traceidratio
+otel.traces.sampler.arg=1.0
+otel.metric.export.interval=60000
 ```
 
 Reference this file when starting your application server:
@@ -419,7 +389,7 @@ Reference this file when starting your application server:
 ```bash
 # For any application server
 export JAVA_OPTS="$JAVA_OPTS -javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar"
-export OTEL_CONFIG_FILE="/etc/opentelemetry/otel-config.yaml"
+export JAVA_OPTS="$JAVA_OPTS -Dotel.javaagent.configuration-file=/etc/opentelemetry/otel-config.properties"
 ```
 
 ### Securing Credentials
@@ -497,8 +467,7 @@ Some application servers may have class loading conflicts:
 # Exclude problematic instrumentations
 -Dotel.instrumentation.[library-name].enabled=false
 
-# For WildFly, ensure module system compatibility
--Dotel.instrumentation.jboss-modules.enabled=true
+# Keep the agent JAR out of application deployments to avoid class loading conflicts
 ```
 
 ## Monitoring Agent Health
@@ -509,7 +478,7 @@ Create a health check endpoint to verify OpenTelemetry is working:
 # Check if spans are being exported by looking at logs
 grep "BatchSpanProcessor" $CATALINA_HOME/logs/catalina.out
 
-# Monitor agent metrics if using Prometheus
+# Monitor metrics if you configured the Prometheus exporter
 curl http://localhost:9464/metrics | grep otel
 ```
 
