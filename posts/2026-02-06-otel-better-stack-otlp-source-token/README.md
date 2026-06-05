@@ -10,7 +10,7 @@ Better Stack (formerly Logtail) provides a modern log management and uptime moni
 
 ## Better Stack OTLP Endpoint
 
-Better Stack's OTLP endpoint: `https://in-otel.logs.betterstack.com`. Authentication uses an `Authorization: Bearer <source-token>` header.
+Better Stack's OTLP endpoint uses the ingesting host shown for your source, for example `https://your-ingesting-host`. Authentication uses an `Authorization: Bearer <source-token>` header.
 
 ## Creating a Source Token
 
@@ -18,7 +18,7 @@ In the Better Stack dashboard:
 1. Go to Sources
 2. Click "Connect source"
 3. Select "OpenTelemetry"
-4. Copy the source token
+4. Copy the source token and ingesting host
 
 ## Python Setup
 
@@ -37,7 +37,7 @@ from opentelemetry.sdk.resources import Resource
 import logging
 
 BETTER_STACK_SOURCE_TOKEN = "your-source-token"
-BETTER_STACK_ENDPOINT = "https://in-otel.logs.betterstack.com"
+BETTER_STACK_ENDPOINT = "https://your-ingesting-host"
 
 resource = Resource.create({
     "service.name": "web-api",
@@ -106,7 +106,7 @@ import (
 )
 
 const (
-    betterStackEndpoint = "in-otel.logs.betterstack.com"
+    betterStackEndpoint = "your-ingesting-host"
     betterStackToken    = "your-source-token"
 )
 
@@ -166,27 +166,28 @@ func initBetterStack() (*sdktrace.TracerProvider, *sdkmetric.MeterProvider, erro
 ```javascript
 const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
-const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { Resource } = require("@opentelemetry/resources");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
 
 const BETTER_STACK_TOKEN = process.env.BETTER_STACK_SOURCE_TOKEN;
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "express-api",
   "service.version": "3.0.0",
   "deployment.environment": "production",
 });
 
 const traceExporter = new OTLPTraceExporter({
-  url: "https://in-otel.logs.betterstack.com/v1/traces",
+  url: "https://your-ingesting-host/v1/traces",
   headers: {
     Authorization: `Bearer ${BETTER_STACK_TOKEN}`,
   },
 });
 
-const provider = new NodeTracerProvider({ resource });
-provider.addSpanProcessor(new BatchSpanProcessor(traceExporter));
+const provider = new NodeTracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(traceExporter)],
+});
 provider.register();
 ```
 
@@ -216,7 +217,7 @@ processors:
 
 exporters:
   otlphttp/betterstack:
-    endpoint: "https://in-otel.logs.betterstack.com"
+    endpoint: "https://your-ingesting-host"
     headers:
       Authorization: "Bearer ${BETTER_STACK_SOURCE_TOKEN}"
     retry_on_failure:
@@ -280,7 +281,7 @@ def handle_api_request(request):
 ## Environment Variables
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://in-otel.logs.betterstack.com"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-ingesting-host"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-source-token"
 export OTEL_SERVICE_NAME="my-service"
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
