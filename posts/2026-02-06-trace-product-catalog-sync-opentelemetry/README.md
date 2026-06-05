@@ -30,6 +30,7 @@ The extract service polls the ERP for product changes. This is where the trace b
 ```python
 from opentelemetry import trace, metrics
 from opentelemetry.propagate import inject
+from opentelemetry.trace import Status, StatusCode
 import time
 
 tracer = trace.get_tracer("catalog.sync", "1.0.0")
@@ -104,7 +105,7 @@ def send_to_transform(change: dict):
                 map_span.set_attribute("catalog.unmapped_fields",
                     len(change) - len(normalized))
             except MappingError as e:
-                map_span.set_status(trace.StatusCode.ERROR, str(e))
+                map_span.set_status(Status(StatusCode.ERROR, str(e)))
                 sync_errors.add(1, {
                     "catalog.error_type": "field_mapping",
                     "catalog.source": "erp"
@@ -188,12 +189,12 @@ def sync_pim_to_storefront():
                                 })
                         else:
                             error_count += 1
-                            push_span.set_status(trace.StatusCode.ERROR,
-                                f"Storefront returned {result.status_code}")
+                            push_span.set_status(Status(StatusCode.ERROR,
+                                f"Storefront returned {result.status_code}"))
 
                     except Exception as e:
                         error_count += 1
-                        push_span.set_status(trace.StatusCode.ERROR, str(e))
+                        push_span.set_status(Status(StatusCode.ERROR, str(e)))
                         sync_errors.add(1, {
                             "catalog.error_type": "storefront_push",
                             "catalog.product_id": product["id"]
@@ -221,7 +222,7 @@ def get_sync_lag(options):
         erp_updated = erp_client.get_last_updated(product["id"])
         storefront_updated = storefront_client.get_last_updated(product["id"])
         if erp_updated and storefront_updated:
-            lag_seconds = (storefront_updated - erp_updated).total_seconds()
+            lag_seconds = max(0, (erp_updated - storefront_updated).total_seconds())
             lags.append(lag_seconds)
     avg_lag = sum(lags) / len(lags) if lags else 0
     return [metrics.Observation(avg_lag)]
