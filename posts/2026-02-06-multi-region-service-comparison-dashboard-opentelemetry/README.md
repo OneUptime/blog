@@ -24,7 +24,7 @@ def get_service_resource():
     return Resource.create({
         "service.name": "payment-service",
         "service.version": os.getenv("APP_VERSION", "unknown"),
-        "deployment.environment": os.getenv("ENVIRONMENT", "production"),
+        "deployment.environment.name": os.getenv("ENVIRONMENT", "production"),
         # Region should come from infrastructure metadata
         "cloud.region": os.getenv("CLOUD_REGION", "us-east-1"),
         "cloud.provider": os.getenv("CLOUD_PROVIDER", "aws"),
@@ -41,7 +41,13 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment-service
@@ -56,12 +62,12 @@ spec:
               value: "http://otel-collector:4317"
             # Set the resource attributes via env var as a fallback
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "cloud.region=$(CLOUD_REGION),service.name=payment-service"
+              value: "cloud.region=$(CLOUD_REGION),service.name=payment-service,deployment.environment.name=production"
 ```
 
 ## Regional Collector Architecture
 
-Each region runs its own OpenTelemetry Collector that adds region-specific labels and forwards data to a central metrics store. This pattern avoids cross-region traffic for the data path while still giving you a unified view.
+Each region runs its own OpenTelemetry Collector that adds region-specific labels and forwards data to a central metrics store. This pattern keeps application-to-collector traffic local to the region while still giving you a unified view.
 
 ```mermaid
 graph TB
@@ -101,8 +107,7 @@ processors:
         value: "${REGION}"
         action: upsert
 
-  # Add cross-region latency measurement
-  # by recording collector receive-to-export time
+  # Add the collector region as a data point attribute
   attributes:
     actions:
       - key: collector.region
@@ -110,7 +115,7 @@ processors:
         action: upsert
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: https://central-prometheus.example.com/api/v1/write
     headers:
       Authorization: "Bearer ${METRICS_WRITE_TOKEN}"
@@ -122,8 +127,8 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [prometheusremotewrite]
+      processors: [resource, attributes, batch]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Key Application Metrics to Instrument
@@ -131,6 +136,8 @@ service:
 For cross-region comparison, focus on metrics that reveal regional differences.
 
 ```python
+import time
+
 from opentelemetry import metrics
 
 meter = metrics.get_meter("payment-service")
@@ -156,13 +163,22 @@ error_counter = meter.create_counter(
 )
 
 def handle_request(request):
+    start_time = time.perf_counter()
+    response = process_payment(request)
+    elapsed_time = time.perf_counter() - start_time
+
     # Record with attributes that enable regional comparison
-    labels = {
-        "http.method": request.method,
+    attributes = {
+        "http.request.method": request.method,
         "http.route": request.route,
-        "http.status_code": str(response.status_code),
+        "http.response.status_code": response.status_code,
     }
-    request_duration.record(elapsed_time, labels)
+    request_duration.record(elapsed_time, attributes)
+
+    if response.status_code >= 500:
+        error_counter.add(1, {**attributes, "error.type": str(response.status_code)})
+
+    return response
 ```
 
 ## Dashboard Queries for Regional Comparison
@@ -172,28 +188,28 @@ The dashboard queries use the `region` label to break down metrics side by side.
 ```promql
 # Request latency p99 by region - the primary comparison panel
 histogram_quantile(0.99,
-  sum(rate(http_server_request_duration_bucket[5m])) by (le, region)
+  sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, region)
 )
 
 # Error rate by region
 sum(rate(http_server_errors_total[5m])) by (region)
 /
-sum(rate(http_server_request_duration_count[5m])) by (region)
+sum(rate(http_server_request_duration_seconds_count[5m])) by (region)
 
 # Request throughput by region
-sum(rate(http_server_request_duration_count[5m])) by (region)
+sum(rate(http_server_request_duration_seconds_count[5m])) by (region)
 
 # Dependency latency comparison - are third-party APIs slower in some regions?
 histogram_quantile(0.95,
-  sum(rate(dependency_duration_bucket[5m])) by (le, region, dependency_name)
+  sum(rate(dependency_duration_seconds_bucket[5m])) by (le, region, dependency_name)
 )
 
 # Detect regional anomalies - regions deviating from global average
 # Subtract each region's p50 from the global p50
-histogram_quantile(0.50, sum(rate(http_server_request_duration_bucket[5m])) by (le, region))
+histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, region))
 -
 ignoring(region)
-histogram_quantile(0.50, sum(rate(http_server_request_duration_bucket[5m])) by (le))
+histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))
 ```
 
 ## Dashboard Layout
