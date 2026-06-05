@@ -148,6 +148,7 @@ def route_subscriber_traffic(subscriber_id: str, imsi: str,
 # mvno_mediation.py
 from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode
+import time
 
 tracer = trace.get_tracer("mvno.mediation")
 meter = metrics.get_meter("mvno.mediation")
@@ -190,6 +191,8 @@ def process_cdr_batch(batch_id: str, cdrs: list, mno_source: str):
     """Process a batch of CDRs received from an MNO partner."""
 
     with tracer.start_as_current_span("mvno.mediation.process_batch") as span:
+        start = time.time()
+
         span.set_attributes({
             "mvno.batch_id": batch_id,
             "mvno.mno_source": mno_source,
@@ -244,11 +247,15 @@ def process_cdr_batch(batch_id: str, cdrs: list, mno_source: str):
         rated_revenue.add(total_revenue, {"mno": mno_source})
         mno_cost.add(total_cost, {"mno": mno_source})
 
+        elapsed = (time.time() - start) * 1000
+        mediation_latency.record(elapsed, {"mno": mno_source})
+
         span.set_attributes({
             "mvno.batch.processed": processed,
             "mvno.batch.rejected": rejected,
             "mvno.batch.total_revenue": total_revenue,
             "mvno.batch.total_cost": total_cost,
+            "mvno.batch.processing_latency_ms": elapsed,
         })
 ```
 
