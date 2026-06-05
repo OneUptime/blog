@@ -50,23 +50,24 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
-
-// Configure OpenTelemetry
-const provider = new WebTracerProvider({
-  resource: {
-    attributes: {
-      'service.name': 'my-app-frontend',
-      'service.version': '1.0.0',
-    },
-  },
-});
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 // Configure exporter to send traces to collector
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+// Configure OpenTelemetry
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    'service.name': 'my-app-frontend',
+    'service.version': '1.0.0',
+  }),
+  spanProcessors: [
+    new BatchSpanProcessor(exporter),
+  ],
+});
+
 provider.register({
   contextManager: new ZoneContextManager(),
 });
@@ -163,6 +164,18 @@ let liveSocket = new LiveSocket("/live", Socket, {
         element_id: el.id,
         element_class: el.className,
       }
+    },
+    submit: (event, el) => {
+      return {
+        client_timestamp: Date.now(),
+        form_id: el.id,
+      }
+    },
+    change: (event, el) => {
+      return {
+        client_timestamp: Date.now(),
+        form_id: el.id,
+      }
     }
   }
 })
@@ -186,10 +199,12 @@ Install the required npm packages:
 npm install --save \
   @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/context-zone \
   @opentelemetry/instrumentation \
-  @opentelemetry/instrumentation-document-load
+  @opentelemetry/instrumentation-document-load \
+  @opentelemetry/resources
 ```
 
 ## Server-Side Event Handler Tracing
@@ -206,7 +221,7 @@ defmodule MyAppWeb.DashboardLive do
     OpenTelemetry.Tracer.with_span "liveview.mount.dashboard" do
       OpenTelemetry.Tracer.set_attributes(%{
         "liveview.module" => "DashboardLive",
-        "liveview.action" => socket.assigns.live_action
+        "liveview.action" => socket.assigns[:live_action]
       })
 
       socket =
@@ -451,7 +466,6 @@ Template with form tracing:
         field={@changeset[:name]}
         label="Name"
         phx-debounce="300"
-        phx-hook="TracedInput"
         id="user-name"
       />
     </div>
@@ -539,10 +553,10 @@ defmodule MyAppWeb.NavLive do
       OpenTelemetry.Tracer.set_attributes(%{
         "navigation.uri" => uri,
         "navigation.params" => inspect(params),
-        "navigation.live_action" => socket.assigns.live_action
+        "navigation.live_action" => socket.assigns[:live_action]
       })
 
-      socket = apply_action(socket, socket.assigns.live_action, params)
+      socket = apply_action(socket, socket.assigns[:live_action], params)
 
       {:noreply, socket}
     end
@@ -613,7 +627,7 @@ end
 
 ## Performance Monitoring
 
-Add custom metrics for LiveView performance:
+Create spans from LiveView telemetry events for performance analysis:
 
 ```elixir
 defmodule MyAppWeb.LiveViewMetrics do
@@ -636,10 +650,12 @@ defmodule MyAppWeb.LiveViewMetrics do
   def handle_event([:phoenix, :live_view, :mount, :stop], measurements, metadata, _) do
     require OpenTelemetry.Tracer
 
+    duration_us = System.convert_time_unit(measurements.duration, :native, :microsecond)
+
     OpenTelemetry.Tracer.with_span "telemetry.liveview.mount" do
       OpenTelemetry.Tracer.set_attributes(%{
         "liveview.module" => inspect(metadata.socket.view),
-        "liveview.duration_us" => measurements.duration,
+        "liveview.duration_us" => duration_us,
         "liveview.connected" => metadata.socket.transport_pid != nil
       })
     end
@@ -648,10 +664,12 @@ defmodule MyAppWeb.LiveViewMetrics do
   def handle_event([:phoenix, :live_view, :handle_event, :stop], measurements, metadata, _) do
     require OpenTelemetry.Tracer
 
+    duration_us = System.convert_time_unit(measurements.duration, :native, :microsecond)
+
     OpenTelemetry.Tracer.with_span "telemetry.liveview.handle_event" do
       OpenTelemetry.Tracer.set_attributes(%{
         "liveview.event" => metadata.event,
-        "liveview.duration_us" => measurements.duration
+        "liveview.duration_us" => duration_us
       })
     end
   end
