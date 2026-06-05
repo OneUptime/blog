@@ -58,8 +58,13 @@ const framesPerSecond = meter.createHistogram('telehealth.video.fps', {
 });
 
 const packetsLost = meter.createCounter('telehealth.packets_lost_total', {
-  description: 'Total RTP packets lost during the session',
+  description: 'RTP packets lost during the session',
   unit: 'packets',
+});
+
+const packetLossRatio = meter.createHistogram('telehealth.packet_loss_ratio', {
+  description: 'RTP packet loss ratio for each collection interval',
+  unit: '1',
 });
 ```
 
@@ -68,43 +73,81 @@ const packetsLost = meter.createCounter('telehealth.packets_lost_total', {
 Now we connect to the RTCPeerConnection and periodically extract statistics:
 
 ```javascript
+const previousInboundStats = new Map();
+
 // Collect stats from the active WebRTC peer connection
 async function collectWebRTCMetrics(peerConnection, sessionAttributes) {
   const stats = await peerConnection.getStats();
+  const selectedCandidatePairIds = new Set();
+
+  stats.forEach((report) => {
+    if (report.type === 'transport' && report.selectedCandidatePairId) {
+      selectedCandidatePairIds.add(report.selectedCandidatePairId);
+    }
+  });
 
   stats.forEach((report) => {
     // Capture inbound video stream quality
     if (report.type === 'inbound-rtp' && report.kind === 'video') {
-      videoJitter.record(report.jitter * 1000, sessionAttributes);
-      framesPerSecond.record(report.framesPerSecond || 0, sessionAttributes);
+      recordPacketLoss(report, sessionAttributes);
 
-      if (report.packetsLost > 0) {
-        packetsLost.add(report.packetsLost, {
-          ...sessionAttributes,
-          'media.kind': 'video',
-        });
+      if (typeof report.jitter === 'number') {
+        videoJitter.record(report.jitter * 1000, sessionAttributes);
       }
+
+      framesPerSecond.record(report.framesPerSecond || 0, sessionAttributes);
     }
 
     // Capture inbound audio stream quality
     if (report.type === 'inbound-rtp' && report.kind === 'audio') {
-      audioJitter.record(report.jitter * 1000, sessionAttributes);
+      recordPacketLoss(report, sessionAttributes);
 
-      if (report.packetsLost > 0) {
-        packetsLost.add(report.packetsLost, {
-          ...sessionAttributes,
-          'media.kind': 'audio',
-        });
+      if (typeof report.jitter === 'number') {
+        audioJitter.record(report.jitter * 1000, sessionAttributes);
       }
     }
 
-    // Capture connection-level metrics from ICE candidate pairs
-    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+    // Capture connection-level metrics from the selected ICE candidate pair
+    if (
+      report.type === 'candidate-pair' &&
+      selectedCandidatePairIds.has(report.id) &&
+      typeof report.currentRoundTripTime === 'number'
+    ) {
       roundTripTime.record(
         report.currentRoundTripTime * 1000,
         sessionAttributes
       );
     }
+  });
+}
+
+function recordPacketLoss(report, sessionAttributes) {
+  const previous = previousInboundStats.get(report.id);
+
+  if (previous) {
+    const packetsReceivedDelta = report.packetsReceived - previous.packetsReceived;
+    const packetsLostDelta = report.packetsLost - previous.packetsLost;
+    const packetsExpectedDelta = packetsReceivedDelta + packetsLostDelta;
+    const attrs = {
+      ...sessionAttributes,
+      'media.kind': report.kind,
+    };
+
+    if (packetsLostDelta > 0) {
+      packetsLost.add(packetsLostDelta, attrs);
+    }
+
+    if (packetsExpectedDelta > 0) {
+      packetLossRatio.record(
+        Math.max(packetsLostDelta, 0) / packetsExpectedDelta,
+        attrs
+      );
+    }
+  }
+
+  previousInboundStats.set(report.id, {
+    packetsLost: report.packetsLost,
+    packetsReceived: report.packetsReceived,
   });
 }
 
@@ -210,7 +253,7 @@ rules:
 
   # Packet loss above 5% severely degrades quality
   - alert: TelehealthPacketLossHigh
-    condition: rate(telehealth.packets_lost_total[1m]) > 0.05
+    condition: telehealth.packet_loss_ratio > 0.05
     for: 30s
     severity: critical
 ```
