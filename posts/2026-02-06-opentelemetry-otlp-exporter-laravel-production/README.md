@@ -10,9 +10,9 @@ Moving your Laravel application to production with OpenTelemetry requires carefu
 
 ## Understanding OTLP Export Strategies
 
-The OTLP exporter supports two transport protocols: gRPC and HTTP/protobuf. Each has different characteristics that affect your production deployment.
+The OTLP exporter supports gRPC and HTTP transports. HTTP is commonly used with the protobuf encoding. Each has different characteristics that affect your production deployment.
 
-gRPC offers better performance through HTTP/2 multiplexing and built-in compression, making it ideal for high-throughput applications. HTTP/protobuf provides broader compatibility and easier debugging, which can be valuable when troubleshooting production issues.
+gRPC offers better performance through HTTP/2 multiplexing and built-in compression, making it ideal for high-throughput applications. HTTP with protobuf provides broader compatibility and easier debugging, which can be valuable when troubleshooting production issues.
 
 ## Installing Production Dependencies
 
@@ -24,11 +24,12 @@ First, ensure you have the required packages with appropriate version constraint
 composer require open-telemetry/sdk:^1.0
 composer require open-telemetry/exporter-otlp:^1.0
 
-# For gRPC transport, install the gRPC extension or transport library
+# For gRPC transport, install the gRPC extension and transport library
+pecl install grpc
 composer require open-telemetry/transport-grpc:^1.0
 
 # For HTTP transport (more common in production)
-composer require guzzlehttp/guzzle:^7.0
+composer require php-http/guzzle7-adapter:^1.0
 ```
 
 The version constraints use `^1.0` to ensure you get stable releases with backward compatibility guarantees.
@@ -52,7 +53,7 @@ return [
         // OTLP endpoint for metrics
         'metrics_endpoint' => env('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'http://localhost:4318/v1/metrics'),
 
-        // Transport protocol: http or grpc
+        // Transport protocol: grpc, http/protobuf, or http/json
         'protocol' => env('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf'),
 
         // Request timeout in seconds
@@ -104,27 +105,36 @@ Create a service provider that initializes OpenTelemetry with production-optimiz
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\TracerInterface;
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Trace\TracerProviderInterface as ApiTracerProviderInterface;
+use OpenTelemetry\API\Common\Time\Clock;
+use OpenTelemetry\Context\ScopeInterface;
+use OpenTelemetry\SDK\Sdk;
 use OpenTelemetry\SDK\Trace\TracerProvider;
+use OpenTelemetry\SDK\Trace\TracerProviderInterface;
 use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
+use OpenTelemetry\SDK\Trace\Sampler\AlwaysOffSampler;
+use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
-use OpenTelemetry\Contrib\Otlp\MetricExporter;
 use OpenTelemetry\SDK\Common\Export\TransportInterface;
-use OpenTelemetry\SDK\Common\Export\Http\PsrTransportFactory;
-use Psr\Log\LoggerInterface;
 
 class OpenTelemetryServiceProvider extends ServiceProvider
 {
+    private ?ScopeInterface $otelScope = null;
+
     public function register(): void
     {
         $this->app->singleton(TracerProviderInterface::class, function ($app) {
             return $this->createTracerProvider($app);
         });
+
+        $this->app->alias(TracerProviderInterface::class, ApiTracerProviderInterface::class);
 
         $this->app->singleton(TracerInterface::class, function ($app) {
             return $app->make(TracerProviderInterface::class)
@@ -138,11 +148,10 @@ class OpenTelemetryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Set the global tracer provider for auto-instrumentation
-        Globals::registerInitializer(function (Configurator $configurator) {
-            $configurator->withTracerProvider(
-                $this->app->make(TracerProviderInterface::class)
-            );
-        });
+        $this->otelScope = Sdk::builder()
+            ->setTracerProvider($this->app->make(TracerProviderInterface::class))
+            ->setAutoShutdown(true)
+            ->buildAndRegisterGlobal();
     }
 
     private function createTracerProvider($app): TracerProviderInterface
@@ -163,11 +172,11 @@ class OpenTelemetryServiceProvider extends ServiceProvider
         // Configure batch processor for efficient export
         $batchProcessor = new BatchSpanProcessor(
             $exporter,
-            $app->make('log'), // Logger for export failures
+            Clock::getDefault(),
             config('opentelemetry.batch_processor.max_queue_size'),
             config('opentelemetry.batch_processor.schedule_delay'),
-            config('opentelemetry.batch_processor.export_batch_size'),
-            config('opentelemetry.batch_processor.export_timeout')
+            config('opentelemetry.batch_processor.export_timeout'),
+            config('opentelemetry.batch_processor.export_batch_size')
         );
 
         // Build the tracer provider with sampler
@@ -187,14 +196,14 @@ class OpenTelemetryServiceProvider extends ServiceProvider
         $compression = config('opentelemetry.otlp.compression');
         $timeout = config('opentelemetry.otlp.timeout');
 
-        // Create HTTP transport with Guzzle
-        $factory = new PsrTransportFactory();
+        // Create HTTP/protobuf transport with a PSR-18 client
+        $factory = new OtlpHttpTransportFactory();
 
         return $factory->create(
             $endpoint,
             'application/x-protobuf',
             $headers,
-            $compression === 'gzip' ? COMPRESSION_GZIP : COMPRESSION_NONE,
+            $compression,
             $timeout
         );
     }
@@ -217,14 +226,16 @@ class OpenTelemetryServiceProvider extends ServiceProvider
 }
 ```
 
-Register this provider in `config/app.php`:
+Register this provider in `bootstrap/providers.php` for current Laravel applications:
 
 ```php
-'providers' => [
-    // Other providers...
+return [
+    App\Providers\AppServiceProvider::class,
     App\Providers\OpenTelemetryServiceProvider::class,
-],
+];
 ```
+
+In older Laravel applications that still use the `config/app.php` providers array, add the provider there instead.
 
 ## Environment Configuration for Production
 
@@ -276,6 +287,8 @@ namespace App\Services\Telemetry;
 
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
 use OpenTelemetry\SDK\Common\Future\CancellationInterface;
+use OpenTelemetry\SDK\Common\Future\CompletedFuture;
+use OpenTelemetry\SDK\Common\Future\FutureInterface;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -298,13 +311,13 @@ class ResilientExporter implements SpanExporterInterface
         $this->retryDelay = $retryDelay;
     }
 
-    public function export(iterable $batch, ?CancellationInterface $cancellation = null): int
+    public function export(iterable $batch, ?CancellationInterface $cancellation = null): FutureInterface
     {
         $attempt = 0;
 
         while ($attempt < $this->maxRetries) {
             try {
-                $result = $this->exporter->export($batch, $cancellation);
+                $result = $this->exporter->export($batch, $cancellation)->await();
 
                 if ($attempt > 0) {
                     $this->logger->info('OTLP export succeeded after retry', [
@@ -312,7 +325,7 @@ class ResilientExporter implements SpanExporterInterface
                     ]);
                 }
 
-                return $result;
+                return new CompletedFuture($result);
 
             } catch (Throwable $e) {
                 $attempt++;
@@ -330,17 +343,17 @@ class ResilientExporter implements SpanExporterInterface
                     ]);
 
                     // Return failure but don't throw to prevent application impact
-                    return SpanExporterInterface::STATUS_FAILED_NOT_RETRYABLE;
+                    return new CompletedFuture(false);
                 }
 
                 // Exponential backoff with jitter
                 $delay = $this->retryDelay * pow(2, $attempt - 1);
-                $jitter = rand(0, $delay / 2);
+                $jitter = rand(0, (int) ($delay / 2));
                 usleep(($delay + $jitter) * 1000);
             }
         }
 
-        return SpanExporterInterface::STATUS_FAILED_NOT_RETRYABLE;
+        return new CompletedFuture(false);
     }
 
     public function shutdown(?CancellationInterface $cancellation = null): bool
