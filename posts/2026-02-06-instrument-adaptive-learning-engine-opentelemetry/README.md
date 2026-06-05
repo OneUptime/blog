@@ -53,7 +53,7 @@ def get_next_content(student_id, course_id, current_module_id):
         }
     ) as span:
         import time
-        start = time.time()
+        start = time.perf_counter()
 
         # Step 1: Load the student's learner model
         with tracer.start_as_current_span("adaptive.load_learner_model") as model_span:
@@ -81,7 +81,7 @@ def get_next_content(student_id, course_id, current_module_id):
             algo_span.set_attribute("adaptive.confidence_score", recommendation.confidence)
             algo_span.set_attribute("adaptive.recommendation_reason", recommendation.reason)
 
-        latency_ms = (time.time() - start) * 1000
+        latency_ms = (time.perf_counter() - start) * 1000
         recommendation_latency.record(latency_ms, {
             "adaptive.algorithm_version": recommendation.algorithm_version,
         })
