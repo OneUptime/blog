@@ -30,9 +30,10 @@ Start by installing the necessary packages:
 dotnet add package OpenTelemetry
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
+dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package Dapper
-dotnet add package System.Data.SqlClient
-# Or use Microsoft.Data.SqlClient for newer SQL Server features
+dotnet add package Microsoft.Data.SqlClient
 
 ```
 
@@ -128,7 +129,8 @@ public static class DapperInstrumentation
             // Add parameter information (be careful with sensitive data)
             AddParameterTags(activity, param);
 
-            var result = await connection.QueryAsync<T>(
+            var result = await SqlMapper.QueryAsync<T>(
+                connection,
                 sql,
                 param,
                 transaction,
@@ -156,8 +158,7 @@ public static class DapperInstrumentation
         {
             stopwatch.Stop();
 
-            activity?.SetTag("db.error", true);
-            activity?.SetTag("db.error.type", ex.GetType().Name);
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -189,7 +190,8 @@ public static class DapperInstrumentation
         {
             AddParameterTags(activity, param);
 
-            var result = await connection.QueryFirstOrDefaultAsync<T>(
+            var result = await SqlMapper.QueryFirstOrDefaultAsync<T>(
+                connection,
                 sql,
                 param,
                 transaction,
@@ -215,6 +217,7 @@ public static class DapperInstrumentation
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -246,7 +249,8 @@ public static class DapperInstrumentation
         {
             AddParameterTags(activity, param);
 
-            var rowsAffected = await connection.ExecuteAsync(
+            var rowsAffected = await SqlMapper.ExecuteAsync(
+                connection,
                 sql,
                 param,
                 transaction,
@@ -273,6 +277,7 @@ public static class DapperInstrumentation
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -304,7 +309,8 @@ public static class DapperInstrumentation
         {
             AddParameterTags(activity, param);
 
-            var result = await connection.ExecuteScalarAsync<T>(
+            var result = await SqlMapper.ExecuteScalarAsync<T>(
+                connection,
                 sql,
                 param,
                 transaction,
@@ -329,6 +335,7 @@ public static class DapperInstrumentation
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -360,7 +367,8 @@ public static class DapperInstrumentation
         {
             AddParameterTags(activity, param);
 
-            var result = await connection.QueryMultipleAsync(
+            var result = await SqlMapper.QueryMultipleAsync(
+                connection,
                 sql,
                 param,
                 transaction,
@@ -385,6 +393,7 @@ public static class DapperInstrumentation
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -410,10 +419,10 @@ public static class DapperInstrumentation
             return null;
 
         // Add database semantic conventions
-        activity.SetTag("db.system", GetDatabaseSystem(connection));
+        activity.SetTag("db.system.name", GetDatabaseSystem(connection));
         activity.SetTag("db.connection_string", SanitizeConnectionString(connection.ConnectionString));
-        activity.SetTag("db.statement", sql);
-        activity.SetTag("db.operation", operationName);
+        activity.SetTag("db.query.text", sql);
+        activity.SetTag("db.operation.name", operationName);
 
         if (commandType.HasValue)
         {
@@ -424,7 +433,7 @@ public static class DapperInstrumentation
         var databaseName = GetDatabaseName(connection);
         if (!string.IsNullOrEmpty(databaseName))
         {
-            activity.SetTag("db.name", databaseName);
+            activity.SetTag("db.namespace", databaseName);
         }
 
         return activity;
@@ -448,7 +457,7 @@ public static class DapperInstrumentation
     {
         return connection.GetType().Name switch
         {
-            "SqlConnection" => "mssql",
+            "SqlConnection" => "microsoft.sql_server",
             "NpgsqlConnection" => "postgresql",
             "MySqlConnection" => "mysql",
             "SqliteConnection" => "sqlite",
@@ -492,7 +501,7 @@ Replace standard Dapper calls with the instrumented versions:
 
 ```csharp
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 public class ProductRepository
 {
@@ -603,9 +612,9 @@ public class ProductWithOrders
 }
 ```
 
-## Instrumenting Bulk Operations
+## Instrumenting Batch Operations
 
-Dapper supports bulk operations that need special instrumentation considerations:
+Dapper can execute the same command for a sequence of parameter objects, which needs special instrumentation considerations:
 
 ```csharp
 public static class DapperBulkInstrumentation
@@ -625,17 +634,18 @@ public static class DapperBulkInstrumentation
             ActivityKind.Client);
 
         var itemsList = items.ToList();
-        activity?.SetTag("db.system", "mssql");
-        activity?.SetTag("db.statement", sql);
-        activity?.SetTag("db.operation", "BulkInsert");
+        activity?.SetTag("db.system.name", connection.GetType().Name == "SqlConnection" ? "microsoft.sql_server" : "unknown");
+        activity?.SetTag("db.query.text", sql);
+        activity?.SetTag("db.operation.name", "BulkInsert");
         activity?.SetTag("db.bulk.item_count", itemsList.Count);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            // Execute bulk operation
-            var rowsAffected = await connection.ExecuteAsync(
+            // Execute the command once per parameter object
+            var rowsAffected = await SqlMapper.ExecuteAsync(
+                connection,
                 sql,
                 itemsList,
                 transaction,
@@ -656,6 +666,7 @@ public static class DapperBulkInstrumentation
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -708,8 +719,8 @@ public class InstrumentedConnectionFactory
             "DB Connection",
             ActivityKind.Client);
 
-        activity?.SetTag("db.system", "mssql");
-        activity?.SetTag("db.operation", "connect");
+        activity?.SetTag("db.system.name", "microsoft.sql_server");
+        activity?.SetTag("db.operation.name", "connect");
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -734,6 +745,7 @@ public class InstrumentedConnectionFactory
         {
             stopwatch.Stop();
 
+            activity?.SetTag("error.type", ex.GetType().Name);
             activity?.RecordException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
@@ -753,14 +765,17 @@ Instrument database transactions:
 ```csharp
 public class TransactionScope : IDisposable
 {
+    private static readonly ActivitySource ActivitySource =
+        new ActivitySource("Dapper.Transaction", "1.0.0");
+
     private readonly Activity? _activity;
     private readonly IDbTransaction _transaction;
 
+    public IDbTransaction Transaction => _transaction;
+
     public TransactionScope(IDbConnection connection)
     {
-        var activitySource = new ActivitySource("Dapper.Transaction");
-
-        _activity = activitySource.StartActivity(
+        _activity = ActivitySource.StartActivity(
             "DB Transaction",
             ActivityKind.Internal);
 
@@ -779,6 +794,7 @@ public class TransactionScope : IDisposable
         }
         catch (Exception ex)
         {
+            _activity?.SetTag("error.type", ex.GetType().Name);
             _activity?.RecordException(ex);
             _activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
@@ -811,11 +827,13 @@ public async Task TransferFundsAsync(int fromAccount, int toAccount, decimal amo
     {
         await connection.ExecuteAsync(
             "UPDATE Accounts SET Balance = Balance - @Amount WHERE Id = @Id",
-            new { Amount = amount, Id = fromAccount });
+            new { Amount = amount, Id = fromAccount },
+            transactionScope.Transaction);
 
         await connection.ExecuteAsync(
             "UPDATE Accounts SET Balance = Balance + @Amount WHERE Id = @Id",
-            new { Amount = amount, Id = toAccount });
+            new { Amount = amount, Id = toAccount },
+            transactionScope.Transaction);
 
         transactionScope.Commit();
     }
