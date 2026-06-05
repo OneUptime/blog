@@ -17,7 +17,7 @@ An SLI should measure something your users care about. The most common SLI categ
 - **Throughput**: The rate of successful operations per unit of time
 - **Quality**: The proportion of responses that meet correctness criteria
 
-Each of these maps directly to an OpenTelemetry metric type. Availability and quality work well as ratios derived from counters. Latency fits naturally into histograms. Throughput is best measured with rate calculations over counters.
+Each of these can be represented with OpenTelemetry metrics. Availability and quality work well as ratios derived from counters. Latency fits naturally into histograms. Throughput is best measured with rate calculations over counters.
 
 ## Setting Up OpenTelemetry Metrics for SLIs
 
@@ -52,7 +52,7 @@ Availability is typically expressed as the ratio of successful requests to total
 ```python
 # Create counters for tracking request outcomes
 total_requests = meter.create_counter(
-    name="http.server.request.total",
+    name="http.server.requests",
     description="Total number of HTTP requests received",
     unit="1",
 )
@@ -65,7 +65,10 @@ failed_requests = meter.create_counter(
 
 def handle_request(request):
     # Always increment total requests
-    total_requests.add(1, {"http.method": request.method, "http.route": request.path})
+    total_requests.add(1, {
+        "http.request.method": request.method,
+        "http.route": request.route_template,
+    })
 
     try:
         response = process_request(request)
@@ -73,8 +76,8 @@ def handle_request(request):
     except Exception as e:
         # Increment error counter only on failure
         failed_requests.add(1, {
-            "http.method": request.method,
-            "http.route": request.path,
+            "http.request.method": request.method,
+            "http.route": request.route_template,
             "error.type": type(e).__name__,
         })
         raise
@@ -89,12 +92,12 @@ Latency SLIs answer the question: "What fraction of requests complete within an 
 ```python
 import time
 
-# Create a histogram with explicit bucket boundaries
+# Create a histogram for request durations
 # These boundaries should align with your SLO thresholds
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
-    description="Duration of HTTP requests in milliseconds",
-    unit="ms",
+    description="Duration of HTTP requests in seconds",
+    unit="s",
 )
 
 def handle_request(request):
@@ -105,10 +108,10 @@ def handle_request(request):
         return response
     finally:
         # Record duration regardless of success or failure
-        duration_ms = (time.monotonic() - start) * 1000
-        request_duration.record(duration_ms, {
-            "http.method": request.method,
-            "http.route": request.path,
+        duration_s = time.monotonic() - start
+        request_duration.record(duration_s, {
+            "http.request.method": request.method,
+            "http.route": request.route_template,
         })
 ```
 
@@ -121,11 +124,11 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 
 # Define bucket boundaries that match your SLO thresholds
-# If your SLO says "99% of requests under 200ms", include 200 as a boundary
+# If your SLO says "99% of requests under 200ms", include 0.2 as a boundary
 latency_view = View(
     instrument_name="http.server.request.duration",
     aggregation=ExplicitBucketHistogramAggregation(
-        boundaries=[5, 10, 25, 50, 100, 200, 500, 1000, 2500, 5000]
+        boundaries=[0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2.5, 5]
     ),
 )
 
@@ -178,7 +181,7 @@ For availability over the last 30 minutes:
 1 - (
   sum(rate(http_server_request_errors_total[30m]))
   /
-  sum(rate(http_server_request_total[30m]))
+  sum(rate(http_server_requests_total[30m]))
 )
 ```
 
@@ -186,9 +189,9 @@ For latency SLI (fraction of requests under 200ms):
 
 ```promql
 # Latency SLI: proportion of requests faster than 200ms
-sum(rate(http_server_request_duration_bucket{le="200"}[30m]))
+sum(rate(http_server_request_duration_seconds_bucket{le="0.2"}[30m]))
 /
-sum(rate(http_server_request_duration_count[30m]))
+sum(rate(http_server_request_duration_seconds_count[30m]))
 ```
 
 ## Key Takeaways
