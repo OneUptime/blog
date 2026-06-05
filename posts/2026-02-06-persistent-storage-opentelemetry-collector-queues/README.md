@@ -82,6 +82,7 @@ extensions:
 
   health_check:
     endpoint: "0.0.0.0:13133"
+    path: /health
 
 receivers:
   otlp:
@@ -119,7 +120,8 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
-      max_elapsed_time: 300s
+      # Set to 0 so queued data is retried until it is delivered
+      max_elapsed_time: 0
 
 service:
   extensions: [file_storage/queue, health_check]
@@ -203,6 +205,7 @@ exporters:
       storage: file_storage/traces
     retry_on_failure:
       enabled: true
+      max_elapsed_time: 0
 
   otlp/metrics:
     endpoint: "backend.example.com:4317"
@@ -212,6 +215,7 @@ exporters:
       storage: file_storage/metrics
     retry_on_failure:
       enabled: true
+      max_elapsed_time: 0
 
   otlp/logs:
     endpoint: "backend.example.com:4317"
@@ -221,6 +225,7 @@ exporters:
       storage: file_storage/logs
     retry_on_failure:
       enabled: true
+      max_elapsed_time: 0
 
 service:
   extensions: [file_storage/traces, file_storage/metrics, file_storage/logs]
@@ -328,8 +333,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs  # Adjust for your cloud provider
+provisioner: ebs.csi.aws.com  # Adjust for your cloud provider
 parameters:
+  csi.storage.k8s.io/fstype: ext4
   type: gp3
   iopsPerGB: "50"
 reclaimPolicy: Retain  # Keep data if the pod is deleted
@@ -343,13 +349,12 @@ Figuring out how much disk space you need depends on your telemetry volume and h
 
 ```mermaid
 flowchart TD
-    A[Telemetry Rate<br/>spans/sec, metrics/sec, logs/sec] --> B[Average Batch Size<br/>bytes per batch]
-    B --> C[Batches per Second<br/>rate / batch_size]
-    C --> D[Storage Rate<br/>MB per minute]
-    D --> E{Target Outage Duration}
-    E -->|30 min| F[Storage = rate x 30 min]
-    E -->|2 hours| G[Storage = rate x 120 min]
-    E -->|24 hours| H[Storage = rate x 1440 min]
+    A[Telemetry Rate<br/>spans/sec, metrics/sec, logs/sec] --> B[Average Item Size<br/>bytes per span, metric, or log]
+    B --> C[Storage Rate<br/>MB per minute]
+    C --> D{Target Outage Duration}
+    D -->|30 min| E[Storage = rate x 30 min]
+    D -->|2 hours| F[Storage = rate x 120 min]
+    D -->|24 hours| G[Storage = rate x 1440 min]
 ```
 
 Here is a rough calculation:
@@ -364,7 +369,7 @@ SPANS_PER_SEC=5000
 METRICS_PER_SEC=10000
 LOGS_PER_SEC=2000
 
-# Average size per item in bytes (compressed on disk)
+# Average size per item in bytes after serialization on disk
 BYTES_PER_SPAN=500
 BYTES_PER_METRIC=200
 BYTES_PER_LOG=300
@@ -390,13 +395,12 @@ echo "  Total (with 20% overhead): ${TOTAL_GB} GB"
 
 ## Monitoring Queue Health
 
-Keep an eye on persistent queue metrics to know when you are approaching limits:
+Keep an eye on persistent queue metrics to know when you are approaching limits. The Collector exposes Prometheus metrics on port 8888 by default; increase the metric detail level if you need more dimensions:
 
 ```yaml
 service:
   telemetry:
     metrics:
-      address: "0.0.0.0:8888"
       level: detailed
 ```
 
@@ -482,10 +486,10 @@ kill -9 ${COLLECTOR_PID}
 sleep 2
 
 echo "Step 4: Check storage directory..."
-QUEUE_FILES=$(ls -la "${STORAGE_DIR}" | wc -l)
+QUEUE_FILES=$(find "${STORAGE_DIR}" -type f | wc -l)
 echo "  Queue files on disk: ${QUEUE_FILES}"
 
-if [ "${QUEUE_FILES}" -le 1 ]; then
+if [ "${QUEUE_FILES}" -eq 0 ]; then
   echo "FAIL: No queue data found on disk"
   exit 1
 fi
@@ -527,9 +531,9 @@ Performance comparison:
 
 | Setting | Write Throughput | Durability | Use Case |
 |---|---|---|---|
-| `fsync: true` | ~5,000 batches/sec | Survives power loss | Critical telemetry |
-| `fsync: false` | ~20,000 batches/sec | Survives process crash | Most environments |
-| In-memory only | ~50,000 batches/sec | Nothing survives | Development/testing |
+| `fsync: true` | Lowest | Best chance of surviving power loss | Critical telemetry |
+| `fsync: false` | Higher | Survives process crash, but recent OS-buffered writes can be lost on power failure | Most environments |
+| In-memory only | Highest | Nothing survives process restart | Development/testing |
 
 ## Wrapping Up
 
