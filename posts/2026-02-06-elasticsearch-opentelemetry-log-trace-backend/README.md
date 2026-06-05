@@ -47,7 +47,7 @@ docker run -d \
   docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 ```
 
-For production, you should run a multi-node cluster with dedicated master, data, and coordinating nodes. Here is a Docker Compose setup that provides a basic production-like topology.
+For production, you should run a multi-node cluster with dedicated master, data, and coordinating nodes, and you should enable transport TLS between nodes. For local topology testing, here is a Docker Compose setup with separate master and data nodes.
 
 ```yaml
 # docker-compose.yml - Elasticsearch cluster with Kibana
@@ -61,8 +61,7 @@ services:
       - cluster.name=otel-cluster
       - discovery.seed_hosts=es-data-1,es-data-2
       - cluster.initial_master_nodes=es-master
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=changeme
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     volumes:
       - es-master-data:/usr/share/elasticsearch/data
@@ -75,8 +74,7 @@ services:
       - cluster.name=otel-cluster
       - discovery.seed_hosts=es-master,es-data-2
       - cluster.initial_master_nodes=es-master
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=changeme
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
     volumes:
       - es-data-1-vol:/usr/share/elasticsearch/data
@@ -89,8 +87,7 @@ services:
       - cluster.name=otel-cluster
       - discovery.seed_hosts=es-master,es-data-1
       - cluster.initial_master_nodes=es-master
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=changeme
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
     volumes:
       - es-data-2-vol:/usr/share/elasticsearch/data
@@ -101,8 +98,6 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://es-master:9200
-      - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=changeme
     depends_on:
       - es-master
 
@@ -142,6 +137,16 @@ processors:
     limit_mib: 1024
     spike_limit_mib: 256
 
+  transform/ecs:
+    log_statements:
+      - context: scope
+        statements:
+          - set(attributes["elastic.mapping.mode"], "ecs")
+    trace_statements:
+      - context: scope
+        statements:
+          - set(attributes["elastic.mapping.mode"], "ecs")
+
 exporters:
   elasticsearch/traces:
     # Elasticsearch endpoint URL
@@ -154,23 +159,24 @@ exporters:
     # Index configuration for traces
     traces_index: otel-traces
 
-    # Mapping mode determines how OTel data maps to ES documents
+    # Restrict accepted mapping modes to ECS; the transform processor selects it
     mapping:
-      mode: ecs
+      allowed_modes: [ecs]
 
     # TLS settings (disable verification for self-signed certs in dev)
     tls:
       insecure_skip_verify: true
 
-    # Bulk indexing settings
-    flush:
-      bytes: 5242880   # 5MB flush threshold
-      interval: 5s     # Flush at least every 5 seconds
+    # Queueing and batching settings for bulk indexing
+    sending_queue:
+      batch:
+        max_size: 5242880
+        flush_timeout: 5s
 
     # Retry on transient failures
     retry:
       enabled: true
-      max_requests: 3
+      max_retries: 2
       initial_interval: 1s
 
   elasticsearch/logs:
@@ -179,26 +185,27 @@ exporters:
     password: changeme
     logs_index: otel-logs
     mapping:
-      mode: ecs
+      allowed_modes: [ecs]
     tls:
       insecure_skip_verify: true
-    flush:
-      bytes: 5242880
-      interval: 5s
+    sending_queue:
+      batch:
+        max_size: 5242880
+        flush_timeout: 5s
     retry:
       enabled: true
-      max_requests: 3
+      max_retries: 2
       initial_interval: 1s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/ecs, batch]
       exporters: [elasticsearch/traces]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/ecs, batch]
       exporters: [elasticsearch/logs]
 ```
 
@@ -208,11 +215,11 @@ Notice that we define two separate Elasticsearch exporter instances, one for tra
 
 Observability data grows fast, and you need a strategy for managing it. Elasticsearch's Index Lifecycle Management (ILM) feature automates the process of rolling over indices, moving old data to cheaper storage tiers, and eventually deleting it.
 
-Here is an ILM policy that keeps hot data for 3 days, moves it to warm storage for 14 days, then deletes it.
+Here is an ILM policy that keeps hot data for 3 days, moves it to warm storage, then deletes it after 14 days.
 
-```json
-// ILM policy for OpenTelemetry trace indices
-// PUT _ilm/policy/otel-traces-policy
+```http
+PUT _ilm/policy/otel-traces-policy
+
 {
   "policy": {
     "phases": {
@@ -255,9 +262,9 @@ Here is an ILM policy that keeps hot data for 3 days, moves it to warm storage f
 
 Apply this policy to your OpenTelemetry indices by creating an index template that references it.
 
-```json
-// Index template that applies the ILM policy to OTel trace indices
-// PUT _index_template/otel-traces-template
+```http
+PUT _index_template/otel-traces-template
+
 {
   "index_patterns": ["otel-traces-*"],
   "template": {
@@ -271,20 +278,34 @@ Apply this policy to your OpenTelemetry indices by creating an index template th
 }
 ```
 
+Create the first backing index and attach the write alias before the Collector starts writing to `otel-traces`.
+
+```http
+PUT otel-traces-000001
+
+{
+  "aliases": {
+    "otel-traces": {
+      "is_write_index": true
+    }
+  }
+}
+```
+
 ## Querying Traces and Logs
 
 Elasticsearch's query DSL is powerful for searching through observability data. Here are some practical examples.
 
 To find all error traces for a specific service in the last hour, use a bool query combining time range and status filters.
 
-```json
-// Find error traces for the checkout service in the last hour
-// GET otel-traces/_search
+```http
+GET otel-traces/_search
+
 {
   "query": {
     "bool": {
       "must": [
-        { "match": { "resource.service.name": "checkout-service" } },
+        { "term": { "service.name": "checkout-service" } },
         { "match": { "status.code": "ERROR" } }
       ],
       "filter": [
@@ -299,22 +320,22 @@ To find all error traces for a specific service in the last hour, use a bool que
 
 To search logs for a specific error message across all services, Elasticsearch's full-text search really shines.
 
-```json
-// Search for logs containing a specific error pattern
-// GET otel-logs/_search
+```http
+GET otel-logs/_search
+
 {
   "query": {
     "bool": {
       "must": [
         {
           "match_phrase": {
-            "body": "connection refused"
+            "message": "connection refused"
           }
         }
       ],
       "filter": [
         { "range": { "@timestamp": { "gte": "now-6h" } } },
-        { "term": { "severity_text": "ERROR" } }
+        { "term": { "log.level": "ERROR" } }
       ]
     }
   },
@@ -327,13 +348,13 @@ To search logs for a specific error message across all services, Elasticsearch's
 
 One of the biggest advantages of sending both logs and traces to the same Elasticsearch cluster is correlation. Because OpenTelemetry injects trace context into log records, you can easily find all logs associated with a specific trace.
 
-```json
-// Find all logs associated with a specific trace
-// GET otel-logs/_search
+```http
+GET otel-logs/_search
+
 {
   "query": {
     "term": {
-      "trace_id": "abc123def456789"
+      "trace.id": "abc123def456789"
     }
   },
   "sort": [{ "@timestamp": "asc" }]
