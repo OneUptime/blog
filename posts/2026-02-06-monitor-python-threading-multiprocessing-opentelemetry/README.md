@@ -127,25 +127,21 @@ The ThreadPoolExecutor provides a higher-level interface for thread management. 
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 
-def with_context(func):
+def with_current_context(func):
     """
-    Decorator that captures the current context and restores it in the worker thread.
-    This makes context propagation transparent for ThreadPoolExecutor tasks.
+    Helper that captures the current context and returns a callable that restores it.
+    Use this when submitting work to a plain ThreadPoolExecutor.
     """
+    ctx = context.get_current()
+
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Capture context at the time the task is submitted
-        ctx = context.get_current()
-
-        def context_aware_func():
-            # Restore context in the worker thread
-            token = context.attach(ctx)
-            try:
-                return func(*args, **kwargs)
-            finally:
-                context.detach(token)
-
-        return context_aware_func()
+        # Restore context in the worker thread
+        token = context.attach(ctx)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            context.detach(token)
 
     return wrapper
 
@@ -215,6 +211,7 @@ print(f"Completed tasks: {results}")
 Multiprocessing is more challenging because processes don't share memory. You must serialize the span context and pass it to child processes explicitly.
 
 ```python
+import os
 from multiprocessing import Process, Queue
 from opentelemetry.trace import SpanContext, TraceFlags, set_span_in_context
 
@@ -260,12 +257,11 @@ def cpu_intensive_worker(context_dict: dict, worker_id: int, data: list, result_
     Worker function that runs in a separate process.
     Must recreate the tracer provider and reconstruct context.
     """
-    # Each process needs its own tracer provider
+    # Each process can use its own tracer provider
     # Note: In production, configure this to export to the same backend
     worker_provider = TracerProvider()
     worker_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    trace.set_tracer_provider(worker_provider)
-    worker_tracer = trace.get_tracer(__name__)
+    worker_tracer = worker_provider.get_tracer(__name__)
 
     # Reconstruct the parent span context
     parent_context = deserialize_span_context(context_dict)
@@ -281,7 +277,7 @@ def cpu_intensive_worker(context_dict: dict, worker_id: int, data: list, result_
             with worker_tracer.start_as_current_span(f"cpu_worker_{worker_id}") as span:
                 span.set_attribute("worker.id", worker_id)
                 span.set_attribute("data.size", len(data))
-                span.set_attribute("process.id", threading.get_ident())
+                span.set_attribute("process.id", os.getpid())
 
                 # Simulate CPU-intensive work
                 result = sum(x * x for x in data)
@@ -358,16 +354,35 @@ Similar to ThreadPoolExecutor, ProcessPoolExecutor can be wrapped to handle cont
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
+_worker_provider = None
+_worker_tracer = None
+
+def get_worker_tracer():
+    """
+    Creates one tracer provider per worker process and reuses it across tasks.
+    ProcessPoolExecutor workers can handle multiple submitted functions.
+    """
+    global _worker_provider, _worker_tracer
+
+    if _worker_tracer is None:
+        _worker_provider = TracerProvider()
+        _worker_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+        _worker_tracer = _worker_provider.get_tracer(__name__)
+
+    return _worker_tracer
+
+def flush_worker_traces():
+    """Flushes spans from the worker process before returning a result."""
+    if _worker_provider is not None:
+        _worker_provider.force_flush()
+
 def process_worker_with_context(context_dict: dict, task_id: int, data: dict):
     """
     Worker function that recreates the trace context in a child process.
     This function is called by ProcessPoolExecutor.
     """
-    # Set up tracing in this process
-    worker_provider = TracerProvider()
-    worker_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    trace.set_tracer_provider(worker_provider)
-    worker_tracer = trace.get_tracer(__name__)
+    # Set up tracing once per worker process
+    worker_tracer = get_worker_tracer()
 
     # Reconstruct parent context
     parent_context = deserialize_span_context(context_dict)
@@ -394,7 +409,7 @@ def process_worker_with_context(context_dict: dict, task_id: int, data: dict):
 
         finally:
             context.detach(token)
-            worker_provider.shutdown()
+            flush_worker_traces()
 
 def parallel_process_pool():
     """
@@ -445,11 +460,8 @@ def hybrid_worker(context_dict: dict, data_batch: list):
     Process worker that spawns threads for I/O operations.
     Combines multiprocessing for CPU work with threading for I/O.
     """
-    # Set up tracing in this process
-    worker_provider = TracerProvider()
-    worker_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    trace.set_tracer_provider(worker_provider)
-    worker_tracer = trace.get_tracer(__name__)
+    # Set up tracing once per worker process
+    worker_tracer = get_worker_tracer()
 
     parent_context = deserialize_span_context(context_dict)
 
@@ -489,7 +501,7 @@ def hybrid_worker(context_dict: dict, data_batch: list):
 
         finally:
             context.detach(token)
-            worker_provider.shutdown()
+            flush_worker_traces()
 
 def complex_parallel_workflow():
     """
