@@ -26,6 +26,8 @@ Order Event -> Kafka Topic (orders.new)
 The first step is injecting trace context into Kafka message headers so consumers can continue the same trace.
 
 ```python
+import json
+
 from opentelemetry import trace
 from opentelemetry.propagate import inject
 from confluent_kafka import Producer
@@ -39,7 +41,7 @@ def produce_order_event(order: dict):
         span.set_attribute("order.amount", order["total_amount"])
         span.set_attribute("order.currency", order["currency"])
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.destination", "orders.new")
+        span.set_attribute("messaging.destination.name", "orders.new")
 
         # Inject trace context into Kafka headers
         headers = {}
@@ -61,9 +63,12 @@ def produce_order_event(order: dict):
 This service consumes order events, runs them through an ML model, and produces scored events. The span attributes capture the risk assessment details.
 
 ```python
+import json
+import time
+
+from opentelemetry import metrics, trace
 from opentelemetry.propagate import extract
 from confluent_kafka import Consumer
-import time
 
 scoring_tracer = trace.get_tracer("fraud.scoring", "1.0.0")
 meter = metrics.get_meter("fraud.scoring", "1.0.0")
@@ -92,7 +97,8 @@ def process_order_for_fraud(msg):
         order = json.loads(msg.value())
         span.set_attribute("order.id", order["order_id"])
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.operation", "process")
+        span.set_attribute("messaging.destination.name", "orders.new")
+        span.set_attribute("messaging.operation.name", "process")
 
         # Feature extraction for the ML model
         with scoring_tracer.start_as_current_span("fraud.extract_features") as feat_span:
@@ -143,9 +149,15 @@ def process_order_for_fraud(msg):
 This service consumes scored events and makes the final accept/reject/review decision.
 
 ```python
-decision_tracer = trace.get_tracer("fraud.decision", "1.0.0")
+import json
 
-decision_counter = meter.create_counter(
+from opentelemetry import metrics, trace
+from opentelemetry.propagate import extract
+
+decision_tracer = trace.get_tracer("fraud.decision", "1.0.0")
+decision_meter = metrics.get_meter("fraud.decision", "1.0.0")
+
+decision_counter = decision_meter.create_counter(
     name="fraud.decisions_total",
     description="Fraud decisions by outcome",
     unit="1"
@@ -163,6 +175,9 @@ def process_fraud_decision(msg):
         span.set_attribute("order.id", scored_order["order_id"])
         span.set_attribute("fraud.risk_score", risk_score)
         span.set_attribute("order.amount", scored_order["total_amount"])
+        span.set_attribute("messaging.system", "kafka")
+        span.set_attribute("messaging.destination.name", "orders.fraud-scored")
+        span.set_attribute("messaging.operation.name", "process")
 
         # Decision logic with thresholds
         if risk_score > 0.85:
@@ -201,8 +216,9 @@ receivers:
   kafka:
     brokers:
       - kafka-broker-1:9092
-    topic: otel-spans
-    encoding: otlp_proto
+    traces:
+      topics: [otel-spans]
+      encoding: otlp_proto
 
 processors:
   tail_sampling:
