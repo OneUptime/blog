@@ -49,7 +49,8 @@ from opentelemetry import metrics
 meter = metrics.get_meter("payment-service", "1.0.0")
 
 # Histogram for payment processing duration
-# Use explicit bucket boundaries tuned for payment latency patterns
+# Configure explicit bucket boundaries in your SDK views if the defaults
+# do not match your payment latency patterns
 payment_duration = meter.create_histogram(
     name="payment.duration",
     description="Time taken to process a payment end-to-end",
@@ -75,7 +76,7 @@ gateway_errors = meter.create_counter(
     description="Count of payment gateway errors by category",
 )
 
-# Gauge for in-flight payment requests
+# UpDownCounter for in-flight payment requests
 inflight_payments = meter.create_up_down_counter(
     name="payment.inflight",
     description="Number of payment requests currently being processed",
@@ -133,7 +134,7 @@ async def process_payment(payment_request):
             with tracer.start_as_current_span(
                 "payment.fraud_check",
                 kind=SpanKind.CLIENT,
-                attributes={"peer.service": "fraud-detection"},
+                attributes={"service.peer.name": "fraud-detection"},
             ) as fraud_span:
                 fraud_result = await fraud_service.check(payment_request)
                 fraud_span.set_attribute("fraud.score", fraud_result.risk_score)
@@ -219,7 +220,7 @@ def _bucket_amount(amount):
         return "over_1000"
 ```
 
-A few important details in this code. The `_bucket_amount` function prevents high cardinality by grouping payment amounts into ranges rather than recording exact values. The `payment.failure_type` attribute categorizes errors so you can alert on specific failure modes. And the `inflight_payments` gauge lets you detect concurrency issues where too many payments are being processed simultaneously.
+A few important details in this code. The `_bucket_amount` function prevents high cardinality by grouping payment amounts into ranges rather than recording exact values. The `payment.failure_type` attribute categorizes errors so you can alert on specific failure modes. And the `inflight_payments` UpDownCounter lets you detect concurrency issues where too many payments are being processed simultaneously.
 
 ## Instrumenting the Gateway Call
 
@@ -227,11 +228,12 @@ The gateway call deserves its own dedicated instrumentation because it is the mo
 
 ```python
 # gateway_client.py
+import asyncio
 import time
 import aiohttp
-from opentelemetry import trace, metrics, context
+from opentelemetry import trace, metrics
 from opentelemetry.trace import SpanKind, StatusCode
-from opentelemetry.propagators import inject
+from opentelemetry.propagate import inject
 
 tracer = trace.get_tracer("payment-service", "1.0.0")
 gateway_latency = metrics.get_meter("payment-service").create_histogram(
@@ -247,9 +249,9 @@ async def _charge_gateway(payment_request, parent_span):
         "payment.gateway.charge",
         kind=SpanKind.CLIENT,
         attributes={
-            "peer.service": "payment-gateway",
-            "http.method": "POST",
-            "http.url": "https://api.gateway.example.com/v1/charges",
+            "service.peer.name": "payment-gateway",
+            "http.request.method": "POST",
+            "url.full": "https://api.gateway.example.com/v1/charges",
             "payment.gateway.provider": "stripe",
         },
     ) as gw_span:
@@ -267,13 +269,13 @@ async def _charge_gateway(payment_request, parent_span):
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     latency_ms = (time.monotonic() - start) * 1000
-                    gw_span.set_attribute("http.status_code", response.status)
+                    gw_span.set_attribute("http.response.status_code", response.status)
                     gw_span.set_attribute("payment.gateway.latency_ms", latency_ms)
 
                     # Record gateway latency metric
                     gateway_latency.record(latency_ms, {
                         "gateway.provider": "stripe",
-                        "http.status_code": str(response.status),
+                        "http.response.status_code": str(response.status),
                     })
 
                     body = await response.json()
@@ -300,11 +302,11 @@ async def _charge_gateway(payment_request, parent_span):
                         gateway_errors.add(1, {
                             "gateway.provider": "stripe",
                             "error.type": "gateway_error",
-                            "http.status_code": str(response.status),
+                            "http.response.status_code": str(response.status),
                         })
                         raise GatewayError(f"Gateway returned {response.status}")
 
-        except aiohttp.ServerTimeoutError:
+        except asyncio.TimeoutError:
             latency_ms = (time.monotonic() - start) * 1000
             gw_span.set_attribute("payment.gateway.latency_ms", latency_ms)
             gw_span.set_status(StatusCode.ERROR, "Gateway timeout")
@@ -314,7 +316,7 @@ async def _charge_gateway(payment_request, parent_span):
             })
             gateway_latency.record(latency_ms, {
                 "gateway.provider": "stripe",
-                "http.status_code": "timeout",
+                "error.type": "timeout",
             })
             raise GatewayTimeoutError(f"Gateway timed out after {latency_ms:.0f}ms")
 ```
@@ -327,6 +329,7 @@ Payment retries add complexity. You need to know how many times a payment was re
 
 ```python
 # retry_handler.py
+import asyncio
 from opentelemetry import trace
 
 tracer = trace.get_tracer("payment-service", "1.0.0")
@@ -469,7 +472,7 @@ groups:
       - alert: HighGatewayLatency
         expr: |
           histogram_quantile(0.95,
-            rate(payment_gateway_latency_bucket[5m])
+            sum by (le) (rate(payment_gateway_latency_milliseconds_bucket[5m]))
           ) > 3000
         for: 5m
         labels:
