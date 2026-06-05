@@ -26,7 +26,7 @@ Let's instrument each stage.
 
 ```python
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("review.pipeline")
 meter = metrics.get_meter("review.pipeline")
@@ -154,7 +154,7 @@ class ReviewPipeline:
                 return result
             except Exception as e:
                 duration = (time.time() - start) * 1000
-                span.set_status(StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
 
                 review_stage_duration.record(duration, {
