@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Next.js, Edge Runtime, Vercel
 
 Description: Understand why OpenTelemetry does not work in Next.js Edge Runtime and learn workarounds for tracing edge functions.
 
-Next.js supports two runtimes: the Node.js runtime and the Edge runtime. The Edge runtime runs on a stripped-down V8 isolate without access to Node.js APIs like `fs`, `net`, or the module system. Since OpenTelemetry's Node.js SDK depends on these APIs, it cannot run in the Edge runtime. This results in missing spans for any route or middleware running on the edge.
+Next.js supports two runtimes: the Node.js runtime and the Edge runtime. The Edge runtime runs on a stripped-down V8 isolate without access to native Node.js APIs like `fs`, `net`, or CommonJS `require()`. Since OpenTelemetry's Node.js SDK depends on these APIs, it cannot run in the Edge runtime. This results in missing application OpenTelemetry spans for any route or middleware running on the edge.
 
 ## Identifying the Problem
 
@@ -32,12 +32,14 @@ export async function GET() {
 }
 ```
 
-Middleware in Next.js always runs on the Edge runtime:
+Middleware in stable Next.js defaults to the Edge runtime. Experimental Node.js middleware support is available in canary releases, but is not recommended for production:
 
 ```typescript
-// middleware.ts - always runs on Edge, no OpenTelemetry
+// middleware.ts - Edge by default in stable Next.js
+import type { NextRequest } from 'next/server';
+
 export function middleware(request: NextRequest) {
-  // This code is not traced
+  // This code is not traced by OpenTelemetry's Node.js SDK
 }
 ```
 
@@ -46,10 +48,10 @@ export function middleware(request: NextRequest) {
 The OpenTelemetry Node.js SDK requires:
 - `require()` for module patching (Edge uses ESM only)
 - `http`/`https` modules for exporters
-- `process` global for environment variables
+- Node-specific runtime APIs used by SDK internals
 - `perf_hooks` for high-resolution timestamps
 
-The Edge runtime provides none of these. It is closer to a Web Worker environment than a Node.js environment.
+The Edge runtime does not provide native Node.js APIs. Next.js does allow `process.env` for environment variables in Edge code, but the runtime is still closer to a Web Worker environment than a Node.js environment.
 
 ## Workaround 1: Use Node.js Runtime
 
@@ -65,7 +67,7 @@ export async function GET() {
 }
 ```
 
-In `next.config.js`, you can set a default for all routes:
+Next.js does not provide a `next.config.js` global runtime override for all App Router route segments. Set the runtime per route segment instead:
 
 ```javascript
 // next.config.js
@@ -83,10 +85,11 @@ You can implement basic trace propagation in Edge functions using the W3C Trace 
 
 ```typescript
 // middleware.ts
+import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
 
   // Generate a simple trace context if none exists
   const traceparent = request.headers.get('traceparent');
@@ -94,20 +97,29 @@ export function middleware(request: NextRequest) {
     const traceId = generateHexId(32);
     const spanId = generateHexId(16);
     const newTraceparent = `00-${traceId}-${spanId}-01`;
-    response.headers.set('traceparent', newTraceparent);
+    requestHeaders.set('traceparent', newTraceparent);
   }
 
-  return response;
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 function generateHexId(length: number): string {
-  const bytes = new Uint8Array(length / 2);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  let id = '';
+  do {
+    const bytes = new Uint8Array(length / 2);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  } while (/^0+$/.test(id));
+
+  return id;
 }
 ```
 
-This does not create full OpenTelemetry spans, but it propagates trace context so that downstream Node.js services can connect their spans to the same trace.
+This does not create full OpenTelemetry spans, but it propagates trace context on the request so that downstream Node.js routes or services that read the incoming headers can connect their spans to the same trace. For outbound `fetch()` calls made directly from Edge code, pass the `traceparent` header in the fetch request headers.
 
 ## Workaround 3: Use the Next.js Built-In Tracing
 
@@ -136,7 +148,7 @@ export async function register() {
 ```
 
 ```javascript
-// next.config.js
+// next.config.js for Next.js 13 and 14
 module.exports = {
   experimental: {
     instrumentationHook: true,
@@ -144,22 +156,22 @@ module.exports = {
 };
 ```
 
-The `register()` function is called once when the Next.js server starts. The `NEXT_RUNTIME` check ensures the SDK only initializes in the Node.js runtime.
+The `register()` function is called once when a new Next.js server instance starts. The `NEXT_RUNTIME` check ensures the SDK only initializes in the Node.js runtime. In Next.js 15 and later, the instrumentation file is stable and the `instrumentationHook` flag is no longer required.
 
 ## Workaround 4: Trace at the Infrastructure Level
 
-If you deploy to Vercel or similar platforms, use their built-in tracing:
+If you deploy to Vercel or similar platforms, use their built-in infrastructure tracing and the Vercel OpenTelemetry package for supported application spans:
 
-```javascript
-// next.config.js for Vercel
-module.exports = {
-  experimental: {
-    instrumentationHook: true,
-  },
-};
+```typescript
+// instrumentation.ts
+import { registerOTel } from '@vercel/otel';
+
+export function register() {
+  registerOTel({ serviceName: 'next-app' });
+}
 ```
 
-Vercel provides its own tracing integration that works with both runtimes at the infrastructure level, outside your application code.
+Vercel can show infrastructure spans for routing, middleware, caching, and functions. Framework and custom application spans still depend on OpenTelemetry instrumentation, and custom spans from functions using the Edge runtime are not supported.
 
 ## Architecture Decision
 
