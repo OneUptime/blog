@@ -14,7 +14,7 @@ This guide shows you how to instrument Hibernate with OpenTelemetry to gain deep
 
 Hibernate generates SQL dynamically based on entity mappings, lazy loading configuration, and query methods. A single repository call might trigger multiple database queries due to lazy loading or join fetches. Without instrumentation, these hidden queries remain invisible.
 
-OpenTelemetry can capture each database operation as a span, including connection acquisition, query execution, and result set processing. This visibility helps identify performance bottlenecks and optimize database access patterns.
+OpenTelemetry can capture database operations as spans, including connection acquisition and query execution. This visibility helps identify performance bottlenecks and optimize database access patterns.
 
 ## Project Setup
 
@@ -82,7 +82,7 @@ spring.jpa.properties.hibernate.jdbc.batch_size=20
 otel.service.name=hibernate-app
 otel.traces.exporter=otlp
 otel.exporter.otlp.endpoint=http://localhost:4317
-otel.instrumentation.jdbc.statement-sanitizer.enabled=true
+otel.instrumentation.common.db-statement-sanitizer.enabled=true
 ```
 
 The jdbc:otel: prefix wraps the JDBC driver with OpenTelemetry instrumentation. The statement sanitizer removes sensitive data from SQL statements before exporting.
@@ -93,35 +93,27 @@ Build a custom Hibernate interceptor to add span attributes and track entity ope
 
 ```java
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
-import org.hibernate.CallbackException;
 import org.hibernate.Interceptor;
 import org.hibernate.type.Type;
 import org.springframework.stereotype.Component;
 
-import java.io.Serializable;
-
 @Component
 public class TracingHibernateInterceptor implements Interceptor {
 
-    private final Tracer tracer;
-
-    public TracingHibernateInterceptor(Tracer tracer) {
-        this.tracer = tracer;
-    }
-
     @Override
-    public boolean onLoad(Object entity, Serializable id, Object[] state,
+    public boolean onLoad(Object entity, Object id, Object[] state,
                           String[] propertyNames, Type[] types) {
         Span currentSpan = Span.current();
         currentSpan.setAttribute("hibernate.operation", "load");
         currentSpan.setAttribute("hibernate.entity", entity.getClass().getSimpleName());
-        currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        if (id != null) {
+            currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        }
         return false;
     }
 
     @Override
-    public boolean onSave(Object entity, Serializable id, Object[] state,
+    public boolean onSave(Object entity, Object id, Object[] state,
                           String[] propertyNames, Type[] types) {
         Span currentSpan = Span.current();
         currentSpan.setAttribute("hibernate.operation", "save");
@@ -133,21 +125,25 @@ public class TracingHibernateInterceptor implements Interceptor {
     }
 
     @Override
-    public void onDelete(Object entity, Serializable id, Object[] state,
+    public void onDelete(Object entity, Object id, Object[] state,
                          String[] propertyNames, Type[] types) {
         Span currentSpan = Span.current();
         currentSpan.setAttribute("hibernate.operation", "delete");
         currentSpan.setAttribute("hibernate.entity", entity.getClass().getSimpleName());
-        currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        if (id != null) {
+            currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        }
     }
 
     @Override
-    public boolean onFlushDirty(Object entity, Serializable id, Object[] currentState,
+    public boolean onFlushDirty(Object entity, Object id, Object[] currentState,
                                 Object[] previousState, String[] propertyNames, Type[] types) {
         Span currentSpan = Span.current();
         currentSpan.setAttribute("hibernate.operation", "update");
         currentSpan.setAttribute("hibernate.entity", entity.getClass().getSimpleName());
-        currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        if (id != null) {
+            currentSpan.setAttribute("hibernate.entity.id", id.toString());
+        }
         return false;
     }
 }
@@ -164,8 +160,6 @@ import org.hibernate.Interceptor;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.Map;
 
 @Configuration
 public class HibernateConfig {
@@ -345,6 +339,11 @@ Add tracing to custom JPQL and native queries:
 ```java
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -469,7 +468,10 @@ Track transaction lifecycle with custom annotations:
 
 ```java
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -493,8 +495,8 @@ public class TransactionMonitor {
             .startSpan();
 
         try (Scope scope = span.makeCurrent()) {
-            boolean isNewTransaction = TransactionSynchronizationManager.isActualTransactionActive();
-            span.setAttribute("transaction.new", isNewTransaction);
+            boolean transactionActive = TransactionSynchronizationManager.isActualTransactionActive();
+            span.setAttribute("transaction.active", transactionActive);
             span.setAttribute("transaction.name",
                 TransactionSynchronizationManager.getCurrentTransactionName());
             span.setAttribute("transaction.readonly",
@@ -665,6 +667,10 @@ Create a custom span processor to analyze query patterns:
 ```java
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.SpanProcessor;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -703,7 +709,29 @@ public class QueryAnalysisProcessor implements SpanProcessor {
         }
     }
 
-    // Other interface methods...
+    @Override
+    public void onStart(Context parentContext, ReadWriteSpan span) {
+    }
+
+    @Override
+    public boolean isStartRequired() {
+        return false;
+    }
+
+    @Override
+    public boolean isEndRequired() {
+        return true;
+    }
+
+    @Override
+    public CompletableResultCode shutdown() {
+        return CompletableResultCode.ofSuccess();
+    }
+
+    @Override
+    public CompletableResultCode forceFlush() {
+        return CompletableResultCode.ofSuccess();
+    }
 }
 ```
 
