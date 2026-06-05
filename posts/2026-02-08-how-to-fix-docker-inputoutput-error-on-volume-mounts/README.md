@@ -44,11 +44,11 @@ sudo umount /dev/sda1
 sudo fsck -y /dev/sda1
 ```
 
-If you cannot unmount the filesystem because it is in use, schedule a check on next reboot:
+If you cannot unmount the filesystem because it is in use, schedule a check on next reboot. On systemd-based distributions, use the `fsck.mode` and `fsck.repair` kernel parameters:
 
 ```bash
-# Schedule filesystem check on next boot
-sudo touch /forcefsck
+# Schedule filesystem check on next boot by adding these kernel parameters
+fsck.mode=force fsck.repair=yes
 sudo reboot
 ```
 
@@ -87,11 +87,10 @@ sudo umount -f /mnt/nfs-data
 sudo mount -t nfs -o soft,timeo=10,retrans=3 nfs-server-ip:/export/data /mnt/nfs-data
 ```
 
-When using NFS mounts with Docker, add the `soft` and `timeo` options to prevent containers from hanging indefinitely when the NFS server disappears:
+When using NFS mounts with Docker for non-critical or read-mostly data, `soft`, `timeo`, and `retrans` can prevent containers from hanging indefinitely when the NFS server disappears. For critical writes, keep the default hard-mount behavior or make sure your application can safely handle interrupted NFS operations:
 
 ```yaml
 # docker-compose.yml with NFS volume configuration
-version: "3.8"
 services:
   app:
     image: myapp:latest
@@ -107,9 +106,9 @@ volumes:
       device: ":/export/data"
 ```
 
-## Cause 3: Docker Storage Driver Corruption
+## Cause 3: Docker Storage Driver or Snapshotter Corruption
 
-Docker's storage driver (overlay2, devicemapper, btrfs) can become corrupted, especially after disk-full situations or abrupt shutdowns.
+Docker's storage layer can become corrupted, especially after disk-full situations or abrupt shutdowns. Current Docker Engine releases may use the containerd image store and snapshotters, while older or upgraded installations may still show classic storage drivers such as `overlay2` or `btrfs`. The `devicemapper` storage driver was removed in Docker Engine 25.0.
 
 Check which storage driver Docker is using:
 
@@ -118,7 +117,7 @@ Check which storage driver Docker is using:
 docker info | grep "Storage Driver"
 ```
 
-If you are using overlay2 (the default on most systems), verify that the overlay mounts are intact:
+If you are using overlay2 or the overlayfs snapshotter, verify that the overlay mounts are intact:
 
 ```bash
 # Check overlay mount points
@@ -263,11 +262,11 @@ Add disk monitoring to catch full-disk situations early:
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | Sudden I/O errors after reboot | Filesystem corruption | Run fsck |
-| Intermittent I/O errors on NFS | Stale NFS mount | Remount with soft,timeo options |
+| Intermittent I/O errors on NFS | Stale NFS mount | Remount and review NFS timeout options |
 | I/O errors after disk full event | Storage driver corruption | Prune and restart Docker |
 | I/O errors on bind mounts (RHEL) | SELinux context | Add :z or :Z suffix |
 | Cannot create new files | Inode exhaustion | Clean up small files, prune Docker |
 
 ## Wrapping Up
 
-Docker I/O errors on volume mounts almost always trace back to something outside Docker itself: a failing disk, a stale NFS mount, a corrupted filesystem, or SELinux policies. Start your investigation with `dmesg` and `df -h` on the host machine. These two commands will point you in the right direction more often than not. If you are running NFS volumes in production, switch to the `soft` mount option to prevent containers from hanging when the NFS server goes down. And keep an eye on disk space and inode usage with regular monitoring. Catching these problems early saves you from debugging cryptic I/O errors at 3 AM.
+Docker I/O errors on volume mounts almost always trace back to something outside Docker itself: a failing disk, a stale NFS mount, a corrupted filesystem, or SELinux policies. Start your investigation with `dmesg` and `df -h` on the host machine. These two commands will point you in the right direction more often than not. If you are running NFS volumes in production, review the mount timeout behavior carefully: `soft` mounts can prevent indefinite hangs, but they can also surface interrupted operations to applications that are not prepared for them. And keep an eye on disk space and inode usage with regular monitoring. Catching these problems early saves you from debugging cryptic I/O errors at 3 AM.
