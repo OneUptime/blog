@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Processor, Resource Processor, Service Metadata,
 
 Description: Learn how to configure the resource processor in OpenTelemetry Collector to manage service-level metadata, enrich resource attributes.
 
-The resource processor modifies resource attributes attached to telemetry signals in the OpenTelemetry Collector. Resource attributes represent service-level metadata like `service.name`, `service.version`, `deployment.environment`, and infrastructure details that remain consistent across all spans, metrics, and logs from a service.
+The resource processor modifies resource attributes attached to telemetry signals in the OpenTelemetry Collector. Resource attributes represent service-level metadata like `service.name`, `service.version`, `deployment.environment.name`, and infrastructure details that remain consistent across all spans, metrics, and logs from a service.
 
 Unlike the attributes processor which modifies per-signal attributes (individual span or metric attributes), the resource processor operates at a higher level, managing the identity and context of the service generating telemetry.
 
@@ -17,7 +17,7 @@ In OpenTelemetry's data model, every telemetry signal has two layers of attribut
 **Resource attributes** (service-level):
 - `service.name`: Identifies the service
 - `service.version`: Deployment version
-- `service.namespace`: Environment or namespace
+- `service.namespace`: Logical service namespace
 - `host.name`: Server hostname
 - `k8s.pod.name`: Kubernetes pod identifier
 - `cloud.provider`: Cloud platform (AWS, GCP, Azure)
@@ -57,12 +57,12 @@ receivers:
 processors:
   resource:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: insert
 
       - key: service.version
-        value: ${GIT_COMMIT_SHA}
+        value: ${env:GIT_COMMIT_SHA}
         action: upsert
 
   batch:
@@ -88,7 +88,7 @@ This configuration adds environment and version information to all resource attr
 
 ## Core Configuration Actions
 
-The resource processor supports the same action types as the attributes processor:
+The resource processor supports common action types also used by the attributes processor:
 
 ### insert
 
@@ -99,7 +99,7 @@ processors:
   resource:
     attributes:
       - key: service.namespace
-        value: production
+        value: ecommerce
         action: insert
 ```
 
@@ -128,8 +128,8 @@ Adds a new attribute or updates it if it exists:
 processors:
   resource:
     attributes:
-      - key: deployment.environment
-        value: ${DEPLOY_ENV}
+      - key: deployment.environment.name
+        value: ${env:DEPLOY_ENV}
         action: upsert
 ```
 
@@ -174,23 +174,23 @@ processors:
   resource:
     attributes:
       # Environment identification
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
       # Version tracking
       - key: service.version
-        value: ${GIT_COMMIT_SHA}
+        value: ${env:GIT_COMMIT_SHA}
         action: upsert
 
       # Deployment timestamp
       - key: deployment.timestamp
-        value: ${DEPLOY_TIMESTAMP}
+        value: ${env:DEPLOY_TIMESTAMP}
         action: upsert
 
       # Build information
       - key: build.id
-        value: ${CI_BUILD_ID}
+        value: ${env:CI_BUILD_ID}
         action: upsert
 
       # Service namespace
@@ -226,17 +226,17 @@ processors:
 
       # Cloud region
       - key: cloud.region
-        value: ${AWS_REGION}
+        value: ${env:AWS_REGION}
         action: upsert
 
       # Availability zone
       - key: cloud.availability_zone
-        value: ${AWS_AZ}
+        value: ${env:AWS_AZ}
         action: upsert
 
       # Account ID (hashed for security)
       - key: cloud.account.id
-        value: ${AWS_ACCOUNT_ID}
+        value: ${env:AWS_ACCOUNT_ID}
         action: upsert
         # Later hash it
       - key: cloud.account.id
@@ -244,7 +244,7 @@ processors:
 
       # VPC identifier
       - key: network.vpc.id
-        value: ${VPC_ID}
+        value: ${env:VPC_ID}
         action: upsert
 ```
 
@@ -258,31 +258,31 @@ processors:
     attributes:
       # Cluster identification
       - key: k8s.cluster.name
-        value: ${K8S_CLUSTER_NAME}
+        value: ${env:K8S_CLUSTER_NAME}
         action: upsert
 
       # Namespace
       - key: k8s.namespace.name
-        value: ${K8S_NAMESPACE}
+        value: ${env:K8S_NAMESPACE}
         action: upsert
 
       # Pod information
       - key: k8s.pod.name
-        value: ${K8S_POD_NAME}
+        value: ${env:K8S_POD_NAME}
         action: upsert
 
       - key: k8s.pod.uid
-        value: ${K8S_POD_UID}
+        value: ${env:K8S_POD_UID}
         action: upsert
 
       # Node information
       - key: k8s.node.name
-        value: ${K8S_NODE_NAME}
+        value: ${env:K8S_NODE_NAME}
         action: upsert
 
       # Deployment information
       - key: k8s.deployment.name
-        value: ${K8S_DEPLOYMENT_NAME}
+        value: ${env:K8S_DEPLOYMENT_NAME}
         action: upsert
 ```
 
@@ -329,22 +329,22 @@ processors:
     attributes:
       # Tenant identifier
       - key: tenant.id
-        value: ${TENANT_ID}
+        value: ${env:TENANT_ID}
         action: upsert
 
       # Tenant tier (for prioritization)
       - key: tenant.tier
-        value: ${TENANT_TIER}
+        value: ${env:TENANT_TIER}
         action: upsert
 
       # Geographic region
       - key: tenant.region
-        value: ${TENANT_REGION}
+        value: ${env:TENANT_REGION}
         action: upsert
 
       # Service instance ID
       - key: service.instance.id
-        value: ${HOSTNAME}
+        value: ${env:HOSTNAME}
         action: upsert
 ```
 
@@ -382,7 +382,7 @@ Understanding when to use each processor is crucial:
 
 **Service-level metadata** that applies to all telemetry from a service:
 - `service.name`, `service.version`, `service.namespace`
-- `deployment.environment`, `deployment.version`
+- `deployment.environment.name`, `service.version`
 - `host.name`, `host.id`, `host.type`
 - `k8s.cluster.name`, `k8s.pod.name`, `k8s.namespace.name`
 - `cloud.provider`, `cloud.region`, `cloud.account.id`
@@ -403,9 +403,9 @@ processors:
   resource:
     attributes:
       - key: service.version
-        value: ${VERSION}
+        value: ${env:VERSION}
         action: upsert
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: insert
 
@@ -413,7 +413,7 @@ processors:
   attributes:
     actions:
       - key: http.url
-        pattern: ^([^?]+)
+        pattern: ^(?P<http_url_without_query>[^?]+)
         action: extract
       - key: user.email
         action: hash
@@ -433,12 +433,12 @@ This separation maintains a clean distinction between service identity (resource
 
 Resource Detection
 
-The OpenTelemetry Collector can automatically detect resource attributes from the environment using the `resourcedetection` processor:
+The OpenTelemetry Collector can automatically detect resource attributes from the environment using the `resource_detection` processor:
 
 ```yaml
 processors:
   # Automatically detect resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker, gcp, ec2, ecs, eks, azure]
     timeout: 5s
     override: false
@@ -446,17 +446,17 @@ processors:
   # Add or override specific attributes
   resource:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
 service:
   pipelines:
     traces:
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
 ```
 
-The `resourcedetection` processor detects attributes from:
+The `resource_detection` processor detects attributes from:
 
 - **env**: Environment variables (e.g., `OTEL_RESOURCE_ATTRIBUTES`)
 - **system**: Host information (hostname, OS, architecture)
@@ -467,26 +467,26 @@ The `resourcedetection` processor detects attributes from:
 - **eks**: AWS EKS cluster metadata
 - **azure**: Azure VM metadata
 
-Combine `resourcedetection` with the `resource` processor to auto-detect infrastructure context and add deployment-specific metadata.
+Combine `resource_detection` with the `resource` processor to auto-detect infrastructure context and add deployment-specific metadata.
 
 ## Environment Variable Substitution
 
-The resource processor supports environment variable substitution using `${VAR_NAME}` syntax:
+The resource processor supports environment variable substitution using `${env:VAR_NAME}` syntax:
 
 ```yaml
 processors:
   resource:
     attributes:
       - key: service.version
-        value: ${GIT_COMMIT_SHA}
+        value: ${env:GIT_COMMIT_SHA}
         action: upsert
 
       - key: deployment.timestamp
-        value: ${DEPLOY_TIMESTAMP}
+        value: ${env:DEPLOY_TIMESTAMP}
         action: upsert
 
       - key: k8s.namespace.name
-        value: ${K8S_NAMESPACE}
+        value: ${env:K8S_NAMESPACE}
         action: upsert
 ```
 
@@ -517,7 +517,7 @@ processors:
   # Shared resource processor for all pipelines
   resource/common:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
@@ -558,18 +558,18 @@ service:
 
 ```yaml
 exporters:
-  # Add logging exporter to inspect telemetry
-  logging:
+  # Add debug exporter to inspect telemetry
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       processors: [resource, batch]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlphttp]
 ```
 
-Check the logging output for resource attributes. If missing, verify:
+Check the debug exporter output for resource attributes. If missing, verify:
 
 1. Processor is in the pipeline
 2. Environment variables are set correctly
@@ -586,7 +586,7 @@ processors:
   resource:
     attributes:
       # Override application-provided environment
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 ```
@@ -598,14 +598,14 @@ processors:
   resource:
     attributes:
       # Only add if application didn't provide it
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: insert
 ```
 
 ### Issue 3: Environment Variable Not Substituted
 
-**Symptom**: Resource attribute shows `${VAR_NAME}` instead of the actual value.
+**Symptom**: Resource attribute is empty instead of the expected value.
 
 **Cause**: Environment variable not set when collector starts.
 
@@ -637,7 +637,7 @@ spec:
 
 ## Performance Considerations
 
-Resource processing has minimal performance impact because resource attributes are set once per batch, not per individual telemetry item. However, keep these guidelines in mind:
+Resource processing has minimal performance impact because resource attributes are processed at the resource level, not as independent per-span, per-data-point, or per-log-record attributes. However, keep these guidelines in mind:
 
 ### Efficient Pattern
 
@@ -656,7 +656,7 @@ processors:
 ```yaml
 processors:
   # Avoid complex detection for every resource
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker, gcp, ec2, ecs, eks, azure, aks]
     timeout: 30s  # Long timeout affects latency
 ```
@@ -683,12 +683,12 @@ processors:
 
       # Mesh namespace
       - key: service.mesh.namespace
-        value: ${ISTIO_NAMESPACE}
+        value: ${env:ISTIO_NAMESPACE}
         action: upsert
 
       # Sidecar version
       - key: service.mesh.version
-        value: ${ISTIO_VERSION}
+        value: ${env:ISTIO_VERSION}
         action: upsert
 ```
 
@@ -702,17 +702,17 @@ processors:
     attributes:
       # Canary flag
       - key: deployment.canary
-        value: ${IS_CANARY}
+        value: ${env:IS_CANARY}
         action: upsert
 
       # Traffic percentage
       - key: deployment.traffic_percent
-        value: ${CANARY_TRAFFIC_PCT}
+        value: ${env:CANARY_TRAFFIC_PCT}
         action: upsert
 
       # Canary start time
       - key: deployment.canary_start
-        value: ${CANARY_START_TIME}
+        value: ${env:CANARY_START_TIME}
         action: upsert
 ```
 
@@ -726,17 +726,17 @@ processors:
     attributes:
       # Cost center
       - key: billing.cost_center
-        value: ${COST_CENTER}
+        value: ${env:COST_CENTER}
         action: upsert
 
       # Team ownership
       - key: billing.team
-        value: ${TEAM_NAME}
+        value: ${env:TEAM_NAME}
         action: upsert
 
       # Project identifier
       - key: billing.project
-        value: ${PROJECT_ID}
+        value: ${env:PROJECT_ID}
         action: upsert
 
       # Environment tier
@@ -787,11 +787,11 @@ processors:
         value: test-value
         action: insert
       - key: service.version
-        value: ${VERSION}
+        value: ${env:VERSION}
         action: upsert
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed  # Shows resource attributes
 
 service:
@@ -799,7 +799,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Send test telemetry and inspect logs for resource attributes:
@@ -820,7 +820,7 @@ Before deploying resource processor to production:
 
 - [ ] All required environment variables defined and validated
 - [ ] Service identification attributes set (`service.name`, `service.version`, `service.namespace`)
-- [ ] Deployment context configured (`deployment.environment`, version tracking)
+- [ ] Deployment context configured (`deployment.environment.name`, version tracking)
 - [ ] Infrastructure context added (cloud provider, region, Kubernetes cluster)
 - [ ] Cost allocation tags configured (team, project, cost center)
 - [ ] Sensitive resource attributes masked or deleted
@@ -833,7 +833,7 @@ Before deploying resource processor to production:
 
 The resource processor manages service-level metadata in the OpenTelemetry Collector, enriching all telemetry from a service with consistent identity and context attributes.
 
-Use it to add deployment information, infrastructure context, cost allocation tags, and compliance metadata. Combine it with the `resourcedetection` processor for automatic infrastructure discovery and manual enrichment.
+Use it to add deployment information, infrastructure context, cost allocation tags, and compliance metadata. Combine it with the `resource_detection` processor for automatic infrastructure discovery and manual enrichment.
 
 Keep resource attributes focused on service-level metadata that applies to all telemetry. Use the attributes processor for per-signal attributes that vary between spans, metrics, and logs.
 
