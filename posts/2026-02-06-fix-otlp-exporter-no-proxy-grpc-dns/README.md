@@ -12,7 +12,7 @@ You have set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables c
 
 The standard Go `net/http` library reads `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` from environment variables and handles them correctly. But gRPC in Go uses its own transport layer that does not always respect these variables in the same way.
 
-Specifically, older versions of the `grpc-go` library did not check `NO_PROXY` at all. More recent versions do, but there are edge cases where the gRPC DNS resolver resolves the hostname to an IP address *before* checking proxy rules, and the IP address does not match the hostname patterns in `NO_PROXY`.
+Specifically, older versions of the `grpc-go` library did not include the current proxy support. More recent versions do check `NO_PROXY`, but there are edge cases where local DNS resolution gives gRPC an IP address for the target, and the IP address does not match the hostname patterns in `NO_PROXY`.
 
 ## Reproducing the Problem
 
@@ -56,13 +56,13 @@ This is not ideal because ClusterIPs can change, but it confirms whether the iss
 The gRPC library has improved proxy handling over time. Make sure you are using a recent version:
 
 ```go
-// In your go.mod, ensure you have at least v1.58.0
+// In your go.mod, use a current grpc-go release.
 require (
-    google.golang.org/grpc v1.62.0
+    google.golang.org/grpc v1.81.1
 )
 ```
 
-Then rebuild your application. Newer versions of grpc-go properly respect the `NO_PROXY` environment variable.
+Then rebuild your application. Current versions of grpc-go support HTTP CONNECT proxying through `HTTPS_PROXY` and `NO_PROXY`.
 
 ## Fix 3: Use the HTTP/protobuf Exporter Instead
 
@@ -78,6 +78,8 @@ For Go applications:
 
 ```go
 import (
+    "context"
+
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 )
 
@@ -88,22 +90,22 @@ exporter, err := otlptracehttp.New(
 )
 ```
 
-## Fix 4: Set gRPC-Specific Environment Variables
+## Fix 4: Disable gRPC Proxying Explicitly
 
-gRPC has its own set of environment variables for proxy configuration:
+For grpc-go, proxy configuration comes from `HTTPS_PROXY` and `NO_PROXY`; there are no separate `GRPC_PROXY` or `GRPC_HTTP_PROXY` environment variables. If this process should not proxy gRPC traffic, remove the proxy setting for that process:
 
 ```bash
-# Tell gRPC to not use any proxy
-export GRPC_PROXY=""
-
-# Or configure gRPC proxy settings independently
-export GRPC_HTTP_PROXY=""
+# Tell grpc-go not to use an HTTPS proxy in this process
+unset HTTPS_PROXY
+unset https_proxy
 ```
 
 You can also disable the proxy in code:
 
 ```go
 import (
+    "context"
+
     "google.golang.org/grpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 )
