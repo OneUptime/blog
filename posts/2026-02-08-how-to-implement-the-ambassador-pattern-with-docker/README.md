@@ -61,8 +61,6 @@ Now create a Docker Compose file that pairs your application with the ambassador
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -103,25 +101,38 @@ const LISTEN_PORT = 6379;
 
 let currentMaster = null;
 
-// Connect to Sentinel to discover the master
-async function discoverMaster() {
-  const sentinels = SENTINEL_HOSTS.map((h) => {
-    const [host, port] = h.split(":");
-    return { host, port: parseInt(port) };
-  });
+const sentinels = SENTINEL_HOSTS.map((h) => {
+  const [host, port] = h.split(":");
+  return { host, port: parseInt(port, 10) };
+});
 
-  const sentinel = new Redis({
-    sentinels: sentinels,
-    name: MASTER_NAME,
-  });
+// Ask Sentinel for the current Redis master address
+async function refreshMaster() {
+  for (const sentinelConfig of sentinels) {
+    const sentinel = new Redis({
+      ...sentinelConfig,
+      lazyConnect: true,
+    });
 
-  sentinel.on("connect", () => {
-    const { host, port } = sentinel.options;
-    currentMaster = { host, port };
-    console.log(`Master discovered: ${host}:${port}`);
-  });
+    try {
+      await sentinel.connect();
+      const [host, port] = await sentinel.sentinel(
+        "get-master-addr-by-name",
+        MASTER_NAME
+      );
+      currentMaster = { host, port: parseInt(port, 10) };
+      console.log(`Master discovered: ${host}:${port}`);
+      sentinel.disconnect();
+      return;
+    } catch (err) {
+      sentinel.disconnect();
+      console.error(
+        `Sentinel ${sentinelConfig.host}:${sentinelConfig.port} failed: ${err.message}`
+      );
+    }
+  }
 
-  return sentinel;
+  throw new Error("No Sentinel could provide a Redis master");
 }
 
 // Create TCP proxy server
@@ -143,6 +154,9 @@ const server = net.createServer((clientSocket) => {
 
   serverSocket.on("error", (err) => {
     console.error(`Server connection error: ${err.message}`);
+    refreshMaster().catch((refreshErr) =>
+      console.error(`Master refresh error: ${refreshErr.message}`)
+    );
     clientSocket.end();
   });
 
@@ -152,7 +166,13 @@ const server = net.createServer((clientSocket) => {
   });
 });
 
-discoverMaster().then(() => {
+refreshMaster().then(() => {
+  setInterval(() => {
+    refreshMaster().catch((err) =>
+      console.error(`Master refresh error: ${err.message}`)
+    );
+  }, 10000).unref();
+
   server.listen(LISTEN_PORT, "0.0.0.0", () => {
     console.log(`Redis ambassador listening on port ${LISTEN_PORT}`);
   });
@@ -166,7 +186,7 @@ The Dockerfile for the ambassador:
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY proxy.js .
 CMD ["node", "proxy.js"]
 ```
@@ -175,8 +195,6 @@ The Compose file that ties everything together:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -224,6 +242,9 @@ server {
 
         proxy_pass https://external_api;
         proxy_ssl_server_name on;
+        proxy_ssl_name api.thirdparty.com;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_set_header Host api.thirdparty.com;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -233,8 +254,6 @@ server {
 The Compose setup:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -251,9 +270,9 @@ services:
       - ./nginx-ratelimit.conf:/etc/nginx/conf.d/default.conf:ro
 ```
 
-## Example 4: TLS Termination Ambassador
+## Example 4: TLS Wrapping Ambassador
 
-Your application does not support TLS natively, but the database requires encrypted connections. An ambassador with stunnel or socat handles the TLS handshake.
+Your application does not support TLS natively, but the database requires encrypted connections. An ambassador with stunnel or socat wraps the outbound connection in TLS.
 
 Create a stunnel configuration for TLS-encrypted database connections:
 
@@ -272,8 +291,6 @@ CAfile = /etc/ssl/certs/ca-certificates.crt
 The Compose setup:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: my-legacy-app:latest
@@ -287,7 +304,7 @@ services:
   tls-ambassador:
     image: alpine:latest
     command: >
-      sh -c "apk add --no-cache stunnel &&
+      sh -c "apk add --no-cache stunnel ca-certificates &&
              stunnel /etc/stunnel/stunnel.conf &&
              tail -f /dev/null"
     volumes:
