@@ -22,7 +22,9 @@ The excursion system handles:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.trace import SpanKind
+from typing import Iterable
 import time
 
 tracer = trace.get_tracer("cruise.excursions")
@@ -112,8 +114,20 @@ booking_outcomes = meter.create_counter(
     description="Excursion booking outcomes",
 )
 
+def observe_capacity_utilization(_options: CallbackOptions) -> Iterable[Observation]:
+    for capacity in get_excursion_capacity_stats():
+        if capacity.total_capacity > 0:
+            yield Observation(
+                (capacity.booked / capacity.total_capacity) * 100,
+                {
+                    "excursion.excursion_id": capacity.excursion_id,
+                    "excursion.cruise_id": capacity.cruise_id,
+                },
+            )
+
 capacity_utilization = meter.create_observable_gauge(
     "excursion.capacity_utilization_percent",
+    callbacks=[observe_capacity_utilization],
     description="Percentage of excursion capacity booked",
     unit="%",
 )
