@@ -64,7 +64,7 @@ These higher-level attributes provide organizational context.
 |-----------|------|-------------|
 | `k8s.namespace.name` | string | Namespace of the resource |
 | `k8s.cluster.name` | string | Name of the cluster |
-| `k8s.cluster.uid` | string | UID of the cluster |
+| `k8s.cluster.uid` | string | Pseudo-ID for the cluster, set to the UID of the `kube-system` namespace |
 | `k8s.deployment.name` | string | Name of the deployment |
 | `k8s.replicaset.name` | string | Name of the replica set |
 | `k8s.daemonset.name` | string | Name of the daemon set |
@@ -123,6 +123,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Pod IP from the Downward API
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             # Cluster name set as a plain value
             - name: K8S_CLUSTER_NAME
               value: "production-us-east-1"
@@ -147,6 +152,7 @@ resource = Resource.create({
     "service.version": "2.1.0",
     "k8s.pod.name": os.environ.get("K8S_POD_NAME", "unknown"),
     "k8s.pod.uid": os.environ.get("K8S_POD_UID", "unknown"),
+    "k8s.pod.ip": os.environ.get("K8S_POD_IP", "unknown"),
     "k8s.namespace.name": os.environ.get("K8S_NAMESPACE", "default"),
     "k8s.node.name": os.environ.get("K8S_NODE_NAME", "unknown"),
     "k8s.cluster.name": os.environ.get("K8S_CLUSTER_NAME", "unknown"),
@@ -161,13 +167,13 @@ provider.add_span_processor(
 trace.set_tracer_provider(provider)
 ```
 
-Every span, metric, and log produced by this application will now carry Kubernetes context automatically. You do not need to set these attributes on individual spans.
+Every span produced by this tracer provider will now carry Kubernetes context automatically. Use the same resource when configuring metric and log providers so those signals carry the same context. You do not need to set these attributes on individual spans.
 
 ## Using the OpenTelemetry Operator for Automatic Injection
 
 Manually setting environment variables works, but the OpenTelemetry Operator for Kubernetes can automate this entirely. The operator watches for pods with a specific annotation and injects the OpenTelemetry SDK along with resource attributes.
 
-The following OpenTelemetryCollector and Instrumentation custom resources configure automatic injection. The Instrumentation resource tells the operator which attributes to attach and which SDK to inject:
+The following Instrumentation custom resource configures automatic injection. The Instrumentation resource tells the operator which attributes to attach and which SDK to inject:
 
 ```yaml
 # The Instrumentation resource configures automatic SDK injection.
@@ -265,7 +271,7 @@ service:
       exporters: [otlp]
 ```
 
-The `pod_association` block is important. It tells the processor how to match incoming telemetry to a specific pod. The most common approach is matching on `k8s.pod.ip`, which the SDK typically sets automatically.
+The `pod_association` block is important. It tells the processor how to match incoming telemetry to a specific pod. This example matches on `k8s.pod.ip`, which you can set from the Downward API as shown earlier. If you do not configure `pod_association`, the processor falls back to associating telemetry by the incoming connection IP when that connection context is available.
 
 ## Querying with Kubernetes Attributes
 
@@ -292,7 +298,7 @@ Second, use the `k8sattributes` processor in the Collector rather than relying s
 
 Third, be selective with pod labels and annotations. The `k8s.pod.label.<key>` attributes are useful, but attaching every label to telemetry creates high-cardinality data that can increase storage costs. Pick the labels that matter for your queries, such as team ownership, version, and environment.
 
-Fourth, set up proper RBAC for the Collector's service account. The `k8sattributes` processor needs permissions to list and watch pods. Without the right ClusterRole, the processor will fail silently.
+Fourth, set up proper RBAC for the Collector's service account. The `k8sattributes` processor needs permissions to list and watch pods. Without the right ClusterRole, the processor cannot enrich telemetry reliably and will report Kubernetes API watch or list errors in the Collector logs.
 
 ## Conclusion
 
