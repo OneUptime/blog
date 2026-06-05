@@ -22,6 +22,7 @@ A typical moderation pipeline has these stages:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 import time
 
 tracer = trace.get_tracer("moderation.pipeline", "1.0.0")
@@ -58,6 +59,18 @@ human_review_latency = meter.create_histogram(
     description="Time from item entering review queue to human decision",
     unit="s",
 )
+
+
+def serialize_current_context():
+    """Serialize the active trace context into a carrier for the queue item."""
+    carrier = {}
+    TraceContextTextMapPropagator().inject(carrier)
+    return carrier
+
+
+def deserialize_context(carrier):
+    """Extract an OpenTelemetry context from a serialized carrier."""
+    return TraceContextTextMapPropagator().extract(carrier=carrier)
 
 
 def moderate_content(content_item):
@@ -155,7 +168,7 @@ def enqueue_for_review(content_item, classification):
             "classification": classification.to_dict(),
             "priority": priority,
             "enqueued_at": time.time(),
-            "trace_context": get_serialized_context(),
+            "trace_context": serialize_current_context(),
         }
 
         review_queue.push(queue_item)
