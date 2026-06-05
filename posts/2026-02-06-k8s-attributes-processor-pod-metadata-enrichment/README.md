@@ -31,7 +31,7 @@ sequenceDiagram
     Coll->>Coll: Forward enriched telemetry
 ```
 
-The processor is part of the OpenTelemetry Collector Contrib distribution. It is one of the most widely used processors in Kubernetes deployments because it adds context that is impossible to get any other way without modifying every application.
+The processor is part of the OpenTelemetry Collector Contrib and Kubernetes distributions. It is one of the most widely used processors in Kubernetes deployments because it adds context that is difficult to get consistently without modifying every application.
 
 ## Basic Configuration
 
@@ -76,7 +76,7 @@ The `pod_association` section is critical. It tells the processor how to figure 
 
 The processor needs read access to the Kubernetes API. Here is the minimal RBAC configuration.
 
-These RBAC resources grant the collector the minimum permissions needed to watch pods, replicasets, and namespaces.
+These RBAC resources grant the collector the minimum permissions needed to watch pods and namespaces for the examples in this guide.
 
 ```yaml
 # rbac.yaml
@@ -95,10 +95,6 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces"]
     verbs: ["get", "list", "watch"]
-  # Read replicasets to resolve deployment names
-  - apiGroups: ["apps"]
-    resources: ["replicasets"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -114,7 +110,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-The replicaset permission is important. Kubernetes does not directly associate pods with deployments. The processor needs to read the replicaset to find the owning deployment. Without this permission, you get pod and replicaset names but not the deployment name.
+ReplicaSet permissions are only needed for specific cases, such as extracting `k8s.deployment.uid`, extracting deployment labels or annotations with `from: deployment`, or forcing the older ReplicaSet informer lookup by setting `deployment_name_from_replicaset: false`. With the default settings, the processor derives `k8s.deployment.name` from the ReplicaSet name in the pod owner reference.
 
 ## Extracting Labels and Annotations
 
@@ -128,7 +124,9 @@ processors:
     auth_type: "serviceAccount"
     extract:
       metadata:
+        - k8s.pod.ip
         - k8s.pod.name
+        - k8s.pod.uid
         - k8s.namespace.name
         - k8s.deployment.name
 
@@ -211,7 +209,7 @@ processors:
           - from: connection
 ```
 
-When running in gateway mode, the best approach is to have the agent collector add the pod IP as a resource attribute using the `resource` processor or the `k8sattributes` processor at the agent level. The gateway processor then uses `from: resource_attribute` to look up the pod.
+When running in gateway mode, the best approach is to have the agent collector add the pod IP as a resource attribute using the `k8sattributes` processor at the agent level. If your applications already provide pod identity attributes, the `resource` processor can also normalize those attributes before forwarding. The gateway processor then uses `from: resource_attribute` to look up the pod.
 
 ```mermaid
 graph LR
@@ -225,7 +223,7 @@ graph LR
 
 In large clusters, watching every pod consumes memory and API server resources. You can filter which pods the processor watches.
 
-This configuration restricts the processor to only watch pods in specific namespaces and with specific labels.
+This configuration restricts the processor to only watch pods in a specific namespace with specific labels.
 
 ```yaml
 processors:
@@ -240,8 +238,29 @@ processors:
     # Only watch pods in these namespaces
     filter:
       namespace: production
+      labels:
+        - key: app
+          value: order-service
+          op: equals
 
-    # Or filter by node when running as DaemonSet
+    pod_association:
+      - sources:
+          - from: connection
+```
+
+For a DaemonSet collector, filter by node instead:
+
+```yaml
+processors:
+  k8sattributes:
+    auth_type: "serviceAccount"
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.namespace.name
+        - k8s.deployment.name
+
+    # Filter by node when running as DaemonSet
     # This dramatically reduces memory usage
     filter:
       node_from_env_var: KUBE_NODE_NAME
@@ -291,6 +310,7 @@ processors:
     auth_type: "serviceAccount"
     extract:
       metadata:
+        - k8s.pod.ip
         - k8s.pod.name
         - k8s.pod.uid
         - k8s.namespace.name
@@ -356,6 +376,7 @@ After passing through the processor, a span that originally had minimal attribut
   "resource": {
     "attributes": {
       "service.name": "order-service",
+      "k8s.pod.ip": "10.0.1.5",
       "k8s.pod.name": "order-service-7f8b9d6c4-x2k9j",
       "k8s.pod.uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "k8s.namespace.name": "production",
@@ -378,7 +399,7 @@ This makes it trivial to filter traces by namespace, group errors by deployment,
 
 **No metadata appearing**: Check RBAC permissions. The collector logs will show 403 errors if it cannot access the Kubernetes API. Also verify that your pod association method matches your deployment topology.
 
-**Deployment name missing**: Make sure you have `get`, `list`, and `watch` permissions on `replicasets` in the `apps` API group. The processor resolves pod -> replicaset -> deployment, so it needs access to the intermediate resource.
+**Deployment name missing**: Make sure `k8s.deployment.name` is listed in `extract.metadata`. If you are extracting `k8s.deployment.uid`, extracting deployment labels or annotations, or setting `deployment_name_from_replicaset: false`, also make sure you have `get`, `list`, and `watch` permissions on `replicasets` in the `apps` API group.
 
 **High memory usage**: Use the `node_from_env_var` filter for DaemonSet deployments. Without it, every agent caches metadata for every pod in the cluster.
 
