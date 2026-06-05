@@ -16,13 +16,13 @@ This guide covers the root causes of pipeline blocking, how to diagnose the prob
 
 ## Understanding Pipeline Blocking
 
-The OpenTelemetry Collector processes data through pipelines that consist of receivers, processors, and exporters. Each component has internal queues and buffers:
+The OpenTelemetry Collector processes data through pipelines that consist of receivers, processors, and exporters. Some components, especially batching processors and exporters, use buffers or sending queues:
 
 ```mermaid
 graph LR
     subgraph "Collector Pipeline"
-        R[Receiver] -->|Queue| P1[Processor 1]
-        P1 -->|Queue| P2[Processor 2]
+        R[Receiver] --> P1[Processor 1]
+        P1 -->|Batch/Buffer| P2[Processor 2]
         P2 -->|Exporter Queue| E[Exporter]
     end
 
@@ -55,6 +55,15 @@ service:
   telemetry:
     metrics:
       readers:
+        # Expose metrics for Prometheus scraping
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
+        # Optionally push internal metrics to an OTLP backend
         - periodic:
             exporter:
               otlp:
@@ -62,17 +71,17 @@ service:
                 endpoint: https://oneuptime.com/otlp
                 headers:
                   x-oneuptime-token: ${ONEUPTIME_TOKEN}
-      # Expose metrics for Prometheus scraping
-      address: 0.0.0.0:8888
 ```
 
 ### Key Metrics to Monitor
 
 **Queue Metrics:**
 ```text
-otelcol_exporter_queue_size          # Current items in queue
-otelcol_exporter_queue_capacity      # Max queue capacity
-otelcol_exporter_enqueue_failed      # Items rejected due to full queue
+otelcol_exporter_queue_size          # Current queue size, in batches by default
+otelcol_exporter_queue_capacity      # Max queue capacity, in batches by default
+otelcol_exporter_enqueue_failed_spans         # Spans rejected due to full queue
+otelcol_exporter_enqueue_failed_metric_points # Metric points rejected due to full queue
+otelcol_exporter_enqueue_failed_log_records   # Log records rejected due to full queue
 ```
 
 **Exporter Metrics:**
@@ -106,26 +115,26 @@ rate(otelcol_exporter_send_failed_spans[5m])
 
 ### Cause 1: Queue Size Too Small
 
-The default queue size (10,000 items) may be insufficient for high-throughput environments.
+The default sending queue size (1,000 requests/batches) may be insufficient for high-throughput environments.
 
 **Diagnosis:**
 ```bash
 # Check Collector logs for queue full messages
-kubectl logs -l app=opentelemetry-collector | grep -i "queue full"
+kubectl logs -l app=opentelemetry-collector | grep -Ei "queue full|sending_queue is full"
 
 # Check internal metrics
 curl http://localhost:8888/metrics | grep queue_size
 ```
 
 **Problem Indicators:**
-- `otelcol_exporter_enqueue_failed` increasing
+- `otelcol_exporter_enqueue_failed_spans`, `otelcol_exporter_enqueue_failed_metric_points`, or `otelcol_exporter_enqueue_failed_log_records` increasing
 - `otelcol_exporter_queue_size` consistently at capacity
 - Application seeing refused spans
 
 **Solution - Increase Queue Size:**
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -133,8 +142,8 @@ exporters:
     # Configure persistent queue for durability
     sending_queue:
       enabled: true
-      # Increase queue size from default 10,000 to 50,000
-      # Each item is approximately 1-2 KB, so this uses ~100 MB memory
+      # Increase queue size from default 1,000 requests/batches to 50,000
+      # Memory or disk usage depends on batch size and telemetry payload size
       queue_size: 50000
       # Number of concurrent workers sending data
       num_consumers: 10
@@ -154,11 +163,11 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
-    # Limit disk usage to 2GB
     compaction:
       on_start: true
-      directory: /var/lib/otelcol/queue
+      directory: /var/lib/otelcol/queue-compaction
       max_transaction_size: 65536
 
 service:
@@ -167,7 +176,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 **For Kubernetes, ensure persistent storage:**
@@ -210,8 +219,8 @@ The backend might be slow or experiencing issues.
 
 **Diagnosis:**
 ```promql
-# Check export duration (should be under 1 second)
-histogram_quantile(0.95, rate(otelcol_exporter_send_failed_spans_duration_bucket[5m]))
+# Check exporter backlog
+otelcol_exporter_in_flight_requests
 
 # Check failure rate
 rate(otelcol_exporter_send_failed_spans[5m]) > 0
@@ -229,19 +238,13 @@ processors:
     # Never send batches larger than this
     send_batch_max_size: 16384
 
-    # Additional tuning for metadata
-    # Reduces per-batch overhead for large batches
-    metadata_keys:
-      - http.method
-      - http.status_code
-
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
-    # Compression reduces network bandwidth by 70-90%
+    # Compression can reduce network bandwidth
     compression: gzip
 
     # Timeout for export requests
@@ -264,7 +267,7 @@ service:
       receivers: [otlp]
       # Batching before export is critical for performance
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ### Cause 3: Insufficient Collector Resources
@@ -280,7 +283,7 @@ kubectl top pod -l app=opentelemetry-collector
 kubectl describe pod -l app=opentelemetry-collector | grep -A 5 "Limits"
 
 # Check memory usage metrics
-curl http://localhost:8888/metrics | grep process_runtime_go_mem
+curl http://localhost:8888/metrics | grep otelcol_process_runtime
 ```
 
 **Solution - Increase Resources:**
@@ -338,7 +341,7 @@ service:
       receivers: [otlp]
       # Memory limiter MUST be first processor
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ### Cause 4: Backend Downtime or Rate Limiting
@@ -354,11 +357,11 @@ kubectl logs -l app=opentelemetry-collector | grep -E "429|503|500"
 curl http://localhost:8888/metrics | grep send_failed
 ```
 
-**Solution - Add Fallback Exporter:**
+**Solution - Add Backup Exporter:**
 ```yaml
 exporters:
   # Primary backend
-  otlphttp/primary:
+  otlp_http/primary:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -366,30 +369,40 @@ exporters:
       enabled: true
       max_elapsed_time: 60s  # Shorter timeout before failing
 
-  # Fallback: write to local file when primary fails
+  # Backup copy: write to local file while primary retries
   file/backup:
     path: /var/log/otelcol/backup.json
     rotation:
       max_megabytes: 100
       max_backups: 10
 
-  # Alternative: send to different backend
-  otlphttp/secondary:
-    endpoint: https://backup-backend.example.com/otlp
-    headers:
-      x-api-key: ${BACKUP_TOKEN}
+# Send a copy to local backup while retrying the primary exporter
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/primary, file/backup]
+```
 
-# Use load balancing exporter for automatic failover
+For a second Collector tier or a set of OTLP/gRPC backends, use the load balancing exporter with retry settings:
+
+```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
     protocol:
       otlp:
         timeout: 30s
     resolver:
       static:
         hostnames:
-          - https://oneuptime.com/otlp
-          - https://backup.oneuptime.com/otlp
+          - backend-1.example.com:4317
+          - backend-2.example.com:4317
     routing_key: "traceID"
 
 service:
@@ -397,7 +410,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ### Cause 5: Aggressive Sampling Needed
@@ -452,7 +465,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, tail_sampling, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ---
@@ -473,6 +486,7 @@ extensions:
   # Persistent storage for queue
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
 
 # Receivers
@@ -501,14 +515,14 @@ processors:
     send_batch_max_size: 16384
 
   # Resource detection adds environment context
-  resourcedetection:
-    detectors: [env, system, docker, kubernetes]
+  resource_detection:
+    detectors: [env, system]
     timeout: 5s
 
 # Exporters
 exporters:
   # Primary exporter with robust queue and retry
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -518,7 +532,7 @@ exporters:
     # Large persistent queue for handling bursts
     sending_queue:
       enabled: true
-      queue_size: 50000         # 50k items (~100MB)
+      queue_size: 50000         # 50k requests/batches
       num_consumers: 20         # Parallel export workers
       storage: file_storage     # Persist queue to disk
 
@@ -530,7 +544,7 @@ exporters:
       max_elapsed_time: 300s
 
   # Debug exporter for troubleshooting
-  logging:
+  debug:
     verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 200
@@ -544,8 +558,14 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
       readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
         - periodic:
             exporter:
               otlp:
@@ -557,18 +577,18 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_http]
 
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_http]
 
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_http]
 ```
 
 ---
