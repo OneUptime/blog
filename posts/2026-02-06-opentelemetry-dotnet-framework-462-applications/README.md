@@ -23,15 +23,16 @@ Additionally, some automatic instrumentation features available in modern .NET r
 Start by installing the core OpenTelemetry packages that support .NET Framework.
 
 ```xml
-<!-- Add these to your packages.config or .csproj -->
-<PackageReference Include="OpenTelemetry" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.7.0-rc.1" />
+<!-- Add these to a PackageReference-based .csproj, or install the equivalent package versions for packages.config projects. -->
+<PackageReference Include="OpenTelemetry" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+<PackageReference Include="OpenTelemetry.Instrumentation.AspNet" Version="1.15.2" />
+<PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.15.2" />
 ```
 
-The HTTP and SqlClient instrumentation packages provide automatic tracing for outbound HTTP calls and database operations, which covers the most common scenarios in enterprise .NET Framework applications.
+The ASP.NET, HTTP, and SqlClient instrumentation packages provide automatic tracing for incoming ASP.NET requests, outbound HTTP calls, and database operations, which covers the most common scenarios in enterprise .NET Framework applications.
 
 ## Creating a TracerProvider Singleton
 
@@ -45,7 +46,7 @@ using System;
 
 namespace YourApplication.Telemetry
 {
-    public sealed class TelemetryManager
+    public sealed class TelemetryManager : IDisposable
     {
         private static readonly Lazy<TelemetryManager> instance =
             new Lazy<TelemetryManager>(() => new TelemetryManager());
@@ -63,20 +64,27 @@ namespace YourApplication.Telemetry
                         serviceName: "legacy-api-service",
                         serviceVersion: "1.0.0",
                         serviceInstanceId: Environment.MachineName))
-                .AddHttpClientInstrumentation(options =>
+                .AddAspNetInstrumentation(options =>
                 {
                     options.RecordException = true;
                     // Filter out health check endpoints
-                    options.FilterHttpRequestMessage = (request) =>
+                    options.Filter = (httpContext) =>
+                    {
+                        return !httpContext.Request.Path.Contains("/health");
+                    };
+                })
+                .AddHttpClientInstrumentation(options =>
+                {
+                    options.RecordException = true;
+                    // Filter outbound health check calls on .NET Framework
+                    options.FilterHttpWebRequest = (request) =>
                     {
                         return !request.RequestUri.AbsolutePath.Contains("/health");
                     };
                 })
                 .AddSqlClientInstrumentation(options =>
                 {
-                    options.SetDbStatementForText = true;
                     options.RecordException = true;
-                    options.EnableConnectionLevelAttributes = true;
                 })
                 .AddSource("YourApplication.*")
                 .AddOtlpExporter(options =>
@@ -106,7 +114,6 @@ This singleton initialization ensures OpenTelemetry starts when your application
 For ASP.NET Web API or MVC applications, hook into the Global.asax lifecycle events.
 
 ```csharp
-using System;
 using System.Web;
 using System.Web.Http;
 using YourApplication.Telemetry;
@@ -121,10 +128,7 @@ namespace YourApplication
             GlobalConfiguration.Configure(WebApiConfig.Register);
 
             // Initialize OpenTelemetry
-            var telemetry = TelemetryManager.Instance;
-
-            // Register cleanup on application shutdown
-            RegisterForDispose(telemetry);
+            _ = TelemetryManager.Instance;
         }
 
         protected void Application_End()
@@ -133,105 +137,25 @@ namespace YourApplication
             TelemetryManager.Instance.Dispose();
         }
 
-        protected void Application_BeginRequest(object sender, EventArgs e)
-        {
-            // Create a root span for each HTTP request
-            var context = HttpContext.Current;
-            if (context != null)
-            {
-                RequestTracingHelper.StartRequestSpan(context);
-            }
-        }
-
-        protected void Application_EndRequest(object sender, EventArgs e)
-        {
-            var context = HttpContext.Current;
-            if (context != null)
-            {
-                RequestTracingHelper.EndRequestSpan(context);
-            }
-        }
     }
 }
 ```
 
-## Manual Request Instrumentation Helper
+## Registering the ASP.NET HttpModule
 
-Since ASP.NET doesn't have built-in OpenTelemetry middleware like ASP.NET Core, create a helper class to manage request spans.
+Since ASP.NET doesn't have built-in OpenTelemetry middleware like ASP.NET Core, register the OpenTelemetry HttpModule in Web.config so incoming request spans are created by the ASP.NET instrumentation package.
 
-```csharp
-using OpenTelemetry.Trace;
-using System;
-using System.Diagnostics;
-using System.Web;
-
-namespace YourApplication.Telemetry
-{
-    public static class RequestTracingHelper
-    {
-        private static readonly ActivitySource activitySource =
-            new ActivitySource("YourApplication.WebAPI");
-
-        private const string ActivityKey = "OpenTelemetry.Activity";
-
-        public static void StartRequestSpan(HttpContext context)
-        {
-            var request = context.Request;
-
-            // Start a new activity for this request
-            var activity = activitySource.StartActivity(
-                $"{request.HttpMethod} {request.Path}",
-                ActivityKind.Server);
-
-            if (activity != null)
-            {
-                // Add standard HTTP attributes
-                activity.SetTag("http.method", request.HttpMethod);
-                activity.SetTag("http.url", request.Url.ToString());
-                activity.SetTag("http.target", request.Path);
-                activity.SetTag("http.host", request.Url.Host);
-                activity.SetTag("http.scheme", request.Url.Scheme);
-                activity.SetTag("http.user_agent", request.UserAgent);
-
-                if (request.UrlReferrer != null)
-                {
-                    activity.SetTag("http.referrer", request.UrlReferrer.ToString());
-                }
-
-                // Store activity in context for later retrieval
-                context.Items[ActivityKey] = activity;
-            }
-        }
-
-        public static void EndRequestSpan(HttpContext context)
-        {
-            var activity = context.Items[ActivityKey] as Activity;
-            if (activity != null)
-            {
-                var response = context.Response;
-
-                activity.SetTag("http.status_code", response.StatusCode);
-
-                // Mark as error if status code indicates failure
-                if (response.StatusCode >= 400)
-                {
-                    activity.SetStatus(ActivityStatusCode.Error);
-                }
-                else
-                {
-                    activity.SetStatus(ActivityStatusCode.Ok);
-                }
-
-                activity.Stop();
-            }
-        }
-
-        public static Activity GetCurrentActivity(HttpContext context)
-        {
-            return context?.Items[ActivityKey] as Activity;
-        }
-    }
-}
+```xml
+<configuration>
+  <system.webServer>
+    <modules>
+      <add
+        name="TelemetryHttpModule"
+        type="OpenTelemetry.Instrumentation.AspNet.TelemetryHttpModule, OpenTelemetry.Instrumentation.AspNet.TelemetryHttpModule"
+        preCondition="integratedMode,managedHandler" />
+    </modules>
+  </system.webServer>
+</configuration>
 ```
 
 ## Creating Custom Spans in Business Logic
@@ -242,6 +166,7 @@ For tracing business operations, manually create spans using the Activity API.
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using OpenTelemetry.Trace;
 
 namespace YourApplication.Services
 {
@@ -324,7 +249,7 @@ namespace YourApplication.Services
 
 ## Handling Distributed Tracing Context
 
-For distributed tracing across services, propagate trace context in HTTP headers.
+The HTTP instrumentation package propagates trace context for outgoing `HttpClient` and `HttpWebRequest` calls. If you have a custom HTTP pipeline where that instrumentation is not active, you can inject trace context into HTTP headers manually.
 
 ```csharp
 using OpenTelemetry;
@@ -332,6 +257,8 @@ using OpenTelemetry.Context.Propagation;
 using System;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace YourApplication.Http
 {
@@ -393,6 +320,7 @@ Store OpenTelemetry configuration in Web.config or App.config for easy updates.
 Read these settings in your TelemetryManager initialization.
 
 ```csharp
+using System;
 using System.Configuration;
 
 private TelemetryManager()
@@ -402,18 +330,33 @@ private TelemetryManager()
     var otlpEndpoint = ConfigurationManager.AppSettings["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4317";
     var samplingRatio = double.Parse(ConfigurationManager.AppSettings["OpenTelemetry:SamplingRatio"] ?? "1.0");
 
-    tracerProvider = Sdk.CreateTracerProviderBuilder()
+    var enableConsoleExporter = bool.Parse(ConfigurationManager.AppSettings["OpenTelemetry:EnableConsoleExporter"] ?? "false");
+
+    var builder = Sdk.CreateTracerProviderBuilder()
         .SetResourceBuilder(ResourceBuilder.CreateDefault()
-            .AddService(serviceName, serviceVersion))
+            .AddService(
+                serviceName: serviceName,
+                serviceVersion: serviceVersion))
         .SetSampler(new TraceIdRatioBasedSampler(samplingRatio))
         // ... rest of configuration
-        .Build();
+        .AddOtlpExporter(options =>
+        {
+            options.Endpoint = new Uri(otlpEndpoint);
+            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+        });
+
+    if (enableConsoleExporter)
+    {
+        builder.AddConsoleExporter();
+    }
+
+    tracerProvider = builder.Build();
 }
 ```
 
 ## Performance Considerations
 
-OpenTelemetry adds minimal overhead when configured properly. The automatic instrumentation for HTTP and SQL operations typically adds less than 5ms of latency per operation. For high-throughput applications, consider adjusting the sampling ratio to reduce data volume.
+OpenTelemetry overhead depends on your workload, the instrumentation you enable, sampling, and exporter configuration. For high-throughput applications, consider adjusting the sampling ratio to reduce data volume.
 
 Use tail-based sampling at the collector level rather than head-based sampling in the application to ensure you capture complete traces for errors while reducing overall data volume.
 
