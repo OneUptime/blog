@@ -22,15 +22,18 @@ Both parent and child processes need OpenTelemetry initialization:
 // shared/tracing.ts - Shared tracing configuration
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 
 export function initializeTracing(serviceName: string) {
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-      [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: '1.0.0',
     }),
     traceExporter: new OTLPTraceExporter({
       url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
@@ -61,14 +64,9 @@ Create utilities for encoding trace context for transmission:
 import {
   trace,
   context,
-  SpanContext,
-  TraceFlags,
   propagation,
   Context,
 } from '@opentelemetry/api';
-import { W3CTraceContextPropagator } from '@opentelemetry/core';
-
-const propagator = new W3CTraceContextPropagator();
 
 export interface SerializedContext {
   traceId: string;
@@ -282,10 +280,10 @@ import {
   extractContextFromEnvironment,
   serializeCurrentContext,
 } from '../shared/contextPropagation';
-import { trace, context as otelContext } from '@opentelemetry/api';
+import { trace, context as otelContext, SpanStatusCode } from '@opentelemetry/api';
 
 // Initialize tracing in the child process
-initializeTracing('worker-child-process');
+const sdk = initializeTracing('worker-child-process');
 
 const tracer = trace.getTracer('worker', '1.0.0');
 
@@ -332,26 +330,26 @@ async function main() {
       }
     );
 
-    span.setStatus({ code: 1 }); // OK
+    span.setStatus({ code: SpanStatusCode.OK });
     span.end();
+    await sdk.shutdown();
     process.exit(0);
   } catch (error) {
     span.recordException(error as Error);
-    span.setStatus({ code: 2, message: (error as Error).message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
     span.end();
 
     console.error('Worker error:', error);
+    await sdk.shutdown();
     process.exit(1);
   }
 }
 
 async function performTask(taskType: string): Promise<any> {
-  const taskSpan = tracer.startSpan(`worker.task.${taskType}`);
+  const taskSpan = tracer.startSpan(`worker.task.${taskType}`, undefined, otelContext.active());
 
   try {
     // Simulate CPU-intensive work
-    const startTime = Date.now();
-
     switch (taskType) {
       case 'compute':
         return await heavyComputation();
@@ -518,7 +516,7 @@ Create a child process that uses IPC with trace propagation:
 // child/ipcWorker.ts - IPC worker with context propagation
 import { initializeTracing } from '../shared/tracing';
 import { extractContextFromEnvironment } from '../shared/contextPropagation';
-import { trace, context as otelContext, propagation } from '@opentelemetry/api';
+import { trace, context as otelContext, propagation, SpanStatusCode } from '@opentelemetry/api';
 
 initializeTracing('ipc-worker');
 
@@ -529,7 +527,7 @@ const baseContext = extractContextFromEnvironment();
 
 process.on('message', async (message: any) => {
   // Extract trace context from message
-  let messageContext = baseContext;
+  let messageContext = baseContext ?? undefined;
 
   if (message.__traceContext) {
     const carrier: Record<string, string> = {
@@ -573,11 +571,11 @@ process.on('message', async (message: any) => {
       }
     );
 
-    span.setStatus({ code: 1 });
+    span.setStatus({ code: SpanStatusCode.OK });
     span.end();
   } catch (error) {
     span.recordException(error as Error);
-    span.setStatus({ code: 2, message: (error as Error).message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
     span.end();
 
     process.send?.({
@@ -589,7 +587,7 @@ process.on('message', async (message: any) => {
 });
 
 async function handleMessage(message: any): Promise<any> {
-  const span = tracer.startSpan(`worker.${message.type}`);
+  const span = tracer.startSpan(`worker.${message.type}`, undefined, otelContext.active());
 
   try {
     switch (message.type) {
@@ -625,7 +623,7 @@ Build a managed pool of child processes with comprehensive tracing:
 ```typescript
 // parent/processPool.ts - Traced process pool implementation
 import { ChildProcess } from 'child_process';
-import { trace, context as otelContext } from '@opentelemetry/api';
+import { trace, context as otelContext, SpanStatusCode } from '@opentelemetry/api';
 import { tracedFork } from './tracedFork';
 
 const tracer = trace.getTracer('process-pool', '1.0.0');
@@ -635,6 +633,7 @@ export class TracedProcessPool {
   private availableWorkers: ChildProcess[] = [];
   private taskQueue: Array<{
     task: any;
+    span: any;
     resolve: (value: any) => void;
     reject: (error: any) => void;
   }> = [];
@@ -692,7 +691,7 @@ export class TracedProcessPool {
               .catch(reject);
           } else {
             span.addEvent('task.queued');
-            this.taskQueue.push({ task, resolve, reject });
+            this.taskQueue.push({ task, span, resolve, reject });
           }
         }
       );
@@ -708,6 +707,9 @@ export class TracedProcessPool {
       const requestId = Math.random().toString(36);
       const timeout = setTimeout(() => {
         parentSpan.addEvent('task.timeout');
+        parentSpan.setStatus({ code: SpanStatusCode.ERROR });
+        parentSpan.end();
+        worker.off('message', messageHandler);
         reject(new Error('Task timeout'));
       }, 30000);
 
@@ -716,25 +718,25 @@ export class TracedProcessPool {
           clearTimeout(timeout);
           worker.off('message', messageHandler);
 
-          this.availableWorkers.push(worker);
-
           if (this.taskQueue.length > 0) {
             const queued = this.taskQueue.shift()!;
-            this.executeOnWorker(worker, queued.task, parentSpan)
+            this.executeOnWorker(worker, queued.task, queued.span)
               .then(queued.resolve)
               .catch(queued.reject);
+          } else {
+            this.availableWorkers.push(worker);
           }
 
           if (message.type === 'error') {
             parentSpan.addEvent('task.error', {
               'error.message': message.error,
             });
-            parentSpan.setStatus({ code: 2 });
+            parentSpan.setStatus({ code: SpanStatusCode.ERROR });
             parentSpan.end();
             reject(new Error(message.error));
           } else {
             parentSpan.addEvent('task.completed');
-            parentSpan.setStatus({ code: 1 });
+            parentSpan.setStatus({ code: SpanStatusCode.OK });
             parentSpan.end();
             resolve(message.result);
           }
