@@ -6,13 +6,13 @@ Tags: OpenTelemetry, Incident Management, Observability, Distributed Tracing
 
 Description: Learn how to reconstruct detailed incident timelines by correlating OpenTelemetry traces, logs, and metrics into a unified view.
 
-When an incident happens, the first question everyone asks is: "What happened and when?" Answering that question accurately requires stitching together data from multiple sources - traces showing request flows, logs capturing errors and state changes, and metrics revealing system-level degradation. OpenTelemetry provides the foundation for this by enforcing consistent context propagation across all three signal types.
+When an incident happens, the first question everyone asks is: "What happened and when?" Answering that question accurately requires stitching together data from multiple sources - traces showing request flows, logs capturing errors and state changes, and metrics revealing system-level degradation. OpenTelemetry provides the foundation for this through trace context propagation, consistent resource attributes, and metric exemplars.
 
 ## The Core Problem
 
 Most teams investigate incidents by jumping between dashboards, log viewers, and trace explorers. Each tool has its own timeline, its own filtering, and its own notion of what matters. Reconstructing a coherent sequence of events from these fragmented views is slow and error-prone.
 
-OpenTelemetry solves this by attaching the same trace ID and span ID to traces, logs, and metrics. This shared context is what makes automated timeline reconstruction possible.
+OpenTelemetry solves this by attaching trace context to spans and log records, while metrics can be correlated through shared resource attributes and exemplars. This shared context is what makes automated timeline reconstruction possible.
 
 ## Architecture Overview
 
@@ -38,7 +38,7 @@ The first requirement is making sure your logs carry trace context. Here is how 
 import logging
 from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogExporter
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogRecordExporter
 from opentelemetry.sdk.trace import TracerProvider
 
 # Set up tracing
@@ -48,7 +48,7 @@ tracer = trace.get_tracer(__name__)
 # Set up logging with OTel integration
 logger_provider = LoggerProvider()
 logger_provider.add_log_record_processor(
-    BatchLogRecordProcessor(ConsoleLogExporter())
+    BatchLogRecordProcessor(ConsoleLogRecordExporter())
 )
 
 # Attach the OTel handler to Python's standard logging
@@ -65,7 +65,7 @@ with tracer.start_as_current_span("process-order") as span:
 
 ## Collector Configuration for Timeline Data
 
-The OpenTelemetry Collector needs to receive all three signal types and enrich them before forwarding. This configuration sets up receivers for OTLP data, adds resource attributes for correlation, and exports to your backend.
+The OpenTelemetry Collector needs to receive all three signal types and enrich them before forwarding. This configuration sets up receivers for OTLP data, adds resource attributes for correlation, groups spans by trace ID with the `groupbytrace` processor available in the Collector contrib and Kubernetes distributions, and exports to your backend.
 
 ```yaml
 # otel-collector-config.yaml
@@ -88,7 +88,7 @@ processors:
         value: platform
         action: upsert
 
-  # Group logs and spans by trace ID for easier correlation
+  # Group spans by trace ID for easier correlation
   groupbytrace:
     wait_duration: 10s
     num_traces: 1000
@@ -187,7 +187,14 @@ Metrics do not natively carry trace IDs, but you can link them through resource 
 
 ```python
 # Recording a metric with an exemplar that links to the current trace
+import time
+
 from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import ConsoleMetricExporter, PeriodicExportingMetricReader
+
+metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 meter = metrics.get_meter(__name__)
 request_duration = meter.create_histogram(
@@ -197,14 +204,13 @@ request_duration = meter.create_histogram(
 )
 
 def handle_request(request):
-    span = trace.get_current_span()
     start = time.time()
 
     # Process the request
     response = process(request)
 
     duration_ms = (time.time() - start) * 1000
-    # The SDK automatically attaches exemplars with trace context
+    # With the default trace-based exemplar filter, sampled spans can be attached as exemplars
     request_duration.record(
         duration_ms,
         attributes={
