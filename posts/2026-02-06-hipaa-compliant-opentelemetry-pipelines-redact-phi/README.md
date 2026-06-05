@@ -48,18 +48,19 @@ processors:
         pattern: '/api/patients/(?P<patient_id>[^/]+)'
       - key: patient_id
         action: hash
+      - key: http.url
+        action: delete
 
   # Use transform processor for regex-based redaction in log bodies
   transform/redact-logs:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Redact SSN patterns (XXX-XX-XXXX)
-          - replace_pattern(body, "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[SSN-REDACTED]")
-          # Redact MRN patterns (varies by org, example: MRN followed by digits)
-          - replace_pattern(body, "MRN[:\\s]*\\d+", "MRN:[REDACTED]")
-          # Redact common date of birth patterns
-          - replace_pattern(body, "DOB[:\\s]*\\d{2}/\\d{2}/\\d{4}", "DOB:[REDACTED]")
+      # Redact SSN patterns (XXX-XX-XXXX)
+      - replace_pattern(log.body, "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[SSN-REDACTED]") where IsString(log.body)
+      # Redact MRN patterns (varies by org, example: MRN followed by digits)
+      - replace_pattern(log.body, "MRN[:\\s]*\\d+", "MRN:[REDACTED]") where IsString(log.body)
+      # Redact common date of birth patterns
+      - replace_pattern(log.body, "DOB[:\\s]*\\d{2}/\\d{2}/\\d{4}", "DOB:[REDACTED]") where IsString(log.body)
 
   # Batch for performance
   batch:
@@ -103,10 +104,10 @@ PHI_PATTERNS = {
     "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     "mrn": re.compile(r"MRN[:\s]*\d+", re.IGNORECASE),
     "phone": re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"),
-    "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+    "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
 }
 
-# Attribute keys that should always be removed
+# Attribute keys that should always be redacted
 PHI_ATTRIBUTE_KEYS = {
     "patient.name", "patient.ssn", "patient.dob",
     "patient.address", "patient.phone", "patient.email",
@@ -117,13 +118,34 @@ class PHIRedactionProcessor(SpanProcessor):
     """Redacts PHI from span attributes before export."""
 
     def on_start(self, span, parent_context=None):
-        pass
+        if not span.is_recording():
+            return
+
+        # Redact attributes provided at span creation while the span is mutable.
+        for key, value in list((span.attributes or {}).items()):
+            span.set_attribute(key, self._redact_attribute(key, value))
+
+        original_set_attribute = span.set_attribute
+
+        def redacting_set_attribute(key, value):
+            return original_set_attribute(key, self._redact_attribute(key, value))
+
+        span.set_attribute = redacting_set_attribute
 
     def on_end(self, span):
-        # We cannot modify a ReadableSpan directly after it ends,
-        # so this processor should be used with a custom exporter
-        # or applied before the span is finalized.
+        # on_end receives a ReadableSpan, so redaction must happen before this hook.
         pass
+
+    def shutdown(self):
+        pass
+
+    def force_flush(self, timeout_millis=30000):
+        return True
+
+    def _redact_attribute(self, key, value):
+        if self._should_redact_key(key):
+            return "[REDACTED]"
+        return self._redact_value(value)
 
     def _redact_value(self, value):
         """Scrub PHI patterns from a string value."""
@@ -134,7 +156,7 @@ class PHIRedactionProcessor(SpanProcessor):
             result = pattern.sub(f"[{pattern_name.upper()}_REDACTED]", result)
         return result
 
-    def _should_remove_key(self, key):
+    def _should_redact_key(self, key):
         """Check if an attribute key is known to hold PHI."""
         return key.lower() in PHI_ATTRIBUTE_KEYS
 ```
@@ -156,7 +178,7 @@ def scan_for_phi_leaks(telemetry_export_file):
     phi_detectors = {
         "SSN": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
         "MRN": re.compile(r"MRN[:\s]*\d{4,}", re.IGNORECASE),
-        "Email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+        "Email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     }
 
     with open(telemetry_export_file, "r") as f:
@@ -188,12 +210,13 @@ def scan_for_phi_leaks(telemetry_export_file):
 Redaction is one layer. You also need to make sure telemetry data is encrypted in transit. The collector config above already includes TLS settings, but make sure you are also encrypting the connection between your application SDK and the collector. In your application's OTLP exporter configuration, always specify TLS:
 
 ```python
+import grpc
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # Always use TLS when transmitting telemetry that might contain health data
 exporter = OTLPSpanExporter(
     endpoint="otel-collector.internal:4317",
-    credentials=ssl_channel_credentials(
+    credentials=grpc.ssl_channel_credentials(
         root_certificates=open("/certs/ca.crt", "rb").read()
     ),
 )
