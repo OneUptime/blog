@@ -25,7 +25,8 @@ Data freshness is critical. Passengers expect FIDS to reflect changes within 30 
 
 ```python
 from opentelemetry import trace, metrics
-from opentelemetry.trace import SpanKind
+from opentelemetry.metrics import CallbackOptions, Observation
+from opentelemetry.trace import SpanKind, Status, StatusCode
 import time
 
 tracer = trace.get_tracer("fids.pipeline")
@@ -98,7 +99,7 @@ def ingest_flight_update(source, message):
 
         if message_age_ms > 30000:  # Older than 30 seconds
             stale_data_alerts.add(1, {"fids.source": source.name})
-            span.addEvent("stale_data_warning", {
+            span.add_event("stale_data_warning", {
                 "fids.message_age_ms": message_age_ms,
             })
 
@@ -155,7 +156,7 @@ def push_to_displays(flight_record, affected_displays):
                     display_span.set_attribute("fids.update_success", True)
                     results["success"] += 1
                 except Exception as e:
-                    display_span.set_status(trace.StatusCode.ERROR, str(e))
+                    display_span.set_status(Status(StatusCode.ERROR, str(e)))
                     display_span.set_attribute("fids.update_success", False)
                     display_errors.add(1, {
                         "fids.display_id": display.id,
@@ -178,8 +179,16 @@ class SourceHealthMonitor:
 
         self.source_freshness = meter.create_observable_gauge(
             "fids.source_freshness_seconds",
+            callbacks=[self.observe_source_freshness],
             description="Seconds since last message from each data source",
         )
+
+    def observe_source_freshness(self, options: CallbackOptions):
+        for source_name, last_time in self.last_message_time.items():
+            yield Observation(
+                time.time() - last_time,
+                {"fids.source": source_name},
+            )
 
     def record_message(self, source_name):
         self.last_message_time[source_name] = time.time()
@@ -198,7 +207,7 @@ class SourceHealthMonitor:
             span.set_attribute("fids.silent_count", len(silent_sources))
 
             if silent_sources:
-                span.addEvent("sources_silent", {
+                span.add_event("sources_silent", {
                     "fids.sources": str(silent_sources),
                 })
 ```
