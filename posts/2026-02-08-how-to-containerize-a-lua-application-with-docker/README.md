@@ -66,7 +66,8 @@ local server = http_server.listen({
     onstream = handle_request,
 })
 
-server:loop()
+assert(server:listen())
+assert(server:loop())
 ```
 
 ## Dockerfile for Standalone Lua
@@ -90,8 +91,8 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Install Lua dependencies via LuaRocks
-RUN luarocks install http && \
-    luarocks install lua-cjson
+RUN luarocks --lua-version=5.4 install http && \
+    luarocks --lua-version=5.4 install lua-cjson
 
 # Copy application source
 COPY app.lua /app/
@@ -202,7 +203,7 @@ ngx.say(cjson.encode(result))
 
 ```dockerfile
 # Dockerfile for OpenResty Lua application
-FROM openresty/openresty:1.25.3.1-alpine
+FROM openresty/openresty:1.29.2.4-alpine-fat
 
 WORKDIR /app
 
@@ -216,8 +217,8 @@ COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 # Copy Lua source files
 COPY lua/ /app/lua/
 
-# Copy static files if any
-COPY static/ /app/static/
+# Create a static directory for the /static/ alias
+RUN mkdir -p /app/static/
 
 EXPOSE 8080
 
@@ -243,8 +244,8 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies to a local tree
-RUN luarocks install --tree /app/lua_modules http && \
-    luarocks install --tree /app/lua_modules lua-cjson
+RUN luarocks --lua-version=5.4 install --tree /app/lua_modules http && \
+    luarocks --lua-version=5.4 install --tree /app/lua_modules lua-cjson
 
 # Stage 2: Slim runtime
 FROM ubuntu:22.04
@@ -281,7 +282,7 @@ Create a rockspec file for your project to formalize dependencies:
 package = "app"
 version = "scm-1"
 source = {
-    url = "git://github.com/example/lua-app.git"
+    url = "git+https://github.com/example/lua-app.git"
 }
 dependencies = {
     "lua >= 5.4",
@@ -299,7 +300,7 @@ Install from the rockspec:
 ```dockerfile
 # Install dependencies from rockspec
 COPY app-scm-1.rockspec /app/
-RUN luarocks install --only-deps app-scm-1.rockspec
+RUN luarocks --lua-version=5.4 install --only-deps app-scm-1.rockspec
 ```
 
 ## The .dockerignore File
@@ -318,7 +319,6 @@ lua_modules/
 
 ```yaml
 # docker-compose.yml - development setup with Redis
-version: "3.8"
 services:
   app:
     build:
