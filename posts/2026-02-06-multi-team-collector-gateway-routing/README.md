@@ -21,7 +21,7 @@ Team C namespace:                      |
   Apps -> Agent Collector (team-c) -> |
 ```
 
-Each team gets their own Collector agent with team-specific configuration. All agents forward to a shared gateway that handles routing, rate limiting, and export to backends.
+Each team gets their own Collector agent with team-specific configuration. All agents forward to a shared gateway that handles routing, memory limiting, and export to backends.
 
 ## Per-Team Agent Configuration
 
@@ -59,7 +59,7 @@ config:
     resource:
       attributes:
         - key: team.name
-          value: "{{ .team_name }}"
+          value: "{{ .name }}"
           action: upsert
         - key: team.namespace
           value: "{{ .namespace }}"
@@ -79,7 +79,7 @@ config:
       tls:
         insecure: true
       headers:
-        X-Team-Name: "{{ .team_name }}"
+        X-Team-Name: "{{ .name }}"
 
   service:
     pipelines:
@@ -99,7 +99,7 @@ config:
 
 ## Centralized Gateway Configuration
 
-The gateway handles routing, rate limiting, and multi-backend export:
+The gateway handles routing, memory limiting, and multi-backend export:
 
 ```yaml
 # gateway-config.yaml
@@ -123,6 +123,7 @@ processors:
   # Route telemetry based on team attributes
   routing:
     from_attribute: team.name
+    attribute_source: resource
     table:
       - value: payments
         exporters: [otlphttp/primary, otlphttp/compliance]
@@ -151,15 +152,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, routing]
-      exporters: [otlphttp/primary]
+      exporters: [otlphttp/primary, otlphttp/compliance, otlphttp/rum]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlphttp/primary]
+      processors: [memory_limiter, batch, routing]
+      exporters: [otlphttp/primary, otlphttp/compliance, otlphttp/rum]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlphttp/primary]
+      processors: [memory_limiter, batch, routing]
+      exporters: [otlphttp/primary, otlphttp/compliance, otlphttp/rum]
 ```
 
 ## Gateway Kubernetes Deployment
@@ -224,7 +225,6 @@ Automate team provisioning with a script:
 ```python
 # provision_team.py
 import subprocess
-import yaml
 
 teams = [
     {"name": "payments", "namespace": "payments",
@@ -270,7 +270,7 @@ for team in teams:
 
 - **Isolation**: One team's noisy Collector cannot starve another team's telemetry.
 - **Customization**: Each team can have different sampling rates and processing rules.
-- **Governance**: The gateway enforces organization-wide policies like rate limits and routing.
+- **Governance**: The gateway enforces organization-wide policies like routing and memory limits.
 - **Cost attribution**: The `team.cost_center` attribute enables cost tracking per team.
 
 ## Wrapping Up
