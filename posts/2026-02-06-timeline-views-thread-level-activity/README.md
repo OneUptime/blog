@@ -21,55 +21,74 @@ This is especially useful for diagnosing:
 
 ## Capturing Thread-Level Profile Data
 
-The eBPF profiler captures thread IDs (TIDs) alongside stack samples. This is the raw data needed for timeline views. Make sure your profiler is configured to include thread metadata:
+The eBPF profiler captures thread IDs (TIDs) and thread names as sample attributes alongside stack samples. This is the raw data needed for timeline views. Configure the OpenTelemetry Collector eBPF Profiling Distribution with the profiling receiver and a profiles pipeline:
 
 ```bash
+cat > otelcol-ebpf-profiler.yaml <<'YAML'
+receivers:
+  profiling:
+    samples_per_second: 49
+
+exporters:
+  otlp:
+    endpoint: http://collector:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    profiles:
+      receivers: [profiling]
+      exporters: [otlp]
+YAML
+
 docker run --rm -d \
   --name otel-ebpf-profiler \
   --privileged \
   --pid=host \
-  -v /sys/kernel:/sys/kernel:ro \
-  -e OTEL_PROFILER_INCLUDE_THREAD_INFO=true \
-  -e OTEL_PROFILER_SAMPLING_FREQUENCY=49 \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 \
-  ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
+  -v /sys:/sys:ro \
+  -v /proc:/proc:ro \
+  -v "$(pwd)/otelcol-ebpf-profiler.yaml:/etc/otelcol/config.yaml:ro" \
+  otel/opentelemetry-collector-ebpf-profiler:0.152.0 \
+  --config=/etc/otelcol/config.yaml \
+  --feature-gates=+service.profilesSupport
 ```
 
-A higher sampling frequency (49 Hz instead of 19 Hz) gives better temporal resolution for timeline analysis, though it does increase overhead slightly.
+A higher sampling frequency (49 Hz instead of the default 20 Hz) gives better temporal resolution for timeline analysis, though it does increase overhead slightly.
 
 ## Generating Timeline Data from Profiles
 
-If your profiling backend does not natively render timeline views, you can generate them from the raw profile data. OpenTelemetry profiles use the pprof format, which includes thread labels.
+If your profiling backend does not natively render timeline views, you can generate them from decoded profile data. OpenTelemetry profiles are exported through OTLP and are compatible with pprof-style profile data; samples can include attributes such as `thread.id`.
 
-Here is a Python script that converts pprof profile data into a timeline-compatible format:
+Here is a Python script that converts decoded profile samples into a timeline-compatible format:
 
 ```python
-import json
-from datetime import datetime, timedelta
 from collections import defaultdict
 
 def parse_profile_to_timeline(profile_data):
     """
-    Convert pprof profile samples into timeline events grouped by thread.
-    Each sample has a timestamp, thread ID, and stack trace.
+    Convert decoded profile samples into timeline events grouped by thread.
+    Each sample has timestamps, attributes, and a stack trace.
     """
     timeline = defaultdict(list)
 
     for sample in profile_data["samples"]:
-        thread_id = sample.get("labels", {}).get("thread.id", "unknown")
-        timestamp = sample["timestamp_ns"]
+        attrs = sample.get("attributes", {})
+        thread_id = attrs.get("thread.id", "unknown")
+        timestamps = sample.get("timestamps_unix_nano", [])
         stack = sample["stack_trace"]
 
         # Classify the activity based on the top frame
         top_frame = stack[0] if stack else "idle"
         activity = classify_frame(top_frame)
 
-        timeline[thread_id].append({
-            "timestamp": timestamp,
-            "activity": activity,
-            "top_frame": top_frame,
-            "stack_depth": len(stack)
-        })
+        for timestamp in timestamps:
+            timeline[thread_id].append({
+                "timestamp": timestamp,
+                "activity": activity,
+                "top_frame": top_frame,
+                "stack_depth": len(stack)
+            })
 
     return dict(timeline)
 
@@ -88,17 +107,17 @@ def classify_frame(frame_name):
 
 ## Visualizing Timelines in Grafana
 
-Grafana's native timeline panel can display this data. You need to transform the profile data into a format the panel understands:
+Grafana's native State timeline panel can display this data. You need to transform the profile data into a table format the panel understands:
 
 ```yaml
-# In Grafana, use a table panel with timeline visualization
+# In Grafana, use the State timeline visualization
 
 # The query should return data in this format:
 # | timestamp | thread_id | state        |
 # |-----------|-----------|--------------|
 # | 1706000000| thread-1  | cpu_executing|
 # | 1706000050| thread-1  | io_wait      |
-# | 1706000000| thread-2  | lock_blocked |
+# | 1706000000| thread-2  | lock_contention |
 # | 1706000050| thread-2  | cpu_executing|
 ```
 
