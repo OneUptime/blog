@@ -12,15 +12,14 @@ OpenTelemetry solves this with exception semantic conventions: a standard set of
 
 ## The Exception Semantic Conventions
 
-OpenTelemetry defines a specific way to record exceptions as span events. The convention requires:
+OpenTelemetry defines a specific way to record exceptions as span events. The convention specifies:
 
 1. The event name must be `exception`.
-2. The event must include these attributes:
+2. The event should include these attributes:
    - `exception.type`: The fully qualified class name of the exception (e.g., `java.lang.NullPointerException`).
    - `exception.message`: The exception message string.
-3. Optionally:
    - `exception.stacktrace`: The full stack trace as a string.
-   - `exception.escaped`: Boolean indicating whether the exception escaped the span scope.
+3. When the operation fails, the span should also set status to ERROR and set `error.type` to a predictable error class.
 
 ## Correct vs Incorrect Recording
 
@@ -34,14 +33,21 @@ from opentelemetry import trace
 tracer = trace.get_tracer("order-service")
 
 def process_order(order_id):
-    with tracer.start_as_current_span("process-order") as span:
+    with tracer.start_as_current_span(
+        "process-order",
+        record_exception=False,
+    ) as span:
         try:
             result = validate_and_submit(order_id)
             return result
         except ValueError as e:
-            # recordException follows the semantic conventions automatically
+            # record_exception follows the semantic conventions automatically
             # It sets exception.type, exception.message, and exception.stacktrace
             span.record_exception(e)
+            span.set_attribute(
+                "error.type",
+                f"{type(e).__module__}.{type(e).__name__}",
+            )
             span.set_status(trace.StatusCode.ERROR, str(e))
             raise
 ```
@@ -61,6 +67,7 @@ async function processOrder(orderId) {
   } catch (error) {
     // recordException handles semantic conventions
     span.recordException(error);
+    span.setAttribute("error.type", error.name || "Error");
     span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     throw error;
   } finally {
@@ -90,7 +97,6 @@ To enforce conventions, build a validation wrapper that checks exception recordi
 ```python
 # validated_tracer.py - Wrapper that enforces exception semantic conventions
 from opentelemetry import trace
-import traceback
 
 class ValidatedSpan:
     """
@@ -104,16 +110,20 @@ class ValidatedSpan:
     def record_exception(self, exception, attributes=None, escaped=False):
         """
         Record an exception following OpenTelemetry semantic conventions.
-        Validates that all required fields are present.
+        Ensures the recommended error fields are present.
         """
-        # Use the built-in recordException which handles conventions
+        # Use the built-in record_exception which handles conventions
         self._span.record_exception(
             exception,
             attributes=attributes,
             escaped=escaped,
         )
+        self._span.set_attribute(
+            "error.type",
+            f"{type(exception).__module__}.{type(exception).__name__}",
+        )
 
-        # Always set span status to ERROR when recording an exception
+        # Set span status to ERROR when the exception represents a failed operation
         self._span.set_status(
             trace.StatusCode.ERROR,
             str(exception),
@@ -147,14 +157,14 @@ class ValidatedSpan:
         return getattr(self._span, name)
 
     def __enter__(self):
-        self._span.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Auto-record unhandled exceptions that escape the span
         if exc_type is not None:
             self.record_exception(exc_val, escaped=True)
-        return self._span.__exit__(exc_type, exc_val, exc_tb)
+        self._span.end()
+        return False
 ```
 
 ## Creating a Shared Error Recording Library
@@ -181,19 +191,23 @@ def record_error(span, exception, extra_attributes=None):
         attrs.update(extra_attributes)
 
     span.record_exception(exception, attributes=attrs)
+    span.set_attribute(
+        "error.type",
+        f"{type(exception).__module__}.{type(exception).__name__}",
+    )
     span.set_status(trace.StatusCode.ERROR, str(exception))
 
-    # Add standard error classification attributes
+    # Add organization-specific error classification attributes
     span.set_attribute("error.handled", True)
-    span.set_attribute(
-        "exception.type.simple",
-        type(exception).__name__,
-    )
 
 
 def record_unhandled_error(span, exception):
     """Record an unhandled exception that escaped the span scope."""
     span.record_exception(exception, escaped=True)
+    span.set_attribute(
+        "error.type",
+        f"{type(exception).__module__}.{type(exception).__name__}",
+    )
     span.set_status(trace.StatusCode.ERROR, str(exception))
     span.set_attribute("error.handled", False)
 ```
