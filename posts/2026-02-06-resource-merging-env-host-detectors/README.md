@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Resource Detection, Configuration, SDK
 
 Description: Configure resource merging strategies when using multiple OpenTelemetry resource detectors like environment variables and host detectors together.
 
-The OpenTelemetry SDK supports multiple resource detectors that automatically discover metadata about your application's runtime environment. The environment variable detector reads from `OTEL_RESOURCE_ATTRIBUTES`, while the host detector reads hostname and OS information. When you enable both, their results need to be merged. Understanding how this merging works and how to control it prevents surprises where one detector's values silently overwrite another's.
+The OpenTelemetry SDK supports multiple resource detectors that automatically discover metadata about your application's runtime environment. The environment variable detector reads from `OTEL_RESOURCE_ATTRIBUTES`, while host and OS detectors read hostname, architecture, and OS information. When you enable more than one detector, their results need to be merged. Understanding how this merging works and how to control it prevents surprises where one detector's values silently overwrite another's.
 
 ## How Resource Merging Works
 
@@ -17,17 +17,31 @@ Each resource detector produces a `Resource` object with a set of key-value attr
 ```python
 # resource_setup.py
 
-from opentelemetry.sdk.resources import Resource, get_aggregated_resources
+import platform
+import socket
+
+from opentelemetry.sdk.resources import Resource, ResourceDetector, get_aggregated_resources
 from opentelemetry.sdk.resources import (
     OTELResourceDetector,     # Reads OTEL_RESOURCE_ATTRIBUTES
+    OsResourceDetector,       # Reads OS info
     ProcessResourceDetector,   # Reads process info (PID, command line)
 )
-from opentelemetry.resourcedetector.host import HostResourceDetector
+
+
+class HostResourceDetector(ResourceDetector):
+    """Minimal host detector for hostname and architecture."""
+
+    def detect(self):
+        return Resource({
+            "host.name": socket.gethostname(),
+            "host.arch": platform.machine(),
+        })
 
 # Detectors run in order - later detectors can override earlier ones
 detectors = [
     OTELResourceDetector(),      # Environment variables (lowest priority)
     HostResourceDetector(),       # Host metadata
+    OsResourceDetector(),         # OS metadata
     ProcessResourceDetector(),    # Process metadata (highest priority)
 ]
 
@@ -40,11 +54,11 @@ detected_resource = get_aggregated_resources(detectors)
 manual_resource = Resource.create({
     "service.name": "checkout-service",
     "service.version": "1.4.2",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Merge: manual values override detected values
-final_resource = manual_resource.merge(detected_resource)
+final_resource = detected_resource.merge(manual_resource)
 
 print("Final resource attributes:")
 for key, value in final_resource.attributes.items():
@@ -79,6 +93,8 @@ If you want environment variables to take the highest priority (so operators can
 from opentelemetry.sdk.resources import Resource, get_aggregated_resources
 from opentelemetry.sdk.resources import OTELResourceDetector
 
+# Reuse the HostResourceDetector class from the previous example.
+
 # Order: host detector first, then env vars override
 detected = get_aggregated_resources([
     HostResourceDetector(),       # Detected values (lower priority)
@@ -108,7 +124,7 @@ import (
     "log"
 
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.28.0"
 )
 
 func buildResource(ctx context.Context) (*resource.Resource, error) {
@@ -117,17 +133,18 @@ func buildResource(ctx context.Context) (*resource.Resource, error) {
         resource.WithAttributes(
             semconv.ServiceName("my-service"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
         return nil, err
     }
 
-    // Detect from environment and host (higher priority)
+    // Detect from environment, host, OS, and process (higher priority)
     detectedResource, err := resource.New(ctx,
         resource.WithFromEnv(),     // Reads OTEL_RESOURCE_ATTRIBUTES
-        resource.WithHost(),        // Reads host.name, host.id, os.type
+        resource.WithHost(),        // Reads host information
+        resource.WithOS(),          // Reads os.type and other OS information
         resource.WithProcess(),     // Reads process.pid, process.command
     )
     if err != nil {
@@ -158,12 +175,13 @@ func main() {
 
 ## Java: ResourceProvider and SPI
 
-In Java, resource detectors register via SPI (Service Provider Interface). The merge order is determined by the detector's `order()` method:
+In Java autoconfiguration, resource providers register via SPI (Service Provider Interface). The merge order is determined by the provider's `order()` method:
 
 ```java
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
 import io.opentelemetry.sdk.autoconfigure.spi.ResourceProvider;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.api.common.Attributes;
 
 // Custom resource provider with explicit ordering
 public class AppResourceProvider implements ResourceProvider {
