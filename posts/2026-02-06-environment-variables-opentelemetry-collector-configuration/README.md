@@ -145,8 +145,6 @@ exporters:
   elasticsearch:
     endpoints:
       - ${ELASTIC_ENDPOINT}
-    auth:
-      authenticator: basicauth
     user: ${ELASTIC_USERNAME}
     password: ${ELASTIC_PASSWORD}
 
@@ -210,7 +208,7 @@ processors:
         action: upsert
 
 exporters:
-  # Debug exporter enabled only in development
+  # Debug exporter for local inspection
   debug:
     verbosity: ${DEBUG_VERBOSITY:-basic}
 
@@ -226,7 +224,12 @@ service:
       level: ${LOG_LEVEL:-info}
     metrics:
       level: ${METRICS_LEVEL:-detailed}
-      address: ${TELEMETRY_ADDRESS:-localhost:8888}
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: ${TELEMETRY_HOST:-localhost}
+                port: ${TELEMETRY_PORT:-8888}
 
   pipelines:
     traces:
@@ -424,7 +427,7 @@ stringData:
 
 ## Complex Variable Substitution
 
-The collector supports nested environment variable expansion for building complex configuration values:
+The collector supports combining multiple environment variable substitutions in a scalar value for building complex configuration values:
 
 ```yaml
 receivers:
@@ -443,9 +446,9 @@ exporters:
       # Construct authorization header
       authorization: "Bearer ${API_TOKEN}"
 
-  loki:
-    # Build Loki endpoint with tenant ID
-    endpoint: ${LOKI_ENDPOINT}/loki/api/v1/push
+  otlphttp/loki:
+    # Build Loki OTLP endpoint with tenant ID
+    endpoint: ${LOKI_ENDPOINT}/otlp
     headers:
       X-Scope-OrgID: ${TENANT_ID}
 
@@ -463,14 +466,14 @@ processors:
 
 ## Validation and Debugging
 
-When using environment variables, validation is crucial. The collector provides helpful error messages for missing required variables.
+When using environment variables, validation is crucial. Undefined variables without defaults resolve to empty values, so validate required variables before the collector starts.
 
-Enable debug logging to see resolved configuration values:
+Enable debug logging to inspect collector startup and configuration validation output:
 
 ```bash
 # Start collector with debug logging
 export LOG_LEVEL="debug"
-./otelcol --config collector-config.yaml 2>&1 | grep "environment variable"
+./otelcol --config collector-config.yaml
 ```
 
 Create a validation script to check required environment variables:
