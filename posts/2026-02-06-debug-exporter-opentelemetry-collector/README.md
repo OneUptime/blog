@@ -8,7 +8,7 @@ Description: A practical guide to configuring the Debug exporter in OpenTelemetr
 
 ---
 
-The Debug exporter is the simplest but most valuable exporter in the OpenTelemetry Collector toolkit. It writes telemetry data (traces, metrics, and logs) directly to the Collector's standard output, making it indispensable for troubleshooting pipeline issues, validating instrumentation, and debugging configuration problems.
+The Debug exporter is the simplest but most valuable exporter in the OpenTelemetry Collector toolkit. It writes telemetry data (traces, metrics, and logs) to the Collector's console/log output, making it indispensable for troubleshooting pipeline issues, validating instrumentation, and debugging configuration problems.
 
 Unlike production exporters that send data to external systems, the Debug exporter simply prints telemetry to the console in a human-readable format. This makes it perfect for development, testing, and initial setup phases, though it can also be used carefully in production for targeted debugging.
 
@@ -76,7 +76,7 @@ After starting the Collector with this configuration, all telemetry will be prin
 
 The Debug exporter supports three verbosity levels that control how much information is displayed:
 
-### Basic Verbosity
+### Basic Verbosity (Default)
 
 Shows only essential information (count of items received):
 
@@ -95,7 +95,7 @@ Example output:
 
 Best for: Quick verification that telemetry is flowing.
 
-### Normal Verbosity (Default)
+### Normal Verbosity
 
 Shows summary information for each telemetry item:
 
@@ -118,9 +118,9 @@ ScopeSpans #0
 ScopeSpans SchemaURL:
 InstrumentationScope opentelemetry.instrumentation.fastapi 0.38b0
 Span #0
-    Trace ID       : a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
-    Parent ID      : q7r8s9t0u1v2w3x4
-    ID             : y5z6a7b8c9d0e1f2
+    Trace ID       : a1b2c3d4e5f607182930a1b2c3d4e5f6
+    Parent ID      : 1728394050607081
+    ID             : 8293a4b5c6d7e8f9
     Name           : POST /api/payment
     Kind           : Server
     Start time     : 2026-02-06 10:15:30.123456 +0000 UTC
@@ -159,8 +159,8 @@ SpanEvent #0
 
 Links:
 SpanLink #0
-     -> Trace ID: x1y2z3a4b5c6d7e8f9g0h1i2j3k4l5m6
-     -> Span ID: n7o8p9q0r1s2t3u4
+     -> Trace ID: 11223344556677889900aabbccddeeff
+     -> Span ID: aabbccddeeff0011
      -> Attributes:
           -> link.description: Str(Related payment request)
 ```
@@ -169,17 +169,17 @@ Best for: Deep debugging of complex traces with events and links.
 
 ---
 
-## Output Formats
+## Output Volume Controls
 
-Control how telemetry data is serialized:
+Control how much telemetry data is logged:
 
 ```yaml
 exporters:
   debug:
     verbosity: detailed
 
-    # Output format options
-    sampling_initial: 5       # Print first 5 items at startup
+    # Output volume controls
+    sampling_initial: 5       # Log the first 5 matching messages each second
     sampling_thereafter: 1    # Then print every 1st item (no sampling)
 ```
 
@@ -258,12 +258,10 @@ processors:
 
   # Filter spans
   filter:
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - "/health"
-          - "/metrics"
+    error_mode: ignore
+    trace_conditions:
+      - 'span.name == "/health"'
+      - 'span.name == "/metrics"'
 
   # Sample traces
   probabilistic_sampler:
@@ -301,14 +299,14 @@ exporters:
   debug:
     verbosity: normal
 
-    # Print first 10 items at startup (for immediate feedback)
+    # Log the first 10 matching messages each second
     sampling_initial: 10
 
-    # After initial burst, print every 100th item
+    # After the initial messages, log every 100th matching message
     sampling_thereafter: 100
 ```
 
-This configuration gives you a quick sample at startup to verify data flow, then reduces output to 1% for ongoing monitoring.
+This configuration gives you a small burst of output each second to verify data flow, then reduces output to roughly 1% for ongoing monitoring.
 
 For production debugging, use aggressive sampling:
 
@@ -317,7 +315,7 @@ exporters:
   debug:
     verbosity: basic
     sampling_initial: 5
-    sampling_thereafter: 1000  # Print only 0.1% of telemetry
+    sampling_thereafter: 1000  # After the initial messages, log roughly 0.1% of telemetry
 ```
 
 ---
@@ -347,7 +345,7 @@ exporters:
   debug:
     verbosity: normal
     sampling_initial: 5
-    sampling_thereafter: 100  # Only print 1% to avoid console spam
+    sampling_thereafter: 100  # After the initial messages, log roughly 1% to avoid console spam
 
 service:
   pipelines:
@@ -378,9 +376,8 @@ processors:
   # Filter to only spans with errors
   filter/errors_only:
     error_mode: ignore  # Don't fail pipeline if filter has issues
-    traces:
-      span:
-        - 'status.code == STATUS_CODE_ERROR'
+    trace_conditions:
+      - 'span.status.code != STATUS_CODE_ERROR'
 
 exporters:
   debug:
@@ -402,9 +399,9 @@ Now only error spans are printed, making it easy to spot problems.
 processors:
   # Only debug telemetry from payment service
   filter/payment_only:
-    traces:
-      span:
-        - 'resource.attributes["service.name"] == "payment-api"'
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] != "payment-api"'
 
 exporters:
   debug:
@@ -424,9 +421,9 @@ service:
 processors:
   # Only debug spans slower than 1 second
   filter/slow_only:
-    traces:
-      span:
-        - 'duration_millis > 1000'
+    error_mode: ignore
+    trace_conditions:
+      - '(span.end_time - span.start_time) <= Duration("1s")'
 
 exporters:
   debug:
@@ -458,13 +455,12 @@ processors:
   batch:
     timeout: 10s
 
-  # Only debug if DEBUG_ENABLED env var is set
+  # Only debug spans that opt in with an attribute
   filter/debug_conditional:
     error_mode: ignore
-    traces:
-      span:
-        # Use attribute matching to control debug output
-        - 'attributes["debug.enabled"] == "true"'
+    trace_conditions:
+      # Use attribute matching to control debug output
+      - 'span.attributes["debug.enabled"] != "true"'
 
 exporters:
   # Production exporter (always active)
@@ -529,7 +525,7 @@ graph TD
     E --> F[Exporter: Debug]
     E --> G[Exporter: Production OTLP]
 
-    F -->|Write to| H[Console/Stdout]
+    F -->|Write to| H[Collector logs/console]
     G -->|Send to| I[Backend OneUptime]
 
     H --> J[Developer/Operator]
@@ -581,7 +577,7 @@ The Debug exporter runs in parallel with production exporters, allowing you to t
 **Problem**: Collector performance degrades with Debug exporter enabled.
 
 **Solution**:
-- Debug exporter is synchronous and blocks on output
+- Large volumes of console/log output can become a bottleneck
 - Use aggressive sampling to reduce writes
 - Avoid `verbosity: detailed` in high-throughput scenarios
 - Consider using File exporter instead for high-volume debugging
@@ -594,10 +590,10 @@ The Debug and File exporters serve similar purposes but with different trade-off
 
 | Feature | Debug Exporter | File Exporter |
 |---------|---------------|---------------|
-| Output destination | Console (stdout) | File on disk |
-| Performance impact | Higher (blocking writes) | Lower (buffered writes) |
+| Output destination | Collector logs/console by default; stdout, stderr, or files when `use_internal_logger: false` | File on disk |
+| Performance impact | Potentially higher with verbose console logging | Often better for captured debug payloads |
 | Setup complexity | None | Requires file path configuration |
-| Log aggregation | Easy (stdout captured by default) | Requires file collection setup |
+| Log aggregation | Easy when Collector logs are already collected | Requires file collection setup |
 | Data persistence | No (lost on restart) | Yes (survives restarts) |
 | Best for | Development, quick debugging | Production debugging, archival |
 
@@ -613,10 +609,10 @@ Use environment variables to control Debug exporter behavior across environments
 exporters:
   debug:
     # Use env var to control verbosity (default to basic)
-    verbosity: ${DEBUG_VERBOSITY:-basic}
+    verbosity: ${env:DEBUG_VERBOSITY:-basic}
 
     # Sample aggressively in production, not at all in dev
-    sampling_thereafter: ${DEBUG_SAMPLING:-1}
+    sampling_thereafter: ${env:DEBUG_SAMPLING:-1}
 
 service:
   pipelines:
