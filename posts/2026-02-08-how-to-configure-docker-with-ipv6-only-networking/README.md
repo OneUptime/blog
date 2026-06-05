@@ -14,15 +14,13 @@ This guide covers setting up Docker for IPv6-only networking. You will learn how
 
 ## Enabling IPv6 in the Docker Daemon
 
-Docker does not enable IPv6 by default. Update the daemon configuration:
+Docker does not enable IPv6 by default. Update `/etc/docker/daemon.json`:
 
 ```json
-// /etc/docker/daemon.json - Enable IPv6 support in Docker
 {
   "ipv6": true,
-  "fixed-cidr-v6": "fd00:dead:beef::/48",
-  "ip6tables": true,
-  "experimental": true
+  "fixed-cidr-v6": "fd00:dead:beef::/64",
+  "ip6tables": true
 }
 ```
 
@@ -31,7 +29,6 @@ Breaking down these settings:
 - `ipv6: true` - Enables IPv6 on the default bridge network
 - `fixed-cidr-v6` - The IPv6 subnet for the default bridge (use a ULA prefix for private networks)
 - `ip6tables` - Lets Docker manage ip6tables rules (similar to iptables for IPv4)
-- `experimental` - Required for some IPv6 features in older Docker versions
 
 Restart Docker:
 
@@ -44,7 +41,7 @@ sudo systemctl restart docker
 ip -6 addr show docker0
 ```
 
-You should see an IPv6 address from the `fd00:dead:beef::/48` range assigned to the docker0 bridge.
+You should see an IPv6 address from the `fd00:dead:beef::/64` range assigned to the docker0 bridge.
 
 ## Creating an IPv6-Only Network
 
@@ -54,6 +51,7 @@ Create a custom network that uses only IPv6:
 # Create an IPv6-only bridge network
 docker network create \
   --ipv6 \
+  --ipv4=false \
   --subnet fd00:1::/64 \
   --gateway fd00:1::1 \
   ipv6-only-net
@@ -104,8 +102,8 @@ docker run -d \
   --name ipv6-db \
   --network ipv6-only-net \
   --ip6 fd00:1::db \
-  postgres:16-alpine \
-  -e POSTGRES_PASSWORD=secret
+  -e POSTGRES_PASSWORD=secret \
+  postgres:16-alpine
 
 # Verify the assigned address
 docker exec ipv6-db ip -6 addr show eth0 | grep fd00
@@ -139,7 +137,7 @@ docker run -d \
 
 ## DNS Configuration for IPv6
 
-Docker's embedded DNS server (127.0.0.11) works for both IPv4 and IPv6. On custom networks, container name resolution returns both A and AAAA records:
+Docker's embedded DNS server (127.0.0.11) works for both IPv4 and IPv6. On IPv6-only custom networks, container name resolution returns AAAA records:
 
 ```bash
 # Start two containers on the IPv6 network
@@ -150,20 +148,19 @@ docker run -d --name client --network ipv6-only-net alpine sleep 3600
 docker exec client nslookup -type=AAAA server-a
 ```
 
-For external DNS resolution in an IPv6-only environment, configure DNS servers that support IPv6:
+For external DNS resolution in an IPv6-only environment, configure DNS servers that support IPv6 in `/etc/docker/daemon.json`:
 
 ```json
-// /etc/docker/daemon.json - IPv6 DNS servers
 {
   "ipv6": true,
-  "fixed-cidr-v6": "fd00:dead:beef::/48",
+  "fixed-cidr-v6": "fd00:dead:beef::/64",
   "dns": ["2001:4860:4860::8888", "2001:4860:4860::8844"]
 }
 ```
 
 ## Docker Compose with IPv6
 
-Define IPv6 networks in Docker Compose:
+Define IPv6-only networks in Docker Compose. Disabling IPv4 with `enable_ipv4` requires Docker Compose 2.33.1 or later:
 
 ```yaml
 # docker-compose.yml - IPv6-only microservice stack
@@ -193,6 +190,7 @@ services:
 
 networks:
   app-v6:
+    enable_ipv4: false
     enable_ipv6: true
     ipam:
       config:
@@ -202,23 +200,24 @@ networks:
 
 ## NAT66 and Masquerading for IPv6
 
-Unlike IPv4, IPv6 was designed to avoid NAT. But in Docker environments with private ULA addresses, you may need NAT66 for external connectivity:
+Unlike IPv4, IPv6 was designed to avoid NAT. Docker bridge networks use masquerading by default, but if you disable Docker's masquerading or manage firewall rules yourself, you may need a NAT66 rule for your container subnet:
 
 ```bash
 # Enable IPv6 masquerading for Docker containers to reach the internet
-sudo ip6tables -t nat -A POSTROUTING -s fd00:dead:beef::/48 ! -o docker0 -j MASQUERADE
+sudo ip6tables -t nat -A POSTROUTING -s fd00:1::/64 ! -o docker0 -j MASQUERADE
 
 # Enable IPv6 forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-docker-ipv6.conf
 ```
 
-If your host has a globally routable IPv6 prefix, you can avoid NAT66 entirely by assigning addresses from that prefix to your Docker network:
+If your host has a globally routable IPv6 prefix, you can avoid NAT66 entirely by assigning addresses from that prefix to your Docker network. The prefix below is reserved for documentation; replace it with your routed prefix:
 
 ```bash
 # Create a network using a globally routable prefix
 docker network create \
   --ipv6 \
+  --ipv4=false \
   --subnet 2001:db8:1::/64 \
   --gateway 2001:db8:1::1 \
   global-v6-net
@@ -323,6 +322,7 @@ For jumbo frames or tunnel configurations, set the MTU explicitly:
 # Create an IPv6 network with a custom MTU
 docker network create \
   --ipv6 \
+  --ipv4=false \
   --subnet fd00:4::/64 \
   --opt com.docker.network.driver.mtu=9000 \
   jumbo-v6-net
