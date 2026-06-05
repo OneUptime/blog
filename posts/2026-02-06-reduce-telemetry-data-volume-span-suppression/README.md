@@ -44,13 +44,13 @@ Low-level infrastructure spans (DNS lookups, connection pooling, TLS handshakes)
 # Python SDK configuration to suppress infrastructure spans
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-class InfrastructureSpanSuppressor(SpanProcessor):
+class FilteringSpanExporter(SpanExporter):
     """
-    Custom span processor that suppresses low-value infrastructure spans.
+    Span exporter wrapper that suppresses low-value infrastructure spans.
     """
 
     # Define span names to suppress
@@ -64,48 +64,42 @@ class InfrastructureSpanSuppressor(SpanProcessor):
         'thread.pool',
     ]
 
-    def on_start(self, span, parent_context=None):
-        """
-        Called when span is started. Check if it should be suppressed.
-        """
-        span_name = span.name.lower()
+    def __init__(self, exporter):
+        self.exporter = exporter
 
-        # Check if span matches suppression patterns
+    def _should_export(self, span):
+        span_name = span.name.lower()
         for pattern in self.SUPPRESSED_SPAN_PATTERNS:
             if pattern in span_name:
-                # Mark span as not recording
-                span.set_attribute('span.suppressed', True)
-                # Optionally set sampling decision to not record
-                # This prevents the span from being exported
-                break
+                return False
+        return True
 
-    def on_end(self, span):
-        """Called when span ends."""
-        pass
+    def export(self, spans):
+        filtered_spans = [span for span in spans if self._should_export(span)]
+        if not filtered_spans:
+            return SpanExportResult.SUCCESS
+        return self.exporter.export(filtered_spans)
 
     def shutdown(self):
         """Called on shutdown."""
-        pass
+        return self.exporter.shutdown()
 
     def force_flush(self, timeout_millis=30000):
         """Called on force flush."""
-        pass
+        return self.exporter.force_flush(timeout_millis)
 
 # Initialize tracer provider with suppressor
 provider = TracerProvider()
 
-# Add suppressor first (before exporter processor)
-provider.add_span_processor(InfrastructureSpanSuppressor())
-
-# Add exporter processor
+# Wrap the OTLP exporter so suppressed spans never leave the SDK
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter())
+    BatchSpanProcessor(FilteringSpanExporter(OTLPSpanExporter()))
 )
 
 trace.set_tracer_provider(provider)
 ```
 
-This processor intercepts spans as they're created and marks infrastructure spans to be dropped.
+This exporter wrapper filters spans before they are exported.
 
 ## Strategy 2: Suppress by Span Duration
 
@@ -119,7 +113,7 @@ import (
     "context"
     "time"
 
-    "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -193,36 +187,34 @@ processors:
   # Filter processor for span suppression
   filter/suppress_spans:
     error_mode: ignore
-    traces:
-      span:
-        # Suppress health check spans
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
+    trace_conditions:
+      # Suppress health check spans
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
 
-        # Suppress internal library spans
-        - 'attributes["library.name"] matches ".*internal.*"'
+      # Suppress internal instrumentation scopes
+      - 'IsMatch(scope.name, ".*internal.*")'
 
-        # Suppress database connection pool operations
-        - 'name matches ".*connection.pool.*"'
+      # Suppress database connection pool operations
+      - 'IsMatch(span.name, ".*connection.pool.*")'
 
-        # Suppress very fast operations (under 1ms)
-        - 'end_time_unix_nano - start_time_unix_nano < 1000000'
+      # Suppress very fast operations (under 1ms), but keep errors
+      - '(span.end_time - span.start_time) < Duration("1ms") and span.status.code != STATUS_CODE_ERROR'
 
-        # Suppress specific span kinds (internal only)
-        - 'kind == SPAN_KIND_INTERNAL and attributes["custom.important"] == nil'
+      # Suppress specific span kinds (internal only)
+      - 'span.kind == SPAN_KIND_INTERNAL and span.attributes["custom.important"] == nil'
 
   # Transform processor to remove noisy attributes
   transform/clean_spans:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Remove verbose attributes that inflate span size
-          - delete_key(attributes, "http.request.header.user-agent")
-          - delete_key(attributes, "http.request.header.cookie")
-          - delete_key(attributes, "http.response.body")
+      # Remove verbose attributes that inflate span size
+      - delete_key(span.attributes, "http.request.header.user-agent")
+      - delete_key(span.attributes, "http.request.header.cookie")
+      - delete_key(span.attributes, "http.response.body")
 
-          # Truncate long string attributes
-          - set(attributes["http.url"], Truncate(attributes["http.url"], 256))
+      # Truncate long string attributes
+      - set(span.attributes["http.url"], Substring(span.attributes["http.url"], 0, 256)) where Len(span.attributes["http.url"]) > 256
 
   batch:
     timeout: 10s
@@ -248,39 +240,62 @@ Suppress child spans that duplicate parent span information:
 
 ```java
 // Java SDK span suppressor for redundant child spans
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.sdk.trace.ReadWriteSpan;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 
-public class RedundantChildSpanSuppressor implements SpanProcessor {
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-    // Suppress child spans that are too similar to parent
+public class RedundantChildSpanSuppressor implements SpanProcessor {
+    private static final AttributeKey<String> OPERATION =
+        AttributeKey.stringKey("operation");
+
+    private final SpanProcessor next;
+    private final ConcurrentMap<String, String> activeSpanNames =
+        new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> activeOperations =
+        new ConcurrentHashMap<>();
+    private final Set<String> suppressedSpanIds =
+        ConcurrentHashMap.newKeySet();
+
+    public RedundantChildSpanSuppressor(SpanProcessor next) {
+        this.next = next;
+    }
+
     @Override
     public void onStart(Context parentContext, ReadWriteSpan span) {
-        // Get parent span from context
-        Span parentSpan = Span.fromContext(parentContext);
+        String spanId = span.getSpanContext().getSpanId();
+        String parentSpanId = span.getParentSpanContext().getSpanId();
+        String spanName = span.getName();
+        String parentName = activeSpanNames.get(parentSpanId);
 
-        if (parentSpan != null && parentSpan.getSpanContext().isValid()) {
-            String spanName = span.getName();
-            String parentName = parentSpan.getSpanContext().getSpanId();
+        activeSpanNames.put(spanId, spanName);
 
+        String operation = span.getAttribute(OPERATION);
+        if (operation != null) {
+            activeOperations.put(spanId, operation);
+        }
+
+        if (parentName != null) {
             // Suppress if child span name is very similar to parent
             // e.g., parent: "HTTP GET /api/users", child: "GET /api/users"
             if (isRedundantChild(spanName, parentName)) {
-                // Set attribute to mark for suppression
-                span.setAttribute("span.suppressed", true);
+                suppressedSpanIds.add(spanId);
             }
 
             // Suppress if child span has same operation as parent
-            String operation = span.getAttribute("operation");
-            String parentOperation = parentSpan.getAttribute("operation");
+            String parentOperation = activeOperations.get(parentSpanId);
             if (operation != null && operation.equals(parentOperation)) {
-                span.setAttribute("span.suppressed", true);
+                suppressedSpanIds.add(spanId);
             }
         }
+
+        next.onStart(parentContext, span);
     }
 
     @Override
@@ -290,18 +305,31 @@ public class RedundantChildSpanSuppressor implements SpanProcessor {
 
     @Override
     public void onEnd(ReadableSpan span) {
-        // Check if span was marked for suppression
-        Boolean suppressed = span.getAttribute("span.suppressed");
-        if (suppressed != null && suppressed) {
-            // Don't export this span
+        String spanId = span.getSpanContext().getSpanId();
+        activeSpanNames.remove(spanId);
+        activeOperations.remove(spanId);
+
+        if (suppressedSpanIds.remove(spanId)) {
+            // Do not forward this span to the wrapped processor.
             return;
         }
-        // Otherwise, continue normal processing
+
+        next.onEnd(span);
     }
 
     @Override
     public boolean isEndRequired() {
         return true;
+    }
+
+    @Override
+    public CompletableResultCode shutdown() {
+        return next.shutdown();
+    }
+
+    @Override
+    public CompletableResultCode forceFlush() {
+        return next.forceFlush();
     }
 
     private boolean isRedundantChild(String childName, String parentName) {
@@ -319,40 +347,40 @@ Not all services need the same level of instrumentation. Suppress more aggressiv
 
 ```yaml
 # Collector configuration with tier-based suppression
-processors:
-  # Routing processor to split by service tier
-  routing/by_tier:
-    from_attribute: service.tier
-    default_exporters: [otlp/default]
-    table:
-      - value: critical
-        exporters: [otlp/critical]
-      - value: standard
-        exporters: [otlp/standard]
-      - value: background
-        exporters: [otlp/background]
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
 
+processors:
   # Critical tier: minimal suppression (keep most spans)
   filter/critical:
-    traces:
-      span:
-        # Only drop health checks
-        - 'attributes["http.route"] matches "/(health|ready)"'
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans from other tiers
+      - 'resource.attributes["service.tier"] != "critical"'
+      # Only drop health checks
+      - 'IsMatch(span.attributes["http.route"], "^/(health|ready)$")'
 
   # Standard tier: moderate suppression
   filter/standard:
-    traces:
-      span:
-        # Drop health checks and internal operations
-        - 'attributes["http.route"] matches "/(health|ready)"'
-        - 'kind == SPAN_KIND_INTERNAL and duration < 5000000'  # 5ms
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans from other tiers
+      - 'resource.attributes["service.tier"] != "standard"'
+      # Drop health checks and internal operations
+      - 'IsMatch(span.attributes["http.route"], "^/(health|ready)$")'
+      - 'span.kind == SPAN_KIND_INTERNAL and (span.end_time - span.start_time) < Duration("5ms")'
 
   # Background tier: aggressive suppression (keep only errors and slow ops)
   filter/background:
-    traces:
-      span:
-        # Only keep errors and slow operations
-        - 'status.code != STATUS_CODE_ERROR and duration < 100000000'  # 100ms
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans from other tiers
+      - 'resource.attributes["service.tier"] != "background"'
+      # Only keep errors and slow operations
+      - 'span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) < Duration("100ms")'
 
   batch:
     timeout: 10s
@@ -394,15 +422,15 @@ Adjust suppression dynamically based on system load or cost budgets:
 # Python implementation of dynamic span suppression
 import os
 import time
-from opentelemetry.sdk.trace import SpanProcessor
-from opentelemetry.sdk.trace.export import SpanExportResult
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-class DynamicSpanSuppressor(SpanProcessor):
+class DynamicSpanSuppressor(SpanExporter):
     """
     Adjusts suppression aggressiveness based on current metrics.
     """
 
-    def __init__(self, base_suppression_rate=0.1):
+    def __init__(self, exporter, base_suppression_rate=0.1):
+        self.exporter = exporter
         self.base_suppression_rate = base_suppression_rate
         self.current_rate = base_suppression_rate
         self.last_adjustment = time.time()
@@ -431,28 +459,28 @@ class DynamicSpanSuppressor(SpanProcessor):
 
         self.last_adjustment = time.time()
 
-    def on_start(self, span, parent_context=None):
+    def _should_export(self, span):
         """Check if span should be suppressed."""
         self.update_suppression_rate()
 
         # Use hash of span ID for deterministic suppression
-        span_id_hash = hash(span.get_span_context().span_id)
-        suppress = (span_id_hash % 100) < (self.current_rate * 100)
+        suppress = (span.context.span_id % 100) < (self.current_rate * 100)
+        return not suppress
 
-        if suppress:
-            span.set_attribute('span.suppressed', True)
-
-    def on_end(self, span):
-        """Called when span ends."""
-        pass
+    def export(self, spans):
+        """Export only spans that pass the current suppression rate."""
+        filtered_spans = [span for span in spans if self._should_export(span)]
+        if not filtered_spans:
+            return SpanExportResult.SUCCESS
+        return self.exporter.export(filtered_spans)
 
     def shutdown(self):
         """Called on shutdown."""
-        pass
+        return self.exporter.shutdown()
 
     def force_flush(self, timeout_millis=30000):
         """Called on force flush."""
-        return True
+        return self.exporter.force_flush(timeout_millis)
 ```
 
 This allows suppression to adapt to changing conditions without redeployment.
@@ -463,6 +491,12 @@ Suppress spans that represent repeated operations, keeping only a sample:
 
 ```yaml
 # Collector configuration for repeated span suppression
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Group repeated spans and keep only samples
   groupbytrace:
@@ -472,31 +506,31 @@ processors:
 
   # Custom processor logic using transform processor
   transform/suppress_repeated:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Create a deduplication key from span attributes
-          - set(attributes["dedup_key"], Concat([
-              name,
-              attributes["http.method"],
-              attributes["http.route"],
-              attributes["db.operation"]
-            ], "|"))
+      # Create a deduplication key from span attributes
+      - set(span.attributes["dedup_key"], Concat([
+          span.name,
+          span.attributes["http.method"],
+          span.attributes["http.route"],
+          span.attributes["db.operation"]
+        ], "|"))
 
-          # Hash the key and keep 10% of repeated spans
-          - set(attributes["keep"], Hash(attributes["dedup_key"], 10) == 0)
-
-      # Filter based on keep attribute
-      - context: span
-        conditions:
-          - attributes["keep"] == false
-        statements:
-          - set(status.code, STATUS_CODE_UNSET)  # Mark for dropping
+      # Hash the key and keep 10% of repeated spans
+      - set(span.attributes["keep"], XXH3(span.attributes["dedup_key"]) % 10 == 0)
 
   filter/drop_marked:
-    traces:
-      span:
-        - 'attributes["keep"] == false'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["keep"] == false'
+
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  otlp:
+    endpoint: backend:4317
 
 service:
   pipelines:
@@ -528,57 +562,60 @@ Their configuration:
 
 ```yaml
 # Production span suppression configuration
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Step 1: Remove infrastructure spans
   filter/infrastructure:
-    traces:
-      span:
-        - 'name matches ".*(dns|socket|pool|ssl|tls).*"'
-        - 'attributes["span.kind"] == "INTERNAL" and duration < 1000000'  # 1ms
+    error_mode: ignore
+    trace_conditions:
+      - 'IsMatch(span.name, ".*(dns|socket|pool|ssl|tls).*")'
+      - 'span.kind == SPAN_KIND_INTERNAL and (span.end_time - span.start_time) < Duration("1ms")'
 
   # Step 2: Remove redundant HTTP client spans
   filter/http_redundant:
-    traces:
-      span:
-        # Keep only the parent HTTP span, drop child socket/DNS spans
-        - 'name matches ".*http.client.*" and attributes["http.url"] == nil'
+    error_mode: ignore
+    trace_conditions:
+      # Keep only the parent HTTP span, drop child socket/DNS spans
+      - 'IsMatch(span.name, ".*http.client.*") and span.attributes["http.url"] == nil'
 
   # Step 3: Suppress repeated database queries
   transform/dedup_db:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        conditions:
-          - attributes["db.system"] != nil
-        statements:
-          # Create query fingerprint (remove parameters)
-          - set(attributes["query.fingerprint"], ReplaceAllPatterns(
-              attributes["db.statement"],
-              "[0-9]+",
-              "?"
-            ))
+      # Create query fingerprint (remove parameters)
+      - set(span.attributes["query.fingerprint"], span.attributes["db.statement"]) where span.attributes["db.system"] != nil
+      - replace_pattern(span.attributes["query.fingerprint"], "[0-9]+", "?") where span.attributes["db.system"] != nil
 
-          # Keep 10% of identical queries
-          - set(attributes["keep"], Hash(attributes["query.fingerprint"], 10) == 0)
+      # Keep 10% of identical queries
+      - set(span.attributes["keep"], XXH3(span.attributes["query.fingerprint"]) % 10 == 0) where span.attributes["db.system"] != nil
 
   filter/drop_deduped:
-    traces:
-      span:
-        - 'attributes["keep"] == false and attributes["db.system"] != nil'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["keep"] == false and span.attributes["db.system"] != nil'
 
   # Step 4: Remove overly detailed spans
   transform/simplify:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Remove verbose attributes
-          - delete_key(attributes, "http.request.body")
-          - delete_key(attributes, "http.response.body")
-          - delete_key(attributes, "thread.id")
-          - delete_key(attributes, "thread.name")
+      # Remove verbose attributes
+      - delete_key(span.attributes, "http.request.body")
+      - delete_key(span.attributes, "http.response.body")
+      - delete_key(span.attributes, "thread.id")
+      - delete_key(span.attributes, "thread.name")
 
   batch:
     timeout: 10s
     send_batch_size: 2048
+
+exporters:
+  otlp:
+    endpoint: backend:4317
 
 service:
   pipelines:
@@ -601,24 +638,48 @@ Track your suppression effectiveness:
 
 ```yaml
 # Add metrics to monitor suppression
-processors:
-  # Count spans before suppression
-  spanmetrics/before:
-    metrics_exporter: prometheus
-    dimensions:
-      - name: service.name
-      - name: span.kind
+receivers:
+  otlp:
+    protocols:
+      grpc:
 
-  # Your suppression processors here
-  filter/suppress:
-    # ... config
+connectors:
+  # Count spans before suppression
+  span_metrics/before: {}
 
   # Count spans after suppression
-  spanmetrics/after:
-    metrics_exporter: prometheus
-    dimensions:
-      - name: service.name
-      - name: span.kind
+  span_metrics/after: {}
+
+processors:
+  # Your suppression processors here
+  filter/suppress:
+    error_mode: ignore
+    trace_conditions:
+      - 'span.kind == SPAN_KIND_INTERNAL and (span.end_time - span.start_time) < Duration("1ms")'
+
+  batch:
+
+exporters:
+  otlp:
+    endpoint: backend:4317
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces/before:
+      receivers: [otlp]
+      exporters: [span_metrics/before]
+
+    traces/after:
+      receivers: [otlp]
+      processors: [filter/suppress, batch]
+      exporters: [span_metrics/after, otlp]
+
+    metrics:
+      receivers: [span_metrics/before, span_metrics/after]
+      exporters: [prometheus]
 
 # Calculate metrics
 # suppression_rate = (spans_before - spans_after) / spans_before
