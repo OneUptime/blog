@@ -6,17 +6,17 @@ Tags: OpenTelemetry, Memory Leak, Span, Best Practice
 
 Description: Discover how unclosed OpenTelemetry spans cause memory leaks and learn patterns to ensure every span is properly closed.
 
-Spans that are created but never ended are one of the most common sources of memory leaks in OpenTelemetry-instrumented applications. The span object stays in memory, the batch processor never picks it up for export, and over time your application's memory usage climbs steadily. This post covers how to detect unclosed spans and the patterns that prevent them.
+Spans that are created but never ended are one of the common sources of missing telemetry and, when references or active context keep those spans alive, memory leaks in OpenTelemetry-instrumented applications. The batch processor never picks an unended span up for export, and over time your traces develop gaps where those spans should be. This post covers how to detect unclosed spans and the patterns that prevent them.
 
 ## How Unclosed Spans Leak Memory
 
-When you call `tracer.start_span()` or `tracer.startSpan()`, the SDK allocates a span object that holds attributes, events, timestamps, and a reference to the parent span context. This object stays alive until `span.end()` is called, at which point it gets handed to the span processor for batching and export.
+When you call `tracer.start_span()` or `tracer.startSpan()`, the SDK allocates a span object that holds attributes, events, timestamps, and a reference to the parent span context. When `span.end()` is called, the span records its end timestamp and gets handed to the span processor for batching and export.
 
 If `span.end()` is never called:
-- The span object lives forever in the application's heap
+- The span may stay in the application's heap if active context or application code still references it
 - The batch processor never sees it, so it never gets exported
 - The trace in your backend shows a gap where the span should be
-- If the unclosed span is a parent, child spans may export with broken parent references
+- If the unclosed span is a parent, child spans may export with a parent reference whose parent span is missing from the backend
 
 ## The Broken Pattern
 
@@ -41,7 +41,7 @@ def process_payment(order):
     return result
 ```
 
-Every failed payment leaks a span object. Over thousands of requests, this adds up.
+Every failed payment leaves a span unended. If those spans are also kept alive by active context or application references, the memory retained can add up over thousands of requests.
 
 ## Fix 1: Use Context Managers (Python)
 
@@ -72,7 +72,9 @@ def process_payment(order):
 JavaScript does not have context managers, but `try/finally` gives you the same guarantee:
 
 ```javascript
-const tracer = opentelemetry.trace.getTracer('order-service');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+
+const tracer = trace.getTracer('order-service');
 
 async function processPayment(order) {
   const span = tracer.startSpan('process_payment');
@@ -103,7 +105,9 @@ async function processPayment(order) {
 The `startActiveSpan` method wraps your code in a callback and manages the span lifecycle:
 
 ```javascript
-const tracer = opentelemetry.trace.getTracer('order-service');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+
+const tracer = trace.getTracer('order-service');
 
 async function processPayment(order) {
   return tracer.startActiveSpan('process_payment', async (span) => {
@@ -131,7 +135,7 @@ Java's `Scope` object implements `AutoCloseable`, so you can use try-with-resour
 ```java
 Tracer tracer = GlobalOpenTelemetry.getTracer("order-service");
 
-public PaymentResult processPayment(Order order) {
+public PaymentResult processPayment(Order order) throws Exception {
     Span span = tracer.spanBuilder("process_payment")
         .setAttribute("order.id", order.getId())
         .startSpan();
@@ -154,21 +158,40 @@ public PaymentResult processPayment(Order order) {
 
 To find unclosed spans in your application, look for these symptoms:
 
-1. **Steadily increasing memory usage** that does not correlate with request volume
+1. **Steadily increasing memory usage** when spans are also retained by active context, long-lived callbacks, or application data structures
 2. **Traces with missing spans** in your backend, where you can see child spans but the parent is absent
-3. **Batch processor warnings** about queue capacity being reached
+3. **A growing count of started-but-not-ended spans** from a diagnostic span processor
 
-You can also add a diagnostic check by monitoring the span processor:
+You can also add a diagnostic check by registering a temporary span processor that tracks active span IDs:
 
 ```javascript
-// Log the number of pending spans periodically
+const activeSpans = new Set();
+
+const diagnosticSpanProcessor = {
+  onStart(span) {
+    activeSpans.add(span.spanContext().spanId);
+  },
+  onEnd(span) {
+    activeSpans.delete(span.spanContext().spanId);
+  },
+  forceFlush() {
+    return Promise.resolve();
+  },
+  shutdown() {
+    activeSpans.clear();
+    return Promise.resolve();
+  },
+};
+
+// Add diagnosticSpanProcessor to your SDK or tracer provider's
+// spanProcessors list alongside your normal span processors.
+
 setInterval(() => {
-  const pendingSpans = spanProcessor._finishedSpans?.length || 0;
-  console.log(`Pending spans in batch processor: ${pendingSpans}`);
+  console.log(`Started spans without a matching end: ${activeSpans.size}`);
 }, 30000);
 ```
 
-If the pending count grows without bound, you likely have unclosed spans somewhere.
+If this count grows without bound, you likely have unclosed spans somewhere.
 
 ## The Rule of Thumb
 
