@@ -113,7 +113,7 @@ If the extracted context is invalid, the propagator did not find headers it unde
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.textmap import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # This propagator reads and writes both W3C and B3 headers
 # It handles mixed environments where some services use each format
@@ -169,8 +169,9 @@ def get_users():
     # The FlaskInstrumentor already creates a span for this route
     # Add attributes to the auto-created span instead of a new one
     span = trace.get_current_span()
+    users = fetch_users()
     span.set_attribute("user.count", len(users))
-    return fetch_users()
+    return users
 ```
 
 If you need more control, disable auto-instrumentation for that specific route:
@@ -199,25 +200,22 @@ Reverse proxies, API gateways, and middleware sometimes strip or modify headers,
 Check common proxy configurations:
 
 ```nginx
-# Nginx: WRONG - using proxy_set_header without forwarding trace headers
-# This replaces all headers, losing traceparent
+# Nginx: WRONG - explicitly disabling request header forwarding
+# This prevents traceparent and other incoming headers from reaching upstream
 location /api/ {
     proxy_pass http://backend:8080;
+    proxy_pass_request_headers off;
     proxy_set_header Host $host;
-    # traceparent header is NOT forwarded because it was not listed
+    # traceparent header is NOT forwarded
 }
 
-# Nginx: CORRECT - explicitly forward trace context headers
+# Nginx: CORRECT - keep request header forwarding enabled
 location /api/ {
     proxy_pass http://backend:8080;
+    proxy_pass_request_headers on;
     proxy_set_header Host $host;
-    # Forward W3C trace context headers
-    proxy_set_header traceparent $http_traceparent;
-    proxy_set_header tracestate $http_tracestate;
-    # Forward B3 headers if needed
-    proxy_set_header X-B3-TraceId $http_x_b3_traceid;
-    proxy_set_header X-B3-SpanId $http_x_b3_spanid;
-    proxy_set_header X-B3-Sampled $http_x_b3_sampled;
+    # With proxy_pass_request_headers on, traceparent, tracestate,
+    # b3, and X-B3-* request headers are forwarded as received.
 }
 ```
 
@@ -255,8 +253,8 @@ static_resources:
                   prefix: "/"
                 route:
                   cluster: backend_service
-                  # Ensure request headers are forwarded
-                  request_headers_to_add: []
+                # Do not remove trace context headers in route/header mutations
+                request_headers_to_remove: []
 ```
 
 To verify headers are passing through a proxy, use a test endpoint that echoes back request headers:
@@ -295,7 +293,7 @@ curl -H "traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" \
 
 ## Cause 4: Multiple Tracer Providers
 
-If your application accidentally creates multiple `TracerProvider` instances, each one generates its own trace IDs. Spans from different providers will not share trace context.
+If your application accidentally creates multiple `TracerProvider` instances, tracing behavior becomes inconsistent. In OpenTelemetry Python, `trace.set_tracer_provider()` can only set the global provider once; later attempts log a warning and do not replace the global provider. Code that directly uses a separately created provider can still create spans with different processors, resources, or export paths than the rest of the application.
 
 ```python
 # Problem: two TracerProvider instances in the same application
@@ -307,14 +305,15 @@ provider1 = TracerProvider()
 trace.set_tracer_provider(provider1)
 
 # Second provider (maybe in a library or plugin)
-# This replaces the global provider, but code that already
-# got a tracer from provider1 still uses the old one
+# This does NOT replace the global provider in OpenTelemetry Python.
+# A warning is logged and the original provider remains global.
 provider2 = TracerProvider()
 trace.set_tracer_provider(provider2)
 
-# Tracers from different providers generate unrelated trace IDs
+# Directly using provider2 bypasses the globally configured provider.
 tracer_a = provider1.get_tracer("module-a")  # Uses provider1
-tracer_b = trace.get_tracer("module-b")       # Uses provider2 (current global)
+tracer_b = trace.get_tracer("module-b")       # Still uses provider1
+tracer_c = provider2.get_tracer("module-c")   # Uses provider2 directly
 ```
 
 The fix is to ensure a single TracerProvider is created and set globally before any module requests a tracer:
@@ -455,4 +454,4 @@ with tracer.start_as_current_span("test-operation") as span:
 
 ## Conclusion
 
-Duplicate traces almost always trace back to one of five causes: mismatched propagation formats between services, double instrumentation creating redundant spans, proxies or middleware stripping trace headers, multiple TracerProvider instances in the same process, or collector pipelines that send the same data to the same backend through multiple paths. For each cause, the fix is straightforward once you know where to look. Start by inspecting the headers flowing between services, check for duplicate instrumentation, verify your proxy forwards trace headers, ensure a single TracerProvider exists per process, and audit your collector pipeline topology. With these checks done, your traces will be clean and accurate.
+Duplicate traces almost always trace back to one of five causes: mismatched propagation formats between services, double instrumentation creating redundant spans, proxies or middleware stripping trace headers, inconsistent TracerProvider initialization in the same process, or collector pipelines that send the same data to the same backend through multiple paths. For each cause, the fix is straightforward once you know where to look. Start by inspecting the headers flowing between services, check for duplicate instrumentation, verify your proxy forwards trace headers, ensure a single TracerProvider exists per process, and audit your collector pipeline topology. With these checks done, your traces will be clean and accurate.
