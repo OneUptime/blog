@@ -29,14 +29,9 @@ The OpenTelemetry Collector supports bearer token authentication on its receiver
 extensions:
   # OIDC authenticator validates JWT tokens from sending services
   oidc:
-    issuer_url: https://auth.internal.company.com
-    audience: otel-collector
-    # Map JWT claims to attributes for downstream routing
-    attribute_mapping:
-      - from: "team"
-        to: "auth.team"
-      - from: "environment"
-        to: "auth.environment"
+    providers:
+      - issuer_url: https://auth.internal.company.com
+        audience: otel-collector
 
 receivers:
   otlp:
@@ -48,15 +43,27 @@ receivers:
           authenticator: oidc
 
 processors:
+  # Copy JWT claims from the auth context into resource attributes
+  resource/auth-claims:
+    attributes:
+      - key: auth.team
+        action: upsert
+        from_context: auth.claims.team
+      - key: auth.environment
+        action: upsert
+        from_context: auth.claims.environment
+
+connectors:
   # Route data based on the authenticated team claim
-  routing:
-    from_attribute: auth.team
+  routing/team:
+    default_pipelines: [traces/general]
     table:
-      - value: "payments"
-        exporters: [otlp/payments-backend]
-      - value: "platform"
-        exporters: [otlp/platform-backend]
-    default_exporters: [otlp/general-backend]
+      - context: resource
+        condition: attributes["auth.team"] == "payments"
+        pipelines: [traces/payments]
+      - context: resource
+        condition: attributes["auth.team"] == "platform"
+        pipelines: [traces/platform]
 
 exporters:
   otlp/payments-backend:
@@ -80,15 +87,24 @@ exporters:
 service:
   extensions: [oidc]
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing]
-      exporters: [otlp/payments-backend, otlp/platform-backend, otlp/general-backend]
+      processors: [resource/auth-claims]
+      exporters: [routing/team]
+    traces/payments:
+      receivers: [routing/team]
+      exporters: [otlp/payments-backend]
+    traces/platform:
+      receivers: [routing/team]
+      exporters: [otlp/platform-backend]
+    traces/general:
+      receivers: [routing/team]
+      exporters: [otlp/general-backend]
 ```
 
 ## Kubernetes RBAC for Pipeline Operators
 
-Pipeline operators need access to manage Collector deployments but should not have access to query telemetry backends. Define a narrow ClusterRole.
+Pipeline operators need access to manage Collector deployments but should not have access to query telemetry backends. Define a narrow ClusterRole for known Collector objects.
 
 ```yaml
 # k8s-rbac-pipeline-operator.yaml
@@ -101,13 +117,13 @@ rules:
   # Can manage OTel Collector deployments
   - apiGroups: ["apps"]
     resources: ["deployments", "daemonsets", "statefulsets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-    resourceNames: ["otel-collector*"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+    resourceNames: ["otel-collector", "otel-collector-agent", "otel-collector-gateway"]
 
   # Can manage collector ConfigMaps
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
     resourceNames: ["otel-collector-config"]
 
   # Can view pods for debugging, but not exec into them
@@ -175,34 +191,54 @@ spec:
 
 ## Grafana Data Source Permissions
 
-Within Grafana, use its built-in RBAC to restrict which teams can query which data sources.
+Within Grafana Enterprise or Grafana Cloud, use data source permissions to restrict which teams can query which data sources.
 
 ```yaml
-# grafana-provisioning/datasource-permissions.yaml
-# Terraform or Grafana provisioning config for data source RBAC
+# grafana-provisioning/datasources/tempo.yaml
+# Provision the data sources first
 apiVersion: 1
 
 datasources:
   - name: Tempo-Payments
+    uid: tempo-payments
     type: tempo
     url: http://tempo-payments.monitoring.svc:3200
     access: proxy
-    # Only the payments team and auditors can query this
-    permissions:
-      - role: "Editor"
-        team: "payments-engineering"
-      - role: "Viewer"
-        team: "compliance-auditors"
+    editable: false
 
   - name: Tempo-Platform
+    uid: tempo-platform
     type: tempo
     url: http://tempo-platform.monitoring.svc:3200
     access: proxy
-    permissions:
-      - role: "Editor"
-        team: "platform-engineering"
-      - role: "Viewer"
-        team: "compliance-auditors"
+    editable: false
+```
+
+```bash
+# Use the Grafana data source permissions API to grant query access.
+# Replace the team IDs with the IDs from your Grafana organization.
+GRAFANA_URL="https://grafana.internal.company.com"
+GRAFANA_TOKEN="$GRAFANA_SERVICE_ACCOUNT_TOKEN"
+
+curl -sS -X POST "$GRAFANA_URL/api/access-control/datasources/tempo-payments/teams/12" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permission":"Query"}'
+
+curl -sS -X POST "$GRAFANA_URL/api/access-control/datasources/tempo-payments/teams/34" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permission":"Query"}'
+
+curl -sS -X POST "$GRAFANA_URL/api/access-control/datasources/tempo-platform/teams/56" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permission":"Query"}'
+
+curl -sS -X POST "$GRAFANA_URL/api/access-control/datasources/tempo-platform/teams/34" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permission":"Query"}'
 ```
 
 ## Auditing Role Usage
