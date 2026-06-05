@@ -92,7 +92,7 @@ Pinecone is a managed vector database, so you're mostly dealing with HTTP/gRPC c
 Here's a wrapper that instruments Pinecone operations with OpenTelemetry spans and metrics.
 
 ```python
-# pip install pinecone-client
+# pip install pinecone
 from pinecone import Pinecone
 from opentelemetry import trace, metrics
 
@@ -146,10 +146,10 @@ class InstrumentedPinecone:
                 elapsed_ms = (time.perf_counter() - start) * 1000
 
                 # Record how many matches came back and their score range
-                matches = result.get("matches", [])
+                matches = result.matches
                 span.set_attribute("db.pinecone.matches_count", len(matches))
                 if matches:
-                    span.set_attribute("db.pinecone.top_score", matches[0]["score"])
+                    span.set_attribute("db.pinecone.top_score", matches[0].score)
 
                 # Record the duration in our histogram metric
                 query_duration.record(elapsed_ms, {"index": self.index_name})
@@ -192,9 +192,10 @@ from opentelemetry import trace
 tracer = trace.get_tracer("qdrant.client")
 
 class InstrumentedQdrant:
-    def __init__(self, host="localhost", port=6333, collection_name="default"):
+    def __init__(self, host="localhost", port=6333, collection_name="default",
+                 api_key=None):
         # Connect to Qdrant - works for both local and cloud deployments
-        self.client = QdrantClient(host=host, port=port)
+        self.client = QdrantClient(host=host, port=port, api_key=api_key)
         self.collection_name = collection_name
 
     def search(self, query_vector, limit=10, query_filter=None):
@@ -208,12 +209,13 @@ class InstrumentedQdrant:
 
             try:
                 # Perform the nearest neighbor search
-                results = self.client.search(
+                response = self.client.query_points(
                     collection_name=self.collection_name,
-                    query_vector=query_vector,
+                    query=query_vector,
                     limit=limit,
                     query_filter=query_filter
                 )
+                results = response.points
 
                 # Capture result metadata for debugging
                 span.set_attribute("db.qdrant.results_count", len(results))
@@ -248,22 +250,38 @@ class InstrumentedQdrant:
 
 ## Instrumenting Weaviate
 
-Weaviate uses a GraphQL-based API, which means queries can be more complex. You'll want to capture the query structure alongside timing data.
+Weaviate supports GraphQL-style search operations, and the current Python client exposes them through a collection-based API. You'll want to capture the query structure alongside timing data.
 
 ```python
 # pip install weaviate-client
 import weaviate
+from urllib.parse import urlparse
+from weaviate.classes.init import Auth
+from weaviate.classes.query import MetadataQuery
 from opentelemetry import trace
 
 tracer = trace.get_tracer("weaviate.client")
 
 class InstrumentedWeaviate:
-    def __init__(self, url="http://localhost:8080", api_key=None):
+    def __init__(self, url="http://localhost:8080", api_key=None,
+                 grpc_host=None, grpc_port=None):
         # Set up the Weaviate client with optional authentication
-        auth_config = None
-        if api_key:
-            auth_config = weaviate.auth.AuthApiKey(api_key=api_key)
-        self.client = weaviate.Client(url=url, auth_client_secret=auth_config)
+        if url == "http://localhost:8080" and api_key is None:
+            self.client = weaviate.connect_to_local()
+        else:
+            parsed = urlparse(url)
+            secure = parsed.scheme == "https"
+            http_host = parsed.hostname or url
+            http_port = parsed.port or (443 if secure else 80)
+            self.client = weaviate.connect_to_custom(
+                http_host=http_host,
+                http_port=http_port,
+                http_secure=secure,
+                grpc_host=grpc_host or http_host,
+                grpc_port=grpc_port or (443 if secure else 50051),
+                grpc_secure=secure,
+                auth_credentials=Auth.api_key(api_key) if api_key else None
+            )
 
     def near_vector_search(self, class_name, vector, limit=10, properties=None):
         # Trace semantic search operations against Weaviate
@@ -275,17 +293,16 @@ class InstrumentedWeaviate:
 
             try:
                 # Build and execute the nearVector query
-                query = (
-                    self.client.query
-                    .get(class_name, properties or ["content"])
-                    .with_near_vector({"vector": vector})
-                    .with_limit(limit)
-                    .with_additional(["distance", "id"])
+                collection = self.client.collections.get(class_name)
+                result = collection.query.near_vector(
+                    near_vector=vector,
+                    limit=limit,
+                    return_properties=properties or ["content"],
+                    return_metadata=MetadataQuery(distance=True)
                 )
-                result = query.do()
 
-                # Extract result count from the GraphQL response
-                objects = result.get("data", {}).get("Get", {}).get(class_name, [])
+                # Extract result count from the query response
+                objects = result.objects
                 span.set_attribute("db.weaviate.results_count", len(objects))
 
                 return result
@@ -306,20 +323,19 @@ class InstrumentedWeaviate:
 
             try:
                 # Hybrid search blends BM25 keyword search with vector similarity
-                hybrid_params = {"query": query_text, "alpha": alpha}
-                if vector:
+                collection = self.client.collections.get(class_name)
+                hybrid_params = {
+                    "query": query_text,
+                    "alpha": alpha,
+                    "limit": limit,
+                    "return_metadata": MetadataQuery(score=True, explain_score=True)
+                }
+                if vector is not None:
                     hybrid_params["vector"] = vector
 
-                query = (
-                    self.client.query
-                    .get(class_name, ["content", "title"])
-                    .with_hybrid(**hybrid_params)
-                    .with_limit(limit)
-                    .with_additional(["score", "explainScore"])
-                )
-                result = query.do()
+                result = collection.query.hybrid(**hybrid_params)
 
-                objects = result.get("data", {}).get("Get", {}).get(class_name, [])
+                objects = result.objects
                 span.set_attribute("db.weaviate.results_count", len(objects))
 
                 return result
@@ -419,11 +435,9 @@ processors:
 
   # Filter out internal health check spans to reduce noise
   filter:
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - "health_check"
+    error_mode: ignore
+    trace_conditions:
+      - span.name == "health_check"
 
 exporters:
   otlp:

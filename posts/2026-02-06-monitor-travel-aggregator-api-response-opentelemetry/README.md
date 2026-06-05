@@ -61,7 +61,7 @@ supplier_results = meter.create_histogram(
 
 ```python
 import asyncio
-from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 async def aggregate_search(search_params):
     """Fan out search to multiple suppliers and aggregate results."""
@@ -145,7 +145,7 @@ async def query_supplier_with_tracking(supplier, params):
 
             span.set_attribute("aggregator.supplier_latency_ms", latency_ms)
             span.set_attribute("aggregator.supplier_result_count", len(response.results))
-            span.set_attribute("http.status_code", response.status_code)
+            span.set_attribute("http.response.status_code", response.status_code)
 
             # Record metrics
             supplier_latency.record(latency_ms, {
@@ -161,7 +161,7 @@ async def query_supplier_with_tracking(supplier, params):
 
         except asyncio.TimeoutError:
             latency_ms = (time.time() - start) * 1000
-            span.set_status(StatusCode.ERROR, "Supplier timeout")
+            span.set_status(Status(StatusCode.ERROR, "Supplier timeout"))
             span.set_attribute("aggregator.supplier_timed_out", True)
             span.set_attribute("aggregator.supplier_latency_ms", latency_ms)
 
@@ -171,7 +171,7 @@ async def query_supplier_with_tracking(supplier, params):
             return []
 
         except Exception as e:
-            span.set_status(StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
 
             supplier_errors.add(1, {
@@ -186,6 +186,8 @@ async def query_supplier_with_tracking(supplier, params):
 Use collected metrics to compute a real-time supplier health score:
 
 ```python
+from opentelemetry.metrics import Observation
+
 class SupplierHealthTracker:
     """Tracks supplier health and adjusts timeouts dynamically."""
 
@@ -193,7 +195,16 @@ class SupplierHealthTracker:
         self.health_score = meter.create_observable_gauge(
             "aggregator.supplier_health_score",
             description="Computed health score for each supplier (0-100)",
+            callbacks=[self.observe_health_scores],
         )
+
+    def observe_health_scores(self, options):
+        """Report the latest health score for each active supplier."""
+        for supplier_name in get_active_supplier_names():
+            yield Observation(
+                self.compute_health_score(supplier_name),
+                {"aggregator.supplier_name": supplier_name},
+            )
 
     def compute_health_score(self, supplier_name, window_minutes=15):
         """Compute health score based on recent performance."""

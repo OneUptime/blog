@@ -27,6 +27,18 @@ Add Spring Batch and OpenTelemetry dependencies:
 
 ```xml
 <!-- pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring Batch -->
     <dependency>
@@ -47,18 +59,22 @@ Add Spring Batch and OpenTelemetry dependencies:
         <scope>runtime</scope>
     </dependency>
 
-    <!-- OpenTelemetry API -->
+    <!-- OpenTelemetry Spring Boot starter for SDK autoconfiguration -->
     <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-api</artifactId>
-        <version>1.35.0</version>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- Spring AOP enables @WithSpan instrumentation with the OpenTelemetry starter -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
 
     <!-- OpenTelemetry instrumentation annotations -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-instrumentation-annotations</artifactId>
-        <version>2.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -100,7 +116,6 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
@@ -163,21 +178,21 @@ public class TracedJobExecutionListener implements JobExecutionListener {
             // Calculate duration
             if (jobExecution.getStartTime() != null && jobExecution.getEndTime() != null) {
                 Duration duration = Duration.between(
-                    jobExecution.getStartTime().toInstant(),
-                    jobExecution.getEndTime().toInstant()
+                    jobExecution.getStartTime(),
+                    jobExecution.getEndTime()
                 );
                 span.setAttribute("batch.job.duration.ms", duration.toMillis());
             }
 
             // Add item counts
-            int readCount = jobExecution.getStepExecutions().stream()
-                .mapToInt(step -> step.getReadCount())
+            long readCount = jobExecution.getStepExecutions().stream()
+                .mapToLong(step -> step.getReadCount())
                 .sum();
-            int writeCount = jobExecution.getStepExecutions().stream()
-                .mapToInt(step -> step.getWriteCount())
+            long writeCount = jobExecution.getStepExecutions().stream()
+                .mapToLong(step -> step.getWriteCount())
                 .sum();
-            int skipCount = jobExecution.getStepExecutions().stream()
-                .mapToInt(step -> step.getSkipCount())
+            long skipCount = jobExecution.getStepExecutions().stream()
+                .mapToLong(step -> step.getSkipCount())
                 .sum();
 
             span.setAttribute("batch.job.read.count", readCount);
@@ -280,8 +295,8 @@ public class TracedStepExecutionListener implements StepExecutionListener {
             // Calculate processing rate
             if (stepExecution.getStartTime() != null && stepExecution.getEndTime() != null) {
                 Duration duration = Duration.between(
-                    stepExecution.getStartTime().toInstant(),
-                    stepExecution.getEndTime().toInstant()
+                    stepExecution.getStartTime(),
+                    stepExecution.getEndTime()
                 );
                 span.setAttribute("batch.step.duration.ms", duration.toMillis());
 
@@ -322,6 +337,7 @@ Chunk-oriented processing is Spring Batch's primary pattern. Trace chunk operati
 package com.company.batch.monitoring;
 
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import org.springframework.batch.core.ChunkListener;
@@ -382,9 +398,10 @@ public class TracedChunkListener implements ChunkListener {
 
         try {
             span.addEvent("batch.chunk.completed");
-            span.end();
+            span.setStatus(StatusCode.OK);
         } finally {
             scope.close();
+            span.end();
         }
     }
 
@@ -400,9 +417,14 @@ public class TracedChunkListener implements ChunkListener {
 
         try {
             span.addEvent("batch.chunk.error");
-            span.end();
+            span.setStatus(StatusCode.ERROR, "Chunk failed");
+            Object rollbackException = context.getAttribute(ChunkListener.ROLLBACK_EXCEPTION_KEY);
+            if (rollbackException instanceof Throwable) {
+                span.recordException((Throwable) rollbackException);
+            }
         } finally {
             scope.close();
+            span.end();
         }
     }
 
