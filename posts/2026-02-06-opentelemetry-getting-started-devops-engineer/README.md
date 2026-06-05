@@ -108,39 +108,43 @@ processors:
         action: upsert
 
 exporters:
-  # Logging exporter for debugging (writes to stdout)
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting (writes summaries to stdout)
+  debug:
+    verbosity: basic
 
   # OTLP exporter sends to another collector or backend
   otlp:
     endpoint: backend-collector:4317
     tls:
-      insecure: false
-      cert_file: /certs/client.crt
-      key_file: /certs/client.key
+      insecure: true
 
   # Prometheus exporter exposes metrics for scraping
   prometheus:
     endpoint: "0.0.0.0:8889"
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 service:
+  extensions: [health_check]
+
   # Define data pipelines
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, resource, batch]
-      exporters: [prometheus, logging]
+      exporters: [prometheus, debug]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
   # Telemetry configuration (collector self-monitoring)
   telemetry:
@@ -148,24 +152,30 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Run the collector with Docker:
 
 ```bash
 # Pull the collector image (use contrib for more components)
-docker pull otel/opentelemetry-collector-contrib:0.92.0
+docker pull otel/opentelemetry-collector-contrib:0.153.0
 
 # Run with your config file
 docker run -d \
   --name otel-collector \
   -p 4317:4317 \
   -p 4318:4318 \
+  -p 13133:13133 \
   -p 8888:8888 \
   -p 8889:8889 \
   -v $(pwd)/otel-collector-config.yaml:/etc/otel-collector-config.yaml \
-  otel/opentelemetry-collector-contrib:0.92.0 \
+  otel/opentelemetry-collector-contrib:0.153.0 \
   --config=/etc/otel-collector-config.yaml
 ```
 
@@ -216,15 +226,15 @@ config:
       limit_mib: 512
 
   exporters:
-    otlp:
-      endpoint: backend-system:4317
+    debug:
+      verbosity: basic
 
   service:
     pipelines:
       traces:
         receivers: [otlp]
         processors: [memory_limiter, batch]
-        exporters: [otlp]
+        exporters: [debug]
 
 resources:
   limits:
@@ -470,18 +480,13 @@ processors:
 ```yaml
 processors:
   filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - prefix/.*
-          - .*/suffix
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - /health
-          - /metrics
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, "prefix/.*")
+      - IsMatch(metric.name, ".*/suffix")
+    trace_conditions:
+      - span.name == "/health"
+      - span.name == "/metrics"
 ```
 
 **Tail Sampling Processor** makes smart sampling decisions:
@@ -570,9 +575,17 @@ exporters:
     brokers:
       - kafka-1.example.com:9092
       - kafka-2.example.com:9092
-    topic: observability-data
-    encoding: otlp_proto
-    compression: snappy
+    traces:
+      topic: observability-data
+      encoding: otlp_proto
+    metrics:
+      topic: observability-data
+      encoding: otlp_proto
+    logs:
+      topic: observability-data
+      encoding: otlp_proto
+    producer:
+      compression: snappy
 ```
 
 **File Exporter** for debugging or archival:
@@ -648,7 +661,7 @@ curl http://localhost:8888/metrics
 # - otelcol_exporter_sent_spans
 # - otelcol_exporter_send_failed_spans
 # - otelcol_process_runtime_total_alloc_bytes
-# - otelcol_process_cpu_seconds
+# - otelcol_process_cpu_seconds_total
 ```
 
 Create alerts for collector health:
@@ -667,7 +680,7 @@ groups:
           summary: "Collector failing to export spans"
 
       - alert: CollectorHighMemory
-        expr: process_resident_memory_bytes{job="otel-collector"} > 1e9
+        expr: otelcol_process_memory_rss{job="otel-collector"} > 1e9
         for: 10m
         labels:
           severity: warning
@@ -675,7 +688,7 @@ groups:
           summary: "Collector using high memory"
 
       - alert: CollectorDataLoss
-        expr: rate(otelcol_processor_refused_spans[5m]) > 0
+        expr: rate(otelcol_receiver_refused_spans[5m]) > 0
         for: 5m
         labels:
           severity: critical
