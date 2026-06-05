@@ -36,10 +36,10 @@ The first thing you need is a way to distinguish load test traffic from real pro
 ```python
 # load_test_middleware.py
 
-from opentelemetry import trace, context
-from opentelemetry.baggage import set_baggage, get_baggage
+from opentelemetry import context, trace
+from opentelemetry.baggage import set_baggage
 
-def load_test_middleware(request, call_next):
+async def load_test_middleware(request, call_next):
     """
     Middleware that detects load test traffic and propagates
     that information through the entire trace via baggage.
@@ -52,17 +52,23 @@ def load_test_middleware(request, call_next):
         # Set baggage so all downstream services know this is a test
         ctx = set_baggage("load_test", "true")
         ctx = set_baggage("load_test_id", test_id, context=ctx)
+        token = context.attach(ctx)
 
         # Also set span attributes for filtering
         span = trace.get_current_span()
         span.set_attribute("test.load_test", True)
         span.set_attribute("test.load_test_id", test_id)
 
-    response = call_next(request)
-    return response
+        try:
+            response = await call_next(request)
+        finally:
+            context.detach(token)
+        return response
+
+    return await call_next(request)
 ```
 
-By using OpenTelemetry baggage, the load test flag propagates automatically through all downstream service calls. Every span in the trace gets tagged, which means you can filter your dashboards to show only load test traffic or exclude it from production metrics.
+By using OpenTelemetry baggage, the load test flag propagates automatically through downstream service calls that use OpenTelemetry context propagation. Baggage is separate from span attributes, so each service should either copy the baggage values onto spans it creates or use a baggage span processor if you want every span in the trace to be filterable by load test ID.
 
 ---
 
@@ -77,7 +83,7 @@ import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
 // Define custom k6 metrics that will be exported
-const orderLatency = new Trend('order_creation_latency');
+const orderLatency = new Trend('order_creation_latency', true);
 const orderErrors = new Counter('order_creation_errors');
 
 // Test configuration with ramping stages
@@ -147,6 +153,8 @@ export default function () {
 
 This k6 script simulates a realistic user journey through your application, tagging every request as load test traffic. The staged ramp-up pattern lets you observe how your system behaves at different load levels.
 
+To export the k6 metrics through OpenTelemetry, run the test with the OpenTelemetry output, for example: `K6_OTEL_GRPC_EXPORTER_INSECURE=true k6 run -o opentelemetry load_test.js`.
+
 ---
 
 ## Capturing Bottleneck Metrics During Load Tests
@@ -156,55 +164,57 @@ During load tests, you want extra visibility into the resources that typically b
 ```python
 # load_test_metrics.py
 from opentelemetry import metrics
-import psutil
+import gc
 import threading
-import time
 
 meter = metrics.get_meter("load_test.bottlenecks")
 
-# Connection pool saturation
-pool_utilization = meter.create_observable_gauge(
-    name="load_test.pool.utilization",
-    description="Database connection pool utilization during load test",
-    unit="percent",
-    callbacks=[lambda options: [
-        metrics.Observation(
-            (engine.pool.checkedout() / engine.pool.size()) * 100,
-            {"pool": "primary"},
-        )
-    ]],
-)
+def register_load_test_metrics(engine):
+    # Connection pool saturation
+    pool_utilization = meter.create_observable_gauge(
+        name="load_test.pool.utilization",
+        description="Database connection pool utilization during load test",
+        unit="%",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                (engine.pool.checkedout() / engine.pool.size()) * 100,
+                {"pool": "primary"},
+            )
+        ]],
+    )
 
-# Thread pool saturation
-thread_count = meter.create_observable_gauge(
-    name="load_test.threads.active",
-    description="Number of active threads during load test",
-    unit="threads",
-    callbacks=[lambda options: [
-        metrics.Observation(threading.active_count())
-    ]],
-)
+    # Thread pool saturation
+    thread_count = meter.create_observable_gauge(
+        name="load_test.threads.active",
+        description="Number of active threads during load test",
+        unit="{thread}",
+        callbacks=[lambda options: [
+            metrics.Observation(threading.active_count())
+        ]],
+    )
 
-# Event loop lag (for async applications)
-event_loop_lag = meter.create_histogram(
-    name="load_test.event_loop.lag",
-    description="Event loop processing delay",
-    unit="ms",
-)
+    # Event loop lag (for async applications)
+    event_loop_lag = meter.create_histogram(
+        name="load_test.event_loop.lag",
+        description="Event loop processing delay",
+        unit="ms",
+    )
 
-# Garbage collection pressure
-gc_collections = meter.create_observable_counter(
-    name="load_test.gc.collections",
-    description="Number of garbage collection runs",
-    unit="collections",
-    callbacks=[lambda options: [
-        metrics.Observation(
-            gc.get_stats()[generation]["collections"],
-            {"generation": str(generation)},
-        )
-        for generation in range(3)
-    ]],
-)
+    # Garbage collection pressure
+    gc_collections = meter.create_observable_counter(
+        name="load_test.gc.collections",
+        description="Number of garbage collection runs",
+        unit="{collection}",
+        callbacks=[lambda options: [
+            metrics.Observation(
+                gc.get_stats()[generation]["collections"],
+                {"generation": str(generation)},
+            )
+            for generation in range(3)
+        ]],
+    )
+
+    return pool_utilization, thread_count, event_loop_lag, gc_collections
 ```
 
 These metrics are specifically chosen because they reveal the most common bottlenecks during load tests: connection pool exhaustion, thread starvation, event loop blocking, and garbage collection pressure.
