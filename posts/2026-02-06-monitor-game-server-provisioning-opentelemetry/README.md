@@ -15,7 +15,7 @@ This post shows how to instrument the provisioning pipeline with OpenTelemetry t
 A typical provisioning flow involves these steps:
 
 1. Matchmaker requests a game server allocation
-2. The orchestrator (Agones or GameLift) finds or creates a server
+2. The orchestrator (Agones or GameLift) finds an available server or starts a new game session
 3. The server binary boots and initializes
 4. The server loads the map and game mode configuration
 5. The server reports "ready" to the orchestrator
@@ -33,13 +33,15 @@ package provisioning
 
 import (
     "context"
+    "fmt"
     "time"
 
-    agonesv1 "agones.dev/agones/pkg/apis/allocation/v1"
+    allocationv1 "agones.dev/agones/pkg/apis/allocation/v1"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
     "go.opentelemetry.io/otel/trace"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -49,7 +51,7 @@ var (
     provisionLatency, _ = meter.Float64Histogram(
         "game.provision.total_latency_ms",
         metric.WithUnit("ms"),
-        metric.WithDescription("Total time from allocation request to server ready"),
+        metric.WithDescription("Total time from allocation request to allocated server"),
     )
 
     allocationOutcome, _ = meter.Int64Counter(
@@ -80,11 +82,11 @@ func AllocateGameServer(ctx context.Context, req AllocationRequest) (*ServerInfo
         return nil, err
     }
 
-    // Step 2: Wait for the server to become ready
-    serverInfo, err := waitForServerReady(ctx, allocation)
+    // Step 2: Read the allocated server connection details
+    serverInfo, err := extractAllocatedServerInfo(ctx, allocation)
     if err != nil {
         allocationOutcome.Add(ctx, 1, metric.WithAttributes(
-            attribute.String("outcome", "ready_timeout"),
+            attribute.String("outcome", "allocation_invalid"),
             attribute.String("region", req.Region),
         ))
         return nil, err
@@ -114,23 +116,25 @@ func AllocateGameServer(ctx context.Context, req AllocationRequest) (*ServerInfo
 Break down the Agones allocation into its component parts:
 
 ```go
-func requestAgonesAllocation(ctx context.Context, req AllocationRequest) (*agonesv1.GameServerAllocation, error) {
+func requestAgonesAllocation(ctx context.Context, req AllocationRequest) (*allocationv1.GameServerAllocation, error) {
     ctx, span := tracer.Start(ctx, "provision.agones_allocate")
     defer span.End()
 
     // Build the allocation request
-    alloc := &agonesv1.GameServerAllocation{
-        Spec: agonesv1.GameServerAllocationSpec{
-            Required: agonesv1.GameServerSelector{
-                MatchLabels: map[string]string{
-                    "game-mode": req.GameMode,
-                    "region":    req.Region,
+    alloc := &allocationv1.GameServerAllocation{
+        Spec: allocationv1.GameServerAllocationSpec{
+            Selectors: []allocationv1.GameServerSelector{
+                {
+                    MatchLabels: map[string]string{
+                        "game-mode": req.GameMode,
+                        "region":    req.Region,
+                    },
                 },
             },
         },
     }
 
-    result, err := agonesClient.GameServerAllocations(namespace).Create(ctx, alloc)
+    result, err := agonesClient.GameServerAllocations(namespace).Create(ctx, alloc, metav1.CreateOptions{})
     if err != nil {
         span.SetAttribute("agones.error", err.Error())
         return nil, err
@@ -145,46 +149,30 @@ func requestAgonesAllocation(ctx context.Context, req AllocationRequest) (*agone
     return result, nil
 }
 
-func waitForServerReady(ctx context.Context, allocation *agonesv1.GameServerAllocation) (*ServerInfo, error) {
-    ctx, span := tracer.Start(ctx, "provision.wait_for_ready")
+func extractAllocatedServerInfo(ctx context.Context, allocation *allocationv1.GameServerAllocation) (*ServerInfo, error) {
+    _, span := tracer.Start(ctx, "provision.extract_allocated_server")
     defer span.End()
 
-    serverName := allocation.Status.GameServerName
-    pollStart := time.Now()
-    pollCount := 0
-
-    for {
-        pollCount++
-        gs, err := agonesClient.GameServers(namespace).Get(ctx, serverName)
-        if err != nil {
-            return nil, err
-        }
-
-        if gs.Status.State == "Ready" {
-            span.SetAttributes(
-                attribute.Int("provision.poll_count", pollCount),
-                attribute.Float64("provision.wait_ms",
-                    float64(time.Since(pollStart).Milliseconds())),
-            )
-            return &ServerInfo{
-                Address: gs.Status.Address,
-                Port:    int(gs.Status.Ports[0].Port),
-                Name:    serverName,
-            }, nil
-        }
-
-        // Log each phase transition as a span event
-        span.AddEvent("server_state_poll", trace.WithAttributes(
-            attribute.String("state", string(gs.Status.State)),
-        ))
-
-        select {
-        case <-ctx.Done():
-            return nil, ctx.Err()
-        case <-time.After(500 * time.Millisecond):
-            // Poll again
-        }
+    if allocation.Status.State != allocationv1.GameServerAllocationAllocated {
+        span.SetAttribute("agones.state", string(allocation.Status.State))
+        return nil, fmt.Errorf("allocation did not succeed: %s", allocation.Status.State)
     }
+
+    if len(allocation.Status.Ports) == 0 {
+        return nil, fmt.Errorf("allocated game server %q has no ports", allocation.Status.GameServerName)
+    }
+
+    span.SetAttributes(
+        attribute.String("agones.server_name", allocation.Status.GameServerName),
+        attribute.String("agones.address", allocation.Status.Address),
+        attribute.Int("agones.port", int(allocation.Status.Ports[0].Port)),
+    )
+
+    return &ServerInfo{
+        Address: allocation.Status.Address,
+        Port:    int(allocation.Status.Ports[0].Port),
+        Name:    allocation.Status.GameServerName,
+    }, nil
 }
 ```
 
