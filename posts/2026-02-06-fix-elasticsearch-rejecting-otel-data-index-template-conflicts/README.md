@@ -9,7 +9,7 @@ Description: Fix Elasticsearch rejecting OpenTelemetry trace and log data caused
 You configure the OpenTelemetry Collector to export traces or logs to Elasticsearch. The first batch succeeds, but then you start seeing errors:
 
 ```text
-mapper_parsing_exception: failed to parse field [attributes.http.status_code]
+mapper_parsing_exception: failed to parse field [attributes.http.response.status_code]
 of type [long] in document with id 'xyz'. Preview of field's value: '200 OK'
 ```
 
@@ -24,12 +24,12 @@ Elasticsearch has inferred a field type from the first document it saw, and subs
 
 ## Why Mapping Conflicts Happen
 
-OpenTelemetry attributes are dynamically typed. A span might have `http.status_code` as an integer (200), while another span from a different service sends it as a string ("200 OK"). Elasticsearch creates the index mapping based on the first document and rejects anything that does not match.
+OpenTelemetry attributes have explicit value types, but different services can still send different types for the same attribute key. A span might have `http.response.status_code` as an integer (200), while another span from a different service sends it as a string ("200 OK"). Elasticsearch creates the index mapping based on the first document and rejects anything that does not match.
 
 Common conflicts:
 - Integer vs string: `status_code: 200` vs `status_code: "200"`
 - String vs object: `error: "timeout"` vs `error: {"message": "timeout", "code": 504}`
-- Keyword vs text: short strings vs long strings
+- Keyword vs text: one template maps a field as `keyword`, while another maps the same field as `text`
 
 ## Fix 1: Use Index Templates with Explicit Mappings
 
@@ -85,7 +85,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/otel-traces" \
 }'
 ```
 
-The `dynamic_templates` section tells Elasticsearch to map all attributes as `keyword` type, preventing integer/string conflicts.
+The `dynamic_templates` section tells Elasticsearch to map matching attribute paths as `keyword` type, preventing integer/string conflicts for those fields. Object-valued attributes still need their own object mapping or normalization in the Collector.
 
 ## Fix 2: Normalize Attributes in the Collector
 
@@ -98,9 +98,9 @@ processors:
     - context: span
       statements:
       # Ensure status_code is always a string
-      - set(attributes["http.status_code"],
-          Concat([attributes["http.status_code"]], ""))
-        where attributes["http.status_code"] != nil
+      - set(attributes["http.response.status_code"],
+          Concat([attributes["http.response.status_code"]], ""))
+        where attributes["http.response.status_code"] != nil
 
     log_statements:
     - context: log
@@ -116,20 +116,30 @@ processors:
 The Collector's Elasticsearch exporter supports mapping modes:
 
 ```yaml
+processors:
+  transform/elastic_mapping:
+    trace_statements:
+    - context: scope
+      statements:
+      - set(attributes["elastic.mapping.mode"], "ecs")
+    log_statements:
+    - context: scope
+      statements:
+      - set(attributes["elastic.mapping.mode"], "ecs")
+
 exporters:
   elasticsearch:
-    endpoints: ["http://elasticsearch:9200"]
+    endpoint: http://elasticsearch:9200
     traces_index: otel-traces
     logs_index: otel-logs
-    mapping:
-      mode: ecs  # Use Elastic Common Schema mapping
-    flush:
-      bytes: 5242880  # 5MB
+    sending_queue:
+      batch:
+        max_size: 5000000  # 5MB
     retry:
-      max_requests: 3
+      max_retries: 2
 ```
 
-The `ecs` mapping mode uses predefined field types from the Elastic Common Schema, which avoids dynamic mapping conflicts.
+The `ecs` mapping mode uses predefined field types from the Elastic Common Schema, which avoids many dynamic mapping conflicts. Set it with the `elastic.mapping.mode` scope attribute; the old `mapping.mode` exporter config is deprecated and ignored in current Collector versions. The `ecs` and `otel` mapping modes require Elasticsearch 8.12 or later.
 
 ## Fix 4: Delete and Recreate Conflicting Indices
 
@@ -169,7 +179,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/otel-traces" \
       "properties": {
         "attributes": {
           "properties": {
-            "http.status_code": {
+            "http.response.status_code": {
               "type": "integer",
               "coerce": true
             }
@@ -197,4 +207,4 @@ If `index_failed` is non-zero, documents are being rejected due to mapping confl
 
 ## Summary
 
-Elasticsearch mapping conflicts happen because OpenTelemetry attributes have dynamic types. The fix is to create index templates with explicit mappings that force all attributes to a safe type (typically `keyword`). Use the Collector's transform processor to normalize attribute types before export. And enable coercion for fields where numeric types are needed but strings occasionally appear.
+Elasticsearch mapping conflicts happen when services send inconsistent value types for the same OpenTelemetry attribute key. The fix is to create index templates with explicit mappings that force matching scalar attributes to a safe type (typically `keyword`). Use the Collector's transform processor to normalize attribute types before export. And enable coercion for fields where numeric types are needed but strings occasionally appear.
