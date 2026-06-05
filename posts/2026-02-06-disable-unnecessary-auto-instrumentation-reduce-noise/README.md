@@ -74,7 +74,8 @@ Python's OpenTelemetry auto-instrumentation allows selective disabling through e
 Install the auto-instrumentation package:
 
 ```bash
-pip install opentelemetry-distro opentelemetry-instrumentation
+pip install opentelemetry-distro opentelemetry-exporter-otlp
+opentelemetry-bootstrap -a install
 ```
 
 Disable specific instrumentation libraries using environment variables:
@@ -123,10 +124,10 @@ def get_data():
     return {'status': 'ok'}
 ```
 
-Create a configuration file for environment-specific settings:
+If you wrap instrumentation startup in your own application code, keep environment-specific instrumentation settings in your application configuration:
 
 ```yaml
-# otel-config.yaml
+# app-instrumentation.yaml
 instrumentation:
   enabled:
     - flask        # Web framework spans
@@ -165,7 +166,8 @@ Disable instrumentation using system properties:
 # Disable specific instrumentation libraries
 java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.instrumentation.common.default-enabled=true \
-     -Dotel.instrumentation.redis.enabled=false \
+     -Dotel.instrumentation.jedis.enabled=false \
+     -Dotel.instrumentation.lettuce.enabled=false \
      -Dotel.instrumentation.jdbc.enabled=false \
      -Dotel.instrumentation.kafka.enabled=false \
      -jar application.jar
@@ -183,10 +185,10 @@ otel.instrumentation.common.default-enabled=false
 otel.instrumentation.spring-webmvc.enabled=true
 otel.instrumentation.spring-boot-autoconfigure.enabled=true
 otel.instrumentation.jdbc.enabled=true
-otel.instrumentation.httpclient.enabled=true
+otel.instrumentation.apache-httpclient.enabled=true
+otel.instrumentation.java-http-client.enabled=true
 
 # Explicitly disable noisy instrumentations
-otel.instrumentation.redis.enabled=false
 otel.instrumentation.jedis.enabled=false
 otel.instrumentation.lettuce.enabled=false
 otel.instrumentation.spring-scheduling.enabled=false
@@ -203,39 +205,21 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar application.jar
 ```
 
-For Spring Boot applications, create an application-specific configuration:
+For Spring Boot applications using the OpenTelemetry Spring Boot starter, keep application-specific instrumentation choices in Spring configuration:
 
-```java
-// OtelConfiguration.java
-package com.example.config;
+```properties
+# application.properties
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.instrumentation.spring.webmvc.SpringWebMvcTelemetry;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+# Keep web request spans
+otel.instrumentation.spring-webmvc.enabled=true
 
-@Configuration
-public class OtelConfiguration implements WebMvcConfigurer {
+# Disable noisy background and metrics instrumentation
+otel.instrumentation.spring-scheduling.enabled=false
+otel.instrumentation.micrometer.enabled=false
 
-    private final OpenTelemetry openTelemetry;
-
-    public OtelConfiguration(OpenTelemetry openTelemetry) {
-        this.openTelemetry = openTelemetry;
-    }
-
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        // Add interceptor with custom filter
-        SpringWebMvcTelemetry telemetry = SpringWebMvcTelemetry.create(openTelemetry);
-
-        registry.addInterceptor(telemetry.createInterceptor())
-                // Exclude health check and metrics endpoints
-                .excludePathPatterns("/health", "/metrics", "/actuator/**");
-    }
-}
+# Disable Redis clients if cache spans are too noisy
+otel.instrumentation.jedis.enabled=false
+otel.instrumentation.lettuce.enabled=false
 ```
 
 ## Disabling Auto-Instrumentation in Node.js
@@ -245,7 +229,7 @@ Node.js applications use require/import hooks for auto-instrumentation.
 Install dependencies:
 
 ```bash
-npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-grpc
 ```
 
 Configure selective instrumentation:
@@ -267,9 +251,6 @@ const sdk = new NodeSDK({
       '@opentelemetry/instrumentation-redis': {
         enabled: false, // High-frequency cache operations
       },
-      '@opentelemetry/instrumentation-redis-4': {
-        enabled: false,
-      },
       '@opentelemetry/instrumentation-ioredis': {
         enabled: false,
       },
@@ -282,14 +263,14 @@ const sdk = new NodeSDK({
       // Enable important instrumentations
       '@opentelemetry/instrumentation-http': {
         enabled: true,
-      },
-      '@opentelemetry/instrumentation-express': {
-        enabled: true,
         // Ignore specific routes
         ignoreIncomingRequestHook: (req) => {
           // Skip health checks and static assets
-          return req.url.match(/^\/(health|metrics|favicon\.ico)/);
+          return /^\/(health|metrics|favicon\.ico)/.test(req.url || '');
         },
+      },
+      '@opentelemetry/instrumentation-express': {
+        enabled: true,
       },
       '@opentelemetry/instrumentation-pg': {
         enabled: true, // PostgreSQL queries
@@ -323,9 +304,11 @@ Example using the otelgin middleware for Gin framework:
 package main
 
 import (
+    "net/http"
+    "strings"
+
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-    "go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -334,12 +317,12 @@ func main() {
     // Add OpenTelemetry middleware with filter
     r.Use(otelgin.Middleware("my-service",
         otelgin.WithFilter(func(req *http.Request) bool {
-            // Return true to skip instrumentation
+            // Return false to skip instrumentation
             // Skip health checks and metrics endpoints
             path := req.URL.Path
-            return path == "/health" ||
-                   path == "/metrics" ||
-                   strings.HasPrefix(path, "/actuator")
+            return path != "/health" &&
+                   path != "/metrics" &&
+                   !strings.HasPrefix(path, "/actuator")
         }),
     ))
 
@@ -348,6 +331,14 @@ func main() {
     r.GET("/api/data", getData)
 
     r.Run(":8080")
+}
+
+func healthCheck(c *gin.Context) {
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func getData(c *gin.Context) {
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 ```
 
@@ -358,27 +349,40 @@ For database instrumentation, control which queries are traced:
 package main
 
 import (
+    "context"
     "database/sql"
-    "go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    "database/sql/driver"
+    "strings"
+
+    "github.com/XSAM/otelsql"
+    _ "github.com/lib/pq"
+    semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
 )
 
 func initDB() *sql.DB {
     // Register instrumentation with options
     driverName, err := otelsql.Register("postgres",
         otelsql.WithAttributes(
-            semconv.DBSystemPostgreSQL,
+            semconv.DBSystemNamePostgreSQL,
         ),
         // Add filter to skip specific queries
         otelsql.WithSpanOptions(otelsql.SpanOptions{
-            // Disable query text capture for high-frequency queries
-            OmitConnectorFuncs: []string{
-                "Ping", // Skip health checks
+            // Disable query text capture
+            DisableQuery: true,
+            // Skip spans for high-frequency health checks
+            SpanFilter: func(ctx context.Context, method otelsql.Method, query string, args []driver.NamedValue) bool {
+                return !strings.Contains(query, "health_check")
             },
         }),
     )
+    if err != nil {
+        panic(err)
+    }
 
     db, err := sql.Open(driverName, "postgres://localhost/mydb")
+    if err != nil {
+        panic(err)
+    }
     return db
 }
 ```
@@ -398,23 +402,15 @@ receivers:
 processors:
   # Filter out unwanted spans at the collector level
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        # Drop health check spans
-        attributes:
-          - key: http.target
-            value: ^/(health|metrics|actuator).*
+    error_mode: ignore
+    trace_conditions:
+      # Drop health check spans
+      - 'span.attributes["http.target"] != nil and IsMatch(span.attributes["http.target"], "^/(health|metrics|actuator).*")'
+      - 'span.attributes["url.path"] != nil and IsMatch(span.attributes["url.path"], "^/(health|metrics|actuator).*")'
 
-        # Drop Redis cache operations
-        span_names:
-          - "redis.*"
-          - "GET /cache.*"
-          - "SET /cache.*"
-
-        # Drop spans shorter than 1ms (likely noise)
-        span_duration:
-          min: 1ms
+      # Drop Redis cache operations
+      - 'IsMatch(span.name, "^redis.*")'
+      - 'IsMatch(span.name, "^(GET|SET) /cache.*")'
 
   # Sample remaining spans
   probabilistic_sampler:
