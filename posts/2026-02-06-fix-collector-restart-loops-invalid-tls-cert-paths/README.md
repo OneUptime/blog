@@ -111,19 +111,22 @@ ls -la /etc/ssl/certs/
 # ..data -> ..2024_01_15_12_00_00.123456789
 ```
 
-If the symlink chain breaks during rotation, the files become inaccessible temporarily. The Collector retries, but if it is restarting at the exact moment of rotation, it fails.
+If the files become inaccessible temporarily during rotation, the Collector can fail when it starts and loads the TLS configuration.
 
-Fix: add a readiness probe that checks certificate availability:
+Fix: add an init container that waits for certificate availability before the Collector container starts:
 
 ```yaml
-readinessProbe:
-  exec:
-    command:
-    - sh
-    - -c
-    - "test -f /etc/ssl/certs/tls.crt && test -f /etc/ssl/certs/tls.key"
-  initialDelaySeconds: 5
-  periodSeconds: 10
+initContainers:
+- name: wait-for-tls-certs
+  image: busybox:1.36
+  command:
+  - sh
+  - -c
+  - "until test -f /etc/ssl/certs/tls.crt && test -f /etc/ssl/certs/tls.key; do sleep 2; done"
+  volumeMounts:
+  - name: tls-certs
+    mountPath: /etc/ssl/certs
+    readOnly: true
 ```
 
 ## Debugging TLS Configuration
@@ -194,7 +197,13 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: collector
