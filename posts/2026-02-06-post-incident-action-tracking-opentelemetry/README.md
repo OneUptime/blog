@@ -33,7 +33,6 @@ When an alert fires, capture the telemetry context that triggered it. This conte
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 @dataclass
 class IncidentContext:
@@ -90,15 +89,16 @@ After a post-incident review, the team identifies action items. Each action item
 
 ```python
 # action_item.py - Define action items with verification metrics
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+
+from incident_context import IncidentContext
 
 @dataclass
 class ActionItem:
     title: str
     description: str
     priority: str  # P0, P1, P2, P3
-    assignee: str
+    assignee: str  # GitHub username or Jira accountId
     incident_id: str
     incident_context: IncidentContext
     # The metric to check after the fix is deployed
@@ -106,7 +106,7 @@ class ActionItem:
     verification_condition: str  # e.g., "< 100ms p99" or "error_rate < 0.1%"
     # How long to wait after fix before verifying
     verification_delay_hours: int = 48
-    labels: list = None
+    labels: list = field(default_factory=list)
 
     def to_issue_body(self) -> str:
         """Generate the full issue body for the tracker."""
@@ -131,40 +131,64 @@ Here is the integration that creates Jira issues from action items with full con
 ```python
 # jira_integration.py - Create Jira issues from post-incident action items
 import requests
-from typing import List
+from typing import Optional
+
+from action_item import ActionItem
 
 class JiraActionItemCreator:
-    def __init__(self, base_url: str, email: str, api_token: str, project_key: str):
+    def __init__(
+        self,
+        base_url: str,
+        email: str,
+        api_token: str,
+        project_key: str,
+        priority_id_map: Optional[dict] = None,
+    ):
         self.base_url = base_url
         self.auth = (email, api_token)
         self.project_key = project_key
+        # Jira priority IDs are site-specific. Pass {"P0": "...", "P1": "..."}.
+        self.priority_id_map = priority_id_map or {}
+
+    def _adf_text(self, text: str) -> dict:
+        """Wrap plain text in Atlassian Document Format for Jira Cloud v3."""
+        return {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": text}],
+                }
+            ],
+        }
 
     def create_issue(self, action_item: ActionItem) -> str:
         """Create a Jira issue from an action item. Returns the issue key."""
-        # Map priority to Jira priority IDs
-        priority_map = {"P0": "1", "P1": "2", "P2": "3", "P3": "4"}
-
         payload = {
             "fields": {
                 "project": {"key": self.project_key},
                 "summary": f"[Post-Incident] {action_item.title}",
-                "description": action_item.to_issue_body(),
+                "description": self._adf_text(action_item.to_issue_body()),
                 "issuetype": {"name": "Bug"},
-                "priority": {"id": priority_map.get(action_item.priority, "3")},
                 "labels": [
                     "post-incident",
                     f"incident-{action_item.incident_id}",
                     "auto-generated",
-                ] + (action_item.labels or []),
+                ] + action_item.labels,
             }
         }
 
-        # Add assignee if provided
+        priority_id = self.priority_id_map.get(action_item.priority)
+        if priority_id:
+            payload["fields"]["priority"] = {"id": priority_id}
+
+        # Jira Cloud assigns users by accountId
         if action_item.assignee:
-            payload["fields"]["assignee"] = {"name": action_item.assignee}
+            payload["fields"]["assignee"] = {"accountId": action_item.assignee}
 
         response = requests.post(
-            f"{self.base_url}/rest/api/2/issue",
+            f"{self.base_url}/rest/api/3/issue",
             json=payload,
             auth=self.auth,
         )
@@ -179,7 +203,7 @@ class JiraActionItemCreator:
     def _add_verification_comment(self, issue_key: str, action_item: ActionItem):
         """Add verification criteria as a comment for the automation to check."""
         comment = {
-            "body": (
+            "body": self._adf_text(
                 f"*Automated Verification Config*\n"
                 f"{{code}}\n"
                 f"metric: {action_item.verification_metric}\n"
@@ -189,7 +213,7 @@ class JiraActionItemCreator:
             )
         }
         requests.post(
-            f"{self.base_url}/rest/api/2/issue/{issue_key}/comment",
+            f"{self.base_url}/rest/api/3/issue/{issue_key}/comment",
             json=comment,
             auth=self.auth,
         )
@@ -203,13 +227,16 @@ For teams using GitHub, the same pattern applies with a different API.
 # github_integration.py - Create GitHub issues from action items
 import requests
 
+from action_item import ActionItem
+
 class GitHubActionItemCreator:
     def __init__(self, owner: str, repo: str, token: str):
         self.owner = owner
         self.repo = repo
         self.headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json",
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2026-03-10",
         }
 
     def create_issue(self, action_item: ActionItem) -> int:
@@ -307,8 +334,8 @@ spec:
             - name: verifier
               image: your-org/action-item-verifier:latest
               env:
-                - name: OTEL_ENDPOINT
-                  value: "http://otel-collector:4317"
+                - name: METRICS_QUERY_ENDPOINT
+                  value: "http://prometheus:9090"
                 - name: JIRA_BASE_URL
                   valueFrom:
                     secretKeyRef:
