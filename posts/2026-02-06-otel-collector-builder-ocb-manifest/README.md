@@ -32,12 +32,12 @@ The manifest file (`builder-config.yaml`) specifies which components to include:
 dist:
   # Name of the output binary
   name: my-otel-collector
-  # Description shown in --version output
+  # Description included in the generated build info
   description: "Custom OpenTelemetry Collector for MyCompany"
   # Output directory for the built binary
   output_path: ./build
   # OpenTelemetry Collector version to base on
-  otel_col_version: "0.96.0"
+  otelcol_version: "0.96.0"
   # Go module path for the generated code
   module: github.com/mycompany/otel-collector
 
@@ -88,7 +88,7 @@ When developing custom components, you do not want to publish them to a Go regis
 dist:
   name: my-otel-collector
   output_path: ./build
-  otel_col_version: "0.96.0"
+  otelcol_version: "0.96.0"
   module: github.com/mycompany/otel-collector
 
 receivers:
@@ -121,7 +121,7 @@ ls -la ./build/my-otel-collector
 
 # Test it
 ./build/my-otel-collector --version
-# Output: my-otel-collector version 0.96.0
+# Output: my-otel-collector version 1.0.0
 
 # Validate a config that uses your custom components
 ./build/my-otel-collector validate --config=my-config.yaml
@@ -203,7 +203,7 @@ The most common issue with OCB is version mismatches. All OpenTelemetry collecto
 ```yaml
 # All of these must have the same version
 dist:
-  otel_col_version: "0.96.0"
+  otelcol_version: "0.96.0"
 
 receivers:
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
