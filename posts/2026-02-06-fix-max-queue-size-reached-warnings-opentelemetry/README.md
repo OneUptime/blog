@@ -62,11 +62,18 @@ from opentelemetry.sdk.trace.export import (
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("otel.diagnostics")
 
+
+class SlowConsoleSpanExporter(ConsoleSpanExporter):
+    def export(self, spans):
+        time.sleep(1)
+        return super().export(spans)
+
+
 # Create a tracer provider with a deliberately small queue
 # so we can observe the overflow behavior
 provider = TracerProvider()
 processor = BatchSpanProcessor(
-    ConsoleSpanExporter(),
+    SlowConsoleSpanExporter(),
     max_queue_size=10,        # Very small for demonstration
     max_export_batch_size=5,  # Export 5 spans at a time
     schedule_delay_millis=5000,  # Export every 5 seconds
@@ -84,7 +91,7 @@ for i in range(100):
 logger.info("Finished generating spans. Check logs for queue warnings.")
 ```
 
-If you run this, you will see queue overflow warnings almost immediately because we set the queue to only 10 items while generating 100 spans with a 5-second export delay.
+If you run this, you will see queue overflow warnings because we set the queue to only 10 items while generating 100 spans and deliberately slowed down the exporter.
 
 ## Tuning the SDK BatchSpanProcessor
 
@@ -115,7 +122,7 @@ processor = BatchSpanProcessor(
 )
 ```
 
-The same parameters exist in Java, Go, and other SDK implementations. Here is the equivalent in Java:
+The same concepts exist in Java, Go, and other SDK implementations, though method names vary by language. Here is the equivalent in Java:
 
 ```java
 // Java BatchSpanProcessor with tuned queue settings
@@ -146,10 +153,10 @@ exporters:
     sending_queue:
       # Enable the sending queue (enabled by default)
       enabled: true
-      # Number of batches to buffer
-      # Each batch can contain hundreds of spans
+      # Number of concurrent consumers that dequeue batches
       num_consumers: 10
       # Maximum number of batches in the queue
+      # Each batch can contain hundreds of spans
       queue_size: 5000
     # Retry configuration for transient failures
     retry_on_failure:
@@ -200,8 +207,15 @@ service:
       # Set to debug to see export timing and queue stats
       level: debug
     metrics:
-      # Expose internal metrics on this address
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                # Expose internal metrics on this address
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Then check the collector's internal metrics. The following Prometheus queries will reveal the queue state:
@@ -213,11 +227,11 @@ otelcol_exporter_queue_size
 # Number of items that failed to enter the queue (dropped)
 rate(otelcol_exporter_enqueue_failed_spans[5m])
 
-# Export latency (is the backend slow?)
-histogram_quantile(0.99, rate(otelcol_exporter_send_latency_bucket[5m]))
+# Export failures (is the backend unavailable or rejecting data?)
+rate(otelcol_exporter_send_failed_spans[5m])
 ```
 
-If the export latency is high, the problem is downstream. If the queue size is consistently at its maximum, you need either a larger queue or faster exports.
+If send failures are high, the problem is downstream. If the queue size is consistently at its maximum, you need either a larger queue or faster exports.
 
 ## Using Persistent Queues for Reliability
 
@@ -238,8 +252,7 @@ extensions:
   file_storage/otlp:
     # Directory where queue data is persisted to disk
     directory: /var/lib/otelcol/queue
-    # Maximum disk space for the queue
-    # Prevents filling up the disk if exports are blocked
+    # Compaction can reclaim unused disk space after the queue drains
     compaction:
       on_start: true
       directory: /tmp/otelcol-compaction
@@ -248,7 +261,7 @@ service:
   extensions: [file_storage/otlp]
 ```
 
-Persistent queues write data to disk, so even if the collector crashes or restarts, queued data is not lost. The tradeoff is slightly higher latency due to disk I/O, but for most use cases this is negligible.
+Persistent queues write data to disk, so if the collector crashes or restarts, queued data can be picked up again when the collector starts. Data can still be lost if the disk fails, fills up, or retry limits are exceeded. The tradeoff is slightly higher latency due to disk I/O, but for most use cases this is negligible.
 
 ## When to Use Sampling Instead
 
@@ -265,14 +278,14 @@ processors:
         type: status_code
         status_code:
           status_codes: [ERROR]
-      # Keep only 10% of successful traces
+      # Sample 10% of traces that are not matched by another policy
       - name: probabilistic
         type: probabilistic
         probabilistic:
           sampling_percentage: 10
 ```
 
-This approach can reduce queue pressure by 90% or more while still capturing all the traces that matter for debugging.
+This approach can reduce non-error trace volume by roughly 90% while still capturing all traces with error status codes.
 
 ## Putting It All Together
 
