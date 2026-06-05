@@ -10,9 +10,9 @@ Splunk is a powerful platform for searching, monitoring, and analyzing machine-g
 
 ## Understanding Splunk HEC
 
-The HTTP Event Collector is Splunk's modern data ingestion method, replacing traditional file-based inputs and proprietary protocols. HEC accepts data over HTTP or HTTPS using authentication tokens, making it firewall-friendly and easy to integrate with cloud-native applications. The collector formats OpenTelemetry data into Splunk's JSON event structure, handling field mapping, indexing, and source type configuration automatically.
+The HTTP Event Collector is Splunk's modern data ingestion method, complementing traditional file-based inputs and forwarders. HEC accepts data over HTTP or HTTPS using authentication tokens, making it firewall-friendly and easy to integrate with cloud-native applications. The collector formats OpenTelemetry data into Splunk's HEC event structure and uses exporter settings or telemetry attributes for metadata such as index, source, sourcetype, and host.
 
-HEC supports two endpoints: the raw endpoint for unstructured data and the event endpoint for structured JSON. The OpenTelemetry exporter uses the event endpoint, which provides better control over metadata like source, source type, index, and timestamp. This structured approach ensures your telemetry data is properly indexed and searchable in Splunk.
+HEC supports several REST endpoints, including structured event, raw event, health, and acknowledgment endpoints. The OpenTelemetry exporter normally sends structured HEC events to the `/services/collector` endpoint, while `export_raw: true` can be used for log-only raw export. This structured approach provides control over metadata like source, sourcetype, index, host, and timestamp so telemetry data is properly indexed and searchable in Splunk.
 
 ## Architecture and Data Flow
 
@@ -142,12 +142,9 @@ exporters:
     max_idle_conns_per_host: 10
     idle_conn_timeout: 90s
 
-    # HEC health check configuration
-    health_check:
-      enabled: true
-      endpoint: https://splunk.example.com:8088/services/collector/health
-      timeout: 10s
-      interval: 60s
+    # Verify HEC health during exporter startup
+    health_check_enabled: true
+    health_path: /services/collector/health
 
 processors:
   # Memory limiter to prevent OOM
@@ -179,7 +176,14 @@ service:
       encoding: json
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     logs:
@@ -199,7 +203,7 @@ This production configuration includes several critical features:
 
 **TLS Verification**: Validates Splunk's certificate to prevent man-in-the-middle attacks and encrypts data in transit.
 
-**Health Checks**: Periodically verifies the HEC endpoint is available before sending data, preventing unnecessary retry attempts.
+**Health Checks**: Verifies the HEC endpoint during exporter startup, helping catch connectivity or token issues early.
 
 **Backpressure Handling**: Queues events when Splunk is temporarily unavailable or slow to respond, preventing data loss.
 
@@ -235,29 +239,41 @@ exporters:
     sourcetype: "_json"
     index: "metrics"
 
-processors:
-  # Route logs based on environment attribute
+connectors:
+  # Route logs based on environment resource attribute
   routing:
-    from_attribute: deployment.environment
-    default_exporters: [splunk_hec/production]
+    default_pipelines: [logs/production]
     table:
-      - value: production
-        exporters: [splunk_hec/production]
-      - value: staging
-        exporters: [splunk_hec/staging]
-      - value: development
-        exporters: [splunk_hec/staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [logs/production]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [logs/staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [logs/staging]
 
+processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [otlp]
-      processors: [routing, batch]
-      exporters: [splunk_hec/production, splunk_hec/staging]
+      exporters: [routing]
+
+    logs/production:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [splunk_hec/production]
+
+    logs/staging:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [splunk_hec/staging]
 
     metrics:
       receivers: [otlp]
@@ -265,7 +281,7 @@ service:
       exporters: [splunk_hec/metrics]
 ```
 
-The routing processor dynamically selects the appropriate exporter based on the environment attribute, ensuring data lands in the correct Splunk index for proper access control and retention policies.
+The routing connector dynamically selects the appropriate log pipeline based on the environment resource attribute, ensuring data lands in the correct Splunk index for proper access control and retention policies.
 
 ## Logs Configuration with Field Mapping
 
@@ -357,8 +373,8 @@ exporters:
     token: "${SPLUNK_HEC_TOKEN}"
     source: "otel-metrics"
 
-    # Use metrics source type for proper handling
-    sourcetype: "otel_metrics"
+    # Use a Splunk source type for OpenTelemetry data
+    sourcetype: "otel"
 
     # Metrics should go to metrics index
     index: "metrics"
@@ -404,22 +420,19 @@ exporters:
     endpoint: https://splunk.example.com:8088/services/collector
     token: "${SPLUNK_HEC_TOKEN}"
     source: "otel-traces"
-    sourcetype: "otel_traces"
+    sourcetype: "otel"
     index: "traces"
 
 processors:
-  # Add trace context to spans
-  attributes/traces:
-    actions:
-      - key: trace.id
-        from_attribute: trace_id
-        action: upsert
-      - key: span.id
-        from_attribute: span_id
-        action: upsert
-      - key: parent.span.id
-        from_attribute: parent_span_id
-        action: upsert
+  # Add trace context as span attributes
+  transform/traces:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["trace.id"], trace_id.string)
+          - set(attributes["span.id"], span_id.string)
+          - set(attributes["parent.span.id"], parent_span_id.string) where parent_span_id.string != "0000000000000000"
 
   # Tail sampling to reduce volume
   tail_sampling:
@@ -445,7 +458,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/traces, tail_sampling, batch]
+      processors: [transform/traces, tail_sampling, batch]
       exporters: [splunk_hec/traces]
 ```
 
@@ -476,12 +489,13 @@ exporters:
       enabled: true
       num_consumers: 20
       queue_size: 10000
-      persistent_storage: file_storage
+      storage: file_storage
 
 # File storage extension for persistent queue
 extensions:
   file_storage:
     directory: /var/lib/otel/storage
+    create_directory: true
     timeout: 10s
     compaction:
       directory: /var/lib/otel/storage
@@ -596,12 +610,9 @@ exporters:
       insecure: false
       insecure_skip_verify: false
 
-    # Health check for Splunk Cloud
-    health_check:
-      enabled: true
-      endpoint: https://http-inputs-<tenant>.splunkcloud.com:443/services/collector/health
-      timeout: 10s
-      interval: 60s
+    # Health check for Splunk Cloud at exporter startup
+    health_check_enabled: true
+    health_path: /services/collector/health
 
 processors:
   batch:
@@ -643,7 +654,7 @@ processors:
         - k8s.deployment.name
         - k8s.namespace.name
         - k8s.node.name
-        - k8s.cluster.name
+        - k8s.cluster.uid
       labels:
         - tag_name: app
           key: app
@@ -693,7 +704,14 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to monitor:
