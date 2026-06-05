@@ -38,12 +38,16 @@ graph LR
 Before instrumenting Redis Streams specifically, you need the base OpenTelemetry SDK configured in your application. Here is a Python setup that works well for stream processing workloads.
 
 ```python
-# Initialize OpenTelemetry with OTLP export for stream tracing
+# Initialize OpenTelemetry with OTLP export for stream telemetry
 
-from opentelemetry import trace, context
+from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 
 # Define service identity for trace correlation
@@ -60,10 +64,18 @@ processor = BatchSpanProcessor(
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
 
+# Configure metric export for consumer group lag metrics
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://localhost:4317")
+)
+metrics.set_meter_provider(
+    MeterProvider(resource=resource, metric_readers=[metric_reader])
+)
+
 tracer = trace.get_tracer("redis.streams")
 ```
 
-This sets up a tracer provider that exports spans over OTLP to your collector. The `BatchSpanProcessor` buffers spans and sends them in batches, which is important for high-throughput stream processing where you do not want tracing overhead to slow down message handling.
+This sets up a tracer provider that exports spans over OTLP to your collector, plus a metric reader for the consumer group lag metric later in the guide. The `BatchSpanProcessor` buffers spans and sends them in batches, which is important for high-throughput stream processing where you do not want tracing overhead to slow down message handling.
 
 ## Instrumenting the Producer
 
@@ -72,7 +84,7 @@ The producer side is where trace context originates. When you add a message to a
 ```python
 import redis
 import json
-from opentelemetry.context.propagation import get_global_textmap_propagator
+from opentelemetry.propagate import inject
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -84,13 +96,14 @@ def produce_message(stream_name, payload):
         attributes={
             "messaging.system": "redis",
             "messaging.destination.name": stream_name,
-            "messaging.operation": "publish",
+            "messaging.operation.name": "xadd",
+            "messaging.operation.type": "send",
             "messaging.redis.stream": stream_name,
         }
     ) as span:
         # Inject trace context into a carrier dict
         carrier = {}
-        get_global_textmap_propagator().inject(carrier)
+        inject(carrier)
 
         # Add trace context as message fields alongside the payload
         message_fields = {
@@ -110,7 +123,7 @@ The key idea here is that we serialize the W3C Trace Context headers (traceparen
 
 ## Instrumenting the Consumer
 
-On the consumer side, you extract the trace context from the message and create a new span that links back to the producer span. This is what creates the connected trace across the async boundary.
+On the consumer side, you extract the trace context from the message and create a new span that continues the producer trace. This is what creates the connected trace across the async boundary.
 
 ```python
 from opentelemetry.propagate import extract
@@ -118,7 +131,7 @@ from opentelemetry.propagate import extract
 def process_messages(stream_name, group_name, consumer_name):
     # Ensure consumer group exists
     try:
-        r.xgroup_create(stream_name, group_name, id="0", mkstream=True)
+        r.xgroup_create(stream_name, group_name, id="0-0", mkstream=True)
     except redis.exceptions.ResponseError:
         pass  # Group already exists
 
@@ -140,18 +153,19 @@ def process_messages(stream_name, group_name, consumer_name):
                 }
                 extracted_context = extract(carrier)
 
-                # Create a consumer span linked to the producer trace
+                # Create a consumer span in the producer trace
                 with tracer.start_as_current_span(
                     f"{stream_name} process",
                     context=extracted_context,
                     kind=trace.SpanKind.CONSUMER,
                     attributes={
                         "messaging.system": "redis",
-                        "messaging.source.name": stream_name,
-                        "messaging.operation": "process",
+                        "messaging.destination.name": stream_name,
+                        "messaging.operation.name": "xreadgroup",
+                        "messaging.operation.type": "process",
                         "messaging.message.id": message_id,
-                        "messaging.consumer.group": group_name,
-                        "messaging.consumer.id": consumer_name,
+                        "messaging.consumer.group.name": group_name,
+                        "messaging.client.id": consumer_name,
                     }
                 ) as span:
                     try:
@@ -163,7 +177,7 @@ def process_messages(stream_name, group_name, consumer_name):
                         r.xack(stream_name, group_name, message_id)
                         span.set_attribute("messaging.redis.acknowledged", True)
                     except Exception as e:
-                        span.set_status(trace.StatusCode.ERROR, str(e))
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
                         span.record_exception(e)
 ```
 
@@ -175,13 +189,14 @@ Beyond individual message traces, you want to monitor the overall health of your
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
 meter = metrics.get_meter("redis.streams.metrics")
 
 # Create a gauge for tracking consumer lag
 lag_gauge = meter.create_observable_gauge(
     name="redis.stream.consumer_group.lag",
-    description="Number of pending messages in consumer group",
+    description="Number of stream entries the consumer group has not yet read",
     unit="messages",
     callbacks=[lambda options: observe_lag(options)],
 )
@@ -195,18 +210,22 @@ def observe_lag(options):
             # XINFO GROUPS returns consumer group details
             groups = r.xinfo_groups(stream_name)
             for group in groups:
-                yield metrics.Observation(
-                    value=group["pending"],
+                lag = group.get("lag")
+                if lag is None:
+                    continue
+
+                yield Observation(
+                    value=lag,
                     attributes={
                         "messaging.redis.stream": stream_name,
-                        "messaging.consumer.group": group["name"],
+                        "messaging.consumer.group.name": group["name"],
                     }
                 )
         except redis.exceptions.ResponseError:
             pass
 ```
 
-This observable gauge periodically reports how many messages are pending (delivered but not yet acknowledged) per consumer group. When you correlate this metric with your trace data, you can quickly identify whether processing slowdowns are caused by individual slow messages or systemic consumer lag.
+This observable gauge periodically reports each consumer group's lag when Redis can determine it: entries the group has not yet read. When you correlate this metric with your trace data, you can quickly identify whether processing slowdowns are caused by individual slow messages or systemic consumer lag.
 
 ## Handling Pending Message Recovery
 
@@ -220,7 +239,8 @@ def recover_pending_messages(stream_name, group_name, consumer_name, min_idle_ms
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "redis",
-            "messaging.operation": "recover",
+            "messaging.operation.name": "xautoclaim",
+            "messaging.operation.type": "receive",
             "messaging.redis.min_idle_ms": min_idle_ms,
         }
     ) as recovery_span:
@@ -241,6 +261,8 @@ def recover_pending_messages(stream_name, group_name, consumer_name, min_idle_ms
                 f"{stream_name} reprocess",
                 attributes={
                     "messaging.message.id": message_id,
+                    "messaging.operation.name": "reprocess",
+                    "messaging.operation.type": "process",
                     "messaging.redis.redelivery": True,
                 }
             ) as msg_span:
@@ -249,7 +271,7 @@ def recover_pending_messages(stream_name, group_name, consumer_name, min_idle_ms
                     handle_payload(payload)
                     r.xack(stream_name, group_name, message_id)
                 except Exception as e:
-                    msg_span.set_status(trace.StatusCode.ERROR, str(e))
+                    msg_span.set_status(Status(StatusCode.ERROR, str(e)))
                     msg_span.record_exception(e)
 ```
 
@@ -298,7 +320,7 @@ service:
       exporters: [otlp]
 ```
 
-The batch processor is tuned with a 5-second timeout and a batch size of 512, which works well for stream processing workloads that generate many small spans. The attributes processor ensures all telemetry is tagged with the messaging system for consistent filtering.
+The batch processor is tuned with a 5-second timeout and a batch size of 512, which works well for stream processing workloads that generate many small spans. The attributes processor ensures trace telemetry is tagged with the messaging system for consistent filtering.
 
 ## Wrapping Up
 
