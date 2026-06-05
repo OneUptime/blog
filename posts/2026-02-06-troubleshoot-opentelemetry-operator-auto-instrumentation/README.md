@@ -104,7 +104,7 @@ metadata:
 spec:
   # Where the collector is running
   exporter:
-    endpoint: http://otel-collector.monitoring:4317
+    endpoint: http://otel-collector.monitoring:4318
   propagators:
     - tracecontext
     - baggage
@@ -166,8 +166,9 @@ Sometimes the injection happens but the init container that copies the agent fai
 # Check the pod's init containers
 kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.status.initContainerStatuses}' | jq .
 
-# Check the init container logs
-kubectl logs <pod-name> -n <namespace> -c opentelemetry-auto-instrumentation
+# Check the init container logs. The exact name may include the language suffix,
+# such as opentelemetry-auto-instrumentation-java.
+kubectl logs <pod-name> -n <namespace> -c <auto-instrumentation-init-container-name>
 ```
 
 The most common cause is an image pull failure. The init container uses the image specified in the Instrumentation CR (for example, `ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest`). If your cluster cannot reach that registry, the init container gets stuck in `ImagePullBackOff`.
@@ -201,7 +202,7 @@ kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[0].env}
 
 Common conflicts include:
 
-- **Existing JAVA_TOOL_OPTIONS** - If your application already sets this variable, the operator appends to it, which can cause issues. Check for duplicate `-javaagent` flags.
+- **Existing JAVA_TOOL_OPTIONS** - Auto-instrumentation currently overrides `JAVA_TOOL_OPTIONS` when it is set in the image or through a ConfigMap. Avoid setting it that way, and inspect the final injected value if your application also defines Java options.
 - **Memory pressure** - The agent uses additional memory. If your container has tight memory limits, the added overhead can cause OOM kills.
 - **Library conflicts** - Some applications bundle libraries that conflict with the agent's instrumentation. Check the agent docs for known incompatibilities.
 
@@ -226,7 +227,7 @@ Everything looks correct: the agent is injected, the application starts fine, bu
 
 ```bash
 # Verify the collector endpoint is reachable from the pod
-kubectl exec <pod-name> -n <namespace> -- sh -c 'nc -zv otel-collector.monitoring 4317'
+kubectl exec <pod-name> -n <namespace> -- sh -c 'nc -zv otel-collector.monitoring 4318'
 ```
 
 Check that the endpoint in the Instrumentation CR is correct. The agent runs inside the application container, so it needs to reach the collector over the Kubernetes network.
@@ -235,7 +236,7 @@ Check that the endpoint in the Instrumentation CR is correct. The agent runs ins
 # Make sure this endpoint resolves from the application's namespace
 spec:
   exporter:
-    endpoint: http://otel-collector.monitoring:4317
+    endpoint: http://otel-collector.monitoring:4318
 ```
 
 Also check the collector's logs to see if it is receiving any data.
@@ -245,7 +246,7 @@ Also check the collector's logs to see if it is receiving any data.
 kubectl logs -n monitoring deployment/otel-collector --tail=100
 ```
 
-If the collector uses TLS, you need to configure the agent to use the correct protocol. By default, auto-instrumentation uses gRPC without TLS.
+Make sure the collector port matches the protocol used by the language instrumentation. Current defaults are language-specific: Java, Python, .NET, and Go use OTLP/HTTP protobuf and normally target port `4318`, while Node.js uses OTLP/gRPC and normally targets port `4317`. If the collector uses TLS, configure the agent for the matching secure endpoint and protocol.
 
 ## Issue 7: Only Some Pods Get Instrumented
 
