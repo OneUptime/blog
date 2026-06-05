@@ -25,17 +25,17 @@ Before changing any code, it helps to understand how Prometheus metric types map
 ```mermaid
 graph LR
     A[Prometheus Counter] --> B[OTel Counter]
-    C[Prometheus Gauge] --> D[OTel UpDownCounter / Gauge Callback]
+    C[Prometheus Gauge] --> D[OTel Gauge / UpDownCounter / Observable Gauge]
     E[Prometheus Histogram] --> F[OTel Histogram]
-    G[Prometheus Summary] --> H[OTel Histogram with percentile views]
+    G[Prometheus Summary] --> H[OTel Histogram with backend percentile queries]
 ```
 
 The mapping is mostly straightforward:
 
 - A Prometheus **Counter** maps to an OpenTelemetry **Counter**. Both are monotonically increasing values.
-- A Prometheus **Gauge** maps to an OpenTelemetry **UpDownCounter** (for values you increment and decrement) or an **Observable Gauge** (for values you observe via a callback).
+- A Prometheus **Gauge** maps to an OpenTelemetry **Gauge** (for point-in-time values you record), an **UpDownCounter** (for values you increment and decrement), or an **Observable Gauge** (for values you observe via a callback).
 - A Prometheus **Histogram** maps to an OpenTelemetry **Histogram**. The default bucket boundaries differ, so you may want to configure explicit boundaries to match your existing dashboards.
-- A Prometheus **Summary** has no direct equivalent. The recommended approach is to use an OpenTelemetry **Histogram** and configure percentile aggregation in your backend or through SDK views.
+- A Prometheus **Summary** has no direct equivalent. The recommended approach is to use an OpenTelemetry **Histogram** and calculate percentiles in your backend or query layer.
 
 ## Setting Up the OpenTelemetry Metrics SDK
 
@@ -58,14 +58,13 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
 func initMetrics() (*sdkmetric.MeterProvider, error) {
@@ -148,8 +147,8 @@ var httpRequestsTotal, _ = meter.Int64Counter(
 // Attributes replace Prometheus labels
 httpRequestsTotal.Add(ctx, 1,
     metric.WithAttributes(
-        attribute.String("http.method", "GET"),
-        attribute.String("http.status_code", "200"),
+        attribute.String("http.request.method", "GET"),
+        attribute.Int("http.response.status_code", 200),
     ),
 )
 ```
@@ -158,7 +157,7 @@ Notice a few differences. OpenTelemetry uses dot-separated metric names by conve
 
 ## Migrating a Gauge
 
-Prometheus gauges that you set directly map to observable gauges in OpenTelemetry:
+Prometheus gauges that you set directly map to synchronous gauges in OpenTelemetry:
 
 ```go
 // Prometheus version: a gauge tracking active connections
@@ -173,7 +172,20 @@ var activeConnections = prometheus.NewGauge(
 activeConnections.Set(42)
 ```
 
-In OpenTelemetry, if the value comes from an external source you observe periodically, use an asynchronous gauge:
+In OpenTelemetry, use a synchronous gauge when you record the value as it changes:
+
+```go
+// OpenTelemetry version: a gauge tracking active connections
+var activeConnections, _ = meter.Int64Gauge(
+    "active.connections",
+    metric.WithDescription("Number of active connections"),
+)
+
+// Record the current value
+activeConnections.Record(ctx, 42)
+```
+
+If the value comes from an external source you observe periodically, use an asynchronous gauge:
 
 ```go
 // OpenTelemetry version: register a callback that reports the value
@@ -234,7 +246,7 @@ var requestDuration, _ = meter.Float64Histogram(
 // Record a duration
 requestDuration.Record(ctx, 0.42,
     metric.WithAttributes(
-        attribute.String("http.method", "GET"),
+        attribute.String("http.request.method", "GET"),
     ),
 )
 ```
@@ -271,12 +283,18 @@ You do not have to migrate everything at once. Here is an incremental approach t
 
 ## Keeping Prometheus Compatibility During Migration
 
-If you want to migrate the SDK but keep your Prometheus scraping infrastructure, the OpenTelemetry SDK includes a Prometheus exporter that serves metrics in Prometheus exposition format:
+If you want to migrate the SDK but keep your Prometheus scraping infrastructure, the OpenTelemetry SDK includes a Prometheus exporter that converts OpenTelemetry metrics to Prometheus exposition format. You still need to expose a Prometheus HTTP handler for your scraper:
 
 ```go
-import "go.opentelemetry.io/otel/exporters/prometheus"
+import (
+    "log"
+    "net/http"
 
-// Create a Prometheus exporter that serves metrics on /metrics
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "go.opentelemetry.io/otel/exporters/prometheus"
+)
+
+// Create a Prometheus exporter and register it as a metric reader
 promExporter, err := prometheus.New()
 if err != nil {
     log.Fatal(err)
@@ -285,6 +303,9 @@ if err != nil {
 mp := sdkmetric.NewMeterProvider(
     sdkmetric.WithReader(promExporter),
 )
+
+http.Handle("/metrics", promhttp.Handler())
+log.Fatal(http.ListenAndServe(":9464", nil))
 ```
 
 This lets you rewrite your instrumentation code to use OpenTelemetry APIs while your collection pipeline still uses Prometheus scraping. When you are ready to move to OTLP, you simply swap the exporter.
