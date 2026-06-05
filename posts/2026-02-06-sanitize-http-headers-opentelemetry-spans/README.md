@@ -70,43 +70,25 @@ These JVM properties control header capture for the Java auto-instrumentation ag
 ```bash
 # Configure the Java agent to capture only safe headers
 java -javaagent:opentelemetry-javaagent.jar \
-  -Dotel.instrumentation.http.capture-headers.server.request=content-type,accept,user-agent,x-request-id \
-  -Dotel.instrumentation.http.capture-headers.server.response=content-type,x-request-id \
+  -Dotel.instrumentation.http.server.capture-request-headers=content-type,accept,user-agent,x-request-id \
+  -Dotel.instrumentation.http.server.capture-response-headers=content-type,x-request-id \
   -jar myapp.jar
 ```
 
 For Node.js applications, you can configure header capture in code when setting up the HTTP instrumentation.
 
-This Node.js configuration sets up selective header capture with a custom hook.
+This Node.js configuration sets up selective header capture with the HTTP instrumentation's `headersToSpanAttributes` option.
 
 ```javascript
 // tracing.js - Configure HTTP instrumentation with header filtering
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
 const httpInstrumentation = new HttpInstrumentation({
-  // Custom hook to selectively capture request headers
-  requestHook: (span, request) => {
-    // Only capture headers from our allowlist
-    const safeHeaders = ['content-type', 'accept', 'user-agent', 'x-request-id'];
-
-    for (const header of safeHeaders) {
-      const value = request.headers[header];
-      if (value) {
-        // Set as span attribute following OTel semantic conventions
-        span.setAttribute(`http.request.header.${header}`, value);
-      }
-    }
-  },
-  // Custom hook to selectively capture response headers
-  responseHook: (span, response) => {
-    const safeHeaders = ['content-type', 'x-request-id', 'x-trace-id'];
-
-    for (const header of safeHeaders) {
-      const value = response.headers[header];
-      if (value) {
-        span.setAttribute(`http.response.header.${header}`, value);
-      }
-    }
+  headersToSpanAttributes: {
+    server: {
+      requestHeaders: ['content-type', 'accept', 'user-agent', 'x-request-id'],
+      responseHeaders: ['content-type', 'x-request-id', 'x-trace-id'],
+    },
   }
 });
 ```
@@ -138,8 +120,12 @@ processors:
       # Remove API key headers
       - key: http.request.header.x-api-key
         action: delete
+      - key: http.request.header.x_api_key
+        action: delete
       # Remove proxy auth headers
       - key: http.request.header.proxy-authorization
+        action: delete
+      - key: http.request.header.proxy_authorization
         action: delete
 
 service:
@@ -152,7 +138,7 @@ service:
 
 For a more flexible approach, use the transform processor with pattern matching to catch headers that follow common naming conventions for credentials.
 
-This configuration uses OTTL to match and redact header attributes based on naming patterns.
+This configuration uses OTTL to delete header attributes based on naming patterns and redact cookie values when those attributes are present.
 
 ```yaml
 # collector-header-pattern-sanitization.yaml
@@ -162,10 +148,12 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Redact any header attribute containing "auth" in the name
-          - replace_all_patterns(attributes, "key", "http\\.request\\.header\\..*(auth|token|key|secret|password|credential).*", "http.request.header.redacted")
+          # Delete any request or response header attribute containing credential-related words in the name
+          - delete_matching_keys(attributes, "http\\.(request|response)\\.header\\..*(auth|token|key|secret|password|credential).*")
           # Redact cookie values but keep the attribute to show cookies were present
           - replace_pattern(attributes["http.request.header.cookie"], ".*", "[REDACTED]") where attributes["http.request.header.cookie"] != nil
+          - replace_pattern(attributes["http.response.header.set-cookie"], ".*", "[REDACTED]") where attributes["http.response.header.set-cookie"] != nil
+          - replace_pattern(attributes["http.response.header.set_cookie"], ".*", "[REDACTED]") where attributes["http.response.header.set_cookie"] != nil
 
 service:
   pipelines:
@@ -190,9 +178,11 @@ processors:
       - context: span
         statements:
           # Hash the X-Forwarded-For header to preserve correlation without exposing IPs
-          - set(attributes["http.request.header.x-forwarded-for"], SHA256(attributes["http.request.header.x-forwarded-for"])) where attributes["http.request.header.x-forwarded-for"] != nil
+          - set(attributes["http.request.header.x-forwarded-for"], SHA256(attributes["http.request.header.x-forwarded-for"][0])) where attributes["http.request.header.x-forwarded-for"] != nil
+          - set(attributes["http.request.header.x_forwarded_for"], SHA256(attributes["http.request.header.x_forwarded_for"][0])) where attributes["http.request.header.x_forwarded_for"] != nil
           # Hash the user agent for grouping without storing full strings
-          - set(attributes["http.request.header.user-agent"], SHA256(attributes["http.request.header.user-agent"])) where attributes["http.request.header.user-agent"] != nil
+          - set(attributes["http.request.header.user-agent"], SHA256(attributes["http.request.header.user-agent"][0])) where attributes["http.request.header.user-agent"] != nil
+          - set(attributes["http.request.header.user_agent"], SHA256(attributes["http.request.header.user_agent"][0])) where attributes["http.request.header.user_agent"] != nil
 ```
 
 ## Step 4: Build a Custom SpanProcessor for Fine-Grained Control
@@ -223,7 +213,7 @@ class HeaderSanitizingProcessor(SpanProcessor):
         "http.request.header.x-forwarded-for",
     }
 
-    def on_end(self, span):
+    def _on_ending(self, span):
         if not span.attributes:
             return
 
@@ -236,6 +226,9 @@ class HeaderSanitizingProcessor(SpanProcessor):
                 value = str(span.attributes[attr_key])
                 hashed = hashlib.sha256(value.encode()).hexdigest()[:16]
                 span.set_attribute(attr_key, f"sha256:{hashed}")
+
+    def on_end(self, span):
+        pass
 
     def on_start(self, span, parent_context=None):
         pass
@@ -252,12 +245,12 @@ Register this processor when setting up your tracer provider.
 ```python
 # Initialize the tracer provider with the header sanitizer
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 provider = TracerProvider()
 # Add the sanitizer before the exporter so headers are cleaned first
 provider.add_span_processor(HeaderSanitizingProcessor())
-provider.add_span_processor(BatchSpanExporter(your_exporter))
+provider.add_span_processor(BatchSpanProcessor(your_exporter))
 ```
 
 ## Step 5: Validate Your Sanitization
