@@ -8,7 +8,7 @@ Description: Deploy OpenResty in Docker to extend Nginx with Lua scripting for c
 
 ---
 
-OpenResty bundles Nginx with LuaJIT and a collection of Lua libraries that let you run Lua code inside the Nginx request lifecycle. This turns Nginx from a static configuration-driven proxy into a programmable platform. You can write authentication logic, rate limiting, request transformation, and dynamic routing directly in Lua, all executing at the speed of compiled C code inside the Nginx event loop. Docker packages this entire stack cleanly.
+OpenResty bundles Nginx with LuaJIT and a collection of Lua libraries that let you run Lua code inside the Nginx request lifecycle. This turns Nginx from a static configuration-driven proxy into a programmable platform. You can write authentication logic, rate limiting, request transformation, and dynamic routing directly in Lua, all running inside the Nginx event loop with LuaJIT performance. Docker packages this entire stack cleanly.
 
 ## Why OpenResty?
 
@@ -26,18 +26,16 @@ docker run -d \
   -p 8080:8080 \
   -v $(pwd)/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro \
   -v $(pwd)/lua:/usr/local/openresty/lua:ro \
-  openresty/openresty:1.25.3.1-alpine
+  openresty/openresty:1.29.2.4-1-alpine-apk
 ```
 
 ## Docker Compose Setup
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   openresty:
-    image: openresty/openresty:1.25.3.1-alpine
+    image: openresty/openresty:1.29.2.4-1-alpine-apk
     container_name: openresty
     restart: unless-stopped
     ports:
@@ -53,7 +51,7 @@ services:
       # Logs
       - openresty_logs:/usr/local/openresty/nginx/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -185,11 +183,11 @@ curl -i -H "X-API-Key: invalid" http://localhost:8080/api/users
 
 ## Rate Limiting with Lua
 
-Implement a sliding window rate limiter using Nginx's shared dictionary.
+Implement a fixed-window rate limiter using Nginx's shared dictionary.
 
 ```lua
 -- lua/rate_limit.lua
--- Token bucket rate limiter using shared memory
+-- Fixed-window rate limiter using shared memory
 
 local cjson = require "cjson"
 local limit_store = ngx.shared.rate_limit_store
@@ -236,8 +234,10 @@ Wire it into the Nginx configuration.
 
 ```nginx
 location /api/ {
-    access_by_lua_file /usr/local/openresty/lua/rate_limit.lua;
-    access_by_lua_file /usr/local/openresty/lua/auth.lua;
+    access_by_lua_block {
+        assert(loadfile("/usr/local/openresty/lua/rate_limit.lua"))()
+        assert(loadfile("/usr/local/openresty/lua/auth.lua"))()
+    }
     proxy_pass http://backend:3000/;
 }
 ```
@@ -285,10 +285,15 @@ local cache = ngx.shared.cache_store
 local CACHE_TTL = 30
 
 if ngx.status == 200 then
-    local cache_key = ngx.var.uri .. "?" .. (ngx.var.args or "")
-    local body = ngx.arg[1]
-    if body then
-        cache:set(cache_key, body, CACHE_TTL)
+    ngx.ctx.cache_chunks = ngx.ctx.cache_chunks or {}
+
+    if ngx.arg[1] then
+        table.insert(ngx.ctx.cache_chunks, ngx.arg[1])
+    end
+
+    if ngx.arg[2] then
+        local cache_key = ngx.var.uri .. "?" .. (ngx.var.args or "")
+        cache:set(cache_key, table.concat(ngx.ctx.cache_chunks), CACHE_TTL)
     end
 end
 ```
@@ -377,11 +382,11 @@ For production, package your Lua scripts and config into the image.
 
 ```dockerfile
 # Dockerfile
-FROM openresty/openresty:1.25.3.1-alpine
+FROM openresty/openresty:1.29.2.4-1-alpine-fat
 
 # Install additional Lua modules
-RUN luarocks install lua-resty-jwt && \
-    luarocks install lua-resty-http
+RUN /usr/local/openresty/luajit/bin/luarocks install lua-resty-jwt && \
+    /usr/local/openresty/luajit/bin/luarocks install lua-resty-http
 
 # Copy configuration
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
