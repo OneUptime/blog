@@ -63,12 +63,15 @@ processors:
 
       # Policy 4: Drop health check traces entirely
       - name: drop-health-checks
-        type: string_attribute
-        string_attribute:
-          key: http.route
-          values: ["/health", "/healthz", "/ready", "/readyz", "/ping"]
-          enabled_regex_matching: false
-          invert_match: true
+        type: drop
+        drop:
+          drop_sub_policy:
+            - name: health-check-route
+              type: string_attribute
+              string_attribute:
+                key: http.route
+                values: ["/health", "/healthz", "/ready", "/readyz", "/ping"]
+                enabled_regex_matching: false
 
       # Policy 5: Sample 5% of remaining normal traffic
       - name: sample-rest
@@ -103,18 +106,19 @@ This transform processor strips oversized and low-value attributes from spans:
 ```yaml
 processors:
   transform/trim:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
-          # Truncate long URL query strings to 200 characters
-          - truncate_all(attributes, 200) where attributes["http.url"] != nil
+          # Truncate long span attribute values to 200 characters
+          - truncate_all(span.attributes, 200)
 
           # Remove full SQL text - keep only the operation type
-          - delete_key(attributes, "db.statement")
+          - delete_key(span.attributes, "db.statement")
 
           # Remove verbose HTTP headers that inflate span size
-          - delete_matching_keys(attributes, "http\\.request\\.header\\..*")
-          - delete_matching_keys(attributes, "http\\.response\\.header\\..*")
+          - delete_matching_keys(span.attributes, "http\\.request\\.header\\..*")
+          - delete_matching_keys(span.attributes, "http\\.response\\.header\\..*")
 ```
 
 ## Strategy 3: Metrics Aggregation
@@ -127,24 +131,21 @@ This configuration reduces metric cardinality by dropping high-cardinality label
 processors:
   # Remove high-cardinality attributes that explode metric series
   transform/metrics:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
           # Remove per-instance-id labels from aggregated metrics
-          - delete_key(attributes, "net.sock.peer.addr")
-          - delete_key(attributes, "net.sock.peer.port")
+          - delete_key(datapoint.attributes, "net.sock.peer.addr")
+          - delete_key(datapoint.attributes, "net.sock.peer.port")
           # Remove UUIDs from HTTP route patterns
-          - replace_pattern(attributes["http.route"], "/users/[a-f0-9-]+", "/users/{id}")
-          - replace_pattern(attributes["http.route"], "/orders/[a-f0-9-]+", "/orders/{id}")
+          - replace_pattern(datapoint.attributes["http.route"], "/users/[a-f0-9-]+", "/users/{id}") where datapoint.attributes["http.route"] != nil
+          - replace_pattern(datapoint.attributes["http.route"], "/orders/[a-f0-9-]+", "/orders/{id}") where datapoint.attributes["http.route"] != nil
 
-  # Aggregate metrics with a longer interval to reduce volume
-  # 60-second aggregation vs the default 10-second
-  metricstransform:
-    transforms:
-      - include: ".*"
-        match_type: regexp
-        action: update
-        aggregation_type: ""
+      # Re-aggregate sum metrics after label normalization
+      - context: metric
+        statements:
+          - aggregate_on_attributes("sum") where metric.type == METRIC_DATA_TYPE_SUM
 ```
 
 ## Strategy 4: Log Severity Filtering
@@ -156,15 +157,14 @@ This filter processor drops low-severity logs in production while keeping them f
 ```yaml
 processors:
   filter/logs:
-    logs:
+    error_mode: ignore
+    log_conditions:
       # Drop DEBUG logs entirely
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
       # Drop INFO logs from high-volume services
       # Keep WARN and above from everything
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_WARN and resource.attributes["service.name"] == "health-checker"'
-        - 'severity_number < SEVERITY_NUMBER_WARN and resource.attributes["service.name"] == "load-balancer"'
+      - 'log.severity_number < SEVERITY_NUMBER_WARN and resource.attributes["service.name"] == "health-checker"'
+      - 'log.severity_number < SEVERITY_NUMBER_WARN and resource.attributes["service.name"] == "load-balancer"'
 ```
 
 ## Measuring the Savings
@@ -176,7 +176,12 @@ Track the before and after data volumes using the Collector's internal metrics. 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Then query these metrics from the Collector's Prometheus endpoint:
