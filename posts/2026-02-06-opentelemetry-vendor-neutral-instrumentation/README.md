@@ -97,7 +97,7 @@ Switching backends means changing configuration, not code. The instrumentation w
 
 Vendor neutrality only works if everyone agrees on attribute names and meanings. OpenTelemetry defines semantic conventions: standard names for common attributes.
 
-For HTTP requests, semantic conventions specify attribute names like `http.method`, `http.status_code`, and `http.target`. Every SDK and backend understands these names.
+For HTTP requests, semantic conventions specify attribute names like `http.request.method`, `http.response.status_code`, and `url.path`. Every SDK and backend understands these names.
 
 Without conventions, one vendor might use `http_method` while another uses `request.method`. Your queries and dashboards would break when switching vendors.
 
@@ -114,20 +114,20 @@ Using semantic conventions means your telemetry is portable and queryable across
 
 ```python
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+import requests
 
 tracer = trace.get_tracer(__name__)
 
 def make_http_request(url, method):
     with tracer.start_as_current_span("http_request") as span:
         # Use semantic conventions
-        span.set_attribute(SpanAttributes.HTTP_METHOD, method)
-        span.set_attribute(SpanAttributes.HTTP_URL, url)
+        span.set_attribute("http.request.method", method)
+        span.set_attribute("url.full", url)
 
         response = requests.request(method, url)
 
-        span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status_code)
-        span.set_attribute(SpanAttributes.HTTP_RESPONSE_CONTENT_LENGTH, len(response.content))
+        span.set_attribute("http.response.status_code", response.status_code)
+        span.set_attribute("http.response.body.size", len(response.content))
 
         return response
 ```
@@ -166,8 +166,8 @@ exporters:
     headers:
       x-api-key: ${VENDOR_B_KEY}
 
-  prometheus:
-    endpoint: "prometheus:9090"
+  prometheus_remote_write:
+    endpoint: "http://prometheus:9090/api/v1/write"
 
 service:
   pipelines:
@@ -179,7 +179,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/vendor-a, prometheus]
+      exporters: [otlp/vendor-a, prometheus_remote_write]
 ```
 
 Your application exports OTLP to the Collector. The Collector forwards to multiple backends. Switching backends means updating Collector configuration, not application code.
@@ -271,7 +271,7 @@ The API imports come from `@opentelemetry/api`, not the vendor package. Your app
 
 Vendor neutrality extends to distributed tracing context. OpenTelemetry uses W3C Trace Context, a web standard for propagating trace IDs across service boundaries.
 
-Before W3C Trace Context, each vendor used proprietary headers. Zipkin used `X-B3-TraceId`. Jaeger used `uber-trace-id`. Cross-vendor tracing was impossible.
+Before W3C Trace Context, many tracing systems used their own headers. Zipkin used `X-B3-TraceId`. Jaeger used `uber-trace-id`. Cross-vendor tracing was difficult and often required translation.
 
 W3C Trace Context defines standard HTTP headers: `traceparent` and `tracestate`. Any system that understands these headers can participate in distributed traces, regardless of vendor.
 
@@ -350,20 +350,26 @@ exporters:
     endpoint: https://expensive-vendor.com
 
 processors:
-  # Filter processor sends only high-cardinality spans to expensive backend
+  batch:
+
+  # Filter processors drop spans that should not go to each backend
+  filter/standard:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["high_cardinality"] == "true"'
+
   filter/high-cardinality:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: high_cardinality
-            value: "true"
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["high_cardinality"] != "true"'
 
 service:
   pipelines:
     traces/standard:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/standard, batch]
       exporters: [otlp/cost-effective]
 
     traces/high-cardinality:
@@ -380,7 +386,7 @@ Technology changes. The observability vendor you choose today might not exist in
 
 Vendor-neutral instrumentation means you're not betting your telemetry strategy on a single vendor's survival. You can adapt to market changes without rewriting application code.
 
-New telemetry signals are emerging. Profiling, session replay, and real user monitoring are becoming standard. OpenTelemetry will standardize these signals over time. When they stabilize, your existing instrumentation can emit these new signals through SDK updates, not application changes.
+New telemetry signals and patterns are emerging. Profiling is becoming part of OpenTelemetry, and real user monitoring patterns are evolving through client-side instrumentation. As these capabilities stabilize, your existing OpenTelemetry foundation can evolve through SDK and Collector updates, not a wholesale rewrite.
 
 The investment in OpenTelemetry instrumentation pays dividends over years. You instrument once using standards, then evolve your backend strategy as needs and options change.
 
