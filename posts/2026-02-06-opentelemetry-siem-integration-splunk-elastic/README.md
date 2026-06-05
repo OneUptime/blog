@@ -34,20 +34,11 @@ processors:
 
   # Filter to only send security-relevant spans to SIEM
   filter/security:
-    traces:
-      include:
-        match_type: regexp
-        span_names:
-          - "security\\..*"
-          - "auth\\..*"
-          - "api\\.access\\..*"
-    logs:
-      include:
-        match_type: regexp
-        bodies:
-          - ".*authentication.*"
-          - ".*authorization.*"
-          - ".*access denied.*"
+    error_mode: ignore
+    trace_conditions:
+      - not IsMatch(span.name, "^(security\\..*|auth\\..*|api\\.access\\..*)$")
+    log_conditions:
+      - not IsMatch(log.body, "(authentication|authorization|access denied)")
 
   # Transform trace data into a format SIEMs understand
   transform/siem:
@@ -98,7 +89,7 @@ service:
     traces/siem:
       receivers: [otlp]
       processors: [filter/security, transform/siem, batch]
-      exporters: [splunk_hec/traces]
+      exporters: [splunk_hec/traces, elasticsearch]
 
     # Security logs go to both
     logs/siem:
@@ -136,7 +127,7 @@ class OTelLogFormatter(logging.Formatter):
         if span_context and span_context.is_valid:
             log_entry["trace_id"] = format(span_context.trace_id, '032x')
             log_entry["span_id"] = format(span_context.span_id, '016x')
-            log_entry["trace_flags"] = span_context.trace_flags
+            log_entry["trace_flags"] = int(span_context.trace_flags)
 
         # Add security-relevant fields
         if hasattr(record, "security_event"):
@@ -156,6 +147,10 @@ security_logger.setLevel(logging.INFO)
 
 ```python
 # security_events.py
+import logging
+
+from structured_logging import security_logger
+
 def log_security_event(event_type: str, details: dict):
     """Emit a security event that will be routed to the SIEM."""
     record = security_logger.makeRecord(
@@ -186,15 +181,13 @@ def on_permission_denied(user_id: str, resource: str, action: str):
 
 ## Sumo Logic Integration
 
-For Sumo Logic, use the HTTP source exporter:
+For Sumo Logic, use the Sumo Logic exporter with your HTTP source endpoint:
 
 ```yaml
 exporters:
   sumologic:
     endpoint: "https://endpoint.collection.sumologic.com/receiver/v1/http/"
-    source_name: "opentelemetry"
-    source_category: "security/otel"
-    compress_encoding: gzip
+    compression: gzip
 ```
 
 ## SIEM Correlation Rules
