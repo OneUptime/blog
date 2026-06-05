@@ -50,6 +50,7 @@ dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Instrumentation.SqlClient
+dotnet add package OpenTelemetry.Instrumentation.Runtime
 
 # Exporters
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
@@ -118,12 +119,13 @@ builder.Services.AddOpenTelemetry()
         .AddSqlClientInstrumentation(options =>
         {
             options.SetDbStatementForText = true;
-            options.EnableConnectionLevelAttributes = true;
             options.RecordException = true;
         })
         // Add custom activity sources for Blazor components
         .AddSource("BlazorServerApp.Components")
         .AddSource("BlazorServerApp.Circuits")
+        .AddSource("BlazorServerApp.Services")
+        .AddSource("BlazorServerApp.SignalR")
         // Export to OTLP collector
         .AddOtlpExporter(options =>
         {
@@ -135,6 +137,7 @@ builder.Services.AddOpenTelemetry()
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()
+        .AddMeter("BlazorServerApp.Circuits")
         .AddOtlpExporter());
 
 var app = builder.Build();
@@ -162,6 +165,7 @@ SignalR connections are the lifeline of Blazor Server applications. Create a cus
 
 ```csharp
 using System.Diagnostics;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BlazorServerApp.Telemetry;
@@ -432,7 +436,8 @@ Now instrument your Blazor components to trace initialization, data loading, and
 
 ```csharp
 @page "/fetchdata"
-@using System.Diagnostics
+@using BlazorServerApp.Data
+@using BlazorServerApp.Services
 @inject WeatherForecastService ForecastService
 @inject IComponentTracingService TracingService
 
@@ -530,14 +535,6 @@ else
             throw;
         }
     }
-
-    public class WeatherForecast
-    {
-        public DateTime Date { get; set; }
-        public int TemperatureC { get; set; }
-        public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-        public string? Summary { get; set; }
-    }
 }
 ```
 
@@ -549,6 +546,14 @@ Services called by components should also be instrumented to provide end-to-end 
 using System.Diagnostics;
 
 namespace BlazorServerApp.Data;
+
+public class WeatherForecast
+{
+    public DateTime Date { get; set; }
+    public int TemperatureC { get; set; }
+    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public string? Summary { get; set; }
+}
 
 public class WeatherForecastService
 {
