@@ -46,8 +46,8 @@ def search_restaurants(query):
             "reservation.location": query.location,
             "reservation.cuisine": query.cuisine or "any",
             "reservation.party_size": query.party_size,
-            "reservation.date": query.date,
-            "reservation.time_preference": query.preferred_time,
+            "reservation.date": str(query.date),
+            "reservation.time_preference": str(query.preferred_time),
             "reservation.price_range": query.price_range or "any",
         }
     ) as span:
@@ -108,9 +108,9 @@ def check_restaurant_availability(restaurant_id, date, time_slot, party_size):
     with tracer.start_as_current_span(
         "reservation.check_availability",
         attributes={
-            "reservation.restaurant_id": restaurant_id,
-            "reservation.date": date,
-            "reservation.time_slot": time_slot,
+            "reservation.restaurant_id": str(restaurant_id),
+            "reservation.date": str(date),
+            "reservation.time_slot": str(time_slot),
             "reservation.party_size": party_size,
         }
     ) as span:
@@ -150,7 +150,7 @@ def check_restaurant_availability(restaurant_id, date, time_slot, party_size):
 
         latency = (time.time() - start) * 1000
         availability_check_latency.record(latency, {
-            "reservation.restaurant_id": restaurant_id,
+            "reservation.restaurant_id": str(restaurant_id),
         })
 
         span.set_attribute("reservation.is_available", len(available_tables) > 0)
@@ -182,11 +182,11 @@ def create_reservation(restaurant_id, diner_id, date, time_slot, party_size, spe
         "reservation.create_booking",
         kind=SpanKind.SERVER,
         attributes={
-            "reservation.restaurant_id": restaurant_id,
-            "reservation.diner_id": diner_id,
+            "reservation.restaurant_id": str(restaurant_id),
+            "reservation.diner_id": str(diner_id),
             "reservation.party_size": party_size,
-            "reservation.date": date,
-            "reservation.time_slot": time_slot,
+            "reservation.date": str(date),
+            "reservation.time_slot": str(time_slot),
             "reservation.has_special_requests": bool(special_requests),
         }
     ) as span:
@@ -205,7 +205,7 @@ def create_reservation(restaurant_id, diner_id, date, time_slot, party_size, spe
         # Assign a specific table
         with tracer.start_as_current_span("reservation.assign_table") as table_span:
             table = assign_optimal_table(availability["tables"], party_size)
-            table_span.set_attribute("reservation.table_id", table.id)
+            table_span.set_attribute("reservation.table_id", str(table.id))
             table_span.set_attribute("reservation.table_seats", table.seats)
             table_span.set_attribute("reservation.table_section", table.section)
 
@@ -220,7 +220,7 @@ def create_reservation(restaurant_id, diner_id, date, time_slot, party_size, spe
                 party_size=party_size,
                 special_requests=special_requests,
             )
-            save_span.set_attribute("reservation.confirmation_id", reservation.confirmation_id)
+            save_span.set_attribute("reservation.confirmation_id", str(reservation.confirmation_id))
 
         # Send confirmation notification
         with tracer.start_as_current_span("reservation.send_confirmation") as notif_span:
