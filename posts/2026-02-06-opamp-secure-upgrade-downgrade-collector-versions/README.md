@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OpAMP, Version Management, Security
 
 Description: Use OpAMP package management to securely upgrade and downgrade OpenTelemetry Collector versions across your entire fleet without SSH access.
 
-Rolling out a new version of the OpenTelemetry Collector across a fleet of machines traditionally means a deployment pipeline, SSH access, or configuration management tools like Ansible. OpAMP provides a protocol-native way to push new binary versions to your collectors, verify their integrity, and roll back if something goes wrong.
+Rolling out a new version of the OpenTelemetry Collector across a fleet of machines traditionally means a deployment pipeline, SSH access, or configuration management tools like Ansible. OpAMP provides a protocol-native way to offer new binary versions to your collectors, verify their integrity, and roll back if something goes wrong.
 
 ## How OpAMP Package Management Works
 
@@ -15,10 +15,10 @@ OpAMP defines a package management capability where the server can offer package
 1. The server announces available packages with their version and download details
 2. The agent (supervisor) checks if it needs to update
 3. The agent downloads the new package and verifies its hash
-4. The supervisor stops the old collector, swaps the binary, and starts the new one
+4. The supervisor installs or activates the package using its agent-specific update logic
 5. The agent reports the installation status back to the server
 
-The key benefit here is that the entire process is pull-based and authenticated. The agent decides when to apply the update, and the binary is verified using a cryptographic hash before execution.
+The key benefit here is that the download process is pull-based and, when you use authenticated OpAMP and download endpoints, authenticated. The agent decides when to apply the update, and the binary is verified using a cryptographic hash before execution.
 
 ## Server-Side Package Offering
 
@@ -26,7 +26,7 @@ Configure your OpAMP server to offer a new collector version:
 
 ```go
 // Define the package available for agents
-func createPackageOffer(version string, downloadURL string, hash []byte) *protobufs.PackagesAvailable {
+func createPackageOffer(version string, downloadURL string, fileHash []byte, packageHash []byte) *protobufs.PackagesAvailable {
     return &protobufs.PackagesAvailable{
         Packages: map[string]*protobufs.PackageAvailable{
             "otelcol-contrib": {
@@ -34,12 +34,13 @@ func createPackageOffer(version string, downloadURL string, hash []byte) *protob
                 Version: version,
                 File: &protobufs.DownloadableFile{
                     DownloadUrl: downloadURL,
-                    ContentHash: hash,
+                    ContentHash: fileHash,
                 },
+                Hash: packageHash,
             },
         },
         // Hash of the entire packages map, used for change detection
-        AllPackagesHash: computePackagesHash(version, hash),
+        AllPackagesHash: computeAllPackagesHash(version, packageHash),
     }
 }
 
@@ -51,16 +52,17 @@ func offerUpgrade(conn types.Connection, version string) error {
         version,
     )
 
-    // Read the SHA256 hash of the binary
-    hash, err := readHashFile(
+    // Read the SHA256 hash bytes of the binary
+    fileHash, err := readHashFile(
         fmt.Sprintf("/artifacts/otelcol-contrib/%s/sha256sum", version),
     )
     if err != nil {
         return fmt.Errorf("failed to read hash: %w", err)
     }
+    packageHash := computePackageHash("otelcol-contrib", version, downloadURL, fileHash)
 
     msg := &protobufs.ServerToAgent{
-        PackagesAvailable: createPackageOffer(version, downloadURL, hash),
+        PackagesAvailable: createPackageOffer(version, downloadURL, fileHash, packageHash),
     }
 
     return conn.Send(context.Background(), msg)
@@ -83,24 +85,26 @@ server:
 
 agent:
   executable: /opt/otelcol/bin/otelcol-contrib
-  storage_dir: /var/lib/opamp-supervisor
+
+storage:
+  directory: /var/lib/opamp-supervisor
 
 capabilities:
   accepts_packages: true
+  reports_package_statuses: true
   reports_health: true
   reports_effective_config: true
 ```
 
 ## Securing the Update Process
 
-Never distribute collector binaries without verification. OpAMP includes content hashes for integrity checking, but you should add additional security layers:
+Never distribute collector binaries without verification. OpAMP includes content hashes for integrity checking and a `DownloadableFile.signature` field for detached file signatures, but you should add additional security layers:
 
 ```go
-// On the server side, sign the package hash with your private key
-func signPackageHash(hash []byte, privateKey *rsa.PrivateKey) ([]byte, error) {
-    hashed := sha256.Sum256(hash)
+// On the server side, sign the file content hash with your private key
+func signFileHash(fileHash []byte, privateKey *rsa.PrivateKey) ([]byte, error) {
     signature, err := rsa.SignPKCS1v15(
-        rand.Reader, privateKey, crypto.SHA256, hashed[:],
+        rand.Reader, privateKey, crypto.SHA256, fileHash,
     )
     if err != nil {
         return nil, fmt.Errorf("signing failed: %w", err)
@@ -109,7 +113,7 @@ func signPackageHash(hash []byte, privateKey *rsa.PrivateKey) ([]byte, error) {
 }
 ```
 
-On the supervisor side, verify the signature before applying the binary. This prevents a compromised server from pushing malicious binaries to your fleet.
+Include the signature in `DownloadableFile.Signature`, and verify it on the supervisor side before applying the binary. Keep the signing key separate from the OpAMP server so a compromised server cannot sign malicious binaries for your fleet.
 
 ## Performing a Fleet-Wide Upgrade
 
@@ -199,4 +203,4 @@ OnMessageFunc: func(conn types.Connection, msg *protobufs.AgentToServer) *protob
 },
 ```
 
-With this setup, you can manage collector versions across your entire fleet from a single control plane, with cryptographic verification at every step and the ability to roll back instantly when something goes wrong.
+With this setup, you can manage collector versions across your entire fleet from a single control plane, with cryptographic verification for downloaded binaries and the ability to initiate rollbacks quickly when something goes wrong.
