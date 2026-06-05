@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Helm, Kubernetes
 
-Description: Fix Helm chart upgrade failures for the OpenTelemetry Collector caused by immutable selector label changes in chart version 0.110.0.
+Description: Fix Helm chart upgrade failures for the OpenTelemetry Collector caused by immutable selector label changes in chart versions 0.110.1 and 0.110.2.
 
 You run `helm upgrade` for the OpenTelemetry Collector and get:
 
@@ -20,26 +20,28 @@ Kubernetes does not allow changing the `spec.selector.matchLabels` on an existin
 
 Kubernetes uses selector labels to match Deployments with their Pods. Changing the selector would orphan existing Pods and could cause unpredictable behavior. Kubernetes prevents this by making the selector immutable after creation.
 
-The OpenTelemetry Collector Helm chart changed its default selector labels in version 0.110.0. If you installed with an older chart version and try to upgrade to 0.110.0+, the label change causes the upgrade to fail.
+The OpenTelemetry Collector Helm chart briefly changed its default selector labels in versions 0.110.1 and 0.110.2. If you installed chart version 0.110.0 and try to upgrade to 0.110.1 or 0.110.2, the label change causes the upgrade to fail. Upgrade directly to 0.110.3 or later to avoid the broken selector labels.
 
 ## The Label Change
 
 ```yaml
-# Before v0.110.0
+# v0.110.0 and v0.110.3+
 
 spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: opentelemetry-collector
       app.kubernetes.io/instance: otel-collector
+      component: standalone-collector
 
-# After v0.110.0 (example - check actual chart for exact labels)
+# v0.110.1 and v0.110.2 (broken)
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/name: opentelemetry-collector
       app.kubernetes.io/instance: otel-collector
-      app.kubernetes.io/component: standalone
+      app.kubernetes.io/component: standalone-collector
+      component: standalone-collector
 ```
 
 ## Fix 1: Delete and Recreate the Deployment
@@ -56,7 +58,7 @@ kubectl delete deployment otel-collector
 # Step 3: Run the upgrade - Helm will create a new Deployment
 helm upgrade otel-collector open-telemetry/opentelemetry-collector \
   -f current-values.yaml \
-  --version 0.110.0
+  --version 0.110.3
 ```
 
 During the delete/recreate window, there is a brief period where the Collector is not running. Plan for this during a maintenance window.
@@ -68,27 +70,23 @@ The `--force` flag tells Helm to delete and recreate resources that cannot be pa
 ```bash
 helm upgrade otel-collector open-telemetry/opentelemetry-collector \
   -f values.yaml \
-  --version 0.110.0 \
+  --version 0.110.3 \
   --force
 ```
 
-This has the same effect as manually deleting the Deployment, but Helm handles it automatically. There will still be a brief downtime.
+This has the same effect as manually deleting the Deployment, but Helm handles it automatically. There will still be a brief downtime. In Helm 4, the equivalent replacement flag is `--force-replace`.
 
-## Fix 3: Override Selector Labels
+## Fix 3: Skip the Broken Chart Versions
 
-If you want a zero-downtime upgrade, override the chart's selector labels to match the old ones:
+If you are upgrading from 0.110.0, avoid 0.110.1 and 0.110.2 and upgrade directly to 0.110.3 or later:
 
-```yaml
-# values.yaml - override labels to match old chart
-podLabels:
-  app.kubernetes.io/name: opentelemetry-collector
-  app.kubernetes.io/instance: otel-collector
-
-# Some charts expose selector label overrides
-nameOverride: opentelemetry-collector
+```bash
+helm upgrade otel-collector open-telemetry/opentelemetry-collector \
+  -f values.yaml \
+  --version 0.110.3
 ```
 
-Check the chart's `values.yaml` for the exact keys that control selector labels.
+The chart's `podLabels` setting adds labels to the Pod template, but it does not override the Deployment selector. Do not rely on `podLabels` to fix an immutable selector mismatch.
 
 ## Fix 4: Blue-Green Deployment
 
@@ -98,7 +96,7 @@ Deploy the new version as a separate release, switch traffic, then remove the ol
 # Step 1: Install new version with a different release name
 helm install otel-collector-new open-telemetry/opentelemetry-collector \
   -f values.yaml \
-  --version 0.110.0
+  --version 0.110.3
 
 # Step 2: Verify the new Collector is working
 kubectl get pods -l app.kubernetes.io/instance=otel-collector-new
@@ -119,7 +117,7 @@ Always specify the chart version in your Helm commands and CI/CD:
 
 ```bash
 helm upgrade otel-collector open-telemetry/opentelemetry-collector \
-  --version 0.110.0  # pin to a specific version
+  --version 0.110.3  # pin to a specific version
 ```
 
 ### Test Upgrades in Staging First
@@ -130,7 +128,7 @@ Before upgrading production, test in a staging environment:
 # Staging
 helm upgrade otel-collector-staging open-telemetry/opentelemetry-collector \
   -f staging-values.yaml \
-  --version 0.110.0 \
+  --version 0.110.3 \
   --dry-run
 ```
 
@@ -145,22 +143,21 @@ Before upgrading, check the chart changelog:
 helm search repo open-telemetry/opentelemetry-collector --versions
 
 # View chart notes for a specific version
-helm show readme open-telemetry/opentelemetry-collector --version 0.110.0
+helm show readme open-telemetry/opentelemetry-collector --version 0.110.3
 ```
 
-### Use an Explicit Selector Override
+### Check Rendered Selectors
 
-To protect against future label changes, explicitly set selector labels in your values:
+To protect against future label changes, check the rendered selector before applying an upgrade:
 
-```yaml
-# values.yaml
-selectorLabels:
-  app: otel-collector
-  release: production
+```bash
+helm template otel-collector open-telemetry/opentelemetry-collector \
+  -f values.yaml \
+  --version 0.110.3 | grep -A5 "matchLabels:"
 ```
 
-By controlling the selector labels yourself, chart upgrades cannot change them.
+Compare the rendered `spec.selector.matchLabels` with the selector on the existing Deployment before upgrading.
 
 ## Summary
 
-Helm chart selector label changes cause upgrade failures because Kubernetes does not allow modifying Deployment selectors. The fix is to either delete and recreate the Deployment, use `--force`, or override the labels. Always test chart upgrades in staging and pin chart versions in production to avoid surprises.
+Helm chart selector label changes cause upgrade failures because Kubernetes does not allow modifying Deployment selectors. For the OpenTelemetry Collector chart, skip the broken 0.110.1 and 0.110.2 versions and upgrade directly to 0.110.3 or later. If you are already blocked by an immutable selector mismatch, delete and recreate the Deployment or use Helm's replacement flag. Always test chart upgrades in staging and pin chart versions in production to avoid surprises.
