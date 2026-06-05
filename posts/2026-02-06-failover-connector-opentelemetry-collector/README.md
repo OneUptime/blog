@@ -6,45 +6,43 @@ Tags: OpenTelemetry, Collector, Connector, Failover, High Availability, Reliabil
 
 Description: Implement robust failover strategies in OpenTelemetry Collector using the Failover Connector to ensure continuous telemetry collection even when primary backends become unavailable.
 
-The Failover Connector in the OpenTelemetry Collector provides automatic failover capabilities for your observability pipeline. When a primary exporter fails, the Failover Connector automatically routes telemetry data to backup exporters, ensuring continuous data collection even during outages or maintenance windows.
+The Failover Connector in the OpenTelemetry Collector provides health-based routing capabilities for your observability pipeline. When a downstream pipeline returns an error, the Failover Connector routes telemetry data to a lower-priority pipeline, helping reduce data loss during backend outages or maintenance windows.
 
 ## Understanding the Failover Connector
 
 Modern observability systems must handle backend failures gracefully. Network issues, backend maintenance, or overload conditions can cause exporters to fail. Without proper failover mechanisms, these failures result in data loss and observability gaps.
 
-The Failover Connector addresses this by implementing a priority-based failover system. It maintains a list of exporters ordered by preference, continuously monitors their health, and automatically switches to backup exporters when the primary fails.
+The Failover Connector addresses this by implementing a priority-based failover system. It maintains a list of downstream pipelines ordered by preference and switches to lower-priority pipelines when the current priority level fails. The connector supports traces-to-traces, metrics-to-metrics, and logs-to-logs pipelines and is currently an alpha component in the contrib and k8s Collector distributions.
 
 ## How Failover Works
 
-The Failover Connector operates using a priority queue of exporters:
+The Failover Connector operates using priority levels of downstream pipelines:
 
 ```mermaid
 graph TB
     A[Telemetry Data] --> B[Failover Connector]
-    B --> C{Primary Exporter Healthy?}
-    C -->|Yes| D[Send to Primary]
-    C -->|No| E{Secondary Exporter Healthy?}
-    E -->|Yes| F[Send to Secondary]
-    E -->|No| G{Tertiary Exporter Healthy?}
-    G -->|Yes| H[Send to Tertiary]
+    B --> C{Primary Pipeline Level Healthy?}
+    C -->|Yes| D[Send to Primary Pipeline]
+    C -->|No| E{Secondary Pipeline Level Healthy?}
+    E -->|Yes| F[Send to Secondary Pipeline]
+    E -->|No| G{Tertiary Pipeline Level Healthy?}
+    G -->|Yes| H[Send to Tertiary Pipeline]
     G -->|No| I[Return Error]
-    D --> J[Monitor Health]
+    D --> J[Observe Pipeline Result]
     F --> J
     H --> J
-    J --> K{Primary Recovered?}
-    K -->|Yes| L[Switch Back to Primary]
-    K -->|No| M[Continue with Active Exporter]
+    J --> K{Higher Priority Level Recovered?}
+    K -->|Yes| L[Switch Back to Higher Priority Level]
+    K -->|No| M[Continue with Active Pipeline Level]
 ```
 
-The connector continuously monitors exporter health and automatically recovers to higher-priority exporters when they become available again.
+If any pipeline at the active priority level fails, that level is considered unhealthy and the connector moves to the next priority level. The connector periodically tries to reestablish a stable connection with higher-priority levels based on `retry_interval`.
 
 ## Basic Configuration
 
 Here's a simple failover configuration with primary and backup exporters:
 
 ```yaml
-# Define exporters with different priorities
-
 exporters:
   # Primary exporter - preferred destination
   otlp/primary:
@@ -61,24 +59,26 @@ exporters:
     path: /var/log/otel/failover-data.json
 
 connectors:
-  failover:
-    # List of exporters in priority order
-    # The connector tries each in sequence until one succeeds
-    pipelines:
-      traces:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
+  failover/traces:
+    priority_levels:
+      - [traces/primary]
+      - [traces/secondary]
+      - [traces/file]
+    retry_interval: 60s
 
-      metrics:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
+  failover/metrics:
+    priority_levels:
+      - [metrics/primary]
+      - [metrics/secondary]
+      - [metrics/file]
+    retry_interval: 60s
 
-      logs:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
+  failover/logs:
+    priority_levels:
+      - [logs/primary]
+      - [logs/secondary]
+      - [logs/file]
+    retry_interval: 60s
 
 receivers:
   otlp:
@@ -95,21 +95,47 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      # Use failover connector instead of direct exporters
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/primary:
+      receivers: [failover/traces]
+      exporters: [otlp/primary]
+    traces/secondary:
+      receivers: [failover/traces]
+      exporters: [otlp/secondary]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [failover]
+      exporters: [failover/metrics]
+    metrics/primary:
+      receivers: [failover/metrics]
+      exporters: [otlp/primary]
+    metrics/secondary:
+      receivers: [failover/metrics]
+      exporters: [otlp/secondary]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file]
 
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [failover]
+      exporters: [failover/logs]
+    logs/primary:
+      receivers: [failover/logs]
+      exporters: [otlp/primary]
+    logs/secondary:
+      receivers: [failover/logs]
+      exporters: [otlp/secondary]
+    logs/file:
+      receivers: [failover/logs]
+      exporters: [file]
 ```
 
-This configuration attempts to send data to the primary backend first. If that fails, it tries the secondary backend, and finally falls back to local file storage.
+This configuration attempts to send data to the primary backend first. If the primary pipeline fails, it tries the secondary pipeline, and finally falls back to local file storage.
 
 ## Advanced Failover Strategies
 
@@ -117,12 +143,11 @@ Configure different failover strategies for different telemetry types based on t
 
 ```yaml
 exporters:
-  # Production backends
   otlp/prod-primary:
     endpoint: prod-primary.example.com:4317
     timeout: 5s
     retry_on_failure:
-      enabled: false  # Failover handles retries
+      enabled: false
 
   otlp/prod-secondary:
     endpoint: prod-secondary.example.com:4317
@@ -130,12 +155,10 @@ exporters:
     retry_on_failure:
       enabled: false
 
-  # Staging backend as tertiary failover
   otlp/staging:
     endpoint: staging.example.com:4317
     timeout: 10s
 
-  # Local file storage as last resort
   file/traces:
     path: /var/log/otel/traces-failover.json
     rotation:
@@ -155,35 +178,27 @@ exporters:
       max_backups: 10
 
 connectors:
-  failover:
-    pipelines:
-      # Traces: Prioritize reliability
-      traces:
-        - [otlp/prod-primary]
-        - [otlp/prod-secondary]
-        - [otlp/staging]
-        - [file/traces]
-
-      # Metrics: Similar strategy but different file
-      metrics:
-        - [otlp/prod-primary]
-        - [otlp/prod-secondary]
-        - [file/metrics]
-
-      # Logs: May tolerate more data loss
-      logs:
-        - [otlp/prod-primary]
-        - [otlp/prod-secondary]
-        - [file/logs]
-
-    # Retry interval before switching back to higher priority exporter
+  failover/traces:
+    priority_levels:
+      - [traces/prod-primary]
+      - [traces/prod-secondary]
+      - [traces/staging]
+      - [traces/file]
     retry_interval: 60s
 
-    # Gap between retry attempts
-    retry_gap: 10s
+  failover/metrics:
+    priority_levels:
+      - [metrics/prod-primary]
+      - [metrics/prod-secondary]
+      - [metrics/file]
+    retry_interval: 60s
 
-    # Maximum number of retries before failover
-    max_retries: 3
+  failover/logs:
+    priority_levels:
+      - [logs/prod-primary]
+      - [logs/prod-secondary]
+      - [logs/file]
+    retry_interval: 60s
 
 receivers:
   otlp:
@@ -207,17 +222,47 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/prod-primary:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-primary]
+    traces/prod-secondary:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-secondary]
+    traces/staging:
+      receivers: [failover/traces]
+      exporters: [otlp/staging]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file/traces]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [failover]
+      exporters: [failover/metrics]
+    metrics/prod-primary:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-primary]
+    metrics/prod-secondary:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-secondary]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file/metrics]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [failover]
+      exporters: [failover/logs]
+    logs/prod-primary:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-primary]
+    logs/prod-secondary:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-secondary]
+    logs/file:
+      receivers: [failover/logs]
+      exporters: [file/logs]
 ```
 
 ## Multi-Region Failover
@@ -226,22 +271,18 @@ Implement geographic redundancy by failing over between regional backends:
 
 ```yaml
 exporters:
-  # Primary region (us-east-1)
   otlp/us-east:
     endpoint: otel.us-east-1.example.com:4317
     timeout: 5s
 
-  # Secondary region (us-west-2)
   otlp/us-west:
     endpoint: otel.us-west-2.example.com:4317
     timeout: 5s
 
-  # Tertiary region (eu-west-1)
   otlp/eu-west:
     endpoint: otel.eu-west-1.example.com:4317
-    timeout: 10s  # Higher latency expected
+    timeout: 10s
 
-  # Local buffer for complete regional outages
   file/local:
     path: /var/log/otel/regional-failover.json
     rotation:
@@ -249,33 +290,30 @@ exporters:
       max_backups: 20
 
 connectors:
-  failover:
-    pipelines:
-      traces:
-        # Try local region first, then nearest regions, finally local storage
-        - [otlp/us-east]
-        - [otlp/us-west]
-        - [otlp/eu-west]
-        - [file/local]
-
-      metrics:
-        - [otlp/us-east]
-        - [otlp/us-west]
-        - [otlp/eu-west]
-        - [file/local]
-
-      logs:
-        - [otlp/us-east]
-        - [otlp/us-west]
-        - [file/local]
-
-    # Check primary region availability every minute
+  failover/traces:
+    priority_levels:
+      - [traces/us-east]
+      - [traces/us-west]
+      - [traces/eu-west]
+      - [traces/file]
     retry_interval: 60s
-    retry_gap: 10s
-    max_retries: 2
+
+  failover/metrics:
+    priority_levels:
+      - [metrics/us-east]
+      - [metrics/us-west]
+      - [metrics/eu-west]
+      - [metrics/file]
+    retry_interval: 60s
+
+  failover/logs:
+    priority_levels:
+      - [logs/us-east]
+      - [logs/us-west]
+      - [logs/file]
+    retry_interval: 60s
 
 processors:
-  # Add region metadata
   resource/region:
     attributes:
       - key: collector.region
@@ -284,6 +322,8 @@ processors:
       - key: failover.enabled
         value: "true"
         action: upsert
+
+  batch:
 
 receivers:
   otlp:
@@ -296,17 +336,50 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource/region, batch]
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/us-east:
+      receivers: [failover/traces]
+      exporters: [otlp/us-east]
+    traces/us-west:
+      receivers: [failover/traces]
+      exporters: [otlp/us-west]
+    traces/eu-west:
+      receivers: [failover/traces]
+      exporters: [otlp/eu-west]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file/local]
 
     metrics:
       receivers: [otlp]
       processors: [resource/region, batch]
-      exporters: [failover]
+      exporters: [failover/metrics]
+    metrics/us-east:
+      receivers: [failover/metrics]
+      exporters: [otlp/us-east]
+    metrics/us-west:
+      receivers: [failover/metrics]
+      exporters: [otlp/us-west]
+    metrics/eu-west:
+      receivers: [failover/metrics]
+      exporters: [otlp/eu-west]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file/local]
 
     logs:
       receivers: [otlp]
       processors: [resource/region, batch]
-      exporters: [failover]
+      exporters: [failover/logs]
+    logs/us-east:
+      receivers: [failover/logs]
+      exporters: [otlp/us-east]
+    logs/us-west:
+      receivers: [failover/logs]
+      exporters: [otlp/us-west]
+    logs/file:
+      receivers: [failover/logs]
+      exporters: [file/local]
 ```
 
 ## Combining Failover with Load Balancing
@@ -315,8 +388,7 @@ For high-throughput environments, combine failover with load balancing at each t
 
 ```yaml
 exporters:
-  # Primary tier - load balanced across multiple endpoints
-  loadbalancing/primary:
+  load_balancing/primary:
     protocol:
       otlp:
         timeout: 5s
@@ -327,8 +399,7 @@ exporters:
           - primary-backend-2.example.com:4317
           - primary-backend-3.example.com:4317
 
-  # Secondary tier - load balanced backups
-  loadbalancing/secondary:
+  load_balancing/secondary:
     protocol:
       otlp:
         timeout: 5s
@@ -338,34 +409,29 @@ exporters:
           - secondary-backend-1.example.com:4317
           - secondary-backend-2.example.com:4317
 
-  # Tertiary - single backup endpoint
   otlp/backup:
     endpoint: backup.example.com:4317
     timeout: 10s
 
-  # Final fallback - local storage
   file:
     path: /var/log/otel/ultimate-failover.json
 
 connectors:
-  failover:
-    pipelines:
-      traces:
-        # Each tier can be load balanced internally
-        - [loadbalancing/primary]
-        - [loadbalancing/secondary]
-        - [otlp/backup]
-        - [file]
-
-      metrics:
-        - [loadbalancing/primary]
-        - [loadbalancing/secondary]
-        - [otlp/backup]
-        - [file]
-
+  failover/traces:
+    priority_levels:
+      - [traces/primary]
+      - [traces/secondary]
+      - [traces/backup]
+      - [traces/file]
     retry_interval: 30s
-    retry_gap: 5s
-    max_retries: 3
+
+  failover/metrics:
+    priority_levels:
+      - [metrics/primary]
+      - [metrics/secondary]
+      - [metrics/backup]
+      - [metrics/file]
+    retry_interval: 30s
 
 receivers:
   otlp:
@@ -384,12 +450,36 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/primary:
+      receivers: [failover/traces]
+      exporters: [load_balancing/primary]
+    traces/secondary:
+      receivers: [failover/traces]
+      exporters: [load_balancing/secondary]
+    traces/backup:
+      receivers: [failover/traces]
+      exporters: [otlp/backup]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [failover]
+      exporters: [failover/metrics]
+    metrics/primary:
+      receivers: [failover/metrics]
+      exporters: [load_balancing/primary]
+    metrics/secondary:
+      receivers: [failover/metrics]
+      exporters: [load_balancing/secondary]
+    metrics/backup:
+      receivers: [failover/metrics]
+      exporters: [otlp/backup]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file]
 ```
 
 ## Handling Partial Failures
@@ -398,23 +488,18 @@ Configure the Failover Connector to handle scenarios where some telemetry types 
 
 ```yaml
 exporters:
-  # Backend that accepts traces and logs
   otlp/traces-logs:
     endpoint: traces-logs-backend.example.com:4317
 
-  # Backend that accepts metrics
   otlp/metrics:
     endpoint: metrics-backend.example.com:4317
 
-  # Backup for traces and logs
   otlp/traces-logs-backup:
     endpoint: backup.example.com:4317
 
-  # Backup for metrics
   otlp/metrics-backup:
     endpoint: metrics-backup.example.com:4317
 
-  # Local storage fallbacks
   file/traces:
     path: /var/log/otel/traces.json
   file/metrics:
@@ -423,29 +508,25 @@ exporters:
     path: /var/log/otel/logs.json
 
 connectors:
-  # Separate failover connectors for different telemetry types
   failover/traces:
-    pipelines:
-      traces:
-        - [otlp/traces-logs]
-        - [otlp/traces-logs-backup]
-        - [file/traces]
+    priority_levels:
+      - [traces/traces-logs]
+      - [traces/backup]
+      - [traces/file]
     retry_interval: 30s
 
   failover/metrics:
-    pipelines:
-      metrics:
-        - [otlp/metrics]
-        - [otlp/metrics-backup]
-        - [file/metrics]
+    priority_levels:
+      - [metrics/primary]
+      - [metrics/backup]
+      - [metrics/file]
     retry_interval: 30s
 
   failover/logs:
-    pipelines:
-      logs:
-        - [otlp/traces-logs]
-        - [otlp/traces-logs-backup]
-        - [file/logs]
+    priority_levels:
+      - [logs/traces-logs]
+      - [logs/backup]
+      - [logs/file]
     retry_interval: 30s
 
 receivers:
@@ -464,16 +545,43 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [failover/traces]
+    traces/traces-logs:
+      receivers: [failover/traces]
+      exporters: [otlp/traces-logs]
+    traces/backup:
+      receivers: [failover/traces]
+      exporters: [otlp/traces-logs-backup]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file/traces]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [failover/metrics]
+    metrics/primary:
+      receivers: [failover/metrics]
+      exporters: [otlp/metrics]
+    metrics/backup:
+      receivers: [failover/metrics]
+      exporters: [otlp/metrics-backup]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file/metrics]
 
     logs:
       receivers: [otlp]
       processors: [batch]
       exporters: [failover/logs]
+    logs/traces-logs:
+      receivers: [failover/logs]
+      exporters: [otlp/traces-logs]
+    logs/backup:
+      receivers: [failover/logs]
+      exporters: [otlp/traces-logs-backup]
+    logs/file:
+      receivers: [failover/logs]
+      exporters: [file/logs]
 ```
 
 ## Monitoring Failover Health
@@ -481,50 +589,26 @@ service:
 Track failover events and exporter health to understand system reliability:
 
 ```yaml
-service:
-  # Enable telemetry to monitor the collector itself
-  telemetry:
-    logs:
-      level: info
-      # Log failover events
-      initial_fields:
-        service: otel-collector
-
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
-      # Expose metrics about failover behavior
-
 exporters:
-  # Send collector's own telemetry to monitoring
+  otlp/primary:
+    endpoint: primary-backend:4317
+
+  otlp/secondary:
+    endpoint: secondary-backend:4317
+
+  file:
+    path: /var/log/otel/failover-data.json
+
   prometheus:
     endpoint: 0.0.0.0:8889
 
-  # Log failover events
-  logging:
-    verbosity: detailed
-    sampling_initial: 5
-    sampling_thereafter: 200
-
 connectors:
-  failover:
-    pipelines:
-      traces:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
-      metrics:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
-      logs:
-        - [otlp/primary]
-        - [otlp/secondary]
-        - [file]
-
+  failover/traces:
+    priority_levels:
+      - [traces/primary]
+      - [traces/secondary]
+      - [traces/file]
     retry_interval: 60s
-    retry_gap: 10s
-    max_retries: 3
 
 receivers:
   otlp:
@@ -532,27 +616,48 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-  # Receive internal metrics for self-monitoring
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'otel-collector'
+        - job_name: otel-collector
           scrape_interval: 10s
           static_configs:
-            - targets: ['localhost:8888']
+            - targets: [localhost:8888]
 
 processors:
   batch:
     timeout: 10s
 
 service:
+  telemetry:
+    logs:
+      level: info
+      initial_fields:
+        service: otel-collector
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/primary:
+      receivers: [failover/traces]
+      exporters: [otlp/primary]
+    traces/secondary:
+      receivers: [failover/traces]
+      exporters: [otlp/secondary]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file]
 
-    # Pipeline for collector's own metrics
     metrics/internal:
       receivers: [prometheus]
       processors: [batch]
@@ -563,7 +668,10 @@ Key metrics to monitor:
 - `otelcol_exporter_send_failed_spans`: Failed span exports per exporter
 - `otelcol_exporter_send_failed_metric_points`: Failed metric exports
 - `otelcol_exporter_send_failed_log_records`: Failed log exports
-- `otelcol_connector_refused_spans`: Data refused by connector
+- `otelcol_exporter_enqueue_failed_spans`: Spans that failed to enter an exporter's sending queue
+- `otelcol_exporter_queue_size`: Current exporter queue size
+
+When these metrics are scraped by Prometheus, names can include Prometheus-specific suffixes such as `_total` unless you configure the Collector's internal telemetry Prometheus exporter to omit type and unit suffixes.
 
 ## Production-Ready Configuration
 
@@ -596,47 +704,43 @@ processors:
         value: "true"
         action: upsert
       - key: collector.instance.id
-        value: ${COLLECTOR_INSTANCE_ID}
+        value: ${env:COLLECTOR_INSTANCE_ID}
         action: upsert
 
 exporters:
-  # Tier 1: Primary production backends
   otlp/prod-primary-1:
-    endpoint: ${PRIMARY_BACKEND_1}
-    timeout: 5s
-    compression: gzip
-    retry_on_failure:
-      enabled: false  # Failover handles retries
-
-  otlp/prod-primary-2:
-    endpoint: ${PRIMARY_BACKEND_2}
+    endpoint: ${env:PRIMARY_BACKEND_1}
     timeout: 5s
     compression: gzip
     retry_on_failure:
       enabled: false
 
-  # Tier 2: Secondary production backends
+  otlp/prod-primary-2:
+    endpoint: ${env:PRIMARY_BACKEND_2}
+    timeout: 5s
+    compression: gzip
+    retry_on_failure:
+      enabled: false
+
   otlp/prod-secondary-1:
-    endpoint: ${SECONDARY_BACKEND_1}
+    endpoint: ${env:SECONDARY_BACKEND_1}
     timeout: 5s
     compression: gzip
     retry_on_failure:
       enabled: false
 
   otlp/prod-secondary-2:
-    endpoint: ${SECONDARY_BACKEND_2}
+    endpoint: ${env:SECONDARY_BACKEND_2}
     timeout: 5s
     compression: gzip
     retry_on_failure:
       enabled: false
 
-  # Tier 3: Staging environment (emergency fallback)
   otlp/staging:
-    endpoint: ${STAGING_BACKEND}
+    endpoint: ${env:STAGING_BACKEND}
     timeout: 10s
     compression: gzip
 
-  # Tier 4: Local persistent storage
   file/traces:
     path: /var/log/otel/failover/traces.json
     rotation:
@@ -655,81 +759,125 @@ exporters:
       max_megabytes: 200
       max_backups: 30
 
-  # Monitoring
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
 connectors:
-  failover:
-    pipelines:
-      traces:
-        # Try primary backends in parallel (load balanced)
-        - [otlp/prod-primary-1, otlp/prod-primary-2]
-        # Then try secondary backends
-        - [otlp/prod-secondary-1, otlp/prod-secondary-2]
-        # Emergency fallback to staging
-        - [otlp/staging]
-        # Final fallback to local storage
-        - [file/traces]
+  failover/traces:
+    priority_levels:
+      - [traces/prod-primary-1, traces/prod-primary-2]
+      - [traces/prod-secondary-1, traces/prod-secondary-2]
+      - [traces/staging]
+      - [traces/file]
+    retry_interval: 60s
 
-      metrics:
-        - [otlp/prod-primary-1, otlp/prod-primary-2]
-        - [otlp/prod-secondary-1, otlp/prod-secondary-2]
-        - [file/metrics]
+  failover/metrics:
+    priority_levels:
+      - [metrics/prod-primary-1, metrics/prod-primary-2]
+      - [metrics/prod-secondary-1, metrics/prod-secondary-2]
+      - [metrics/file]
+    retry_interval: 60s
 
-      logs:
-        - [otlp/prod-primary-1, otlp/prod-primary-2]
-        - [otlp/prod-secondary-1, otlp/prod-secondary-2]
-        - [otlp/staging]
-        - [file/logs]
-
-    # Recovery settings
-    retry_interval: 60s  # Check primary every 60 seconds
-    retry_gap: 10s       # Wait 10 seconds between retries
-    max_retries: 3       # Try 3 times before failover
+  failover/logs:
+    priority_levels:
+      - [logs/prod-primary-1, logs/prod-primary-2]
+      - [logs/prod-secondary-1, logs/prod-secondary-2]
+      - [logs/staging]
+      - [logs/file]
+    retry_interval: 60s
 
 service:
   telemetry:
     logs:
-      level: ${LOG_LEVEL:-info}
+      level: ${env:LOG_LEVEL:-info}
       encoding: json
-
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource/failover, batch]
-      exporters: [failover]
+      exporters: [failover/traces]
+    traces/prod-primary-1:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-primary-1]
+    traces/prod-primary-2:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-primary-2]
+    traces/prod-secondary-1:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-secondary-1]
+    traces/prod-secondary-2:
+      receivers: [failover/traces]
+      exporters: [otlp/prod-secondary-2]
+    traces/staging:
+      receivers: [failover/traces]
+      exporters: [otlp/staging]
+    traces/file:
+      receivers: [failover/traces]
+      exporters: [file/traces]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource/failover, batch]
-      exporters: [failover]
+      exporters: [failover/metrics]
+    metrics/prod-primary-1:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-primary-1]
+    metrics/prod-primary-2:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-primary-2]
+    metrics/prod-secondary-1:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-secondary-1]
+    metrics/prod-secondary-2:
+      receivers: [failover/metrics]
+      exporters: [otlp/prod-secondary-2]
+    metrics/file:
+      receivers: [failover/metrics]
+      exporters: [file/metrics]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource/failover, batch]
-      exporters: [failover]
-
-  extensions: []
+      exporters: [failover/logs]
+    logs/prod-primary-1:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-primary-1]
+    logs/prod-primary-2:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-primary-2]
+    logs/prod-secondary-1:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-secondary-1]
+    logs/prod-secondary-2:
+      receivers: [failover/logs]
+      exporters: [otlp/prod-secondary-2]
+    logs/staging:
+      receivers: [failover/logs]
+      exporters: [otlp/staging]
+    logs/file:
+      receivers: [failover/logs]
+      exporters: [file/logs]
 ```
 
 ## Integration with Other Connectors
 
-The Failover Connector works seamlessly with other OpenTelemetry connectors. Combine it with the Routing Connector at https://oneuptime.com/blog/post/2026-02-06-routing-connector-opentelemetry-collector/view for advanced traffic management, or use it alongside the Service Graph Connector at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view to ensure service topology data remains available during outages.
+The Failover Connector works with other OpenTelemetry connectors when they are connected through normal Collector pipelines. Combine it with the Routing Connector at https://oneuptime.com/blog/post/2026-02-06-routing-connector-opentelemetry-collector/view for advanced traffic management, or use it alongside the Service Graph Connector at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view to ensure service topology data remains available during outages.
 
 ## Best Practices
 
-1. **Order Exporters by Preference**: Place your most preferred exporters first in the failover list.
+1. **Order Pipelines by Preference**: Place your most preferred downstream pipelines first in the `priority_levels` list.
 
-2. **Use Local Storage as Final Fallback**: Always include a file exporter as the last resort to prevent data loss.
+2. **Use Local Storage as Final Fallback**: Include a file exporter pipeline as the last resort when writing data locally is appropriate for your deployment.
 
 3. **Configure Appropriate Timeouts**: Set shorter timeouts on primary exporters to fail over quickly.
 
-4. **Monitor Failover Events**: Track which exporters are being used to identify reliability issues.
+4. **Monitor Failover Events**: Track which exporters and downstream pipelines are being used to identify reliability issues.
 
 5. **Test Failover Scenarios**: Regularly test failover behavior by simulating backend failures.
 
@@ -737,10 +885,10 @@ The Failover Connector works seamlessly with other OpenTelemetry connectors. Com
 
 7. **Consider Data Volume**: Ensure local storage has sufficient capacity for your telemetry volume during extended outages.
 
-8. **Disable Exporter Retries**: Let the Failover Connector handle retries rather than individual exporters to avoid double retry logic.
+8. **Coordinate Exporter Retries**: Tune exporter retry settings intentionally. Disabling exporter retries can make failover happen faster, while enabling bounded retries can absorb short transient failures before the connector moves to the next priority level.
 
 ## Conclusion
 
-The Failover Connector is essential for building resilient observability pipelines. By automatically routing telemetry data to healthy backends, it ensures continuous data collection even during infrastructure failures or maintenance windows.
+The Failover Connector is useful for building resilient observability pipelines. By routing telemetry data to healthy downstream pipelines, it helps maintain telemetry delivery during infrastructure failures or maintenance windows.
 
-Start with a simple primary-backup configuration and progressively add more sophisticated failover tiers as your reliability requirements grow. The combination of automatic health monitoring, priority-based routing, and seamless recovery makes the Failover Connector a critical component in production OpenTelemetry deployments.
+Start with a simple primary-backup configuration and progressively add more sophisticated failover tiers as your reliability requirements grow. The combination of priority-based routing and periodic recovery attempts makes the Failover Connector a useful component in production OpenTelemetry deployments, while its alpha stability level means teams should test it carefully before relying on it for critical paths.
