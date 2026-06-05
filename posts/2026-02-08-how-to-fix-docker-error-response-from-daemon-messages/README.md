@@ -171,15 +171,17 @@ df -h /var/lib/docker
 # If /var/lib/docker is on a small partition, move Docker's data directory
 # Edit /etc/docker/daemon.json:
 # { "data-root": "/mnt/large-disk/docker" }
+# On Docker Engine 29+ fresh installs using the containerd image store,
+# also check /var/lib/containerd; data-root does not move containerd snapshots.
 ```
 
 ## "Cannot connect to the Docker daemon"
 
-The Docker daemon is not running, or your user does not have permission to access it.
+This is a Docker client connection error rather than a daemon response. It means the Docker daemon is not running, or your user does not have permission to access it.
 
 ```bash
 docker ps
-# Error response from daemon: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+# Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
 ```
 
 Fix by starting the daemon or fixing permissions:
