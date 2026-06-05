@@ -64,38 +64,38 @@ OneUptime consolidates all of this into a single platform.
 
 ### Pingdom Pricing (2026)
 
-Pingdom uses a per-check pricing model:
+Pingdom uses a volume-based pricing model for synthetic monitoring and RUM:
 
-| Plan | Checks | Price |
-|------|--------|-------|
-| Synthetic | 10 uptime + 1 advanced | ~$15/month |
-| Synthetic | 50 uptime + 10 advanced | ~$85/month |
-| Custom | Varies | Contact sales |
+| Plan | Included Usage | Price |
+|------|----------------|-------|
+| Synthetic | Starts at 10 uptime checks + 1 advanced check + 50 SMS alerts | Calculator-based |
+| Synthetic | Higher tiers add more uptime checks, advanced checks, and SMS alerts | Calculator-based |
+| Enterprise | Custom scale | Contact sales |
 
-**What counts as a check?** Each URL or transaction you monitor. For a typical SaaS with 20 services, you'll need 20+ checks minimum. Transaction monitoring and RUM cost extra.
+**What counts as usage?** Each URL or transaction you monitor consumes synthetic monitoring capacity. RUM is priced separately by pageviews. For a typical SaaS with 20 services, you'll need 20+ checks minimum.
 
 ### OneUptime Pricing (2026)
 
-OneUptime offers inclusive plans:
+OneUptime offers plans plus usage-based monitoring and telemetry pricing:
 
 | Plan | What's Included | Price |
 |------|-----------------|-------|
-| Free | 5 monitors, 1 status page, 1 user | $0 |
-| Growth | Unlimited monitors, full features | $99/month |
-| Scale | Team features, SLA, priority support | $499/month |
-| Enterprise | Self-hosted, SSO, custom contracts | Custom |
+| Free | 1 public status page, core monitoring, incident, on-call, logs, telemetry, and AI features | $0 |
+| Growth | Unlimited status pages, API access, integrations, workflows, and 99.90% SLA | $22/month |
+| Scale | SSO, advanced access control, chat/email support, and 99.95% SLA | $99/month |
+| Enterprise | Custom features, data residency, data retention, private cloud or SaaS | Custom |
 
-**Key difference:** OneUptime includes *everything*-monitoring, status pages, incidents, on-call, logs, metrics, traces, and error tracking. No per-check pricing that scales unpredictably.
+**Key difference:** OneUptime includes *everything*-monitoring, status pages, incidents, on-call, logs, metrics, traces, and error tracking. Active monitoring, telemetry ingestion, SMS/call alerts, and AI token usage are billed by usage.
 
 ## Why Teams Are Switching to OneUptime
 
 ### 1. Cost Consolidation
 
-Instead of paying for Pingdom ($85) + PagerDuty ($29/user) + Statuspage.io ($29+) + Datadog ($15/host+) + Sentry ($26/month), you pay one bill. For a 10-person team, this can save $30,000-$100,000 annually.
+Instead of paying for Pingdom + PagerDuty + Statuspage.io + Datadog + Sentry, you pay one bill. For a 10-person team, this can save $30,000-$100,000 annually.
 
 ### 2. Open Source & Self-Hosted
 
-OneUptime is 100% open source under MIT license. You can:
+OneUptime is 100% open source under the Apache 2.0 license. You can:
 
 - Self-host on your own infrastructure
 - Audit the code
@@ -106,7 +106,7 @@ For healthcare, finance, and government organizations with data residency requir
 
 ### 3. AI-Powered Auto-Fix
 
-OneUptime's AI Agent can automatically analyze incidents and create pull requests to fix issues. Instead of getting paged at 3 AM, you wake up to a PR that resolves the problem. No other monitoring tool offers this.
+OneUptime's AI Agent can automatically analyze incidents and create pull requests to fix issues. Instead of getting paged at 3 AM, you wake up to a PR that resolves the problem.
 
 ### 4. OpenTelemetry Native
 
