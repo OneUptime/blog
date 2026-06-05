@@ -12,7 +12,7 @@ This post shows how to trace the full e-prescribing workflow with OpenTelemetry,
 
 ## The E-Prescribing Flow
 
-The standard NCPDP SCRIPT flow works like this: The prescriber's system creates a NewRx message and sends it to the Surescripts network. Surescripts validates the message, routes it to the correct pharmacy, and the pharmacy responds with a Status message. There may also be RxChangeRequest and RxChangeResponse messages if the pharmacy needs a substitution.
+The standard NCPDP SCRIPT flow works like this: The prescriber's system creates a NewRx message and sends it to the Surescripts network. Surescripts validates the message, routes it to the correct pharmacy, and the receiving system can return Status, Error, or Verify transactions for transaction-level acknowledgement. When fill status notifications are requested and supported, the pharmacy sends RxFill messages. There may also be RxChangeRequest and RxChangeResponse messages if the pharmacy needs a substitution.
 
 Let us instrument each step.
 
@@ -20,6 +20,7 @@ Let us instrument each step.
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -50,8 +51,8 @@ def create_and_send_prescription(prescription_data):
             )
 
             if not validation_result["valid"]:
-                span.set_status(trace.Status(
-                    trace.StatusCode.ERROR, "Prescription validation failed"
+                span.set_status(Status(
+                    StatusCode.ERROR, "Prescription validation failed"
                 ))
                 return {"status": "validation_failed", "errors": validation_result["errors"]}
 
@@ -62,11 +63,11 @@ def create_and_send_prescription(prescription_data):
             build_span.set_attribute("eprescribing.drug_coded", True)
             build_span.set_attribute(
                 "eprescribing.controlled_substance",
-                prescription_data.get("dea_schedule", 0) > 0
+                prescription_data.get("dea_schedule", 0) in {2, 3, 4, 5}
             )
 
-        # Step 3: Sign the message (required for controlled substances via EPCS)
-        if prescription_data.get("dea_schedule", 0) > 0:
+        # Step 3: Sign the message (required for Schedule II-V controlled substances via EPCS)
+        if prescription_data.get("dea_schedule", 0) in {2, 3, 4, 5}:
             with tracer.start_as_current_span("eprescribing.epcs_sign") as sign_span:
                 sign_span.set_attribute("eprescribing.dea_schedule", prescription_data["dea_schedule"])
                 signed_xml = sign_epcs_message(script_xml, prescription_data["prescriber_id"])
@@ -86,56 +87,49 @@ def create_and_send_prescription(prescription_data):
                                    response.get("message_id", ""))
 
             if response["status"] != "accepted":
-                send_span.set_status(trace.Status(
-                    trace.StatusCode.ERROR,
+                send_span.set_status(Status(
+                    StatusCode.ERROR,
                     f"Network rejected: {response.get('error_code', 'unknown')}"
                 ))
 
         return response
 ```
 
-## Tracing Pharmacy Status Responses
+## Tracing Pharmacy RxFill Responses
 
-When the pharmacy processes the prescription, they send back a Status message. We need to trace the receipt and processing of these responses:
+When the pharmacy dispenses, partially dispenses, does not dispense, or transfers the prescription, it can send back an RxFill message if fill status notifications were requested and supported. We need to trace the receipt and processing of these responses:
 
 ```python
-def handle_pharmacy_status(status_message):
+def handle_pharmacy_rxfill(rxfill_message):
     """
-    Handle a Status message returned from the pharmacy.
+    Handle an RxFill message returned from the pharmacy.
     This closes the loop on the prescription workflow.
     """
-    with tracer.start_as_current_span("eprescribing.status.received") as span:
-        # Parse the NCPDP SCRIPT Status message
-        parsed = parse_ncpdp_script(status_message)
+    with tracer.start_as_current_span("eprescribing.rxfill.received") as span:
+        # Parse the NCPDP SCRIPT RxFill message
+        parsed = parse_ncpdp_script(rxfill_message)
 
         rx_id = parsed.get("relates_to_message_id", "unknown")
-        status_code = parsed.get("status_code", "unknown")
+        fill_status = parsed.get("fill_status", "unknown")
 
         span.set_attribute("eprescribing.prescription_id", rx_id)
-        span.set_attribute("eprescribing.message_type", "Status")
-        span.set_attribute("eprescribing.status_code", status_code)
+        span.set_attribute("eprescribing.message_type", "RxFill")
+        span.set_attribute("eprescribing.fill_status", fill_status)
 
-        # Map NCPDP status codes to human-readable names
-        status_map = {
-            "000": "accepted",       # Prescription received successfully
-            "001": "accepted_changes", # Accepted with changes
-            "010": "rejected",       # Pharmacy rejected the prescription
-        }
-        human_status = status_map.get(status_code, "unknown")
-        span.set_attribute("eprescribing.status_description", human_status)
+        # RxFill statuses include dispensed, partially dispensed, not dispensed, and transferred.
 
-        # Calculate the round-trip time from NewRx to Status
+        # Calculate the round-trip time from NewRx to RxFill
         original_send_time = get_original_send_time(rx_id)
         if original_send_time:
             round_trip_seconds = time.time() - original_send_time
             span.set_attribute("eprescribing.round_trip_seconds", round_trip_seconds)
 
-        # Route based on status
-        if status_code == "010":
-            with tracer.start_as_current_span("eprescribing.rejection.handle") as rej_span:
-                rejection_reason = parsed.get("rejection_reason", "")
-                rej_span.set_attribute("eprescribing.rejection_reason", rejection_reason)
-                notify_prescriber_of_rejection(rx_id, rejection_reason)
+        # Route based on fill status
+        if fill_status == "not_dispensed":
+            with tracer.start_as_current_span("eprescribing.not_dispensed.handle") as nd_span:
+                not_dispensed_reason = parsed.get("not_dispensed_reason", "")
+                nd_span.set_attribute("eprescribing.not_dispensed_reason", not_dispensed_reason)
+                notify_prescriber_of_not_dispensed(rx_id, not_dispensed_reason)
 ```
 
 ## Tracing RxChangeRequest and RxChangeResponse
@@ -204,10 +198,10 @@ submission_latency = meter.create_histogram(
     unit="ms",
 )
 
-# Time from NewRx to pharmacy Status response
+# Time from NewRx to pharmacy RxFill response
 round_trip_time = meter.create_histogram(
     "eprescribing.round_trip_seconds",
-    description="Round-trip time from NewRx send to pharmacy Status receipt",
+    description="Round-trip time from NewRx send to pharmacy RxFill receipt",
     unit="s",
 )
 
@@ -226,4 +220,4 @@ change_request_counter = meter.create_counter(
 
 ## Wrapping Up
 
-Tracing e-prescribing workflows gives you visibility into one of the most important healthcare data flows. The key spans to capture are prescription validation, NCPDP SCRIPT message construction, network submission, and pharmacy status receipt. Track the round-trip time as your primary SLA metric since that is what determines whether the patient is waiting at the pharmacy. Alert on rejection spikes since those often indicate a systemic issue like an expired DEA number or a misconfigured pharmacy routing table.
+Tracing e-prescribing workflows gives you visibility into one of the most important healthcare data flows. The key spans to capture are prescription validation, NCPDP SCRIPT message construction, network submission, transaction acknowledgement, and pharmacy RxFill receipt. Track the round-trip time as your primary SLA metric since that is what determines whether the patient is waiting at the pharmacy. Alert on rejection spikes since those often indicate a systemic issue like an expired DEA number or a misconfigured pharmacy routing table.
