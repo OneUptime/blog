@@ -47,7 +47,6 @@ Here is an example using Java with HikariCP, one of the most popular connection 
 ```java
 // ConnectionPoolMetrics.java
 import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.metrics.ObservableGauge;
 import com.zaxxer.hikari.HikariDataSource;
 
 public class ConnectionPoolMetrics {
@@ -58,7 +57,7 @@ public class ConnectionPoolMetrics {
         // Number of connections currently in use (borrowed from pool)
         meter.gaugeBuilder("db.pool.connections.active")
             .setDescription("Active connections currently in use")
-            .setUnit("connections")
+            .setUnit("{connection}")
             .buildWithCallback(measurement -> {
                 measurement.record(
                     dataSource.getHikariPoolMXBean().getActiveConnections(),
@@ -72,7 +71,7 @@ public class ConnectionPoolMetrics {
         // Number of idle connections sitting in the pool
         meter.gaugeBuilder("db.pool.connections.idle")
             .setDescription("Idle connections available in the pool")
-            .setUnit("connections")
+            .setUnit("{connection}")
             .buildWithCallback(measurement -> {
                 measurement.record(
                     dataSource.getHikariPoolMXBean().getIdleConnections(),
@@ -86,7 +85,7 @@ public class ConnectionPoolMetrics {
         // Total size of the pool (active + idle)
         meter.gaugeBuilder("db.pool.connections.total")
             .setDescription("Total connections in the pool")
-            .setUnit("connections")
+            .setUnit("{connection}")
             .buildWithCallback(measurement -> {
                 measurement.record(
                     dataSource.getHikariPoolMXBean().getTotalConnections(),
@@ -100,7 +99,7 @@ public class ConnectionPoolMetrics {
         // Number of threads waiting for a connection - this is the critical metric
         meter.gaugeBuilder("db.pool.connections.pending")
             .setDescription("Threads waiting for a connection from the pool")
-            .setUnit("threads")
+            .setUnit("{thread}")
             .buildWithCallback(measurement -> {
                 measurement.record(
                     dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection(),
@@ -121,7 +120,6 @@ For Python with SQLAlchemy, the approach uses the pool events system.
 
 from opentelemetry import metrics
 from sqlalchemy import event
-import time
 
 meter = metrics.get_meter("db.connection_pool")
 
@@ -129,21 +127,21 @@ meter = metrics.get_meter("db.connection_pool")
 active_connections = meter.create_up_down_counter(
     "db.pool.connections.active",
     description="Number of connections currently checked out from the pool",
-    unit="connections",
+    unit="{connection}",
 )
 
 # Histogram for how long requests wait to get a connection
 wait_time_histogram = meter.create_histogram(
     "db.pool.checkout.wait_time",
     description="Time spent waiting for a connection from the pool",
-    unit="ms",
+    unit="s",
 )
 
 # Counter for connection checkout timeouts
 timeout_counter = meter.create_counter(
     "db.pool.checkout.timeouts",
     description="Number of times a connection checkout timed out",
-    unit="1",
+    unit="{timeout}",
 )
 
 pool_attrs = {"db.pool.name": "main"}
@@ -157,19 +155,11 @@ def instrument_pool(engine):
     def on_checkout(dbapi_conn, connection_rec, connection_proxy):
         # Increment active connection count
         active_connections.add(1, pool_attrs)
-        # Store checkout time for wait_time calculation
-        connection_rec.info["checkout_time"] = time.monotonic()
 
     # Track when connections are returned to the pool
     @event.listens_for(engine, "checkin")
     def on_checkin(dbapi_conn, connection_rec):
         active_connections.add(-1, pool_attrs)
-
-    # Measure how long the checkout process takes
-    # A long checkout time means the pool is under pressure
-    @event.listens_for(engine.pool, "connect")
-    def on_connect(dbapi_conn, connection_rec):
-        connection_rec.info["created_at"] = time.monotonic()
 ```
 
 ## Step 2: Add Wait Time Measurement
@@ -180,29 +170,33 @@ Here is how to measure it precisely using span events.
 
 ```python
 # Enhanced checkout tracking with span events
+import time
+
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("db.pool")
 
-def get_connection_with_tracing(pool):
+def get_connection_with_tracing(engine):
     """Wrapper that creates a span around connection acquisition."""
     with tracer.start_as_current_span("db.pool.checkout") as span:
         start = time.monotonic()
 
         try:
             # This call will block if the pool is exhausted
-            connection = pool.connect()
-            wait_ms = (time.monotonic() - start) * 1000
+            connection = engine.connect()
+            wait_seconds = time.monotonic() - start
+            wait_ms = wait_seconds * 1000
 
             # Record the wait time as both a span attribute and metric
             span.set_attribute("db.pool.wait_time_ms", wait_ms)
-            wait_time_histogram.record(wait_ms, pool_attrs)
+            wait_time_histogram.record(wait_seconds, pool_attrs)
 
             if wait_ms > 100:
                 # Add an event to the span if the wait was significant
                 span.add_event("slow_pool_checkout", {
                     "wait_time_ms": wait_ms,
-                    "pool_size": pool.size(),
+                    "pool_size": engine.pool.size(),
                 })
 
             return connection
@@ -210,7 +204,7 @@ def get_connection_with_tracing(pool):
         except Exception as e:
             # Connection checkout timed out
             timeout_counter.add(1, pool_attrs)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
@@ -282,7 +276,7 @@ groups:
           description: >
             The connection pool {{ $labels.db_pool_name }} on
             {{ $labels.service_name }} is using more than 80% of its capacity.
-            Active: {{ $value }}. Consider increasing the pool size or
+            Utilization: {{ $value }}. Consider increasing the pool size or
             investigating long-running queries.
 
       # Critical: threads are waiting for connections
@@ -302,9 +296,9 @@ groups:
       - alert: ConnectionPoolSlowCheckout
         expr: |
           histogram_quantile(0.95,
-            sum(rate(db_pool_checkout_wait_time_bucket[5m]))
+            sum(rate(db_pool_checkout_wait_time_seconds_bucket[5m]))
             by (le, db_pool_name, service_name)
-          ) > 200
+          ) > 0.2
         for: 5m
         labels:
           severity: warning
@@ -351,7 +345,7 @@ flowchart TD
     E --> I[Scale horizontally or increase pool]
 ```
 
-To find connection leaks, look for spans where a connection was checked out but the corresponding check-in never happened. Adding a maximum lifetime to connections in the pool (HikariCP's `maxLifetime`, SQLAlchemy's `pool_recycle`) acts as a safety net by forcibly closing old connections.
+To find connection leaks, look for spans where a connection was checked out but the corresponding check-in never happened. HikariCP's `leakDetectionThreshold` can log possible leaks, while HikariCP's `maxLifetime` and SQLAlchemy's `pool_recycle` help recycle old pooled connections after they are returned or checked out again. They do not forcibly recover a connection that is still checked out by leaked application code.
 
 ## Connection Pool Sizing Guidance
 
