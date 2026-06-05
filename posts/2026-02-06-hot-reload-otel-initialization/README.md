@@ -28,7 +28,7 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const exporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
 // Use SimpleSpanProcessor in development for immediate export
@@ -56,14 +56,14 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 // Nodemon sends SIGUSR2 to signal a restart
-process.once('SIGUSR2', () => {
+process.on('SIGUSR2', () => {
   sdk.shutdown().then(() => {
-    process.kill(process.pid, 'SIGUSR2');
+    process.kill(process.pid, 'SIGTERM');
   });
 });
 ```
 
-The key detail here is `process.once('SIGUSR2', ...)`. Nodemon uses this signal to tell the process to restart. By handling it, you get a chance to flush spans before the restart.
+The key detail here is `process.on('SIGUSR2', ...)`. Nodemon uses this signal to tell the process to restart. By handling it, you get a chance to flush spans before the restart.
 
 Run your app with nodemon:
 
@@ -82,24 +82,23 @@ import os
 from flask import Flask
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.resources import Resource
 import atexit
 
-def create_app():
+def create_app(debug=False):
     app = Flask(__name__)
 
     # Only initialize OTel in the reloader child process
     # The WERKZEUG_RUN_MAIN env var is set in the child process
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not debug:
         resource = Resource.create({
             "service.name": os.environ.get("OTEL_SERVICE_NAME", "flask-dev")
         })
         provider = TracerProvider(resource=resource)
         exporter = OTLPSpanExporter()
-        # Use SimpleSpanExporter for immediate flushing during development
+        # Use SimpleSpanProcessor for immediate flushing during development
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
         provider.add_span_processor(SimpleSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
@@ -116,7 +115,7 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    app = create_app()
+    app = create_app(debug=True)
     app.run(debug=True)
 ```
 
@@ -126,7 +125,7 @@ The `WERKZEUG_RUN_MAIN` check prevents the parent process from initializing Open
 
 For frontend applications using webpack-dev-server, the challenge is different. The browser does not restart; instead, modules are hot-swapped. If your tracing initialization runs again during a hot module replacement (HMR), you get duplicate providers.
 
-```javascript
+```typescript
 // src/tracing.ts - Browser-side OpenTelemetry with HMR safety
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -134,28 +133,31 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
-// Use a global variable to prevent re-initialization during HMR
-let isInitialized = false;
+declare global {
+  interface Window {
+    __otelInitialized?: boolean;
+  }
+}
 
 export function initTracing() {
-  if (isInitialized) {
+  if (window.__otelInitialized) {
     return;
   }
 
   const provider = new WebTracerProvider({
-    resource: {
-      attributes: { 'service.name': 'frontend-dev' }
-    }
+    resource: resourceFromAttributes({
+      'service.name': 'frontend-dev',
+    }),
+    spanProcessors: [
+      new SimpleSpanProcessor(
+        new OTLPTraceExporter({
+          url: 'http://localhost:4318/v1/traces',
+        })
+      )
+    ],
   });
-
-  provider.addSpanProcessor(
-    new SimpleSpanProcessor(
-      new OTLPTraceExporter({
-        url: 'http://localhost:4318/v1/traces',
-      })
-    )
-  );
 
   provider.register({
     contextManager: new ZoneContextManager(),
@@ -165,19 +167,18 @@ export function initTracing() {
     instrumentations: [getWebAutoInstrumentations()],
   });
 
-  isInitialized = true;
+  window.__otelInitialized = true;
 }
 
 // Handle HMR cleanup if using webpack
 if (module.hot) {
   module.hot.dispose(() => {
-    // Provider cleanup happens here if needed
-    isInitialized = false;
+    // Keep the global flag set so HMR does not register another provider.
   });
 }
 ```
 
-The `isInitialized` flag ensures that even if the module is re-evaluated during HMR, the provider is only created once. The `module.hot.dispose` callback resets the flag if the module is fully replaced.
+The `window.__otelInitialized` flag ensures that even if the module is re-evaluated during HMR, the provider is only created once. The `module.hot.dispose` callback keeps the global flag in place when the module is replaced.
 
 ## General Tips
 
