@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Google Cloud Functions, Serverless, Tracing, Node.js, Python
 
-Description: A practical guide to adding OpenTelemetry tracing and metrics to Google Cloud Functions for full serverless observability.
+Description: A practical guide to adding OpenTelemetry tracing to Google Cloud Functions for serverless observability.
 
 ---
 
-Serverless functions are notoriously hard to observe. They spin up, execute, and disappear. When something goes wrong, you are left staring at logs trying to reconstruct what happened. OpenTelemetry changes that by giving you structured traces and metrics from inside your Cloud Functions, so you can see exactly how each invocation behaves and where time is spent.
+Serverless functions are notoriously hard to observe. They spin up, execute, and disappear. When something goes wrong, you are left staring at logs trying to reconstruct what happened. OpenTelemetry changes that by giving you structured traces from inside your Cloud Functions, so you can see exactly how each invocation behaves and where time is spent.
 
 This guide covers how to instrument both HTTP-triggered and event-triggered Google Cloud Functions using OpenTelemetry. We will work through examples in Node.js and Python, the two most popular runtimes for Cloud Functions.
 
@@ -67,7 +67,7 @@ Create a tracing initialization file that runs once when the function instance s
 // tracing.js - Initialize OpenTelemetry once per function instance
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
@@ -78,7 +78,7 @@ const exporter = new OTLPTraceExporter({
 
 // Initialize the SDK with service metadata
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-cloud-function',
     'faas.name': process.env.K_SERVICE || 'unknown',
     'cloud.provider': 'gcp',
@@ -173,7 +173,6 @@ Install the dependencies.
 opentelemetry-api==1.23.0
 opentelemetry-sdk==1.23.0
 opentelemetry-exporter-otlp-proto-grpc==1.23.0
-opentelemetry-instrumentation-requests==0.44b0
 functions-framework==3.*
 ```
 
@@ -217,6 +216,7 @@ Now write the function handler that processes Pub/Sub messages.
 # main.py - Cloud Function triggered by Pub/Sub
 import base64
 import json
+import functions_framework
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, StatusCode
 from otel_init import init_telemetry
@@ -224,6 +224,7 @@ from otel_init import init_telemetry
 # Initialize tracing at module level (runs once per cold start)
 tracer = init_telemetry()
 
+@functions_framework.cloud_event
 def process_pubsub(cloud_event):
     """Process a Pub/Sub message with OpenTelemetry tracing."""
     # Start a span for the entire function invocation
@@ -286,9 +287,13 @@ const { trace } = require('@opentelemetry/api');
 
 async function flushTraces() {
   const provider = trace.getTracerProvider();
-  if (provider && provider.forceFlush) {
+  const delegate = typeof provider.getDelegate === 'function'
+    ? provider.getDelegate()
+    : provider;
+
+  if (delegate && delegate.forceFlush) {
     // Wait for all pending spans to be exported
-    await provider.forceFlush();
+    await delegate.forceFlush();
   }
 }
 
