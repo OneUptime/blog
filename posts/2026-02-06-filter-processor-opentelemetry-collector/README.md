@@ -50,11 +50,10 @@ receivers:
 
 processors:
   filter:
-    traces:
-      span:
-        # Drop health check spans
-        - 'attributes["http.target"] == "/healthz"'
-        - 'attributes["http.target"] == "/readyz"'
+    trace_conditions:
+      # Drop health check spans
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.attributes["http.target"] == "/readyz"'
 
   batch:
     timeout: 5s
@@ -87,24 +86,16 @@ processors:
     # Error mode: "ignore" (log and continue) or "propagate" (fail pipeline)
     error_mode: ignore
 
-    traces:
-      span:
-        - 'condition1'
-        - 'condition2'
+    trace_conditions:
+      - 'span.condition1'
+      - 'spanevent.condition2'
 
-      spanevent:
-        - 'condition3'
+    metric_conditions:
+      - 'metric.condition3'
+      - 'datapoint.condition4'
 
-    metrics:
-      metric:
-        - 'condition4'
-
-      datapoint:
-        - 'condition5'
-
-    logs:
-      log_record:
-        - 'condition6'
+    log_conditions:
+      - 'log.condition5'
 ```
 
 Each condition is an OTTL expression that returns true (drop) or false (keep).
@@ -118,18 +109,17 @@ Filter out health checks and internal endpoints:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop health check endpoints
-        - 'attributes["http.target"] == "/healthz"'
-        - 'attributes["http.target"] == "/readyz"'
-        - 'attributes["http.target"] == "/livez"'
+    trace_conditions:
+      # Drop health check endpoints
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.attributes["http.target"] == "/readyz"'
+      - 'span.attributes["http.target"] == "/livez"'
 
-        # Drop metrics scrape endpoints
-        - 'attributes["http.target"] == "/metrics"'
+      # Drop metrics scrape endpoints
+      - 'span.attributes["http.target"] == "/metrics"'
 
-        # Drop Kubernetes probes
-        - 'attributes["user_agent"] matches ".*kube-probe.*"'
+      # Drop Kubernetes probes
+      - 'IsMatch(span.attributes["user_agent"], ".*kube-probe.*")'
 ```
 
 ### Dropping Spans by Name
@@ -139,16 +129,15 @@ Filter based on span operation names:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop debugging spans
-        - 'name == "debug.trace"'
+    trace_conditions:
+      # Drop debugging spans
+      - 'span.name == "debug.trace"'
 
-        # Drop internal monitoring spans
-        - 'name matches "^internal\\..*"'
+      # Drop internal monitoring spans
+      - 'IsMatch(span.name, "^internal\\..*")'
 
-        # Drop low-value spans
-        - 'name == "noop"'
+      # Drop low-value spans
+      - 'span.name == "noop"'
 ```
 
 ### Dropping Spans by Status
@@ -158,13 +147,12 @@ Remove successful spans to focus on errors:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Only keep error spans (drop OK spans)
-        - 'status.code == STATUS_CODE_OK'
+    trace_conditions:
+      # Only keep error spans (drop OK spans)
+      - 'span.status.code == STATUS_CODE_OK'
 
-        # Alternative: keep errors and warnings only
-        # This drops STATUS_CODE_OK, keeping ERROR and UNSET
+      # Alternative: keep errors and warnings only
+      # This drops STATUS_CODE_OK, keeping ERROR and UNSET
 ```
 
 **Note**: Be cautious with this approach. Dropping all successful spans eliminates baseline behavior needed for anomaly detection and performance analysis. Consider sampling instead of filtering for success cases.
@@ -176,13 +164,12 @@ Filter out very short spans that provide little value:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop spans shorter than 1ms
-        - 'duration < 1000000'  # nanoseconds
+    trace_conditions:
+      # Drop spans shorter than 1ms
+      - '(span.end_time - span.start_time) < Duration("1ms")'
 
-        # Drop very long timeout spans (> 30 seconds)
-        - 'duration > 30000000000'
+      # Drop very long timeout spans (> 30 seconds)
+      - '(span.end_time - span.start_time) > Duration("30s")'
 ```
 
 ### Dropping Spans by Service
@@ -192,13 +179,12 @@ Exclude telemetry from specific services:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop spans from test services
-        - 'resource.attributes["service.name"] == "test-service"'
+    trace_conditions:
+      # Drop spans from test services
+      - 'resource.attributes["service.name"] == "test-service"'
 
-        # Drop spans from staging environment
-        - 'resource.attributes["deployment.environment"] == "staging"'
+      # Drop spans from staging environment
+      - 'resource.attributes["deployment.environment"] == "staging"'
 ```
 
 ### Combining Multiple Conditions
@@ -208,16 +194,15 @@ Use logical operators for complex filtering:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop successful health checks
-        - 'attributes["http.target"] == "/healthz" and status.code == STATUS_CODE_OK'
+    trace_conditions:
+      # Drop successful health checks
+      - 'span.attributes["http.target"] == "/healthz" and span.status.code == STATUS_CODE_OK'
 
-        # Drop fast successful requests to static content
-        - 'attributes["http.target"] matches ".*/static/.*" and status.code == STATUS_CODE_OK and duration < 10000000'
+      # Drop fast successful requests to static content
+      - 'IsMatch(span.attributes["http.target"], ".*/static/.*") and span.status.code == STATUS_CODE_OK and (span.end_time - span.start_time) < Duration("10ms")'
 
-        # Drop internal service-to-service health checks
-        - 'resource.attributes["service.name"] == "health-checker" and attributes["http.method"] == "GET"'
+      # Drop internal service-to-service health checks
+      - 'resource.attributes["service.name"] == "health-checker" and span.attributes["http.method"] == "GET"'
 ```
 
 ## Filtering Metrics
@@ -229,16 +214,15 @@ Remove unwanted metric families:
 ```yaml
 processors:
   filter:
-    metrics:
-      metric:
-        # Drop Go runtime metrics
-        - 'name matches "^go_.*"'
+    metric_conditions:
+      # Drop Go runtime metrics
+      - 'IsMatch(metric.name, "^go_.*")'
 
-        # Drop process metrics
-        - 'name matches "^process_.*"'
+      # Drop process metrics
+      - 'IsMatch(metric.name, "^process_.*")'
 
-        # Drop specific noisy metrics
-        - 'name == "http.server.request.body.size"'
+      # Drop specific noisy metrics
+      - 'metric.name == "http.server.request.body.size"'
 ```
 
 ### Dropping Metric Data Points
@@ -248,16 +232,15 @@ Filter specific data points within a metric:
 ```yaml
 processors:
   filter:
-    metrics:
-      datapoint:
-        # Drop data points with specific attribute values
-        - 'attributes["http.status_code"] == "200"'
+    metric_conditions:
+      # Drop data points with specific attribute values
+      - 'datapoint.attributes["http.status_code"] == "200"'
 
-        # Drop data points below threshold
-        - 'value_int < 10'
+      # Drop data points below threshold
+      - 'datapoint.value_int < 10'
 
-        # Drop data points from test environments
-        - 'resource.attributes["environment"] == "test"'
+      # Drop data points from test environments
+      - 'resource.attributes["environment"] == "test"'
 ```
 
 ### Dropping High-Cardinality Metrics
@@ -267,16 +250,15 @@ Control cardinality explosion:
 ```yaml
 processors:
   filter:
-    metrics:
-      datapoint:
-        # Drop data points with user-specific labels
-        - 'attributes["user.id"] != ""'
+    metric_conditions:
+      # Drop data points with user-specific labels
+      - 'datapoint.attributes["user.id"] != ""'
 
-        # Drop data points with session IDs
-        - 'attributes["session.id"] != ""'
+      # Drop data points with session IDs
+      - 'datapoint.attributes["session.id"] != ""'
 
-        # Drop data points with UUIDs in paths
-        - 'attributes["http.route"] matches ".*[a-f0-9]{8}-[a-f0-9]{4}-.*"'
+      # Drop data points with UUIDs in paths
+      - 'IsMatch(datapoint.attributes["http.route"], ".*[a-f0-9]{8}-[a-f0-9]{4}-.*")'
 ```
 
 ## Filtering Logs
@@ -288,16 +270,15 @@ Remove verbose log levels in production:
 ```yaml
 processors:
   filter:
-    logs:
-      log_record:
-        # Drop debug logs
-        - 'severity_text == "DEBUG"'
+    log_conditions:
+      # Drop debug logs
+      - 'log.severity_text == "DEBUG"'
 
-        # Drop trace logs
-        - 'severity_text == "TRACE"'
+      # Drop trace logs
+      - 'log.severity_text == "TRACE"'
 
-        # Alternative: keep only warnings and errors
-        - 'severity_number < SEVERITY_NUMBER_WARN'
+      # Alternative: keep only warnings and errors
+      - 'log.severity_number < SEVERITY_NUMBER_WARN'
 ```
 
 ### Dropping Logs by Body Content
@@ -307,16 +288,15 @@ Filter based on log message content:
 ```yaml
 processors:
   filter:
-    logs:
-      log_record:
-        # Drop health check logs
-        - 'body matches ".*health check.*"'
+    log_conditions:
+      # Drop health check logs
+      - 'IsMatch(log.body, ".*health check.*")'
 
-        # Drop verbose library logs
-        - 'body matches ".*DEBUG: .*"'
+      # Drop verbose library logs
+      - 'IsMatch(log.body, ".*DEBUG: .*")'
 
-        # Drop specific noisy patterns
-        - 'body matches ".*Connection pool.*"'
+      # Drop specific noisy patterns
+      - 'IsMatch(log.body, ".*Connection pool.*")'
 ```
 
 ### Dropping Logs by Attribute
@@ -326,16 +306,15 @@ Remove logs with specific attributes:
 ```yaml
 processors:
   filter:
-    logs:
-      log_record:
-        # Drop logs from test users
-        - 'attributes["user.id"] == "test-user"'
+    log_conditions:
+      # Drop logs from test users
+      - 'log.attributes["user.id"] == "test-user"'
 
-        # Drop internal monitoring logs
-        - 'attributes["log.source"] == "internal-monitor"'
+      # Drop internal monitoring logs
+      - 'log.attributes["log.source"] == "internal-monitor"'
 
-        # Drop logs from specific services
-        - 'resource.attributes["service.name"] == "chatty-service"'
+      # Drop logs from specific services
+      - 'resource.attributes["service.name"] == "chatty-service"'
 ```
 
 ## Advanced Filtering Patterns
@@ -347,16 +326,15 @@ The filter processor drops matching items. To keep only specific items, invert y
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Keep ONLY errors: drop everything that's NOT an error
-        - 'status.code != STATUS_CODE_ERROR'
+    trace_conditions:
+      # Keep ONLY errors: drop everything that's NOT an error
+      - 'span.status.code != STATUS_CODE_ERROR'
 
-        # Keep ONLY slow spans: drop fast spans
-        - 'duration < 500000000'  # Drop spans < 500ms
+      # Keep ONLY slow spans: drop fast spans
+      - '(span.end_time - span.start_time) < Duration("500ms")'  # Drop spans < 500ms
 
-        # Keep ONLY specific services: drop others
-        - 'resource.attributes["service.name"] != "critical-service"'
+      # Keep ONLY specific services: drop others
+      - 'resource.attributes["service.name"] != "critical-service"'
 ```
 
 ### Environment-Specific Filtering
@@ -367,22 +345,19 @@ Different filtering rules for different environments:
 processors:
   # Production: aggressive filtering
   filter/prod:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
-        - 'status.code == STATUS_CODE_OK and duration < 100000000'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.status.code == STATUS_CODE_OK and (span.end_time - span.start_time) < Duration("100ms")'
 
   # Staging: keep more data
   filter/staging:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
 
   # Development: minimal filtering
   filter/dev:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/internal/debug"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/internal/debug"'
 
 service:
   pipelines:
@@ -407,9 +382,8 @@ Sometimes you want to reduce volume without complete elimination. Combine filter
 processors:
   # First, drop definite noise
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
 
   # Then, sample remaining traces
   probabilistic_sampler:
@@ -434,22 +408,19 @@ Complex filtering scenarios often need multiple stages:
 processors:
   # Stage 1: Drop absolute noise
   filter/noise:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
-        - 'attributes["http.target"] == "/metrics"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.attributes["http.target"] == "/metrics"'
 
   # Stage 2: Drop fast successful requests
   filter/successful:
-    traces:
-      span:
-        - 'status.code == STATUS_CODE_OK and duration < 50000000'
+    trace_conditions:
+      - 'span.status.code == STATUS_CODE_OK and (span.end_time - span.start_time) < Duration("50ms")'
 
   # Stage 3: Drop internal testing traffic
   filter/testing:
-    traces:
-      span:
-        - 'attributes["user_agent"] matches ".*test.*"'
+    trace_conditions:
+      - 'IsMatch(span.attributes["user_agent"], ".*test.*")'
 
   batch:
     timeout: 5s
@@ -471,29 +442,26 @@ Drop high-volume, low-value telemetry to reduce SaaS observability costs:
 ```yaml
 processors:
   filter/cost_reduction:
-    traces:
-      span:
-        # Drop health checks (often 30-50% of volume)
-        - 'attributes["http.target"] matches ".*health.*"'
+    trace_conditions:
+      # Drop health checks (often 30-50% of volume)
+      - 'IsMatch(span.attributes["http.target"], ".*health.*")'
 
-        # Drop successful sub-10ms spans (fast, unlikely to be issues)
-        - 'status.code == STATUS_CODE_OK and duration < 10000000'
+      # Drop successful sub-10ms spans (fast, unlikely to be issues)
+      - 'span.status.code == STATUS_CODE_OK and (span.end_time - span.start_time) < Duration("10ms")'
 
-        # Drop internal monitoring spans
-        - 'resource.attributes["service.name"] matches ".*monitor.*"'
+      # Drop internal monitoring spans
+      - 'IsMatch(resource.attributes["service.name"], ".*monitor.*")'
 
-        # Drop static asset requests
-        - 'attributes["http.target"] matches ".*/static/.*"'
+      # Drop static asset requests
+      - 'IsMatch(span.attributes["http.target"], ".*/static/.*")'
 
-    metrics:
-      metric:
-        # Drop runtime metrics (often not actionable)
-        - 'name matches "^(go_|process_).*"'
+    metric_conditions:
+      # Drop runtime metrics (often not actionable)
+      - 'IsMatch(metric.name, "^(go_|process_).*")'
 
-    logs:
-      log_record:
-        # Drop debug logs
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+    log_conditions:
+      # Drop debug logs
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 ```
 
 This configuration can reduce telemetry volume by 50-70% while retaining actionable signals.
@@ -506,24 +474,22 @@ Ensure no PII-containing telemetry reaches backends:
 processors:
   # Drop telemetry containing PII
   filter/pii:
-    traces:
-      span:
-        # Drop spans with email attributes
-        - 'attributes["user.email"] != ""'
+    trace_conditions:
+      # Drop spans with email attributes
+      - 'span.attributes["user.email"] != ""'
 
-        # Drop spans with phone numbers
-        - 'attributes["user.phone"] != ""'
+      # Drop spans with phone numbers
+      - 'span.attributes["user.phone"] != ""'
 
-        # Drop spans with credit card patterns
-        - 'attributes["payment.card"] matches ".*[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}.*"'
+      # Drop spans with credit card patterns
+      - 'IsMatch(span.attributes["payment.card"], ".*[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}.*")'
 
-    logs:
-      log_record:
-        # Drop logs containing email patterns
-        - 'body matches ".*@.*\\.com.*"'
+    log_conditions:
+      # Drop logs containing email patterns
+      - 'IsMatch(log.body, ".*@.*\\.com.*")'
 
-        # Drop logs with social security numbers
-        - 'body matches ".*[0-9]{3}-[0-9]{2}-[0-9]{4}.*"'
+      # Drop logs with social security numbers
+      - 'IsMatch(log.body, ".*[0-9]{3}-[0-9]{2}-[0-9]{4}.*")'
 ```
 
 **Important**: Filtering for PII compliance should be combined with the attributes processor to mask PII in remaining telemetry. Filtering alone isn't sufficient.
@@ -535,22 +501,20 @@ Prevent cardinality explosion in backends:
 ```yaml
 processors:
   filter/cardinality:
-    traces:
-      span:
-        # Drop spans with user IDs (unbounded cardinality)
-        - 'attributes["user.id"] != ""'
+    trace_conditions:
+      # Drop spans with user IDs (unbounded cardinality)
+      - 'span.attributes["user.id"] != ""'
 
-        # Drop spans with session IDs
-        - 'attributes["session.id"] != ""'
+      # Drop spans with session IDs
+      - 'span.attributes["session.id"] != ""'
 
-        # Drop spans with request IDs
-        - 'attributes["request.id"] != ""'
+      # Drop spans with request IDs
+      - 'span.attributes["request.id"] != ""'
 
-    metrics:
-      datapoint:
-        # Drop metric data points with unbounded labels
-        - 'attributes["user.id"] != ""'
-        - 'attributes["trace.id"] != ""'
+    metric_conditions:
+      # Drop metric data points with unbounded labels
+      - 'datapoint.attributes["user.id"] != ""'
+      - 'datapoint.attributes["trace.id"] != ""'
 ```
 
 This prevents high-cardinality attributes from exploding metric dimensions, which can crash backends or drive up costs dramatically.
@@ -563,22 +527,19 @@ Different filtering rules per tenant:
 processors:
   # Free tier: aggressive filtering
   filter/free_tier:
-    traces:
-      span:
-        - 'resource.attributes["tenant.tier"] == "free" and status.code == STATUS_CODE_OK'
-        - 'resource.attributes["tenant.tier"] == "free" and duration < 100000000'
+    trace_conditions:
+      - 'resource.attributes["tenant.tier"] == "free" and span.status.code == STATUS_CODE_OK'
+      - 'resource.attributes["tenant.tier"] == "free" and (span.end_time - span.start_time) < Duration("100ms")'
 
   # Paid tier: moderate filtering
   filter/paid_tier:
-    traces:
-      span:
-        - 'resource.attributes["tenant.tier"] == "paid" and attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'resource.attributes["tenant.tier"] == "paid" and span.attributes["http.target"] == "/healthz"'
 
   # Enterprise tier: minimal filtering
   filter/enterprise_tier:
-    traces:
-      span:
-        - 'resource.attributes["tenant.tier"] == "enterprise" and attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'resource.attributes["tenant.tier"] == "enterprise" and span.attributes["http.target"] == "/healthz"'
 ```
 
 Note: This requires routing to different pipelines based on tenant tier, which is complex. Often better handled at the receiver or routing level.
@@ -592,13 +553,12 @@ Filtering improves overall pipeline performance by reducing downstream processin
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Simple equality checks are fast
-        - 'attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      # Simple equality checks are fast
+      - 'span.attributes["http.target"] == "/healthz"'
 
-        # Direct attribute access is fast
-        - 'status.code == STATUS_CODE_OK'
+      # Direct attribute access is fast
+      - 'span.status.code == STATUS_CODE_OK'
 ```
 
 ### Less Efficient Filtering
@@ -606,13 +566,12 @@ processors:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Complex regex patterns are slower
-        - 'body matches ".*very(complex|regex|with|many|alternatives).*"'
+    trace_conditions:
+      # Complex regex patterns are slower
+      - 'IsMatch(span.attributes["http.target"], ".*very(complex|regex|with|many|alternatives).*")'
 
-        # Multiple nested conditions can be slow
-        - 'attributes["a"] == "1" and (attributes["b"] == "2" or (attributes["c"] == "3" and attributes["d"] == "4"))'
+      # Multiple nested conditions can be slow
+      - 'span.attributes["a"] == "1" and (span.attributes["b"] == "2" or (span.attributes["c"] == "3" and span.attributes["d"] == "4"))'
 ```
 
 **Best practices**:
@@ -631,19 +590,18 @@ Track filtering effectiveness with collector metrics:
 curl http://localhost:8888/metrics | grep processor
 
 # Key metrics:
-# - otelcol_processor_dropped_spans: Number of spans dropped
-# - otelcol_processor_dropped_metric_points: Number of metric points dropped
-# - otelcol_processor_dropped_log_records: Number of logs dropped
+# - otelcol_processor_incoming_items: Items passed to a processor
+# - otelcol_processor_outgoing_items: Items emitted by a processor
 ```
 
 ### Healthy Filtering Patterns
 
 ```text
-otelcol_processor_dropped_spans{processor="filter"} 150000
-otelcol_processor_accepted_spans{processor="filter"} 50000
+otelcol_processor_incoming_items{processor="filter"} 200000
+otelcol_processor_outgoing_items{processor="filter"} 50000
 ```
 
-Drop rate: 75%. This is typical for aggressive health check filtering.
+Drop rate: 75% based on `(incoming - outgoing) / incoming`. This is typical for aggressive health check filtering.
 
 ### Alert on Unexpected Changes
 
@@ -651,9 +609,13 @@ Drop rate: 75%. This is typical for aggressive health check filtering.
 # Alert if drop rate changes significantly
 - alert: FilterDropRateChanged
   expr: |
-    rate(otelcol_processor_dropped_spans{processor="filter"}[5m])
+    (
+      rate(otelcol_processor_incoming_items{processor="filter"}[5m])
+      -
+      rate(otelcol_processor_outgoing_items{processor="filter"}[5m])
+    )
     /
-    rate(otelcol_processor_accepted_spans{processor="filter"}[5m])
+    rate(otelcol_processor_incoming_items{processor="filter"}[5m])
     > 0.9  # More than 90% dropped
   annotations:
     summary: Filter processor drop rate unusually high
@@ -669,17 +631,17 @@ Drop rate: 75%. This is typical for aggressive health check filtering.
 
 ```yaml
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       processors: [filter, batch]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlphttp]
 ```
 
-Check logging output to see if filtered items are present.
+Check debug output to see if filtered items are present.
 
 **Common causes**:
 
@@ -687,27 +649,27 @@ Check logging output to see if filtered items are present.
 
 ```yaml
 # WRONG: Using wrong attribute key
-- 'attributes["http.path"] == "/healthz"'
+- 'span.attributes["http.path"] == "/healthz"'
 
 # CORRECT: Using correct attribute key
-- 'attributes["http.target"] == "/healthz"'
+- 'span.attributes["http.target"] == "/healthz"'
 ```
 
 2. **Wrong data type comparison**:
 
 ```yaml
-# WRONG: Comparing string to int
-- 'attributes["http.status_code"] == 200'
+# WRONG: Comparing int to string
+- 'span.attributes["http.status_code"] == "200"'
 
-# CORRECT: String comparison
-- 'attributes["http.status_code"] == "200"'
+# CORRECT: Match the actual attribute type
+- 'span.attributes["http.status_code"] == 200'
 ```
 
 3. **Resource vs. span attributes confusion**:
 
 ```yaml
 # WRONG: Looking for service.name in span attributes
-- 'attributes["service.name"] == "my-service"'
+- 'span.attributes["service.name"] == "my-service"'
 
 # CORRECT: Looking in resource attributes
 - 'resource.attributes["service.name"] == "my-service"'
@@ -722,10 +684,9 @@ Check logging output to see if filtered items are present.
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop successful spans EXCEPT errors
-        - 'status.code == STATUS_CODE_OK and attributes["http.target"] != "/critical-endpoint"'
+    trace_conditions:
+      # Drop successful spans EXCEPT errors
+      - 'span.status.code == STATUS_CODE_OK and span.attributes["http.target"] != "/critical-endpoint"'
 ```
 
 Or use multiple filter processors with clear separation:
@@ -733,15 +694,13 @@ Or use multiple filter processors with clear separation:
 ```yaml
 processors:
   filter/aggressive:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
 
   filter/conditional:
-    traces:
-      span:
-        # Only drop successful fast requests (keep errors)
-        - 'status.code == STATUS_CODE_OK and duration < 100000000'
+    trace_conditions:
+      # Only drop successful fast requests (keep errors)
+      - 'span.status.code == STATUS_CODE_OK and (span.end_time - span.start_time) < Duration("100ms")'
 ```
 
 ### Issue 3: Performance Degradation
@@ -754,20 +713,18 @@ processors:
 # BEFORE: Complex regex
 processors:
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] matches ".*/(health|ready|live|metrics|debug).*"'
+    trace_conditions:
+      - 'IsMatch(span.attributes["http.target"], ".*/(health|ready|live|metrics|debug).*")'
 
 # AFTER: Multiple simple equality checks (faster)
 processors:
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/ready"'
-        - 'attributes["http.target"] == "/live"'
-        - 'attributes["http.target"] == "/metrics"'
-        - 'attributes["http.target"] == "/debug"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/ready"'
+      - 'span.attributes["http.target"] == "/live"'
+      - 'span.attributes["http.target"] == "/metrics"'
+      - 'span.attributes["http.target"] == "/debug"'
 ```
 
 ## Testing Filter Configuration
@@ -783,12 +740,11 @@ receivers:
 
 processors:
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
   otlphttp:
@@ -797,13 +753,18 @@ exporters:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [filter]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlphttp]
 ```
 
 Send test telemetry and verify filtering:
@@ -817,7 +778,7 @@ otelcol --config test-config.yaml
 
 # Check logs for filtered vs. passed spans
 # Query metrics for drop counts
-curl http://localhost:8888/metrics | grep dropped_spans
+curl http://localhost:8888/metrics | grep otelcol_processor
 ```
 
 ## Production Checklist
@@ -825,7 +786,7 @@ curl http://localhost:8888/metrics | grep dropped_spans
 Before deploying filter processor to production:
 
 - [ ] Filter rules tested with representative telemetry samples
-- [ ] Logging exporter used to validate filtering during testing
+- [ ] Debug exporter used to validate filtering during testing
 - [ ] Filter processor placed early in pipeline (before expensive processors)
 - [ ] Drop rate monitored with collector metrics
 - [ ] Alerts configured for unexpected drop rate changes
