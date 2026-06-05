@@ -54,7 +54,7 @@ from opentelemetry import trace
 # API specification defines that you get a tracer from a TracerProvider
 tracer = trace.get_tracer(
     instrumenting_module_name="my-application",
-    instrumenting_module_version="1.0.0"
+    instrumenting_library_version="1.0.0"
 )
 
 # API defines the start_span method signature and behavior
@@ -88,8 +88,8 @@ const { trace } = require('@opentelemetry/api');
 const tracer = trace.getTracer('my-service', '1.0.0');
 
 const span = tracer.startSpan('database-query');
-span.setAttribute('db.system', 'postgresql');
-span.setAttribute('db.statement', 'SELECT * FROM users WHERE id = $1');
+span.setAttribute('db.system.name', 'postgresql');
+span.setAttribute('db.query.text', 'SELECT * FROM users WHERE id = $1');
 span.end();
 ```
 
@@ -104,6 +104,8 @@ While the API defines what developers see, the SDK specification defines how imp
 package main
 
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -118,9 +120,15 @@ func initTracer() (*sdktrace.TracerProvider, error) {
             semconv.ServiceName("my-service"),
         ),
     )
+    if err != nil {
+        return nil, err
+    }
 
     // SDK specification defines exporter requirements
     exporter, err := otlptracegrpc.New(context.Background())
+    if err != nil {
+        return nil, err
+    }
 
     // SDK specification defines how span processors work
     bsp := sdktrace.NewBatchSpanProcessor(exporter)
@@ -144,7 +152,7 @@ The SDK specification ensures that regardless of language, implementations handl
 
 ### Configurability Requirements
 
-The SDK specification mandates certain configurability options. Every SDK must support environment variables for basic configuration:
+The SDK specification defines standard environment variables for basic configuration, which SDKs and autoconfiguration components can support consistently:
 
 ```bash
 # SDK specification requires these environment variables
@@ -203,7 +211,7 @@ The data model includes context propagation, which enables distributed tracing:
 
 ```javascript
 // Context propagation as defined in specification
-const { context, trace, propagation } = require('@opentelemetry/api');
+const { context, trace, propagation, SpanKind } = require('@opentelemetry/api');
 
 // Specification defines how context is extracted from incoming requests
 function handleRequest(req, res) {
@@ -214,11 +222,11 @@ function handleRequest(req, res) {
   const span = trace.getTracer('my-service').startSpan(
     'handle-request',
     {
-      kind: trace.SpanKind.SERVER,
+      kind: SpanKind.SERVER,
       // Specification defines how parent context links spans
       attributes: {
-        'http.method': req.method,
-        'http.url': req.url,
+        'http.request.method': req.method,
+        'url.full': req.url,
       }
     },
     parentContext
@@ -251,32 +259,30 @@ Semantic conventions are the shared vocabulary of OpenTelemetry. They define sta
 ```python
 # Using semantic conventions for HTTP instrumentation
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
-
 tracer = trace.get_tracer(__name__)
 
 def handle_http_request(request):
     with tracer.start_as_current_span("HTTP GET") as span:
         # Semantic conventions define standard HTTP attributes
-        span.set_attribute(SpanAttributes.HTTP_METHOD, request.method)
-        span.set_attribute(SpanAttributes.HTTP_URL, request.url)
-        span.set_attribute(SpanAttributes.HTTP_TARGET, request.path)
-        span.set_attribute(SpanAttributes.HTTP_HOST, request.host)
-        span.set_attribute(SpanAttributes.HTTP_SCHEME, request.scheme)
-        span.set_attribute(SpanAttributes.HTTP_USER_AGENT, request.headers.get('User-Agent'))
+        span.set_attribute("http.request.method", request.method)
+        span.set_attribute("url.full", request.url)
+        span.set_attribute("url.path", request.path)
+        span.set_attribute("server.address", request.host)
+        span.set_attribute("url.scheme", request.scheme)
+        span.set_attribute("user_agent.original", request.headers.get('User-Agent'))
 
         # Process request
         status_code = process_request(request)
 
         # Semantic conventions define status code attribute
-        span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, status_code)
+        span.set_attribute("http.response.status_code", status_code)
 
         # Semantic conventions define how to mark errors
         if status_code >= 500:
             span.set_status(trace.Status(trace.StatusCode.ERROR))
 ```
 
-These conventions ensure that dashboards, queries, and alerts work across different services and languages. When every service uses `http.method` instead of inventing `request.method`, `req.method`, or `method`, analysis becomes straightforward.
+These conventions ensure that dashboards, queries, and alerts work across different services and languages. When every service uses `http.request.method` instead of inventing `request.method`, `req.method`, or `method`, analysis becomes straightforward.
 
 ### Convention Categories
 
@@ -286,16 +292,16 @@ Semantic conventions cover numerous categories:
 # Categories of semantic conventions
 
 HTTP Conventions:
-  - http.method: HTTP request method
-  - http.status_code: HTTP response status
-  - http.url: Full request URL
-  - http.target: Request target
+  - http.request.method: HTTP request method
+  - http.response.status_code: HTTP response status
+  - url.full: Full request URL
+  - http.route: Matched route pattern
 
 Database Conventions:
-  - db.system: Database system (postgresql, mysql, mongodb)
-  - db.statement: Database statement being executed
-  - db.name: Database name
-  - db.operation: Operation name (SELECT, INSERT, etc)
+  - db.system.name: Database system (postgresql, mysql, mongodb)
+  - db.query.text: Database query being executed
+  - db.namespace: Database namespace
+  - db.operation.name: Operation name (SELECT, INSERT, etc)
 
 RPC Conventions:
   - rpc.system: RPC system (grpc, jsonrpc)
@@ -304,8 +310,8 @@ RPC Conventions:
 
 Messaging Conventions:
   - messaging.system: Messaging system (kafka, rabbitmq)
-  - messaging.destination: Queue or topic name
-  - messaging.operation: Operation (send, receive, process)
+  - messaging.destination.name: Queue or topic name
+  - messaging.operation.name: Operation (send, receive, process)
 
 Resource Conventions:
   - service.name: Logical service name
@@ -374,18 +380,21 @@ OTLP supports both gRPC and HTTP transports. The specification defines exactly h
 ```javascript
 // Configuring OTLP exporter in Node.js
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { CompressionAlgorithm } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const grpc = require('@grpc/grpc-js');
+
+const metadata = new grpc.Metadata();
+metadata.set('api-key', 'your-api-key');
 
 // gRPC transport
 const grpcExporter = new OTLPTraceExporter({
   url: 'http://collector:4317',  // OTLP/gRPC default port
   // Specification defines supported compression
-  compression: 'gzip',
+  compression: CompressionAlgorithm.GZIP,
   // Specification defines timeout behavior
   timeoutMillis: 10000,
   // Specification defines authentication options
-  metadata: {
-    'api-key': 'your-api-key',
-  },
+  metadata,
 });
 
 // HTTP transport with JSON encoding
@@ -423,18 +432,17 @@ trace.set_tracer_provider(tracer_provider)
 # Switch backends by changing only the exporter
 # No changes to application instrumentation needed
 
-# Option 1: Send to Jaeger
-from opentelemetry.exporter.jaeger import JaegerExporter
-jaeger_exporter = JaegerExporter(agent_host_name="localhost", agent_port=6831)
-tracer_provider.add_span_processor(BatchSpanProcessor(jaeger_exporter))
+# Option 1: Send to an OTLP-capable backend or collector
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
 # Option 2: Send to Zipkin (just swap the exporter)
-from opentelemetry.exporter.zipkin import ZipkinExporter
+from opentelemetry.exporter.zipkin.json import ZipkinExporter
 zipkin_exporter = ZipkinExporter(endpoint="http://localhost:9411/api/v2/spans")
 tracer_provider.add_span_processor(BatchSpanProcessor(zipkin_exporter))
 
 # Option 3: Send to commercial backend via OTLP
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 otlp_exporter = OTLPSpanExporter(endpoint="https://backend.example.com:4317")
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 ```
@@ -463,7 +471,6 @@ package main
 import (
     "context"
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/trace"
 )
 
 func outerFunction(ctx context.Context) {
@@ -593,8 +600,8 @@ const { trace } = require('@opentelemetry/api');
 const tracer = trace.getTracer('library-name', 'version');
 
 // Spec-compliant libraries use standard semantic conventions
-span.setAttribute('http.method', 'GET');  // Not 'request.method'
-span.setAttribute('http.status_code', 200);  // Not 'response.code'
+span.setAttribute('http.request.method', 'GET');  // Not 'request.method'
+span.setAttribute('http.response.status_code', 200);  // Not 'response.code'
 ```
 
 ### Contributing to OpenTelemetry
