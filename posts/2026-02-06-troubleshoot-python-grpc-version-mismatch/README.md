@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Python, gRPC, Version Conflicts
 
 Description: Resolve silent gRPC instrumentation failures caused by version mismatches between grpcio and the OpenTelemetry gRPC instrumentation package.
 
-The OpenTelemetry gRPC instrumentation for Python (`opentelemetry-instrumentation-grpc`) supports specific versions of the `grpcio` package. When there is a version mismatch, the instrumentation silently fails to apply. No error is raised, no warning is logged, and no spans are generated for your gRPC calls.
+The OpenTelemetry gRPC instrumentation for Python (`opentelemetry-instrumentation-grpc`) declares which versions of the `grpcio` package it can instrument. When there is a version mismatch, OpenTelemetry's dependency check prevents the instrumentation from applying. With manual instrumentation this is logged as a dependency conflict; with auto-instrumentation it can still look like a silent failure if you only notice that no spans are generated for your gRPC calls.
 
 ## Diagnosing the Version Mismatch
 
@@ -17,25 +17,25 @@ pip show grpcio
 pip show opentelemetry-instrumentation-grpc
 ```
 
-Then check the compatibility matrix in the instrumentation package:
+Then check the instrumentation dependency range:
 
 ```bash
-pip show opentelemetry-instrumentation-grpc | grep Requires
+python -c "from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient; print(GrpcInstrumentorClient().instrumentation_dependencies())"
 ```
 
-If `grpcio` is outside the supported range, the instrumentation skips patching.
+For `opentelemetry-instrumentation-grpc==0.44b0`, this reports `grpcio ~= 1.27`, which means `grpcio>=1.27,<2.0`. Current releases report `grpcio >= 1.42.0`. If `grpcio` is outside the reported range, the instrumentation skips patching.
 
 ## The Fix
 
 Install compatible versions:
 
 ```bash
-# Check what version is supported
+# Install the instrumentation package with its instrumented-library dependency
 
-pip install opentelemetry-instrumentation-grpc==0.44b0
+pip install "opentelemetry-instrumentation-grpc[instruments]==0.44b0"
 
-# Install the matching grpcio version
-pip install "grpcio>=1.42.0,<2.0"
+# Or install a matching grpcio version explicitly
+pip install "grpcio>=1.27,<2.0"
 ```
 
 Or let pip resolve the dependencies:
@@ -66,6 +66,8 @@ GrpcInstrumentorServer().instrument()
 ## Server-Side Instrumentation
 
 ```python
+from concurrent import futures
+
 import grpc
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorServer
 
@@ -80,6 +82,7 @@ server.start()
 ## Client-Side Instrumentation
 
 ```python
+import grpc
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
 
 GrpcInstrumentorClient().instrument()
@@ -92,23 +95,23 @@ response = stub.MyMethod(request)
 
 ## Common Version Conflict Scenarios
 
-**Scenario 1**: Your application uses a newer grpcio than the instrumentation supports:
+**Scenario 1**: Your application uses an older grpcio than the instrumentation supports:
 
 ```bash
-grpcio==1.60.0  # Your app needs this
-opentelemetry-instrumentation-grpc==0.42b0  # Only supports up to 1.58
+grpcio==1.26.0  # Older than the supported range
+opentelemetry-instrumentation-grpc==0.44b0  # Requires grpcio>=1.27,<2.0
 ```
 
-Fix: Update the instrumentation package to match your grpcio version.
+Fix: Update `grpcio` or choose an instrumentation package whose reported dependency range matches the `grpcio` version your application needs.
 
-**Scenario 2**: The OTLP gRPC exporter pins a different grpcio version:
+**Scenario 2**: The OTLP gRPC exporter also depends on grpcio:
 
 ```bash
 opentelemetry-exporter-otlp-proto-grpc requires grpcio>=1.0.0,<2.0
-opentelemetry-instrumentation-grpc requires grpcio>=1.42.0,<1.58.0
+opentelemetry-instrumentation-grpc==0.44b0 reports grpcio>=1.27,<2.0
 ```
 
-Fix: Use the HTTP exporter instead of the gRPC exporter to avoid the grpcio dependency conflict:
+Fix: If you do not need the OTLP gRPC transport, use the HTTP exporter to avoid adding another grpcio dependency:
 
 ```bash
 pip install opentelemetry-exporter-otlp-proto-http  # No grpcio dependency
@@ -150,14 +153,14 @@ However, the CLI still requires the instrumentation package to be installed and 
 If auto-instrumentation does not work for your gRPC version, you can use OpenTelemetry interceptors directly:
 
 ```python
+from concurrent import futures
+
+import grpc
 from opentelemetry import trace
 from opentelemetry.instrumentation.grpc import (
-    GrpcInstrumentorClient,
     client_interceptor,
     server_interceptor,
 )
-
-tracer = trace.get_tracer("grpc-service")
 
 # Server side - add interceptor when creating the server
 server = grpc.server(
@@ -194,6 +197,6 @@ pip install -r requirements.txt
 python -c "from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient; print('Compatible')"
 ```
 
-If the import succeeds without error, the versions are compatible. If it fails with an ImportError or version warning, check and adjust your pins.
+If the import succeeds without error, the package is installed correctly. To verify that the versions are compatible, run the instrumentation dependency check shown earlier and compare it with your installed `grpcio` version. If manual instrumentation logs a `DependencyConflict` or auto-instrumentation produces no gRPC spans, check and adjust your pins.
 
-The key takeaway: always check version compatibility between `grpcio` and `opentelemetry-instrumentation-grpc`. The instrumentation fails silently when versions do not match, and the only way to detect it is to notice the missing spans.
+The key takeaway: always check version compatibility between `grpcio` and `opentelemetry-instrumentation-grpc`. When versions do not match, the instrumentation is not applied, and the most visible symptom is missing spans.
