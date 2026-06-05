@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, Authentication, AWS, SigV4, Cloud, Security
 
-Description: Learn how to configure AWS Signature Version 4 authentication in the OpenTelemetry Collector to securely send telemetry data to AWS services like CloudWatch and X-Ray.
+Description: Learn how to configure AWS Signature Version 4 authentication in the OpenTelemetry Collector to securely send telemetry data to AWS services like Amazon Managed Service for Prometheus.
 
 AWS Signature Version 4 (SigV4) is the authentication mechanism used by Amazon Web Services to verify the identity and integrity of requests. The OpenTelemetry Collector's SigV4 auth extension enables seamless integration with AWS services by automatically signing requests using AWS credentials, eliminating the need for long-lived API keys or bearer tokens.
 
@@ -25,7 +25,7 @@ The SigV4 auth extension handles this complex process automatically, requiring o
 
 SigV4 authentication provides several advantages for AWS integrations:
 
-**Native AWS Integration**: SigV4 is the standard authentication method for AWS services, ensuring compatibility with CloudWatch, X-Ray, S3, and other AWS APIs.
+**Native AWS Integration**: SigV4 is the standard authentication method for AWS services, ensuring compatibility with Amazon Managed Service for Prometheus, S3, and other AWS APIs.
 
 **IAM-Based Access Control**: Leverage AWS IAM roles and policies for fine-grained access control, enabling secure access without managing separate credentials.
 
@@ -47,7 +47,7 @@ graph TD
     E[SigV4 Auth Extension] -->|Signs Requests| D
     F[AWS Credentials Provider] -->|Provides Credentials| E
     D -->|Signed Request| G[AWS Service]
-    G -->|Validates Signature| H[CloudWatch/X-Ray]
+    G -->|Validates Signature| H[Amazon Managed Service for Prometheus]
     style E fill:#f9f,stroke:#333,stroke-width:2px
     style F fill:#ff9,stroke:#333,stroke-width:2px
 ```
@@ -67,7 +67,7 @@ extensions:
     # AWS region where the service is located
     region: "us-east-1"
 
-    # AWS service identifier (e.g., aps, xray, cloudwatch)
+    # AWS service identifier (e.g., aps, logs, monitoring)
     service: "aps"
 
 # Configure receivers
@@ -121,9 +121,10 @@ extensions:
     service: "aps"
     # No explicit credentials - uses default chain:
     # 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-    # 2. Shared credentials file (~/.aws/credentials)
-    # 3. EC2 instance metadata (if running on EC2)
-    # 4. EKS pod identity (if running on EKS)
+    # 2. Shared credentials and config files (~/.aws/credentials, ~/.aws/config)
+    # 3. Web identity credentials such as EKS IRSA
+    # 4. ECS task or EKS Pod Identity container credentials
+    # 5. EC2 instance metadata (if running on EC2)
 
 receivers:
   otlp:
@@ -206,7 +207,7 @@ For cross-account access or role assumption:
 extensions:
   sigv4auth:
     region: "us-east-1"
-    service: "xray"
+    service: "aps"
 
     # Assume a specific IAM role
     assume_role:
@@ -228,19 +229,18 @@ processors:
     timeout: 10s
 
 exporters:
-  # AWS X-Ray exporter
-  awsxray:
-    region: us-east-1
+  prometheusremotewrite:
+    endpoint: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxxxx/api/v1/remote_write
     auth:
       authenticator: sigv4auth
 
 service:
   extensions: [sigv4auth]
   pipelines:
-    traces:
+    metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [awsxray]
+      exporters: [prometheusremotewrite]
 ```
 
 ## Integration with Amazon Managed Service for Prometheus
@@ -313,15 +313,9 @@ service:
 
 ## Integration with AWS X-Ray
 
-Send distributed traces to AWS X-Ray using SigV4 authentication:
+Send distributed traces to AWS X-Ray. The AWS X-Ray exporter signs requests with AWS credentials through the AWS SDK, so it does not use the SigV4 auth extension:
 
 ```yaml
-extensions:
-  sigv4auth:
-    region: "us-east-1"
-    # Service identifier for X-Ray
-    service: "xray"
-
 receivers:
   otlp:
     protocols:
@@ -350,9 +344,6 @@ exporters:
   awsxray:
     # Region is required
     region: us-east-1
-    # Use SigV4 auth extension
-    auth:
-      authenticator: sigv4auth
     # X-Ray specific configuration
     indexed_attributes:
       - "http.status_code"
@@ -361,8 +352,6 @@ exporters:
     local_mode: false
 
 service:
-  extensions: [sigv4auth]
-
   pipelines:
     traces:
       receivers: [otlp]
@@ -372,15 +361,9 @@ service:
 
 ## Integration with CloudWatch Logs
 
-Send logs to Amazon CloudWatch Logs:
+Send logs to Amazon CloudWatch Logs. The CloudWatch Logs exporter signs requests with AWS credentials through the AWS SDK, so it does not use the SigV4 auth extension:
 
 ```yaml
-extensions:
-  sigv4auth:
-    region: "us-east-1"
-    # Service identifier for CloudWatch Logs
-    service: "logs"
-
 receivers:
   otlp:
     protocols:
@@ -404,8 +387,6 @@ exporters:
     region: us-east-1
     log_group_name: "/aws/otel/application-logs"
     log_stream_name: "collector-stream"
-    auth:
-      authenticator: sigv4auth
     # Retry configuration
     retry_on_failure:
       enabled: true
@@ -413,8 +394,6 @@ exporters:
       max_interval: 30s
 
 service:
-  extensions: [sigv4auth]
-
   pipelines:
     logs:
       receivers: [otlp]
@@ -424,7 +403,7 @@ service:
 
 ## Multiple AWS Services Configuration
 
-Configure multiple SigV4 auth extensions for different AWS services:
+Configure SigV4 authentication for AMP alongside AWS SDK-based exporters for X-Ray and CloudWatch Logs:
 
 ```yaml
 extensions:
@@ -432,16 +411,6 @@ extensions:
   sigv4auth/amp:
     region: "us-west-2"
     service: "aps"
-
-  # SigV4 for AWS X-Ray
-  sigv4auth/xray:
-    region: "us-west-2"
-    service: "xray"
-
-  # SigV4 for CloudWatch Logs
-  sigv4auth/logs:
-    region: "us-west-2"
-    service: "logs"
 
 receivers:
   otlp:
@@ -475,18 +444,15 @@ exporters:
   # Traces to X-Ray
   awsxray:
     region: us-west-2
-    auth:
-      authenticator: sigv4auth/xray
 
   # Logs to CloudWatch
   awscloudwatchlogs:
     region: us-west-2
     log_group_name: "/aws/otel/app-logs"
-    auth:
-      authenticator: sigv4auth/logs
+    log_stream_name: "collector-stream"
 
 service:
-  extensions: [sigv4auth/amp, sigv4auth/xray, sigv4auth/logs]
+  extensions: [sigv4auth/amp]
 
   pipelines:
     traces:
@@ -635,7 +601,7 @@ Deploy the collector on EC2 using an instance profile:
 extensions:
   sigv4auth:
     region: "us-east-1"
-    service: "xray"
+    service: "aps"
     # No explicit credentials needed - uses EC2 instance profile
 
 receivers:
@@ -659,8 +625,8 @@ processors:
     timeout: 5s
 
 exporters:
-  awsxray:
-    region: us-east-1
+  prometheusremotewrite:
+    endpoint: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxxxx/api/v1/remote_write
     auth:
       authenticator: sigv4auth
 
@@ -668,10 +634,10 @@ service:
   extensions: [sigv4auth]
 
   pipelines:
-    traces:
+    metrics:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [awsxray]
+      exporters: [prometheusremotewrite]
 ```
 
 Attach an IAM role to the EC2 instance with the necessary permissions:
@@ -683,10 +649,9 @@ Attach an IAM role to the EC2 instance with the necessary permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "xray:PutTraceSegments",
-        "xray:PutTelemetryRecords"
+        "aps:RemoteWrite"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:aps:us-east-1:123456789012:workspace/ws-xxxxx"
     }
   ]
 }
@@ -702,11 +667,6 @@ extensions:
   sigv4auth/metrics:
     region: "us-west-2"
     service: "aps"
-
-  # SigV4 for traces
-  sigv4auth/traces:
-    region: "us-west-2"
-    service: "xray"
 
   # Health check endpoint
   health_check:
@@ -787,7 +747,7 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-    sending_queue:
+    remote_write_queue:
       enabled: true
       num_consumers: 10
       queue_size: 5000
@@ -795,8 +755,6 @@ exporters:
   # Traces to X-Ray
   awsxray:
     region: us-west-2
-    auth:
-      authenticator: sigv4auth/traces
     indexed_attributes:
       - "http.status_code"
       - "error"
@@ -804,19 +762,19 @@ exporters:
     local_mode: false
 
   # Logging for troubleshooting
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
 service:
-  extensions: [sigv4auth/metrics, sigv4auth/traces, health_check, pprof]
+  extensions: [sigv4auth/metrics, health_check, pprof]
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, attributes, resource, batch/traces]
-      exporters: [awsxray, logging]
+      exporters: [awsxray, debug]
 
     metrics:
       receivers: [otlp, prometheus]
