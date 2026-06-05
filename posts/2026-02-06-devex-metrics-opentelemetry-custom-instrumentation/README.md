@@ -12,7 +12,7 @@ OpenTelemetry's custom instrumentation APIs give you the tools to measure develo
 
 ## What Are DevEx Metrics?
 
-DevEx metrics quantify the friction developers encounter during their daily work. The DORA metrics (deployment frequency, lead time for changes, change failure rate, mean time to recovery) are a good starting point, but you can go deeper:
+DevEx metrics quantify the friction developers encounter during their daily work. The DORA metrics (deployment frequency, lead time for changes, change failure rate, failed deployment recovery time) are a good starting point, but you can go deeper:
 
 - **Build duration** - how long local and CI builds take
 - **CI pipeline wait time** - time spent waiting for feedback
@@ -122,7 +122,7 @@ This webhook handler measures time-to-first-review from pull request events:
 
 ```python
 # webhook_handler.py - GitHub/GitLab webhook processor
-from datetime import datetime, timezone
+from datetime import datetime
 from devex_metrics import meter
 
 # Histogram for review turnaround time
@@ -131,6 +131,10 @@ review_turnaround = meter.create_histogram(
     description="Time from PR creation to first review",
     unit="s",
 )
+
+def resolve_team(username: str) -> str:
+    """Look up the user's owning team in your directory or Git platform."""
+    return "unknown"
 
 def handle_review_event(payload: dict):
     """Process a pull request review webhook event."""
@@ -153,7 +157,7 @@ def handle_review_event(payload: dict):
 
 Route DevEx metrics through a dedicated pipeline in the OpenTelemetry Collector so you can apply specific processing rules.
 
-This Collector config separates DevEx metrics from application metrics using attribute-based routing:
+This Collector config sends received metrics through a dedicated DevEx pipeline and adds a category attribute:
 
 ```yaml
 # otel-collector-config.yaml
@@ -198,13 +202,13 @@ Once telemetry flows in, build dashboards around these key questions:
 - What is the deploy frequency per team per week?
 - Which teams have the longest code review turnaround?
 
-The histogram metrics give you percentile breakdowns automatically. A p95 build time of 20 minutes hitting a team of 50 developers means hundreds of hours of lost productivity per month.
+The histogram metrics give your backend the aggregated distribution data it needs for percentile-style analysis. A p95 build time of 20 minutes hitting a team of 50 developers means hundreds of hours of lost productivity per month.
 
 ## Practical Tips
 
 **Start small.** Instrument one pipeline for one team. Get feedback. Iterate. Rolling this out across the entire org on day one will create noise before you have the dashboards to make sense of it.
 
-**Use semantic conventions.** Prefix all DevEx metric names with `devex.` to make them easy to filter and avoid collisions with application metrics.
+**Use consistent naming.** Prefix all custom DevEx metric names with `devex.` to make them easy to filter and avoid collisions with application metrics. For CI/CD and VCS telemetry, check the OpenTelemetry semantic conventions first and use them where they fit.
 
 **Set alerts on trends, not absolutes.** A 10-minute build might be fine today but a problem if it was 5 minutes last month. Alert on week-over-week regressions rather than fixed thresholds.
 
