@@ -137,12 +137,17 @@ Make sure your exporter references the correct hostname that matches a SAN:
 
 ```python
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-import ssl
+import grpc
 
 # The endpoint hostname MUST match a SAN in the certificate
+with open("/certs/ca.crt", "rb") as ca_file:
+    credentials = grpc.ssl_channel_credentials(
+        root_certificates=ca_file.read(),
+    )
+
 exporter = OTLPSpanExporter(
-    endpoint="otel-collector.observability.svc.cluster.local:4317",
-    credentials=ssl.create_default_context(cafile="/certs/ca.crt"),
+    endpoint="https://otel-collector.observability.svc.cluster.local:4317",
+    credentials=credentials,
 )
 ```
 
