@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Go, gRPC, Interceptors
 
 Description: Troubleshoot and fix gRPC interceptor ordering issues in Go that prevent OpenTelemetry trace propagation from working.
 
-When you use OpenTelemetry with gRPC in Go, the order in which you register interceptors matters more than you might expect. If the OpenTelemetry interceptor is not in the right position, trace context will not propagate correctly, and you will end up with disconnected spans or missing traces entirely.
+When you use OpenTelemetry with gRPC in Go, the order in which you register interceptors matters more than you might expect in older interceptor-based setups. If the OpenTelemetry interceptor is not in the right position, trace context will not propagate correctly, and you will end up with disconnected spans or missing traces entirely. In current versions of `otelgrpc`, use the stats handler approach shown below instead of the deprecated interceptor APIs.
 
 ## The Symptom
 
-You have a gRPC server instrumented with OpenTelemetry. You also have authentication and logging interceptors. Traces show up, but they are not connected to the upstream caller's trace. Every gRPC handler creates a new root span instead of continuing the trace from the client.
+You have a gRPC server instrumented with an older OpenTelemetry interceptor. You also have authentication and logging interceptors. Traces show up, but they are not connected to the upstream caller's trace. Every gRPC handler creates a new root span instead of continuing the trace from the client.
 
 ## Understanding Interceptor Execution Order
 
@@ -22,7 +22,7 @@ grpc.ChainUnaryInterceptor(first, second, third)
 
 The execution order is: `first` -> `second` -> `third` -> handler -> `third` return -> `second` return -> `first` return.
 
-The OpenTelemetry interceptor needs to run early so that it can extract the trace context from incoming metadata before other interceptors try to use it.
+In older `otelgrpc` releases that still had interceptor APIs, the OpenTelemetry interceptor needed to run early so that it could extract the trace context from incoming metadata before other interceptors tried to use it.
 
 ## The Broken Configuration
 
@@ -32,7 +32,7 @@ func newGRPCServer() *grpc.Server {
         grpc.ChainUnaryInterceptor(
             authInterceptor,       // runs first
             loggingInterceptor,    // runs second
-            otelgrpc.UnaryServerInterceptor(), // runs third - TOO LATE
+            otelgrpc.UnaryServerInterceptor(), // legacy API: runs third - TOO LATE
         ),
     )
 }
@@ -46,18 +46,18 @@ In this setup, `authInterceptor` and `loggingInterceptor` run before the OpenTel
 
 ## The Fix
 
-Move the OpenTelemetry interceptor to the first position:
+For older `otelgrpc` versions that still expose interceptor APIs, move the OpenTelemetry interceptor to the first position:
 
 ```go
 func newGRPCServer() *grpc.Server {
     return grpc.NewServer(
         grpc.ChainUnaryInterceptor(
-            otelgrpc.UnaryServerInterceptor(), // runs first - extracts trace context
+            otelgrpc.UnaryServerInterceptor(), // legacy API: runs first - extracts trace context
             authInterceptor,       // now has trace context available
             loggingInterceptor,    // can log trace IDs
         ),
         grpc.ChainStreamInterceptor(
-            otelgrpc.StreamServerInterceptor(), // same for streaming RPCs
+            otelgrpc.StreamServerInterceptor(), // legacy API: same for streaming RPCs
             authStreamInterceptor,
             loggingStreamInterceptor,
         ),
@@ -69,18 +69,18 @@ Now the OpenTelemetry interceptor extracts the trace context from gRPC metadata 
 
 ## Client-Side Ordering
 
-The same principle applies to client interceptors. The OpenTelemetry interceptor should be first so that it injects trace context into outgoing metadata before other interceptors modify the call:
+The same principle applies to client interceptors in older `otelgrpc` versions. The OpenTelemetry interceptor should be first so that it injects trace context into outgoing metadata before other interceptors modify the call:
 
 ```go
 func newGRPCClient(target string) (*grpc.ClientConn, error) {
     return grpc.NewClient(target,
         grpc.WithChainUnaryInterceptor(
-            otelgrpc.UnaryClientInterceptor(), // injects trace context first
+            otelgrpc.UnaryClientInterceptor(), // legacy API: injects trace context first
             retryInterceptor,
             rateLimitInterceptor,
         ),
         grpc.WithChainStreamInterceptor(
-            otelgrpc.StreamClientInterceptor(),
+            otelgrpc.StreamClientInterceptor(), // legacy API
             retryStreamInterceptor,
         ),
     )
@@ -89,7 +89,7 @@ func newGRPCClient(target string) (*grpc.ClientConn, error) {
 
 ## Using StatsHandler Instead of Interceptors
 
-The newer recommended approach is to use `otelgrpc` as a stats handler instead of interceptors. Stats handlers avoid the ordering issue entirely because they operate at a different layer:
+The current recommended approach is to use `otelgrpc` as a stats handler instead of interceptors. Stats handlers avoid the ordering issue entirely because they operate at a different layer:
 
 ```go
 func newGRPCServer() *grpc.Server {
@@ -113,7 +113,7 @@ func newGRPCClient(target string) (*grpc.ClientConn, error) {
 }
 ```
 
-The stats handler runs at the transport level, so it processes trace context before any interceptor runs. This is the cleanest solution.
+The stats handler attaches information to the RPC context before application interceptors handle the call, so it avoids the OpenTelemetry-interceptor ordering problem. This is the cleanest solution for current `otelgrpc` releases.
 
 ## Debugging Interceptor Ordering
 
@@ -139,7 +139,7 @@ func debugInterceptor(
 }
 ```
 
-Insert this interceptor at different positions to see where the trace context becomes available:
+In a legacy interceptor setup, insert this interceptor at different positions to see where the trace context becomes available:
 
 ```go
 grpc.ChainUnaryInterceptor(
@@ -150,8 +150,8 @@ grpc.ChainUnaryInterceptor(
 )
 ```
 
-If the first `debugInterceptor` prints "NO VALID SPAN CONTEXT" and the second one prints a valid trace ID, you know the OpenTelemetry interceptor is doing its job. Move it before any interceptor that needs the trace context.
+If the first `debugInterceptor` prints "NO VALID SPAN CONTEXT" and the second one prints a valid trace ID, you know the legacy OpenTelemetry interceptor is doing its job. Move it before any interceptor that needs the trace context. In current `otelgrpc` releases, use `grpc.StatsHandler(otelgrpc.NewServerHandler())` and place this debug interceptor at the start of your application interceptor chain to verify that the stats handler has already made the span context available.
 
 ## Summary
 
-For gRPC trace propagation to work correctly in Go, the OpenTelemetry interceptor must run before any other interceptor that depends on trace context. The safest approach is to use `otelgrpc.NewServerHandler()` as a stats handler, which avoids ordering issues entirely.
+For gRPC trace propagation to work correctly in older interceptor-based Go services, the OpenTelemetry interceptor must run before any other interceptor that depends on trace context. The safest approach in current `otelgrpc` releases is to use `otelgrpc.NewServerHandler()` as a stats handler, which avoids ordering issues entirely.
