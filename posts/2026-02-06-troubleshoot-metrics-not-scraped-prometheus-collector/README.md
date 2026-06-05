@@ -37,7 +37,7 @@ service:
 ```
 
 Common mistakes:
-- Using `prometheusremotewrite` instead of `prometheus` (they are different exporters)
+- Using `prometheus_remote_write` instead of `prometheus` (they are different exporters)
 - Forgetting to add `prometheus` to the pipeline's exporters
 - Binding to `localhost` instead of `0.0.0.0` (unreachable from outside the container)
 
@@ -160,7 +160,7 @@ If your applications send metrics infrequently (less than every 5 minutes), incr
     metric_expiration: 30m
 ```
 
-## Common Gotcha: prometheusremotewrite vs prometheus
+## Common Gotcha: prometheus_remote_write vs prometheus
 
 These are two different exporters:
 
@@ -170,13 +170,13 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
 
-# prometheusremotewrite: pushes metrics to a Prometheus-compatible endpoint (push model)
+# prometheus_remote_write: pushes metrics to a remote write receiver (push model)
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
 ```
 
-If you want Prometheus to scrape the Collector, use `prometheus`. If you want the Collector to push metrics to Prometheus, use `prometheusremotewrite`.
+If you want Prometheus to scrape the Collector, use `prometheus`. If you want the Collector to push metrics to a remote write endpoint, use `prometheus_remote_write`. When pushing directly to Prometheus, make sure its remote write receiver is enabled.
 
 ## Summary
 
