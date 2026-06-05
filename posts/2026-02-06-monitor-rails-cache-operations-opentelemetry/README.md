@@ -29,6 +29,7 @@ Add the necessary gems:
 
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
+gem 'opentelemetry-instrumentation-all'
 gem 'opentelemetry-instrumentation-rails'
 gem 'opentelemetry-instrumentation-active_support'
 gem 'opentelemetry-instrumentation-redis'
@@ -54,20 +55,29 @@ OpenTelemetry::SDK.configure do |c|
 
   c.use_all({
     'OpenTelemetry::Instrumentation::Rails' => {},
-    'OpenTelemetry::Instrumentation::ActiveSupport' => {
-      # Enable cache instrumentation
-      enable_cache_instrumentation: true
-    },
+    'OpenTelemetry::Instrumentation::ActiveSupport' => {},
     'OpenTelemetry::Instrumentation::Redis' => {}
   })
 end
+
+cache_tracer = OpenTelemetry.tracer_provider.tracer('rails-cache')
+
+OpenTelemetry::Instrumentation::ActiveSupport.subscribe(
+  cache_tracer,
+  /\Acache_.*\.active_support\z/
+)
+
+OpenTelemetry::Instrumentation::ActiveSupport.subscribe(
+  cache_tracer,
+  /\A(?:read|write|expire|exist)_fragment\??\.action_controller\z/
+)
 ```
 
-This automatically instruments all Rails cache operations including fragment caching, low-level caching, and SQL query caching.
+This enables Rails and Redis instrumentation, then subscribes OpenTelemetry to Rails cache notifications for low-level cache operations and fragment cache events. SQL query cache activity is reported through Active Record SQL instrumentation, where Rails adds `cached: true` to cached query payloads.
 
 ## Tracing Basic Cache Operations
 
-Rails cache operations are automatically traced. Here is a typical service using cache:
+Rails cache operations covered by the Active Support subscriptions are traced. Here is a typical service using cache:
 
 ```ruby
 # app/services/product_service.rb
@@ -97,20 +107,20 @@ class ProductService
 end
 ```
 
-OpenTelemetry creates spans for the cache operations with attributes:
+OpenTelemetry creates spans named after Rails notification events such as `cache_read.active_support`, `cache_write.active_support`, and `read_fragment.action_controller`. Rails cache notification payloads become span attributes such as:
 
-- `cache.operation`: fetch, read, write, delete, etc.
-- `cache.key`: The cache key being accessed
-- `cache.hit`: true or false
-- `cache.backend`: redis, memcached, memory, etc.
+- `key`: The cache key being accessed
+- `store`: The Rails cache store class
+- `hit`: true or false for cache read events
+- `super_operation`: `fetch` when a read is performed by `fetch`
 
 ## Monitoring Fragment Cache Performance
 
-Fragment caching in views becomes visible with instrumentation:
+Fragment caching in views becomes visible through the `read_fragment.action_controller`, `write_fragment.action_controller`, and related fragment cache notifications:
 
 ```ruby
 # app/views/products/show.html.erb
-<%# The cache block is automatically instrumented %>
+<%# The cache block emits Rails fragment cache notifications %>
 <% cache @product do %>
   <div class="product-details">
     <h1><%= @product.name %></h1>
@@ -228,7 +238,7 @@ end
 
 ## Tracking Cache Hit Rates and Metrics
 
-Create a wrapper to track cache metrics:
+If your application has an OpenTelemetry metrics SDK and exporter configured, create a wrapper to track cache metrics:
 
 ```ruby
 # lib/instrumented_cache.rb
@@ -343,7 +353,7 @@ class InstrumentedCache
 end
 
 # Use in application
-# Rails.cache = InstrumentedCache.new(Rails.cache)
+# instrumented_cache = InstrumentedCache.new(Rails.cache)
 ```
 
 ## Monitoring Redis Cache Backend
@@ -402,6 +412,8 @@ Implement stampede protection with tracing:
 
 ```ruby
 # app/services/protected_cache_service.rb
+class CacheStampedeTimeout < StandardError; end
+
 class ProtectedCacheService
   def initialize
     @cache = Rails.cache
