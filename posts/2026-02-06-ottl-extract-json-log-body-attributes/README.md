@@ -37,12 +37,13 @@ This arrives as a string in the log body. Your backend needs `user.id`, `error.c
 ```yaml
 processors:
   transform/parse_json:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Parse the JSON body into a map
-          # After this, body becomes a structured map instead of a string
-          - set(cache, ParseJSON(body)) where IsString(body)
+          # After this, cache contains the parsed fields while body remains unchanged
+          - set(cache, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\s*\\{")
 
           # Extract top-level fields into attributes
           - set(attributes["log.message"], cache["message"]) where cache["message"] != nil
@@ -98,11 +99,12 @@ receivers:
 
 processors:
   transform/extract_fields:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # First, check if the body is a JSON string and parse it
-          - set(cache, ParseJSON(body)) where IsString(body)
+          - set(cache, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\s*\\{")
 
           # Extract fields we care about
           - set(attributes["trace.id"], cache["trace_id"]) where cache["trace_id"] != nil
@@ -142,37 +144,39 @@ For deeply nested structures, chain the field access:
 ```yaml
 processors:
   transform/deep_extract:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
-          - set(cache, ParseJSON(body)) where IsString(body)
+          - set(cache, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\s*\\{")
 
           # Three levels deep: response.headers.content_type
           - set(attributes["response.content_type"], cache["response"]["headers"]["content_type"]) where cache["response"]["headers"]["content_type"] != nil
 
           # Extract array elements (first item)
-          - set(attributes["first_tag"], cache["tags"][0]) where cache["tags"] != nil
+          - set(attributes["first_tag"], cache["tags"][0]) where IsList(cache["tags"])
 ```
 
 ## Handling Parse Failures
 
-Not all log bodies are valid JSON. Use the `where IsString(body)` guard to avoid errors, and optionally add a marker attribute for unparseable logs:
+Not all log bodies are valid JSON. Use `error_mode: ignore` so invalid JSON does not drop the log, and guard parsing so non-string bodies and obvious non-JSON strings are skipped:
 
 ```yaml
 processors:
   transform/safe_parse:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Try to parse JSON body
-          - set(cache, ParseJSON(body)) where IsString(body)
+          - set(cache, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\s*\\{")
 
           # If parsing succeeded, extract fields
-          - set(attributes["parsed"], true) where cache != nil
           - set(attributes["request_id"], cache["request_id"]) where cache["request_id"] != nil
+          - set(attributes["parsed"], true) where cache["request_id"] != nil
 
-          # The body remains unchanged if ParseJSON fails
-          # so unparseable logs pass through without errors
+          # The body remains unchanged because parsed fields are stored in cache
+          # and unparseable logs pass through when error_mode is ignore
 ```
 
 ## Combining with Severity Mapping
@@ -182,10 +186,11 @@ Map JSON log levels to OpenTelemetry severity numbers:
 ```yaml
 processors:
   transform/parse_and_severity:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
-          - set(cache, ParseJSON(body)) where IsString(body)
+          - set(cache, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\s*\\{")
 
           # Map level strings to severity numbers
           - set(severity_text, cache["level"]) where cache["level"] != nil
