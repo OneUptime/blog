@@ -48,11 +48,12 @@ class FileSpanExporter(SpanExporter):
 
     def export(self, spans):
         for span in spans:
+            span_context = span.get_span_context()
             # Write each span as a JSON file that the diode agent will pick up
-            filename = f"{self.output_dir}/{span.context.trace_id}_{span.context.span_id}.json"
+            filename = f"{self.output_dir}/{span_context.trace_id}_{span_context.span_id}.json"
             span_data = {
-                "trace_id": format(span.context.trace_id, '032x'),
-                "span_id": format(span.context.span_id, '016x'),
+                "trace_id": format(span_context.trace_id, '032x'),
+                "span_id": format(span_context.span_id, '016x'),
                 "parent_span_id": format(span.parent.span_id, '016x') if span.parent else None,
                 "name": span.name,
                 "start_time": span.start_time,
@@ -161,7 +162,7 @@ A few things to keep in mind:
 - **Sanitize span attributes**: Before writing to the diode outbox, strip any attributes that could leak sensitive control parameters. You do not want command payloads with setpoint values ending up in your IT-side observability platform.
 - **Rate limit the exporter**: If something goes wrong and spans accumulate, you do not want to saturate the data diode. Set a hard cap on files per second.
 - **Validate on the IT side**: The IT-side collector should validate incoming JSON strictly. Treat anything from the diode as untrusted input even though it originated from your own systems.
-- **No trace context propagation back**: Standard OpenTelemetry context propagation is bidirectional. In this setup, you must never inject trace context back into the OT network. The spans on the OT side generate their own trace IDs locally.
+- **No trace context propagation back**: OpenTelemetry context can be propagated in any direction your application messages travel. In this setup, the IT side must never inject trace context back into the OT network. The spans on the OT side generate their own trace IDs locally.
 
 ## What You Get
 
