@@ -116,16 +116,19 @@ The `opentelemetry.NewTracingInterceptor` is doing the heavy lifting. It creates
 
 ## Writing Instrumented Workflows
 
-With the interceptor in place, your workflow code automatically generates spans. But you can add more detail with custom spans inside the workflow.
+With the interceptor in place, your workflow code automatically generates spans. Because workflow code must stay deterministic, add most custom child spans inside activities or use the interceptor-provided workflow span only to attach deterministic attributes.
 
 ```go
-// workflows.go - Order processing workflow with custom spans
+// workflows.go - Order processing workflow with traced activities
 package main
 
 import (
     "time"
+    "go.temporal.io/sdk/temporal"
     "go.temporal.io/sdk/workflow"
 )
+
+var activities *OrderActivities
 
 func OrderWorkflow(ctx workflow.Context, order Order) (OrderResult, error) {
     // The interceptor automatically creates a span for "OrderWorkflow"
@@ -184,8 +187,10 @@ package main
 
 import (
     "context"
+    "database/sql"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 type OrderActivities struct {
@@ -412,15 +417,18 @@ func OrderWorkflow(ctx workflow.Context, order Order) (OrderResult, error) {
 Beyond what the interceptor provides automatically, there are attributes worth adding for Temporal-specific debugging.
 
 ```go
-// Add these attributes to help with Temporal-specific debugging
-span.SetAttributes(
-    attribute.String("temporal.workflow.id", workflow.GetInfo(ctx).WorkflowExecution.ID),
-    attribute.String("temporal.workflow.run_id", workflow.GetInfo(ctx).WorkflowExecution.RunID),
-    attribute.String("temporal.workflow.type", workflow.GetInfo(ctx).WorkflowType.Name),
-    attribute.String("temporal.task_queue", workflow.GetInfo(ctx).TaskQueueName),
-    attribute.Int("temporal.workflow.attempt", int(workflow.GetInfo(ctx).Attempt)),
-    attribute.String("temporal.namespace", workflow.GetInfo(ctx).Namespace),
-)
+// Add these attributes to the current workflow span to help with Temporal-specific debugging
+if span, ok := opentelemetry.SpanFromWorkflowContext(ctx); ok {
+    info := workflow.GetInfo(ctx)
+    span.SetAttributes(
+        attribute.String("temporal.workflow.id", info.WorkflowExecution.ID),
+        attribute.String("temporal.workflow.run_id", info.WorkflowExecution.RunID),
+        attribute.String("temporal.workflow.type", info.WorkflowType.Name),
+        attribute.String("temporal.task_queue", info.TaskQueueName),
+        attribute.Int("temporal.workflow.attempt", int(info.Attempt)),
+        attribute.String("temporal.namespace", info.Namespace),
+    )
+}
 ```
 
 These attributes let you search for traces by workflow ID, filter by namespace, or find workflows that have been retried multiple times.
