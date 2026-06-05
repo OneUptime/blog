@@ -20,21 +20,23 @@ Set up your `Cargo.toml` with these dependencies:
 
 ```toml
 [dependencies]
-axum = "0.7"
-tokio = { version = "1.35", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace", "request-id"] }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id"] }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-opentelemetry = "0.23"
+tracing-opentelemetry = "0.33"
 
-opentelemetry = { version = "0.22", features = ["trace"] }
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace"] }
-opentelemetry-otlp = { version = "0.15", features = ["tokio"] }
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "trace"] }
 
+reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+uuid = { version = "1", features = ["v4", "serde"] }
 ```
 
 These dependencies provide everything needed for a production-ready instrumented Axum application.
@@ -49,20 +51,28 @@ use axum::{
     Router, Json, response::IntoResponse,
 };
 use tower_http::trace::TraceLayer;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-fn init_telemetry() -> Result<(), Box<dyn std::error::Error>> {
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-        .with_trace_config(
-            opentelemetry_sdk::trace::config()
-                .with_resource(opentelemetry_sdk::Resource::new(vec![
-                    opentelemetry::KeyValue::new("service.name", "axum-service"),
-                ]))
+fn init_telemetry() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
+    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()?;
+
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder_empty()
+                .with_attribute(opentelemetry::KeyValue::new("service.name", "axum-service"))
+                .build(),
         )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)?;
+        .build();
+
+    let tracer = provider.tracer("axum-service");
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -70,12 +80,12 @@ fn init_telemetry() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_telemetry()?;
+    let provider = init_telemetry()?;
 
     let app = Router::new()
         .route("/", get(root_handler))
@@ -88,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     axum::serve(listener, app).await?;
 
-    opentelemetry::global::shutdown_tracer_provider();
+    provider.shutdown()?;
 
     Ok(())
 }
@@ -129,14 +139,14 @@ For more control, create custom middleware that adds detailed attributes:
 
 ```rust
 use axum::{
-    body::Body,
     extract::Request,
     middleware::{self, Next},
     response::Response,
 };
-use opentelemetry::trace::{SpanKind, TraceContextExt};
-use opentelemetry::{global, KeyValue};
-use tracing::Span;
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::KeyValue;
+use tracing::Instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 async fn trace_middleware(req: Request, next: Next) -> Response {
     let method = req.method().clone();
@@ -146,41 +156,39 @@ async fn trace_middleware(req: Request, next: Next) -> Response {
     // Create a span for this request
     let span = tracing::info_span!(
         "http_request",
-        http.method = %method,
-        http.target = %uri.path(),
+        http.request.method = %method,
+        url.path = %uri.path(),
         http.version = ?version,
-        http.status_code = tracing::field::Empty,
-        otel.kind = ?SpanKind::Server,
+        http.response.status_code = tracing::field::Empty,
+        otel.kind = "server",
     );
 
-    let _guard = span.enter();
-
-    // Get the OpenTelemetry context
-    let cx = tracing_opentelemetry::OpenTelemetrySpanExt::context(&span);
-    let otel_span = cx.span();
-
     // Add semantic conventions attributes
-    otel_span.set_attribute(KeyValue::new("http.method", method.to_string()));
-    otel_span.set_attribute(KeyValue::new("http.target", uri.path().to_string()));
-    otel_span.set_attribute(KeyValue::new("http.scheme", uri.scheme_str().unwrap_or("http").to_string()));
+    {
+        let cx = span.context();
+        let otel_span = cx.span();
+        otel_span.set_attribute(KeyValue::new("http.request.method", method.to_string()));
+        otel_span.set_attribute(KeyValue::new("url.path", uri.path().to_string()));
+        otel_span.set_attribute(KeyValue::new("url.scheme", uri.scheme_str().unwrap_or("http").to_string()));
 
-    if let Some(host) = uri.host() {
-        otel_span.set_attribute(KeyValue::new("http.host", host.to_string()));
+        if let Some(host) = uri.host() {
+            otel_span.set_attribute(KeyValue::new("server.address", host.to_string()));
+        }
     }
 
     // Process the request
-    let response = next.run(req).await;
+    let response = next.run(req).instrument(span.clone()).await;
 
     // Record response status
     let status = response.status();
-    span.record("http.status_code", status.as_u16());
-    otel_span.set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
+    span.record("http.response.status_code", status.as_u16());
+    let cx = span.context();
+    let otel_span = cx.span();
+    otel_span.set_attribute(KeyValue::new("http.response.status_code", status.as_u16() as i64));
 
     // Set span status based on HTTP status
     if status.is_server_error() {
-        otel_span.set_status(opentelemetry::trace::Status::Error {
-            description: format!("HTTP {}", status).into(),
-        });
+        otel_span.set_status(opentelemetry::trace::Status::error(format!("HTTP {}", status)));
     }
 
     response
@@ -189,7 +197,7 @@ async fn trace_middleware(req: Request, next: Next) -> Response {
 fn create_app() -> Router {
     Router::new()
         .route("/", get(root_handler))
-        .route("/users/:id", get(get_user_by_id))
+        .route("/users/{id}", get(get_user_by_id))
         .layer(middleware::from_fn(trace_middleware))
 }
 ```
@@ -202,11 +210,15 @@ Create custom extractors to access trace context in handlers:
 
 ```rust
 use axum::{
-    async_trait,
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
 };
-use opentelemetry::{global, propagation::Extractor};
+use opentelemetry::{
+    global,
+    propagation::Extractor,
+    trace::{SpanKind, Tracer},
+};
+use opentelemetry::trace::TraceContextExt;
 
 pub struct TraceContext(opentelemetry::Context);
 
@@ -222,7 +234,6 @@ impl<'a> Extractor for HeaderExtractor<'a> {
     }
 }
 
-#[async_trait]
 impl<Svc> FromRequestParts<Svc> for TraceContext
 where
     Svc: Send + Sync,
@@ -318,42 +329,35 @@ Correlate logs and traces with request IDs:
 
 ```rust
 use tower_http::{
-    request_id::{MakeRequestId, RequestId, PropagateRequestIdLayer, SetRequestIdLayer},
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
 };
-use uuid::Uuid;
-
-#[derive(Clone, Default)]
-struct MakeRequestUuid;
-
-impl MakeRequestId for MakeRequestUuid {
-    fn make_request_id<Bd>(&mut self, _request: &axum::http::Request<Bd>) -> Option<RequestId> {
-        let request_id = Uuid::new_v4().to_string().parse().unwrap();
-        Some(RequestId::new(request_id))
-    }
-}
+use tower::ServiceBuilder;
 
 fn create_app_with_request_ids() -> Router {
     Router::new()
         .route("/", get(root_handler))
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .layer(PropagateRequestIdLayer::x_request_id())
         .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &axum::http::Request<_>| {
-                    let request_id = request
-                        .headers()
-                        .get("x-request-id")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("unknown");
+            ServiceBuilder::new()
+                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(|request: &axum::http::Request<_>| {
+                            let request_id = request
+                                .headers()
+                                .get("x-request-id")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("unknown");
 
-                    tracing::info_span!(
-                        "http_request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        request_id = %request_id,
-                    )
-                })
+                            tracing::info_span!(
+                                "http_request",
+                                method = %request.method(),
+                                uri = %request.uri(),
+                                request_id = %request_id,
+                            )
+                        })
+                )
+                .layer(PropagateRequestIdLayer::x_request_id())
         )
 }
 ```
@@ -412,7 +416,8 @@ Inject trace context into outgoing HTTP requests:
 
 ```rust
 use reqwest;
-use opentelemetry::propagation::Injector;
+use opentelemetry::{global, propagation::Injector};
+use tracing::instrument;
 
 struct ReqwestHeaderInjector<'a>(&'a mut reqwest::header::HeaderMap);
 
@@ -476,6 +481,7 @@ Share telemetry configuration through Axum's state:
 
 ```rust
 use std::sync::Arc;
+use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 
 #[derive(Clone)]
 struct AppState {
@@ -564,9 +570,7 @@ impl IntoResponse for AppError {
         // Set OpenTelemetry span status
         let span = tracing::Span::current();
         let cx = tracing_opentelemetry::OpenTelemetrySpanExt::context(&span);
-        cx.span().set_status(opentelemetry::trace::Status::Error {
-            description: self.message.clone().into(),
-        });
+        cx.span().set_status(opentelemetry::trace::Status::error(self.message.clone()));
 
         (status_code, self.message).into_response()
     }
@@ -626,33 +630,41 @@ Each layer adds spans that provide visibility into different aspects of request 
 For production deployments, use environment-based configuration:
 
 ```rust
-fn init_production_telemetry() -> Result<(), Box<dyn std::error::Error>> {
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider};
+
+fn init_production_telemetry() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4317".to_string());
 
     let service_name = std::env::var("SERVICE_NAME")
         .unwrap_or_else(|_| "axum-service".to_string());
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(endpoint)
-        )
-        .with_trace_config(
-            opentelemetry_sdk::trace::config()
-                .with_sampler(opentelemetry_sdk::trace::Sampler::ParentBased(
-                    Box::new(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(0.1))
+    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint)
+        .build()?;
+
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(opentelemetry_sdk::trace::Sampler::ParentBased(Box::new(
+            opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(0.1),
+        )))
+        .with_resource(
+            opentelemetry_sdk::Resource::builder_empty()
+                .with_attribute(opentelemetry::KeyValue::new("service.name", service_name))
+                .with_attribute(opentelemetry::KeyValue::new(
+                    "deployment.environment",
+                    std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string()),
                 ))
-                .with_resource(opentelemetry_sdk::Resource::new(vec![
-                    opentelemetry::KeyValue::new("service.name", service_name),
-                    opentelemetry::KeyValue::new("deployment.environment",
-                        std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string())
-                    ),
-                ]))
+                .build(),
         )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)?;
+        .build();
+
+    let tracer = provider.tracer("axum-service");
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -660,7 +672,7 @@ fn init_production_telemetry() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
