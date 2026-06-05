@@ -97,7 +97,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 # Wire it together
@@ -109,13 +111,13 @@ service:
       exporters: [otlphttp]
 ```
 
-The Apache receiver connects to the mod_status endpoint on each collection interval and scrapes the machine-readable output. It converts the raw counters into OpenTelemetry metrics with proper types, so cumulative counters like total requests are marked as monotonic sums and point-in-time values like busy workers are gauges.
+The Apache receiver connects to the mod_status endpoint on each collection interval and scrapes the machine-readable output. It converts the raw values into OpenTelemetry metrics with proper metadata, so cumulative counters like total requests are marked as monotonic sums and state counts like busy workers are reported as non-monotonic sums.
 
 ## What Metrics Are Collected
 
-The Apache receiver produces the following metrics from mod_status.
+The Apache receiver produces metrics like the following from mod_status.
 
-**apache.uptime** tracks how long the server has been running in seconds. This is a gauge that resets to zero on restart, making it useful for detecting unexpected restarts.
+**apache.uptime** tracks how long the server has been running in seconds. This is a cumulative monotonic sum that starts over on restart, making it useful for detecting unexpected restarts.
 
 **apache.current_connections** shows the number of active connections at the time of scraping. This helps you understand concurrent load.
 
@@ -126,6 +128,8 @@ The Apache receiver produces the following metrics from mod_status.
 **apache.traffic** tracks total bytes served. Like requests, the rate of change gives you throughput in bytes per second.
 
 **apache.scoreboard** provides a detailed breakdown of what each worker slot is doing: waiting, reading request, sending reply, keepalive, DNS lookup, closing, logging, gracefully finishing, or idle cleanup.
+
+Recent Collector versions can also emit metrics such as **apache.connections.async**, **apache.cpu.load**, **apache.cpu.time**, **apache.load.1**, **apache.load.5**, **apache.load.15**, and **apache.request.time** when those values are present in the status output.
 
 ## Production Configuration with Resource Attributes
 
@@ -153,23 +157,37 @@ receivers:
         enabled: true
       apache.scoreboard:
         enabled: true
+      apache.connections.async:
+        enabled: true
+      apache.cpu.load:
+        enabled: true
+      apache.cpu.time:
+        enabled: true
+      apache.load.1:
+        enabled: true
+      apache.load.5:
+        enabled: true
+      apache.load.15:
+        enabled: true
+      apache.request.time:
+        enabled: true
 
 processors:
   # Detect host information automatically
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
     timeout: 5s
 
   # Add context about this Apache instance
-  attributes/apache:
-    actions:
+  resource/apache:
+    attributes:
       - key: service.name
         value: "apache"
         action: insert
       - key: deployment.environment
         value: "production"
         action: insert
-      - key: apache.server_name
+      - key: apache.server.name
         value: "web-01"
         action: insert
 
@@ -180,7 +198,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
     compression: gzip
     retry_on_failure:
@@ -196,11 +216,11 @@ service:
   pipelines:
     metrics:
       receivers: [apache]
-      processors: [resourcedetection, attributes/apache, batch]
+      processors: [resource_detection, resource/apache, batch]
       exporters: [otlphttp]
 ```
 
-The sending queue buffers metrics if the backend is temporarily unavailable, and the retry configuration handles transient network failures. This prevents data loss during short outages.
+The sending queue buffers metrics if the backend is temporarily unavailable, and the retry configuration handles transient network failures. This reduces data loss during short outages, as long as the in-memory queue does not fill and the Collector process keeps running.
 
 ## Collecting Apache Access Logs
 
@@ -227,7 +247,7 @@ receivers:
     operators:
       # Parse the combined log format
       - type: regex_parser
-        regex: '^(?P<remote_addr>\S+) - (?P<remote_user>\S+) \[(?P<time_local>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>\S+)" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
+        regex: '^(?P<remote_addr>\S+) - (?P<remote_user>\S+) \[(?P<time_local>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>\S+)" (?P<status>\d+) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
         timestamp:
           parse_from: attributes.time_local
           layout: "%d/%b/%Y:%H:%M:%S %z"
@@ -236,10 +256,11 @@ receivers:
       - type: severity_parser
         parse_from: attributes.status
         mapping:
-          info: "2\\d{2}"
-          info2: "3\\d{2}"
-          warn: "4\\d{2}"
-          error: "5\\d{2}"
+          info:
+            - 2xx
+            - 3xx
+          warn: 4xx
+          error: 5xx
 
 processors:
   resource/apache:
@@ -257,7 +278,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 extensions:
@@ -295,7 +318,7 @@ receivers:
         regex: '^\[(?P<timestamp>[^\]]+)\] \[(?P<module>[^:]*):(?P<level>\w+)\] \[pid (?P<pid>\d+)(?::tid (?P<tid>\d+))?\](?: \[client (?P<client>[^\]]+)\])? (?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
-          layout: "%a %b %d %H:%M:%S.%f %Y"
+          layout: "%a %b %e %H:%M:%S.%f %Y"
 
       # Map Apache log levels to OTel severity
       - type: severity_parser
@@ -304,6 +327,7 @@ receivers:
           trace: "trace1"
           debug: "debug"
           info: "info"
+          info2: "notice"
           warn: "warn"
           error: "error"
           error2: "crit"
@@ -326,7 +350,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 extensions:
