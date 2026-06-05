@@ -47,6 +47,7 @@ The order book is a data structure that holds all active buy and sell orders. We
 ```python
 from collections import defaultdict
 import threading
+from opentelemetry.metrics import Observation
 
 class InstrumentedOrderBook:
     def __init__(self, trading_pair):
@@ -92,29 +93,29 @@ class InstrumentedOrderBook:
     def _observe_bid_depth(self, options):
         with self.lock:
             total = sum(self.bids.values())
-        return [metrics.Observation(total, {"pair": self.trading_pair})]
+        return [Observation(total, {"pair": self.trading_pair})]
 
     def _observe_ask_depth(self, options):
         with self.lock:
             total = sum(self.asks.values())
-        return [metrics.Observation(total, {"pair": self.trading_pair})]
+        return [Observation(total, {"pair": self.trading_pair})]
 
     def _observe_best_bid(self, options):
         with self.lock:
             best = max(self.bids.keys()) if self.bids else 0
-        return [metrics.Observation(best, {"pair": self.trading_pair})]
+        return [Observation(best, {"pair": self.trading_pair})]
 
     def _observe_best_ask(self, options):
         with self.lock:
             best = min(self.asks.keys()) if self.asks else 0
-        return [metrics.Observation(best, {"pair": self.trading_pair})]
+        return [Observation(best, {"pair": self.trading_pair})]
 
     def _observe_imbalance(self, options):
         with self.lock:
             bid_vol = sum(self.bids.values())
             ask_vol = sum(self.asks.values())
             ratio = bid_vol / ask_vol if ask_vol > 0 else 0
-        return [metrics.Observation(ratio, {"pair": self.trading_pair})]
+        return [Observation(ratio, {"pair": self.trading_pair})]
 
     def add_order(self, side, price, quantity):
         """Add a new order to the book and record spread."""
@@ -212,12 +213,14 @@ class MatchingEngine:
 Between the API gateway and the matching engine, there is usually a message queue. Monitoring its depth tells you whether the matching engine is keeping up with incoming order flow.
 
 ```python
+from opentelemetry.metrics import Observation
+
 # Track the number of orders waiting to be processed
 pending_orders_gauge = meter.create_observable_gauge(
     name="matching_engine.pending_orders",
     description="Number of orders waiting in the queue",
     callbacks=[lambda options: [
-        metrics.Observation(get_queue_depth(), {"queue": "order_intake"})
+        Observation(get_queue_depth(), {"queue": "order_intake"})
     ]]
 )
 ```
