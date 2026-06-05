@@ -8,7 +8,7 @@ Description: Set up tiered log retention with hot and cold storage using the Ope
 
 Storing every log line in fast, queryable storage for months is expensive. Most organizations find that they need quick access to recent logs (the last few days) for active debugging, while older logs are only needed occasionally for audits or historical investigations. The solution is tiered storage: hot storage for recent data with fast queries, and cold storage for older data at a fraction of the cost.
 
-The OpenTelemetry Collector can route logs to different backends based on your retention needs, all from a single pipeline. Here is how to set it up.
+The OpenTelemetry Collector can route logs to different backends based on your retention needs. The S3 example below uses the OpenTelemetry Collector Contrib distribution because the AWS S3 exporter is a contrib component. Here is how to set it up.
 
 ## The Storage Tier Model
 
@@ -48,8 +48,8 @@ processors:
       - context: log
         statements:
           # Remove high-cardinality attributes not needed in cold storage
-          - delete_key(attributes, "http.user_agent")
-          - delete_key(attributes, "http.request.header.cookie")
+          - delete_key(log.attributes, "http.user_agent")
+          - delete_key(log.attributes, "http.request.header.cookie")
           # Keep the essentials: timestamp, severity, body, service info
 
 exporters:
@@ -69,7 +69,7 @@ exporters:
       s3_bucket: "company-logs-cold-tier"
       s3_prefix: "logs"
       # Partition by date for easy lifecycle management
-      s3_partition: "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
       file_prefix: "otel-logs"
     marshaler: otlp_json
 
@@ -129,7 +129,7 @@ aws s3api put-bucket-lifecycle-configuration \
   --lifecycle-configuration file://lifecycle.json
 ```
 
-This gives you three effective tiers: hot storage for 3 days, standard S3 for 30 days, and Glacier for the remaining 60 days.
+This gives you three effective tiers: hot storage for 3 days, standard S3 for 30 days, and Glacier for the remaining 60 days. Keep Glacier minimum storage duration charges in mind when choosing the transition and expiration days.
 
 ## Hot Tier Retention Configuration
 
@@ -172,10 +172,9 @@ Not all logs deserve 90 days of retention. Debug logs are rarely useful after a 
 ```yaml
 processors:
   filter/cold:
-    logs:
-      # Only send WARN and above to cold storage
-      log_record:
-        - 'severity_number < 13'
+    # Only send WARN and above to cold storage
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_WARN'
 
 service:
   pipelines:
@@ -185,7 +184,7 @@ service:
       exporters: [awss3]
 ```
 
-The `filter` processor with `severity_number < 13` drops anything below WARN (INFO, DEBUG, TRACE) from the cold pipeline. Those logs still go to hot storage for short-term debugging but do not consume long-term storage.
+The `filter` processor with `log.severity_number < SEVERITY_NUMBER_WARN` drops anything below WARN (INFO, DEBUG, TRACE) from the cold pipeline. Those logs still go to hot storage for short-term debugging but do not consume long-term storage.
 
 ## Cost Analysis
 
