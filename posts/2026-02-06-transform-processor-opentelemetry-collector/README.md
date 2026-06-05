@@ -55,7 +55,7 @@ processors:
           - set(attributes["http.status_code"], Int(attributes["http.status_code"]))
 
           # Add computed attribute
-          - set(attributes["is_error"], status.code == STATUS_CODE_ERROR)
+          - set(attributes["is_error"], true) where status.code == STATUS_CODE_ERROR
 
   batch:
     timeout: 5s
@@ -162,7 +162,7 @@ processors:
           - set(attributes["method"], attributes["http.method"])
 
           # Set computed value
-          - set(attributes["duration_ms"], duration / 1000000)
+          - set(attributes["duration_ms"], (end_time_unix_nano - start_time_unix_nano) / 1000000)
 ```
 
 ### Concat() - String Concatenation
@@ -176,10 +176,10 @@ processors:
       - context: span
         statements:
           # Create full URL from parts
-          - set(attributes["full_url"], Concat([attributes["http.scheme"], "://", attributes["http.host"], attributes["http.target"]]))
+          - set(attributes["full_url"], Concat([attributes["http.scheme"], "://", attributes["http.host"], attributes["http.target"]], ""))
 
           # Create composite identifier
-          - set(attributes["service_instance"], Concat([resource.attributes["service.name"], ":", resource.attributes["service.instance.id"]]))
+          - set(attributes["service_instance"], Concat([resource.attributes["service.name"], resource.attributes["service.instance.id"]], ":"))
 ```
 
 ### Int(), Double(), String() - Type Conversion
@@ -233,7 +233,7 @@ processors:
           - set(attributes["short_id"], Substring(attributes["request.id"], 0, 10))
 
           # Extract domain from email
-          - set(attributes["email_domain"], Substring(attributes["user.email"], IndexOf(attributes["user.email"], "@") + 1, Len(attributes["user.email"])))
+          - set(attributes["email_domain"], Substring(attributes["user.email"], Index(attributes["user.email"], "@") + 1, Len(attributes["user.email"]) - Index(attributes["user.email"], "@") - 1))
 ```
 
 ### SHA256() - Hashing
@@ -313,9 +313,9 @@ processors:
           - set(attributes["requires_attention"], true) where status.code == STATUS_CODE_ERROR
 
           # Add latency category
-          - set(attributes["latency_category"], "fast") where duration < 100000000
-          - set(attributes["latency_category"], "normal") where duration >= 100000000 and duration < 500000000
-          - set(attributes["latency_category"], "slow") where duration >= 500000000
+          - set(attributes["latency_category"], "fast") where end_time_unix_nano - start_time_unix_nano < 100000000
+          - set(attributes["latency_category"], "normal") where end_time_unix_nano - start_time_unix_nano >= 100000000 and end_time_unix_nano - start_time_unix_nano < 500000000
+          - set(attributes["latency_category"], "slow") where end_time_unix_nano - start_time_unix_nano >= 500000000
 ```
 
 ### URL Parsing and Normalization
@@ -329,14 +329,15 @@ processors:
       - context: span
         statements:
           # Extract path without query parameters
-          - set(attributes["http.path"], Substring(attributes["http.target"], 0, IndexOf(attributes["http.target"], "?", 0, 1))) where IndexOf(attributes["http.target"], "?", 0, 1) > 0
-          - set(attributes["http.path"], attributes["http.target"]) where IndexOf(attributes["http.target"], "?", 0, 1) == -1
+          - set(attributes["http.path"], Substring(attributes["http.target"], 0, Index(attributes["http.target"], "?"))) where Index(attributes["http.target"], "?") > 0
+          - set(attributes["http.path"], attributes["http.target"]) where Index(attributes["http.target"], "?") == -1
 
           # Extract query string
-          - set(attributes["http.query"], Substring(attributes["http.target"], IndexOf(attributes["http.target"], "?") + 1, Len(attributes["http.target"]))) where IndexOf(attributes["http.target"], "?") > 0
+          - set(attributes["http.query"], Substring(attributes["http.target"], Index(attributes["http.target"], "?") + 1, Len(attributes["http.target"]) - Index(attributes["http.target"], "?") - 1)) where Index(attributes["http.target"], "?") > 0
 
           # Normalize path (replace UUIDs with placeholder)
-          - set(attributes["http.path_normalized"], ReplaceAllPatterns(attributes["http.path"], "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", "{uuid}"))
+          - set(attributes["http.path_normalized"], attributes["http.path"])
+          - replace_pattern(attributes["http.path_normalized"], "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", "{uuid}")
 ```
 
 ### Multi-Attribute Computation
@@ -350,13 +351,14 @@ processors:
       - context: span
         statements:
           # Create request signature
-          - set(attributes["request_signature"], SHA256(Concat([attributes["http.method"], "|", attributes["http.path"], "|", attributes["user.id"]])))
+          - set(attributes["request_signature"], SHA256(Concat([attributes["http.method"], attributes["http.path"], attributes["user.id"]], "|")))
 
           # Calculate success rate indicator
-          - set(attributes["is_successful"], attributes["http.status_code"] >= "200" and attributes["http.status_code"] < "400")
+          - set(attributes["is_successful"], true) where attributes["http.status_code"] >= "200" and attributes["http.status_code"] < "400"
+          - set(attributes["is_successful"], false) where attributes["http.status_code"] >= "400"
 
           # Create composite key
-          - set(attributes["service_endpoint"], Concat([resource.attributes["service.name"], ":", attributes["http.method"], " ", attributes["http.path"]]))
+          - set(attributes["service_endpoint"], Concat([resource.attributes["service.name"], attributes["http.method"], attributes["http.path"]], ":"))
 ```
 
 ### Nested JSON Field Access
@@ -418,11 +420,11 @@ processors:
       - context: span
         statements:
           # Mask email (keep domain)
-          - set(attributes["user.email_masked"], Concat(["***@", Substring(attributes["user.email"], IndexOf(attributes["user.email"], "@") + 1, Len(attributes["user.email"]))])) where attributes["user.email"] != nil
+          - set(attributes["user.email_masked"], Concat(["***@", Substring(attributes["user.email"], Index(attributes["user.email"], "@") + 1, Len(attributes["user.email"]) - Index(attributes["user.email"], "@") - 1)], "")) where attributes["user.email"] != nil
           - delete_key(attributes, "user.email")
 
           # Mask credit card (keep last 4 digits)
-          - set(attributes["payment.card_masked"], Concat(["****-****-****-", Substring(attributes["payment.card"], Len(attributes["payment.card"]) - 4, 4)])) where attributes["payment.card"] != nil
+          - set(attributes["payment.card_masked"], Concat(["****-****-****-", Substring(attributes["payment.card"], Len(attributes["payment.card"]) - 4, 4)], "")) where attributes["payment.card"] != nil
           - delete_key(attributes, "payment.card")
 
           # Hash IP addresses
@@ -443,13 +445,13 @@ processors:
       - context: metric
         statements:
           # Replace dots with underscores
-          - set(name, ReplaceAll(name, ".", "_"))
+          - replace_pattern(name, "\\.", "_")
 
           # Convert to lowercase
-          - set(name, LowerCase(name))
+          - set(name, ToLowerCase(name))
 
           # Add prefix
-          - set(name, Concat(["app_", name]))
+          - set(name, Concat(["app_", name], ""))
 ```
 
 ### Data Point Enrichment
@@ -463,10 +465,10 @@ processors:
       - context: datapoint
         statements:
           # Add percentile indicator
-          - set(attributes["is_high_value"], value_double > 90.0)
+          - set(attributes["is_high_value"], true) where value_double > 90.0
 
           # Add time-based context
-          - set(attributes["hour_of_day"], Hour(time_unix_nano))
+          - set(attributes["hour_of_day"], Hour(time))
 
           # Normalize to percentage
           - set(value_double, value_double * 100) where attributes["metric.unit"] == "ratio"
@@ -485,7 +487,7 @@ processors:
       - context: log
         statements:
           # Parse JSON log body
-          - set(attributes["parsed"], ParseJSON(body)) where IsMatch(body, "^\\{.*\\}$")
+          - set(attributes["parsed"], ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\{.*\\}$")
 
           # Extract severity from body
           - set(severity_text, attributes["parsed"]["level"]) where attributes["parsed"]["level"] != nil
@@ -543,10 +545,10 @@ processors:
           - set(attributes["parsed"], ParseJSON(attributes["large_body"]))
 
           # Complex regex operations are expensive
-          - set(attributes["normalized"], ReplaceAllPatterns(attributes["url"], "very-complex-regex-pattern", "replacement"))
+          - replace_pattern(attributes["url"], "very-complex-regex-pattern", "replacement")
 
           # Cryptographic operations are expensive (hash only when needed)
-          - set(attributes["hash"], SHA256(Concat([attributes["a"], attributes["b"], attributes["c"]])))
+          - set(attributes["hash"], SHA256(Concat([attributes["a"], attributes["b"], attributes["c"]], "")))
 ```
 
 **Best practices**:
@@ -613,14 +615,14 @@ service:
 
 ```yaml
 # WRONG: Crashes if user.email doesn't exist
-- set(attributes["domain"], Substring(attributes["user.email"], IndexOf(attributes["user.email"], "@") + 1, Len(attributes["user.email"])))
+- set(attributes["domain"], Substring(attributes["user.email"], Index(attributes["user.email"], "@") + 1, Len(attributes["user.email"]) - Index(attributes["user.email"], "@") - 1))
 ```
 
 **Solution**: Add existence check:
 
 ```yaml
 # CORRECT: Only process if attribute exists
-- set(attributes["domain"], Substring(attributes["user.email"], IndexOf(attributes["user.email"], "@") + 1, Len(attributes["user.email"]))) where attributes["user.email"] != nil
+- set(attributes["domain"], Substring(attributes["user.email"], Index(attributes["user.email"], "@") + 1, Len(attributes["user.email"]) - Index(attributes["user.email"], "@") - 1)) where attributes["user.email"] != nil
 ```
 
 ### Pitfall 3: Overwriting Important Attributes
@@ -656,11 +658,11 @@ processors:
       - context: span
         statements:
           # Test transformation
-          - set(attributes["test_transform"], Concat(["prefix_", attributes["original"]]))
+          - set(attributes["test_transform"], Concat(["prefix_", attributes["original"]], ""))
           - set(attributes["status_int"], Int(attributes["http.status_code"])) where IsMatch(attributes["http.status_code"], "^[0-9]+$")
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed  # Shows all attributes
 
 service:
@@ -672,7 +674,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Send test data and verify transformations in logs.
