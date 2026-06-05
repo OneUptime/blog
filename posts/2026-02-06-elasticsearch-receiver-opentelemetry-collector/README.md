@@ -56,8 +56,6 @@ receivers:
   elasticsearch:
     # Elasticsearch REST API endpoint
     endpoint: http://localhost:9200
-    # Skip TLS verification (only for local development)
-    skip_verify: false
     # How often to scrape metrics
     collection_interval: 60s
     # Collect node-level metrics
@@ -105,7 +103,7 @@ receivers:
     nodes: ["_all"]
 
     # Indices to monitor - supports wildcards
-    # Empty list means all indices
+    # Omit this field, or use ["_all"], to monitor all indices
     indices: ["application-*", "logs-*", "metrics-*"]
 
     # Basic authentication credentials
@@ -168,7 +166,7 @@ service:
   pipelines:
     metrics:
       receivers: [elasticsearch]
-      processors: [memory_limiter, batch, resource]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlphttp]
 ```
 
@@ -203,7 +201,7 @@ The `indices` parameter lets you filter which indices to collect metrics for:
 
 ```yaml
 # Monitor all indices (can be expensive on large clusters)
-indices: []
+indices: ["_all"]
 
 # Monitor specific index patterns
 indices: ["application-*", "logs-2026-*"]
@@ -212,7 +210,7 @@ indices: ["application-*", "logs-2026-*"]
 indices: ["orders", "users", "products"]
 ```
 
-Without filtering, the receiver collects metrics for every index, which can generate high cardinality metrics on clusters with many indices. Use patterns to focus on what matters.
+By default, the receiver collects metrics for every index, which can generate high cardinality metrics on clusters with many indices. If `indices` is set to an empty list, index-level metrics are not scraped. Use patterns to focus on what matters.
 
 ## Multi-Cluster Monitoring
 
@@ -302,19 +300,19 @@ The Elasticsearch receiver exposes many metrics. Focus on these key indicators:
 - `elasticsearch.cluster.shards`: Shard counts (active, relocating, unassigned)
 
 **Node Performance**
-- `elasticsearch.node.cpu.percent`: CPU utilization per node
-- `elasticsearch.node.memory.heap.used`: JVM heap usage
-- `elasticsearch.node.fs.available`: Available disk space
+- `elasticsearch.os.cpu.usage`: CPU utilization reported by Elasticsearch
+- `jvm.memory.heap.used`: JVM heap usage
+- `elasticsearch.node.fs.disk.available`: Available disk space
 
 **Indexing and Search**
-- `elasticsearch.node.indices.indexing.rate`: Documents indexed per second
-- `elasticsearch.node.indices.search.rate`: Search queries per second
-- `elasticsearch.node.indices.search.latency`: Query response time
+- `elasticsearch.node.operations.completed`: Completed node operations, with an `operation` attribute for indexing and search operations
+- `elasticsearch.node.operations.time`: Time spent on node operations, with an `operation` attribute for query and fetch work
+- `elasticsearch.index.operations.completed`: Completed index operations, with an `operation` attribute for indexing and search operations
 
 **Resource Pressure**
-- `elasticsearch.node.thread_pool.rejected`: Thread pool rejections (indicates overload)
-- `elasticsearch.node.gc.time`: Garbage collection time
-- `elasticsearch.node.breaker.tripped`: Circuit breaker trips
+- `elasticsearch.node.thread_pool.tasks.finished`: Finished thread pool tasks, including rejected tasks via the `state` attribute
+- `jvm.gc.collections.elapsed`: Garbage collection time
+- `elasticsearch.breaker.tripped`: Circuit breaker trips
 
 Set up alerts on these metrics to catch issues before they impact users.
 
@@ -386,7 +384,7 @@ receivers:
     password: ${ELASTICSEARCH_PASSWORD}
 ```
 
-Ensure the user has `monitor` or `cluster:monitor/*` privileges.
+Ensure the user has the `monitor` or `manage` cluster privilege.
 
 **TLS Certificate Errors**
 
@@ -452,14 +450,26 @@ receivers:
       insecure_skip_verify: false
 ```
 
-**Use least privilege**. Create a dedicated monitoring user with only `monitor` permissions:
+**Use least privilege**. Create a dedicated monitoring role with only the privileges required for receiver access, then assign it to the collector user:
 
 ```bash
-# Elasticsearch API call to create monitoring user
+# Elasticsearch API calls to create a monitoring role and user
+curl -X POST "https://elasticsearch:9200/_security/role/otel-monitor" -u elastic:password -H 'Content-Type: application/json' -d'
+{
+  "cluster": ["monitor"],
+  "indices": [
+    {
+      "names": ["*"],
+      "privileges": ["monitor"]
+    }
+  ]
+}
+'
+
 curl -X POST "https://elasticsearch:9200/_security/user/otel-monitor" -u elastic:password -H 'Content-Type: application/json' -d'
 {
   "password" : "monitoring-password",
-  "roles" : ["monitoring_user"],
+  "roles" : ["otel-monitor"],
   "full_name" : "OpenTelemetry Collector"
 }
 '
