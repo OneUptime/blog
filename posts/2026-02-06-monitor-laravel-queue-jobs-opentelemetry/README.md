@@ -45,9 +45,10 @@ use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Queue;
 use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
-use OpenTelemetry\Context\Context;
+use OpenTelemetry\Context\ContextInterface;
 
 class QueueTracing
 {
@@ -64,6 +65,13 @@ class QueueTracing
      */
     public function register(): void
     {
+        Queue::createPayloadUsing(function ($connectionName, $queue, $payload) {
+            $carrier = [];
+            TraceContextPropagator::getInstance()->inject($carrier);
+
+            return empty($carrier) ? [] : ['tracecontext' => $carrier];
+        });
+
         Queue::before(function (JobProcessing $event) {
             $this->startJobSpan($event);
         });
@@ -101,7 +109,10 @@ class QueueTracing
         $span->setAttribute('job.id', $jobId);
         $span->setAttribute('job.queue', $event->job->getQueue());
         $span->setAttribute('job.attempts', $event->job->attempts());
-        $span->setAttribute('job.max_tries', $event->job->maxTries());
+
+        if ($event->job->maxTries() !== null) {
+            $span->setAttribute('job.max_tries', $event->job->maxTries());
+        }
 
         // Store span for later retrieval
         $this->activeSpans[$jobId] = [
@@ -167,16 +178,23 @@ class QueueTracing
         $span->setStatus(StatusCode::ERROR, $event->exception->getMessage());
 
         // Add failure metadata
+        $maxTries = $event->job->maxTries();
+
         $span->setAttribute('job.failed', true);
         $span->setAttribute('job.failure_reason', get_class($event->exception));
-        $span->setAttribute('job.will_retry', $event->job->attempts() < $event->job->maxTries());
+        $span->setAttribute('job.will_retry', $maxTries === null || $event->job->attempts() < $maxTries);
 
-        $span->addEvent('job_failed', [
+        $failureAttributes = [
             'exception_class' => get_class($event->exception),
             'exception_message' => $event->exception->getMessage(),
             'attempts' => $event->job->attempts(),
-            'max_tries' => $event->job->maxTries(),
-        ]);
+        ];
+
+        if ($maxTries !== null) {
+            $failureAttributes['max_tries'] = $maxTries;
+        }
+
+        $span->addEvent('job_failed', $failureAttributes);
 
         $span->end();
         $scope->detach();
@@ -187,13 +205,13 @@ class QueueTracing
     /**
      * Extract parent trace context from job payload
      */
-    private function extractParentContext($job): ?Context
+    private function extractParentContext($job): ?ContextInterface
     {
         $payload = $job->payload();
 
         // Check if trace context was injected when job was dispatched
-        if (isset($payload['tracecontext'])) {
-            return Context::restore($payload['tracecontext']);
+        if (isset($payload['tracecontext']) && is_array($payload['tracecontext'])) {
+            return TraceContextPropagator::getInstance()->extract($payload['tracecontext']);
         }
 
         return null;
@@ -227,49 +245,9 @@ class AppServiceProvider extends ServiceProvider
 
 The critical piece is propagating trace context from the dispatching request to the queued job. Without this, jobs start new traces instead of continuing existing ones.
 
-Create a trait to inject trace context in `app/Jobs/Concerns/PropagatesTraceContext.php`:
+The `QueueTracing` service above uses Laravel's `Queue::createPayloadUsing()` hook to inject W3C trace context into the job payload when the job is dispatched. When the worker starts processing the job, the service extracts that payload context and activates the queue span, so spans created inside `handle()` automatically become children of the queue span.
 
-```php
-<?php
-
-namespace App\Jobs\Concerns;
-
-use OpenTelemetry\API\Globals;
-use OpenTelemetry\Context\Context;
-
-trait PropagatesTraceContext
-{
-    /**
-     * Inject current trace context into job payload
-     */
-    public function middleware(): array
-    {
-        return [
-            function ($job, $next) {
-                // Capture current context when job is dispatched
-                $context = Context::getCurrent();
-                $job->traceContext = Context::storage()->serialize($context);
-
-                return $next($job);
-            },
-        ];
-    }
-
-    /**
-     * Restore trace context when job executes
-     */
-    public function restoreTraceContext(): void
-    {
-        if (isset($this->traceContext)) {
-            Context::storage()->attach(
-                Context::storage()->unserialize($this->traceContext)
-            );
-        }
-    }
-}
-```
-
-Use this trait in your jobs:
+Use normal queue jobs and create spans inside `handle()`:
 
 ```php
 <?php
@@ -281,12 +259,12 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Jobs\Concerns\PropagatesTraceContext;
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\StatusCode;
 
 class ProcessOrder implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-    use PropagatesTraceContext;
 
     public $tries = 3;
     public $timeout = 120;
@@ -300,9 +278,6 @@ class ProcessOrder implements ShouldQueue
 
     public function handle()
     {
-        // Restore trace context from dispatch
-        $this->restoreTraceContext();
-
         $tracer = Globals::tracerProvider()->getTracer('order-processing');
 
         $span = $tracer->spanBuilder('order.process')
@@ -435,13 +410,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use App\Jobs\Concerns\PropagatesTraceContext;
 use OpenTelemetry\API\Globals;
 
 class ImportUsers implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
-    use PropagatesTraceContext;
 
     private $filePath;
 
@@ -452,8 +425,6 @@ class ImportUsers implements ShouldQueue
 
     public function handle()
     {
-        $this->restoreTraceContext();
-
         $tracer = Globals::tracerProvider()->getTracer('import');
 
         $span = $tracer->spanBuilder('import.users')
@@ -500,7 +471,6 @@ class ImportUsers implements ShouldQueue
 class ProcessUserBatch implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
-    use PropagatesTraceContext;
 
     private $users;
     private $batchIndex;
@@ -513,8 +483,6 @@ class ProcessUserBatch implements ShouldQueue
 
     public function handle()
     {
-        $this->restoreTraceContext();
-
         $tracer = Globals::tracerProvider()->getTracer('import');
 
         $span = $tracer->spanBuilder('import.batch.process')
@@ -550,6 +518,8 @@ Use Laravel's batch functionality with tracing:
 ```php
 use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\StatusCode;
 
 public function importLargeDataset()
 {
@@ -568,17 +538,28 @@ public function importLargeDataset()
         }
 
         $batch = Bus::batch($jobs)
-            ->then(function (Batch $batch) use ($span) {
-                $span->addEvent('batch_completed', [
+            ->then(function (Batch $batch) {
+                $tracer = Globals::tracerProvider()->getTracer('import');
+                $batchSpan = $tracer->spanBuilder('import.batch_completed')->startSpan();
+
+                $batchSpan->addEvent('batch_completed', [
                     'total_jobs' => $batch->totalJobs,
                     'processed_jobs' => $batch->processedJobs(),
                 ]);
+
+                $batchSpan->end();
             })
-            ->catch(function (Batch $batch, \Throwable $e) use ($span) {
-                $span->recordException($e);
-                $span->addEvent('batch_failed', [
+            ->catch(function (Batch $batch, \Throwable $e) {
+                $tracer = Globals::tracerProvider()->getTracer('import');
+                $batchSpan = $tracer->spanBuilder('import.batch_failed')->startSpan();
+
+                $batchSpan->recordException($e);
+                $batchSpan->setStatus(StatusCode::ERROR, $e->getMessage());
+                $batchSpan->addEvent('batch_failed', [
                     'failed_jobs' => $batch->failedJobs,
                 ]);
+
+                $batchSpan->end();
             })
             ->finally(function (Batch $batch) {
                 // Cleanup logic...
@@ -607,13 +588,12 @@ namespace App\Jobs;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
-use App\Jobs\Concerns\PropagatesTraceContext;
 use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\StatusCode;
 
 class SendEmailNotification implements ShouldQueue
 {
     use InteractsWithQueue, Queueable;
-    use PropagatesTraceContext;
 
     public $tries = 5;
     public $backoff = [60, 300, 900, 3600]; // Exponential backoff
@@ -629,8 +609,6 @@ class SendEmailNotification implements ShouldQueue
 
     public function handle()
     {
-        $this->restoreTraceContext();
-
         $tracer = Globals::tracerProvider()->getTracer('notifications');
 
         $span = $tracer->spanBuilder('notification.send_email')
@@ -723,20 +701,17 @@ namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use App\Jobs\Concerns\PropagatesTraceContext;
 use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\StatusCode;
 
 class GenerateMonthlyReport implements ShouldQueue
 {
     use Queueable;
-    use PropagatesTraceContext;
 
     public $timeout = 600; // 10 minutes
 
     public function handle()
     {
-        $this->restoreTraceContext();
-
         $tracer = Globals::tracerProvider()->getTracer('reports');
 
         $span = $tracer->spanBuilder('report.generate_monthly')
