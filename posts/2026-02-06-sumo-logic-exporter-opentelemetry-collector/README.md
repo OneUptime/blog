@@ -6,17 +6,17 @@ Tags: OpenTelemetry, Collector, Exporter, Sumo Logic, Observability, Monitoring,
 
 Description: Learn how to configure the Sumo Logic exporter in OpenTelemetry Collector to send telemetry data to Sumo Logic's cloud-native observability platform with practical YAML examples.
 
-The Sumo Logic exporter is a crucial component in the OpenTelemetry Collector ecosystem that enables seamless integration with Sumo Logic's cloud-native machine data analytics platform. This exporter allows you to send traces, metrics, and logs from your applications to Sumo Logic for comprehensive observability and analysis.
+The Sumo Logic exporter is a crucial component in the OpenTelemetry Collector ecosystem that enables seamless integration with Sumo Logic's cloud-native machine data analytics platform. This exporter allows you to send metrics and logs from your applications to Sumo Logic for comprehensive observability and analysis. For traces, Sumo Logic recommends sending OTLP data with the native OTLP/HTTP exporter.
 
 ## Understanding the Sumo Logic Exporter
 
-The Sumo Logic exporter is part of the OpenTelemetry Collector's contrib distribution and supports sending data in multiple formats. It leverages Sumo Logic's HTTP Source endpoints to ingest telemetry data, making it straightforward to integrate with existing Sumo Logic deployments.
+The Sumo Logic exporter is part of the OpenTelemetry Collector's contrib distribution and supports sending data in multiple formats. It leverages Sumo Logic's HTTP Source endpoints for logs and metrics, while OTLP trace data is sent to Sumo Logic through an OTLP/HTTP Source.
 
-The exporter supports three types of telemetry data:
+This guide covers three types of telemetry data:
 
 - **Metrics**: Send application and infrastructure metrics
 - **Logs**: Forward application and system logs
-- **Traces**: Export distributed tracing data
+- **Traces**: Export distributed tracing data using OTLP/HTTP
 
 ## Architecture Overview
 
@@ -25,8 +25,8 @@ Here's how the Sumo Logic exporter fits into your observability pipeline:
 ```mermaid
 graph LR
     A[Applications] --> B[OpenTelemetry Collector]
-    B --> C[Sumo Logic Exporter]
-    C --> D[Sumo Logic HTTP Source]
+    B --> C[Sumo Logic or OTLP/HTTP Exporter]
+    C --> D[Sumo Logic HTTP or OTLP/HTTP Source]
     D --> E[Sumo Logic Platform]
     E --> F[Analysis & Visualization]
 ```
@@ -36,8 +36,8 @@ graph LR
 Before configuring the Sumo Logic exporter, ensure you have:
 
 1. A Sumo Logic account with appropriate permissions
-2. An HTTP Source created in Sumo Logic (either Metrics or Logs)
-3. The HTTP Source URL endpoint
+2. An HTTP Source created in Sumo Logic for logs or metrics, or an OTLP/HTTP Source for OTLP data
+3. The Source URL endpoint
 4. OpenTelemetry Collector (contrib distribution) installed
 
 ## Basic Configuration
@@ -53,11 +53,11 @@ exporters:
     # This endpoint is unique to your Sumo Logic HTTP Source
     endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_UNIQUE_ID
 
-    # Compression type for data transmission (gzip, deflate, or none)
+    # Compression type for data transmission (gzip, deflate, zstd, or empty for none)
     # Using compression reduces bandwidth usage
-    compress_encoding: gzip
+    compression: gzip
 
-    # Maximum number of metrics to send in a single request
+    # Maximum request body size in bytes before compression
     # Adjust based on your network capacity and Sumo Logic limits
     max_request_body_size: 1048576
 
@@ -96,21 +96,15 @@ exporters:
     endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_METRICS_ID
 
     # Compression settings
-    compress_encoding: gzip
+    compression: gzip
 
     # Set the maximum request body size (in bytes)
     # Default is 1MB, increase for high-volume scenarios
     max_request_body_size: 2097152
 
     # Format for metrics data
-    # Options: carbon2, graphite, prometheus
+    # Options: otlp, prometheus
     metric_format: prometheus
-
-    # Add custom metadata to all metrics
-    metadata_attributes:
-      - environment
-      - service.name
-      - deployment.environment
 
     # Client configuration for HTTP requests
     timeout: 30s
@@ -148,7 +142,7 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
-  # Add resource attributes
+  # Add resource attributes; resource-level attributes are sent as metadata
   resource:
     attributes:
       - key: environment
@@ -179,13 +173,7 @@ exporters:
     log_format: json
 
     # Compression for log data
-    compress_encoding: gzip
-
-    # Add source metadata to logs
-    metadata_attributes:
-      - service.name
-      - host.name
-      - deployment.environment
+    compression: gzip
 
     # HTTP client configuration
     timeout: 30s
@@ -224,7 +212,7 @@ processors:
     timeout: 5s
     send_batch_size: 512
 
-  # Add resource information to logs
+  # Add resource information to logs; resource-level attributes are sent as metadata
   resource:
     attributes:
       - key: service.name
@@ -241,18 +229,15 @@ service:
 
 ## Configuring Traces Export
 
-For distributed tracing, configure the exporter to send trace data to Sumo Logic:
+For distributed tracing, configure the OTLP/HTTP exporter to send trace data to a Sumo Logic OTLP/HTTP Source:
 
 ```yaml
 exporters:
-  sumologic/traces:
-    endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_TRACES_ID
+  otlphttp/traces:
+    endpoint: SUMO_OTLP_HTTP_SOURCE_URL
 
     # Compression for trace data
-    compress_encoding: gzip
-
-    # Maximum request body size for traces
-    max_request_body_size: 5242880
+    compression: gzip
 
     # HTTP client configuration
     timeout: 45s
@@ -292,7 +277,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [probabilistic_sampler, batch]
-      exporters: [sumologic/traces]
+      exporters: [otlphttp/traces]
 ```
 
 ## Complete Multi-Signal Configuration
@@ -341,7 +326,7 @@ processors:
 exporters:
   sumologic/metrics:
     endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_METRICS_ID
-    compress_encoding: gzip
+    compression: gzip
     metric_format: prometheus
     timeout: 30s
     retry_on_failure:
@@ -355,7 +340,7 @@ exporters:
 
   sumologic/logs:
     endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_LOGS_ID
-    compress_encoding: gzip
+    compression: gzip
     log_format: json
     timeout: 30s
     retry_on_failure:
@@ -367,9 +352,9 @@ exporters:
       num_consumers: 5
       queue_size: 10000
 
-  sumologic/traces:
-    endpoint: https://collectors.sumologic.com/receiver/v1/http/YOUR_TRACES_ID
-    compress_encoding: gzip
+  otlphttp/traces:
+    endpoint: SUMO_OTLP_HTTP_SOURCE_URL
+    compression: gzip
     timeout: 45s
     retry_on_failure:
       enabled: true
@@ -395,7 +380,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch/traces]
-      exporters: [sumologic/traces]
+      exporters: [otlphttp/traces]
 ```
 
 ## Security Considerations
@@ -416,7 +401,7 @@ Common issues and their solutions:
 
 **Connection Errors**: Verify your HTTP Source URL is correct and the Sumo Logic endpoint is accessible from your network.
 
-**Data Not Appearing**: Check that the correct data type (metrics, logs, or traces) matches your HTTP Source type in Sumo Logic.
+**Data Not Appearing**: Check that the correct data type matches your Source type in Sumo Logic. Use HTTP Sources for Sumo Logic exporter logs or metrics, and an OTLP/HTTP Source for OTLP trace data.
 
 **Performance Issues**: Adjust batch sizes, queue sizes, and the number of consumers based on your data volume.
 
@@ -424,7 +409,7 @@ Common issues and their solutions:
 
 ## Best Practices
 
-1. **Use Separate HTTP Sources**: Create separate HTTP Sources in Sumo Logic for metrics, logs, and traces for better organization and access control.
+1. **Use Separate Sources**: Create separate Sources in Sumo Logic for metrics, logs, and traces for better organization and access control.
 
 2. **Configure Batching**: Always use batch processors to improve efficiency and reduce the number of HTTP requests.
 
@@ -443,4 +428,4 @@ For more information on configuring OpenTelemetry Collector exporters, check out
 
 ## Conclusion
 
-The Sumo Logic exporter provides a robust way to integrate OpenTelemetry data with Sumo Logic's powerful analytics platform. By following the configurations and best practices outlined in this guide, you can build a reliable observability pipeline that sends metrics, logs, and traces to Sumo Logic for comprehensive monitoring and analysis. Start with the basic configuration and gradually add features as your monitoring needs evolve.
+The Sumo Logic exporter provides a robust way to integrate OpenTelemetry data with Sumo Logic's powerful analytics platform. By following the configurations and best practices outlined in this guide, you can build a reliable observability pipeline that sends metrics, logs, and traces to Sumo Logic for comprehensive monitoring and analysis using the Sumo Logic and OTLP/HTTP exporters. Start with the basic configuration and gradually add features as your monitoring needs evolve.
