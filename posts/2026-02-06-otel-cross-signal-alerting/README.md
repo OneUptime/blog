@@ -39,7 +39,7 @@ service:
     metrics:
       receivers: [otlp, spanmetrics]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Prometheus Alerting Rules
@@ -128,6 +128,9 @@ groups:
           # Query A: Latency from Mimir
           - refId: A
             datasourceUid: mimir
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: |
                 histogram_quantile(0.99,
@@ -138,6 +141,9 @@ groups:
           # Query B: Error log count from Loki
           - refId: B
             datasourceUid: loki
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: |
                 sum(count_over_time(
@@ -147,22 +153,13 @@ groups:
 
           # Condition C: Both thresholds must be exceeded
           - refId: C
-            datasourceUid: "-100"
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
-              type: classic_conditions
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [2]
-                  query:
-                    params: [A]
-                - evaluator:
-                    type: gt
-                    params: [50]
-                  query:
-                    params: [B]
-              reducer:
-                type: last
+              type: math
+              expression: "$A > 2 && $B > 50"
         for: 5m
         labels:
           severity: critical
@@ -199,15 +196,15 @@ route:
   receiver: default
   routes:
     # Cross-signal alerts get highest priority
-    - match:
-        signal_type: cross_signal
-        severity: critical
+    - matchers:
+        - signal_type="cross_signal"
+        - severity="critical"
       receiver: pagerduty-oncall
       continue: false
 
     # Single-signal latency alerts go to Slack first
-    - match:
-        alertname: HighLatency
+    - matchers:
+        - alertname="HighLatency"
       receiver: slack-sre
       continue: true
 ```
