@@ -41,6 +41,7 @@ Install the required packages to get started with OpenTelemetry metrics collecti
 npm install @opentelemetry/sdk-node \
   @opentelemetry/sdk-metrics \
   @opentelemetry/exporter-metrics-otlp-grpc \
+  @opentelemetry/resources \
   @opentelemetry/api
 ```
 
@@ -50,7 +51,7 @@ Now configure the metrics provider. This sets up the pipeline that will export y
 // metrics-setup.js
 const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Create the OTLP exporter pointing at your collector
 const exporter = new OTLPMetricExporter({
@@ -65,7 +66,7 @@ const metricReader = new PeriodicExportingMetricReader({
 
 // Initialize the meter provider with service metadata
 const meterProvider = new MeterProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'service.version': '1.2.0',
   }),
@@ -78,7 +79,7 @@ module.exports = { meterProvider };
 
 ## Defining Circuit Breaker Metrics
 
-There are a few key metrics you'll want to track for each circuit breaker. A counter for state transitions lets you see how often the breaker changes state. A gauge for the current state gives you a real-time view. And a histogram for request durations while the breaker is in different states helps you understand performance impact.
+There are a few key metrics you'll want to track for each circuit breaker. A counter for state transitions lets you see how often the breaker changes state. A gauge for the current state gives you a real-time view. And a histogram for how long the breaker stays in each state helps you understand recovery patterns.
 
 Here's how to define these instruments using the OpenTelemetry Metrics API.
 
@@ -336,7 +337,7 @@ The data model we've set up lends itself well to time-series visualization. Here
 ```mermaid
 graph LR
     A[App with Circuit Breaker] -->|OTLP Metrics| B[OTel Collector]
-    B -->|Prometheus Remote Write| C[Prometheus]
+    B -->|Prometheus Scrape| C[Prometheus]
     C --> D[Grafana Dashboard]
     C --> E[Alertmanager]
     E --> F[PagerDuty / Slack]
