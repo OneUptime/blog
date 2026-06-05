@@ -54,11 +54,16 @@ sudo nsenter -t $CONTAINER_PID -n tcpdump -i any -w /tmp/otel.pcap -s 0 port 431
 # Kubernetes: Use kubectl debug to attach a debugging container
 kubectl debug -n monitoring pod/otel-collector-0 \
   --image=nicolaka/netshoot \
+  --container=debugger \
   --target=otel-collector \
-  -- tcpdump -i any -w /tmp/otel.pcap -s 0 port 4317
+  -- sleep infinity
+
+# Run tcpdump in the debug container
+kubectl exec -n monitoring -c debugger otel-collector-0 -- \
+  tcpdump -i any -w /tmp/otel.pcap -s 0 port 4317
 
 # Copy the capture file back to your machine
-kubectl cp monitoring/otel-collector-0:/tmp/otel.pcap ./otel.pcap
+kubectl cp -n monitoring -c debugger otel-collector-0:/tmp/otel.pcap ./otel.pcap
 ```
 
 Let the capture run for 30 to 60 seconds while your application is sending telemetry, then stop it with Ctrl+C.
@@ -109,7 +114,7 @@ tcp.port == 4317
 http2
 
 # Show only gRPC requests (not responses)
-http2.type == 1 && http2.headers.method == POST
+http2.type == 1 && http2.headers.method == "POST"
 
 # Filter for a specific gRPC service
 http2.header.value contains "opentelemetry.proto.collector"
@@ -128,7 +133,7 @@ http.request.uri contains "/v1/traces"
 http.response.code >= 400
 ```
 
-When looking at a gRPC capture in Wireshark, the protocol dissector will show the HTTP/2 frames. Each OTLP export request is a POST to a path like `/opentelemetry.proto.collector.trace.v1.TraceService/Export`. The response will contain a gRPC status code that tells you exactly what went wrong.
+When looking at a gRPC capture in Wireshark, the protocol dissector will show the HTTP/2 frames. Each OTLP export request is a POST to a path like `/opentelemetry.proto.collector.trace.v1.TraceService/Export`. The response trailers contain a `grpc-status` code that tells you what the receiver reported for the RPC.
 
 ```mermaid
 graph TD
@@ -180,10 +185,11 @@ Alternatively, you can decode protobuf from the command line without Wireshark:
 
 ```bash
 # Extract the protobuf payload from a capture and decode it
-# First, use tshark to extract the gRPC body
+# First, use tshark to extract one uncompressed gRPC message body
 tshark -r /tmp/otel-grpc.pcap \
-  -Y "http2.type == 0 && tcp.dstport == 4317" \
-  -T fields -e http2.data.data \
+  -Y "grpc.message_data && tcp.dstport == 4317" \
+  -T fields -e grpc.message_data \
+  | head -n 1 \
   | xxd -r -p > /tmp/payload.bin
 
 # Decode using protoc with the OTel proto definitions
@@ -227,9 +233,11 @@ receivers:
         endpoint: 0.0.0.0:4317
         # Remove TLS config to accept plaintext connections
         # WARNING: Only for debugging, never in production
+```
 
-# SDK environment variable to skip TLS verification
-# WARNING: Only for debugging
+```bash
+# SDK environment variable to use plaintext OTLP/gRPC when the endpoint has no scheme
+# WARNING: Only for debugging; an http:// endpoint also forces plaintext
 export OTEL_EXPORTER_OTLP_INSECURE=true
 ```
 
@@ -255,7 +263,7 @@ sudo tcpdump -i any -s 200 -w /tmp/otel-headers.pcap port 4317
 # Filter by source IP (your application server)
 sudo tcpdump -i any -n src host 10.0.1.50 and dst port 4317
 
-# Watch for TCP retransmissions (indicates network problems)
+# Watch for repeated SYN packets (can indicate failed connection attempts)
 sudo tcpdump -i any -n 'port 4317 and tcp[tcpflags] & tcp-syn != 0' -v
 ```
 
@@ -273,7 +281,7 @@ Step 2: Wait for a few export cycles (30 seconds is usually enough).
 
 Step 3: Open the capture in Wireshark and look for the TCP handshake. If you see SYN packets but no SYN-ACK, the collector is unreachable. If you see RST (reset) packets, the port is not open.
 
-Step 4: If the handshake succeeds, look at the HTTP/2 frames. Find the gRPC response and check the status code. A code of 14 (UNAVAILABLE) means the collector accepted the connection but could not process the request.
+Step 4: If the handshake succeeds, look at the HTTP/2 frames. Find the gRPC response trailers and check the `grpc-status` code. A code of 14 (UNAVAILABLE) means the service was unavailable or the connection failed while the RPC was in progress.
 
 Step 5: If the status code suggests a payload issue, decode the protobuf to verify the data structure.
 
