@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Configuration, Pipeline
 
-Description: Fix silent data loss caused by duplicate component IDs in OpenTelemetry Collector pipeline configuration YAML files.
+Description: Fix configuration mistakes caused by duplicate or overlapping component IDs in OpenTelemetry Collector pipeline configuration YAML files.
 
-Duplicate component IDs in the Collector configuration can cause subtle, hard-to-debug issues. YAML silently overwrites duplicate keys, so the second definition replaces the first without any warning. This can lead to missing processors, wrong exporter settings, or broken pipelines.
+Duplicate or overlapping component IDs in Collector configuration can cause subtle, hard-to-debug issues. Some YAML parsers and configuration merge tools silently overwrite duplicate keys, so the later definition replaces the earlier one. Current Collector releases reject duplicate keys in a single config file, but duplicates can still be introduced or hidden by tooling before the final config reaches the Collector. This can lead to missing processors, wrong exporter settings, or broken pipelines.
 
 ## The Problem
 
-YAML does not error on duplicate keys. It just uses the last one:
+Some YAML parsers do not error on duplicate keys. They use the last one:
 
 ```yaml
 exporters:
@@ -26,7 +26,7 @@ exporters:
       insecure: true
 ```
 
-The first `otlp` exporter definition (pointing to Tempo) is silently overwritten by the second one (pointing to Jaeger). All your traces go to Jaeger, and Tempo receives nothing. There is no error, no warning.
+In tools that use this last-wins behavior, the first `otlp` exporter definition (pointing to Tempo) is silently overwritten by the second one (pointing to Jaeger). All your traces go to Jaeger, and Tempo receives nothing. If you pass this raw duplicate-key file directly to a current Collector, `validate` should reject it.
 
 ## Why This Happens in Practice
 
@@ -51,11 +51,11 @@ processors:
       action: upsert
 ```
 
-Because both are under `processors:`, the second `processors:` block replaces the first entirely. Alice's processor is gone.
+In a last-wins YAML parser, the second `processors:` block replaces the first entirely. Alice's processor is gone.
 
 ### Scenario 2: Helm Values Merge
 
-When using Helm with multiple values files, YAML merging can create duplicates:
+When using Helm with multiple values files, later values files can override earlier values at the same path:
 
 ```bash
 helm upgrade otel-collector open-telemetry/opentelemetry-collector \
@@ -64,7 +64,7 @@ helm upgrade otel-collector open-telemetry/opentelemetry-collector \
   -f team-b-values.yaml
 ```
 
-If both team files define the same YAML paths, the last file wins.
+If both team files define the same YAML paths, the more specific or later-supplied value wins. This is not a duplicate key in one rendered YAML file, but it can produce the same kind of surprise if a Collector component ID is overwritten before validation.
 
 ## Detecting Duplicates
 
@@ -97,7 +97,7 @@ collector-config.yaml:15:3: error: duplication of key "otlp" in mapping (key-dup
 otelcol-contrib validate --config config.yaml
 ```
 
-Note: the validate command catches some but not all duplicate key issues, since the YAML parser resolves duplicates before the Collector sees them.
+Current Collector releases catch duplicate keys in a single config file during parsing. Still use a YAML linter as well, because Helm values files, generated YAML, or multiple Collector config files can resolve overlapping paths before the Collector validates the final merged configuration.
 
 ### Method 3: Python Script for Detection
 
@@ -170,7 +170,7 @@ service:
       exporters: [otlp/jaeger]
 ```
 
-Each component has a unique ID (`otlp/tempo` vs `otlp/jaeger`), so there is no possibility of accidental overwriting.
+Each component has a unique ID (`otlp/tempo` vs `otlp/jaeger`), so you do not need to reuse the same key for multiple instances of the same component type.
 
 ## CI/CD Validation
 
@@ -198,4 +198,4 @@ jobs:
 
 ## Summary
 
-YAML duplicate keys cause silent overwrites that lead to data loss. Always use named component IDs (`type/name` syntax) to keep IDs unique. Lint your YAML files with `yamllint` to catch duplicates. Add validation to your CI pipeline so duplicate keys are caught before they reach production.
+YAML duplicate keys and overlapping config merges can cause overwrites that lead to data loss. Use named component IDs (`type/name` syntax) when you need multiple instances of the same component type. Lint your YAML files with `yamllint` to catch duplicates. Add validation to your CI pipeline so duplicate keys are caught before they reach production.
