@@ -45,8 +45,6 @@ Traefik configuration for the entry point of a SaaS application:
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -128,7 +126,7 @@ API service configuration with health checks and resource limits:
         condition: service_healthy
 ```
 
-The `update_config` section ensures zero-downtime deployments. `order: start-first` starts the new container before stopping the old one. `parallelism: 1` updates one container at a time.
+The `update_config` section describes rolling update behavior for Swarm or another Compose-compatible platform that implements the Compose Deploy Specification. `order: start-first` starts the new container before stopping the old one. `parallelism: 1` updates one container at a time.
 
 ## The Background Worker Layer
 
@@ -176,7 +174,7 @@ The scheduler runs a single instance that enqueues recurring jobs. Workers can s
 
 PostgreSQL with a primary and read replica handles data storage. Use dedicated volumes and health checks.
 
-Database configuration with replication:
+Database service configuration with a primary and replica container. The replica also needs a base backup from the primary, a replication user with `REPLICATION` permission, and a `pg_hba.conf` rule that permits replication connections from the backend network.
 
 ```yaml
   db-primary:
@@ -188,6 +186,7 @@ Database configuration with replication:
     volumes:
       - pgdata-primary:/var/lib/postgresql/data
       - ./postgres/primary.conf:/etc/postgresql/postgresql.conf
+      - ./postgres/init-replication.sql:/docker-entrypoint-initdb.d/init-replication.sql:ro
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d saas_prod"]
@@ -209,6 +208,12 @@ Database configuration with replication:
       PGPASSWORD: ${REPLICATION_PASSWORD}
     volumes:
       - pgdata-replica:/var/lib/postgresql/data
+    command: >
+      sh -c "if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+        rm -rf /var/lib/postgresql/data/* &&
+        pg_basebackup -h db-primary -D /var/lib/postgresql/data -U replicator -Fp -Xs -P -R;
+      fi;
+      exec docker-entrypoint.sh postgres"
     deploy:
       resources:
         limits:
@@ -216,6 +221,9 @@ Database configuration with replication:
           cpus: "2.0"
     networks:
       - backend
+    depends_on:
+      db-primary:
+        condition: service_healthy
 ```
 
 ## The Cache Layer
@@ -324,19 +332,18 @@ Run migrations as a one-off container before deploying the new API version:
 ```bash
 #!/bin/bash
 # deploy.sh
-# Runs migrations then updates the API with zero downtime
+# Runs migrations then updates the API services
 
 VERSION="$1"
+export VERSION
 
 echo "Running migrations for version $VERSION"
-docker compose run --rm \
-  -e DATABASE_URL="postgresql://app:${DB_PASSWORD}@db-primary:5432/saas_prod" \
-  my-saas/api:$VERSION \
+docker compose --env-file .env.production run --rm \
+  api \
   node migrate.js
 
 echo "Deploying API version $VERSION"
-export VERSION
-docker compose up -d --no-deps api worker scheduler
+docker compose --env-file .env.production up -d --no-deps api worker scheduler
 ```
 
 ## Monitoring Stack
