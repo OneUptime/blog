@@ -46,20 +46,24 @@ We'll implement tracing for a typical e-commerce microservices architecture:
 Each microservice needs these dependencies in `pom.xml`:
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <!-- OpenTelemetry instrumentation BOM for version management -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring Boot Web -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-
-    <!-- OpenTelemetry BOM for version management -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-bom</artifactId>
-        <version>1.33.0</version>
-        <type>pom</type>
-        <scope>import</scope>
     </dependency>
 
     <!-- OpenTelemetry API -->
@@ -68,111 +72,36 @@ Each microservice needs these dependencies in `pom.xml`:
         <artifactId>opentelemetry-api</artifactId>
     </dependency>
 
-    <!-- OpenTelemetry SDK -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-sdk</artifactId>
-    </dependency>
-
-    <!-- OTLP Exporter -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-exporter-otlp</artifactId>
-    </dependency>
-
     <!-- Spring Boot instrumentation -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        <version>1.33.0-alpha</version>
-    </dependency>
-
-    <!-- RestClient instrumentation -->
-    <dependency>
-        <groupId>io.opentelemetry.instrumentation</groupId>
-        <artifactId>opentelemetry-spring-webmvc-6.0</artifactId>
-        <version>1.33.0-alpha</version>
     </dependency>
 </dependencies>
 ```
 
 ## Shared OpenTelemetry Configuration
 
-Create a base configuration class that each service can extend:
+Create a shared configuration block that each service can include:
 
-```java
-package com.example.config;
-
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
-import io.opentelemetry.sdk.OpenTelemetrySdk;
-import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.sdk.trace.SdkTracerProvider;
-import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.ResourceAttributes;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-/**
- * Base OpenTelemetry configuration for all microservices.
- * Each service should specify its own service name.
- */
-@Configuration
-public class OpenTelemetryConfig {
-
-    @Value("${spring.application.name}")
-    private String serviceName;
-
-    @Value("${otel.exporter.otlp.endpoint:http://localhost:4318}")
-    private String otlpEndpoint;
-
-    @Value("${otel.service.version:1.0.0}")
-    private String serviceVersion;
-
-    @Value("${otel.deployment.environment:production}")
-    private String environment;
-
-    /**
-     * Creates the OpenTelemetry SDK instance.
-     * This is the entry point for all tracing operations.
-     */
-    @Bean
-    public OpenTelemetry openTelemetry() {
-        // Define resource attributes that identify this service
-        Resource resource = Resource.getDefault()
-            .merge(Resource.create(
-                Attributes.builder()
-                    .put(ResourceAttributes.SERVICE_NAME, serviceName)
-                    .put(ResourceAttributes.SERVICE_VERSION, serviceVersion)
-                    .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, environment)
-                    .put(ResourceAttributes.SERVICE_NAMESPACE, "ecommerce")
-                    .build()
-            ));
-
-        // Configure OTLP exporter
-        OtlpHttpSpanExporter spanExporter = OtlpHttpSpanExporter.builder()
-            .setEndpoint(otlpEndpoint + "/v1/traces")
-            .build();
-
-        // Build tracer provider with batch processor
-        SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
-            .addSpanProcessor(
-                BatchSpanProcessor.builder(spanExporter)
-                    .setMaxQueueSize(2048)
-                    .setMaxExportBatchSize(512)
-                    .build()
-            )
-            .setResource(resource)
-            .build();
-
-        // Create and return OpenTelemetry SDK
-        return OpenTelemetrySdk.builder()
-            .setTracerProvider(tracerProvider)
-            .buildAndRegisterGlobal();
-    }
-}
+```yaml
+otel:
+  service:
+    name: ${spring.application.name}
+  traces:
+    exporter: otlp
+  exporter:
+    otlp:
+      endpoint: http://localhost:4318
+      protocol: http/protobuf
+  propagators:
+    - tracecontext
+    - baggage
+  resource:
+    attributes:
+      service.namespace: ecommerce
+      service.version: 1.0.0
+      deployment.environment.name: production
 ```
 
 ## Order Service Implementation
@@ -203,7 +132,7 @@ public class OrderController {
 
     /**
      * Creates an order and triggers multiple downstream service calls.
-     * This creates the root span for the distributed trace.
+     * This creates a server span for the distributed trace.
      */
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
@@ -387,14 +316,14 @@ public class OrderService {
     }
 
     private Order saveOrder(OrderRequest request, PaymentResult payment) {
-        // Database operation - automatically traced
+        // Database operation - traced when using supported JDBC, MongoDB, or R2DBC instrumentation
         return orderRepository.save(
             new Order(request, payment.getTransactionId())
         );
     }
 
     private void notifyCustomer(Order order) {
-        // Async notification - trace context is linked
+        // Notification call - trace context propagates through the instrumented client
         notificationClient.sendOrderConfirmation(
             order.getCustomerId(),
             order.getId()
@@ -415,13 +344,13 @@ public class OrderService {
 
 ## REST Client with Context Propagation
 
-Configure RestTemplate or WebClient to propagate trace context:
+Configure RestTemplate, RestClient, or WebClient to propagate trace context:
+
+The RestClient example assumes Spring Boot 3.2+ / Spring Framework 6.1+; use RestTemplate or WebClient on older Spring Boot versions.
 
 ```java
 package com.example.order.client;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.instrumentation.spring.webmvc.v6_0.SpringWebMvcTelemetry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -432,25 +361,13 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class RestClientConfig {
 
-    private final OpenTelemetry openTelemetry;
-
-    public RestClientConfig(OpenTelemetry openTelemetry) {
-        this.openTelemetry = openTelemetry;
-    }
-
     /**
      * Creates a RestClient that automatically propagates trace context.
      * W3C Trace Context headers are automatically added to requests.
      */
     @Bean
     public RestClient restClient() {
-        return RestClient.builder()
-            .requestInterceptor((request, body, execution) -> {
-                // OpenTelemetry automatically injects trace headers here
-                // Headers: traceparent, tracestate
-                return execution.execute(request, body);
-            })
-            .build();
+        return RestClient.create();
     }
 }
 ```
@@ -487,7 +404,8 @@ public class InventoryClient {
 
     /**
      * Checks if items are available.
-     * Creates a CLIENT span that connects to the SERVER span in Inventory Service.
+     * The instrumented RestClient creates a CLIENT span that connects
+     * to the SERVER span in Inventory Service.
      */
     public boolean checkAvailability(List<OrderItem> items) {
         Span.current().setAttribute("inventory.items_count", items.size());
@@ -656,7 +574,7 @@ public class PaymentService {
             span.setAttribute("payment.amount", request.getAmount());
             span.setAttribute("customer.id", request.getCustomerId());
 
-            // Check for fraud - trace extends to external service
+            // Check for fraud - trace extends when the downstream client is instrumented
             span.addEvent("fraud_check_started");
             FraudCheckResult fraudCheck = fraudClient.checkFraud(request);
 
@@ -666,7 +584,7 @@ public class PaymentService {
                 return PaymentResult.declined("Fraud detected");
             }
 
-            // Process with payment gateway - external API call traced
+            // Process with payment gateway - traced when the downstream client is instrumented
             span.addEvent("payment_processing");
             GatewayResponse gatewayResponse = gatewayClient.charge(
                 request.getAmount(),
@@ -716,13 +634,19 @@ services:
     url: http://localhost:8083
 
 otel:
+  service:
+    name: ${spring.application.name}
+  traces:
+    exporter: otlp
   exporter:
     otlp:
       endpoint: http://localhost:4318
-  service:
-    version: 1.0.0
-  deployment:
-    environment: production
+      protocol: http/protobuf
+  resource:
+    attributes:
+      service.namespace: ecommerce
+      service.version: 1.0.0
+      deployment.environment.name: production
 ```
 
 ```yaml
@@ -740,10 +664,10 @@ server:
 
 When you make a request to create an order, the trace will show:
 
-1. **order-service**: Root span for order creation
+1. **order-service**: Server span for order creation (root span if there is no upstream trace context)
 2. **order-service**: Child span for inventory check
 3. **inventory-service**: Server span receiving the check request
-4. **inventory-service**: Database query spans
+4. **inventory-service**: Database query spans when using supported JDBC, MongoDB, or R2DBC instrumentation
 5. **order-service**: Child span for payment processing
 6. **payment-service**: Server span receiving payment request
 7. **payment-service**: Fraud check external API call
