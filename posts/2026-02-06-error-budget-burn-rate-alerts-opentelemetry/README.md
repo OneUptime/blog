@@ -83,6 +83,8 @@ Here is this expressed as PromQL:
 (1 - 0.999)
 ```
 
+These queries assume the Collector has normalized the OpenTelemetry counter names to `sli_requests_total` and `sli_requests_successful`. Prometheus-compatible exporters should not append another `_total` suffix when a monotonic sum name already ends in `_total`.
+
 ## Multi-Window Burn Rate Alerts
 
 Google's SRE book recommends multi-window burn rate alerts. The idea is to check both a short window (for recent behavior) and a long window (for sustained impact). An alert only fires when both windows indicate elevated burn rate. This prevents alerting on brief spikes that self-resolve.
@@ -172,6 +174,7 @@ graph LR
 ## Collector Pipeline for SLI Metrics
 
 Ensure your OpenTelemetry Collector routes SLI metrics to a backend that supports the required query window lengths (up to 30 days).
+If you remote write directly to Prometheus, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` accepts remote write requests.
 
 ```yaml
 # otel-collector-sli.yaml
@@ -216,7 +219,7 @@ service:
 Show engineers how much error budget remains in the current window so they can make informed decisions about risky deployments.
 
 ```promql
-# Remaining error budget as a percentage
+# Remaining error budget as a fraction
 1 - (
   (
     1 - (
