@@ -10,13 +10,13 @@ The tail sampling processor is one of the most powerful features in the OpenTele
 
 ## Why Tail Sampling Matters
 
-In production systems, capturing 100% of traces is often impractical due to storage costs and data volume. Head-based sampling drops traces randomly at the source, but this means you might lose traces for rare errors or high-latency requests. Tail sampling solves this by keeping important traces while dropping routine ones.
+In production systems, capturing 100% of traces is often impractical due to storage costs and data volume. Head-based sampling makes decisions at the source before the full trace is known, but this means you might lose traces for rare errors or high-latency requests. Tail sampling solves this by keeping important traces while dropping routine ones.
 
 For more context on sampling strategies, see our guide on [reducing noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view).
 
 ## How Tail Sampling Works
 
-The tail sampling processor batches incoming spans and waits for all spans in a trace to arrive. Once the decision wait period expires or all spans are received, it evaluates the trace against configured policies. If any policy matches, the entire trace is kept; otherwise, it's dropped.
+The tail sampling processor groups incoming spans by trace ID and waits for more spans in a trace to arrive. Once the decision wait period expires, or earlier when root-span-based acceleration is configured, it evaluates the trace against configured policies. If the final policy decision is to sample, the entire trace is kept; otherwise, it's dropped.
 
 ```mermaid
 graph LR
@@ -60,7 +60,7 @@ processors:
     expected_new_traces_per_sec: 1000
 
     # Policies define which traces to keep
-    # Policies are evaluated in order; first match wins
+    # By default, each policy contributes to the final decision
     policies:
       # Policy 1: Always keep traces with errors
       # Critical for debugging production issues
@@ -115,9 +115,8 @@ processors:
       - name: very-fast-traces
         type: latency
         latency:
-          threshold_ms: 10
-          # Upper bound instead of lower bound
-          upper_threshold_ms: true
+          # Match traces up to 10 milliseconds
+          upper_threshold_ms: 10
 ```
 
 ### String Attribute Matching
@@ -184,7 +183,7 @@ processors:
 
 ### Rate Limiting
 
-Limit the number of traces per second:
+Limit the number of spans per second:
 
 ```yaml
 processors:
@@ -194,11 +193,11 @@ processors:
     expected_new_traces_per_sec: 1000
     policies:
       # Rate limit to control costs
-      # Keeps first N traces per second that match other criteria
+      # Keeps spans up to the configured sustained rate
       - name: rate-limit-normal-traffic
         type: rate_limiting
         rate_limiting:
-          # Maximum traces per second to keep
+          # Maximum spans per second to keep
           spans_per_second: 100
 ```
 
@@ -263,9 +262,10 @@ processors:
             - name: is-api-call
               type: string_attribute
               string_attribute:
-                key: span.kind
+                key: http.request.method
                 values:
-                  - server
+                  - GET
+                  - POST
 ```
 
 ### Always Sample Policy
@@ -287,7 +287,7 @@ processors:
           values:
             - "true"
 
-      # Fallback: sample remaining traces at low rate
+      # Fallback: keep all remaining traces
       - name: baseline-sampling
         type: always_sample
 ```
@@ -306,8 +306,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Add batch processor before tail sampling
-  # Reduces memory usage and improves throughput
+  # Add batch processor after tail sampling
+  # Improves export throughput after sampling decisions are made
   batch:
     timeout: 1s
     send_batch_size: 1024
@@ -324,27 +324,27 @@ processors:
     expected_new_traces_per_sec: 10000
 
     policies:
-      # Priority 1: Always keep errors
+      # Policy: Always keep errors
       - name: errors
         type: status_code
         status_code:
           status_codes:
             - ERROR
 
-      # Priority 2: Keep slow requests
+      # Policy: Keep slow requests
       - name: slow-requests
         type: latency
         latency:
           threshold_ms: 2000
 
-      # Priority 3: Keep high-value transactions
+      # Policy: Keep high-value transactions
       - name: high-value
         type: numeric_attribute
         numeric_attribute:
           key: transaction.amount
           min_value: 1000
 
-      # Priority 4: Keep traces from critical endpoints
+      # Policy: Keep traces from critical endpoints
       - name: critical-apis
         type: string_attribute
         string_attribute:
@@ -355,7 +355,7 @@ processors:
             - /api/v1/auth
           enabled_regex_matching: true
 
-      # Priority 5: Sample premium customer traces more heavily
+      # Policy: Sample premium customer traces more heavily
       - name: premium-customers
         type: and
         and:
@@ -372,13 +372,13 @@ processors:
               probabilistic:
                 sampling_percentage: 50
 
-      # Priority 6: Rate limit normal traffic
+      # Policy: Add a capped sample stream for overall traffic
       - name: normal-traffic-rate-limit
         type: rate_limiting
         rate_limiting:
           spans_per_second: 500
 
-      # Priority 7: Sample remaining traffic at low rate
+      # Policy: Sample remaining traffic at low rate
       - name: baseline
         type: probabilistic
         probabilistic:
@@ -404,7 +404,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, tail_sampling]
+      processors: [tail_sampling, batch]
       exporters: [otlp]
 
   # Monitor tail sampling performance
@@ -448,15 +448,17 @@ Set `decision_wait` based on your trace duration:
 
 ### Load Balancing Considerations
 
-Tail sampling requires all spans from a trace to reach the same collector instance. Configure your load balancer to route by trace ID:
+Tail sampling requires all spans from a trace to reach the same collector instance. Configure trace-aware routing by trace ID:
 
 ```yaml
 # Example using load balancing exporter
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
-        endpoint: collector-backend:4317
+        # All OTLP exporter options are supported except endpoint,
+        # which is supplied by the resolver.
+        timeout: 1s
     resolver:
       dns:
         hostname: collector-backend
@@ -466,21 +468,16 @@ exporters:
 
 ### Policy Ordering
 
-Policies are evaluated in order. Place more specific policies first:
-1. Always keep (errors, debug traces)
-2. Business-critical traces
-3. Performance-based (latency)
-4. Rate limiting
-5. Probabilistic baseline
+By default, policy order does not create priority or "first match wins" behavior. Each policy contributes a decision, and the processor derives the final decision from those results. Use `drop`, `not`, `composite`, or `sample_on_first_match` when you need explicit precedence or ordered evaluation.
 
 ## Monitoring Tail Sampling
 
 Track these metrics to ensure healthy operation:
 
-- `otelcol_processor_tail_sampling_policy_decision` - Decisions per policy
-- `otelcol_processor_tail_sampling_trace_data_age` - How old traces are when evaluated
+- `otelcol_processor_tail_sampling_count_traces_sampled` - Decisions per policy
+- `otelcol_processor_tail_sampling_sampling_trace_removal_age` - How long traces remain in memory
 - `otelcol_processor_tail_sampling_new_trace_id_received` - New traces arriving
-- `otelcol_processor_tail_sampling_sampling_decision_latency` - Decision processing time
+- `otelcol_processor_tail_sampling_sampling_decision_timer_latency` - Decision processing time
 
 ## Troubleshooting
 
@@ -501,7 +498,7 @@ Track these metrics to ensure healthy operation:
 **Solutions**:
 - Decrease `num_traces` or `decision_wait`
 - Add more aggressive rate limiting policies
-- Use probabilistic sampling before tail sampling
+- Use probabilistic sampling before tail sampling only if it is acceptable to drop some traces before policy evaluation
 - Scale horizontally with more collector instances
 
 ### Incomplete Traces
