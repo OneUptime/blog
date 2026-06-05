@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Java, Shading, Library Instrumentation
 
 Description: Understand why the OpenTelemetry Java agent cannot instrument shaded or relocated libraries and learn workarounds.
 
-Java library shading (also called shadowing or relocation) renames package paths to avoid dependency conflicts. When a library shades its dependencies, the OpenTelemetry Java agent cannot find them because the class names no longer match what the instrumentation expects. The agent looks for `io.grpc.ManagedChannel` but the shaded library has renamed it to `com.mycompany.shaded.io.grpc.ManagedChannel`.
+Java library shading (also called shadowing or relocation) renames package paths to avoid dependency conflicts. When a library shades its dependencies, the OpenTelemetry Java agent cannot find them because the class names no longer match what the instrumentation expects. For example, the agent's gRPC instrumentation targets classes in the `io.grpc` package, but the shaded library has renamed them to `com.mycompany.shaded.io.grpc`.
 
 ## What Shading Does
 
@@ -28,7 +28,7 @@ Shading is a build-time process that rewrites package names:
 </plugin>
 ```
 
-After shading, `io.grpc.ManagedChannel` becomes `com.mycompany.shaded.io.grpc.ManagedChannel`. The OpenTelemetry agent's gRPC instrumentation only knows about `io.grpc.ManagedChannel` and skips the shaded version.
+After shading, a class like `io.grpc.ManagedChannel` becomes `com.mycompany.shaded.io.grpc.ManagedChannel`. The OpenTelemetry agent's gRPC instrumentation matches unrelocated `io.grpc` types and skips the shaded version.
 
 ## Diagnosing the Issue
 
@@ -75,6 +75,8 @@ Since auto-instrumentation cannot find shaded classes, add manual spans around t
 ```java
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Scope;
 
 @Service
 public class MyGrpcClient {
@@ -111,6 +113,17 @@ For the OpenTelemetry Java agent, you can write an extension that targets the sh
 
 ```java
 // Custom instrumentation for shaded gRPC
+import static net.bytebuddy.matcher.ElementMatchers.named;
+import static java.util.Collections.singletonList;
+
+import com.google.auto.service.AutoService;
+import io.opentelemetry.javaagent.extension.instrumentation.InstrumentationModule;
+import io.opentelemetry.javaagent.extension.instrumentation.TypeInstrumentation;
+import io.opentelemetry.javaagent.extension.instrumentation.TypeTransformer;
+import java.util.List;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.matcher.ElementMatcher;
+
 @AutoService(InstrumentationModule.class)
 public class ShadedGrpcInstrumentationModule extends InstrumentationModule {
 
@@ -120,7 +133,7 @@ public class ShadedGrpcInstrumentationModule extends InstrumentationModule {
 
     @Override
     public List<TypeInstrumentation> typeInstrumentations() {
-        return List.of(new ShadedManagedChannelInstrumentation());
+        return singletonList(new ShadedManagedChannelInstrumentation());
     }
 }
 
@@ -131,7 +144,10 @@ class ShadedManagedChannelInstrumentation implements TypeInstrumentation {
         return named("com.mycompany.shaded.io.grpc.internal.ManagedChannelImpl");
     }
 
-    // ... define the advice methods
+    @Override
+    public void transform(TypeTransformer typeTransformer) {
+        // ... define method matchers and apply advice methods
+    }
 }
 ```
 
@@ -152,16 +168,12 @@ If you control the build, exclude the instrumented library from the shade plugin
     <groupId>org.apache.maven.plugins</groupId>
     <artifactId>maven-shade-plugin</artifactId>
     <configuration>
-        <relocations>
-            <relocation>
-                <pattern>com.google</pattern>
-                <shadedPattern>com.mycompany.shaded.com.google</shadedPattern>
-                <excludes>
-                    <!-- Do not shade gRPC so OTel can instrument it -->
-                    <exclude>io.grpc.**</exclude>
-                </excludes>
-            </relocation>
-        </relocations>
+        <artifactSet>
+            <excludes>
+                <!-- Keep gRPC out of the shaded artifact so it remains on the normal classpath -->
+                <exclude>io.grpc:*</exclude>
+            </excludes>
+        </artifactSet>
     </configuration>
 </plugin>
 ```
