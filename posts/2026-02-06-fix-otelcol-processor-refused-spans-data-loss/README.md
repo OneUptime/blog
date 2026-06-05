@@ -1,25 +1,25 @@
-# How to Fix 'otelcol_processor_refused_spans' Metric Alerting on Data Loss
+# How to Fix OpenTelemetry Collector Refused Spans Alerting on Data Loss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Metric, Data Loss, Backpressure, Memory, Troubleshooting, Span
 
-Description: Diagnose and resolve the otelcol_processor_refused_spans metric in OpenTelemetry Collector to prevent trace data loss and pipeline backpressure issues.
+Description: Diagnose and resolve refused span and exporter failure metrics in OpenTelemetry Collector to prevent trace data loss and pipeline backpressure issues.
 
 ---
 
-When you see the `otelcol_processor_refused_spans` metric climbing in your monitoring dashboards, it means the OpenTelemetry Collector is actively dropping trace data. Spans are entering the pipeline but being rejected by a processor before they reach your backend. This is not a warning you can ignore. Every refused span is a gap in your traces, a missing piece of observability data that you will not get back.
+When you see `otelcol_receiver_refused_spans` or `otelcol_exporter_enqueue_failed_spans` climbing in your monitoring dashboards, it means the OpenTelemetry Collector cannot accept or queue trace data fast enough. Spans are reaching the collector, but backpressure or exporter failures are preventing them from moving through the pipeline normally. This is not a warning you can ignore. Every refused span is a potential gap in your traces, a missing piece of observability data that you may not get back.
 
-This guide explains exactly what causes this metric to appear, how to diagnose which processor is refusing data and why, and how to fix it without destabilizing your collector.
+This guide explains exactly what causes these metrics to appear, how to diagnose where data is being refused or dropped, and how to fix it without destabilizing your collector.
 
 ## What "Refused Spans" Actually Means
 
-The OpenTelemetry Collector tracks data flow through its pipeline using internal metrics. The `otelcol_processor_refused_spans` metric increments every time a processor in the pipeline rejects incoming span data instead of passing it downstream.
+The OpenTelemetry Collector tracks data flow through its pipeline using internal metrics. In current collector releases, refused spans are reported at the receiver layer with `otelcol_receiver_refused_spans`. Exporter backpressure and failed delivery are reported with exporter metrics such as `otelcol_exporter_enqueue_failed_spans`, `otelcol_exporter_send_failed_spans`, `otelcol_exporter_queue_size`, and `otelcol_exporter_queue_capacity`.
 
 ```mermaid
 graph LR
     A[Receiver<br/>Accepts Spans] --> B[Processor 1<br/>memory_limiter]
-    B -->|Refuses Spans| X[Data Lost]
+    B -->|Returns Error| X[Refused or Dropped Spans]
     B -->|Accepts Spans| C[Processor 2<br/>batch]
     C --> D[Exporter<br/>Sends to Backend]
 
@@ -27,33 +27,37 @@ graph LR
     style B fill:#fc9,stroke:#333,stroke-width:2px
 ```
 
-The metric has labels that tell you which processor is refusing data:
+Use these metrics together to identify where the data is being rejected or dropped:
 
 ```promql
-# PromQL query to see refused spans broken down by processor
+# Refused spans at the collector receiver
 
-# This tells you exactly which processor is the bottleneck
-otelcol_processor_refused_spans{processor="memory_limiter"}
-otelcol_processor_refused_spans{processor="batch"}
-otelcol_processor_refused_spans{processor="filter"}
+rate(otelcol_receiver_refused_spans[5m])
+
+# Exporter queue overflow and send failures
+rate(otelcol_exporter_enqueue_failed_spans[5m])
+rate(otelcol_exporter_send_failed_spans[5m])
+
+# Exporter queue utilization
+otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 ```
 
-The three most common processors that refuse spans are the memory limiter, the batch processor (when its send queue is full), and filter processors (by design). Each has a different root cause and fix.
+The most common causes are the memory limiter rejecting data under memory pressure, the exporter sending queue filling up, and the backend returning errors or becoming unreachable. Filter processors can intentionally drop spans by design, but that is normal filtering behavior rather than a refused-span signal.
 
 ## Cause 1: Memory Limiter Activating Under Pressure
 
-The memory limiter processor is the most common source of refused spans. It exists specifically to prevent the collector from running out of memory and crashing. When memory usage exceeds the configured limit, it starts refusing all incoming data.
+The memory limiter processor is a common source of refused spans. It exists specifically to prevent the collector from running out of memory and crashing. When memory usage exceeds the soft limit (`limit_mib - spike_limit_mib`), it starts refusing incoming data. If memory reaches the hard limit, it also forces garbage collection.
 
 Check if the memory limiter is the culprit:
 
 ```bash
 # Query the collector's internal metrics endpoint
-# Look for the memory limiter's refused spans count
-curl -s http://otel-collector:8888/metrics | grep refused_spans
+# Look for refused spans and collector memory usage
+curl -s http://otel-collector:8888/metrics | grep -E "receiver_refused_spans|process_memory|runtime.*memory"
 
-# Expected output when memory limiter is refusing:
-# otelcol_processor_refused_spans{processor="memory_limiter",
-#   service_instance_id="abc123"} 45230
+# Expected output when the collector is refusing spans:
+# otelcol_receiver_refused_spans{receiver="otlp",
+#   service_instance_id="abc123",transport="grpc"} 45230
 ```
 
 The typical misconfiguration looks like this:
@@ -71,13 +75,13 @@ If your collector receives bursts of traffic, 256 MB fills up fast. The fix depe
 
 ```yaml
 # FIX: Increase memory limits to match actual available memory
-# Rule of thumb: set limit_mib to 80% of available memory
-# and spike_limit_mib to 25% of limit_mib
+# Rule of thumb: set limit_mib to a large but safe share of available memory
+# and spike_limit_mib to about 20% of limit_mib
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 1536      # 1.5 GB limit (for a 2 GB container)
-    spike_limit_mib: 512  # 512 MB spike headroom
+    spike_limit_mib: 300  # 300 MB spike headroom
 ```
 
 If you are running in Kubernetes, make sure the container's memory limit matches:
@@ -85,7 +89,7 @@ If you are running in Kubernetes, make sure the container's memory limit matches
 ```yaml
 # kubernetes-deployment.yaml
 # The container memory limit should be higher than the
-# memory_limiter's limit_mib to avoid OOM kills
+# memory_limiter's hard limit to avoid OOM kills
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -100,7 +104,7 @@ spec:
           requests:
             memory: "1Gi"
           limits:
-            # Set container limit above the memory_limiter limit
+            # Set container limit above the memory_limiter hard limit
             # 2Gi container for 1536 MiB memory_limiter limit
             memory: "2Gi"
 ```
@@ -108,37 +112,38 @@ spec:
 The relationship between these values matters:
 
 ```text
-Container memory limit > memory_limiter limit_mib + spike_limit_mib
-         2048 MiB      >        1536 MiB          +     512 MiB
-         2048 MiB      >                2048 MiB
+Container memory limit > memory_limiter limit_mib + non-heap/process overhead
+         2048 MiB      >        1536 MiB          +     overhead
 
-# This is too tight! Increase container memory or lower the limits.
+# Do not set the collector hard limit equal to the container limit.
+# Leave headroom for non-heap memory and normal process overhead.
 # A safer ratio:
 Container memory limit = memory_limiter limit_mib * 1.5
          2304 MiB      =        1536 MiB          * 1.5
 ```
 
-## Cause 2: Batch Processor Queue Overflow
+## Cause 2: Exporter Queue Overflow
 
-The batch processor groups spans into batches before sending them to exporters. It has an internal queue, and when that queue fills up because the exporter cannot keep up, the batch processor starts refusing new spans.
+The batch processor groups spans into batches before sending them to exporters. The exporter has the sending queue that absorbs backend slowness or network delay. When that queue fills up because the exporter cannot keep up, new data can fail to enqueue and be dropped.
 
 ```bash
-# Check batch processor queue metrics
-curl -s http://otel-collector:8888/metrics | grep "batch"
+# Check batch processor and exporter queue metrics
+curl -s http://otel-collector:8888/metrics | grep -E "processor_batch|exporter_queue|enqueue_failed"
 
 # Look for these metrics:
 # otelcol_processor_batch_batch_send_size - size of batches being sent
 # otelcol_exporter_queue_size - current queue depth
 # otelcol_exporter_queue_capacity - maximum queue depth
+# otelcol_exporter_enqueue_failed_spans - spans that failed to enter the exporter queue
 ```
 
 The root cause is usually that the exporter is slower than the incoming data rate. This can happen because of network latency to the backend, backend throttling, or simply too much data for the exporter to handle.
 
 ```yaml
-# BAD: Default batch and queue settings may be too small for high throughput
+# BAD: Small batch and queue settings may be too small for high throughput
 processors:
   batch:
-    timeout: 5s
+    timeout: 200ms
     send_batch_size: 512
 
 exporters:
@@ -154,11 +159,11 @@ exporters:
 # FIX: Tune batch processor and exporter queue for higher throughput
 processors:
   batch:
-    # Shorter timeout sends batches more frequently
+    # Timeout controls how long data can wait before being sent
     timeout: 2s
-    # Larger batch size means fewer network round trips
+    # Larger trigger size can mean fewer network round trips
     send_batch_size: 1024
-    # Maximum batch size prevents memory buildup
+    # Maximum batch size splits oversized batches
     send_batch_max_size: 2048
 
 exporters:
@@ -208,7 +213,7 @@ spec:
 
 ## Cause 3: Exporter Endpoint Issues
 
-Sometimes the refused spans are not caused by resource limits but by the exporter failing to send data. When the backend is unreachable or returning errors, the exporter's retry mechanism eventually gives up, and data backed up in the queue causes the batch processor to refuse new spans.
+Sometimes the span loss is not caused by local memory pressure but by the exporter failing to send data. When the backend is unreachable or returning errors, the exporter's retry mechanism eventually gives up. If data continues to arrive while the exporter is backed up, the sending queue can fill and new data can fail to enqueue.
 
 Check exporter health:
 
@@ -261,11 +266,14 @@ extensions:
   file_storage/traces:
     directory: /var/lib/otelcol/traces-queue
     timeout: 10s
+
+service:
+  extensions: [file_storage/traces]
 ```
 
 ## Setting Up Alerts Before Data Loss Happens
 
-Do not wait until you notice missing traces. Set up alerts on the refused spans metric so you catch the problem early:
+Do not wait until you notice missing traces. Set up alerts on refused spans and exporter queue failures so you catch the problem early:
 
 ```yaml
 # prometheus-alerts.yaml
@@ -273,30 +281,30 @@ Do not wait until you notice missing traces. Set up alerts on the refused spans 
 groups:
   - name: otel-collector-data-loss
     rules:
-      # Alert when any processor is refusing spans
+      # Alert when a receiver cannot push spans into the pipeline
       - alert: OtelCollectorRefusedSpans
         # rate() over 5 minutes smooths out brief spikes
-        expr: rate(otelcol_processor_refused_spans[5m]) > 0
+        expr: rate(otelcol_receiver_refused_spans[5m]) > 0
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: "OTel Collector is refusing spans"
           description: >
-            Processor {{ $labels.processor }} on collector
+            Receiver {{ $labels.receiver }} on collector
             {{ $labels.service_instance_id }} is refusing
             {{ $value | humanize }} spans/sec.
 
-      # Alert when refused spans exceed a significant threshold
+      # Alert when spans fail to enter the exporter sending queue
       - alert: OtelCollectorHighDataLoss
-        expr: rate(otelcol_processor_refused_spans[5m]) > 100
+        expr: rate(otelcol_exporter_enqueue_failed_spans[5m]) > 100
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "OTel Collector is losing significant trace data"
           description: >
-            Processor {{ $labels.processor }} is refusing more than
+            Exporter {{ $labels.exporter }} failed to enqueue more than
             100 spans/sec. Immediate action required to prevent
             observability gaps.
 
@@ -311,7 +319,7 @@ groups:
           summary: "OTel Collector exporter queue is 80% full"
           description: >
             Exporter queue is at {{ $value | humanizePercentage }} capacity.
-            If this continues, spans will be refused.
+            If this continues, spans may fail to enqueue.
 ```
 
 ## The Diagnostic Workflow
@@ -320,13 +328,13 @@ When your alert fires, follow this sequence:
 
 ```mermaid
 graph TD
-    A[Alert: otelcol_processor_refused_spans > 0] --> B{Which Processor?}
-    B -->|memory_limiter| C[Check Memory Usage]
-    B -->|batch| D[Check Exporter Queue]
-    B -->|filter| E[Review Filter Rules - This May Be Expected]
+    A[Alert: refused or enqueue-failed spans > 0] --> B{Which Metric?}
+    B -->|receiver_refused_spans| C[Check Memory Usage]
+    B -->|exporter_enqueue_failed_spans| D[Check Exporter Queue]
+    B -->|exporter_send_failed_spans| E[Check Backend Errors]
 
     C --> F{Memory Near Limit?}
-    F -->|Yes| G[Increase limit_mib or Scale Horizontally]
+    F -->|Yes| G[Increase Memory Limit or Scale Horizontally]
     F -->|No| H[Check for Memory Leaks in Config]
 
     D --> I{Queue Full?}
@@ -338,16 +346,16 @@ graph TD
     L -->|No| N[Fix Backend Connection]
 ```
 
-Start by identifying which processor is refusing spans using the metric labels. Then investigate the specific cause using the metrics and fixes described above.
+Start by identifying which metric is firing and which receiver or exporter label is involved. Then investigate the specific cause using the metrics and fixes described above.
 
 ## Verifying the Fix
 
-After applying changes, verify that refused spans drop to zero:
+After applying changes, verify that refused spans and exporter queue failures drop to zero:
 
 ```bash
-# Watch the refused spans metric in real time
+# Watch refused and enqueue-failed span metrics in real time
 # It should stop increasing after your fix takes effect
-watch 'curl -s http://otel-collector:8888/metrics | grep refused_spans'
+watch 'curl -s http://otel-collector:8888/metrics | grep -E "receiver_refused_spans|enqueue_failed_spans"'
 
 # Also verify that exported spans are increasing normally
 watch 'curl -s http://otel-collector:8888/metrics | grep sent_spans'
@@ -355,13 +363,14 @@ watch 'curl -s http://otel-collector:8888/metrics | grep sent_spans'
 
 ```promql
 # PromQL query to verify the fix over time
-# This should return 0 after the fix is deployed
-rate(otelcol_processor_refused_spans[5m])
+# These should return 0 after the fix is deployed
+rate(otelcol_receiver_refused_spans[5m])
+rate(otelcol_exporter_enqueue_failed_spans[5m])
 
 # Compare with the successful export rate to confirm data is flowing
 rate(otelcol_exporter_sent_spans[5m])
 ```
 
-The goal is to get `otelcol_processor_refused_spans` rate to zero and keep it there. Brief spikes during traffic bursts are acceptable as long as they resolve quickly. Sustained refused spans indicate that your collector is undersized for its workload and needs more resources or horizontal scaling.
+The goal is to get `otelcol_receiver_refused_spans` and `otelcol_exporter_enqueue_failed_spans` rates to zero and keep them there. Brief spikes during traffic bursts are worth investigating but may resolve quickly. Sustained refused spans or enqueue failures indicate that your collector is undersized for its workload, your backend is unavailable, or the exporter queue and retry settings need tuning.
 
-Remember that every refused span is a permanent gap in your observability data. It is always better to over-provision the collector slightly than to lose trace data that you cannot recover.
+Remember that every refused or dropped span can become a permanent gap in your observability data. It is always better to over-provision the collector slightly than to lose trace data that you cannot recover.
