@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Bun, ElysiaJS, JavaScript, Tracing, Web Framework
 
 Description: Learn how to instrument ElysiaJS applications running on Bun with OpenTelemetry for comprehensive distributed tracing and observability.
 
-ElysiaJS is a fast, ergonomic web framework designed specifically for Bun. It leverages Bun's performance optimizations and provides a developer-friendly API similar to Express but with better type safety and performance. Instrumenting ElysiaJS with OpenTelemetry requires a different approach than traditional Node.js frameworks since ElysiaJS uses Bun's native HTTP server rather than Node's http module.
+ElysiaJS is a fast, ergonomic web framework designed specifically for Bun. It leverages Bun's performance optimizations and provides a developer-friendly API similar to Express but with better type safety and performance. Manually instrumenting ElysiaJS with generic Node.js HTTP instrumentation can require a different approach than traditional Node.js frameworks since ElysiaJS uses Bun's native HTTP server rather than Node's http module.
 
 This guide covers how to add comprehensive tracing to ElysiaJS applications, including automatic request tracing, database instrumentation, and custom spans for business logic.
 
@@ -25,7 +25,8 @@ bun init -y
 bun add elysia
 bun add @opentelemetry/api \
         @opentelemetry/sdk-node \
-        @opentelemetry/sdk-trace-base \
+        @opentelemetry/sdk-trace-node \
+        @opentelemetry/context-async-hooks \
         @opentelemetry/resources \
         @opentelemetry/semantic-conventions \
         @opentelemetry/exporter-trace-otlp-http \
@@ -42,36 +43,45 @@ Create a dedicated module for OpenTelemetry setup:
 // Initialize OpenTelemetry SDK for ElysiaJS application
 
 import { NodeSDK } from "@opentelemetry/sdk-node";
-import { Resource } from "@opentelemetry/resources";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 
 export function initTelemetry() {
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || "elysia-app",
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.VERSION || "1.0.0",
-    "deployment.environment": process.env.ENVIRONMENT || "development",
-    "service.runtime": "bun",
-    "service.framework": "elysia",
+  const otlpEndpoint =
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318";
+
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || "elysia-app",
+    [ATTR_SERVICE_VERSION]: process.env.VERSION || "1.0.0",
+    "deployment.environment.name": process.env.ENVIRONMENT || "development",
+    "service.runtime.name": "bun",
+    "service.framework.name": "elysia",
   });
 
   const traceExporter = new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318/v1/traces",
+    url:
+      process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+      `${otlpEndpoint}/v1/traces`,
   });
 
   const metricExporter = new OTLPMetricExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.replace("traces", "metrics") || "http://localhost:4318/v1/metrics",
+    url:
+      process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ||
+      `${otlpEndpoint}/v1/metrics`,
   });
 
   const sdk = new NodeSDK({
     resource,
-    spanProcessor: new BatchSpanProcessor(traceExporter),
+    contextManager: new AsyncLocalStorageContextManager(),
+    spanProcessors: [new BatchSpanProcessor(traceExporter)],
     metricReader: new PeriodicExportingMetricReader({
       exporter: metricExporter,
       exportIntervalMillis: 60000,
@@ -100,22 +110,24 @@ ElysiaJS supports plugins, which is the perfect place to add tracing middleware:
 // ElysiaJS plugin for automatic request tracing
 
 import { Elysia } from "elysia";
-import { trace, context, SpanStatusCode, type Span } from "@opentelemetry/api";
+import { trace, context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("elysia-http", "1.0.0");
 
 export const tracing = new Elysia({
   name: "tracing",
 })
-  .derive(async ({ request, path, set }) => {
+  .derive(async ({ request, path }) => {
     // Create a span for this request
-    const span = tracer.startSpan("http.request", {
+    const url = new URL(request.url);
+    const span = tracer.startSpan(`${request.method} ${path}`, {
+      kind: SpanKind.SERVER,
       attributes: {
-        "http.method": request.method,
-        "http.url": path,
-        "http.target": path,
-        "http.scheme": new URL(request.url).protocol.replace(":", ""),
-        "http.user_agent": request.headers.get("user-agent") || "unknown",
+        "http.request.method": request.method,
+        "url.path": url.pathname,
+        "url.scheme": url.protocol.replace(":", ""),
+        "http.route": path,
+        "user_agent.original": request.headers.get("user-agent") || "unknown",
       },
     });
 
@@ -130,26 +142,24 @@ export const tracing = new Elysia({
       startTime,
     };
   })
-  .onAfterHandle(({ span, startTime, set, path, request }) => {
+  .onAfterHandle(({ span, startTime, set, path }) => {
     if (!span) return;
 
     const duration = Date.now() - startTime;
+    const statusCode = typeof set.status === "number" ? set.status : 200;
 
     span.setAttributes({
-      "http.status_code": set.status || 200,
-      "http.response_content_length": 0,
+      "http.response.status_code": statusCode,
       "http.route": path,
-      "http.duration_ms": duration,
+      "http.server.request.duration_ms": duration,
     });
 
     // Set span status based on HTTP status code
-    if (set.status && set.status >= 400) {
+    if (statusCode >= 500) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        message: `HTTP ${set.status}`,
+        message: `HTTP ${statusCode}`,
       });
-    } else {
-      span.setStatus({ code: SpanStatusCode.OK });
     }
   })
   .onError(({ error, span }) => {
@@ -161,8 +171,8 @@ export const tracing = new Elysia({
       message: error.message,
     });
   })
-  .onStop(({ span }) => {
-    // End span when request completes
+  .onAfterResponse(({ span }) => {
+    // End span after the response is sent
     if (span) {
       span.end();
     }
@@ -183,7 +193,7 @@ initTelemetry();
 
 import { Elysia } from "elysia";
 import { tracing } from "./plugins/tracing";
-import { trace } from "@opentelemetry/api";
+import { context, SpanStatusCode, trace } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("app-handlers", "1.0.0");
 
@@ -206,7 +216,7 @@ const app = new Elysia()
           ];
 
           span.setAttribute("user.count", users.length);
-          span.setStatus({ code: 1 }); // OK
+          span.setStatus({ code: SpanStatusCode.OK });
 
           return { users };
         } finally {
@@ -234,7 +244,7 @@ const app = new Elysia()
               content: "Sample content",
             };
 
-            span.setStatus({ code: 1 }); // OK
+            span.setStatus({ code: SpanStatusCode.OK });
             return post;
           } finally {
             span.end();
@@ -257,7 +267,7 @@ For more complex scenarios, create specialized middleware for different route gr
 // Plugin for database operation tracing
 
 import { Elysia } from "elysia";
-import { trace, SpanStatusCode, context } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("database", "1.0.0");
 
@@ -272,10 +282,11 @@ export function createInstrumentedDB(): DatabaseClient {
       return await tracer.startActiveSpan(
         "db.query",
         {
+          kind: SpanKind.CLIENT,
           attributes: {
-            "db.system": "sqlite",
-            "db.statement": sql,
-            "db.operation": extractOperation(sql),
+            "db.system.name": "sqlite",
+            "db.query.text": sql,
+            "db.operation.name": extractOperation(sql),
           },
         },
         async (span) => {
@@ -284,7 +295,7 @@ export function createInstrumentedDB(): DatabaseClient {
             await Bun.sleep(Math.random() * 100);
 
             const results: T[] = [];
-            span.setAttribute("db.row_count", results.length);
+            span.setAttribute("db.response.returned_rows", results.length);
             span.setStatus({ code: SpanStatusCode.OK });
 
             return results;
@@ -303,10 +314,11 @@ export function createInstrumentedDB(): DatabaseClient {
       return await tracer.startActiveSpan(
         "db.execute",
         {
+          kind: SpanKind.CLIENT,
           attributes: {
-            "db.system": "sqlite",
-            "db.statement": sql,
-            "db.operation": extractOperation(sql),
+            "db.system.name": "sqlite",
+            "db.query.text": sql,
+            "db.operation.name": extractOperation(sql),
           },
         },
         async (span) => {
@@ -380,19 +392,19 @@ import { metrics } from "@opentelemetry/api";
 const meter = metrics.getMeter("elysia-metrics", "1.0.0");
 
 // Counter for total requests
-const requestCounter = meter.createCounter("http.server.requests.total", {
+const requestCounter = meter.createCounter("app.http.server.requests.total", {
   description: "Total number of HTTP requests",
   unit: "1",
 });
 
 // Histogram for request duration
-const requestDuration = meter.createHistogram("http.server.request.duration", {
+const requestDuration = meter.createHistogram("app.http.server.request.duration", {
   description: "HTTP request duration",
   unit: "ms",
 });
 
 // UpDownCounter for active requests
-const activeRequests = meter.createUpDownCounter("http.server.requests.active", {
+const activeRequests = meter.createUpDownCounter("app.http.server.requests.active", {
   description: "Number of active HTTP requests",
   unit: "1",
 });
@@ -413,9 +425,9 @@ memoryUsage.addCallback((result) => {
 export const appMetrics = {
   recordRequest(method: string, route: string, status: number, duration: number) {
     const attributes = {
-      "http.method": method,
+      "http.request.method": method,
       "http.route": route,
-      "http.status_code": status,
+      "http.response.status_code": status,
     };
 
     requestCounter.add(1, attributes);
@@ -439,7 +451,7 @@ Integrate metrics into the tracing plugin:
 // Enhanced tracing plugin with metrics collection
 
 import { Elysia } from "elysia";
-import { trace, context, SpanStatusCode } from "@opentelemetry/api";
+import { trace, context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { appMetrics } from "../telemetry/metrics";
 
 const tracer = trace.getTracer("elysia-http", "1.0.0");
@@ -448,11 +460,13 @@ export const tracingWithMetrics = new Elysia({
   name: "tracing-with-metrics",
 })
   .derive(async ({ request, path }) => {
-    const span = tracer.startSpan("http.request", {
+    const url = new URL(request.url);
+    const span = tracer.startSpan(`${request.method} ${path}`, {
+      kind: SpanKind.SERVER,
       attributes: {
-        "http.method": request.method,
-        "http.url": path,
-        "http.target": path,
+        "http.request.method": request.method,
+        "url.path": url.pathname,
+        "http.route": path,
       },
     });
 
@@ -472,27 +486,26 @@ export const tracingWithMetrics = new Elysia({
     if (!span) return;
 
     const duration = Date.now() - startTime;
+    const statusCode = typeof set.status === "number" ? set.status : 200;
 
     span.setAttributes({
-      "http.status_code": set.status || 200,
-      "http.duration_ms": duration,
+      "http.response.status_code": statusCode,
+      "http.server.request.duration_ms": duration,
     });
 
     // Record metrics
     appMetrics.recordRequest(
       request.method,
       path,
-      set.status || 200,
+      statusCode,
       duration
     );
 
-    if (set.status && set.status >= 400) {
+    if (statusCode >= 500) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        message: `HTTP ${set.status}`,
+        message: `HTTP ${statusCode}`,
       });
-    } else {
-      span.setStatus({ code: SpanStatusCode.OK });
     }
   })
   .onError(({ error, span }) => {
@@ -504,7 +517,7 @@ export const tracingWithMetrics = new Elysia({
       });
     }
   })
-  .onStop(({ span }) => {
+  .onAfterResponse(({ span }) => {
     if (span) {
       span.end();
       appMetrics.requestCompleted();
@@ -520,7 +533,7 @@ Instrument outgoing HTTP requests to external services:
 // src/services/external-api.ts
 // Instrumented external API client
 
-import { trace, SpanStatusCode, context } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("external-api", "1.0.0");
 
@@ -535,10 +548,11 @@ export class ExternalAPIClient {
     return await tracer.startActiveSpan(
       "http.client.request",
       {
+        kind: SpanKind.CLIENT,
         attributes: {
-          "http.method": "GET",
-          "http.url": `${this.baseUrl}${path}`,
-          "http.target": path,
+          "http.request.method": "GET",
+          "url.full": `${this.baseUrl}${path}`,
+          "url.path": path,
         },
       },
       async (span) => {
@@ -546,8 +560,8 @@ export class ExternalAPIClient {
           const response = await fetch(`${this.baseUrl}${path}`);
 
           span.setAttributes({
-            "http.status_code": response.status,
-            "http.response_content_length": response.headers.get("content-length") || 0,
+            "http.response.status_code": response.status,
+            "http.response.body.size": Number(response.headers.get("content-length") || 0),
           });
 
           if (!response.ok) {
@@ -576,10 +590,11 @@ export class ExternalAPIClient {
     return await tracer.startActiveSpan(
       "http.client.request",
       {
+        kind: SpanKind.CLIENT,
         attributes: {
-          "http.method": "POST",
-          "http.url": `${this.baseUrl}${path}`,
-          "http.target": path,
+          "http.request.method": "POST",
+          "url.full": `${this.baseUrl}${path}`,
+          "url.path": path,
         },
       },
       async (span) => {
@@ -590,7 +605,7 @@ export class ExternalAPIClient {
             body: JSON.stringify(body),
           });
 
-          span.setAttribute("http.status_code", response.status);
+          span.setAttribute("http.response.status_code", response.status);
 
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
