@@ -6,23 +6,25 @@ Tags: OpenTelemetry, Pulumi, Automation API, Instrumented Provisioning
 
 Description: Use the Pulumi Automation API with OpenTelemetry instrumentation to trace and monitor infrastructure provisioning operations.
 
-The Pulumi Automation API lets you embed Pulumi operations inside your own programs. This opens the door to instrumenting every infrastructure operation with OpenTelemetry tracing. Instead of running `pulumi up` from the CLI and hoping for the best, you can wrap each operation in spans, track resource provisioning times, and correlate infrastructure changes with application behavior.
+The Pulumi Automation API lets you embed Pulumi operations inside your own programs. This opens the door to instrumenting every infrastructure operation with OpenTelemetry tracing. Instead of running `pulumi up` from the CLI and hoping for the best, you can wrap each operation in spans, track deployment operation times, and correlate infrastructure changes with application behavior.
 
 ## What is the Automation API
 
-The Automation API is a programmatic interface to Pulumi. Instead of using the CLI, you call Pulumi operations from code. This means you can add tracing, error handling, and custom logic around every provisioning step.
+The Automation API is a programmatic interface to Pulumi. Instead of invoking the CLI directly, you call Pulumi operations from code while Automation API drives the Pulumi engine for you. This means you can add tracing, error handling, and custom logic around every provisioning step.
 
 ## Setting Up the Project
 
 ```bash
 mkdir instrumented-infra && cd instrumented-infra
 npm init -y
-npm install @pulumi/pulumi @pulumi/aws @pulumi/automation \
+npm install @pulumi/pulumi @pulumi/aws \
   @opentelemetry/api @opentelemetry/sdk-node \
   @opentelemetry/sdk-trace-node \
   @opentelemetry/exporter-trace-otlp-grpc \
   @opentelemetry/resources
 ```
+
+Make sure the Pulumi CLI is installed and available on your `PATH`, and that your Pulumi and AWS credentials are configured before running the program.
 
 ## Initializing OpenTelemetry
 
@@ -30,11 +32,11 @@ npm install @pulumi/pulumi @pulumi/aws @pulumi/automation \
 // tracing.ts
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
-import { Resource } from "@opentelemetry/resources";
-import { trace, SpanStatusCode } from "@opentelemetry/api";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { trace } from "@opentelemetry/api";
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     "service.name": "pulumi-automation",
     "service.version": "1.0.0",
   }),
@@ -60,7 +62,7 @@ export function getTracer() {
 
 ```typescript
 // index.ts
-import * as automation from "@pulumi/automation";
+import * as automation from "@pulumi/pulumi/automation";
 import { initTracing, shutdownTracing, getTracer } from "./tracing";
 import { SpanStatusCode } from "@opentelemetry/api";
 
@@ -72,7 +74,6 @@ const tracer = getTracer();
 // Define the Pulumi program inline
 const pulumiProgram = async () => {
   const aws = require("@pulumi/aws");
-  const pulumi = require("@pulumi/pulumi");
 
   // Create a VPC
   const vpc = new aws.ec2.Vpc("app-vpc", {
@@ -123,13 +124,20 @@ async function deployInfrastructure() {
 
       // Set configuration
       await tracer.startActiveSpan("pulumi.config.set", async (span) => {
-        await stack.setConfig("aws:region", { value: "us-east-1" });
-        span.setAttribute("pulumi.config.region", "us-east-1");
-        span.end();
+        try {
+          await stack.setConfig("aws:region", { value: "us-east-1" });
+          span.setAttribute("pulumi.config.region", "us-east-1");
+        } catch (err) {
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
       });
 
       // Run pulumi preview (plan)
-      const previewResult = await tracer.startActiveSpan(
+      await tracer.startActiveSpan(
         "pulumi.preview",
         async (span) => {
           try {
@@ -148,6 +156,10 @@ async function deployInfrastructure() {
               result.changeSummary?.create || 0
             );
             return result;
+          } catch (err) {
+            span.setStatus({ code: SpanStatusCode.ERROR });
+            span.recordException(err as Error);
+            throw err;
           } finally {
             span.end();
           }
@@ -212,7 +224,7 @@ deployInfrastructure()
   })
   .catch((err) => {
     console.error("Deployment failed:", err);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await shutdownTracing();
@@ -226,7 +238,7 @@ After running this, your trace backend shows a trace with these spans:
 - `pulumi.deploy` (root span, total duration)
   - `pulumi.stack.init` (stack setup time)
   - `pulumi.config.set` (configuration time)
-  - `pulumi.preview` (plan duration, with events for each resource)
+  - `pulumi.preview` (plan duration, with change events from preview output)
   - `pulumi.up` (apply duration, with resource counts and outputs)
 
 ## Wrapping Up
