@@ -10,21 +10,21 @@ Understanding your traffic patterns is fundamental to operating a reliable servi
 
 ## OpenTelemetry HTTP Metrics
 
-When you instrument a web service with OpenTelemetry, the SDK automatically records `http.server.request.duration` as a histogram metric. This single metric, combined with its attributes, provides request count, latency distribution, and dimensional breakdowns all at once.
+When you instrument a web service with OpenTelemetry HTTP server instrumentation, it records `http.server.request.duration` as a histogram metric. This single metric, combined with its attributes, provides request count, latency distribution, and dimensional breakdowns all at once.
 
-The key attributes recorded with each observation:
+Commonly useful attributes recorded with each observation:
 
 - `http.request.method` - GET, POST, PUT, DELETE, etc.
 - `http.route` - The matched route template (e.g., `/api/users/{id}`)
 - `http.response.status_code` - The HTTP status code
-- `server.address` - The server hostname
+- `server.address` - The server hostname, when enabled by the instrumentation
 - `url.scheme` - http or https
 
 The `_count` suffix on the histogram gives you the total request count, which is the foundation of traffic analysis.
 
 ## Collector Configuration
 
-A standard metrics pipeline works for traffic analysis. The one addition worth making is the `metricstransform` processor to create a dedicated request count metric if you want cleaner queries.
+A standard metrics pipeline works for traffic analysis. The one addition worth making is the `filter` processor to drop low-value routes such as health checks before they reach your metrics backend.
 
 ```yaml
 # otel-collector-config.yaml
@@ -44,21 +44,23 @@ processors:
 
   # Optional: filter out health check endpoints to reduce noise
   filter/healthchecks:
-    metrics:
-      datapoint:
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/readyz"'
+    error_mode: ignore
+    metric_conditions:
+      - 'datapoint.attributes["http.route"] == "/healthz"'
+      - 'datapoint.attributes["http.route"] == "/readyz"'
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [filter/healthchecks, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Dashboard Queries
@@ -102,7 +104,7 @@ sum by (http_request_method) (
 **Status Code Distribution** - Overview of response types:
 
 ```promql
-# Requests grouped by status code class (2xx, 3xx, 4xx, 5xx)
+# Requests grouped by status code
 sum by (http_response_status_code) (
   rate(http_server_request_duration_seconds_count[5m])
 )
@@ -124,7 +126,7 @@ sum by (status_class) (
 
 Beyond real-time metrics, traffic pattern analysis helps with capacity planning and understanding user behavior.
 
-**Hour-over-Hour Comparison** - Compare current traffic to the same time yesterday:
+**Day-over-Day Comparison** - Compare current traffic to the same time yesterday:
 
 ```promql
 # Current traffic
@@ -134,16 +136,16 @@ sum(rate(http_server_request_duration_seconds_count[5m]))
 sum(rate(http_server_request_duration_seconds_count[5m] offset 1d))
 ```
 
-**Week-over-Week Trend** - Detect long-term growth:
+**Week-over-Week Trend** - Detect same-hour growth:
 
 ```promql
-# Traffic growth ratio: this week vs last week
+# Traffic growth ratio: current hour vs the same hour last week
 sum(rate(http_server_request_duration_seconds_count[1h]))
 /
 sum(rate(http_server_request_duration_seconds_count[1h] offset 7d))
 ```
 
-A value of 1.1 means traffic is 10% higher than the same time last week.
+A value of 1.1 means current traffic is 10% higher than the same time last week.
 
 **Peak Traffic Detection** - Find the busiest periods:
 
@@ -168,14 +170,14 @@ graph LR
     D --> F[Inventory Service<br/>290 req/s]
 ```
 
-To build this in Grafana, you need trace data with service-to-service calls. The Span Metrics Connector can generate metrics with both `service.name` and `peer.service` dimensions, giving you the edges for the graph.
+To build this in Grafana, you need trace data with service-to-service calls. The Span Metrics Connector can generate request-count metrics from spans, and you can configure `peer.service` as an additional dimension alongside `service.name` to derive graph edges.
 
 ## Dashboard Layout
 
 1. **Traffic Overview** - Total RPS gauge, RPS time series, status code pie chart
 2. **Service Breakdown** - RPS per service bar chart, service traffic table with sparklines
 3. **Endpoint Detail** - Top endpoints table, endpoint traffic by HTTP method
-4. **Patterns and Trends** - Hour-over-hour comparison, week-over-week growth, peak traffic markers
+4. **Patterns and Trends** - Day-over-day comparison, week-over-week growth, peak traffic markers
 5. **Geographic / Client Breakdown** - If you have `client.address` or geographic attributes, add panels for traffic by region
 
 ## Template Variables
@@ -185,7 +187,9 @@ Make the dashboard interactive with Grafana variables:
 ```text
 # Service selector
 Variable: service_name
-Query: label_values(http_server_request_duration_seconds_count, service_name)
+Query type: Label values
+Metric: http_server_request_duration_seconds_count
+Label: service_name
 Multi-value: true
 
 # Time comparison offset
