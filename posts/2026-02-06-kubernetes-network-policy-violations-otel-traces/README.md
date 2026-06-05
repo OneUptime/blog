@@ -23,10 +23,10 @@ Meanwhile, the network policy violation shows up in the CNI logs, completely dis
 
 ## Collecting Network Policy Events
 
-First, you need to get network policy violations into your telemetry pipeline. Cilium is a good example because it provides a Hubble API that you can query for policy drops:
+First, you need to get network policy violations into your telemetry pipeline. Cilium is a good example because Hubble can export flow events for policy drops to a JSON log file:
 
 ```yaml
-# Deploy the OpenTelemetry Collector with Cilium Hubble receiver
+# Deploy the OpenTelemetry Collector to read Cilium Hubble exporter logs
 
 # otel-collector-daemonset.yaml
 apiVersion: apps/v1
@@ -68,7 +68,7 @@ The Collector config processes Hubble flow logs and converts policy drops into O
 receivers:
   filelog:
     include:
-      - /var/log/cilium/hubble/*.log
+      - /var/run/cilium/hubble/events*.log
     operators:
       - type: json_parser
         timestamp:
@@ -78,24 +78,23 @@ receivers:
 processors:
   # Only keep policy drop events
   filter/policy_drops:
+    error_mode: ignore
     logs:
-      include:
-        match_type: strict
-        record_attributes:
-          - key: verdict
-            value: "DROPPED"
+      log_record:
+        - attributes["flow"]["verdict"] != "DROPPED" or attributes["flow"]["drop_reason_desc"] != "POLICY_DENIED"
 
   # Extract relevant fields for correlation
   transform/enrich:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           - set(attributes["k8s.network_policy.verdict"], "dropped")
-          - set(attributes["k8s.source.pod"], attributes["source.pod_name"])
-          - set(attributes["k8s.source.namespace"], attributes["source.namespace"])
-          - set(attributes["k8s.destination.pod"], attributes["destination.pod_name"])
-          - set(attributes["k8s.destination.namespace"], attributes["destination.namespace"])
-          - set(attributes["k8s.destination.port"], attributes["destination.port"])
+          - set(attributes["k8s.source.pod"], attributes["flow"]["source"]["pod_name"])
+          - set(attributes["k8s.source.namespace"], attributes["flow"]["source"]["namespace"])
+          - set(attributes["k8s.destination.pod"], attributes["flow"]["destination"]["pod_name"])
+          - set(attributes["k8s.destination.namespace"], attributes["flow"]["destination"]["namespace"])
+          - set(attributes["k8s.destination.port"], attributes["flow"]["l4"]["TCP"]["destination_port"])
           - set(severity_text, "WARN")
 
 exporters:
@@ -121,6 +120,7 @@ import os
 import socket
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
 
 # Build a resource that identifies this pod
 resource = Resource.create({
@@ -129,6 +129,7 @@ resource = Resource.create({
     "k8s.node.name": os.environ.get("NODE_NAME", "unknown"),
     "service.name": os.environ.get("SERVICE_NAME", "my-service"),
 })
+trace.set_tracer_provider(TracerProvider(resource=resource))
 ```
 
 When making outbound calls, record the destination information on the span:
@@ -136,6 +137,7 @@ When making outbound calls, record the destination information on the span:
 ```python
 import requests
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("my-service")
 
@@ -147,18 +149,20 @@ def call_downstream_service(service_name, path, payload):
     url = f"http://{service_name}.default.svc.cluster.local{path}"
 
     with tracer.start_as_current_span("http.client") as span:
-        span.set_attribute("http.url", url)
+        span.set_attribute("url.full", url)
         span.set_attribute("peer.service", service_name)
         span.set_attribute("k8s.destination.service", service_name)
 
         try:
             response = requests.post(url, json=payload, timeout=5)
-            span.set_attribute("http.status_code", response.status_code)
+            span.set_attribute("http.response.status_code", response.status_code)
             return response.json()
 
         except requests.exceptions.ConnectionError as e:
             # This is where network policy blocks show up
             # as connection errors
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.set_attribute("error", True)
             span.set_attribute("error.type", "ConnectionError")
             span.set_attribute(
@@ -172,7 +176,9 @@ def call_downstream_service(service_name, path, payload):
             })
             raise
 
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.set_attribute("error", True)
             span.set_attribute("error.type", "Timeout")
             span.set_attribute(
@@ -226,14 +232,8 @@ def annotate_trace_with_policy_violation(trace_id, policy_event):
     an active trace, add an event to that trace explaining
     what happened.
     """
-    span_context = trace.SpanContext(
-        trace_id=int(trace_id, 16),
-        span_id=0,  # Will be looked up
-        is_remote=True,
-    )
-    # Use the OTel API to add context
-    # In practice, you would use your backend's API
-    # to annotate the trace
+    # OpenTelemetry spans are not mutable after export, so use
+    # your observability backend's API to annotate the stored trace.
     print(f"Trace {trace_id} was affected by network policy drop: "
           f"{policy_event['source']} -> {policy_event['destination']}")
 ```
