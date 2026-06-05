@@ -39,14 +39,11 @@ receivers:
 processors:
   # Filter to only keep logs with security-related attributes
   filter/security:
-    logs:
-      include:
-        match_type: regexp
-        record_attributes:
-          - key: security.event_type
-            value: ".*"
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["security.event_type"] == nil
 
-  # Add resource attributes for Security Hub mapping
+  # Add log attributes for Security Hub mapping
   attributes/security:
     actions:
       - key: aws.security_hub.product_arn
@@ -87,10 +84,8 @@ service:
 In your application, tag security-related log records with the `security.event_type` attribute so the Collector filter can pick them up:
 
 ```python
-import logging
-from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
@@ -109,7 +104,7 @@ def record_security_event(event_type, severity, details):
     The security.event_type attribute ensures the Collector
     filter processor routes this to the security pipeline.
     """
-    otel_logger.emit(LogRecord(
+    otel_logger.emit(
         body=details.get("message", "Security event"),
         attributes={
             "security.event_type": event_type,
@@ -119,7 +114,7 @@ def record_security_event(event_type, severity, details):
             "security.endpoint": details.get("endpoint", ""),
             "security.details": str(details),
         },
-    ))
+    )
 
 # Example usage in an authentication handler
 def login_handler(request):
@@ -148,7 +143,7 @@ import json
 import base64
 import gzip
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 securityhub = boto3.client('securityhub')
 
@@ -167,6 +162,7 @@ def lambda_handler(event, context):
     for log_event in log_data['logEvents']:
         message = json.loads(log_event['message'])
         attrs = message.get('attributes', {})
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # Map OTel severity to Security Hub severity
         severity_map = {
@@ -182,11 +178,13 @@ def lambda_handler(event, context):
             "ProductArn": attrs.get("aws.security_hub.product_arn"),
             "GeneratorId": attrs.get("aws.security_hub.generator_id"),
             "AwsAccountId": context.invoked_function_arn.split(":")[4],
-            "Types": [f"Software and Configuration Checks/{attrs.get('security.event_type', 'unknown')}"],
-            "CreatedAt": datetime.utcnow().isoformat() + "Z",
-            "UpdatedAt": datetime.utcnow().isoformat() + "Z",
+            "Types": ["Unusual Behaviors/Application"],
+            "CreatedAt": now,
+            "UpdatedAt": now,
             "Severity": {
                 "Normalized": severity_map.get(attrs.get("security.severity", "LOW"), 20),
+                "Label": attrs.get("security.severity", "LOW"),
+                "Original": attrs.get("security.severity", "LOW"),
             },
             "Title": f"OTel Security Event: {attrs.get('security.event_type')}",
             "Description": message.get("body", "No description"),
@@ -197,9 +195,9 @@ def lambda_handler(event, context):
         }
         findings.append(finding)
 
-    # Batch import findings into Security Hub
-    if findings:
-        response = securityhub.batch_import_findings(Findings=findings)
+    # Batch import findings into Security Hub, up to 100 per request
+    for i in range(0, len(findings), 100):
+        response = securityhub.batch_import_findings(Findings=findings[i:i + 100])
         print(f"Imported {response['SuccessCount']} findings, "
               f"failed {response['FailedCount']}")
 
@@ -211,11 +209,20 @@ def lambda_handler(event, context):
 Connect the CloudWatch log group to the Lambda function:
 
 ```bash
+# Allow CloudWatch Logs to invoke the Lambda function
+aws lambda add-permission \
+  --function-name "otel-to-securityhub" \
+  --statement-id "allow-cloudwatch-security-events" \
+  --principal "logs.amazonaws.com" \
+  --action "lambda:InvokeFunction" \
+  --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:/opentelemetry/security-events:*" \
+  --source-account "123456789012"
+
 # Create the subscription filter that triggers the Lambda
 aws logs put-subscription-filter \
   --log-group-name "/opentelemetry/security-events" \
   --filter-name "security-hub-forwarder" \
-  --filter-pattern '{ $.attributes.security.event_type = "*" }' \
+  --filter-pattern "{ $.attributes['security.event_type'] = \"*\" }" \
   --destination-arn "arn:aws:lambda:us-east-1:123456789012:function:otel-to-securityhub"
 ```
 
