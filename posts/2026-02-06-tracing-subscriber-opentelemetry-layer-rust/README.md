@@ -45,17 +45,13 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 
 # OpenTelemetry integration
-opentelemetry = "0.22"
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.15", features = ["tonic"] }
-tracing-opentelemetry = "0.23"
-
-# Additional exporters
-opentelemetry-jaeger = "0.21"
-opentelemetry-zipkin = "0.20"
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.33"
 
 # Async runtime
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 ```
 
 ## Basic Layer Configuration
@@ -63,30 +59,33 @@ tokio = { version = "1.35", features = ["full"] }
 Start with a simple configuration combining console output and OpenTelemetry:
 
 ```rust
-use opentelemetry::{global, KeyValue};
-use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{trace as sdktrace, Resource};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::{
     layer::SubscriberExt,
     util::SubscriberInitExt,
-    Layer, Registry,
 };
 
-fn init_basic_tracing() -> Result<(), Box<dyn std::error::Error>> {
-    // Create OpenTelemetry tracer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+fn init_basic_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
+    // Create OpenTelemetry exporter and tracer provider
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("rust-service")
+                .with_attributes([KeyValue::new("service.version", "1.0.0")])
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "rust-service"),
-                KeyValue::new("service.version", "1.0.0"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("rust-service");
 
     // Create OpenTelemetry layer
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
@@ -103,7 +102,7 @@ fn init_basic_tracing() -> Result<(), Box<dyn std::error::Error>> {
         .with(fmt_layer)
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
@@ -114,34 +113,35 @@ Implement dynamic filtering using environment variables:
 ```rust
 use tracing_subscriber::{EnvFilter, Layer};
 
-fn init_with_env_filter() -> Result<(), Box<dyn std::error::Error>> {
+fn init_with_env_filter() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
     // Configure filter from RUST_LOG environment variable
     // Default to "info" if not set
     // Example: RUST_LOG=debug,hyper=warn,tokio=info
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("filtered-service")
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "filtered-service"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("filtered-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // Apply filter to console output but not to OpenTelemetry
+    // Apply the filter to console output
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_filter(env_filter.clone());
 
-    // OpenTelemetry gets all events regardless of console filter
+    // Apply the same filter to OpenTelemetry export
     let otel_layer = telemetry_layer.with_filter(env_filter);
 
     tracing_subscriber::registry()
@@ -149,7 +149,7 @@ fn init_with_env_filter() -> Result<(), Box<dyn std::error::Error>> {
         .with(fmt_layer)
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
@@ -158,29 +158,38 @@ fn init_with_env_filter() -> Result<(), Box<dyn std::error::Error>> {
 Export telemetry to multiple backends simultaneously:
 
 ```rust
-use opentelemetry_sdk::trace::TracerProvider;
-
-fn init_multi_backend() -> Result<(), Box<dyn std::error::Error>> {
+fn init_multi_backend() -> Result<(SdkTracerProvider, SdkTracerProvider), Box<dyn std::error::Error + Send + Sync>> {
     // Configure OTLP exporter for primary backend
-    let otlp_tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "multi-backend-service"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+    let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://collector:4317")
+        .build()?;
 
-    // Configure Jaeger exporter for development environment
-    let jaeger_tracer = opentelemetry_jaeger::new_agent_pipeline()
-        .with_service_name("multi-backend-service")
-        .with_endpoint("localhost:6831")
-        .install_batch(runtime::Tokio)?;
+    let otlp_provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(otlp_exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("multi-backend-service")
+                .build(),
+        )
+        .build();
+    let otlp_tracer = otlp_provider.tracer("multi-backend-service");
+
+    // Configure Jaeger through its OTLP endpoint for development
+    let jaeger_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let jaeger_provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(jaeger_exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("multi-backend-service")
+                .build(),
+        )
+        .build();
+    let jaeger_tracer = jaeger_provider.tracer("multi-backend-service-jaeger");
 
     // Create layers for each backend
     let otlp_layer = tracing_opentelemetry::layer().with_tracer(otlp_tracer);
@@ -198,7 +207,7 @@ fn init_multi_backend() -> Result<(), Box<dyn std::error::Error>> {
         .with(fmt_layer)
         .init();
 
-    Ok(())
+    Ok((otlp_provider, jaeger_provider))
 }
 ```
 
@@ -262,22 +271,23 @@ where
 }
 
 // Use the custom layer alongside OpenTelemetry
-fn init_with_metrics_layer() -> Result<MetricsLayer, Box<dyn std::error::Error>> {
+fn init_with_metrics_layer() -> Result<(MetricsLayer, SdkTracerProvider), Box<dyn std::error::Error + Send + Sync>> {
     let metrics_layer = MetricsLayer::new();
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("metrics-service")
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "metrics-service"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("metrics-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -287,7 +297,7 @@ fn init_with_metrics_layer() -> Result<MetricsLayer, Box<dyn std::error::Error>>
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(metrics_layer)
+    Ok((metrics_layer, provider))
 }
 ```
 
@@ -300,7 +310,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use std::fs::File;
 use std::sync::Arc;
 
-fn init_json_logging() -> Result<(), Box<dyn std::error::Error>> {
+fn init_json_logging() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
     // Create log file for JSON output
     let log_file = File::create("application.log")?;
 
@@ -318,19 +328,20 @@ fn init_json_logging() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stdout);
 
     // OpenTelemetry layer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("json-logging-service")
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "json-logging-service"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("json-logging-service");
 
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -341,7 +352,7 @@ fn init_json_logging() -> Result<(), Box<dyn std::error::Error>> {
         .with(otel_layer)
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
@@ -353,32 +364,33 @@ Implement runtime configuration changes without restart:
 use tracing_subscriber::reload;
 use tracing_subscriber::EnvFilter;
 
-fn init_reloadable_tracing() -> Result<reload::Handle<EnvFilter, Registry>, Box<dyn std::error::Error>> {
+fn init_reloadable_tracing() -> Result<(reload::Handle<EnvFilter, Registry>, SdkTracerProvider), Box<dyn std::error::Error + Send + Sync>> {
     // Create initial filter
     let initial_filter = EnvFilter::new("info");
 
     // Create reloadable layer
     let (filter, reload_handle) = reload::Layer::new(initial_filter);
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .install_batch(runtime::Tokio)?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .build();
+    let tracer = provider.tracer("reloadable-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     let fmt_layer = tracing_subscriber::fmt::layer().with_filter(filter);
 
     tracing_subscriber::registry()
-        .with(telemetry_layer)
         .with(fmt_layer)
+        .with(telemetry_layer)
         .init();
 
-    Ok(reload_handle)
+    Ok((reload_handle, provider))
 }
 
 // Later in your application, change filter level dynamically
@@ -398,7 +410,7 @@ async fn change_log_level(
 Configure different trace levels for different modules:
 
 ```rust
-fn init_per_module_filtering() -> Result<(), Box<dyn std::error::Error>> {
+fn init_per_module_filtering() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
     // Complex filter with per-module settings
     let filter = EnvFilter::new("info")
         .add_directive("my_app::database=debug".parse()?)
@@ -406,19 +418,20 @@ fn init_per_module_filtering() -> Result<(), Box<dyn std::error::Error>> {
         .add_directive("hyper=warn".parse()?)
         .add_directive("tokio=info".parse()?);
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("filtered-modules-service")
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "filtered-modules-service"),
-            ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("filtered-modules-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -429,7 +442,7 @@ fn init_per_module_filtering() -> Result<(), Box<dyn std::error::Error>> {
         .with(fmt_layer)
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
@@ -440,27 +453,27 @@ Implement trace sampling to reduce overhead in high-traffic services:
 ```rust
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler};
 
-fn init_with_sampling() -> Result<(), Box<dyn std::error::Error>> {
+fn init_with_sampling() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
     // Sample 10% of traces
     let sampler = Sampler::TraceIdRatioBased(0.1);
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(sampler)
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(
+            Resource::builder()
+                .with_service_name("sampled-service")
+                .with_attributes([KeyValue::new("sampling.rate", "0.1")])
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default()
-                .with_sampler(sampler)
-                .with_id_generator(RandomIdGenerator::default())
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "sampled-service"),
-                    KeyValue::new("sampling.rate", "0.1"),
-                ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("sampled-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -469,28 +482,28 @@ fn init_with_sampling() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 
 // Parent-based sampling: always sample if parent was sampled
-fn init_parent_based_sampling() -> Result<(), Box<dyn std::error::Error>> {
+fn init_parent_based_sampling() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
     let sampler = Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(0.1)));
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(sampler)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("parent-sampled-service")
+                .build(),
         )
-        .with_trace_config(
-            sdktrace::Config::default()
-                .with_sampler(sampler)
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "parent-sampled-service"),
-                ])),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+    let tracer = provider.tracer("parent-sampled-service");
 
     let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -499,7 +512,7 @@ fn init_parent_based_sampling() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(())
+    Ok(provider)
 }
 ```
 
@@ -542,9 +555,9 @@ async fn handle_batch(items: Vec<String>) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize with all layers
-    let metrics = init_with_metrics_layer()?;
+    let (metrics, tracer_provider) = init_with_metrics_layer()?;
 
     info!("Application started");
 
@@ -569,7 +582,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Graceful shutdown
     info!("Shutting down");
-    opentelemetry::global::shutdown_tracer_provider();
+    tracer_provider.shutdown()?;
 
     Ok(())
 }
@@ -580,32 +593,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Implement robust error handling for telemetry initialization:
 
 ```rust
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing::warn;
 
-fn init_telemetry_with_fallback() {
+fn init_telemetry_with_fallback() -> Option<SdkTracerProvider> {
     match init_with_env_filter() {
-        Ok(_) => {
+        Ok(provider) => {
             tracing::info!("OpenTelemetry initialized successfully");
+            Some(provider)
         }
         Err(e) => {
             // Fall back to basic console logging if OpenTelemetry fails
-            warn!("Failed to initialize OpenTelemetry: {}. Using console logging only.", e);
-
             tracing_subscriber::fmt()
                 .with_env_filter(EnvFilter::from_default_env())
                 .init();
+            warn!("Failed to initialize OpenTelemetry: {}. Using console logging only.", e);
+            None
         }
     }
 }
 
-async fn shutdown_telemetry() {
+async fn shutdown_telemetry(provider: SdkTracerProvider) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Flush all pending spans
-    opentelemetry::global::shutdown_tracer_provider();
-
-    // Give exporters time to complete
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    provider.shutdown()?;
 
     tracing::info!("Telemetry shutdown complete");
+    Ok(())
 }
 ```
 
@@ -613,7 +626,7 @@ async fn shutdown_telemetry() {
 
 When configuring tracing-subscriber with OpenTelemetry:
 
-**Layer Ordering**: Place filtering layers before expensive layers. Filtered events skip subsequent layer processing, reducing overhead.
+**Filtering**: Apply filters to expensive layers, or use a global filter, so disabled spans and events are not processed by those layers.
 
 **Batch Export**: Always use batch span processors instead of simple processors. Batching significantly reduces network overhead and improves throughput.
 
@@ -621,6 +634,6 @@ When configuring tracing-subscriber with OpenTelemetry:
 
 **Memory Management**: Configure appropriate batch sizes and timeouts. Default settings work for most cases, but high-throughput services may need tuning.
 
-**Multiple Tracers**: Creating multiple tracers for different backends has minimal overhead. The tracing framework efficiently dispatches to multiple subscribers.
+**Multiple Tracers**: Creating multiple tracers for different backends adds work for each configured backend. The tracing framework can dispatch to multiple layers efficiently, but each exporter still performs its own processing and export.
 
 The tracing-subscriber crate with OpenTelemetry layers creates a powerful, flexible observability system. By composing different layers, you can route telemetry to multiple backends, implement custom processing, and maintain fine-grained control over what data gets collected and exported. This architecture provides production-ready observability while maintaining the performance characteristics required for high-throughput Rust services.
