@@ -14,28 +14,32 @@ Traditional observability backends give you predefined views: trace waterfalls, 
 
 ## Setting Up Tinybird
 
-First, create a Tinybird workspace and a data source for your OpenTelemetry data. You can define the schema to match the OTLP data structure:
+First, create a Tinybird workspace and a data source for your OpenTelemetry data. The Tinybird exporter writes JSON events, so define the schema to match the exporter's trace payload:
 
 ```sql
--- Create a data source for spans in Tinybird
--- This defines the schema for incoming span data
+-- File: datasources/otel_traces.datasource
+-- This defines the schema for incoming trace spans
 
 SCHEMA >
-    `timestamp` DateTime64(9),
-    `trace_id` String,
-    `span_id` String,
-    `parent_span_id` String,
-    `service_name` String,
-    `span_name` String,
-    `span_kind` String,
-    `status_code` String,
-    `duration_ns` Int64,
-    `attributes` String
+    `Timestamp` DateTime64(9) `json:$.start_time`,
+    `TraceId` String `json:$.trace_id`,
+    `SpanId` String `json:$.span_id`,
+    `ParentSpanId` String `json:$.parent_span_id`,
+    `ServiceName` LowCardinality(String) `json:$.service_name`,
+    `SpanName` LowCardinality(String) `json:$.span_name`,
+    `SpanKind` LowCardinality(String) `json:$.span_kind`,
+    `StatusCode` LowCardinality(String) `json:$.status_code`,
+    `Duration` UInt64 `json:$.duration`,
+    `SpanAttributes` Map(LowCardinality(String), String) `json:$.span_attributes`
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toDate(Timestamp)"
+ENGINE_SORTING_KEY "ServiceName, SpanName, toDateTime(Timestamp)"
 ```
 
 ## Collector Configuration
 
-The Tinybird exporter sends data to Tinybird's Events API:
+The Tinybird exporter sends data to Tinybird's Events API and handles the event payload format for you:
 
 ```yaml
 # otel-collector-config.yaml
@@ -50,8 +54,8 @@ receivers:
 
 processors:
   batch:
-    send_batch_size: 5000
     timeout: 10s
+    send_batch_size: 8192
 
   resource:
     attributes:
@@ -60,33 +64,33 @@ processors:
         action: upsert
 
 exporters:
-  # Use the OTLP/HTTP exporter pointed at Tinybird's ingest endpoint
-  otlphttp/tinybird:
-    endpoint: https://api.tinybird.co/v0/events
-    headers:
-      Authorization: "Bearer ${TINYBIRD_TOKEN}"
-    compression: gzip
-
-  # Alternative: use a custom HTTP exporter for more control
-  # over the payload format
-  otlphttp/tinybird_traces:
-    endpoint: "https://api.tinybird.co"
-    headers:
-      Authorization: "Bearer ${TINYBIRD_TOKEN}"
-    tls:
-      insecure: false
+  tinybird:
+    endpoint: ${OTEL_TINYBIRD_API_HOST}
+    token: ${OTEL_TINYBIRD_TOKEN}
+    traces:
+      datasource: otel_traces
+    sending_queue:
+      enabled: true
+      queue_size: 104857600
+      sizer: bytes
+      batch:
+        flush_timeout: 5s
+        min_size: 1024000
+        max_size: 8388608
+    retry_on_failure:
+      enabled: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/tinybird_traces]
+      exporters: [tinybird]
 ```
 
 ## Using a Transform Processor for Tinybird-Friendly Data
 
-Since Tinybird expects data in a specific format, you might need to transform your spans before export. The transform processor with OTTL statements can reshape the data:
+The Tinybird exporter handles the event payload format, but you might still want to normalize your spans before export. The transform processor with OTTL statements can reshape the data:
 
 ```yaml
 processors:
@@ -94,17 +98,17 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Ensure span name is not too long for Tinybird columns
+          # Ensure span attribute values are not too long
           - truncate_all(attributes, 256)
 
-  # Flatten nested attributes for better SQL queryability
+  # Copy common span attributes to stable keys for easier SQL queries
   attributes/flatten:
     actions:
       - key: http_method
-        from_attribute: http.method
+        from_attribute: http.request.method
         action: upsert
       - key: http_status_code
-        from_attribute: http.status_code
+        from_attribute: http.response.status_code
         action: upsert
       - key: http_route
         from_attribute: http.route
@@ -118,15 +122,15 @@ Once data flows into Tinybird, you can run SQL queries:
 ```sql
 -- Find the slowest endpoints in the last hour
 SELECT
-    span_name,
+    SpanName,
     count() as request_count,
-    avg(duration_ns) / 1000000 as avg_duration_ms,
-    quantile(0.95)(duration_ns) / 1000000 as p95_duration_ms,
-    quantile(0.99)(duration_ns) / 1000000 as p99_duration_ms
-FROM spans
-WHERE timestamp > now() - interval 1 hour
-    AND span_kind = 'SERVER'
-GROUP BY span_name
+    avg(Duration) / 1000000 as avg_duration_ms,
+    quantile(0.95)(Duration) / 1000000 as p95_duration_ms,
+    quantile(0.99)(Duration) / 1000000 as p99_duration_ms
+FROM otel_traces
+WHERE Timestamp > now() - interval 1 hour
+    AND SpanKind = 'Server'
+GROUP BY SpanName
 ORDER BY p99_duration_ms DESC
 LIMIT 20
 ```
@@ -134,14 +138,14 @@ LIMIT 20
 ```sql
 -- Error rate by service over the last 24 hours
 SELECT
-    service_name,
-    toStartOfHour(timestamp) as hour,
+    ServiceName,
+    toStartOfHour(Timestamp) as hour,
     count() as total,
-    countIf(status_code = 'ERROR') as errors,
+    countIf(StatusCode = 'Error') as errors,
     round(errors / total * 100, 2) as error_rate_pct
-FROM spans
-WHERE timestamp > now() - interval 24 hour
-GROUP BY service_name, hour
+FROM otel_traces
+WHERE Timestamp > now() - interval 24 hour
+GROUP BY ServiceName, hour
 ORDER BY hour DESC
 ```
 
@@ -153,18 +157,22 @@ Tinybird lets you publish SQL queries as HTTP API endpoints. Create a pipe that 
 -- File: endpoints/slow_endpoints.pipe
 -- This becomes an API endpoint at /v0/pipes/slow_endpoints.json
 
-%
-SELECT
-    span_name,
-    count() as requests,
-    avg(duration_ns) / 1e6 as avg_ms,
-    quantile(0.99)(duration_ns) / 1e6 as p99_ms
-FROM spans
-WHERE timestamp > now() - interval {{Int32(hours, 1)}} hour
-    AND service_name = {{String(service, 'web-api')}}
-GROUP BY span_name
-ORDER BY p99_ms DESC
-LIMIT {{Int32(limit, 10)}}
+NODE slow_endpoints
+SQL >
+    %
+    SELECT
+        SpanName,
+        count() as requests,
+        avg(Duration) / 1e6 as avg_ms,
+        quantile(0.99)(Duration) / 1e6 as p99_ms
+    FROM otel_traces
+    WHERE Timestamp > now() - interval {{Int32(hours, 1)}} hour
+        AND ServiceName = {{String(service, 'web-api')}}
+    GROUP BY SpanName
+    ORDER BY p99_ms DESC
+    LIMIT {{Int32(limit, 10)}}
+
+TYPE ENDPOINT
 ```
 
 Call it from your application:
@@ -181,21 +189,19 @@ Tinybird handles high ingest rates well, but you should optimize the Collector-s
 processors:
   batch:
     # Large batches are more efficient for Tinybird
-    send_batch_size: 5000
-    send_batch_max_size: 10000
+    send_batch_size: 8192
     timeout: 10s
 ```
 
-Larger batches reduce the number of HTTP requests and improve Tinybird's ingest performance. The 10-second timeout ensures data does not sit too long in the Collector during low-traffic periods.
+Larger batches reduce the number of handoffs to exporters. For Tinybird ingest specifically, use the exporter's `sending_queue.batch` settings to control request payload size and keep it below the Events API payload limit. The 10-second timeout ensures data does not sit too long in the Collector during low-traffic periods.
 
 ## Retention and Cost Management
 
-Unlike traditional observability backends with fixed retention policies, Tinybird lets you manage retention with SQL:
+Unlike traditional observability backends with fixed retention policies, Tinybird lets you manage retention in your data source definition:
 
 ```sql
--- Create a materialized view that aggregates old data
--- and a TTL policy on the raw data
-ALTER TABLE spans MODIFY TTL timestamp + interval 7 day
+-- Add this to the raw trace data source
+ENGINE_TTL "Timestamp + toIntervalDay(7)"
 ```
 
 This keeps raw span data for 7 days while materialized views retain aggregated data indefinitely. You get the best of both worlds: detailed recent data and long-term trends.
