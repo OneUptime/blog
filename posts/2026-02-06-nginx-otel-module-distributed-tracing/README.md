@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Nginx, Distributed Tracing, Ngx_otel_module
 
 Description: Configure the NGINX ngx_otel_module to enable distributed tracing with OTLP gRPC export to the OpenTelemetry Collector for request visibility.
 
-NGINX supports OpenTelemetry through the `ngx_otel_module`, a native module that generates spans for each HTTP request processed by NGINX. The module exports spans via OTLP gRPC to an OpenTelemetry Collector. This post covers installation, configuration, and practical usage of the module.
+NGINX supports OpenTelemetry through the `ngx_otel_module`, a native module that generates spans for traced HTTP requests processed by NGINX. The module exports spans via OTLP gRPC to an OpenTelemetry Collector. This post covers installation, configuration, and practical usage of the module.
 
 ## Installing the Module
 
@@ -24,10 +24,18 @@ sudo yum install nginx-module-otel
 If you build NGINX from source, compile the module:
 
 ```bash
+sudo apt install cmake build-essential libssl-dev zlib1g-dev libpcre3-dev
+sudo apt install pkg-config libc-ares-dev libre2-dev
+
+git clone https://github.com/nginx/nginx.git
+cd nginx
+auto/configure --with-compat
+
+cd ..
 git clone https://github.com/nginxinc/nginx-otel.git
 cd nginx-otel
 mkdir build && cd build
-cmake -DNGX_OTEL_NGINX_BUILD_DIR=/path/to/nginx/objs ..
+cmake -DNGX_OTEL_NGINX_BUILD_DIR=/path/to/configured/nginx/objs ..
 make
 ```
 
@@ -174,7 +182,7 @@ http {
 
     # Map to create a sampling variable
     # Split traffic: sample 10% of requests
-    split_clients $request_id $otel_sample {
+    split_clients "$otel_trace_id" $otel_sample {
         10% "on";
         *   "off";
     }
@@ -193,17 +201,12 @@ http {
 }
 ```
 
-For parent-based sampling (always trace if the parent is sampled):
+For parent-based sampling (record spans only when the incoming parent is sampled):
 
 ```nginx
-# Always trace if traceparent header is present, otherwise sample 10%
-map $http_traceparent $otel_parent_sample {
-    default "on";
-    ""      $otel_sample;
-}
-
 server {
-    otel_trace $otel_parent_sample;
+    otel_trace $otel_parent_sampled;
+    otel_trace_context propagate;
 }
 ```
 
