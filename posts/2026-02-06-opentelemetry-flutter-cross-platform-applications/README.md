@@ -18,6 +18,8 @@ The Flutter engine handles rendering, while platform channels bridge to native f
 
 Flutter's package ecosystem includes OpenTelemetry support through the opentelemetry-dart packages. Add these to your pubspec.yaml file.
 
+Check the current platform support for the Dart package before using it in iOS or Android builds. If the official package does not support your target platform, use a Flutter-compatible OpenTelemetry SDK and keep the same instrumentation concepts.
+
 ```yaml
 # pubspec.yaml
 
@@ -25,20 +27,10 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # OpenTelemetry core packages
-  opentelemetry:
-    git:
-      url: https://github.com/open-telemetry/opentelemetry-dart
-      ref: main
-      path: packages/opentelemetry_api
+  # OpenTelemetry API and SDK
+  opentelemetry: ^0.18.11
 
-  opentelemetry_sdk:
-    git:
-      url: https://github.com/open-telemetry/opentelemetry-dart
-      ref: main
-      path: packages/opentelemetry_sdk
-
-  # HTTP client with OpenTelemetry support
+  # HTTP client package
   http: ^1.1.0
 
   # Dio HTTP client (alternative with better interceptor support)
@@ -54,7 +46,7 @@ Create a telemetry manager that initializes OpenTelemetry when your app starts. 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:opentelemetry/api.dart' as otel;
-import 'package:opentelemetry_sdk/sdk.dart' as sdk;
+import 'package:opentelemetry/sdk.dart' as sdk;
 import 'dart:io' show Platform;
 
 class TelemetryManager {
@@ -63,7 +55,7 @@ class TelemetryManager {
   TelemetryManager._internal();
 
   late otel.Tracer tracer;
-  late sdk.TracerProvider tracerProvider;
+  late sdk.TracerProviderBase tracerProvider;
 
   Future<void> initialize() async {
     // Create resource with app and device information
@@ -76,14 +68,13 @@ class TelemetryManager {
     ]);
 
     // Configure the span exporter
-    // In production, use OTLP exporter to send to your backend
+    // In production, use a collector exporter to send OTLP/HTTP to your backend
     final spanExporter = _createSpanExporter();
 
     // Use batch span processor to reduce overhead
     final spanProcessor = sdk.BatchSpanProcessor(
       spanExporter,
-      scheduleDelay: Duration(seconds: 5),
-      maxQueueSize: 2048,
+      scheduledDelayMillis: 5000,
       maxExportBatchSize: 512,
     );
 
@@ -107,12 +98,12 @@ class TelemetryManager {
 
   sdk.SpanExporter _createSpanExporter() {
     // For development, you can use console exporter
-    // For production, use OTLP exporter
-    return sdk.ConsoleSpanExporter();
+    // For production, use a collector exporter
+    return sdk.ConsoleExporter();
 
-    // Production OTLP exporter configuration:
-    // return sdk.OtlpGrpcSpanExporter(
-    //   endpoint: 'https://your-backend.com:4317',
+    // Production collector exporter configuration:
+    // return sdk.CollectorExporter(
+    //   Uri.parse('https://your-backend.com/v1/traces'),
     //   headers: {'authorization': 'Bearer YOUR_TOKEN'},
     // );
   }
@@ -153,7 +144,6 @@ abstract class InstrumentedState<T extends InstrumentedStatefulWidget>
 
   late otel.Tracer _tracer;
   otel.Span? _widgetLifecycleSpan;
-  otel.Span? _buildSpan;
 
   @override
   void initState() {
@@ -161,16 +151,16 @@ abstract class InstrumentedState<T extends InstrumentedStatefulWidget>
     _tracer = TelemetryManager().tracer;
 
     // Start a span for the widget's complete lifecycle
-    _widgetLifecycleSpan = _tracer
-        .spanBuilder('Widget.${widget.runtimeType}')
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    _widgetLifecycleSpan = _tracer.startSpan(
+      'Widget.${widget.runtimeType}',
+      kind: otel.SpanKind.internal,
+    );
 
     // Create a span for the initState phase
-    final initSpan = _tracer
-        .spanBuilder('Widget.${widget.runtimeType}.initState')
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    final initSpan = _tracer.startSpan(
+      'Widget.${widget.runtimeType}.initState',
+      kind: otel.SpanKind.internal,
+    );
 
     try {
       onInitState();
@@ -190,23 +180,23 @@ abstract class InstrumentedState<T extends InstrumentedStatefulWidget>
   @override
   Widget build(BuildContext context) {
     // Create a span for each build
-    _buildSpan = _tracer
-        .spanBuilder('Widget.${widget.runtimeType}.build')
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    final buildSpan = _tracer.startSpan(
+      'Widget.${widget.runtimeType}.build',
+      kind: otel.SpanKind.internal,
+    );
 
     try {
       final result = buildInstrumented(context);
-      _buildSpan?.setStatus(otel.StatusCode.ok);
+      buildSpan.setStatus(otel.StatusCode.ok);
       return result;
     } catch (e, stackTrace) {
-      _buildSpan?.recordException(e, stackTrace: stackTrace);
-      _buildSpan?.setStatus(otel.StatusCode.error, e.toString());
+      buildSpan.recordException(e, stackTrace: stackTrace);
+      buildSpan.setStatus(otel.StatusCode.error, e.toString());
       rethrow;
     } finally {
       // End build span after frame is rendered
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _buildSpan?.end();
+        buildSpan.end();
       });
     }
   }
@@ -217,10 +207,10 @@ abstract class InstrumentedState<T extends InstrumentedStatefulWidget>
   @override
   void dispose() {
     // Create a span for dispose
-    final disposeSpan = _tracer
-        .spanBuilder('Widget.${widget.runtimeType}.dispose')
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    final disposeSpan = _tracer.startSpan(
+      'Widget.${widget.runtimeType}.dispose',
+      kind: otel.SpanKind.internal,
+    );
 
     try {
       onDispose();
@@ -261,24 +251,24 @@ class OpenTelemetryInterceptor extends Interceptor {
     RequestInterceptorHandler handler,
   ) {
     // Create a span for this HTTP request
-    final span = tracer
-        .spanBuilder('HTTP ${options.method} ${options.path}')
-        .setSpanKind(otel.SpanKind.client)
-        .startSpan();
+    final span = tracer.startSpan(
+      'HTTP ${options.method} ${options.path}',
+      kind: otel.SpanKind.client,
+    );
 
     // Add HTTP semantic convention attributes
-    span.setAttribute('http.method', options.method);
-    span.setAttribute('http.url', options.uri.toString());
-    span.setAttribute('http.scheme', options.uri.scheme);
-    span.setAttribute('http.host', options.uri.host);
-    span.setAttribute('http.target', options.uri.path);
+    span.setAttribute(otel.Attribute.fromString('http.method', options.method));
+    span.setAttribute(otel.Attribute.fromString('http.url', options.uri.toString()));
+    span.setAttribute(otel.Attribute.fromString('http.scheme', options.uri.scheme));
+    span.setAttribute(otel.Attribute.fromString('http.host', options.uri.host));
+    span.setAttribute(otel.Attribute.fromString('http.target', options.uri.path));
 
     // Store span in request extra data so we can access it in response
     options.extra['otel_span'] = span;
 
     // Inject trace context into request headers for propagation
     final context = otel.Context.current.withSpan(span);
-    final propagator = otel.GlobalContextPropagator();
+    final propagator = otel.W3CTraceContextPropagator();
 
     final carrier = <String, String>{};
     propagator.inject(context, carrier, _TextMapSetter());
@@ -299,7 +289,7 @@ class OpenTelemetryInterceptor extends Interceptor {
 
     if (span != null) {
       // Add response attributes
-      span.setAttribute('http.status_code', response.statusCode ?? 0);
+      span.setAttribute(otel.Attribute.fromInt('http.status_code', response.statusCode ?? 0));
 
       // Check if response indicates success
       if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 400) {
@@ -329,7 +319,7 @@ class OpenTelemetryInterceptor extends Interceptor {
 
       // Add error-specific attributes
       if (err.response != null) {
-        span.setAttribute('http.status_code', err.response!.statusCode ?? 0);
+        span.setAttribute(otel.Attribute.fromInt('http.status_code', err.response!.statusCode ?? 0));
       }
 
       span.end();
@@ -349,6 +339,14 @@ class _TextMapSetter extends otel.TextMapSetter<Map<String, String>> {
 
 // Create a configured Dio instance
 class ApiClient {
+  final Dio _dio;
+
+  ApiClient({Dio? dio}) : _dio = dio ?? createDioClient();
+
+  Future<Response<T>> get<T>(String path) {
+    return _dio.get<T>(path);
+  }
+
   static Dio createDioClient() {
     final dio = Dio(BaseOptions(
       baseUrl: 'https://api.example.com',
@@ -385,16 +383,16 @@ class InstrumentedNavigatorObserver extends NavigatorObserver {
     final routeName = _getRouteName(route);
 
     // Create a span for this route
-    final span = tracer
-        .spanBuilder('Navigation.push.$routeName')
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    final span = tracer.startSpan(
+      'Navigation.push.$routeName',
+      kind: otel.SpanKind.internal,
+    );
 
-    span.setAttribute('navigation.action', 'push');
-    span.setAttribute('navigation.route', routeName);
+    span.setAttribute(otel.Attribute.fromString('navigation.action', 'push'));
+    span.setAttribute(otel.Attribute.fromString('navigation.route', routeName));
 
     if (previousRoute != null) {
-      span.setAttribute('navigation.from', _getRouteName(previousRoute));
+      span.setAttribute(otel.Attribute.fromString('navigation.from', _getRouteName(previousRoute)));
     }
 
     _routeSpans[route] = span;
@@ -410,20 +408,20 @@ class InstrumentedNavigatorObserver extends NavigatorObserver {
     final span = _routeSpans.remove(route);
     if (span != null) {
       span.addEvent('navigation_completed');
-      span.setAttribute('navigation.action', 'pop');
+      span.setAttribute(otel.Attribute.fromString('navigation.action', 'pop'));
       span.setStatus(otel.StatusCode.ok);
       span.end();
     }
 
     if (previousRoute != null) {
       // Create a span for returning to previous route
-      final returnSpan = tracer
-          .spanBuilder('Navigation.pop.${_getRouteName(previousRoute)}')
-          .setSpanKind(otel.SpanKind.internal)
-          .startSpan();
+      final returnSpan = tracer.startSpan(
+        'Navigation.pop.${_getRouteName(previousRoute)}',
+        kind: otel.SpanKind.internal,
+      );
 
-      returnSpan.setAttribute('navigation.action', 'return');
-      returnSpan.setAttribute('navigation.route', _getRouteName(previousRoute));
+      returnSpan.setAttribute(otel.Attribute.fromString('navigation.action', 'return'));
+      returnSpan.setAttribute(otel.Attribute.fromString('navigation.route', _getRouteName(previousRoute)));
       returnSpan.setStatus(otel.StatusCode.ok);
       returnSpan.end();
     }
@@ -441,16 +439,16 @@ class InstrumentedNavigatorObserver extends NavigatorObserver {
 
     if (newRoute != null) {
       final routeName = _getRouteName(newRoute);
-      final span = tracer
-          .spanBuilder('Navigation.replace.$routeName')
-          .setSpanKind(otel.SpanKind.internal)
-          .startSpan();
+      final span = tracer.startSpan(
+        'Navigation.replace.$routeName',
+        kind: otel.SpanKind.internal,
+      );
 
-      span.setAttribute('navigation.action', 'replace');
-      span.setAttribute('navigation.route', routeName);
+      span.setAttribute(otel.Attribute.fromString('navigation.action', 'replace'));
+      span.setAttribute(otel.Attribute.fromString('navigation.route', routeName));
 
       if (oldRoute != null) {
-        span.setAttribute('navigation.replaced', _getRouteName(oldRoute));
+        span.setAttribute(otel.Attribute.fromString('navigation.replaced', _getRouteName(oldRoute)));
       }
 
       _routeSpans[newRoute] = span;
@@ -494,15 +492,15 @@ extension TracedFuture<T> on Future<T> {
     String operationName, {
     Map<String, dynamic>? attributes,
   }) async {
-    final span = tracer
-        .spanBuilder(operationName)
-        .setSpanKind(otel.SpanKind.internal)
-        .startSpan();
+    final span = tracer.startSpan(
+      operationName,
+      kind: otel.SpanKind.internal,
+    );
 
     // Add custom attributes if provided
     if (attributes != null) {
       attributes.forEach((key, value) {
-        span.setAttribute(key, value.toString());
+        span.setAttribute(otel.Attribute.fromString(key, value.toString()));
       });
     }
 
@@ -527,15 +525,15 @@ Future<T> traceAsync<T>(
   Future<T> Function() operation, {
   Map<String, dynamic>? attributes,
 }) async {
-  final span = tracer
-      .spanBuilder(operationName)
-      .setSpanKind(otel.SpanKind.internal)
-      .startSpan();
+  final span = tracer.startSpan(
+    operationName,
+    kind: otel.SpanKind.internal,
+  );
 
   // Add custom attributes
   if (attributes != null) {
     attributes.forEach((key, value) {
-      span.setAttribute(key, value.toString());
+      span.setAttribute(otel.Attribute.fromString(key, value.toString()));
     });
   }
 
@@ -543,7 +541,7 @@ Future<T> traceAsync<T>(
   final context = otel.Context.current.withSpan(span);
 
   try {
-    return await context.run(() => operation());
+    return await context.execute(() => operation());
   } catch (e, stackTrace) {
     span.recordException(e, stackTrace: stackTrace);
     span.setStatus(otel.StatusCode.error, e.toString());
@@ -602,13 +600,13 @@ class InstrumentedMethodChannel {
       : _channel = MethodChannel(name);
 
   Future<T?> invokeMethod<T>(String method, [dynamic arguments]) async {
-    final span = _tracer
-        .spanBuilder('PlatformChannel.$method')
-        .setSpanKind(otel.SpanKind.client)
-        .startSpan();
+    final span = _tracer.startSpan(
+      'PlatformChannel.$method',
+      kind: otel.SpanKind.client,
+    );
 
-    span.setAttribute('platform.channel', _channel.name);
-    span.setAttribute('platform.method', method);
+    span.setAttribute(otel.Attribute.fromString('platform.channel', _channel.name));
+    span.setAttribute(otel.Attribute.fromString('platform.method', method));
 
     try {
       final result = await _channel.invokeMethod<T>(method, arguments);
