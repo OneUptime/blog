@@ -32,7 +32,7 @@ Docker base images fall into a few broad categories:
 ```dockerfile
 # Build a static Go binary
 
-FROM golang:1.22 AS build
+FROM golang:1.26 AS build
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server .
@@ -51,7 +51,7 @@ Use scratch when:
 - You are building Go or Rust applications with no CGO dependencies
 
 Do not use scratch when:
-- Your application needs DNS resolution (copy `/etc/nsswitch.conf` and CA certificates manually)
+- Your application expects OS files such as CA certificates, timezone data, or user/group files unless you copy them manually
 - You need to debug inside the container
 - Your binary depends on shared libraries
 
@@ -61,10 +61,10 @@ Alpine Linux uses musl libc instead of glibc, which keeps it tiny but can cause 
 
 ```dockerfile
 # Node.js application on Alpine
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -143,7 +143,7 @@ WORKDIR /app
 COPY . .
 RUN ./gradlew build
 
-FROM gcr.io/distroless/java17-debian12
+FROM gcr.io/distroless/java17-debian13
 COPY --from=build /app/build/libs/app.jar /app.jar
 EXPOSE 8080
 CMD ["app.jar"]
@@ -162,14 +162,14 @@ The trade-off: you cannot exec into the container to debug. Use the `:debug` tag
 Most languages provide official Docker images in multiple variants:
 
 ```bash
-# Check available tags for the Node.js image
+# Search Docker Hub for the Node.js official image
 docker search node --limit 5
 
 # Common variants for most language images:
-# node:20         - Full Debian-based image
-# node:20-slim    - Debian slim variant
-# node:20-alpine  - Alpine-based variant
-# node:20-bookworm - Specific Debian release
+# node:24         - Full Debian-based image
+# node:24-slim    - Debian slim variant
+# node:24-alpine  - Alpine-based variant
+# node:24-bookworm - Specific Debian release
 ```
 
 These official images handle the language runtime installation correctly and are updated regularly. Prefer them over rolling your own.
@@ -244,17 +244,17 @@ Always pin your base image to a specific version, not just `latest`:
 FROM node:latest
 
 # Better - pinned to major version
-FROM node:20-slim
+FROM node:24-slim
 
 # Best - pinned to specific release
-FROM node:20.11.0-slim
+FROM node:24.16.0-slim
 ```
 
 Use digest pinning for maximum reproducibility in production:
 
 ```dockerfile
 # Pinned to exact image digest - immutable
-FROM node:20.11.0-slim@sha256:abc123...
+FROM node:24.16.0-slim@sha256:abc123...
 ```
 
 ## Summary
