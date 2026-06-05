@@ -27,6 +27,7 @@ Start by installing the necessary packages for your ASP.NET Core application:
 ```bash
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package Microsoft.AspNetCore.SignalR.Client
 ```
@@ -92,7 +93,9 @@ Here's a comprehensive ChatHub implementation with full OpenTelemetry instrument
 ```csharp
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Microsoft.AspNetCore.Http.Connections.Features;
 using Microsoft.AspNetCore.SignalR;
+using OpenTelemetry.Trace;
 
 public class ChatHub : Hub
 {
@@ -148,7 +151,8 @@ public class ChatHub : Hub
 
         activity?.SetTag("connection.id", Context.ConnectionId);
         activity?.SetTag("user.id", Context.UserIdentifier ?? "anonymous");
-        activity?.SetTag("connection.transport", Context.Features.Get<string>());
+        activity?.SetTag("connection.transport",
+            Context.Features.Get<IHttpTransportFeature>()?.TransportType.ToString());
 
         try
         {
@@ -401,6 +405,7 @@ Create a hub filter to automatically instrument all hub method invocations:
 ```csharp
 using System.Diagnostics;
 using Microsoft.AspNetCore.SignalR;
+using OpenTelemetry.Trace;
 
 public class OpenTelemetryHubFilter : IHubFilter
 {
@@ -493,11 +498,12 @@ builder.Services.AddSignalR(options =>
 
 ## Client-Side Instrumentation for End-to-End Tracing
 
-Instrument the SignalR client to enable end-to-end distributed tracing:
+Instrument the SignalR client to add client-side spans. To build a single end-to-end trace for individual hub method calls, propagate trace context explicitly, for example in message headers or hub method arguments, and use it when starting server-side activities:
 
 ```csharp
 using Microsoft.AspNetCore.SignalR.Client;
 using System.Diagnostics;
+using OpenTelemetry.Trace;
 
 public class InstrumentedSignalRClient
 {
@@ -600,6 +606,8 @@ graph LR
 Create a service to track SignalR-specific metrics:
 
 ```csharp
+using System.Diagnostics.Metrics;
+
 public class SignalRMetricsService : IHostedService
 {
     private readonly Meter _meter;
