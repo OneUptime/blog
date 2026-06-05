@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, V Language, Containerization, DevOps, Compiled Languages, Web Development
 
-Description: A practical guide to containerizing V language applications with Docker, covering Vweb servers, static compilation, and lightweight production images.
+Description: A practical guide to containerizing V language applications with Docker, covering Veb servers, static compilation, and lightweight production images.
 
 ---
 
-V is a compiled systems programming language that emphasizes simplicity and fast compilation. It compiles directly to C and then to native machine code, producing small binaries with minimal dependencies. Docker pairs well with V because the language's design goals, small binaries, fast builds, and minimal runtime, align perfectly with container best practices. This guide walks through containerizing V applications for production.
+V is a compiled systems programming language that emphasizes simplicity and fast compilation. Its default backend compiles V to C and then to native machine code, producing small binaries with minimal dependencies. Docker pairs well with V because the language's design goals, small binaries, fast builds, and minimal runtime, align perfectly with container best practices. This guide walks through containerizing V applications for production.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Docker must be installed on your machine. V is a newer language, so we will cove
 
 ## Creating a Sample V Web Application
 
-V includes a built-in web framework called Vweb. Let's build an API server with it.
+V includes a built-in web framework called Veb. Let's build an API server with it.
 
 Create the project directory:
 
@@ -28,55 +28,70 @@ cd v-docker-demo
 Create the main application file:
 
 ```v
-// main.v - Vweb HTTP server
+// main.v - Veb HTTP server
 module main
 
-import vweb
-import json
 import os
 import time
+import veb
 
-struct App {
-    vweb.Context
+struct App {}
+
+struct Context {
+    veb.Context
+}
+
+struct HealthResponse {
+pub:
+    status    string
+    language  string
+    timestamp string
+}
+
+struct ComputeResponse {
+pub:
+    computation string
+    n           int
+    result      i64
 }
 
 // Root handler
-['/']
-pub fn (mut app App) index() vweb.Result {
-    return app.text('Hello from V in Docker!')
+pub fn (app &App) index(mut ctx Context) veb.Result {
+    return ctx.text('Hello from V in Docker!')
 }
 
 // Health check endpoint
-['/health']
-pub fn (mut app App) health() vweb.Result {
-    response := {
-        'status': 'ok'
-        'language': 'V'
-        'timestamp': time.now().format_rfc3339()
+@['/health']
+pub fn (app &App) health(mut ctx Context) veb.Result {
+    response := HealthResponse{
+        status:    'ok'
+        language:  'V'
+        timestamp: time.now().format_rfc3339()
     }
-    return app.json(response)
+    return ctx.json(response)
 }
 
 // Computation endpoint
-['/compute']
-pub fn (mut app App) compute() vweb.Result {
+@['/compute']
+pub fn (app &App) compute(mut ctx Context) veb.Result {
     // Calculate sum of squares
     mut sum := i64(0)
     for i in 1 .. 1_000_001 {
         sum += i64(i) * i64(i)
     }
-    result := {
-        'computation': 'sum_of_squares'
-        'n': '1000000'
-        'result': '${sum}'
+    result := ComputeResponse{
+        computation: 'sum_of_squares'
+        n:           1000000
+        result:      sum
     }
-    return app.json(result)
+    return ctx.json(result)
 }
 
 fn main() {
     port := (os.getenv_opt('PORT') or { '8080' }).int()
     println('Starting V server on port ${port}')
-    vweb.run(&App{}, port)
+    mut app := &App{}
+    veb.run[App, Context](mut app, port)
 }
 ```
 
@@ -124,7 +139,7 @@ FROM ubuntu:22.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    git gcc make curl ca-certificates musl-tools \
+    git gcc make curl ca-certificates musl-tools file \
     && rm -rf /var/lib/apt/lists/*
 
 # Build V compiler
@@ -138,13 +153,13 @@ WORKDIR /app
 COPY . .
 
 # Compile with production optimizations using musl for static linking
-RUN v -prod -cc musl-gcc -cflags "-static" -o server main.v
+RUN v -prod -gc none -cc musl-gcc -cflags "-static" -o server main.v
 
 # Verify static linking
 RUN file server
 
 # Stage 2: Minimal runtime
-FROM alpine:3.19
+FROM alpine:3.23
 
 WORKDIR /app
 
@@ -183,7 +198,7 @@ RUN git clone --depth 1 https://github.com/vlang/v.git && \
 
 WORKDIR /app
 COPY . .
-RUN v -prod -cc musl-gcc -cflags "-static" -o server main.v
+RUN v -prod -gc none -cc musl-gcc -cflags "-static" -o server main.v
 
 # Stage 2: Just the binary
 FROM scratch
@@ -219,7 +234,7 @@ FROM v-compiler AS builder
 
 WORKDIR /app
 COPY . .
-RUN /opt/v/v -prod -cc musl-gcc -cflags "-static" -o server main.v
+RUN /opt/v/v -prod -gc none -cc musl-gcc -cflags "-static" -o server main.v
 
 # Stage 3: Runtime
 FROM scratch
@@ -287,16 +302,15 @@ v -prod -cflags "-O3 -flto" main.v
 v -prod -cflags "-s" main.v
 
 # Static linking with musl
-v -prod -cc musl-gcc -cflags "-static" main.v
+v -prod -gc none -cc musl-gcc -cflags "-static" main.v
 ```
 
-Use `-prod` for all Docker builds. It enables C compiler optimizations and disables V's runtime safety checks that are useful during development.
+Use `-prod` for production Docker builds. It enables most production optimizations and turns most V warnings into errors, so fix warnings before relying on a production image.
 
 ## Docker Compose for Development
 
 ```yaml
 # docker-compose.yml - development setup
-version: "3.8"
 services:
   app:
     build:
@@ -357,7 +371,7 @@ docker run -d \
   v-app:latest
 ```
 
-A Vweb server typically uses under 3 MB of RAM, making it one of the most memory-efficient web frameworks available.
+A small Veb server can run with modest memory limits, but real usage depends on the application code, concurrency, and libraries you include.
 
 ## Build Time Comparison
 
@@ -373,7 +387,7 @@ V compiles fast enough that the Docker layer caching overhead is more significan
 
 ## Monitoring
 
-Once your V application is running in production, use [OneUptime](https://oneuptime.com) to monitor its health endpoint and track uptime. V's compiled nature means consistent, predictable response times. Any performance degradation likely points to infrastructure issues rather than application-level problems.
+Once your V application is running in production, use [OneUptime](https://oneuptime.com) to monitor its health endpoint and track uptime. V's compiled nature can help with consistent, predictable response times, but investigate both infrastructure and application-level causes when performance degrades.
 
 ## Summary
 
