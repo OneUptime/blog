@@ -25,7 +25,7 @@ Python's OpenTelemetry SDK ships with `InMemorySpanExporter` out of the box.
 # test_order_service.py
 
 import pytest
-from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
@@ -38,23 +38,20 @@ def tracing():
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("test")
 
-    # Set as the global tracer provider for the duration of the test
-    previous = trace.get_tracer_provider()
-    trace.set_tracer_provider(provider)
-
-    yield exporter
+    yield tracer, exporter
 
     # Clean up
-    trace.set_tracer_provider(previous)
-    exporter.shutdown()
+    provider.shutdown()
 
 def test_create_order_creates_span(tracing):
     """Verify that creating an order produces the expected span."""
-    service = OrderService()
+    tracer, exporter = tracing
+    service = OrderService(tracer=tracer)
     service.create_order(user_id="user-123", items=["item-a", "item-b"])
 
-    spans = tracing.get_finished_spans()
+    spans = exporter.get_finished_spans()
     assert len(spans) == 1
 
     span = spans[0]
@@ -65,16 +62,17 @@ def test_create_order_creates_span(tracing):
 
 def test_failed_order_sets_error_status(tracing):
     """Verify that a failed order sets error status on the span."""
-    service = OrderService()
+    tracer, exporter = tracing
+    service = OrderService(tracer=tracer)
 
     with pytest.raises(ValueError):
         service.create_order(user_id="user-123", items=[])  # Empty items should fail
 
-    spans = tracing.get_finished_spans()
+    spans = exporter.get_finished_spans()
     assert len(spans) == 1
 
     span = spans[0]
-    assert span.status.status_code == trace.StatusCode.ERROR
+    assert span.status.status_code == StatusCode.ERROR
     assert "items cannot be empty" in span.status.description
 ```
 
@@ -89,19 +87,21 @@ const {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } = require('@opentelemetry/sdk-trace-base');
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { SpanStatusCode } = require('@opentelemetry/api');
 const { OrderService } = require('../src/orderService');
 
 describe('OrderService', () => {
   let exporter;
   let provider;
+  let service;
 
   beforeEach(() => {
     // Create a fresh exporter and provider for each test
     exporter = new InMemorySpanExporter();
-    provider = new NodeTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-    provider.register();
+    provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    service = new OrderService(provider.getTracer('test'));
   });
 
   afterEach(async () => {
@@ -111,7 +111,6 @@ describe('OrderService', () => {
   });
 
   test('createOrder produces a span with correct attributes', async () => {
-    const service = new OrderService();
     await service.createOrder('user-123', ['item-a', 'item-b']);
 
     const spans = exporter.getFinishedSpans();
@@ -121,12 +120,10 @@ describe('OrderService', () => {
     expect(span.name).toBe('create_order');
     expect(span.attributes['order.user_id']).toBe('user-123');
     expect(span.attributes['order.item_count']).toBe(2);
-    expect(span.status.code).toBe(SpanStatusCode.OK);
+    expect(span.status.code).toBe(SpanStatusCode.UNSET);
   });
 
   test('failed order records error status', async () => {
-    const service = new OrderService();
-
     await expect(service.createOrder('user-123', []))
       .rejects.toThrow('items cannot be empty');
 
@@ -153,7 +150,7 @@ Java has a dedicated `opentelemetry-sdk-testing` module that provides `InMemoryS
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-sdk-testing</artifactId>
-    <version>1.34.0</version>
+    <version>1.63.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -210,7 +207,7 @@ class OrderServiceTest {
         assertThat(span.getAttributes().get(
             io.opentelemetry.api.common.AttributeKey.longKey("order.item_count")
         )).isEqualTo(2L);
-        assertThat(span.getStatus().getStatusCode()).isEqualTo(StatusCode.OK);
+        assertThat(span.getStatus().getStatusCode()).isEqualTo(StatusCode.UNSET);
     }
 
     @Test
@@ -238,8 +235,8 @@ class OrderServiceTest {
 A few things to keep in mind when writing these tests:
 
 - Use `SimpleSpanProcessor` instead of `BatchSpanProcessor` in tests. The simple processor exports spans synchronously, so they are available immediately after the code runs. Batch processors introduce timing issues.
-- Call `exporter.reset()` or `exporter.clear()` between tests to avoid spans from one test leaking into another.
-- If your code creates child spans, check the parent-child relationships using `span.parentSpanId`.
+- Clear the exporter between tests to avoid spans from one test leaking into another. In Python, use `exporter.clear()`. In Java and Node.js, use `exporter.reset()`.
+- If your code creates child spans, check the parent-child relationships using the language-specific parent span context or parent span ID fields.
 - Test both the happy path and error cases. Verify that error spans have the `ERROR` status code and that exception events are recorded.
 
 In-memory exporters are the standard way to test OpenTelemetry instrumentation. They are fast, deterministic, and available in every language SDK. If you are instrumenting your code, you should be testing that instrumentation.
