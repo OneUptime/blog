@@ -53,14 +53,14 @@ flowchart TD
 
 ## Scenario 1: SDK Buffer Overflow
 
-The OpenTelemetry SDK inside your application has an in-memory queue for spans, metrics, and log records. When the queue fills up, new data gets dropped silently. This happens when your application generates telemetry faster than the SDK can export it.
+The OpenTelemetry SDK inside your application can have in-memory queues for spans and log records, with similar buffering behavior for metrics depending on the reader and exporter. When a queue fills up, new data gets dropped. This happens when your application generates telemetry faster than the SDK can export it.
 
-The default queue size in most SDKs is 2048 spans. For a high-throughput service, that fills up in seconds.
+The default queue size for the batch span processor is commonly 2048 spans. For a high-throughput service, that fills up in seconds.
 
 Here is how to tune the SDK exporter in a Java application:
 
 ```java
-// Configure the span exporter with a larger queue and more export threads
+// Configure the span processor with a larger queue and batch settings
 // The default queue size of 2048 is too small for services handling
 // more than a few hundred requests per second
 SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
@@ -72,7 +72,7 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
             .setMaxExportBatchSize(1024)
             // Export at least every 2 seconds even if batch is not full
             .setScheduleDelay(Duration.ofSeconds(2))
-            // Give the exporter 30 seconds to flush on shutdown
+            // Give each export attempt up to 30 seconds to complete
             .setExporterTimeout(Duration.ofSeconds(30))
             .build()
     )
@@ -100,7 +100,7 @@ processor = BatchSpanProcessor(
 )
 ```
 
-Monitor for drops by watching the SDK's internal metrics. Most SDKs expose a counter for dropped spans.
+Monitor for drops by watching the SDK's internal metrics when your SDK exposes them. Many SDKs can report dropped spans from the batch span processor.
 
 ## Scenario 2: Collector OOM Kill
 
@@ -115,12 +115,12 @@ processors:
   memory_limiter:
     # Check memory usage every second
     check_interval: 1s
-    # Hard limit -- start refusing data at this point
+    # Hard limit -- force garbage collection at this point
     # Set this to about 80% of your container's memory limit
     limit_mib: 1600
-    # Soft limit -- start applying backpressure at this point
-    # The difference between limit and spike limit is your buffer
-    # for already-in-flight data
+    # Expected memory spike between checks. The soft limit is
+    # limit_mib - spike_limit_mib, so this starts refusing data
+    # at about 1200 MiB and forces GC at about 1600 MiB.
     spike_limit_mib: 400
 
   batch:
@@ -169,8 +169,8 @@ exporters:
       initial_interval: 5s
       # Double the delay each time, up to 60 seconds
       max_interval: 60s
-      # Give up after 5 minutes of continuous failure
-      max_elapsed_time: 300s
+      # Keep retrying transient failures while the queue has capacity
+      max_elapsed_time: 0
 
     # The sending queue buffers data during backend outages
     sending_queue:
@@ -188,9 +188,12 @@ extensions:
   # This is critical -- without it, the queue is in-memory only
   file_storage:
     directory: /var/lib/otel/queue
-    # Set a maximum size to prevent filling the disk
-    max_file_size_mib: 5120
     timeout: 10s
+    # Reclaim disk space after persistent queue drain events
+    compaction:
+      on_rebound: true
+      rebound_needed_threshold_mib: 100
+      rebound_trigger_threshold_mib: 10
 
 service:
   extensions: [file_storage]
@@ -229,7 +232,7 @@ exporters:
       enabled: true
       initial_interval: 1s
       max_interval: 30s
-      max_elapsed_time: 120s
+      max_elapsed_time: 0
 
     sending_queue:
       enabled: true
@@ -298,7 +301,8 @@ The solution combines persistent queuing with graceful shutdown:
 extensions:
   file_storage:
     directory: /var/lib/otel/queue
-    max_file_size_mib: 2048
+    compaction:
+      on_rebound: true
 
 exporters:
   otlp:
@@ -310,11 +314,15 @@ exporters:
       storage: file_storage
 
 service:
-  # Give the collector time to flush its queues before shutting down
-  # This should be less than your pod's terminationGracePeriodSeconds
+  # Expose internal metrics for Prometheus scraping
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   extensions: [file_storage]
 ```
 
@@ -333,7 +341,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           # Mount a persistent volume for the queue storage
           volumeMounts:
             - name: queue-storage
@@ -358,7 +366,7 @@ spec:
 
 ## Scenario 7: Export Timeouts
 
-Large batches sent to a slow backend can hit the export timeout. When a batch times out, the entire batch is lost even if most of it would have succeeded. This is especially common when exporting to backends over high-latency links.
+Large batches sent to a slow backend can hit the export timeout. A timed-out export attempt fails the whole batch, so it needs retry capacity and enough queue room to avoid eventual loss. This is especially common when exporting to backends over high-latency links.
 
 Tune the batch size and timeout together:
 
@@ -366,7 +374,7 @@ Tune the batch size and timeout together:
 processors:
   # Smaller batches reduce the blast radius of a timeout
   batch:
-    # Smaller batch size means less data lost per timeout
+    # Smaller batch size means less data affected per timeout
     send_batch_size: 256
     send_batch_max_size: 512
     timeout: 5s
@@ -382,6 +390,7 @@ exporters:
       enabled: true
       initial_interval: 1s
       max_interval: 30s
+      max_elapsed_time: 0
     sending_queue:
       enabled: true
       queue_size: 10000
@@ -394,9 +403,13 @@ You cannot fix what you cannot see. Set up monitoring that tells you when data l
 The OpenTelemetry Collector exposes internal metrics that reveal data loss:
 
 ```promql
-# Spans dropped by the processor pipeline
-# A non-zero rate means the memory limiter is kicking in
-rate(otelcol_processor_dropped_spans[5m])
+# Spans refused by receivers because the pipeline returned errors
+# A sustained non-zero rate can mean the memory limiter is kicking in
+rate(otelcol_receiver_refused_spans[5m])
+
+# Spans that failed to enter the exporter queue
+# This catches queue overflow before retry logic can run
+rate(otelcol_exporter_enqueue_failed_spans[5m])
 
 # Spans that failed to export
 # This catches backend failures and timeouts
