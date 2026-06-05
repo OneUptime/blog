@@ -18,15 +18,15 @@ The answer isn't "one is better." It's "one is better for your specific context.
 | Protocol | HTTP/2 (binary) | HTTP/1.1 or HTTP/2 |
 | Connection | Long-lived, multiplexed | Request-response |
 | Latency | Lower (connection reuse) | Slightly higher |
-| Throughput | Higher (streaming, flow control) | Lower |
+| Throughput | Higher (multiplexing, flow control) | Lower |
 | Network efficiency | Better (binary + compression) | Good (with protobuf + gzip) |
 | Debugging | Harder (binary protocol) | Easier (especially with JSON) |
 | Firewall/proxy compatibility | Can be problematic | Excellent |
-| Corporate network friendly | Sometimes blocked | Always works |
+| Corporate network friendly | Sometimes blocked | Usually easier |
 | Infrastructure complexity | Requires gRPC support | Standard HTTP |
 | Client resource usage | Higher (connection management) | Lower |
-| Retry semantics | Built-in (gRPC retries) | SDK-level retries |
-| Load balancing | Requires L7 load balancer | Works with L4 or L7 |
+| Retry semantics | SDK retries based on gRPC status codes | SDK retries based on HTTP status codes |
+| Load balancing | Benefits from L7 load balancing | Simpler with standard HTTP load balancers |
 
 ## When to Use OTLP/gRPC
 
@@ -34,7 +34,7 @@ gRPC is the high-performance option. It's designed for efficient RPC communicati
 
 ### Use gRPC when:
 
-**High telemetry volume**: You're exporting thousands of spans or millions of metric data points per second. gRPC's streaming and multiplexing give you better throughput.
+**High telemetry volume**: You're exporting thousands of spans or millions of metric data points per second. gRPC's HTTP/2 multiplexing and flow control give you better throughput.
 
 **Low latency matters**: You want minimal overhead between span creation and export. gRPC's persistent connections eliminate TCP handshake overhead on every export.
 
@@ -47,26 +47,29 @@ gRPC is the high-performance option. It's designed for efficient RPC communicati
 ### Example: Configuring OTLP/gRPC in Node.js
 
 ```javascript
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
-import { CompressionAlgorithm } from '@opentelemetry/exporter-trace-otlp-grpc';
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
+const {
+  OTLPMetricExporter,
+} = require('@opentelemetry/exporter-metrics-otlp-grpc');
+const { Metadata } = require('@grpc/grpc-js');
+
+const metadata = new Metadata();
+metadata.set('x-oneuptime-token', process.env.ONEUPTIME_TOKEN ?? '');
 
 // Configure gRPC trace exporter with compression
 const traceExporter = new OTLPTraceExporter({
-  url: 'grpc://oneuptime.com:4317', // Default gRPC port
-  headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN,
-  },
-  compression: CompressionAlgorithm.GZIP,
+  url: 'https://oneuptime.com:4317', // Default gRPC port
+  metadata,
+  compression: 'gzip',
 });
 
 // Configure gRPC metric exporter
 const metricExporter = new OTLPMetricExporter({
-  url: 'grpc://oneuptime.com:4317',
-  headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN,
-  },
-  compression: CompressionAlgorithm.GZIP,
+  url: 'https://oneuptime.com:4317',
+  metadata,
+  compression: 'gzip',
 });
 ```
 
@@ -78,7 +81,7 @@ HTTP is the compatibility option. It works everywhere, it's easy to debug, and i
 
 ### Use HTTP when:
 
-**Corporate networks**: Your application runs behind corporate proxies, firewalls, or VPNs that block non-HTTP traffic. HTTP goes through anything.
+**Corporate networks**: Your application runs behind corporate proxies, firewalls, or VPNs that block non-HTTP traffic. Standard HTTPS is usually much easier to allow through restrictive networks.
 
 **Legacy infrastructure**: Your load balancers, proxies, or API gateways don't handle gRPC well. HTTP works with any HTTP infrastructure.
 
@@ -93,14 +96,18 @@ HTTP is the compatibility option. It works everywhere, it's easy to debug, and i
 ### Example: Configuring OTLP/HTTP in Node.js
 
 ```javascript
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-proto');
+const {
+  OTLPMetricExporter,
+} = require('@opentelemetry/exporter-metrics-otlp-proto');
 
 // Configure HTTP trace exporter with protobuf encoding (default)
 const traceExporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
   headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN,
+    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN ?? '',
   },
   compression: 'gzip',
 });
@@ -109,7 +116,7 @@ const traceExporter = new OTLPTraceExporter({
 const metricExporter = new OTLPMetricExporter({
   url: 'https://oneuptime.com/otlp/v1/metrics',
   headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN,
+    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN ?? '',
   },
   compression: 'gzip',
 });
@@ -125,19 +132,19 @@ Performance differences matter at scale. Here's what you need to know.
 
 **gRPC advantage**: Persistent connections mean no TCP handshake, TLS negotiation, or DNS lookup on every export. Typical export latency: 1-5ms (local network).
 
-**HTTP disadvantage**: Each export is a new request (unless you use HTTP/2 keep-alive, which helps but isn't guaranteed). Typical export latency: 5-20ms (local network).
+**HTTP tradeoff**: Each export is a separate HTTP POST. Clients should keep connections alive between requests, but connection reuse and HTTP/2 support depend on the runtime and network path.
 
 At low export frequencies (once per minute), this doesn't matter. At high frequencies (multiple times per second), gRPC saves significant overhead.
 
 ### Throughput
 
-**gRPC advantage**: HTTP/2 multiplexing lets multiple requests share a single connection. Flow control prevents overwhelming slow receivers. Streaming support (not yet used by OTLP, but available) enables continuous telemetry flow.
+**gRPC advantage**: HTTP/2 multiplexing lets multiple requests share a single connection. Flow control helps manage slow receivers.
 
-Measured throughput: 10,000-50,000 spans/sec per exporter instance (depending on span size, compression, network).
+Throughput depends on span size, batching, compression, CPU, and network conditions. At high volume, gRPC commonly has more headroom.
 
 **HTTP advantage**: Simpler request-response model is easier to reason about. No connection state to manage.
 
-Measured throughput: 5,000-20,000 spans/sec per exporter instance.
+Throughput depends on the same variables as gRPC. For moderate volume, HTTP is usually sufficient and easier to operate.
 
 Real-world example: A microservice generating 1,000 spans/sec can use either transport comfortably. A high-traffic API gateway generating 10,000 spans/sec benefits from gRPC.
 
@@ -145,7 +152,7 @@ Resource usage
 
 **gRPC cost**: Maintaining persistent connections consumes memory. The gRPC client library is larger and uses more CPU for connection management.
 
-**HTTP cost**: Creating new connections for every export uses more network resources (SYN/ACK packets, ephemeral ports, connection tracking in firewalls).
+**HTTP cost**: If connections are not reused, repeated exports use more network resources (SYN/ACK packets, ephemeral ports, connection tracking in firewalls).
 
 In practice, the difference is small unless you're running on very constrained environments (embedded devices, serverless functions with tight memory limits).
 
@@ -155,19 +162,25 @@ Both transports support gzip compression. Enable it.
 
 ```javascript
 // gRPC
-import { CompressionAlgorithm } from '@opentelemetry/exporter-trace-otlp-grpc';
+const {
+  OTLPTraceExporter: GrpcTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
 
-const exporter = new OTLPTraceExporter({
-  compression: CompressionAlgorithm.GZIP,
+const grpcExporter = new GrpcTraceExporter({
+  compression: 'gzip',
 });
 
 // HTTP
-const exporter = new OTLPTraceExporter({
+const {
+  OTLPTraceExporter: HttpTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-proto');
+
+const httpExporter = new HttpTraceExporter({
   compression: 'gzip',
 });
 ```
 
-Compression reduces payload size by 5-10x for typical traces. The CPU cost is negligible compared to serialization. Always enable compression in production.
+Compression can significantly reduce payload size for typical traces. The CPU cost is usually small compared to serialization and network transfer, but measure it for very constrained workloads.
 
 ## Network and Infrastructure Considerations
 
@@ -177,7 +190,7 @@ Your choice often comes down to what your network allows and what your infrastru
 
 **gRPC challenge**: Many corporate firewalls inspect HTTP traffic and block non-HTTP protocols. gRPC uses HTTP/2, which some middleboxes don't handle well. Symptoms: connections hang, slow negotiation, or outright blocking.
 
-**HTTP advantage**: Standard HTTPS traffic goes through any proxy. Use the same proxy configuration as your other HTTP clients.
+**HTTP advantage**: Standard HTTPS traffic is usually easier to send through common proxies. Use the same proxy configuration as your other HTTP clients.
 
 ```bash
 # HTTP works through standard proxies
@@ -208,7 +221,7 @@ graph LR
     style Client fill:#2196F3
 ```
 
-**HTTP advantage**: Each request is independent. L4 load balancers work fine. Even simple DNS round-robin works.
+**HTTP advantage**: Each export is an independent HTTP request. Standard HTTP load balancers are usually enough, and L4 load balancers can distribute traffic by connection.
 
 Modern cloud load balancers (AWS ALB, GCP Load Balancer, Azure Application Gateway) handle gRPC properly. But if you're using older infrastructure or self-hosted load balancers, HTTP is simpler.
 
@@ -219,10 +232,13 @@ Both transports support TLS. Configuration is similar.
 **gRPC**: Uses TLS for encryption. Certificate validation is mandatory (or you explicitly disable it for testing, which you shouldn't do in production).
 
 ```javascript
-import { credentials } from '@grpc/grpc-js';
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { credentials } = require('@grpc/grpc-js');
 
 const exporter = new OTLPTraceExporter({
-  url: 'grpc://oneuptime.com:4317',
+  url: 'https://oneuptime.com:4317',
   credentials: credentials.createSsl(), // Use system CA certs
 });
 ```
@@ -257,10 +273,12 @@ You get immediate feedback on connectivity, authentication, and endpoint correct
 **Human-readable payloads**: Use JSON encoding (less efficient, but useful for debugging).
 
 ```javascript
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-http');
+
 const exporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
-  headers: { 'Content-Type': 'application/json' },
-  // JSON encoding is used when Content-Type is application/json
 });
 ```
 
@@ -278,6 +296,8 @@ Print the payload to see exactly what's being sent.
 # Test gRPC endpoint with grpcurl
 grpcurl -plaintext oneuptime.com:4317 list
 ```
+
+This requires the server to support gRPC reflection. If it doesn't, provide the OTLP proto files to `grpcurl`.
 
 **More opaque errors**: gRPC status codes (UNAVAILABLE, DEADLINE_EXCEEDED, etc.) are less intuitive than HTTP status codes (503, 504).
 
@@ -316,13 +336,12 @@ Use JSON only for debugging. Switch back to protobuf for production.
 
 ```javascript
 // Force JSON encoding (debugging only)
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-http');
 
 const exporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
-  headers: {
-    'Content-Type': 'application/json', // Request JSON encoding
-  },
 });
 ```
 
@@ -332,26 +351,30 @@ Both transports implement retries, but the mechanisms differ.
 
 ### gRPC retries
 
-gRPC has built-in retry logic. You configure retry policies in the gRPC client.
+For OTLP/gRPC, exporters retry transient failures based on retryable gRPC status codes.
 
 ```javascript
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
+
 const exporter = new OTLPTraceExporter({
-  url: 'grpc://oneuptime.com:4317',
-  // gRPC retry configuration (varies by SDK)
-  metadata: {
-    'grpc.max_receive_message_length': 4 * 1024 * 1024, // 4MB
-    'grpc.keepalive_time_ms': 120000,
-  },
+  url: 'https://oneuptime.com:4317',
+  timeoutMillis: 10000, // Export timeout
 });
 ```
 
-gRPC handles transient errors (UNAVAILABLE, DEADLINE_EXCEEDED) with exponential backoff automatically.
+The exporter handles transient errors (for example, UNAVAILABLE or DEADLINE_EXCEEDED) with exponential backoff.
 
 ### HTTP retries
 
-HTTP retries are implemented at the SDK level. The exporter catches network errors and retries with exponential backoff.
+HTTP retries are implemented at the SDK level. The exporter catches retryable HTTP status codes and network errors, then retries with exponential backoff.
 
 ```javascript
+const {
+  OTLPTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-proto');
+
 const exporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
   timeoutMillis: 10000, // Request timeout
@@ -359,7 +382,7 @@ const exporter = new OTLPTraceExporter({
 });
 ```
 
-Both work fine in practice. gRPC's retries are more integrated with the protocol. HTTP retries are more transparent (you can see them in logs).
+Both work fine in practice. gRPC reports retryable failures through standard status codes. HTTP retries are more transparent (you can see them in logs).
 
 ## Cloud Provider Specifics
 
@@ -375,7 +398,7 @@ Some cloud platforms have quirks that favor one transport over the other.
 
 ### Google Cloud
 
-**Cloud Run**: HTTP is better. Cloud Run has request timeout limits that can conflict with persistent gRPC connections.
+**Cloud Run**: HTTP is simpler for direct OTLP export. gRPC is supported, but you should configure HTTP/2 when you use it.
 
 **GKE**: Both work well. gRPC is common in GCP's ecosystem.
 
@@ -383,7 +406,7 @@ Some cloud platforms have quirks that favor one transport over the other.
 
 ### Azure
 
-**App Service**: HTTP is more reliable. Azure's proxy layer sometimes has issues with long-lived gRPC connections.
+**App Service**: HTTP is simpler. gRPC is supported on Linux App Service, but it requires HTTP/2 configuration and has platform-specific limitations.
 
 **AKS**: Both work well.
 
@@ -460,23 +483,27 @@ Switching between gRPC and HTTP is easy. It's a configuration change, not a code
 ```bash
 # Switching from gRPC to HTTP
 npm uninstall @opentelemetry/exporter-trace-otlp-grpc
-npm install @opentelemetry/exporter-trace-otlp-http
+npm install @opentelemetry/exporter-trace-otlp-proto
 ```
 
 ### Step 2: Update import and configuration
 
 ```javascript
 // Before (gRPC)
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+const {
+  OTLPTraceExporter: GrpcTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
 
-const exporter = new OTLPTraceExporter({
-  url: 'grpc://oneuptime.com:4317',
+const grpcExporter = new GrpcTraceExporter({
+  url: 'https://oneuptime.com:4317',
 });
 
 // After (HTTP)
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+const {
+  OTLPTraceExporter: HttpTraceExporter,
+} = require('@opentelemetry/exporter-trace-otlp-proto');
 
-const exporter = new OTLPTraceExporter({
+const httpExporter = new HttpTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
 });
 ```
@@ -498,7 +525,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com/otlp
 
 # For gRPC
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-export OTEL_EXPORTER_OTLP_ENDPOINT=grpc://oneuptime.com:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com:4317
 ```
 
 The SDK reads these variables and configures the appropriate exporter automatically.
