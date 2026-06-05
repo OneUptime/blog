@@ -19,109 +19,158 @@ A typical Kubernetes service gets hit by health checks every 10 seconds from mul
 
 At 10-second intervals, that is 6 health check spans per minute per pod. With 50 pods, that is 300 spans per minute of zero-value telemetry. It costs money to export, store, and index. And it drowns out real traces in your UI.
 
-## Approach 1: SDK-Level Instrumentation Exclusion
+## Approach 1: SDK-Level Sampling Exclusion
 
-The cleanest approach is to prevent these spans from being created in the first place. The declarative configuration supports instrumentation-level exclusion rules:
+The cleanest approach is to drop health check traces before they are recorded or exported. Declarative configuration supports rule-based sampling through the composite sampler:
 
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "checkout-api"
-    deployment.environment: "production"
-
-# Instrumentation configuration
-instrumentation:
-  general:
-    http:
-      server:
-        # Exclude specific routes from instrumentation
-        exclude_urls:
-          - "/health"
-          - "/healthz"
-          - "/ready"
-          - "/readiness"
-          - "/liveness"
-          - "/status"
-          - "/favicon.ico"
-          - "/robots.txt"
-          - "/metrics"  # Prometheus scrape endpoint
+    - name: service.name
+      value: "checkout-api"
+    - name: deployment.environment.name
+      value: "production"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
   sampler:
-    parent_based:
-      root:
-        trace_id_ratio_based:
-          ratio: 0.1
+    composite/development:
+      rule_based:
+        rules:
+          # Drop health check routes
+          - attribute_values:
+              key: http.route
+              values:
+                - "/health"
+                - "/healthz"
+                - "/ready"
+                - "/readiness"
+                - "/liveness"
+                - "/status"
+                - "/favicon.ico"
+                - "/robots.txt"
+                - "/metrics"  # Prometheus scrape endpoint
+            sampler:
+              always_off:
+
+          # Sample everything else at 10%
+          - sampler:
+              parent_threshold:
+                root:
+                  probability:
+                    ratio: 0.1
 ```
 
-With this configuration, the SDK will not create spans for any HTTP server request matching those URL patterns. No spans means no processing, no exporting, and no storage cost.
+With this configuration, the SDK drops requests whose `http.route` attribute matches one of those values and does not export them. Because route attributes are set by HTTP instrumentation, check your framework's instrumentation behavior before relying on a route-based rule for every endpoint.
 
 ## Approach 2: Pattern-Based Exclusion with Wildcards
 
-For more flexible matching, use glob-style patterns:
+For more flexible matching, use attribute pattern rules:
 
 ```yaml
-instrumentation:
-  general:
-    http:
-      server:
-        exclude_urls:
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_grpc:
+            endpoint: "http://collector:4317"
+  sampler:
+    composite/development:
+      rule_based:
+        rules:
           # Exact matches
-          - "/health"
-          - "/ready"
+          - attribute_values:
+              key: http.route
+              values:
+                - "/health"
+                - "/ready"
+            sampler:
+              always_off:
 
-          # Wildcard patterns
-          - "/internal/*"        # all internal endpoints
-          - "/admin/heartbeat*"  # admin heartbeat variants
-          - "*/ping"             # any path ending with /ping
+          # Pattern matches
+          - attribute_patterns:
+              key: url.path
+              included:
+                - "/internal/*"
+                - "/admin/heartbeat*"
+                - "*/ping"
+                - "/static/*"
+                - "/assets/*"
+                - "*.css"
+                - "*.js"
+                - "*.png"
+            sampler:
+              always_off:
 
-          # Static assets (if served by the same process)
-          - "/static/*"
-          - "/assets/*"
-          - "*.css"
-          - "*.js"
-          - "*.png"
+          # Sample everything else at 10%
+          - sampler:
+              parent_threshold:
+                root:
+                  probability:
+                    ratio: 0.1
 ```
 
 ## Approach 3: Java Agent Specific Exclusion
 
-The OpenTelemetry Java agent has its own instrumentation exclusion configuration within the declarative format:
+The OpenTelemetry Java agent supports declarative mappings for instrumentation settings and agent-specific options:
 
 ```yaml
 # otel-config.yaml for Java agent
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "order-service"
+    - name: service.name
+      value: "order-service"
 
-instrumentation:
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_grpc:
+            endpoint: "http://collector:4317"
+  sampler:
+    composite/development:
+      rule_based:
+        rules:
+          # Drop health check routes
+          - attribute_values:
+              key: http.route
+              values:
+                - "/actuator/health"
+                - "/actuator/info"
+                - "/actuator/prometheus"
+            sampler:
+              always_off:
+
+          # Sample everything else at 10%
+          - sampler:
+              parent_threshold:
+                root:
+                  probability:
+                    ratio: 0.1
+
+instrumentation/development:
   java:
-    http:
-      server:
-        # Exclude health check URLs
-        exclude_urls:
-          - "/actuator/health"
-          - "/actuator/info"
-          - "/actuator/prometheus"
+    agent:
+      instrumentation_mode: default
 
-    # Disable entire instrumentation libraries
-    disabled_instrumentations:
-      - "spring-scheduling"      # periodic tasks create noisy spans
-      - "spring-boot-actuator"   # actuator endpoints
-
-    # Exclude specific classes from instrumentation
-    excluded_classes:
+# Disable entire instrumentation libraries or exclude classes.
+distribution:
+  javaagent:
+    instrumentation:
+      disabled:
+        - "spring_scheduling"      # periodic tasks create noisy spans
+        - "spring_boot_actuator"   # actuator endpoints
+    exclude_classes:
       - "com.example.internal.HealthController"
       - "com.example.internal.MetricsController"
 ```
@@ -135,24 +184,22 @@ If you cannot filter at the SDK level (for example, you are using auto-instrumen
 processors:
   filter/health:
     error_mode: ignore
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["url.path"] == "/health"'
-        - 'attributes["url.path"] == "/healthz"'
-        - 'name == "GET /health"'
-        - 'name == "GET /healthz"'
-        - 'name == "GET /ready"'
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["url.path"] == "/health"'
+      - 'span.attributes["url.path"] == "/healthz"'
+      - 'span.name == "GET /health"'
+      - 'span.name == "GET /healthz"'
+      - 'span.name == "GET /ready"'
 
   # Also filter metrics from health check endpoints
   filter/health-metrics:
     error_mode: ignore
-    metrics:
-      datapoint:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
+    metric_conditions:
+      - 'datapoint.attributes["http.route"] == "/health"'
+      - 'datapoint.attributes["http.route"] == "/healthz"'
 
 service:
   pipelines:
@@ -168,33 +215,52 @@ service:
 
 ## Approach 5: Sampler-Based Exclusion
 
-Another option is to use a custom sampler that drops specific spans based on attributes. This is useful when you want to keep the instrumentation active but selectively drop certain traces:
+Another option is to keep the instrumentation active but selectively drop certain traces with a rule-based sampler:
+
+```yaml
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_grpc:
+            endpoint: "http://collector:4317"
+  sampler:
+    parent_based:
+      root:
+        trace_id_ratio_based:
+          ratio: 0.1
+```
+
+Use this baseline sampler when you only need probabilistic sampling. Use the composite rule-based sampler in the earlier examples when you need attribute-based drops.
 
 ```yaml
 tracer_provider:
   sampler:
-    parent_based:
-      root:
-        rule_based:
-          rules:
-            # Never sample health checks
-            - attribute: "http.route"
-              pattern: "/health.*"
-              sampler:
-                always_off: {}
+    composite/development:
+      rule_based:
+        rules:
+          # Never sample health checks
+          - attribute_patterns:
+              key: http.route
+              included:
+                - "/health*"
+            sampler:
+              always_off:
 
-            # Never sample readiness checks
-            - attribute: "http.route"
-              pattern: "/ready.*"
-              sampler:
-                always_off: {}
+          # Never sample readiness checks
+          - attribute_patterns:
+              key: http.route
+              included:
+                - "/ready*"
+            sampler:
+              always_off:
 
-            # Sample everything else at 10%
-            - attribute: "*"
-              pattern: "*"
-              sampler:
-                trace_id_ratio_based:
-                  ratio: 0.1
+          # Sample everything else at 10%
+          - sampler:
+              parent_threshold:
+                root:
+                  probability:
+                    ratio: 0.1
 ```
 
 ## Excluding Metric Instruments
@@ -207,20 +273,20 @@ meter_provider:
     - periodic:
         interval: 60000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 
   views:
-    # Drop the health check duration histogram entirely
+    # Keep the HTTP server duration metric but limit exported attributes
     - selector:
         instrument_name: "http.server.request.duration"
         meter_name: "io.opentelemetry.instrumentation.spring-webmvc"
       stream:
         attribute_keys:
-          - "http.request.method"
-          - "http.response.status_code"
-          - "http.route"
+          included:
+            - "http.request.method"
+            - "http.response.status_code"
+            - "http.route"
         # This view keeps the metric but removes high-cardinality attributes
 
     # Or drop a specific meter entirely
@@ -236,58 +302,62 @@ meter_provider:
 Here is a full configuration that combines SDK-level exclusion with sensible defaults:
 
 ```yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    deployment.environment: "${DEPLOY_ENV}"
-
-instrumentation:
-  general:
-    http:
-      server:
-        exclude_urls:
-          - "/health"
-          - "/healthz"
-          - "/ready"
-          - "/liveness"
-          - "/metrics"
-          - "/favicon.ico"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: deployment.environment.name
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
     - batch:
         schedule_delay: 5000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
   sampler:
-    parent_based:
-      root:
-        trace_id_ratio_based:
-          ratio: 0.1
+    composite/development:
+      rule_based:
+        rules:
+          - attribute_values:
+              key: http.route
+              values:
+                - "/health"
+                - "/healthz"
+                - "/ready"
+                - "/liveness"
+                - "/metrics"
+                - "/favicon.ico"
+            sampler:
+              always_off:
+          - sampler:
+              parent_threshold:
+                root:
+                  probability:
+                    ratio: 0.1
 
 meter_provider:
   readers:
     - periodic:
         interval: 60000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Wrapping Up
