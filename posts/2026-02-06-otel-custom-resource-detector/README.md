@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Resource Detector, Custom SDK, Auto-Discovery, Environment
 
 Description: Implement a custom OpenTelemetry resource detector that automatically discovers and populates deployment environment attributes from your infrastructure.
 
-Resource detectors automatically populate the `Resource` that gets attached to every piece of telemetry. The built-in detectors cover AWS, GCP, Azure, and Kubernetes. But if your company has a custom deployment platform, a home-grown container orchestrator, or specific metadata endpoints, you need a custom resource detector to pull in that information.
+Resource detectors automatically populate the `Resource` that gets attached to every piece of telemetry. OpenTelemetry SDKs and contrib packages include detectors for environments like AWS, GCP, Azure, and Kubernetes. But if your company has a custom deployment platform, a home-grown container orchestrator, or specific metadata endpoints, you need a custom resource detector to pull in that information.
 
 ## What Resource Detectors Do
 
@@ -16,7 +16,7 @@ When your application starts, resource detectors run and discover attributes abo
 Resource: {
   "service.name": "payment-service",
   "service.version": "2.4.1",
-  "deployment.environment": "production",
+  "deployment.environment.name": "production",
   "host.name": "prod-node-042",
   "cloud.provider": "aws",
   "cloud.region": "us-east-1",
@@ -26,7 +26,7 @@ Resource: {
 }
 ```
 
-The built-in detectors fill in the standard attributes. Your custom detector fills in the company-specific ones.
+The standard detectors fill in common attributes. Your custom detector fills in the company-specific ones.
 
 ## Python: Custom Resource Detector
 
@@ -75,7 +75,7 @@ class CompanyResourceDetector(ResourceDetector):
         # Source 2: Environment variables set by our deploy tooling
         env_mappings = {
             "DEPLOY_VERSION": "service.version",
-            "DEPLOY_ENV": "deployment.environment",
+            "DEPLOY_ENV": "deployment.environment.name",
             "SERVICE_NAME": "service.name",
             "CANARY_WEIGHT": "mycompany.canary.weight",
             "BUILD_SHA": "mycompany.build.sha",
@@ -152,7 +152,7 @@ manual_resource = Resource.create({
     "service.namespace": "payments",
 })
 
-resource = manual_resource.merge(detected_resource)
+resource = detected_resource.merge(manual_resource)
 
 # Create the tracer provider with the combined resource
 provider = TracerProvider(resource=resource)
@@ -163,9 +163,9 @@ provider.add_span_processor(
 )
 ```
 
-## Go: Custom Resource Detector for the Collector
+## Go: Custom Resource Detector
 
-For the collector itself, you can write a custom resource detection processor:
+For a Go SDK application, you can write a custom resource detector:
 
 ```go
 // detector.go
@@ -174,14 +174,13 @@ package mydetector
 import (
     "context"
     "encoding/json"
-    "fmt"
     "net/http"
     "os"
     "time"
 
-    "go.opentelemetry.io/collector/pdata/pcommon"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 type CompanyDetector struct {
@@ -202,14 +201,19 @@ func (d *CompanyDetector) Detect(ctx context.Context) (*resource.Resource, error
     attrs := []attribute.KeyValue{}
 
     // Fetch from metadata service
-    resp, err := d.client.Get(d.metadataURL)
-    if err == nil && resp.StatusCode == 200 {
-        defer resp.Body.Close()
-        var metadata map[string]string
-        if json.NewDecoder(resp.Body).Decode(&metadata) == nil {
-            for k, v := range metadata {
-                attrs = append(attrs,
-                    attribute.String("mycompany."+k, v))
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.metadataURL, nil)
+    if err == nil {
+        resp, err := d.client.Do(req)
+        if resp != nil {
+            defer resp.Body.Close()
+        }
+        if err == nil && resp.StatusCode == 200 {
+            var metadata map[string]string
+            if json.NewDecoder(resp.Body).Decode(&metadata) == nil {
+                for k, v := range metadata {
+                    attrs = append(attrs,
+                        attribute.String("mycompany."+k, v))
+                }
             }
         }
     }
@@ -217,7 +221,7 @@ func (d *CompanyDetector) Detect(ctx context.Context) (*resource.Resource, error
     // Read environment variables
     envMappings := map[string]string{
         "DEPLOY_VERSION": "service.version",
-        "DEPLOY_ENV":     "deployment.environment",
+        "DEPLOY_ENV":     "deployment.environment.name",
     }
     for envVar, attrName := range envMappings {
         if val := os.Getenv(envVar); val != "" {
@@ -237,6 +241,7 @@ func (d *CompanyDetector) Detect(ctx context.Context) (*resource.Resource, error
 ```java
 // CompanyResourceProvider.java
 import io.opentelemetry.sdk.autoconfigure.spi.ResourceProvider;
+import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributeKey;
@@ -250,7 +255,7 @@ public class CompanyResourceProvider implements ResourceProvider {
         // Read from environment
         String deployEnv = System.getenv("DEPLOY_ENV");
         if (deployEnv != null) {
-            builder.put(AttributeKey.stringKey("deployment.environment"), deployEnv);
+            builder.put(AttributeKey.stringKey("deployment.environment.name"), deployEnv);
         }
 
         String team = System.getenv("TEAM_NAME");
@@ -280,7 +285,8 @@ Register it via `META-INF/services/io.opentelemetry.sdk.autoconfigure.spi.Resour
 
 ```python
 # test_detector.py
-from unittest.mock import patch, mock_open
+import os
+from unittest.mock import patch
 from custom_resource_detector import CompanyResourceDetector
 
 def test_detects_from_environment():
@@ -290,7 +296,7 @@ def test_detects_from_environment():
     }):
         resource = CompanyResourceDetector().detect()
         assert resource.attributes["service.version"] == "2.4.1"
-        assert resource.attributes["deployment.environment"] == "production"
+        assert resource.attributes["deployment.environment.name"] == "production"
 
 def test_graceful_when_metadata_unavailable():
     # Should not raise even if metadata service is down
