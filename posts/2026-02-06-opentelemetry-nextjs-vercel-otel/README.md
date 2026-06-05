@@ -8,13 +8,13 @@ Description: Learn how to use Vercel's official OpenTelemetry package for seamle
 
 Vercel created `@vercel/otel` to simplify OpenTelemetry integration for Next.js applications. This package provides a zero-config approach that works out of the box on Vercel's platform while remaining compatible with self-hosted deployments. Unlike manual OpenTelemetry setup, it handles edge cases specific to Next.js and Vercel's infrastructure.
 
-The package abstracts away complexity while providing sensible defaults for most applications. It automatically configures exporters, instrumentations, and resource attributes based on your deployment environment.
+The package abstracts away complexity while providing sensible defaults for most applications. It automatically configures exporters, fetch instrumentation, and resource attributes based on your deployment environment.
 
 ## When to Use @vercel/otel
 
 Choose `@vercel/otel` if you're deploying to Vercel or want a simplified setup process. The package shines when you need quick observability without diving into OpenTelemetry's configuration details.
 
-However, if you need fine-grained control over instrumentation, custom samplers, or specific exporter configurations, manual OpenTelemetry setup might be more appropriate. The `@vercel/otel` package optimizes for convenience over configurability.
+However, if you need complete control over SDK initialization, unsupported instrumentation patterns, or experimental OpenTelemetry features, manual OpenTelemetry setup might be more appropriate. The `@vercel/otel` package optimizes for convenience while still exposing common configuration hooks.
 
 ## Installation and Basic Setup
 
@@ -26,7 +26,7 @@ npm install @vercel/otel @opentelemetry/api
 
 The `@opentelemetry/api` package provides the interfaces for creating spans and accessing the tracing API, while `@vercel/otel` handles all the SDK configuration.
 
-Create your instrumentation file in the project root:
+Create your instrumentation file in the project root, or inside `src` if your Next.js app uses a `src` directory:
 
 ```typescript
 // instrumentation.ts
@@ -39,9 +39,9 @@ export function register() {
 }
 ```
 
-That's it for basic setup. The package automatically configures trace exporters, batch processors, and instrumentations for common libraries.
+That's it for basic setup. The package automatically configures trace exporters, span processors, resource attributes, and fetch instrumentation.
 
-Enable the instrumentation hook in your Next.js config:
+If you're using Next.js 13 or 14, enable the instrumentation hook in your Next.js config. This option is not required in Next.js 15 and later:
 
 ```javascript
 // next.config.js
@@ -57,15 +57,15 @@ module.exports = nextConfig;
 
 ## How @vercel/otel Works Behind the Scenes
 
-The package detects your deployment environment and configures OpenTelemetry accordingly. On Vercel, it automatically sends traces to Vercel's observability backend. In other environments, it looks for standard OpenTelemetry environment variables.
+The package detects your deployment environment and configures OpenTelemetry accordingly. On Vercel, it can use Vercel's OpenTelemetry collector when a tracing integration is configured. In other environments, it looks for standard OpenTelemetry environment variables.
 
 ```typescript
 // What @vercel/otel does internally (simplified):
 // 1. Detects if running on Vercel platform
-// 2. Configures OTLP exporter with appropriate endpoint
-// 3. Sets up auto-instrumentations for Node.js
+// 2. Configures the best trace exporter for the environment
+// 3. Sets up fetch instrumentation
 // 4. Adds resource attributes for service identification
-// 5. Initializes SDK with batch span processor
+// 5. Initializes the SDK with span processing
 ```
 
 This automatic configuration means you don't need to manually wire up exporters, processors, or instrumentations. The package handles the boilerplate.
@@ -82,13 +82,15 @@ export function register() {
   registerOTel({
     serviceName: 'my-nextjs-app',
 
-    // Control which automatic instrumentations are enabled
-    instrumentations: {
-      // Disable specific instrumentations
-      fetch: false,
+    // Control which built-in instrumentations are enabled
+    instrumentations: ['fetch'],
 
-      // All available options default to true:
-      // http, https, fetch, dns, net, fs, etc.
+    // Configure the built-in fetch instrumentation
+    instrumentationConfig: {
+      fetch: {
+        ignoreUrls: [/\/health$/, 'https://internal.example.com'],
+        propagateContextUrls: [/^https:\/\/api\.example\.com/],
+      },
     },
 
     // Add custom resource attributes
@@ -105,21 +107,20 @@ These options let you tailor the observability setup to your needs while keeping
 
 ## Environment Variables for Vercel Deployments
 
-When deploying to Vercel, add these environment variables through the Vercel dashboard:
+When deploying to Vercel, install an observability integration from the Vercel Marketplace and enable traces for that integration. If you need to send traces directly to a custom OTLP backend instead, add standard OpenTelemetry environment variables through the Vercel dashboard:
 
 ```bash
-# Required for Vercel's observability integration
+# Custom OTLP base endpoint for third-party backends
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-collector.com
 
-VERCEL_OTEL_ENABLED=1
+# Or use a trace-specific endpoint when including /v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://your-otel-collector.com/v1/traces
 
-# Optional: Custom OTLP endpoint for third-party backends
-OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-collector.com/v1/traces
-
-# Optional: Authentication headers
+# Authentication headers
 OTEL_EXPORTER_OTLP_HEADERS=x-api-key=your-api-key
 ```
 
-The `VERCEL_OTEL_ENABLED` flag tells Vercel's platform to activate its observability features. Without this, traces won't appear in Vercel's monitoring dashboard.
+For Vercel's collector, the important setup is the tracing integration and the `registerOTel` call. For a custom OTLP exporter, `OTEL_EXPORTER_OTLP_ENDPOINT` is a base URL; the OTLP HTTP exporter appends `/v1/traces` for traces. Use `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` if you want to provide the full trace endpoint yourself.
 
 ## Using with Third-Party Observability Backends
 
@@ -149,7 +150,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-us-east-0.grafana.net/otlp
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic base64-encoded-credentials
 
 # For self-hosted collectors
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 The package automatically picks up these variables and configures the exporter appropriately.
@@ -160,7 +161,7 @@ Once `@vercel/otel` is configured, use the standard OpenTelemetry API to create 
 
 ```typescript
 // app/api/users/route.ts
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 export async function GET(request: Request) {
   const tracer = trace.getTracer('users-api');
@@ -174,25 +175,32 @@ export async function GET(request: Request) {
 
       // Nested span for database query
       const users = await tracer.startActiveSpan('db.query.users', async (dbSpan) => {
-        dbSpan.setAttribute('db.system', 'postgresql');
-        dbSpan.setAttribute('db.operation', 'SELECT');
+        try {
+          dbSpan.setAttribute('db.system', 'postgresql');
+          dbSpan.setAttribute('db.operation', 'SELECT');
 
-        const result = await db.user.findMany({
-          take: 100,
-        });
+          const result = await db.user.findMany({
+            take: 100,
+          });
 
-        dbSpan.end();
-        return result;
+          dbSpan.end();
+          return result;
+        } catch (error) {
+          dbSpan.recordException(error as Error);
+          dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Database query failed' });
+          dbSpan.end();
+          throw error;
+        }
       });
 
-      span.setStatus({ code: 1 }); // OK status
+      span.setStatus({ code: SpanStatusCode.OK });
       span.end();
 
       return Response.json(users);
     } catch (error) {
       // Record exceptions in spans
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: 'Internal error' }); // ERROR status
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Internal error' });
       span.end();
 
       return Response.json({ error: 'Failed to fetch users' }, { status: 500 });
@@ -211,31 +219,54 @@ Next.js Server Actions work seamlessly with OpenTelemetry when using `@vercel/ot
 // app/actions/create-post.ts
 'use server';
 
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { revalidatePath } from 'next/cache';
 
 export async function createPost(formData: FormData) {
   const tracer = trace.getTracer('server-actions');
 
   return await tracer.startActiveSpan('create-post', async (span) => {
-    const title = formData.get('title') as string;
-    const content = formData.get('content') as string;
+    try {
+      const title = formData.get('title') as string;
+      const content = formData.get('content') as string;
 
-    span.setAttribute('post.title', title);
+      span.setAttribute('post.title', title);
 
-    // The database call is automatically instrumented
-    const post = await db.post.create({
-      data: { title, content },
-    });
+      // Wrap the database call in a span unless your database client has its own instrumentation
+      const post = await tracer.startActiveSpan('db.create.post', async (dbSpan) => {
+        try {
+          const result = await db.post.create({
+            data: { title, content },
+          });
 
-    // Track cache revalidation
-    await tracer.startActiveSpan('revalidate-cache', async (revalidateSpan) => {
-      revalidatePath('/posts');
-      revalidateSpan.end();
-    });
+          dbSpan.end();
+          return result;
+        } catch (error) {
+          dbSpan.recordException(error as Error);
+          dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Database create failed' });
+          dbSpan.end();
+          throw error;
+        }
+      });
 
-    span.end();
-    return { success: true, postId: post.id };
+      // Track cache revalidation
+      await tracer.startActiveSpan('revalidate-cache', async (revalidateSpan) => {
+        try {
+          revalidatePath('/posts');
+        } finally {
+          revalidateSpan.end();
+        }
+      });
+
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return { success: true, postId: post.id };
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Create post failed' });
+      span.end();
+      throw error;
+    }
   });
 }
 ```
@@ -244,11 +275,11 @@ Server Actions are just server-side functions, so the instrumentation works iden
 
 ## Monitoring Middleware
 
-Next.js middleware runs on every request, making it a critical area to monitor:
+Next.js middleware runs before matched requests, making it a critical area to monitor. Middleware uses the Edge runtime by default, and custom spans from Edge runtime functions are not supported. If you are on Next.js 15.5 or later and run middleware on the Node.js runtime, you can manually create spans:
 
 ```typescript
 // middleware.ts
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
@@ -277,6 +308,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   } catch (error) {
     span.recordException(error as Error);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: 'Middleware failed' });
     span.end();
     throw error;
   }
@@ -284,10 +316,11 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: '/dashboard/:path*',
+  runtime: 'nodejs',
 };
 ```
 
-Middleware traces help you understand authentication latency, redirect patterns, and early request filtering.
+Middleware spans help you understand authentication latency, redirect patterns, and early request filtering when middleware is running on the Node.js runtime. On the Edge runtime, use Vercel's built-in routing middleware observability instead of custom OpenTelemetry spans.
 
 ## Debugging Trace Export Issues
 
@@ -329,10 +362,11 @@ export function register() {
   registerOTel({
     serviceName: 'nextjs-app',
 
-    // Disable high-volume, low-value instrumentations
-    instrumentations: {
-      fs: false,  // File system operations create many spans
-      dns: false, // DNS lookups are usually not interesting
+    instrumentationConfig: {
+      fetch: {
+        // Ignore high-volume, low-value endpoints
+        ignoreUrls: [/\/health$/, /\/metrics$/],
+      },
     },
   });
 }
@@ -380,12 +414,12 @@ Speed Insights captures client-side performance metrics, while OpenTelemetry tra
 - Zero-config for Vercel deployments
 - Automatic environment detection
 - Fewer dependencies to manage
-- Guaranteed compatibility with Next.js updates
+- Maintained for Vercel and Next.js tracing integrations
 
 **Advantages of manual setup:**
-- Full control over instrumentation
-- Custom samplers and processors
-- Support for metrics and logs (not just traces)
+- Full control over SDK lifecycle
+- Direct access to any OpenTelemetry SDK feature
+- Custom metrics and logs pipelines
 - Ability to use bleeding-edge OpenTelemetry features
 
 For most teams, `@vercel/otel` provides the right balance of simplicity and functionality. Teams with complex observability requirements should consider manual setup.
@@ -394,13 +428,12 @@ For most teams, `@vercel/otel` provides the right balance of simplicity and func
 
 Before deploying with `@vercel/otel`:
 
-1. Set `VERCEL_OTEL_ENABLED=1` in production environment
-2. Configure `OTEL_EXPORTER_OTLP_ENDPOINT` for your backend
-3. Add authentication headers if required
-4. Enable sampling for high-traffic applications
-5. Test trace export in staging environment
-6. Set up alerts for missing traces or export failures
-7. Document your service name and attribute conventions
+1. Install and configure a Vercel tracing integration, or configure `OTEL_EXPORTER_OTLP_ENDPOINT` for your backend
+2. Add authentication headers if required
+3. Enable sampling for high-traffic applications
+4. Test trace export in staging environment
+5. Set up alerts for missing traces or export failures
+6. Document your service name and attribute conventions
 
 ## Advanced: Custom Trace Context Propagation
 
@@ -408,30 +441,38 @@ For distributed systems, ensure trace context propagates across service boundari
 
 ```typescript
 // app/api/external-service/route.ts
-import { trace, context, propagation } from '@opentelemetry/api';
+import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
 
 export async function GET() {
   const tracer = trace.getTracer('external-calls');
 
   return await tracer.startActiveSpan('call-external-service', async (span) => {
-    // Extract headers for propagation
-    const headers: Record<string, string> = {};
-    propagation.inject(context.active(), headers);
+    try {
+      // Inject trace context into outbound headers
+      const headers: Record<string, string> = {};
+      propagation.inject(context.active(), headers);
 
-    // Make request with trace context
-    const response = await fetch('https://api.external-service.com/data', {
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-    });
+      // Make request with trace context
+      const response = await fetch('https://api.external-service.com/data', {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    span.setAttribute('external.status', response.status);
-    span.end();
+      span.setAttribute('external.status', response.status);
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
 
-    return Response.json(data);
+      return Response.json(data);
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'External service call failed' });
+      span.end();
+      throw error;
+    }
   });
 }
 ```
