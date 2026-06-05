@@ -126,17 +126,17 @@ export OTEL_EXPORTER_OTLP_INSECURE="true"
 
 ## Preventing This in the Future
 
-Add a simple connectivity check to your deployment pipeline. You can use a Kubernetes readiness probe on the Collector that checks the health endpoint:
+Add a simple connectivity check to your deployment pipeline. If you enable the Collector's `health_check` extension, you can use a Kubernetes readiness probe on that health endpoint:
 
 ```yaml
 readinessProbe:
   httpGet:
     path: /
-    port: 13133  # Default health check extension port
+    port: 13133  # health_check extension port
   initialDelaySeconds: 5
   periodSeconds: 10
 ```
 
-This way, the Collector Service will not route traffic to a pod that is not ready to accept connections on the expected interfaces.
+This way, the Collector Service will not route traffic to a pod whose health endpoint is not reachable. To catch this specific bind-address problem before rollout, also run an explicit OTLP connectivity check from another pod, such as the `nc` command above, against the Collector Service.
 
-The key takeaway: in any multi-container or multi-pod deployment, always bind to `0.0.0.0` unless you have a specific reason to restrict access. This single configuration change will save you hours of debugging.
+The key takeaway: in any multi-container or multi-pod deployment, bind the OTLP receiver to an address that the clients can reach, such as `0.0.0.0`, unless you have a specific reason to restrict access. This single configuration change will save you hours of debugging.
