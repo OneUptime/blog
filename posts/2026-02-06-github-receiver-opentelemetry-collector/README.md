@@ -4,57 +4,64 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, GitHub, Metric, API, DevOps
 
-Description: Learn how to configure the GitHub Receiver in the OpenTelemetry Collector to collect repository metrics, workflow data, and GitHub activity.
+Description: Learn how to configure the GitHub Receiver in the OpenTelemetry Collector to collect repository metrics and GitHub Actions workflow traces.
 
 ---
 
-The GitHub Receiver collects metrics from GitHub repositories using the GitHub API. It provides visibility into repository activity, pull requests, issues, workflows, and other GitHub-specific metrics that are crucial for understanding development team performance and project health.
+The GitHub Receiver collects version control system metrics from GitHub repositories and organizations using the GitHub REST and GraphQL APIs. It can also receive GitHub Actions webhook events and convert workflow and job events into traces.
 
 For more on application metrics collection, see our guide on [metric receivers](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
 
 ## What is the GitHub Receiver?
 
-The GitHub Receiver polls the GitHub API at regular intervals to collect metrics about repositories, workflows, pull requests, issues, and contributors. It converts GitHub data into OpenTelemetry metrics that can be exported to any observability backend.
+The GitHub Receiver polls the GitHub API at regular intervals to collect metrics about repositories, pull requests, branches, and contributors. It converts GitHub data into OpenTelemetry metrics that can be exported to any observability backend.
 
 ```mermaid
 graph LR
     A[GitHub API] -->|Poll Metrics| B[GitHub Receiver]
-    B -->|Repository Metrics| C[Metric Pipeline]
-    B -->|Workflow Metrics| C
-    B -->|PR/Issue Metrics| C
+    B -->|VCS Metrics| C[Metric Pipeline]
     C --> D[Processors]
     D --> E[Exporters]
     E --> F[Backend]
 ```
 
 Key metrics include:
-- Repository size, stars, forks, watchers
-- Pull request counts and merge times
-- Issue counts by state and label
-- Workflow run duration and success rates
-- Contributor activity
+- Repository count
+- Pull request counts by state
+- Pull request age and time to merge
+- Branch count, age, line deltas, and revision deltas
+- Contributor count
 
 ## Basic Configuration
 
-Start with a minimal configuration to collect repository metrics.
+Start with a minimal configuration to collect repository metrics. Use `github_org` to specify the organization or user, and use `search_query` to narrow collection to one repository.
 
 ```yaml
+extensions:
+  bearertokenauth/github:
+    token: ${env:GH_PAT}
+
 receivers:
   github:
-    # GitHub repository to monitor (org/repo format)
-    repository: "open-telemetry/opentelemetry-collector"
+    # How often to scrape metrics. The default is 30s; 300s is recommended.
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        # GitHub organization or username to monitor
+        github_org: open-telemetry
 
-    # GitHub personal access token
-    token: ${env:GITHUB_TOKEN}
+        # Optional: narrow collection to a single repository
+        search_query: "repo:open-telemetry/opentelemetry-collector"
 
-    # How often to scrape metrics
-    collection_interval: 5m
+        auth:
+          authenticator: bearertokenauth/github
 
 exporters:
   debug:
     verbosity: detailed
 
 service:
+  extensions: [bearertokenauth/github]
   pipelines:
     metrics:
       receivers: [github]
@@ -63,108 +70,159 @@ service:
 
 ## Authentication
 
-The GitHub Receiver requires authentication to access the GitHub API.
+The GitHub Receiver can make anonymous API calls for public data, but authenticated requests are recommended because anonymous calls are more limited and may be rate limited sooner.
 
 ### Personal Access Token
 
-Create a personal access token with appropriate permissions.
+Create a personal access token with read access to the repositories you want to scrape, then pass it through the `bearertokenauth` extension.
 
 ```yaml
+extensions:
+  bearertokenauth/github:
+    token: ${env:GH_PAT}
+
 receivers:
   github:
-    repository: "myorg/myrepo"
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
+        auth:
+          authenticator: bearertokenauth/github
 
-    # Token from environment variable (recommended)
-    token: ${env:GITHUB_TOKEN}
+exporters:
+  debug:
+    verbosity: detailed
 
-    collection_interval: 5m
+service:
+  extensions: [bearertokenauth/github]
+  pipelines:
+    metrics:
+      receivers: [github]
+      exporters: [debug]
 ```
 
 **Creating a GitHub Token:**
 
-1. Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)
-2. Click "Generate new token (classic)"
-3. Select scopes:
-   - `repo` - Full control of private repositories (for private repos)
-   - `public_repo` - Access public repositories (for public repos only)
-   - `workflow` - Access Actions workflows
+1. Go to GitHub Settings > Developer settings > Personal access tokens
+2. Generate a fine-grained token or a classic token
+3. Grant read access to the target repositories
 4. Generate token and save it securely
-5. Set environment variable: `export GITHUB_TOKEN=ghp_your_token_here`
+5. Set environment variable: `export GH_PAT=github_pat_your_token_here`
 
-### GitHub App Authentication
+### GitHub App Webhook Events
 
-For production, use GitHub App for better rate limits and security.
+The receiver does not use an inline `github_app` block for metric scraping. GitHub App setup is used when receiving GitHub Actions webhook events for traces. Subscribe the app or webhook to `workflow_run` and `workflow_job` events.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
+    webhook:
+      endpoint: localhost:19418
+      path: /events
+      health_path: /health
+      secret: ${env:SECRET_STRING_VAR}
+      service_name: github-actions
+    scrapers:
+      scraper:
+        github_org: myorg
 
-    # GitHub App authentication
-    github_app:
-      # App ID from GitHub App settings
-      app_id: 123456
+exporters:
+  otlp:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
-      # Installation ID (find in app installations)
-      installation_id: 789012
-
-      # Private key file path
-      private_key_file: /etc/collector/github-app-key.pem
-
-    collection_interval: 5m
+service:
+  pipelines:
+    traces:
+      receivers: [github]
+      exporters: [otlp]
 ```
 
 **Creating a GitHub App:**
 
 1. Go to Organization Settings > Developer settings > GitHub Apps
 2. Click "New GitHub App"
-3. Set permissions:
-   - Repository permissions: Contents (read), Pull requests (read), Issues (read), Actions (read)
-4. Generate and download private key
-5. Install app to your organization
-6. Note App ID and Installation ID
+3. Subscribe to the `workflow_run` and `workflow_job` webhook events
+4. Configure the webhook URL to point to the receiver endpoint and path
+5. Set a webhook secret and configure the same value in the receiver
+6. Install the app to your organization
 
 ## Repository Configuration
 
-Monitor single or multiple repositories.
+Monitor single or multiple repositories by configuring the scraper's `github_org` and `search_query`.
 
 ### Single Repository
 
 ```yaml
+extensions:
+  bearertokenauth/github:
+    token: ${env:GH_PAT}
+
 receivers:
   github:
-    # Single repository
-    repository: "open-telemetry/opentelemetry-collector"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: open-telemetry
+        search_query: "repo:open-telemetry/opentelemetry-collector"
+        auth:
+          authenticator: bearertokenauth/github
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [bearertokenauth/github]
+  pipelines:
+    metrics:
+      receivers: [github]
+      exporters: [debug]
 ```
 
 ### Multiple Repositories
 
-Use multiple receiver instances for different repositories.
+Use multiple receiver instances for different repository groups.
 
 ```yaml
+extensions:
+  bearertokenauth/github:
+    token: ${env:GH_PAT}
+
 receivers:
   # Monitor main application repo
   github/app:
-    repository: "myorg/application"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/application"
+        auth:
+          authenticator: bearertokenauth/github
 
   # Monitor infrastructure repo
   github/infra:
-    repository: "myorg/infrastructure"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 10m
+    collection_interval: 600s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/infrastructure"
+        auth:
+          authenticator: bearertokenauth/github
 
   # Monitor public docs repo
   github/docs:
-    repository: "myorg/documentation"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 15m
+    collection_interval: 900s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/documentation"
+        auth:
+          authenticator: bearertokenauth/github
 
 processors:
-  # Add repository name as resource attribute
+  # Add source as a resource attribute
   resource/github:
     attributes:
       - key: source
@@ -176,6 +234,7 @@ exporters:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
 service:
+  extensions: [bearertokenauth/github]
   pipelines:
     metrics:
       receivers: [github/app, github/infra, github/docs]
@@ -185,107 +244,89 @@ service:
 
 ## Metrics Configuration
 
-Configure which metrics to collect.
+Configure which metrics to collect. The current receiver emits VCS semantic convention metrics instead of `github.*` metric names.
 
 ### All Metrics
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Collect all available metrics
-    metrics:
-      github.repository.count:
-        enabled: true
-      github.repository.stars:
-        enabled: true
-      github.repository.forks:
-        enabled: true
-      github.repository.watchers:
-        enabled: true
-      github.repository.open_issues:
-        enabled: true
-      github.repository.open_pull_requests:
-        enabled: true
-      github.repository.size:
-        enabled: true
-      github.pull_request.time_to_merge:
-        enabled: true
-      github.pull_request.time_open:
-        enabled: true
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
+        # Enable optional metrics and keep default metrics enabled
+        metrics:
+          vcs.change.count:
+            enabled: true
+          vcs.change.duration:
+            enabled: true
+          vcs.change.time_to_approval:
+            enabled: true
+          vcs.change.time_to_merge:
+            enabled: true
+          vcs.ref.count:
+            enabled: true
+          vcs.ref.lines_delta:
+            enabled: true
+          vcs.ref.revisions_delta:
+            enabled: true
+          vcs.ref.time:
+            enabled: true
+          vcs.repository.count:
+            enabled: true
+          vcs.contributor.count:
+            enabled: true
 ```
 
 ### Selective Metrics
 
-Enable only specific metrics to reduce API calls.
+Disable individual default metrics when you do not need them.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Enable only PR and workflow metrics
-    metrics:
-      github.pull_request.time_to_merge:
-        enabled: true
-      github.pull_request.time_open:
-        enabled: true
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
-
-      # Disable repository metadata metrics
-      github.repository.stars:
-        enabled: false
-      github.repository.forks:
-        enabled: false
+        metrics:
+          vcs.contributor.count:
+            enabled: true
+          vcs.ref.lines_delta:
+            enabled: false
+          vcs.ref.revisions_delta:
+            enabled: false
 ```
 
 ## Workflow Metrics
 
-Collect detailed metrics about GitHub Actions workflows.
+GitHub Actions workflow data is received as traces from webhook events, not as scraper metrics. Use the `webhook` block to collect workflow and job traces.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
-
-    # Enable workflow metrics
-    metrics:
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
-
-    # Specify workflows to monitor (optional)
-    workflows:
-      - name: "CI"
-      - name: "Deploy to Production"
-      - name: "Run Tests"
+    webhook:
+      endpoint: localhost:19418
+      path: /events
+      health_path: /health
+      secret: ${env:SECRET_STRING_VAR}
+      service_name: github-actions
+    scrapers:
+      scraper:
+        github_org: myorg
 
 processors:
   # Add workflow context
-  transform/workflows:
-    metric_statements:
-      - context: metric
-        statements:
-          # Add repository name
-          - set(resource.attributes["repository"], "myorg/myrepo")
-
-          # Add organization name
-          - set(resource.attributes["organization"], "myorg")
+  resource/workflows:
+    attributes:
+      - key: vcs.owner.name
+        value: myorg
+        action: upsert
 
 exporters:
   otlp:
@@ -293,9 +334,9 @@ exporters:
 
 service:
   pipelines:
-    metrics:
+    traces:
       receivers: [github]
-      processors: [transform/workflows]
+      processors: [resource/workflows]
       exporters: [otlp]
 ```
 
@@ -306,47 +347,29 @@ Track pull request metrics to understand code review efficiency.
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Enable PR metrics
-    metrics:
-      github.pull_request.count:
-        enabled: true
-      github.pull_request.time_to_merge:
-        enabled: true
-      github.pull_request.time_open:
-        enabled: true
-      github.pull_request.commits:
-        enabled: true
-      github.pull_request.changed_files:
-        enabled: true
-
-    # Filter PRs (optional)
-    pull_requests:
-      # Only track PRs with these labels
-      labels:
-        - "bug"
-        - "feature"
-        - "hotfix"
-
-      # Only track PRs in these states
-      states:
-        - "open"
-        - "closed"
+        metrics:
+          vcs.change.count:
+            enabled: true
+          vcs.change.duration:
+            enabled: true
+          vcs.change.time_to_approval:
+            enabled: true
+          vcs.change.time_to_merge:
+            enabled: true
 
 processors:
-  # Calculate additional PR metrics
-  transform/pr_metrics:
-    metric_statements:
-      - context: metric
-        statements:
-          # Tag by PR state
-          - set(attributes["pr.state"], attributes["state"]) where attributes["state"] != nil
-
-          # Tag by PR labels
-          - set(attributes["pr.has_bug_label"], true) where attributes["labels"] != nil and "bug" in attributes["labels"]
+  # Add repository context
+  resource/pr_metrics:
+    attributes:
+      - key: repository.group
+        value: application
+        action: upsert
 
 exporters:
   otlp:
@@ -356,110 +379,54 @@ service:
   pipelines:
     metrics:
       receivers: [github]
-      processors: [transform/pr_metrics]
+      processors: [resource/pr_metrics]
       exporters: [otlp]
 ```
 
 ## Issue Metrics
 
-Monitor issue activity and resolution times.
+The GitHub Receiver does not expose issue-specific metrics. Use pull request and branch metrics from the receiver, or use another GitHub integration if you need issue state, label, and resolution metrics.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Enable issue metrics
-    metrics:
-      github.issue.count:
-        enabled: true
-      github.issue.time_to_close:
-        enabled: true
-      github.issue.time_open:
-        enabled: true
-
-    # Filter issues
-    issues:
-      # Only track issues with these labels
-      labels:
-        - "bug"
-        - "enhancement"
-        - "documentation"
-
-      # Only track issues in these states
-      states:
-        - "open"
-        - "closed"
-
-      # Exclude pull requests
-      exclude_pull_requests: true
-
-processors:
-  # Group issues by label
-  transform/issues:
-    metric_statements:
-      - context: metric
-        statements:
-          # Extract primary label
-          - set(attributes["issue.type"], "bug") where attributes["labels"] != nil and "bug" in attributes["labels"]
-          - set(attributes["issue.type"], "enhancement") where attributes["labels"] != nil and "enhancement" in attributes["labels"]
-          - set(attributes["issue.type"], "documentation") where attributes["labels"] != nil and "documentation" in attributes["labels"]
-          - set(attributes["issue.type"], "other") where attributes["issue.type"] == nil
-
-exporters:
-  otlp:
-    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
-
-service:
-  pipelines:
-    metrics:
-      receivers: [github]
-      processors: [transform/issues]
-      exporters: [otlp]
+        metrics:
+          vcs.change.count:
+            enabled: true
+          vcs.change.duration:
+            enabled: true
 ```
 
 ## Contributor Metrics
 
-Track contributor activity and engagement.
+Track contributor activity and engagement with the optional `vcs.contributor.count` metric.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Enable contributor metrics
-    metrics:
-      github.contributor.count:
-        enabled: true
-      github.contributor.commits:
-        enabled: true
-      github.contributor.additions:
-        enabled: true
-      github.contributor.deletions:
-        enabled: true
-
-    # Timeframe for contributor stats
-    contributor_stats:
-      # Look back period
-      lookback: 30d
-
-      # Minimum commits to be counted as active contributor
-      min_commits: 1
+        metrics:
+          vcs.contributor.count:
+            enabled: true
 
 processors:
-  # Add contributor segments
-  transform/contributors:
-    metric_statements:
-      - context: metric
-        statements:
-          # Segment contributors by commit count
-          - set(attributes["contributor.segment"], "core") where attributes["commits"] != nil and attributes["commits"] >= 50
-          - set(attributes["contributor.segment"], "regular") where attributes["commits"] != nil and attributes["commits"] >= 10 and attributes["commits"] < 50
-          - set(attributes["contributor.segment"], "occasional") where attributes["commits"] != nil and attributes["commits"] < 10
+  # Add contributor metric context
+  resource/contributors:
+    attributes:
+      - key: repository.group
+        value: application
+        action: upsert
 
 exporters:
   otlp:
@@ -469,20 +436,22 @@ service:
   pipelines:
     metrics:
       receivers: [github]
-      processors: [transform/contributors]
+      processors: [resource/contributors]
       exporters: [otlp]
 ```
 
 Resource Attributes
 
-Add contextual information to collected metrics.
+Add contextual information to collected metrics. The receiver emits `vcs.owner.name` and `vcs.provider.name` as resource attributes, and repository details such as `vcs.repository.name` and `vcs.repository.url.full` as metric attributes.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
 processors:
   # Add resource attributes
@@ -491,16 +460,6 @@ processors:
       # Source identifier
       - key: source
         value: github
-        action: upsert
-
-      # Repository info
-      - key: github.repository
-        value: myorg/myrepo
-        action: upsert
-
-      # Organization
-      - key: github.organization
-        value: myorg
         action: upsert
 
       # Environment
@@ -537,32 +496,25 @@ Handle GitHub API rate limits effectively.
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
+    # Adjust collection interval based on rate limits.
+    # The default is 30s; 300s is a sensible starting point.
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/myrepo"
 
-    # Adjust collection interval based on rate limits
-    # GitHub allows 5,000 requests/hour for authenticated users
-    # Adjust interval to stay under limit
-    collection_interval: 5m
+        # Optional: keep concurrent requests below GitHub's secondary limit
+        concurrency_limit: 50
 
-    # Timeout for API requests
-    timeout: 30s
-
-    # Retry configuration for rate limit errors
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 5m
-
-processors:
-  # Add rate limit metrics
-  transform/rate_limits:
-    metric_statements:
-      - context: metric
-        statements:
-          # Track remaining API calls (if exposed by receiver)
-          - set(attributes["github.rate_limit.remaining"], attributes["rate_limit_remaining"]) where attributes["rate_limit_remaining"] != nil
+        # Optional: retry transient GitHub API errors
+        retry_on_failure:
+          enabled: true
+          max_retries: 10
+          initial_interval: 1s
+          max_interval: 30s
+          multiplier: 1.5
+          randomization_factor: 0.5
 
 exporters:
   otlp:
@@ -572,7 +524,6 @@ service:
   pipelines:
     metrics:
       receivers: [github]
-      processors: [transform/rate_limits]
       exporters: [otlp]
 ```
 
@@ -581,41 +532,55 @@ service:
 Monitor repositories across multiple organizations.
 
 ```yaml
+extensions:
+  bearertokenauth/org1:
+    token: ${env:GH_PAT_ORG1}
+  bearertokenauth/org2:
+    token: ${env:GH_PAT_ORG2}
+  bearertokenauth/public:
+    token: ${env:GH_PAT_PUBLIC}
+
 receivers:
   # Organization 1 - Main product
   github/org1_app:
-    repository: "org1/application"
-    token: ${env:GITHUB_TOKEN_ORG1}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: org1
+        search_query: "repo:org1/application"
+        auth:
+          authenticator: bearertokenauth/org1
 
   github/org1_api:
-    repository: "org1/api"
-    token: ${env:GITHUB_TOKEN_ORG1}
-    collection_interval: 5m
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: org1
+        search_query: "repo:org1/api"
+        auth:
+          authenticator: bearertokenauth/org1
 
   # Organization 2 - Infrastructure
   github/org2_infra:
-    repository: "org2/infrastructure"
-    token: ${env:GITHUB_TOKEN_ORG2}
-    collection_interval: 10m
+    collection_interval: 600s
+    scrapers:
+      scraper:
+        github_org: org2
+        search_query: "repo:org2/infrastructure"
+        auth:
+          authenticator: bearertokenauth/org2
 
-  # Public repositories (different token)
+  # Public repositories
   github/public_docs:
-    repository: "publicorg/documentation"
-    token: ${env:GITHUB_TOKEN_PUBLIC}
-    collection_interval: 15m
+    collection_interval: 900s
+    scrapers:
+      scraper:
+        github_org: publicorg
+        search_query: "repo:publicorg/documentation"
+        auth:
+          authenticator: bearertokenauth/public
 
 processors:
-  # Add organization context
-  transform/orgs:
-    metric_statements:
-      - context: metric
-        statements:
-          # Extract org from repository attribute
-          - set(attributes["organization"], "org1") where resource.attributes["github.repository"] matches "^org1/"
-          - set(attributes["organization"], "org2") where resource.attributes["github.repository"] matches "^org2/"
-          - set(attributes["organization"], "publicorg") where resource.attributes["github.repository"] matches "^publicorg/"
-
   # Add batch processing
   batch:
     timeout: 10s
@@ -626,87 +591,99 @@ exporters:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
 service:
+  extensions: [bearertokenauth/org1, bearertokenauth/org2, bearertokenauth/public]
   pipelines:
     metrics:
       receivers: [github/org1_app, github/org1_api, github/org2_infra, github/public_docs]
-      processors: [transform/orgs, batch]
+      processors: [batch]
       exporters: [otlp]
 ```
 
 ## Complete Production Example
 
-Full configuration with all features for production use.
+Full configuration with supported metric scraping and workflow tracing.
 
 ```yaml
+extensions:
+  bearertokenauth/github:
+    token: ${env:GH_PAT}
+
+  # Health check
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Performance profiling
+  pprof:
+    endpoint: 0.0.0.0:1777
+
 receivers:
-  # Main application repository
+  # Main application repository metrics
   github/app:
-    repository: "myorg/application"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 5m
-    timeout: 30s
+    collection_interval: 300s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/application"
+        concurrency_limit: 50
+        merged_pr_lookback_days: 30
+        auth:
+          authenticator: bearertokenauth/github
 
-    # Enable all relevant metrics
-    metrics:
-      # Repository metrics
-      github.repository.stars:
-        enabled: true
-      github.repository.forks:
-        enabled: true
-      github.repository.open_issues:
-        enabled: true
-      github.repository.open_pull_requests:
-        enabled: true
+        metrics:
+          vcs.change.count:
+            enabled: true
+          vcs.change.duration:
+            enabled: true
+          vcs.change.time_to_approval:
+            enabled: true
+          vcs.change.time_to_merge:
+            enabled: true
+          vcs.ref.count:
+            enabled: true
+          vcs.ref.time:
+            enabled: true
+          vcs.repository.count:
+            enabled: true
+          vcs.contributor.count:
+            enabled: true
 
-      # PR metrics
-      github.pull_request.count:
-        enabled: true
-      github.pull_request.time_to_merge:
-        enabled: true
-      github.pull_request.time_open:
-        enabled: true
+        retry_on_failure:
+          enabled: true
+          max_retries: 10
+          initial_interval: 1s
+          max_interval: 30s
+          multiplier: 1.5
+          randomization_factor: 0.5
 
-      # Workflow metrics
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
-
-      # Issue metrics
-      github.issue.count:
-        enabled: true
-      github.issue.time_to_close:
-        enabled: true
-
-      # Contributor metrics
-      github.contributor.count:
-        enabled: true
-      github.contributor.commits:
-        enabled: true
-
-    # Retry on rate limits
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 5m
-
-  # Infrastructure repository
+  # Infrastructure repository metrics
   github/infra:
-    repository: "myorg/infrastructure"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 10m
-    timeout: 30s
+    collection_interval: 600s
+    scrapers:
+      scraper:
+        github_org: myorg
+        search_query: "repo:myorg/infrastructure"
+        auth:
+          authenticator: bearertokenauth/github
 
-    metrics:
-      github.repository.open_pull_requests:
-        enabled: true
-      github.pull_request.time_to_merge:
-        enabled: true
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
+        metrics:
+          vcs.change.count:
+            enabled: true
+          vcs.change.time_to_merge:
+            enabled: true
+          vcs.ref.count:
+            enabled: true
+
+  # GitHub Actions workflow traces
+  github/actions:
+    webhook:
+      endpoint: 0.0.0.0:19418
+      path: /events
+      health_path: /health
+      secret: ${env:GITHUB_WEBHOOK_SECRET}
+      service_name: github-actions
+    scrapers:
+      scraper:
+        github_org: myorg
 
 processors:
   # Add resource attributes
@@ -721,33 +698,6 @@ processors:
       - key: collector.name
         value: ${env:HOSTNAME}
         action: upsert
-
-  # Add repository-specific tags
-  transform/tags:
-    metric_statements:
-      - context: metric
-        statements:
-          # Extract repository name from resource
-          - set(attributes["repository.name"], resource.attributes["github.repository"])
-
-          # Tag by repository type
-          - set(attributes["repository.type"], "application") where resource.attributes["github.repository"] == "myorg/application"
-          - set(attributes["repository.type"], "infrastructure") where resource.attributes["github.repository"] == "myorg/infrastructure"
-
-  # Calculate derived metrics
-  transform/derived:
-    metric_statements:
-      - context: metric
-        statements:
-          # Calculate PR merge rate (if supported)
-          - set(attributes["pr.merge_rate"], attributes["merged_prs"] / attributes["total_prs"]) where attributes["merged_prs"] != nil and attributes["total_prs"] != nil and attributes["total_prs"] > 0
-
-  # Filter to only production-relevant metrics
-  filter/production:
-    metrics:
-      metric:
-        # Only include metrics from main app in production
-        - resource.attributes["github.repository"] == "myorg/application" or IsMatch(resource.attributes["github.repository"], ".*infrastructure.*")
 
   # Batch for efficiency
   batch:
@@ -769,76 +719,53 @@ exporters:
     const_labels:
       environment: ${env:ENVIRONMENT}
 
-extensions:
-  # Health check
-  health_check:
-    endpoint: 0.0.0.0:13133
-
-  # Performance profiling
-  pprof:
-    endpoint: 0.0.0.0:1777
-
 service:
-  extensions: [health_check, pprof]
+  extensions: [bearertokenauth/github, health_check, pprof]
 
   pipelines:
     metrics:
       receivers: [github/app, github/infra]
-      processors: [resource/github, transform/tags, transform/derived, filter/production, batch]
+      processors: [resource/github, batch]
       exporters: [otlp, prometheus]
+
+    traces:
+      receivers: [github/actions]
+      processors: [resource/github, batch]
+      exporters: [otlp]
 
   telemetry:
     logs:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      level: normal
 ```
 
 ## Monitoring GitHub Actions Workflows
 
-Focus on CI/CD pipeline health.
+Focus on CI/CD pipeline health by receiving GitHub Actions webhook traces.
 
 ```yaml
 receivers:
   github:
-    repository: "myorg/myrepo"
-    token: ${env:GITHUB_TOKEN}
-    collection_interval: 2m  # More frequent for CI/CD monitoring
-
-    metrics:
-      # Focus on workflow metrics
-      github.workflow.run.duration:
-        enabled: true
-      github.workflow.run.count:
-        enabled: true
-      github.workflow.job.duration:
-        enabled: true
-      github.workflow.job.count:
-        enabled: true
-
-    # Specify workflows
-    workflows:
-      - name: "CI"
-      - name: "Deploy to Staging"
-      - name: "Deploy to Production"
-      - name: "Security Scan"
+    webhook:
+      endpoint: 0.0.0.0:19418
+      path: /events
+      health_path: /health
+      secret: ${env:GITHUB_WEBHOOK_SECRET}
+      service_name: github-actions
+      include_span_events: true
+    scrapers:
+      scraper:
+        github_org: myorg
 
 processors:
-  # Calculate workflow success rate
-  transform/workflow_health:
-    metric_statements:
-      - context: metric
-        statements:
-          # Tag by workflow status
-          - set(attributes["workflow.status"], attributes["conclusion"]) where attributes["conclusion"] != nil
-
-          # Tag by workflow name
-          - set(attributes["workflow.name"], attributes["name"]) where attributes["name"] != nil
-
-          # Calculate if workflow is healthy (< 5 min duration)
-          - set(attributes["workflow.healthy"], true) where attributes["duration_ms"] != nil and attributes["duration_ms"] < 300000
-          - set(attributes["workflow.healthy"], false) where attributes["duration_ms"] != nil and attributes["duration_ms"] >= 300000
+  # Add workflow context
+  resource/workflow_health:
+    attributes:
+      - key: ci.provider
+        value: github-actions
+        action: upsert
 
 exporters:
   otlp:
@@ -846,9 +773,9 @@ exporters:
 
 service:
   pipelines:
-    metrics:
+    traces:
       receivers: [github]
-      processors: [transform/workflow_health]
+      processors: [resource/workflow_health]
       exporters: [otlp]
 ```
 
@@ -856,13 +783,14 @@ service:
 
 | Feature | Configuration |
 |---------|--------------|
-| **Authentication** | Personal access token or GitHub App |
-| **Repositories** | Single or multiple repos |
-| **Metrics** | Repository, PR, issue, workflow, contributor |
-| **Rate Limiting** | Retry and interval adjustment |
-| **Resource Attributes** | Organization, team, environment context |
-| **Processing** | Transform, filter, derived metrics |
+| **Authentication** | Personal access token through `bearertokenauth` |
+| **Repositories** | `github_org` with optional `search_query` |
+| **Metrics** | VCS repository, PR, branch, and contributor metrics |
+| **Workflow Telemetry** | GitHub Actions webhook events as traces |
+| **Rate Limiting** | Collection interval, concurrency limit, and retry settings |
+| **Resource Attributes** | Owner, provider, team, and environment context |
+| **Processing** | Resource, batch, and other metric processors |
 
-The GitHub Receiver provides comprehensive visibility into repository activity and development team performance. By collecting metrics on pull requests, issues, workflows, and contributors, you can track development velocity, code review efficiency, and CI/CD pipeline health. Combined with processors, you can create dashboards and alerts that help teams improve their development processes.
+The GitHub Receiver provides visibility into repository activity and development team performance. By collecting VCS metrics on pull requests, branches, repositories, and contributors, and by receiving GitHub Actions events as traces, you can track development velocity, code review efficiency, and CI/CD pipeline health. Combined with processors, you can create dashboards and alerts that help teams improve their development processes.
 
 For more on metric collection and processing, see our guides on [Prometheus receiver](https://oneuptime.com/blog/post/2026-02-06-configure-prometheus-receiver-opentelemetry-collector/view) and [metric processors](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view).
