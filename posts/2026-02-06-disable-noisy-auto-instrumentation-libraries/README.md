@@ -19,7 +19,7 @@ Before disabling anything, check which instrumentation libraries are generating 
 ```sql
 -- Find which instrumentation libraries generate the most spans
 SELECT
-    attributes['otel.library.name'] AS library,
+    attributes['otel.scope.name'] AS library,
     count() AS span_count,
     round(count() * 100.0 / (SELECT count() FROM otel_traces WHERE Timestamp > now() - INTERVAL 1 HOUR), 2) AS percentage
 FROM otel_traces
@@ -49,7 +49,7 @@ Use the `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` environment variable to turn off
 # Disable specific auto-instrumentation libraries via environment variable
 
 # Comma-separated list of instrumentor names (without the opentelemetry-instrumentation- prefix)
-export OTEL_PYTHON_DISABLED_INSTRUMENTATIONS="urllib3,requests,system-metrics,threading"
+export OTEL_PYTHON_DISABLED_INSTRUMENTATIONS="urllib3,requests,system_metrics"
 
 # Run your service with the remaining instrumentations active
 opentelemetry-instrument python app.py
@@ -80,22 +80,25 @@ from opentelemetry.instrumentation.redis import RedisInstrumentor
 # Enable Flask HTTP server instrumentation
 FlaskInstrumentor().instrument()
 
-# Enable SQLAlchemy with a filter to skip health check queries
+# Enable SQLAlchemy database query tracing
 SQLAlchemyInstrumentor().instrument()
 
-# Enable Redis but skip PING commands
-RedisInstrumentor().instrument(
-    # Only trace commands that are not health checks
-    request_hook=lambda span, conn, args: (
-        span.set_attribute("db.redis.command", args[0])
-        if args[0] not in ("PING", "INFO", "CONFIG")
-        else span.update_name("redis-internal")
-    ),
-)
+# Enable Redis and label health-check commands so they are easy to filter later
+def redis_request_hook(span, conn, args, kwargs):
+    if not span or not span.is_recording() or not args:
+        return
+
+    command = str(args[0]).upper()
+    span.set_attribute("db.redis.command", command)
+    if command in ("PING", "INFO", "CONFIG"):
+        span.update_name("redis-internal")
+
+
+RedisInstrumentor().instrument(request_hook=redis_request_hook)
 
 # Deliberately NOT enabling:
 # - urllib3 instrumentation (creates spans for every outgoing HTTP call including health checks)
-# - threading instrumentation (creates spans for every thread operation)
+# - threading instrumentation (propagates context but does not create spans by itself)
 # - logging instrumentation (can create circular dependencies)
 ```
 
@@ -177,17 +180,18 @@ These environment variables control which Java instrumentations are active:
 
 export OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED=true
 
-# Disable JDBC internal spans (keep the top-level query span)
-export OTEL_INSTRUMENTATION_JDBC_STATEMENT_ENABLED=false
+# Disable DataSource#getConnection spans if that instrumentation is enabled
+export OTEL_INSTRUMENTATION_JDBC_DATASOURCE_ENABLED=false
 
 # Disable internal JVM threading spans
-export OTEL_INSTRUMENTATION_EXECUTOR_ENABLED=false
+export OTEL_INSTRUMENTATION_EXECUTORS_ENABLED=false
 
-# Disable Java NIO file system spans
-export OTEL_INSTRUMENTATION_JAVA_NIO_ENABLED=false
+# Disable low-level Netty spans when a higher-level client/server span is enough
+export OTEL_INSTRUMENTATION_NETTY_ENABLED=false
 
-# Disable internal servlet filter spans (keep the top-level HTTP span)
-export OTEL_INSTRUMENTATION_SERVLET_FILTER_ENABLED=false
+# Disable controller/view internal spans from supported web frameworks
+export OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED=false
+export OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_VIEW_TELEMETRY_ENABLED=false
 
 # Run the service with the Java agent
 java -javaagent:opentelemetry-javaagent.jar \
@@ -205,14 +209,14 @@ otel.instrumentation.spring-web.enabled=true
 otel.instrumentation.spring-webmvc.enabled=true
 otel.instrumentation.jdbc.enabled=true
 otel.instrumentation.jedis.enabled=true
-otel.instrumentation.kafka-clients.enabled=true
+otel.instrumentation.kafka.enabled=true
 
 # Disable these (low value, high volume)
-otel.instrumentation.java-net.enabled=false
-otel.instrumentation.reactor-core.enabled=false
+otel.instrumentation.netty.enabled=false
+otel.instrumentation.reactor.enabled=false
 otel.instrumentation.reactor-netty.enabled=false
 otel.instrumentation.rxjava.enabled=false
-otel.instrumentation.executor.enabled=false
+otel.instrumentation.executors.enabled=false
 ```
 
 ## Measuring the Impact
