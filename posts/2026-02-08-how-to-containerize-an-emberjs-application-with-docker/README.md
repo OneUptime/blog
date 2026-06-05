@@ -91,7 +91,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ## Nginx Configuration
 
-Ember.js uses the Ember Router for client-side routing. By default, it operates in hash mode, but most production apps use the `history` location type. Nginx must handle this correctly.
+Ember.js uses the Ember Router for client-side routing. Ember CLI configures the router to use the `history` location type by default. Nginx must handle this correctly.
 
 This config routes unknown paths back to index.html:
 
@@ -135,7 +135,6 @@ tmp
 .gitignore
 .vscode
 *.md
-.ember-cli
 .env*
 ```
 
@@ -164,8 +163,6 @@ A Compose file makes it easier to manage the container lifecycle.
 This Compose file defines the Ember.js service:
 
 ```yaml
-version: "3.8"
-
 services:
   ember-app:
     build:
@@ -207,14 +204,12 @@ EXPOSE 4200
 EXPOSE 7020
 
 # Run Ember's dev server with live reload, binding to all interfaces
-CMD ["npx", "ember", "serve", "--host", "0.0.0.0"]
+CMD ["npx", "ember", "serve", "--host", "0.0.0.0", "--live-reload-port", "7020"]
 ```
 
 And a development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   ember-dev:
     build:
@@ -231,7 +226,7 @@ services:
       - EMBER_CLI_UPDATE_CHECK=false
 ```
 
-Port 7020 is the default live reload port. Make sure it is exposed so your browser can pick up file changes.
+Port 7020 is the live reload port configured in `Dockerfile.dev`. Make sure it is exposed so your browser can pick up file changes.
 
 ## Environment Configuration
 
@@ -301,19 +296,23 @@ This adds roughly 100MB to the build stage, but it does not affect the final pro
 
 Run your test suite inside Docker to catch issues early.
 
-Execute tests in a one-off container:
-
-```bash
-# Run the Ember test suite inside a container
-docker run --rm my-ember-app:build npx ember test
-```
-
-Alternatively, add a test stage to your Dockerfile:
+Build an optional test stage:
 
 ```dockerfile
 # Optional test stage
 FROM build AS test
+
+# Ember CLI runs tests in Headless Chrome by default
+RUN apk add --no-cache chromium
+ENV CHROME_BIN=/usr/bin/chromium-browser
+
 RUN npx ember test
+```
+
+Run the test stage with:
+
+```bash
+docker build --target test -t my-ember-app:test .
 ```
 
 If tests fail, the Docker build fails, preventing broken code from reaching the production image.
