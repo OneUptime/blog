@@ -33,10 +33,13 @@ Initialize the OpenTelemetry SDK in your Django settings or a dedicated configur
 ```python
 # myproject/telemetry.py
 
-from opentelemetry import trace
+from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 
 def initialize_telemetry():
@@ -52,18 +55,26 @@ def initialize_telemetry():
     # Set up the tracer provider
     provider = TracerProvider(resource=resource)
 
-    # Configure OTLP exporter to send traces to your backend
-    otlp_exporter = OTLPSpanExporter(
+    # Configure OTLP exporters to send telemetry to your backend
+    trace_exporter = OTLPSpanExporter(
         endpoint="https://oneuptime.com/otlp/v1/traces",
-        headers={"x-oneuptime-service-token": "your-token-here"}
+        headers={"x-oneuptime-token": "your-token-here"}
     )
 
     # Use BatchSpanProcessor for async export with batching
-    processor = BatchSpanProcessor(otlp_exporter)
+    processor = BatchSpanProcessor(trace_exporter)
     provider.add_span_processor(processor)
 
     # Set as global tracer provider
     trace.set_tracer_provider(provider)
+
+    metric_exporter = OTLPMetricExporter(
+        endpoint="https://oneuptime.com/otlp/v1/metrics",
+        headers={"x-oneuptime-token": "your-token-here"}
+    )
+    metric_reader = PeriodicExportingMetricReader(metric_exporter)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(meter_provider)
 
 # Call this during Django startup
 
@@ -99,30 +110,26 @@ class OpenTelemetryMiddleware:
         self.tracer = trace.get_tracer(__name__)
 
     def __call__(self, request):
-        # Extract the current span context if it exists (for distributed tracing)
-        # This is typically done by the auto-instrumentation, but we'll check anyway
-        span_context = trace.get_current_span().get_span_context()
-
         # Create a new span for this request
         # Use SERVER kind since we're handling an incoming HTTP request
         with self.tracer.start_as_current_span(
-            f"{request.method} {request.path}",
+            request.method,
             kind=SpanKind.SERVER,
         ) as span:
             # Add standard HTTP semantic convention attributes
-            span.set_attribute("http.method", request.method)
-            span.set_attribute("http.url", request.build_absolute_uri())
-            span.set_attribute("http.scheme", request.scheme)
-            span.set_attribute("http.host", request.get_host())
-            span.set_attribute("http.target", request.path)
-            span.set_attribute("http.user_agent", request.META.get("HTTP_USER_AGENT", ""))
+            span.set_attribute("http.request.method", request.method)
+            span.set_attribute("url.full", request.build_absolute_uri())
+            span.set_attribute("url.scheme", request.scheme)
+            span.set_attribute("server.address", request.get_host())
+            span.set_attribute("url.path", request.path)
+            span.set_attribute("user_agent.original", request.META.get("HTTP_USER_AGENT", ""))
 
             # Add client IP address
             x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
             if x_forwarded_for:
-                span.set_attribute("http.client_ip", x_forwarded_for.split(",")[0].strip())
+                span.set_attribute("client.address", x_forwarded_for.split(",")[0].strip())
             else:
-                span.set_attribute("http.client_ip", request.META.get("REMOTE_ADDR", ""))
+                span.set_attribute("client.address", request.META.get("REMOTE_ADDR", ""))
 
             # Record start time
             start_time = time.time()
@@ -132,16 +139,13 @@ class OpenTelemetryMiddleware:
                 response = self.get_response(request)
 
                 # Add response attributes
-                span.set_attribute("http.status_code", response.status_code)
-                span.set_attribute("http.response.body.size", len(response.content))
+                span.set_attribute("http.response.status_code", response.status_code)
+                if hasattr(response, "content"):
+                    span.set_attribute("http.response.body.size", len(response.content))
 
                 # Set span status based on HTTP status code
-                if 200 <= response.status_code < 400:
-                    span.set_status(Status(StatusCode.OK))
-                elif 400 <= response.status_code < 500:
-                    span.set_status(Status(StatusCode.ERROR, f"Client error: {response.status_code}"))
-                else:
-                    span.set_status(Status(StatusCode.ERROR, f"Server error: {response.status_code}"))
+                if response.status_code >= 500:
+                    span.set_status(Status(StatusCode.ERROR))
 
                 return response
 
@@ -165,6 +169,9 @@ Add this middleware to your Django settings:
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'myproject.middleware.telemetry.OpenTelemetryMiddleware',  # Add near the top
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'myproject.middleware.business_context.BusinessContextMiddleware',  # Add after authentication
     'django.middleware.common.CommonMiddleware',
     # ... rest of your middleware
 ]
@@ -178,7 +185,6 @@ The real power of manual instrumentation comes from adding business-specific con
 # myproject/middleware/business_context.py
 
 from opentelemetry import trace
-from opentelemetry.trace import SpanKind
 
 class BusinessContextMiddleware:
     """Add business context attributes to the current span."""
@@ -293,8 +299,7 @@ Beyond traces, you can record custom metrics for monitoring application behavior
 ```python
 # myproject/middleware/metrics.py
 
-from opentelemetry import trace, metrics
-from opentelemetry.metrics import get_meter
+from opentelemetry import metrics
 import time
 
 class MetricsMiddleware:
@@ -304,11 +309,11 @@ class MetricsMiddleware:
         self.get_response = get_response
 
         # Get a meter for recording metrics
-        meter = get_meter(__name__)
+        meter = metrics.get_meter(__name__)
 
         # Create metric instruments
         self.request_counter = meter.create_counter(
-            name="http.server.requests",
+            name="app.http.server.requests",
             description="Total number of HTTP requests",
             unit="1"
         )
@@ -316,11 +321,11 @@ class MetricsMiddleware:
         self.request_duration = meter.create_histogram(
             name="http.server.request.duration",
             description="HTTP request duration",
-            unit="ms"
+            unit="s"
         )
 
         self.active_requests = meter.create_up_down_counter(
-            name="http.server.active_requests",
+            name="app.http.server.active_requests",
             description="Number of active HTTP requests",
             unit="1"
         )
@@ -328,8 +333,8 @@ class MetricsMiddleware:
     def __call__(self, request):
         # Increment active request counter
         attributes = {
-            "http.method": request.method,
-            "http.scheme": request.scheme,
+            "http.request.method": request.method,
+            "url.scheme": request.scheme,
         }
         self.active_requests.add(1, attributes)
 
@@ -339,10 +344,10 @@ class MetricsMiddleware:
             response = self.get_response(request)
 
             # Add status code to attributes
-            attributes["http.status_code"] = response.status_code
+            attributes["http.response.status_code"] = response.status_code
 
             # Calculate request duration
-            duration = (time.time() - start_time) * 1000
+            duration = time.time() - start_time
 
             # Record metrics
             self.request_counter.add(1, attributes)
@@ -364,14 +369,13 @@ graph TB
     A[Incoming HTTP Request] --> B[OpenTelemetryMiddleware]
     B --> C[Create Root Span]
     C --> D[Add HTTP Attributes]
-    D --> E[BusinessContextMiddleware]
-    E --> F[Add User Context]
-    F --> G[Add Tenant Context]
-    G --> H[InstrumentedAuthenticationMiddleware]
-    H --> I[Create Auth Child Span]
-    I --> J[Authenticate User]
-    J --> K[Add Auth Attributes]
-    K --> L[Close Auth Span]
+    D --> E[InstrumentedAuthenticationMiddleware]
+    E --> F[Create Auth Child Span]
+    F --> G[Authenticate User]
+    G --> H[Add Auth Attributes]
+    H --> I[Close Auth Span]
+    I --> K[BusinessContextMiddleware]
+    K --> L[Add User and Tenant Context]
     L --> M[MetricsMiddleware]
     M --> N[Increment Active Requests]
     N --> O[View Processing]
@@ -402,7 +406,7 @@ class RateLimitMiddleware:
     def __call__(self, request):
         # Create span for rate limit check
         with self.tracer.start_as_current_span("check_rate_limit") as span:
-            user_id = request.user.id if request.user.is_authenticated else None
+            user_id = request.user.id if hasattr(request, "user") and request.user.is_authenticated else None
 
             if user_id:
                 span.set_attribute("rate_limit.user_id", str(user_id))
@@ -445,7 +449,6 @@ Properly instrument error handling to capture detailed exception information:
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 import traceback
-import sys
 
 class ErrorTrackingMiddleware:
     """Middleware that adds detailed error information to spans."""
@@ -482,24 +485,23 @@ class ErrorTrackingMiddleware:
         span.set_attribute("error.request.path", request.path)
         span.set_attribute("error.request.method", request.method)
 
-        if request.user.is_authenticated:
+        if hasattr(request, "user") and request.user.is_authenticated:
             span.set_attribute("error.user.id", str(request.user.id))
 
         return None  # Let Django handle the exception
 ```
 
-## Performance Monitoring and Sampling
+## Performance Monitoring and Sampling Hints
 
-Implement smart sampling to control data volume while maintaining visibility:
+Head sampling decisions happen when spans are created, so middleware that inspects the completed response cannot retroactively sample a trace. It can still add attributes that your collector or backend can use for tail-sampling policies:
 
 ```python
 # myproject/middleware/sampling.py
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace.sampling import Sampler, SamplingResult, Decision
 
-class AdaptiveSamplingMiddleware:
-    """Middleware that implements adaptive sampling based on request attributes."""
+class SamplingHintsMiddleware:
+    """Middleware that marks requests for downstream tail-sampling policies."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -508,10 +510,10 @@ class AdaptiveSamplingMiddleware:
         # Get current span
         span = trace.get_current_span()
 
-        # Always sample error responses and slow requests
+        # Mark error responses and slow requests for downstream sampling policies
         response = self.get_response(request)
 
-        # Add sampling decision attributes
+        # Add sampling hint attributes
         if response.status_code >= 400:
             span.set_attribute("sampling.reason", "error_response")
             span.set_attribute("sampling.important", True)
@@ -565,9 +567,9 @@ class TelemetryMiddlewareTestCase(TestCase):
         self.assertEqual(len(spans), 1)
 
         span = spans[0]
-        self.assertEqual(span.attributes["http.method"], "GET")
-        self.assertEqual(span.attributes["http.target"], "/test/")
-        self.assertEqual(span.attributes["http.status_code"], 200)
+        self.assertEqual(span.attributes["http.request.method"], "GET")
+        self.assertEqual(span.attributes["url.path"], "/test/")
+        self.assertEqual(span.attributes["http.response.status_code"], 200)
 ```
 
 ## Next Steps
