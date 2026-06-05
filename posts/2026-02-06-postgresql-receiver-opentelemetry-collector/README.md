@@ -67,15 +67,15 @@ processors:
 
 exporters:
   # Export to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     metrics:
       receivers: [postgresql]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This basic configuration connects to a local PostgreSQL instance and collects default metrics every 10 seconds. The password is read from an environment variable for security.
@@ -88,34 +88,35 @@ The receiver collects a comprehensive set of metrics organized by category:
 
 - `postgresql.backends`: Number of active connections to the database
 - `postgresql.connection.max`: Maximum configured connections
-- `postgresql.connection.usage`: Connection pool utilization percentage
+- Connection utilization can be calculated from `postgresql.backends / postgresql.connection.max`
 
 ### Transaction Metrics
 
 - `postgresql.commits`: Number of committed transactions
 - `postgresql.rollbacks`: Number of rolled back transactions
-- `postgresql.transactions.rate`: Transaction rate per second
+- Transaction rate can be calculated from the rate of `postgresql.commits` and `postgresql.rollbacks`
 
 ### Database Operations
 
 - `postgresql.blocks_read`: Disk blocks read
-- `postgresql.buffers_alloc`: Buffers allocated
-- `postgresql.buffers_backend`: Buffers written by backends
+- `postgresql.bgwriter.buffers.allocated`: Buffers allocated
+- `postgresql.bgwriter.buffers.writes`: Buffers written by the background writer, checkpoints, or backends
 - `postgresql.temp_files`: Temporary files created
 
 ### Cache Performance
 
 - `postgresql.db_size`: Database size in bytes
-- `postgresql.rows.inserted`: Rows inserted
-- `postgresql.rows.updated`: Rows updated
-- `postgresql.rows.deleted`: Rows deleted
-- `postgresql.rows.fetched`: Rows fetched by queries
+- `postgresql.operations`: Row insert, update, delete, and HOT update operations, identified by the `operation` attribute
+- `postgresql.tup_inserted`: Rows inserted by queries in the database
+- `postgresql.tup_updated`: Rows updated by queries in the database
+- `postgresql.tup_deleted`: Rows deleted by queries in the database
+- `postgresql.tup_fetched`: Rows fetched by queries in the database
 
 ### Replication Metrics
 
 - `postgresql.replication.data_delay`: Replication lag in bytes
 - `postgresql.wal.age`: Write-ahead log age
-- `postgresql.wal.lag`: Time delay in replication
+- `postgresql.wal.delay`: Time delay in replication when the `postgresqlreceiver.preciselagmetrics` feature gate is enabled
 
 ## Advanced Configuration
 
@@ -159,13 +160,17 @@ receivers:
         enabled: true
       postgresql.blocks_read:
         enabled: true
-      postgresql.rows.inserted:
+      postgresql.blks_hit:
         enabled: true
-      postgresql.rows.updated:
+      postgresql.blks_read:
         enabled: true
-      postgresql.rows.deleted:
+      postgresql.tup_inserted:
         enabled: true
-      postgresql.rows.fetched:
+      postgresql.tup_updated:
+        enabled: true
+      postgresql.tup_deleted:
+        enabled: true
+      postgresql.tup_fetched:
         enabled: true
       postgresql.replication.data_delay:
         enabled: true
@@ -173,7 +178,7 @@ receivers:
 
 ## Setting Up Monitoring User
 
-Create a dedicated monitoring user with minimal required permissions:
+Create a dedicated monitoring user and grant the permissions needed for the metrics you collect:
 
 ```sql
 -- Create monitoring user
@@ -221,14 +226,8 @@ receivers:
         enabled: true
       postgresql.wal.age:
         enabled: true
-      postgresql.wal.lag:
+      postgresql.wal.delay:
         enabled: true
-
-    # Add resource attributes
-    resource_attributes:
-      postgresql.role:
-        enabled: true
-        value: primary
 
   # Replica monitoring
   postgresql/replica:
@@ -238,17 +237,24 @@ receivers:
     databases:
       - postgres
 
-    resource_attributes:
-      postgresql.role:
-        enabled: true
-        value: replica
-
 processors:
   # Add custom attributes
-  resource:
+  resource/primary:
     attributes:
       - key: db.cluster
         value: production-cluster
+        action: insert
+      - key: postgresql.role
+        value: primary
+        action: insert
+
+  resource/replica:
+    attributes:
+      - key: db.cluster
+        value: production-cluster
+        action: insert
+      - key: postgresql.role
+        value: replica
         action: insert
 
   batch:
@@ -260,53 +266,55 @@ exporters:
 
 service:
   pipelines:
-    metrics:
-      receivers: [postgresql/primary, postgresql/replica]
-      processors: [resource, batch]
+    metrics/primary:
+      receivers: [postgresql/primary]
+      processors: [resource/primary, batch]
+      exporters: [otlp]
+    metrics/replica:
+      receivers: [postgresql/replica]
+      processors: [resource/replica, batch]
       exporters: [otlp]
 ```
 
 ## Per-Table Metrics
 
-To monitor specific tables, configure custom queries:
+To monitor specific tables with custom SQL, use the SQL Query receiver alongside the PostgreSQL receiver:
 
 ```yaml
 receivers:
-  postgresql:
-    endpoint: localhost:5432
+  sqlquery/postgresql_tables:
+    driver: postgres
+    host: localhost
+    port: 5432
+    database: app_production
     username: monitoring_user
     password: ${env:PG_MONITORING_PASSWORD}
-    databases:
-      - app_production
 
     # Custom queries for table-level metrics
-    statements:
+    queries:
       # Monitor table bloat
-      - query: |
+      - sql: |
           SELECT
             schemaname,
             tablename,
-            pg_total_relation_size(schemaname||'.'||tablename) AS total_size,
-            pg_relation_size(schemaname||'.'||tablename) AS table_size,
-            pg_indexes_size(schemaname||'.'||tablename) AS indexes_size
+            pg_total_relation_size(format('%I.%I', schemaname, tablename)) AS total_size,
+            pg_relation_size(format('%I.%I', schemaname, tablename)) AS table_size,
+            pg_indexes_size(format('%I.%I', schemaname, tablename)) AS indexes_size
           FROM pg_tables
           WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        attribute_columns:
+          - schemaname
+          - tablename
         metrics:
           - metric_name: postgresql.table.total_size
             value_column: total_size
-            data_type: gauge
-            attribute_columns:
-              - schema
-              - table
           - metric_name: postgresql.table.data_size
             value_column: table_size
-            data_type: gauge
           - metric_name: postgresql.table.indexes_size
             value_column: indexes_size
-            data_type: gauge
 
       # Monitor table statistics
-      - query: |
+      - sql: |
           SELECT
             schemaname,
             relname,
@@ -320,19 +328,22 @@ receivers:
             n_live_tup,
             n_dead_tup
           FROM pg_stat_user_tables
+        attribute_columns:
+          - schemaname
+          - relname
         metrics:
           - metric_name: postgresql.table.sequential_scans
             value_column: seq_scan
-            data_type: counter
+            data_type: sum
+            monotonic: true
           - metric_name: postgresql.table.index_scans
             value_column: idx_scan
-            data_type: counter
+            data_type: sum
+            monotonic: true
           - metric_name: postgresql.table.live_tuples
             value_column: n_live_tup
-            data_type: gauge
           - metric_name: postgresql.table.dead_tuples
             value_column: n_dead_tup
-            data_type: gauge
 ```
 
 ## Production Configuration
@@ -364,7 +375,6 @@ receivers:
       ca_file: /etc/otel/certs/postgres-ca.pem
       cert_file: /etc/otel/certs/client-cert.pem
       key_file: /etc/otel/certs/client-key.pem
-      min_version: "1.2"
 
     # Enable all important metrics
     metrics:
@@ -378,15 +388,19 @@ receivers:
         enabled: true
       postgresql.blocks_read:
         enabled: true
-      postgresql.buffers_alloc:
+      postgresql.blks_hit:
         enabled: true
-      postgresql.rows.inserted:
+      postgresql.blks_read:
         enabled: true
-      postgresql.rows.updated:
+      postgresql.bgwriter.buffers.allocated:
         enabled: true
-      postgresql.rows.deleted:
+      postgresql.tup_inserted:
         enabled: true
-      postgresql.rows.fetched:
+      postgresql.tup_updated:
+        enabled: true
+      postgresql.tup_deleted:
+        enabled: true
+      postgresql.tup_fetched:
         enabled: true
       postgresql.temp_files:
         enabled: true
@@ -420,12 +434,9 @@ processors:
 
   # Filter metrics if needed
   filter/exclude_test_dbs:
-    metrics:
-      exclude:
-        match_type: strict
-        resource_attributes:
-          - key: db.name
-            value: test_database
+    error_mode: ignore
+    metric_conditions:
+      - resource.attributes["postgresql.database.name"] == "test_database"
 
   # Transform metric names for compatibility
   metricstransform:
@@ -458,7 +469,6 @@ exporters:
   # Prometheus endpoint for local monitoring
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: postgresql
     const_labels:
       cluster: production
       region: us-east-1
@@ -481,7 +491,12 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Connection Pooling Considerations
@@ -491,12 +506,31 @@ When monitoring PostgreSQL through a connection pooler like PgBouncer, adjust yo
 ```yaml
 receivers:
   # Monitor PgBouncer statistics
-  postgresql/pgbouncer:
-    endpoint: pgbouncer.example.com:6432
+  sqlquery/pgbouncer:
+    driver: postgres
+    host: pgbouncer.example.com
+    port: 6432
+    database: pgbouncer
     username: monitoring_user
     password: ${env:PGBOUNCER_PASSWORD}
-    databases:
-      - pgbouncer
+    queries:
+      - sql: "SHOW LISTS"
+        metrics:
+          - metric_name: pgbouncer.lists.pools
+            value_column: items
+            row_condition:
+              column: list
+              value: pools
+          - metric_name: pgbouncer.lists.databases
+            value_column: items
+            row_condition:
+              column: list
+              value: databases
+          - metric_name: pgbouncer.lists.users
+            value_column: items
+            row_condition:
+              column: list
+              value: users
 
   # Monitor actual PostgreSQL database
   postgresql/database:
@@ -522,7 +556,7 @@ processors:
 service:
   pipelines:
     metrics/pgbouncer:
-      receivers: [postgresql/pgbouncer]
+      receivers: [sqlquery/pgbouncer]
       processors: [resource/pgbouncer, batch]
       exporters: [otlp]
 
@@ -537,27 +571,32 @@ service:
 Monitor slow queries using pg_stat_statements extension:
 
 ```sql
+-- Add pg_stat_statements to shared_preload_libraries in postgresql.conf, then restart PostgreSQL.
+
 -- Enable pg_stat_statements extension
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
--- Grant access to monitoring user
-GRANT SELECT ON pg_stat_statements TO monitoring_user;
+-- Allow the monitoring user to see query text and query IDs for other users
+GRANT pg_read_all_stats TO monitoring_user;
 ```
 
-Configure the receiver to collect query statistics:
+Configure the SQL Query receiver to collect query statistics:
 
 ```yaml
 receivers:
-  postgresql:
-    endpoint: localhost:5432
+  sqlquery/postgresql_queries:
+    driver: postgres
+    host: localhost
+    port: 5432
+    database: app_production
     username: monitoring_user
     password: ${env:PG_MONITORING_PASSWORD}
 
-    statements:
+    queries:
       # Top queries by execution time
-      - query: |
+      - sql: |
           SELECT
-            queryid,
+            queryid::text AS queryid,
             calls,
             total_exec_time,
             mean_exec_time,
@@ -567,21 +606,24 @@ receivers:
           WHERE total_exec_time > 1000
           ORDER BY total_exec_time DESC
           LIMIT 20
+        attribute_columns:
+          - queryid
         metrics:
           - metric_name: postgresql.query.calls
             value_column: calls
-            data_type: counter
+            data_type: sum
+            monotonic: true
           - metric_name: postgresql.query.total_time
             value_column: total_exec_time
-            data_type: counter
+            data_type: sum
+            monotonic: true
           - metric_name: postgresql.query.mean_time
             value_column: mean_exec_time
-            data_type: gauge
 ```
 
 ## Alerting Strategies
 
-Common PostgreSQL alerts based on collected metrics:
+Common PostgreSQL alerts based on collected metrics. When exported to Prometheus, OpenTelemetry metric names with dots are normalized to underscores.
 
 ### High Connection Usage
 
@@ -592,7 +634,7 @@ Alert when connection pool is near capacity:
 
 - alert: PostgreSQLHighConnections
   expr: |
-    (postgresql.backends / postgresql.connection.max) > 0.8
+    (postgresql_backends / postgresql_connection_max) > 0.8
   for: 5m
   labels:
     severity: warning
@@ -608,8 +650,8 @@ Alert on poor buffer cache performance:
 ```yaml
 - alert: PostgreSQLLowCacheHitRatio
   expr: |
-    rate(postgresql.blocks_read[5m]) /
-    (rate(postgresql.blocks_read[5m]) + rate(postgresql.buffers_alloc[5m])) < 0.9
+    rate(postgresql_blks_hit[5m]) /
+    (rate(postgresql_blks_hit[5m]) + rate(postgresql_blks_read[5m])) < 0.9
   for: 15m
   labels:
     severity: warning
@@ -624,7 +666,7 @@ Alert on excessive replication delay:
 
 ```yaml
 - alert: PostgreSQLReplicationLag
-  expr: postgresql.replication.data_delay > 104857600  # 100MB
+  expr: postgresql_replication_data_delay > 104857600  # 100MB
   for: 10m
   labels:
     severity: critical
@@ -640,13 +682,13 @@ Alert when tables need vacuuming:
 ```yaml
 - alert: PostgreSQLDeadTuples
   expr: |
-    postgresql.table.dead_tuples /
-    (postgresql.table.live_tuples + postgresql.table.dead_tuples) > 0.2
+    postgresql_table_dead_tuples /
+    (postgresql_table_live_tuples + postgresql_table_dead_tuples) > 0.2
   for: 30m
   labels:
     severity: warning
   annotations:
-    summary: "PostgreSQL table {{ $labels.table }} has excessive dead tuples"
+    summary: "PostgreSQL table {{ $labels.relname }} has excessive dead tuples"
 ```
 
 ## Troubleshooting
@@ -674,7 +716,7 @@ If expected metrics are not appearing:
 If monitoring causes performance issues:
 
 1. Increase collection_interval to reduce query frequency
-2. Disable expensive custom queries
+2. Disable expensive SQL Query receiver queries
 3. Use connection pooling
 4. Monitor fewer databases
 
@@ -704,6 +746,6 @@ OneUptime provides pre-built PostgreSQL dashboards and intelligent alerting base
 
 The PostgreSQL receiver provides comprehensive database monitoring through the OpenTelemetry Collector. By collecting metrics on connections, transactions, cache performance, and replication, you gain complete visibility into database health and performance.
 
-Start with basic configuration to establish baseline metrics, then progressively add custom queries, table-level monitoring, and replication tracking as your needs grow. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy PostgreSQL operations.
+Start with basic configuration to establish baseline metrics, then progressively add SQL Query receiver queries, table-level monitoring, and replication tracking as your needs grow. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy PostgreSQL operations.
 
 For container-based PostgreSQL deployments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) for full-stack observability.
