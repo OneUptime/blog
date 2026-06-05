@@ -26,6 +26,8 @@ A typical marketplace installation involves these steps:
 
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
+import base64
+import hashlib
 import httpx
 import secrets
 import urllib.parse
@@ -48,30 +50,37 @@ class OAuthFlowHandler:
         ) as span:
             # Generate state parameter to prevent CSRF
             state = secrets.token_urlsafe(32)
+            code_verifier = secrets.token_urlsafe(64)
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode("ascii")).digest()
+            ).rstrip(b"=").decode("ascii")
 
-            # Store state with trace ID for later correlation
+            # Store state, PKCE verifier, and trace ID for later correlation
             save_oauth_state(state, {
                 "app_id": app_id,
                 "tenant_id": tenant_id,
                 "user_id": user_id,
+                "code_verifier": code_verifier,
                 "trace_id": format(span.get_span_context().trace_id, '032x'),
             })
 
             app_config = get_app_config(app_id)
-            auth_url = self._build_auth_url(app_config, state)
+            auth_url = self._build_auth_url(app_config, state, code_challenge)
 
             span.set_attribute("oauth.authorization_endpoint", app_config["auth_endpoint"])
             span.set_attribute("oauth.scopes", ",".join(app_config["scopes"]))
 
             return {"redirect_url": auth_url}
 
-    def _build_auth_url(self, app_config: dict, state: str) -> str:
+    def _build_auth_url(self, app_config: dict, state: str, code_challenge: str) -> str:
         params = {
             "client_id": app_config["client_id"],
             "redirect_uri": app_config["redirect_uri"],
             "scope": " ".join(app_config["scopes"]),
             "state": state,
             "response_type": "code",
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
         }
         return f"{app_config['auth_endpoint']}?{urllib.parse.urlencode(params)}"
 ```
@@ -97,7 +106,7 @@ class OAuthFlowHandler:
         ) as span:
             # Step 1: Exchange code for tokens
             tokens = await self._exchange_code(
-                saved_state["app_id"], code, span
+                saved_state["app_id"], code, saved_state["code_verifier"], span
             )
 
             # Step 2: Register the app installation
@@ -113,7 +122,7 @@ class OAuthFlowHandler:
 
             return installation
 
-    async def _exchange_code(self, app_id: str, code: str, parent_span):
+    async def _exchange_code(self, app_id: str, code: str, code_verifier: str, parent_span):
         """Exchange authorization code for access and refresh tokens."""
         with tracer.start_as_current_span(
             "oauth.token.exchange",
@@ -130,6 +139,7 @@ class OAuthFlowHandler:
                         "client_id": app_config["client_id"],
                         "client_secret": app_config["client_secret"],
                         "redirect_uri": app_config["redirect_uri"],
+                        "code_verifier": code_verifier,
                     }
                 )
 
