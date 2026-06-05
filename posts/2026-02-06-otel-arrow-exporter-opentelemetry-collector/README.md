@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Exporter, OTel Arrow, Performance, Optimization,
 
 Description: Master the OTel Arrow exporter configuration to achieve high-performance telemetry data transmission with Apache Arrow's columnar format in OpenTelemetry Collector.
 
-The OTel Arrow exporter represents a significant advancement in OpenTelemetry data transmission efficiency. By leveraging Apache Arrow's columnar format and advanced compression techniques, this exporter can reduce bandwidth usage by up to 10x compared to standard OTLP while maintaining full compatibility with OpenTelemetry semantics.
+The OTel Arrow exporter represents a significant advancement in OpenTelemetry data transmission efficiency. By leveraging Apache Arrow's columnar format and advanced compression techniques, this exporter can substantially reduce bandwidth usage compared to standard OTLP while maintaining full compatibility with OpenTelemetry semantics.
 
 ## What is OTel Arrow?
 
@@ -39,7 +39,7 @@ graph LR
 
 Before implementing the OTel Arrow exporter, ensure you have:
 
-1. OpenTelemetry Collector with contrib components (version 0.80.0 or later)
+1. OpenTelemetry Collector with contrib components (version 0.104.0 or later)
 2. Network connectivity between collectors using gRPC
 3. A receiving collector configured with the OTel Arrow receiver
 4. Understanding of your telemetry volume and performance requirements
@@ -178,12 +178,10 @@ exporters:
       # Increase for higher throughput
       num_streams: 4
 
-      # Disable dictionary encoding for faster processing
-      # Set to true if you have highly repetitive string data
+      # Prevent fallback to standard OTLP if Arrow is unavailable
       disable_downgrade: false
 
-      # Maximum size of Arrow record batches (in bytes)
-      # Larger batches improve compression but use more memory
+      # Maximum lifetime for an Arrow stream before it is recycled
       max_stream_lifetime: 3600s
 
     # gRPC settings for connection management
@@ -258,7 +256,7 @@ service:
 
 ## Multi-Destination Configuration
 
-Send Arrow-encoded data to multiple destinations with load balancing:
+Send Arrow-encoded data to multiple destinations for redundancy:
 
 ```yaml
 exporters:
@@ -302,21 +300,6 @@ exporters:
       num_consumers: 5
       queue_size: 5000
 
-  # Load balancing exporter
-  loadbalancing:
-    protocol:
-      otlp:
-        timeout: 30s
-        tls:
-          insecure: false
-
-    resolver:
-      static:
-        hostnames:
-          - collector-1.example.com:4317
-          - collector-2.example.com:4317
-          - collector-3.example.com:4317
-
 receivers:
   otlp:
     protocols:
@@ -354,17 +337,16 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        # TLS configuration
+        tls:
+          cert_file: /etc/otelcol/certs/server.crt
+          key_file: /etc/otelcol/certs/server.key
+          client_ca_file: /etc/otelcol/certs/ca.crt
 
-    # Arrow-specific receiver settings
-    arrow:
-      # Memory limit for Arrow record batches
-      memory_limit_mib: 1024
-
-    # TLS configuration
-    tls:
-      cert_file: /etc/otelcol/certs/server.crt
-      key_file: /etc/otelcol/certs/server.key
-      client_ca_file: /etc/otelcol/certs/ca.crt
+      # Arrow-specific receiver settings
+      arrow:
+        # Memory limit for Arrow data buffers
+        memory_limit_mib: 1024
 
 processors:
   batch:
@@ -506,7 +488,12 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -553,7 +540,7 @@ Common issues and solutions when using the OTel Arrow exporter:
 
 Expected performance improvements with Arrow versus standard OTLP:
 
-- **Bandwidth Reduction**: 5-10x less data transferred for typical workloads
+- **Bandwidth Reduction**: Often about 50% less data transferred than standard OTLP/gRPC with compression for typical workloads, with results varying by data shape and compression settings
 - **CPU Usage**: Slightly higher due to columnar encoding, but offset by reduced network I/O
 - **Memory**: Similar to OTLP when properly configured
 - **Latency**: Comparable to OTLP for individual requests, better for sustained throughput
@@ -562,8 +549,8 @@ Expected performance improvements with Arrow versus standard OTLP:
 
 Learn more about optimizing OpenTelemetry Collector performance:
 
-- [OpenTelemetry Collector Performance Tuning](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
-- [Understanding OTLP Protocol](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
+- [OpenTelemetry Collector Configuration](https://opentelemetry.io/docs/collector/configuration/)
+- [OpenTelemetry Protocol (OTLP) Specification](https://opentelemetry.io/docs/specs/otlp/)
 
 ## Conclusion
 
