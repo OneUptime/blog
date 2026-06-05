@@ -58,9 +58,10 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace import Status, StatusCode, SpanKind
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.instrumentation.celery import CeleryInstrumentor
 from celery import Celery, Task
 from celery.exceptions import Retry, MaxRetriesExceededError
+from celery.signals import worker_process_init
 import time
 import logging
 
@@ -77,6 +78,11 @@ processor = BatchSpanProcessor(OTLPSpanExporter(
 ))
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
+
+# Initialize Celery instrumentation in each worker process.
+@worker_process_init.connect(weak=False)
+def init_celery_tracing(*args, **kwargs):
+    CeleryInstrumentor().instrument()
 
 # Get tracer
 tracer = trace.get_tracer(__name__)
@@ -103,7 +109,7 @@ class RetryTrackedTask(Task):
     Automatically records:
     - Retry attempt number
     - Failure reasons
-    - Time between retries
+    - Scheduled retry metadata
     - Final success or failure status
     """
 
@@ -195,7 +201,7 @@ class RetryTrackedTask(Task):
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         """
         Called when a task is retried.
-        Creates a link event to connect retry attempts.
+        Adds retry metadata so attempts can be correlated by task id.
         """
         with tracer.start_as_current_span("celery.task.on_retry") as span:
             span.set_attribute("celery.task.name", self.name)
@@ -242,6 +248,9 @@ Define tasks that use the retry-tracking base class and implement intelligent re
 import requests
 from requests.exceptions import RequestException
 
+class NonRetryableHTTPError(Exception):
+    """Raised for HTTP errors that should not trigger Celery autoretry."""
+
 @app.task(
     base=RetryTrackedTask,
     bind=True,
@@ -261,19 +270,19 @@ def fetch_external_api(self, url: str):
     Retries on RequestException with exponential backoff up to 5 times.
     """
     with tracer.start_as_current_span("fetch_api_data") as span:
-        span.set_attribute(SpanAttributes.HTTP_URL, url)
-        span.set_attribute(SpanAttributes.HTTP_METHOD, "GET")
+        span.set_attribute("url.full", url)
+        span.set_attribute("http.request.method", "GET")
 
         try:
             # Make the API request
             response = requests.get(url, timeout=10)
 
-            span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status_code)
+            span.set_attribute("http.response.status_code", response.status_code)
 
             # Check for HTTP errors
             response.raise_for_status()
 
-            span.set_attribute("http.response.size", len(response.content))
+            span.set_attribute("http.response.body.size", len(response.content))
             return response.json()
 
         except requests.HTTPError as e:
@@ -288,7 +297,7 @@ def fetch_external_api(self, url: str):
 
             # Don't retry on client errors
             span.set_attribute("error.no_retry", True)
-            raise
+            raise NonRetryableHTTPError(str(e)) from e
 
         except RequestException as e:
             # Network errors, timeouts, etc
@@ -437,6 +446,10 @@ class MetricsTrackedTask(RetryTrackedTask):
 
             return result
 
+        except Retry:
+            # Celery uses Retry as a control-flow exception, not a permanent failure.
+            raise
+
         except MaxRetriesExceededError:
             # Permanent failure
             task_failure_counter.add(1, {
@@ -540,6 +553,9 @@ class CircuitBreaker:
 # Global circuit breaker
 circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=60)
 
+class CircuitBreakerOpen(Exception):
+    """Raised when the task should fail fast without autoretry."""
+
 
 class CircuitBreakerTask(MetricsTrackedTask):
     """Task with circuit breaker pattern."""
@@ -557,7 +573,7 @@ class CircuitBreakerTask(MetricsTrackedTask):
                 })
 
                 logger.warning(f"Circuit breaker open for {self.name}, failing fast")
-                raise Exception("Circuit breaker is open")
+                raise CircuitBreakerOpen("Circuit breaker is open")
 
             span.set_attribute("circuit_breaker.state", "closed")
 
@@ -587,6 +603,7 @@ class CircuitBreakerTask(MetricsTrackedTask):
     base=CircuitBreakerTask,
     bind=True,
     autoretry_for=(Exception,),
+    dont_autoretry_for=(CircuitBreakerOpen,),
     max_retries=3
 )
 def protected_task(self, resource_id: str):
