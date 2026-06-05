@@ -60,7 +60,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "checkout-service",
     "service.version": "4.2.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Tracing for individual checkout flows
