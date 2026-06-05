@@ -8,7 +8,7 @@ Description: Learn how to instrument Tekton pipeline tasks with OpenTelemetry fo
 
 ---
 
-Tekton runs your CI/CD pipelines as Kubernetes-native resources. Each TaskRun and PipelineRun is a pod that executes steps in containers. When things go wrong, you are often left digging through pod logs to figure out which step failed and why. OpenTelemetry gives you a better way to observe these pipelines by generating traces that capture timing, dependencies, and errors across every task.
+Tekton runs your CI/CD pipelines as Kubernetes-native resources. A PipelineRun creates TaskRuns, and each TaskRun runs its steps in a Kubernetes pod. When things go wrong, you are often left digging through pod logs to figure out which step failed and why. OpenTelemetry gives you a better way to observe these pipelines by generating traces that capture timing, dependencies, and errors across every task.
 
 This guide walks through instrumenting Tekton pipeline tasks so you can trace entire pipeline runs from start to finish.
 
@@ -55,6 +55,8 @@ helm repo update
 
 helm install otel-collector open-telemetry/opentelemetry-collector \
   --set mode=daemonset \
+  --set fullnameOverride=otel-collector \
+  --set presets.kubernetesAttributes.enabled=true \
   --set config.exporters.otlp.endpoint="https://your-backend:4317" \
   --namespace otel-system \
   --create-namespace
@@ -76,13 +78,14 @@ import subprocess
 import sys
 import os
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 # Configure the tracer with pipeline metadata pulled from environment variables.
-# Tekton sets several useful env vars that we can attach as resource attributes.
+# The Tekton Task below maps Tekton context variables into these env vars.
 resource = Resource.create({
     "service.name": "tekton-pipeline",
     "pipeline.name": os.getenv("TEKTON_PIPELINE_NAME", "unknown"),
@@ -108,17 +111,21 @@ def run_command(name, cmd):
         span.set_attribute("exit_code", result.returncode)
         if result.returncode != 0:
             span.set_attribute("error.message", result.stderr[:500])
-            span.set_status(trace.StatusCode.ERROR, result.stderr[:200])
+            span.set_status(Status(StatusCode.ERROR, result.stderr[:200]))
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
         return result
 
-# Run each build phase as a separate span
-with tracer.start_as_current_span("build-pipeline-task"):
-    run_command("install-dependencies", "pip install -r requirements.txt")
-    run_command("compile", "python -m py_compile src/*.py")
-    run_command("run-tests", "pytest tests/ -v")
-
-# Flush all pending spans before the container exits
-provider.shutdown()
+try:
+    # Run each build phase as a separate span
+    with tracer.start_as_current_span("build-pipeline-task"):
+        run_command("install-dependencies", "pip install -r requirements.txt")
+        run_command("compile", "python -m py_compile src/*.py")
+        run_command("run-tests", "pytest tests/ -v")
+except subprocess.CalledProcessError as exc:
+    sys.exit(exc.returncode)
+finally:
+    # Flush all pending spans before the container exits
+    provider.shutdown()
 ```
 
 The key detail here is calling `provider.shutdown()` at the end. Tekton task containers terminate as soon as the step finishes, so you need to make sure all spans are flushed before the process exits. Without this, you will lose telemetry data.
@@ -158,6 +165,11 @@ spec:
         name: traced-build
       runAfter:
         - clone
+      params:
+        - name: pipeline-name
+          value: "$(context.pipeline.name)"
+        - name: pipeline-run-name
+          value: "$(context.pipelineRun.name)"
       workspaces:
         - name: source
           workspace: shared-data
@@ -210,13 +222,13 @@ def load_trace_context():
         return None
 ```
 
-This approach ensures all tasks in a pipeline run appear as children of the same root trace. You get a single waterfall view of the entire pipeline execution.
+When each producing task calls `save_trace_context()` while a span is current and each consuming task calls `load_trace_context()` before creating its spans, all tasks in a pipeline run can appear as children of the same root trace. You get a single waterfall view of the entire pipeline execution.
 
 ---
 
 ## Tekton Task with Built-in Tracing
 
-Here is a complete Tekton Task definition that includes OpenTelemetry instrumentation. It uses a sidecar approach where the tracing setup is baked into the step image:
+Here is a complete Tekton Task definition that includes OpenTelemetry instrumentation. It uses a step-level approach where the tracing setup is installed before running the instrumented build script:
 
 ```yaml
 # traced-build-task.yaml
@@ -229,6 +241,11 @@ kind: Task
 metadata:
   name: traced-build
 spec:
+  params:
+    - name: pipeline-name
+      type: string
+    - name: pipeline-run-name
+      type: string
   workspaces:
     - name: source
     - name: trace-ctx
@@ -240,10 +257,14 @@ spec:
           value: "http://otel-collector.otel-system:4317"
         - name: OTEL_SERVICE_NAME
           value: "tekton-build-task"
+        - name: TEKTON_PIPELINE_NAME
+          value: "$(params.pipeline-name)"
         - name: TEKTON_TASK_NAME
           value: "$(context.task.name)"
         - name: TEKTON_PIPELINE_RUN
-          value: "$(context.pipelineRun.name)"
+          value: "$(params.pipeline-run-name)"
+        - name: TEKTON_TASK_RUN
+          value: "$(context.taskRun.name)"
       script: |
         #!/usr/bin/env python3
         pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
@@ -251,7 +272,7 @@ spec:
         python /workspace/source/instrument_build.py
 ```
 
-The `$(context.*)` variables are Tekton's built-in variable substitution. They inject the pipeline run name, task name, and other metadata at runtime, which then become span attributes in your traces.
+The `$(context.*)` variables are Tekton's built-in variable substitution. Pipeline-level context values are passed into the Task as params, while Task-level context values are injected directly into the step environment. Those values then become span attributes in your traces.
 
 ---
 
@@ -357,6 +378,9 @@ task_counter = meter.create_counter(
 # Record a task completion with attributes
 task_duration.record(45.2, {"task.name": "build", "status": "success"})
 task_counter.add(1, {"task.name": "build", "status": "success"})
+
+# Flush before the short-lived task container exits
+provider.shutdown()
 ```
 
 These metrics let you build dashboards showing trends like average build time, failure rates by task, and pipeline throughput over days or weeks.
