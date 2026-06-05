@@ -4,35 +4,37 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Python, Import Order, Instrumentation
 
-Description: Fix the Python import order issue where OpenTelemetry instrumentors must be applied before the instrumented libraries are imported.
+Description: Fix Python instrumentation timing issues where OpenTelemetry instrumentors should be applied before your application initializes the instrumented libraries.
 
-Just like in Node.js, Python OpenTelemetry instrumentation depends on import order. Some instrumentors work by monkey-patching library modules. If the library is imported before the instrumentor runs, the patching may be incomplete or ineffective. This post covers the correct patterns for Python.
+Just like in Node.js, Python OpenTelemetry instrumentation can depend on when instrumentation is applied. Some instrumentors work by monkey-patching library modules, classes, or factory functions. If application objects are created before the instrumentor runs, the patching may be incomplete or ineffective. This post covers the safe patterns for Python.
 
 ## The Problem
 
 ```python
-# app.py - BROKEN ORDER
+# app.py - fragile global setup
 
 from flask import Flask  # Flask is imported first
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-FlaskInstrumentor().instrument()  # Too late for some patches
+FlaskInstrumentor().instrument()  # Prefer to run global instrumentation before app setup
 
 app = Flask(__name__)
 ```
 
-While Flask instrumentation is somewhat forgiving (it patches at the class level), other instrumentors are stricter. Libraries like `requests`, `urllib3`, and database drivers need to be instrumented before they are imported.
+While Flask instrumentation is somewhat forgiving, other instrumentors are stricter about when application objects are created. Database and ORM instrumentation often needs to run before engines, connections, or clients are initialized, unless the instrumentor provides an API for instrumenting an existing object.
 
-## The Strict Case: requests Library
+## The Timing Case: SQLAlchemy Engine
 
 ```python
-# BROKEN - requests already imported
-import requests
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-RequestsInstrumentor().instrument()
+# BROKEN - engine already created before global instrumentation
+from sqlalchemy import create_engine
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-# The Session class is already imported and cached
-response = requests.get("https://api.example.com")  # May not generate a span
+engine = create_engine("sqlite:///:memory:")
+SQLAlchemyInstrumentor().instrument()
+
+# Use SQLAlchemyInstrumentor().instrument(engine=engine) for an existing engine,
+# or apply global instrumentation before engines are created.
 ```
 
 ## The Correct Pattern
@@ -192,4 +194,4 @@ class MyAppConfig(AppConfig):
         DjangoInstrumentor().instrument()
 ```
 
-The import order rule in Python is the same as in Node.js: set up instrumentation before importing the libraries you want to trace. The `opentelemetry-instrument` CLI is the easiest way to guarantee this order. For manual setup, use a dedicated tracing module that is imported before anything else.
+The safe timing rule in Python is similar to Node.js: set up instrumentation before your application imports and initializes the libraries you want to trace. The `opentelemetry-instrument` CLI is the easiest way to guarantee this order. For manual setup, use a dedicated tracing module that is imported before anything else.
