@@ -26,6 +26,7 @@ Many game servers are written in C or C++. Here is the setup using the OpenTelem
 
 ```cpp
 #include <opentelemetry/sdk/trace/tracer_provider.h>
+#include <opentelemetry/sdk/trace/simple_processor.h>
 #include <opentelemetry/exporters/otlp/otlp_grpc_exporter.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
 #include <opentelemetry/trace/provider.h>
@@ -47,6 +48,10 @@ void InitTelemetry() {
 }
 
 auto tracer = otel_trace::Provider::GetTracerProvider()->GetTracer(
+    "game-state-sync", "1.0.0"
+);
+
+auto meter = otel_metrics::Provider::GetMeterProvider()->GetMeter(
     "game-state-sync", "1.0.0"
 );
 ```
@@ -82,8 +87,12 @@ void BroadcastStateSnapshot(GameState& state, std::vector<Client>& clients) {
         client.Send(delta);
     }
 
-    span->SetAttribute("sync.avg_delta_entities",
-        (int64_t)(deltaEntities / clients.size()));
+    if (!clients.empty()) {
+        span->SetAttribute("sync.avg_delta_entities",
+            (int64_t)(deltaEntities / clients.size()));
+    } else {
+        span->SetAttribute("sync.avg_delta_entities", (int64_t)0);
+    }
     span->End();
 }
 ```
@@ -161,15 +170,14 @@ void RecordConflictMetrics(
     double magnitude,
     const std::string& region
 ) {
-    auto attrs = {{"conflict_type", conflictType}, {"region", region}};
-    conflictCounter->Add(1, attrs);
-    correctionHistogram->Record(magnitude, attrs);
+    conflictCounter->Add(1, {{"conflict_type", conflictType}, {"region", region}});
+    correctionHistogram->Record(magnitude, {{"conflict_type", conflictType}, {"region", region}});
 }
 ```
 
 ## Detecting Systematic Desyncs
 
-Sometimes desyncs are not random network hiccups but systematic bugs. Use span events to flag suspicious patterns:
+Sometimes desyncs are not random network hiccups but systematic bugs. Use spans to flag suspicious patterns:
 
 ```cpp
 void CheckForSystematicDesync(Client& client, float positionError) {
