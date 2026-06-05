@@ -47,6 +47,7 @@ Create the main application file:
 using HTTP
 using JSON3
 using Dates
+using Statistics
 
 function handle_root(req::HTTP.Request)
     return HTTP.Response(200, "Hello from Julia in Docker!")
@@ -96,7 +97,9 @@ function main()
     HTTP.serve(router, "0.0.0.0", port)
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
 ```
 
 ## Basic Dockerfile
@@ -157,20 +160,21 @@ COPY precompile_execution.jl ./
 RUN julia --project=. -e '
     using PackageCompiler
     create_sysimage(
-        [:HTTP, :JSON3];
+        ["HTTP", "JSON3"];
         sysimage_path="app_sysimage.so",
         precompile_execution_file="precompile_execution.jl"
     )
 '
 
 # Stage 2: Runtime image
-FROM julia:1.10-slim
+FROM julia:1.10
 
 WORKDIR /app
 
 # Copy the custom system image and source code
 COPY --from=builder /app/app_sysimage.so /app/
 COPY --from=builder /app/Project.toml /app/
+COPY --from=builder /app/Manifest.toml /app/
 COPY --from=builder /app/src/ /app/src/
 
 # Copy installed packages
@@ -188,8 +192,12 @@ Create the precompile execution script:
 # precompile_execution.jl - exercises code paths to include in the system image
 using HTTP
 using JSON3
+using Statistics
+include("src/server.jl")
 
-# Simulate the computation that our endpoints perform
+# Simulate requests and computation that our endpoints perform
+handle_health(HTTP.Request("GET", "/health"))
+handle_compute(HTTP.Request("GET", "/compute"))
 data = randn(1000)
 result = Dict("mean" => sum(data)/1000, "std" => std(data))
 JSON3.write(result)
@@ -239,9 +247,10 @@ Strategy 2: Warmup script that exercises key code paths:
 # warmup.jl - run during Docker build to trigger JIT compilation
 include("src/server.jl")
 
-# Make a test request to trigger compilation of handler code
-# (In a real app, you would start the server briefly and hit endpoints)
+# Call handlers directly to trigger compilation of application code
 using HTTP, JSON3
+handle_health(HTTP.Request("GET", "/health"))
+handle_compute(HTTP.Request("GET", "/compute"))
 data = randn(10000)
 JSON3.write(Dict("test" => sum(data)))
 ```
@@ -252,7 +261,6 @@ Strategy 3: Custom system image with PackageCompiler (shown above, most effectiv
 
 ```yaml
 # docker-compose.yml - development environment for Julia app
-version: "3.8"
 services:
   app:
     build:
@@ -277,7 +285,7 @@ services:
         using Pkg;
         Pkg.add("IJulia");
         using IJulia;
-        notebook(dir="/notebooks", detached=true)
+        notebook(`--ip=0.0.0.0 --no-browser --allow-root`; dir="/notebooks", port=8888)
       '
 ```
 
