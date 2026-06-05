@@ -32,16 +32,20 @@ receivers:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
 
 connectors:
   # The routing connector evaluates OTTL and directs data
   routing:
     table:
       # Match spans where status code is ERROR
-      - statement: route() where attributes["otel.status_code"] == "ERROR"
+      - context: span
+        statement: route() where span.status.code == STATUS_CODE_ERROR
         pipelines: [traces/errors]
-      # Match spans that have exception events
-      - statement: route() where attributes["exception.type"] != nil
+      # Match spans that carry the standard error type attribute
+      - context: span
+        statement: route() where span.attributes["error.type"] != nil
         pipelines: [traces/errors]
     # Everything that doesn't match goes to the default
     default_pipelines: [traces/default]
@@ -96,19 +100,22 @@ service:
 Let's break down the OTTL expressions used above:
 
 ```yaml
-# This matches any span where the status code attribute equals "ERROR"
-- statement: route() where attributes["otel.status_code"] == "ERROR"
+# This matches any span where the span status code is ERROR
+- context: span
+  statement: route() where span.status.code == STATUS_CODE_ERROR
 
-# This matches spans that recorded an exception (have exception.type set)
-- statement: route() where attributes["exception.type"] != nil
+# This matches spans that recorded an error type
+- context: span
+  statement: route() where span.attributes["error.type"] != nil
 ```
 
 You can combine conditions with `and` and `or`:
 
 ```yaml
 # Route error traces from critical services only
-- statement: >
-    route() where attributes["otel.status_code"] == "ERROR"
+- context: span
+  statement: >
+    route() where span.status.code == STATUS_CODE_ERROR
     and resource.attributes["service.name"] == "payment-service"
   pipelines: [traces/critical_errors]
 ```
@@ -168,7 +175,7 @@ curl -X POST http://localhost:4318/v1/traces \
 
 ## Performance Considerations
 
-The routing connector adds minimal overhead because OTTL expressions are compiled at startup. The evaluation is a simple attribute lookup, not a regex scan. In benchmarks, routing adds less than 1 microsecond per span.
+The routing connector adds minimal overhead for simple OTTL expressions like these because evaluation is limited to span status and attribute lookups, not regex scans or expensive transformations.
 
 However, keep in mind that you now have two downstream pipelines, each with their own batch processor and exporter queue. Size your memory limiter accordingly.
 
