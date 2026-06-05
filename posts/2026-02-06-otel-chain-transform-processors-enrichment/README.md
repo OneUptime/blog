@@ -95,13 +95,14 @@ processors:
 
           # Add duration bucket for quick filtering
           - set(attributes["duration.bucket"], "fast")
-            where duration < 100000000  # < 100ms in nanoseconds
+            where end_time_unix_nano - start_time_unix_nano < 100000000  # < 100ms
 
           - set(attributes["duration.bucket"], "normal")
-            where duration >= 100000000 and duration < 1000000000
+            where end_time_unix_nano - start_time_unix_nano >= 100000000
+            and end_time_unix_nano - start_time_unix_nano < 1000000000
 
           - set(attributes["duration.bucket"], "slow")
-            where duration >= 1000000000  # >= 1 second
+            where end_time_unix_nano - start_time_unix_nano >= 1000000000  # >= 1 second
 ```
 
 ## Stage 3: Classify
@@ -144,7 +145,9 @@ processors:
             and attributes["deployment.environment"] != "staging"
 ```
 
-## Full Pipeline Configuration
+## Pipeline Configuration
+
+With the transform processor definitions from the stages above, wire the processors into the traces pipeline like this:
 
 ```yaml
 receivers:
@@ -159,6 +162,7 @@ exporters:
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
+processors:
   batch:
     send_batch_size: 512
     timeout: 5s
@@ -184,6 +188,9 @@ connectors:
   forward/after_normalize:
   forward/after_enrich:
 
+exporters:
+  debug:
+
 service:
   pipelines:
     traces/stage1:
@@ -204,7 +211,7 @@ service:
 
 ## Performance Notes
 
-Each transform processor iterates over every span in the batch. Three processors means three iterations. In practice, the overhead is minimal because OTTL statements are compiled expressions, not interpreted scripts. In benchmarks with 10,000 spans per second, a three-stage pipeline adds under 5ms of total latency. The readability and maintainability gains far outweigh the tiny performance cost.
+Each transform processor iterates over every span in the batch. Three processors means three iterations. In practice, the overhead is often acceptable for straightforward OTTL statements, but advanced transformations can have a noticeable performance impact. Measure with your own traffic volume and Collector configuration to decide whether the readability and maintainability gains justify the extra processing cost.
 
 ## Wrapping Up
 
