@@ -45,7 +45,7 @@ extensions:
     endpoint: 0.0.0.0:13133
     path: "/health"
 
-  # Expose Collector internal metrics via Prometheus
+  # Expose live diagnostic pages for troubleshooting
   zpages:
     endpoint: 0.0.0.0:55679
 
@@ -165,6 +165,12 @@ exporters:
       max_elapsed_time: 600s
     timeout: 30s
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 service:
   extensions: [file_storage/queue]
   pipelines:
@@ -175,44 +181,62 @@ service:
 
 ## Automated Failover with a Secondary Backend
 
-Configure a failover exporter so data routes to a backup backend when the primary is down.
+Configure the failover connector so data routes to a backup backend when the primary is down.
 
 ```yaml
 # otel-collector-failover.yaml
-# Dual-export with failover to a secondary backend
+# Failover to a secondary backend
+
+connectors:
+  failover:
+    priority_levels:
+      - [traces/primary]
+      - [traces/secondary]
+    retry_interval: 30s
+    sending_queue:
+      enabled: true
+      storage: file_storage/failover
 
 exporters:
   otlp/primary:
     endpoint: tempo-primary.monitoring.svc:4317
-    sending_queue:
-      enabled: true
-      storage: file_storage/queue
     retry_on_failure:
       enabled: true
       max_elapsed_time: 120s
 
   otlp/secondary:
     endpoint: tempo-secondary.monitoring.svc:4317
-    sending_queue:
-      enabled: true
-      storage: file_storage/queue_secondary
     retry_on_failure:
       enabled: true
 
+extensions:
+  file_storage/failover:
+    directory: /var/otel/failover-queue
+
 processors:
-  # Use the failover connector to switch backends on failure
-  # Alternatively, export to both simultaneously
   batch:
     send_batch_size: 512
     timeout: 5s
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 service:
+  extensions: [file_storage/failover]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      # Export to both - secondary acts as hot standby
-      exporters: [otlp/primary, otlp/secondary]
+      exporters: [failover]
+    traces/primary:
+      receivers: [failover]
+      exporters: [otlp/primary]
+    traces/secondary:
+      receivers: [failover]
+      exporters: [otlp/secondary]
 ```
 
 ## Recovery Runbook
@@ -241,6 +265,7 @@ DESIRED=$(kubectl get deployment otel-collector -n monitoring \
   -o jsonpath='{.spec.replicas}')
 READY=$(kubectl get deployment otel-collector -n monitoring \
   -o jsonpath='{.status.readyReplicas}')
+READY=${READY:-0}
 echo "Desired: $DESIRED, Ready: $READY"
 
 if [ "$READY" -lt "$DESIRED" ]; then
