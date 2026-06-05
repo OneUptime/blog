@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Exporter, Elasticsearch, Observability, Log, Tra
 
 Description: Learn how to configure the Elasticsearch exporter in OpenTelemetry Collector to send telemetry data to Elasticsearch clusters with authentication, TLS, and index management.
 
-The OpenTelemetry Collector provides a powerful Elasticsearch exporter that enables you to send traces, metrics, and logs directly to your Elasticsearch cluster. This integration is particularly valuable for organizations already using the Elastic Stack for search and analytics, allowing them to leverage their existing infrastructure for observability data.
+The OpenTelemetry Collector provides a powerful Elasticsearch exporter that enables you to send traces, logs, and metrics directly to your Elasticsearch cluster. This integration is particularly valuable for organizations already using the Elastic Stack for search and analytics, allowing them to leverage their existing infrastructure for observability data.
 
 ## Understanding the Elasticsearch Exporter
 
@@ -34,7 +34,7 @@ graph LR
 Before configuring the Elasticsearch exporter, ensure you have:
 
 - OpenTelemetry Collector Contrib distribution installed
-- An Elasticsearch cluster (version 7.x or 8.x)
+- An Elasticsearch cluster. The exporter is API-compatible with Elasticsearch 7.17.x, 8.x, and 9.x, but the default OTel mapping mode requires Elasticsearch 8.12 or later and works best with 8.16 or later.
 - Network connectivity between the Collector and Elasticsearch
 - Appropriate credentials for authentication (if required)
 
@@ -100,7 +100,7 @@ exporters:
 
     # Basic authentication credentials
     auth:
-      authenticator: basicauth
+      authenticator: basicauth/elasticsearch
 
     # Index configuration
     traces_index: otel-traces
@@ -137,8 +137,7 @@ exporters:
       - https://elasticsearch.example.com:9200
 
     # API key authentication
-    headers:
-      Authorization: "ApiKey ${ELASTICSEARCH_API_KEY}"
+    api_key: ${ELASTICSEARCH_API_KEY}
 
     traces_index: otel-traces
     logs_index: otel-logs
@@ -146,7 +145,7 @@ exporters:
 
 ## Advanced Index Management
 
-Elasticsearch excels at time-series data management. Configure dynamic index names with date patterns for better data lifecycle management:
+Elasticsearch excels at time-series data management. Configure Logstash-format daily index names for better data lifecycle management:
 
 ```yaml
 exporters:
@@ -155,28 +154,17 @@ exporters:
       - https://elasticsearch.example.com:9200
 
     auth:
-      authenticator: basicauth
+      authenticator: basicauth/elasticsearch
 
-    # Dynamic index names with date patterns
+    # Daily index names with Logstash-format compatibility
     # Creates indices like: traces-2026-02-06
-    traces_index: traces-%{2006-01-02}
-    logs_index: logs-%{2006-01-02}
+    traces_index: traces
+    logs_index: logs
 
-    # Index settings applied when creating new indices
-    index:
-      # Number of primary shards
-      number_of_shards: 3
-
-      # Number of replica shards
-      number_of_replicas: 2
-
-    # Mapping configuration
-    mapping:
-      # Deduplicate spans with the same span ID
-      dedup: true
-
-      # Mode for handling span events
-      mode: ecs
+    logstash_format:
+      enabled: true
+      prefix_separator: "-"
+      date_format: "%Y-%m-%d"
 
 extensions:
   basicauth/elasticsearch:
@@ -188,7 +176,7 @@ service:
   extensions: [basicauth/elasticsearch]
 ```
 
-The date pattern `%{2006-01-02}` uses Go's time formatting syntax. This creates daily indices, which is ideal for implementing Index Lifecycle Management (ILM) policies in Elasticsearch.
+The `logstash_format` settings use strftime date formatting. This creates daily indices, which is useful for implementing Index Lifecycle Management (ILM) policies in Elasticsearch. Define shard counts, replicas, mappings, and ILM policy names in Elasticsearch index templates rather than in the exporter configuration.
 
 ## TLS Configuration
 
@@ -201,7 +189,7 @@ exporters:
       - https://elasticsearch.example.com:9200
 
     auth:
-      authenticator: basicauth
+      authenticator: basicauth/elasticsearch
 
     # TLS configuration
     tls:
@@ -218,8 +206,8 @@ exporters:
       # Server name for certificate validation
       server_name_override: elasticsearch.example.com
 
-    traces_index: otel-traces-%{2006-01-02}
-    logs_index: otel-logs-%{2006-01-02}
+    traces_index: otel-traces
+    logs_index: otel-logs
 
 extensions:
   basicauth/elasticsearch:
@@ -248,34 +236,31 @@ exporters:
       on_start: true
       interval: 5m
 
-    # Bulk request configuration
-    bulk:
-      # Maximum size of bulk request in bytes (10MB)
-      max_size: 10485760
-
-      # Maximum number of actions in a bulk request
-      max_actions: 5000
+    # Queueing and batching configuration
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 100
+      batch:
+        # Send queued batches after this interval even if not full
+        flush_timeout: 10s
+        # Size batches by pdata bytes
+        sizer: bytes
+        min_size: 1048576
+        max_size: 5242880
 
     # Retry configuration
     retry:
       enabled: true
-      max_elapsed_time: 300s
+      max_retries: 5
       initial_interval: 5s
       max_interval: 30s
-
-    # Flush configuration
-    flush:
-      # Send bulk request after this interval even if not full
-      interval: 10s
-
-      # Flush when this many bytes are buffered
-      bytes: 5242880
 
     # Timeout for requests
     timeout: 90s
 
-    traces_index: otel-traces-%{2006-01-02}
-    logs_index: otel-logs-%{2006-01-02}
+    traces_index: otel-traces
+    logs_index: otel-logs
 
 processors:
   batch:
@@ -341,7 +326,7 @@ exporters:
       - https://es-node3.example.com:9200
 
     auth:
-      authenticator: basicauth
+      authenticator: basicauth/elasticsearch
 
     discover:
       on_start: true
@@ -353,28 +338,29 @@ exporters:
       key_file: /etc/otel/certs/client.key
       insecure_skip_verify: false
 
-    traces_index: otel-traces-%{2006-01-02}
-    logs_index: otel-logs-%{2006-01-02}
+    traces_index: otel-traces
+    logs_index: otel-logs
 
-    index:
-      number_of_shards: 3
-      number_of_replicas: 2
+    logstash_format:
+      enabled: true
+      prefix_separator: "-"
+      date_format: "%Y-%m-%d"
 
-    mapping:
-      dedup: true
-      mode: ecs
-
-    bulk:
-      max_size: 10485760
-      max_actions: 5000
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 100
+      batch:
+        flush_timeout: 10s
+        sizer: bytes
+        min_size: 1048576
+        max_size: 5242880
 
     retry:
       enabled: true
-      max_elapsed_time: 300s
-
-    flush:
-      interval: 10s
-      bytes: 5242880
+      max_retries: 5
+      initial_interval: 5s
+      max_interval: 30s
 
     timeout: 90s
 
@@ -407,13 +393,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 Common issues and solutions:
 
 - **Connection timeouts**: Increase the `timeout` value or check network connectivity
-- **Bulk request failures**: Reduce `bulk.max_size` or `bulk.max_actions` values
+- **Bulk request failures**: Reduce `sending_queue.batch.max_size` or check Elasticsearch indexing errors
 - **Authentication errors**: Verify credentials and ensure the user has necessary privileges
 - **Index creation failures**: Check that the Elasticsearch user has `create_index` privilege
 
@@ -421,7 +406,7 @@ Common issues and solutions:
 
 Create index templates in Elasticsearch to ensure consistent mappings:
 
-```json
+```http
 PUT _index_template/otel-traces
 {
   "index_patterns": ["otel-traces-*"],
