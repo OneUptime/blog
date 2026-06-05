@@ -8,9 +8,9 @@ Description: Step-by-step instructions for transitioning from Elastic APM agents
 
 ---
 
-Elastic APM has been a solid choice for teams that already run the Elastic Stack. The APM agents are well-built, the integration with Elasticsearch and Kibana is seamless, and the whole thing can run self-hosted. So why would you migrate to OpenTelemetry? Because the world is moving toward a common instrumentation standard, and Elastic knows it. In fact, Elastic APM Server has supported OTLP ingestion natively since version 7.13. This means you can switch your application instrumentation to OpenTelemetry while keeping Elasticsearch as your backend.
+Elastic APM has been a solid choice for teams that already run the Elastic Stack. The APM agents are well-built, the integration with Elasticsearch and Kibana is seamless, and the whole thing can run self-hosted. So why would you migrate to OpenTelemetry? Because the world is moving toward a common instrumentation standard, and Elastic knows it. In fact, Elastic APM Server has supported OTLP/gRPC ingestion on the standard APM Server endpoint since version 7.12, with additional OpenTelemetry support added in later releases. This means you can switch your application instrumentation to OpenTelemetry while keeping Elasticsearch as your backend.
 
-This guide walks through the transition for Java, Python, and Node.js applications, covering both auto-instrumentation and manual span creation.
+This guide walks through the transition for Java and Python applications, covering both auto-instrumentation and manual span creation.
 
 ## Why Transition from Elastic APM Agents?
 
@@ -45,21 +45,23 @@ You can also skip the Collector entirely and send OTLP directly from the SDKs to
 
 ## Step 1: Verify Your Elastic APM Server Supports OTLP
 
-OTLP support was added in Elastic APM Server 7.13 and is enabled by default in 8.x. Check your version and ensure the OTLP endpoint is accessible.
+OTLP/gRPC support on the standard APM Server endpoint was added in Elastic APM Server 7.12, with additional OpenTelemetry support added in 7.13 and later. Check your version and ensure the OTLP endpoint is accessible.
 
 ```bash
 # Check your APM Server version
 
-# OTLP support requires 7.13 or later
+# OTLP/gRPC support requires 7.12 or later
 curl -s http://your-apm-server:8200/ | python3 -m json.tool
 
-# Test the OTLP gRPC endpoint
-# APM Server listens for OTLP on port 8200 by default (same port, different path)
-# A successful connection returns an empty response, not an error
-grpcurl -plaintext your-apm-server:8200 list
+# Confirm the OTLP endpoint details
+# APM Server listens for OTLP on port 8200 by default and supports both:
+# - OTLP/gRPC: /opentelemetry.proto.collector.trace.v1.TraceService/Export
+# - OTLP/HTTP: /v1/traces
+# Note: grpcurl list only works when server reflection is enabled, which is
+# not expected for most APM Server deployments.
 ```
 
-If you are running APM Server 8.x with Fleet, OTLP is already enabled. For standalone configurations, make sure `apm-server.auth.anonymous.enabled` is true or configure an API key.
+If you are running APM Server 8.x with Fleet, OTLP is already enabled. For standalone configurations, allow anonymous intake only when that is appropriate, or configure a secret token or API key and pass it in the OTLP `Authorization` header.
 
 ## Step 2: Migrate a Java Application
 
@@ -178,10 +180,10 @@ Here is how to convert custom instrumentation.
 # After: OpenTelemetry custom instrumentation
 from opentelemetry import trace
 
-tracer = trace.getTracer("discount-module", "1.0.0")
+tracer = trace.get_tracer("discount-module", "1.0.0")
 
 def calculate_discount(customer_id, cart_total):
-    # startActiveSpan is equivalent to capture_span
+    # start_as_current_span is equivalent to capture_span
     # It creates a child span under the current active span
     with tracer.start_as_current_span("calculate-discount") as span:
         # set_attribute replaces elasticapm.label()
@@ -209,8 +211,8 @@ Some Elastic APM features need alternative solutions in OpenTelemetry:
 # Before: elasticapm.set_user_context(user_id='123', email='user@example.com')
 # After: Set standard attributes on the current span
 span = trace.get_current_span()
-span.set_attribute("enduser.id", "123")
-span.set_attribute("enduser.email", "user@example.com")
+span.set_attribute("user.id", "123")
+span.set_attribute("user.email", "user@example.com")
 ```
 
 **Custom context**: Elastic's `set_custom_context()` maps to span attributes. There is no separate context object; just add attributes to the span.
@@ -230,7 +232,7 @@ However, custom Kibana dashboards that reference Elastic APM field names need up
 | span.type | span.kind + attributes |
 | labels.* | resource.attributes.* or span.attributes.* |
 | service.environment | deployment.environment |
-| user.id | enduser.id |
+| user.id | user.id |
 
 ## Migration Checklist
 
