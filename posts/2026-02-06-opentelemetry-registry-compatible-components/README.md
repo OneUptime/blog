@@ -36,26 +36,27 @@ flowchart TD
 
 The registry supports filtering by several dimensions:
 
-- **Component type**: receiver, processor, exporter, extension, connector
-- **Language**: Go, Java, Python, JavaScript, .NET, etc.
-- **Source**: core, contrib, third-party
-- **Stability**: stable, beta, alpha, development
+- **Type**: receiver, processor, exporter, extension, connector, provider, and other entry types
+- **Language**: Collector, Go, Java, Python, JavaScript, .NET, etc.
+- **Flags**: deprecated, first party, native
 
 ### Finding a Receiver for Your Data Source
 
 Suppose you need to collect metrics from a PostgreSQL database. Here is how to find the right component:
 
 1. Go to the registry and search for "postgresql"
-2. Filter by component type "receiver"
-3. Filter by language "collector" (since collector components are written in Go)
-4. Check the stability level and source repository
+2. Filter by type "receiver"
+3. Filter by language "Collector" to focus on Collector components
+4. Check the version, package details, documentation, and source repository
 
 The search will return the `postgresqlreceiver` from the contrib repository. The registry page tells you:
 
 - The Go module path to use in your manifest
-- The stability level for each signal (traces, metrics, logs)
+- The current component version
 - A link to the component's documentation
 - The repository where the source code lives
+
+Check the component documentation for the stability level of each supported signal (traces, metrics, logs).
 
 ## Evaluating Components
 
@@ -93,13 +94,13 @@ echo "Checking health of ${REPO}..."
 LAST_COMMIT=$(gh api "repos/${REPO}/commits?per_page=1" --jq '.[0].commit.committer.date')
 echo "Last commit: ${LAST_COMMIT}"
 
-# Count open issues
-OPEN_ISSUES=$(gh api "repos/${REPO}" --jq '.open_issues_count')
+# Count open issues, excluding pull requests
+OPEN_ISSUES=$(gh api "search/issues?q=repo:${REPO}+is:issue+is:open" --jq '.total_count')
 echo "Open issues: ${OPEN_ISSUES}"
 
 # Count recent commits (last 30 days)
 SINCE=$(date -u -v-30d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
-RECENT_COMMITS=$(gh api "repos/${REPO}/commits?since=${SINCE}&per_page=100" --jq 'length')
+RECENT_COMMITS=$(gh api --paginate "repos/${REPO}/commits?since=${SINCE}&per_page=100" --jq '.[].sha' | wc -l | tr -d ' ')
 echo "Commits in last 30 days: ${RECENT_COMMITS}"
 
 # Check for releases
@@ -140,8 +141,8 @@ These have their own versioning scheme. Check what collector version they were b
 ```bash
 # Check a third-party component's go.mod to see which collector version it targets
 # This tells you if it is compatible with your collector version
-go list -m -json github.com/somevendor/otel-component@v1.2.0 | \
-  grep -A1 'opentelemetry-collector'
+go mod download -json github.com/somevendor/otel-component@v1.2.0 | \
+  jq -r '.GoMod' | xargs grep 'go.opentelemetry.io/collector'
 ```
 
 If the versions do not match, you have two options:
@@ -246,11 +247,11 @@ dist:
 receivers:
   # Core: OTLP for application telemetry
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
-  # Contrib (Beta): Host metrics for infrastructure monitoring
+  # Contrib: Host metrics for infrastructure monitoring
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.96.0
   # Contrib (Beta): File logs for application log collection
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.96.0
-  # Contrib (Beta): PostgreSQL metrics for database monitoring
+  # Contrib: PostgreSQL metrics for database monitoring
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver v0.96.0
 
 processors:
@@ -262,7 +263,7 @@ processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.96.0
   # Contrib (Beta): Transform processor for OTTL
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.96.0
-  # Contrib (Beta): Filter out unwanted telemetry
+  # Contrib (Alpha): Filter out unwanted telemetry
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.96.0
 
 exporters:
@@ -274,7 +275,7 @@ exporters:
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.96.0
 
 extensions:
-  # Contrib (Stable): Health check endpoint
+  # Contrib (Alpha): Health check endpoint
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.96.0
 ```
 
@@ -287,14 +288,14 @@ The registry grows constantly. Set up a process to stay informed:
 # check-new-components.sh
 # Checks the contrib repository for recently added components
 
-echo "Recently added components in opentelemetry-collector-contrib:"
+echo "Recent commits that may indicate new components in opentelemetry-collector-contrib:"
 
-# List directories added in the last 90 days
+# List recent commits in component directories that may indicate additions
 for TYPE in receiver processor exporter extension connector; do
   echo ""
   echo "=== ${TYPE}s ==="
   gh api "repos/open-telemetry/opentelemetry-collector-contrib/commits?path=${TYPE}&since=$(date -u -v-90d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '90 days ago' +%Y-%m-%dT%H:%M:%SZ)&per_page=10" \
-    --jq '.[].commit.message' | grep -i "add\|new\|initial" | head -5
+    --jq '.[].commit.message' | grep -Ei "add|new|initial" | head -5
 done
 ```
 
