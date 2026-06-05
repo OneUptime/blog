@@ -8,7 +8,7 @@ Description: Complete guide to configuring Prometheus remote write with the Open
 
 ---
 
-Prometheus remote write is a protocol that lets Prometheus push metrics to external systems instead of relying solely on its local time series database. The OpenTelemetry Collector supports this protocol on both sides of the pipeline. It can receive metrics via Prometheus remote write (acting as a remote write endpoint) and it can export metrics using Prometheus remote write (pushing to compatible backends like Cortex, Thanos, or Grafana Mimir).
+Prometheus remote write is a protocol that lets Prometheus push metrics to external systems instead of relying solely on its local time series database. The OpenTelemetry Collector supports this protocol on both sides of the pipeline. It can receive metrics via Prometheus remote write (acting as a remote write endpoint, currently for Remote Write 2.0) and it can export metrics using Prometheus remote write (pushing to compatible backends like Cortex, Thanos, or Grafana Mimir).
 
 This two-way support makes the collector a powerful bridge between Prometheus-native infrastructure and OTLP-based observability platforms. This guide covers both directions in detail.
 
@@ -21,7 +21,7 @@ The OpenTelemetry Collector fits into this architecture in two ways.
 ```mermaid
 graph TD
     subgraph "Receiving Remote Write"
-        P1[Prometheus] -->|Remote Write| C1[OTel Collector<br/>prometheusremotewrite receiver]
+        P1[Prometheus] -->|Remote Write| C1[OTel Collector<br/>prometheus_remote_write receiver]
         C1 -->|OTLP| B1[Any OTLP Backend]
     end
 
@@ -35,7 +35,9 @@ The first scenario is useful when you have an existing Prometheus server and wan
 
 ## Receiving Prometheus Remote Write
 
-The OpenTelemetry Collector can act as a Prometheus remote write endpoint using the `prometheusremotewrite` receiver (available in the contrib distribution). This lets your existing Prometheus servers push metrics to the collector, where they get converted to OTLP and can be routed anywhere.
+The OpenTelemetry Collector can act as a Prometheus remote write endpoint using the `prometheus_remote_write` receiver (available in the contrib distribution). This lets your existing Prometheus servers push metrics to the collector, where they get converted to OTLP and can be routed anywhere.
+
+The receiver implements Prometheus Remote Write 2.0, so Prometheus must send the `io.prometheus.write.v2.Request` protobuf message and must run with metadata WAL records enabled by starting Prometheus with `--enable-feature=metadata-wal-records`.
 
 First, configure Prometheus to send remote write data to the collector.
 
@@ -47,7 +49,10 @@ global:
 
 # Send all scraped metrics to the OTel Collector via remote write
 remote_write:
-  - url: "http://otel-collector:19291/api/v1/push"
+  - url: "http://otel-collector:19291/api/v1/write"
+    # The OpenTelemetry Collector receiver expects Remote Write 2.0
+    protobuf_message: io.prometheus.write.v2.Request
+
     # Queue configuration for reliability
     queue_config:
       capacity: 10000
@@ -58,7 +63,7 @@ remote_write:
       min_backoff: 30ms
       max_backoff: 5s
 
-    # Retry on temporary failures
+    # Metadata is always sent with Remote Write 2.0; this only matters if you switch back to the v1 protobuf
     metadata_config:
       send: true
       send_interval: 1m
@@ -82,7 +87,7 @@ Then configure the collector to receive the remote write data.
 # otel-collector-config.yaml
 receivers:
   # Accept Prometheus remote write data
-  prometheusremotewrite:
+  prometheus_remote_write:
     # Endpoint where Prometheus sends remote write data
     endpoint: 0.0.0.0:19291
 
@@ -109,7 +114,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [prometheusremotewrite]
+      receivers: [prometheus_remote_write]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -143,7 +148,7 @@ processors:
 
 exporters:
   # Export metrics via Prometheus remote write
-  prometheusremotewrite:
+  prometheus_remote_write:
     # Remote write endpoint (Cortex, Mimir, Thanos, etc.)
     endpoint: "https://mimir.example.com/api/v1/push"
 
@@ -174,7 +179,7 @@ exporters:
       max_elapsed_time: 300s
 
     # Queue for handling backpressure
-    sending_queue:
+    remote_write_queue:
       enabled: true
       num_consumers: 10
       queue_size: 5000
@@ -184,10 +189,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
-The `external_labels` field is important for multi-cluster deployments. These labels get added to every metric and are used by backends like Thanos for deduplication and Cortex/Mimir for tenant identification.
+The `external_labels` field is important for multi-cluster deployments. These labels get added to every metric and are used by backends like Thanos for deduplication or to distinguish metrics from different clusters. Cortex and Mimir tenant identification is usually handled by the `X-Scope-OrgID` header.
 
 ## Multi-Tenant Configuration
 
@@ -208,7 +213,7 @@ receivers:
 
 exporters:
   # Team A writes to their tenant
-  prometheusremotewrite/team-a:
+  prometheus_remote_write/team-a:
     endpoint: "https://mimir.example.com/api/v1/push"
     headers:
       X-Scope-OrgID: "team-a"
@@ -218,7 +223,7 @@ exporters:
       enabled: true
 
   # Team B writes to their tenant
-  prometheusremotewrite/team-b:
+  prometheus_remote_write/team-b:
     endpoint: "https://mimir.example.com/api/v1/push"
     headers:
       X-Scope-OrgID: "team-b"
@@ -242,12 +247,12 @@ service:
     metrics/team-a:
       receivers: [otlp/team-a]
       processors: [batch/team-a]
-      exporters: [prometheusremotewrite/team-a]
+      exporters: [prometheus_remote_write/team-a]
 
     metrics/team-b:
       receivers: [otlp/team-b]
       processors: [batch/team-b]
-      exporters: [prometheusremotewrite/team-b]
+      exporters: [prometheus_remote_write/team-b]
 ```
 
 Each team gets its own receiver, pipeline, and exporter with the appropriate tenant header. This ensures data isolation while sharing the same collector infrastructure.
@@ -256,18 +261,18 @@ Each team gets its own receiver, pipeline, and exporter with the appropriate ten
 
 When the collector converts OTLP metrics to Prometheus remote write format, it applies the inverse of the Prometheus-to-OTLP type mappings. Understanding these conversions helps you predict how metrics will appear in the backend.
 
-OTLP monotonic sums become Prometheus counters with a `_total` suffix. OTLP gauges stay as gauges. OTLP histograms become Prometheus histograms with `_bucket`, `_sum`, and `_count` series. The collector also generates a `target_info` metric that carries the resource attributes as labels, which is useful for joining resource information with metric queries.
+OTLP cumulative monotonic sums become Prometheus counters with a `_total` suffix. OTLP gauges stay as gauges. OTLP histograms become Prometheus histograms with `_bucket`, `_sum`, and `_count` series. Non-cumulative monotonic sums, histograms, and summaries are dropped by the exporter. The collector also generates a `target_info` metric that carries the resource attributes as labels, which is useful for joining resource information with metric queries.
 
 You can control some of this behavior in the exporter configuration.
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://mimir.example.com/api/v1/push"
 
-    # Add metric type suffixes (_total, _bucket, etc.)
-    # Set to false if your backend handles this
-    add_metric_suffixes: true
+    # Control metric and label name translation.
+    # This default adds Prometheus-compatible type and unit suffixes.
+    translation_strategy: UnderscoreEscapingWithSuffixes
 
     # Convert resource attributes to labels on every metric
     resource_to_telemetry_conversion:
@@ -286,13 +291,13 @@ http_requests_total * on(instance, job) group_left(service_version)
   target_info
 ```
 
-## High Availability with WAL
+## Durability with WAL
 
-For production deployments where metric loss is not acceptable, enable the Write-Ahead Log (WAL) on the remote write exporter. The WAL persists metrics to disk before sending, so they survive collector restarts.
+For production deployments where metric loss must be minimized, enable the Write-Ahead Log (WAL) on the remote write exporter. The WAL persists queued metrics to disk before sending, so they can survive collector restarts.
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://mimir.example.com/api/v1/push"
 
     # Enable WAL for durability
@@ -311,7 +316,7 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
 
-    sending_queue:
+    remote_write_queue:
       enabled: true
       num_consumers: 10
       queue_size: 10000
@@ -321,7 +326,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 The WAL directory needs to be on persistent storage (not an ephemeral container volume). In Kubernetes, use a PersistentVolumeClaim mounted to the WAL directory.
@@ -335,7 +340,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
     logs:
       level: info
 
@@ -343,7 +353,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 Key metrics to watch include:
