@@ -8,7 +8,7 @@ Description: Learn how to set up end-to-end distributed tracing from API Gateway
 
 ---
 
-When a request hits your API Gateway and flows through to a Lambda function, you want to see the entire journey as a single trace. The latency at the gateway, the cold start overhead, the function execution, and any downstream calls your Lambda makes should all appear as connected spans in one trace. Without this, debugging a slow API call means jumping between CloudWatch log groups and guessing where the time went.
+When a request hits your API Gateway and flows through to a Lambda function, you want to see the entire journey as a single trace. The Lambda cold start overhead, the function execution, and any downstream calls your Lambda makes should all appear as connected spans in one trace. For REST APIs with X-Ray tracing enabled, you can also include the gateway segment. Without this, debugging a slow API call means jumping between CloudWatch log groups and guessing where the time went.
 
 OpenTelemetry makes this possible by propagating trace context through every hop. API Gateway passes trace headers to Lambda, Lambda passes them to downstream services, and the result is a complete picture of every request. This guide walks through the setup step by step.
 
@@ -37,13 +37,13 @@ sequenceDiagram
     Lambda->>Backend: Export spans via OTLP
 ```
 
-The trace starts at the client (or at API Gateway if the client does not send trace headers), flows through Lambda, and includes every downstream call. Each service adds its spans to the same trace using the propagated trace ID.
+The trace starts at the client when it sends trace headers, at the Lambda when no trace headers are present, or at API Gateway for REST APIs with active X-Ray tracing enabled. It then flows through Lambda and includes every downstream call. Each service adds its spans to the same trace using the propagated trace ID.
 
 ## Configuring API Gateway for Trace Propagation
 
-API Gateway can propagate trace context in two ways: through AWS X-Ray headers or through W3C `traceparent` headers. For OpenTelemetry compatibility, you want W3C format, but you should support both since some AWS services still use the X-Ray format.
+API Gateway can propagate trace context in two ways: by forwarding W3C `traceparent` headers from the client request, or by using AWS X-Ray headers when REST API X-Ray tracing is enabled. For OpenTelemetry compatibility, you want W3C format, but you should support both since some AWS services still use the X-Ray format.
 
-For HTTP API (API Gateway v2), trace context propagation is simpler because the headers pass through to your Lambda function automatically.
+For HTTP API (API Gateway v2), trace context propagation is simpler because request headers pass through to your Lambda function automatically. HTTP APIs do not create API Gateway X-Ray segments; if you need a gateway-level X-Ray segment, use a REST API (v1) stage with active X-Ray tracing enabled.
 
 ```yaml
 # serverless.yml with API Gateway v2 (HTTP API)
@@ -52,13 +52,12 @@ service: traced-api
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   region: us-east-1
-  # Enable X-Ray tracing on API Gateway.
-  # This creates gateway-level spans and passes the
-  # X-Amzn-Trace-Id header to Lambda.
+  # Enable X-Ray tracing for Lambda.
+  # For a gateway-level X-Ray segment, use REST API (v1)
+  # and enable provider.tracing.apiGateway.
   tracing:
-    apiGateway: true
     lambda: true
   environment:
     OTEL_SERVICE_NAME: traced-api
@@ -76,7 +75,7 @@ functions:
           method: get
 ```
 
-With `tracing.apiGateway: true`, API Gateway creates its own trace segment and forwards the trace ID. The W3C `traceparent` header from the client also passes through to Lambda, which means your OpenTelemetry instrumentation can pick up either format.
+With HTTP API, the W3C `traceparent` header from the client passes through to Lambda, which means your OpenTelemetry instrumentation can continue that trace. With REST API and `tracing.apiGateway: true`, API Gateway can also create its own X-Ray trace segment and add the `X-Amzn-Trace-Id` header.
 
 ## Extracting Trace Context in Lambda
 
@@ -89,8 +88,8 @@ const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 const { AWSXRayPropagator } = require('@opentelemetry/propagator-aws-xray');
 
 // Create a composite propagator that understands both W3C and X-Ray formats.
-// API Gateway may send either depending on the configuration and the
-// headers present in the original client request.
+// The client may send W3C headers, while REST API X-Ray tracing can add
+// the X-Amzn-Trace-Id header.
 const compositePropagator = {
   inject(ctx, carrier, setter) {
     new W3CTraceContextPropagator().inject(ctx, carrier, setter);
@@ -100,7 +99,7 @@ const compositePropagator = {
     let extracted = new W3CTraceContextPropagator().extract(ctx, carrier, getter);
 
     // If W3C extraction did not find a trace, try X-Ray format
-    // which API Gateway uses when X-Ray tracing is enabled
+    // which REST API uses when X-Ray tracing is enabled
     if (extracted === ctx) {
       extracted = new AWSXRayPropagator().extract(ctx, carrier, getter);
     }
@@ -372,27 +371,28 @@ Use this normalization function at the start of your handler so the rest of your
 
 ## Correlating API Gateway Access Logs with Traces
 
-For complete end-to-end visibility, configure API Gateway access logs to include the trace ID. This lets you search your API Gateway logs by trace ID and vice versa.
+For complete end-to-end visibility, configure API Gateway access logs to include the gateway request ID and integration latency. This lets you correlate API Gateway logs with the request ID attribute recorded in your Lambda span. For REST APIs with X-Ray tracing enabled, you can also include `$context.xrayTraceId`.
 
 ```yaml
-# serverless.yml - configure access logging with trace IDs
+# serverless.yml - configure access logging with correlation fields
 provider:
   name: aws
-  # Configure access log format to include trace context.
+  # Configure access log format to include correlation fields.
   # The $context.requestId correlates with the span attribute
   # we recorded in the Lambda handler.
-  httpApi:
-    accessLogFormat: >-
-      {
-        "requestId": "$context.requestId",
-        "ip": "$context.identity.sourceIp",
-        "method": "$context.httpMethod",
-        "path": "$context.path",
-        "status": "$context.status",
-        "latency": "$context.responseLatency",
-        "integrationLatency": "$context.integrationLatency",
-        "xrayTraceId": "$context.xrayTraceId"
-      }
+  logs:
+    httpApi:
+      format: >-
+        {
+          "requestId": "$context.requestId",
+          "ip": "$context.identity.sourceIp",
+          "method": "$context.httpMethod",
+          "path": "$context.path",
+          "status": "$context.status",
+          "latency": "$context.responseLatency",
+          "integrationLatency": "$context.integrationLatency",
+          "integrationRequestId": "$context.integration.requestId"
+        }
 ```
 
 The `integrationLatency` field is especially useful. It tells you how long API Gateway waited for Lambda to respond. Comparing this with your Lambda span duration reveals how much overhead the API Gateway integration itself adds.
@@ -434,7 +434,7 @@ curl -v \
   https://your-api-id.execute-api.us-east-1.amazonaws.com/orders/12345
 ```
 
-Search your observability backend for trace ID `4bf92f3577b34da6a3ce929d0e0e4736`. You should see the API Gateway span (if X-Ray is enabled), the Lambda invocation span, and the DynamoDB query span all connected in one trace.
+Search your observability backend for trace ID `4bf92f3577b34da6a3ce929d0e0e4736`. You should see the Lambda invocation span and the DynamoDB query span connected in one trace. If you are using REST API with X-Ray tracing enabled and exporting X-Ray segments into the same backend, you should also see the API Gateway segment.
 
 ## Wrapping Up
 
