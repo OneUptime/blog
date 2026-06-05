@@ -56,7 +56,7 @@ kubectl top pod -n observability -l app=otel-collector
 
 # If metrics-server is not installed, check cgroup stats
 kubectl exec -it otel-collector-pod -n observability -- \
-  cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+  sh -c 'cat /sys/fs/cgroup/memory.current 2>/dev/null || cat /sys/fs/cgroup/memory/memory.usage_in_bytes'
 
 # Check the current limits
 kubectl get pod otel-collector-pod -n observability \
@@ -70,11 +70,11 @@ The memory_limiter processor is designed to prevent OOM kills by dropping data b
 ```yaml
 processors:
   memory_limiter:
-    # Start rejecting data at 80% of the memory limit
+    # Hard memory target at 80% of the container's available memory
     limit_percentage: 80
-    # Start recovering at 60% of the memory limit
+    # Start refusing data above the soft limit: 80% - 20% = 60%
     spike_limit_percentage: 20
-    check_interval: 5s
+    check_interval: 1s
 ```
 
 Place it first in your pipeline so it runs before other processors accumulate data:
@@ -94,7 +94,7 @@ service:
 
 ## Step 3: Tune the Batch Processor
 
-Reduce batch sizes to lower peak memory usage:
+Reduce and cap batch sizes to lower peak memory usage:
 
 ```yaml
 processors:
@@ -106,7 +106,7 @@ processors:
 
 ## Step 4: Limit the Sending Queue
 
-The in-memory sending queue can grow unbounded during backend outages:
+The in-memory sending queue can fill during backend outages and hold data up to its configured capacity:
 
 ```yaml
 exporters:
@@ -138,6 +138,9 @@ extensions:
     compaction:
       on_start: true
       directory: /tmp/otelcol
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Step 5: Set Appropriate Resource Limits
@@ -183,7 +186,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Then create alerts on:
@@ -193,8 +201,8 @@ Then create alerts on:
 container_memory_working_set_bytes{container="collector"}
   / container_spec_memory_limit_bytes{container="collector"} > 0.85
 
-# Collector's internal memory limiter being triggered
-rate(otelcol_processor_refused_spans_total[5m]) > 0
+# Collector is refusing spans because the pipeline returned errors
+rate(otelcol_receiver_refused_spans_total[5m]) > 0
 ```
 
 ## The ballpark_limiter Pattern
@@ -210,9 +218,9 @@ resources:
 # Collector config
 processors:
   memory_limiter:
-    limit_mib: 1500  # Start limiting at 1.5GB
+    limit_mib: 1500  # Hard memory target at 1.5GB
     spike_limit_mib: 300
     check_interval: 5s
 ```
 
-This gives the Collector headroom for spikes while preventing OOM kills. The memory_limiter will gracefully drop data before hitting the hard limit.
+This gives the Collector headroom for spikes while reducing the chance of OOM kills. The memory_limiter starts refusing data above the soft limit, which is `limit_mib - spike_limit_mib`, and forces garbage collection at the hard limit.
