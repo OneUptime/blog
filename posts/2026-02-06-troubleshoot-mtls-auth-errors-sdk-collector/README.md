@@ -65,7 +65,13 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
@@ -89,6 +95,7 @@ For the Go SDK:
 package main
 
 import (
+    "context"
     "crypto/tls"
     "crypto/x509"
     "os"
