@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Span, Tracing, Debugging
 
 Description: Understand why missing Span.End() calls result in incomplete traces and learn reliable patterns to always close your spans.
 
-When traces show up in your backend with gaps or missing operations, the cause is almost always the same: someone created a span but forgot to call `end()` on it. The span exists in memory, holding onto its data, but the span processor never receives it for export. This post explains the mechanics behind this problem and provides reliable solutions.
+When traces show up in your backend with gaps or missing operations, the cause is often the same: someone created a span but forgot to call `end()` on it. The span exists in memory, holding onto its data, but the span processor never receives the completed span for export. This post explains the mechanics behind this problem and provides reliable solutions.
 
 ## How Spans Flow Through the SDK
 
@@ -14,11 +14,11 @@ Understanding the span lifecycle makes the problem obvious:
 
 1. `tracer.startSpan()` creates a `Span` object in memory
 2. You add attributes, events, and links to the span
-3. `span.end()` records the end timestamp and passes the span to the `SpanProcessor`
+3. `span.end()` records the end timestamp and triggers the `SpanProcessor` end hook
 4. The `BatchSpanProcessor` collects finished spans and sends them in batches to the exporter
 5. The exporter transmits the data to your backend
 
-Step 3 is the trigger. Without it, the span never reaches step 4 or 5. It just sits in memory until the application shuts down or the garbage collector eventually reclaims it (if there are no more references).
+Step 3 is the trigger for exporting the completed span. Without it, the span never reaches step 4 or 5. It just sits in memory until the application shuts down or the garbage collector eventually reclaims it (if there are no more references).
 
 ## Spotting the Symptom
 
@@ -181,8 +181,8 @@ Consider adding a custom lint rule that flags any code path where `startSpan` is
 // This requires a custom ESLint plugin
 ```
 
-While there is no off-the-shelf rule for this specific case, the pattern is simple enough to enforce in code reviews: if you see `startSpan` without `try/finally`, flag it.
+While there is no standard ESLint core rule for this specific case, the pattern is simple enough to enforce in code reviews: if you see `startSpan` without `try/finally`, flag it.
 
 ## Summary
 
-Every `startSpan()` needs a `span.end()`. Use try/finally in JavaScript and Java, use context managers in Python, and always handle error paths. Incomplete traces are almost always a sign that spans are being created but not ended somewhere in your code.
+Every recording `startSpan()` needs a `span.end()`. Use try/finally in JavaScript and Java, use context managers in Python, and always handle error paths. Incomplete traces are often a sign that spans are being created but not ended somewhere in your code.
