@@ -57,7 +57,7 @@ def calculate_dynamic_price(flight_id, booking_class, request_context):
             "pricing.flight_id": flight_id,
             "pricing.booking_class": booking_class,
             "pricing.request_source": request_context.source,
-            "pricing.departure_date": request_context.departure_date,
+            "pricing.departure_date": str(request_context.departure_date),
         }
     ) as span:
         start = time.time()
