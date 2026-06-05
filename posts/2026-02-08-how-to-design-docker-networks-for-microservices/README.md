@@ -77,12 +77,15 @@ graph TB
 Implement this four-tier network architecture in Docker Compose:
 
 ```yaml
-version: "3.8"
-
 services:
   # Edge tier - publicly accessible
   traefik:
     image: traefik:v3.0
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
     ports:
       - "80:80"
       - "443:443"
@@ -278,18 +281,18 @@ services:
     networks:
       services:
         aliases:
-          - user-service  # Both versions respond to "user-service"
+          - user-service     # Existing clients keep using the stable name
+          - user-service-v1
 
   user-service-v2:
     image: my-user-service:v2
     networks:
       services:
         aliases:
-          - user-service
-          - user-service-v2  # Can also be reached explicitly
+          - user-service-v2  # New clients can use v2 explicitly
 ```
 
-This lets you gradually shift traffic from v1 to v2 by adjusting which version is running.
+This lets old clients keep using the stable service name while new clients can opt in to the versioned alias. When v2 is ready, move the stable alias from v1 to v2. Avoid assigning the same alias to multiple service versions unless nondeterministic DNS resolution is acceptable.
 
 ## Overlay Networks for Multi-Host Microservices
 
@@ -338,7 +341,7 @@ services:
     network_mode: host  # Bypasses Docker networking overhead
 ```
 
-Host networking removes the network namespace overhead but sacrifices isolation. Use it sparingly for services where microseconds matter.
+Host networking removes network address translation overhead but sacrifices network isolation. It is supported on Docker Engine for Linux and on Docker Desktop 4.34 and later when host networking is enabled. Use it sparingly for services where microseconds matter.
 
 ## Monitoring Network Traffic
 
@@ -410,7 +413,7 @@ Before deploying, verify your network design:
 - The reverse proxy connects only to services it needs to route to
 - Services use internal networks for inter-service communication
 - Shared caches are on the service tier network, not the data tier
-- Monitoring services have read-only access to the networks they scrape
+- Monitoring services join only the networks they need to scrape
 
 ## Conclusion
 

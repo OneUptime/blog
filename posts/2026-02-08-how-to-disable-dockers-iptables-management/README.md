@@ -26,10 +26,9 @@ Do not disable Docker iptables unless you have a clear reason. The manual setup 
 
 ## Disabling iptables in Docker
 
-Add the `--iptables=false` flag to the Docker daemon configuration:
+Add the `iptables` option to the Docker daemon configuration:
 
 ```json
-// /etc/docker/daemon.json - Disable automatic iptables management
 {
   "iptables": false
 }
@@ -46,22 +45,22 @@ sudo systemctl restart docker
 Verify the setting took effect:
 
 ```bash
-# Check Docker daemon configuration
-docker info | grep -i iptables
+# Validate the daemon configuration file
+sudo dockerd --validate --config-file=/etc/docker/daemon.json
 
-# Confirm Docker did not create iptables rules
+# Confirm Docker did not create its usual host-level bridge chains
 sudo iptables -L -n | grep -c DOCKER
-# Should output 0
+# This should not show Docker's normal bridge networking chains
 ```
 
 ## What Breaks When iptables Is Disabled
 
-With `iptables: false`, the following features stop working:
+With `iptables: false`, Docker stops creating most host-level firewall rules for bridge networks. The following features are affected unless you add replacement rules:
 
-1. **Port publishing** (`-p` flag) - No DNAT rules mean published ports are unreachable from outside
-2. **Container internet access** - No MASQUERADE rules mean containers cannot reach external networks
-3. **Network isolation** - No isolation rules mean all containers on all networks can potentially communicate
-4. **DNS resolution** - Internal DNS may not work properly without forwarding rules
+1. **Port publishing** (`-p` flag) - No host DNAT rules mean published host ports do not work as normal
+2. **Container internet access** - No MASQUERADE rules mean containers on bridge networks cannot reach external networks by using the host's address
+3. **Network filtering** - No filter rules mean Docker no longer blocks unpublished container ports from hosts that can route to the bridge network
+4. **Network isolation** - No isolation rules mean bridge networks may not be isolated the way Docker normally configures them
 
 Start a container and observe the failures:
 
@@ -69,13 +68,12 @@ Start a container and observe the failures:
 # Start a container with a published port
 docker run -d --name test-web -p 8080:80 nginx:alpine
 
-# This will fail because no DNAT rule exists
+# This typically fails because no host DNAT rule exists
 curl http://localhost:8080
 # curl: (7) Failed to connect to localhost port 8080
 
-# Container cannot reach the internet either
+# The container cannot reach the internet by masquerading through the host either
 docker exec test-web ping -c 1 8.8.8.8
-# ping: sendto: Network is unreachable
 ```
 
 ## Manually Creating Required iptables Rules
@@ -85,17 +83,17 @@ You need to recreate what Docker normally does automatically. Start with the bas
 ```bash
 # Create the Docker chains manually
 sudo iptables -N DOCKER
-sudo iptables -N DOCKER-ISOLATION-STAGE-1
-sudo iptables -N DOCKER-ISOLATION-STAGE-2
+sudo iptables -N DOCKER-FORWARD
 sudo iptables -N DOCKER-USER
+sudo iptables -t nat -N DOCKER
 
 # Add jumps from the FORWARD chain
 sudo iptables -A FORWARD -j DOCKER-USER
-sudo iptables -A FORWARD -j DOCKER-ISOLATION-STAGE-1
-sudo iptables -A FORWARD -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A FORWARD -o docker0 -j DOCKER
-sudo iptables -A FORWARD -i docker0 ! -o docker0 -j ACCEPT
-sudo iptables -A FORWARD -i docker0 -o docker0 -j ACCEPT
+sudo iptables -A FORWARD -j DOCKER-FORWARD
+sudo iptables -A DOCKER-FORWARD -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A DOCKER-FORWARD -o docker0 -j DOCKER
+sudo iptables -A DOCKER-FORWARD -i docker0 ! -o docker0 -j ACCEPT
+sudo iptables -A DOCKER-FORWARD -i docker0 -o docker0 -j ACCEPT
 ```
 
 ## Enabling IP Forwarding
@@ -143,11 +141,12 @@ For each published port, create a DNAT rule manually:
 CONTAINER_IP=$(docker inspect test-web --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 echo "Container IP: $CONTAINER_IP"
 
-# Add DNAT rule for port publishing (host port 8080 to container port 80)
-sudo iptables -t nat -A DOCKER -p tcp --dport 8080 -j DNAT --to-destination ${CONTAINER_IP}:80
-
-# Add the PREROUTING jump to DOCKER chain
+# Add the PREROUTING and OUTPUT jumps to the DOCKER chain
 sudo iptables -t nat -A PREROUTING -m addrtype --dst-type LOCAL -j DOCKER
+sudo iptables -t nat -A OUTPUT ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER
+
+# Add DNAT rule for port publishing (host port 8080 to container port 80)
+sudo iptables -t nat -A DOCKER ! -i docker0 -p tcp --dport 8080 -j DNAT --to-destination ${CONTAINER_IP}:80
 
 # Add ACCEPT rule in the FORWARD chain for the published port
 sudo iptables -A DOCKER -d ${CONTAINER_IP}/32 ! -i docker0 -o docker0 -p tcp --dport 80 -j ACCEPT
@@ -156,8 +155,9 @@ sudo iptables -A DOCKER -d ${CONTAINER_IP}/32 ! -i docker0 -o docker0 -p tcp --d
 Test that the port is now accessible:
 
 ```bash
-# Verify the published port works
-curl http://localhost:8080
+# Verify the published port works on the host's non-loopback address
+HOST_IP=$(hostname -I | awk '{print $1}')
+curl "http://${HOST_IP}:8080"
 ```
 
 ## Automating Rule Management with a Script
@@ -169,8 +169,16 @@ Managing rules manually for every container is tedious. Create a script that gen
 # docker-iptables-sync.sh - Generate iptables rules from running Docker containers
 
 # Flush existing Docker chains
+iptables -N DOCKER 2>/dev/null
+iptables -t nat -N DOCKER 2>/dev/null
 iptables -F DOCKER 2>/dev/null
 iptables -t nat -F DOCKER 2>/dev/null
+
+# Ensure host-port packets reach the NAT chain
+iptables -t nat -C PREROUTING -m addrtype --dst-type LOCAL -j DOCKER 2>/dev/null || \
+    iptables -t nat -A PREROUTING -m addrtype --dst-type LOCAL -j DOCKER
+iptables -t nat -C OUTPUT ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER 2>/dev/null || \
+    iptables -t nat -A OUTPUT ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER
 
 # Process each running container
 docker ps --format '{{.ID}}' | while read CONTAINER_ID; do
@@ -195,7 +203,7 @@ for container_port, bindings in ports.items():
         echo "Adding DNAT: ${NAME} ${HOST_PORT} -> ${IP}:${CONTAINER_PORT} (${PROTO})"
 
         # Add NAT rule
-        iptables -t nat -A DOCKER -p "$PROTO" --dport "$HOST_PORT" \
+        iptables -t nat -A DOCKER ! -i docker0 -p "$PROTO" --dport "$HOST_PORT" \
             -j DNAT --to-destination "${IP}:${CONTAINER_PORT}"
 
         # Add FORWARD allow rule
@@ -222,14 +230,14 @@ If you use UFW (Uncomplicated Firewall), Docker's automatic iptables management 
 COMMIT
 ```
 
-Then add UFW rules for published ports:
+Then add UFW route rules for the forwarded container traffic. Opening the host port with `ufw allow 8080/tcp` is not enough unless a process or proxy is actually listening on the host port:
 
 ```bash
-# Allow external access to a published Docker port through UFW
-sudo ufw allow 8080/tcp comment "Docker nginx"
+# Allow forwarded traffic to the container port through UFW
+sudo ufw route allow proto tcp from any to 172.17.0.2 port 80 comment "Docker nginx"
 
 # Allow from specific network only
-sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp comment "Docker nginx internal"
+sudo ufw route allow proto tcp from 192.168.1.0/24 to 172.17.0.2 port 80 comment "Docker nginx internal"
 ```
 
 ## Integrating with firewalld
@@ -243,8 +251,8 @@ sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
 # Add masquerading for the Docker zone
 sudo firewall-cmd --permanent --zone=trusted --add-masquerade
 
-# Open specific published ports
-sudo firewall-cmd --permanent --zone=public --add-port=8080/tcp
+# Forward a host port to a container IP and port
+sudo firewall-cmd --permanent --zone=public --add-forward-port=port=8080:proto=tcp:toport=80:toaddr=172.17.0.2
 
 # Reload firewalld
 sudo firewall-cmd --reload
@@ -272,7 +280,6 @@ sudo journalctl -f -k | grep TRACE
 If you decide to go back to automatic management:
 
 ```json
-// /etc/docker/daemon.json - Re-enable iptables management
 {
   "iptables": true
 }
@@ -282,8 +289,7 @@ If you decide to go back to automatic management:
 # Clean up manual rules before re-enabling
 sudo iptables -F DOCKER
 sudo iptables -F DOCKER-USER
-sudo iptables -F DOCKER-ISOLATION-STAGE-1
-sudo iptables -F DOCKER-ISOLATION-STAGE-2
+sudo iptables -F DOCKER-FORWARD
 sudo iptables -t nat -F DOCKER
 
 # Restart Docker to let it recreate rules
