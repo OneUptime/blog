@@ -33,17 +33,17 @@ If any step in this chain fails, you get spans without Kubernetes metadata.
 
 ## Root Cause 1: Pod IP Not Available in Connection Metadata
 
-When the Collector runs as a Deployment (not a DaemonSet or sidecar), traffic often passes through a Kubernetes Service, which performs SNAT (Source Network Address Translation). The Collector sees the Service's ClusterIP instead of the pod's IP.
+When the Collector runs as a gateway Deployment, it may receive telemetry from another Collector, an agent, or a proxy instead of receiving it directly from the application pod. In that case, the connection IP belongs to the sender in front of the application, not the original pod.
 
 ```yaml
-# This configuration will NOT work when traffic passes through a Service
+# This configuration will NOT work when connection metadata does not contain the app pod IP
 processors:
   k8sattributes:
     # Default: extract pod IP from connection metadata
-    # But SNAT replaces the source IP with the Service IP
+    # But gateways may see the agent/proxy IP instead
 ```
 
-Fix: Use the `k8s.pod.ip` resource attribute instead of the connection IP. The SDK sets this if configured:
+Fix: Use the `k8s.pod.ip` resource attribute instead of the connection IP. The SDK or an upstream Collector can set this if configured:
 
 ```yaml
 processors:
@@ -54,7 +54,7 @@ processors:
           - from: resource_attribute
             name: k8s.pod.ip
       - sources:
-          # Fall back to connection IP (works for DaemonSet/sidecar)
+          # Fall back to connection IP (works for direct pod-to-Collector traffic)
           - from: connection
 ```
 
@@ -90,9 +90,13 @@ metadata:
   name: my-instrumentation
 spec:
   env:
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
     - name: OTEL_RESOURCE_ATTRIBUTES
       value: "k8s.pod.ip=$(POD_IP)"
-  # The Operator typically injects POD_IP via the Downward API
+  # The Operator also injects OTEL_POD_IP for auto-instrumented workloads
 ```
 
 ## Root Cause 3: RBAC Permissions Missing
