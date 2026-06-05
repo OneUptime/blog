@@ -15,7 +15,8 @@ The Service Graph Connector is an OpenTelemetry Collector component that analyze
 The output is a set of metrics that describe edges in your service graph:
 
 - `traces_service_graph_request_total` - Request count between services
-- `traces_service_graph_request_duration_seconds` - Latency between services
+- `traces_service_graph_request_server_seconds` - Server-side latency between services
+- `traces_service_graph_request_client_seconds` - Client-side latency between services
 - `traces_service_graph_request_failed_total` - Failed requests between services
 
 ## Configuring the Collector
@@ -32,7 +33,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  servicegraph:
+  service_graph:
     # How long to wait for matching client/server spans
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
@@ -55,15 +56,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/traces, servicegraph]
-    # The servicegraph connector produces metrics
+      exporters: [otlp/traces, service_graph]
+    # The service_graph connector produces metrics
     # that feed into a metrics pipeline
     metrics/servicegraph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       exporters: [prometheus]
 ```
 
-The key insight: the `servicegraph` connector appears as an exporter in the traces pipeline and as a receiver in the metrics pipeline. It bridges the two signal types.
+The key insight: the `service_graph` connector appears as an exporter in the traces pipeline and as a receiver in the metrics pipeline. It bridges the two signal types.
 
 ## Querying the Service Graph
 
@@ -78,7 +79,7 @@ sum by (client, server) (
 # Find the slowest service-to-service connections
 histogram_quantile(0.95,
   sum by (client, server, le) (
-    rate(traces_service_graph_request_duration_seconds_bucket[5m])
+    rate(traces_service_graph_request_server_seconds_bucket[5m])
   )
 )
 
@@ -95,24 +96,25 @@ sum by (client, server) (
 
 ### Option 1: Grafana Node Graph Panel
 
-Grafana has a built-in Node Graph panel that can visualize service graph data:
+Grafana has a built-in Node Graph panel that can visualize service graph data. Configure a Tempo data source to use the Prometheus backend where the service graph metrics are stored:
 
-```json
-{
-  "panels": [
-    {
-      "type": "nodeGraph",
-      "title": "Service Dependency Map",
-      "datasource": "Prometheus",
-      "targets": [
-        {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[5m]))",
-          "legendFormat": "{{client}} -> {{server}}"
-        }
-      ]
-    }
-  ]
-}
+```yaml
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://prometheus:9090
+    jsonData:
+      httpMethod: GET
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus
 ```
 
 ### Option 2: Custom Visualization with D3.js
@@ -128,8 +130,10 @@ This can be consumed by a D3.js force-directed graph visualization.
 
 import requests
 import json
+import os
 
-PROMETHEUS_URL = "http://prometheus.internal:9090"
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus.internal:9090")
+OUTPUT_PATH = os.environ.get("OUTPUT_PATH")
 
 def fetch_service_graph():
     # Query for all service-to-service edges
@@ -185,7 +189,12 @@ def enrich_with_error_rates(graph):
 if __name__ == "__main__":
     graph = fetch_service_graph()
     graph = enrich_with_error_rates(graph)
-    print(json.dumps(graph, indent=2))
+    output = json.dumps(graph, indent=2)
+    if OUTPUT_PATH:
+        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+            f.write(output)
+    else:
+        print(output)
 ```
 
 ## Automating Updates
