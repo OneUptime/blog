@@ -35,24 +35,25 @@ The key observability challenges with Pulsar include:
 
 ## Enabling Built-in OpenTelemetry Support
 
-Starting with version 2.11, the Pulsar Java client includes built-in OpenTelemetry instrumentation. This is the easiest path to getting traces and metrics from your Pulsar applications.
+Starting with version 4.2.0, the Pulsar Java client includes native OpenTelemetry tracing support. The client also exposes OpenTelemetry metrics through the `openTelemetry()` client builder method. This is the easiest path to getting traces and metrics from your Pulsar applications.
 
 Configure the Pulsar client with an OpenTelemetry instance:
 
 ```java
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.semconv.ResourceAttributes;
 import org.apache.pulsar.client.api.*;
 
 // Build the OpenTelemetry SDK
 Resource resource = Resource.getDefault().merge(
     Resource.create(io.opentelemetry.api.common.Attributes.of(
-        ResourceAttributes.SERVICE_NAME, "order-service"
+        AttributeKey.stringKey("service.name"), "order-service"
     ))
 );
 
@@ -67,17 +68,20 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
 
 OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
     .setTracerProvider(tracerProvider)
-    .buildAndFinishConfiguration();
+    .build();
+
+GlobalOpenTelemetry.set(openTelemetry);
 
 // Create the Pulsar client with OpenTelemetry integration
 PulsarClient client = PulsarClient.builder()
     .serviceUrl("pulsar://localhost:6650")
-    // Pass the OpenTelemetry instance to the Pulsar client
+    // Pass the OpenTelemetry instance for metrics and enable tracing
     .openTelemetry(openTelemetry)
+    .enableTracing(true)
     .build();
 ```
 
-The `openTelemetry()` method on the client builder tells the Pulsar client to use your configured OpenTelemetry SDK for all tracing and metrics. This single line enables instrumentation across every producer and consumer created from this client.
+The `openTelemetry()` method on the client builder tells the Pulsar client to use your configured OpenTelemetry SDK for metrics. The `enableTracing(true)` call enables tracing interceptors across every producer and consumer created from this client.
 
 ## Tracing Producers
 
@@ -94,8 +98,8 @@ Producer<String> producer = client.newProducer(Schema.STRING)
 // The Pulsar client automatically creates a PRODUCER span with:
 // - messaging.system = pulsar
 // - messaging.destination.name = order-events
-// - messaging.destination.tenant = public
-// - messaging.destination.namespace = public/default
+// - messaging.operation.name = send
+// - messaging.message.id = <message ID after broker acknowledgment>
 MessageId messageId = producer.newMessage()
     .key("order-123")
     .value("{\"action\": \"created\", \"amount\": 149.99}")
@@ -104,12 +108,12 @@ MessageId messageId = producer.newMessage()
 System.out.println("Published message: " + messageId);
 ```
 
-The auto-generated span includes Pulsar-specific attributes like the topic name, tenant, namespace, and the message ID assigned by the broker. If you need to add custom attributes, you can access the current span from the OpenTelemetry context:
+The auto-generated span includes messaging attributes like the topic name, operation name, and the message ID assigned by the broker. If you need to add custom business attributes, add them to the active application span around your publish operation:
 
 ```java
 import io.opentelemetry.api.trace.Span;
 
-// Access the current span to add custom attributes
+// Access the active application span to add custom attributes
 Span currentSpan = Span.current();
 currentSpan.setAttribute("order.id", "order-123");
 currentSpan.setAttribute("order.priority", "high");
@@ -187,10 +191,11 @@ Key metrics exposed by the Pulsar client:
 # pulsar.client.producer.message.pending.count - Messages waiting to be sent
 
 # Consumer metrics captured by OpenTelemetry
-# pulsar.client.consumer.message.receive.count - Total messages received
-# pulsar.client.consumer.message.ack.count - Total messages acknowledged
-# pulsar.client.consumer.message.nack.count - Total negative acknowledgments
-# pulsar.client.consumer.receive.queue.size - Consumer receive queue depth
+# pulsar.client.consumer.message.received.count - Total messages received
+# pulsar.client.consumer.message.ack - Total messages acknowledged
+# pulsar.client.consumer.message.nack - Total negative acknowledgments
+# pulsar.client.consumer.receive_queue.count - Consumer receive queue depth
+# pulsar.client.consumer.receive_queue.size - Consumer receive queue size in bytes
 ```
 
 To collect these metrics, add a metrics exporter to your OpenTelemetry SDK configuration:
@@ -199,6 +204,7 @@ To collect these metrics, add a metrics exporter to your OpenTelemetry SDK confi
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
+import java.time.Duration;
 
 // Configure metrics export alongside tracing
 SdkMeterProvider meterProvider = SdkMeterProvider.builder()
@@ -219,12 +225,15 @@ SdkMeterProvider meterProvider = SdkMeterProvider.builder()
 OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
     .setTracerProvider(tracerProvider)
     .setMeterProvider(meterProvider)
-    .buildAndFinishConfiguration();
+    .build();
+
+GlobalOpenTelemetry.set(openTelemetry);
 
 // Pass to the Pulsar client as before
 PulsarClient client = PulsarClient.builder()
     .serviceUrl("pulsar://localhost:6650")
     .openTelemetry(openTelemetry)
+    .enableTracing(true)
     .build();
 ```
 
@@ -321,7 +330,7 @@ import io.opentelemetry.sdk.trace.samplers.Sampler;
 // Sample 10% of traces for high-throughput topics
 SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
     .setSampler(Sampler.traceIdRatioBased(0.1))
-    .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
+    .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
     .setResource(resource)
     .build();
 ```
