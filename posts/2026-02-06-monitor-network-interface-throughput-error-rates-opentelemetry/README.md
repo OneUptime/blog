@@ -12,7 +12,7 @@ This post covers how to configure the host metrics receiver to capture network i
 
 ## What the Host Metrics Receiver Captures
 
-The `hostmetrics` receiver in the OpenTelemetry Collector scrapes system-level metrics directly from the OS. For network interfaces, it collects:
+The `host_metrics` receiver in the OpenTelemetry Collector scrapes system-level metrics directly from the OS. For network interfaces, it collects:
 
 - `system.network.io` - bytes sent and received per interface
 - `system.network.packets` - packets sent and received per interface
@@ -30,9 +30,11 @@ Here is a complete collector configuration that scrapes network metrics every 30
 # otel-collector-config.yaml
 
 receivers:
-  hostmetrics:
+  host_metrics:
     # Scrape interval for all host metrics
     collection_interval: 30s
+    # Required when running in a container with the host filesystem mounted
+    root_path: /hostfs
     scrapers:
       # Enable the network scraper
       network:
@@ -47,13 +49,12 @@ receivers:
 
 processors:
   # Add metadata about the host
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
     system:
       hostname_sources: ["os"]
 
-  # Compute rate-of-change from cumulative counters
-  # This turns cumulative byte counts into bytes/sec
+  # Convert cumulative counters to per-interval deltas
   cumulativetodelta:
     include:
       metrics:
@@ -76,12 +77,12 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
-      processors: [resourcedetection, cumulativetodelta, batch]
+      receivers: [host_metrics]
+      processors: [resource_detection, cumulativetodelta, batch]
       exporters: [otlp]
 ```
 
-A few things worth noting in this config. The `cumulativetodelta` processor is important because the raw network metrics are cumulative counters (total bytes since boot). Converting them to deltas makes it much easier to compute rates in your backend. The `resourcedetection` processor attaches the hostname so you can group metrics by server.
+A few things worth noting in this config. The `cumulativetodelta` processor is useful because the raw network metrics are cumulative counters (total bytes since boot). Converting them to deltas gives your backend per-interval values it can turn into rates. The `resource_detection` processor attaches the hostname so you can group metrics by server.
 
 ## Running the Collector
 
@@ -91,16 +92,12 @@ You can run the collector as a systemd service or in a container. Here is a Dock
 # docker-compose.yaml
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
       # Required for host metrics - mount the host's /proc and /sys
       - /proc:/hostfs/proc:ro
       - /sys:/hostfs/sys:ro
-    environment:
-      # Tell the collector where to find host filesystem
-      - HOST_PROC=/hostfs/proc
-      - HOST_SYS=/hostfs/sys
     ports:
       - "4317:4317"
     pid: host
@@ -108,18 +105,18 @@ services:
     network_mode: host
 ```
 
-The `network_mode: host` setting is important. Without it, the collector sees the container's virtual interfaces instead of the host's physical ones.
+The `root_path: /hostfs` setting tells the receiver to read the mounted host filesystem. The `network_mode: host` setting is important. Without it, the collector sees the container's virtual interfaces instead of the host's physical ones.
 
 ## Querying for Throughput
 
-Once data flows into your backend, you can build throughput queries. Here is an example using PromQL syntax (most OTLP-compatible backends support this):
+Once data flows into a Prometheus-compatible backend, you can build throughput queries. Here is an example using PromQL syntax. These examples assume the backend uses the default OpenTelemetry-to-Prometheus name translation and exposes the `host.name` resource attribute as the `host_name` label:
 
 ```promql
 # Bytes per second received on eth0 for each host
-rate(system_network_io_total{direction="receive", device="eth0"}[5m])
+rate(system_network_io_bytes_total{direction="receive", device="eth0"}[5m])
 
 # Convert to megabits per second for easier reading
-rate(system_network_io_total{direction="receive", device="eth0"}[5m]) * 8 / 1000000
+rate(system_network_io_bytes_total{direction="receive", device="eth0"}[5m]) * 8 / 1000000
 
 # Total error rate across all monitored interfaces
 sum by (host_name) (rate(system_network_errors_total[5m]))
