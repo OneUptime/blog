@@ -20,7 +20,7 @@ Resource attributes let you tag every piece of telemetry with ownership informat
 
 ## Defining Ownership Attributes
 
-Add these resource attributes to every service in your organization:
+Add these ownership resource attributes to every service in your organization. `service.name` and `service.namespace` are OpenTelemetry semantic convention attributes; the other ownership fields are organization-specific resource attributes:
 
 ```yaml
 # Required ownership resource attributes
@@ -40,12 +40,18 @@ import os
 from opentelemetry.sdk.resources import Resource
 
 # Resource attributes set via deployment configuration
-resource = Resource.create({
+ownership_attributes = {
     "service.name": os.getenv("OTEL_SERVICE_NAME"),
     "service.namespace": os.getenv("SERVICE_NAMESPACE"),
     "service.team": os.getenv("SERVICE_TEAM"),
     "service.cost_center": os.getenv("SERVICE_COST_CENTER"),
     "service.oncall": os.getenv("SERVICE_ONCALL_SCHEDULE"),
+}
+
+resource = Resource.create({
+    key: value
+    for key, value in ownership_attributes.items()
+    if value is not None
 })
 ```
 
@@ -60,7 +66,14 @@ metadata:
     app.kubernetes.io/name: order-service
     team: checkout-team
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: order-service
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: order-service
+        team: checkout-team
     spec:
       containers:
         - name: order-service
@@ -79,10 +92,13 @@ spec:
 
 ## Enforcing Ownership at the Collector
 
-Use the OpenTelemetry Collector to validate that ownership attributes are present on all incoming telemetry:
+Use the OpenTelemetry Collector to add fallback ownership attributes and route telemetry by owner:
 
 ```yaml
 # collector-config.yaml
+receivers:
+  otlp:
+
 processors:
   # Add default ownership attributes if they are missing
   # This acts as a safety net, not a replacement for proper configuration
@@ -90,31 +106,59 @@ processors:
     attributes:
       - key: service.team
         value: "unknown"
-        action: upsert
+        action: insert
       - key: service.cost_center
         value: "unattributed"
-        action: upsert
+        action: insert
 
+connectors:
   # Route telemetry based on ownership
   routing:
-    default_exporters: [otlp/default]
+    default_pipelines: [traces/default]
     table:
       # High-priority teams get dedicated export pipelines
-      - statement: route() where resource.attributes["service.namespace"] == "commerce"
-        exporters: [otlp/commerce-dedicated]
-      - statement: route() where resource.attributes["service.namespace"] == "platform"
-        exporters: [otlp/platform-dedicated]
+      - context: resource
+        condition: attributes["service.namespace"] == "commerce"
+        pipelines: [traces/commerce-dedicated]
+      - context: resource
+        condition: attributes["service.namespace"] == "platform"
+        pipelines: [traces/platform-dedicated]
+
+exporters:
+  otlp/default:
+    endpoint: default-backend:4317
+  otlp/commerce-dedicated:
+    endpoint: commerce-backend:4317
+  otlp/platform-dedicated:
+    endpoint: platform-backend:4317
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/defaults]
+      exporters: [routing]
+    traces/default:
+      receivers: [routing]
+      exporters: [otlp/default]
+    traces/commerce-dedicated:
+      receivers: [routing]
+      exporters: [otlp/commerce-dedicated]
+    traces/platform-dedicated:
+      receivers: [routing]
+      exporters: [otlp/platform-dedicated]
 ```
 
 ## Cost Attribution
 
-With ownership attributes in place, you can calculate per-team telemetry costs. Query your telemetry backend to measure volume by team:
+With ownership attributes in place, you can calculate per-team telemetry costs. Collector internal metrics can show total receiver volume, but per-team attribution requires ingestion logs or generated metrics that preserve resource attributes. Query your telemetry backend to measure volume by team:
 
 ```promql
-# Prometheus query: spans ingested per team per day
+# Example Prometheus query when your backend or span-metrics pipeline
+# exposes an ingestion counter with service.team converted to service_team
 sum by (service_team) (
-  rate(otelcol_receiver_accepted_spans_total[24h])
-) * 86400
+  increase(telemetry_ingested_spans_total[1d])
+)
 ```
 
 Build a dashboard that shows each team their telemetry volume and estimated cost:
