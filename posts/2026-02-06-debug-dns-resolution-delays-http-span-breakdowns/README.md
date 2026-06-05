@@ -34,19 +34,21 @@ def instrumented_http_request(url, method="GET", headers=None, body=None):
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
     with tracer.start_as_current_span("http.request") as parent_span:
-        parent_span.set_attribute("http.method", method)
-        parent_span.set_attribute("http.url", url)
+        parent_span.set_attribute("http.request.method", method)
+        parent_span.set_attribute("url.full", url)
         parent_span.set_attribute("server.address", host)
+        parent_span.set_attribute("server.port", port)
 
         # Phase 1: DNS Resolution
         with tracer.start_as_current_span("http.dns_resolve") as dns_span:
-            dns_span.set_attribute("dns.hostname", host)
+            dns_span.set_attribute("dns.question.name", host)
             dns_start = time.monotonic()
 
             try:
                 addr_info = socket.getaddrinfo(host, port, socket.AF_UNSPEC)
-                resolved_ip = addr_info[0][4][0]
-                dns_span.set_attribute("dns.resolved_ip", resolved_ip)
+                family, socktype, proto, _, sockaddr = addr_info[0]
+                resolved_ip = sockaddr[0]
+                dns_span.set_attribute("dns.answers", [item[4][0] for item in addr_info])
                 dns_span.set_attribute("dns.record_count", len(addr_info))
             except socket.gaierror as e:
                 dns_span.set_attribute("error", True)
@@ -58,13 +60,13 @@ def instrumented_http_request(url, method="GET", headers=None, body=None):
 
         # Phase 2: TCP Connection
         with tracer.start_as_current_span("http.tcp_connect") as tcp_span:
-            tcp_span.set_attribute("net.peer.ip", resolved_ip)
-            tcp_span.set_attribute("net.peer.port", port)
+            tcp_span.set_attribute("network.peer.address", resolved_ip)
+            tcp_span.set_attribute("network.peer.port", port)
 
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock = socket.socket(family, socktype, proto)
             sock.settimeout(10)
             tcp_start = time.monotonic()
-            sock.connect((resolved_ip, port))
+            sock.connect(sockaddr)
             tcp_ms = (time.monotonic() - tcp_start) * 1000
             tcp_span.set_attribute("tcp.connect_time_ms", tcp_ms)
 
@@ -80,9 +82,24 @@ def instrumented_http_request(url, method="GET", headers=None, body=None):
 
         # Phase 4: Send request and receive response
         with tracer.start_as_current_span("http.roundtrip") as rt_span:
-            request_line = f"{method} {parsed.path or '/'} HTTP/1.1\r\n"
-            request_headers = f"Host: {host}\r\nConnection: close\r\n\r\n"
-            sock.sendall((request_line + request_headers).encode())
+            target = parsed.path or "/"
+            if parsed.query:
+                target = f"{target}?{parsed.query}"
+
+            body_bytes = body.encode() if isinstance(body, str) else (body or b"")
+            request_headers = {
+                "Host": host,
+                "Connection": "close",
+                **(headers or {}),
+            }
+            if body_bytes:
+                request_headers["Content-Length"] = str(len(body_bytes))
+
+            request_line = f"{method} {target} HTTP/1.1\r\n"
+            header_lines = "".join(
+                f"{name}: {value}\r\n" for name, value in request_headers.items()
+            )
+            sock.sendall((request_line + header_lines + "\r\n").encode() + body_bytes)
 
             response = b""
             while True:
@@ -91,7 +108,7 @@ def instrumented_http_request(url, method="GET", headers=None, body=None):
                     break
                 response += chunk
 
-            rt_span.set_attribute("http.response_size", len(response))
+            rt_span.set_attribute("response.size_bytes", len(response))
 
         sock.close()
         return response
@@ -125,13 +142,13 @@ def find_dns_bottlenecks(traces, threshold_ms=500):
                 )
 
                 bottlenecks.append({
-                    "hostname": span["attributes"].get("dns.hostname"),
+                    "hostname": span["attributes"].get("dns.question.name"),
                     "dns_time_ms": round(dns_time, 2),
                     "total_request_ms": (
                         (parent["endTime"] - parent["startTime"]) / 1_000_000
                         if parent else None
                     ),
-                    "resolved_ip": span["attributes"].get("dns.resolved_ip"),
+                    "resolved_ip": (span["attributes"].get("dns.answers") or [None])[0],
                     "trace_id": span["traceId"],
                 })
 
@@ -164,6 +181,10 @@ spec:
 Export DNS resolution times as histogram metrics for ongoing monitoring:
 
 ```python
+from opentelemetry import metrics
+
+meter = metrics.get_meter("http-phase-debugger")
+
 dns_histogram = meter.create_histogram(
     name="http.dns.resolution.duration",
     description="Time spent resolving DNS",
@@ -172,8 +193,8 @@ dns_histogram = meter.create_histogram(
 
 # Record after each resolution
 dns_histogram.record(dns_ms, attributes={
-    "dns.hostname": host,
-    "dns.resolved": str(not error),
+    "dns.question.name": host,
+    "dns.resolved": True,
     "service.name": "my-service",
 })
 ```
