@@ -40,7 +40,7 @@ To verify this is your issue, export a span with a link and inspect the raw data
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import Link, SpanContext, TraceFlags
+from opentelemetry.trace import SpanContext, TraceFlags
 
 tracer = trace.get_tracer("link-test")
 
@@ -94,27 +94,31 @@ service:
 
 In the debug output, look for a `Links` section in the span. If the links appear in the debug output but not in your backend UI, the issue is on the backend side, not in your instrumentation.
 
-## Problem 2: Links Created After Span Start
+## Problem 2: Links Added Too Late for Sampling Decisions
 
-A subtle but common mistake is trying to add links after the span has already been created. In OpenTelemetry, span links must be provided at span creation time. Unlike attributes or events, you cannot add links to an active span.
+A subtle but common mistake is adding links after the span has already been created and expecting samplers to take them into account. Current OpenTelemetry APIs allow links to be added to an active span, but links that are available before the span starts should still be passed at span creation time because head sampling decisions can only consider information present during span creation.
 
-This will not work:
+This is valid in current OpenTelemetry Python, but it may be too late for sampling decisions:
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Link, SpanContext, TraceFlags
 
 tracer = trace.get_tracer("link-test")
 
-# This is wrong. You cannot add links after span creation.
-# The OpenTelemetry API does not provide an add_link method
-# on active spans. Links must be passed during start_as_current_span.
+# Current OpenTelemetry Python spans support add_link.
+linked_context = SpanContext(
+    trace_id=0x5CE0E9A56015FEC5AADFA328AE398115,
+    span_id=0xAB54A98CEB1F0AD2,
+    is_remote=True,
+    trace_flags=TraceFlags(0x01),
+)
+
 with tracer.start_as_current_span("my-span") as span:
-    # There is no span.add_link() method.
-    # Any attempt to set links here will fail silently or error.
-    pass
+    span.add_link(linked_context, {"link.reason": "late_link"})
 ```
 
-The correct approach is to collect all the span contexts you need to link to before starting the span:
+The preferred approach is to collect all the span contexts you need to link to before starting the span:
 
 ```python
 from opentelemetry import trace
@@ -149,6 +153,7 @@ package main
 import (
     "context"
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -183,7 +188,7 @@ func processBatch(ctx context.Context, messages []Message) {
 
 ## Problem 3: Invalid or Empty Span Contexts in Links
 
-Links that reference invalid span contexts are silently dropped by most SDKs. A span context is invalid if the trace ID or span ID is all zeros, or if the context object is nil.
+Links that reference invalid span contexts may be ignored by SDKs, especially when both the link attributes and TraceState are empty. A span context is invalid if the trace ID or span ID is all zeros, or if the context object is nil.
 
 This commonly happens when you try to extract a span context from a message that was produced by a service that was not instrumented, or when the context propagation headers were stripped by a proxy.
 
@@ -191,8 +196,8 @@ This commonly happens when you try to extract a span context from a message that
 from opentelemetry import trace
 from opentelemetry.trace import Link, SpanContext, TraceFlags
 
-# This link will be silently dropped because the trace ID is zero.
-# An all-zero trace ID means "invalid" in OpenTelemetry.
+# This link may be ignored because the trace ID and span ID are zero.
+# All-zero IDs mean "invalid" in OpenTelemetry.
 invalid_context = SpanContext(
     trace_id=0,
     span_id=0,
@@ -204,8 +209,8 @@ link = Link(context=invalid_context)
 
 tracer = trace.get_tracer("link-test")
 
-# The span will be created, but the link will not be attached
-# because it references an invalid span context.
+# The span will be created, but the link may not be attached
+# because it references an invalid span context with no attributes.
 with tracer.start_as_current_span("my-span", links=[link]) as span:
     pass
 ```
@@ -232,7 +237,7 @@ def create_valid_links(span_contexts):
 
 ## Problem 4: Link Attributes Exceeding Limits
 
-OpenTelemetry SDKs impose limits on span links. By default, most SDKs allow 128 links per span and 128 attributes per link. If you exceed these limits, links are silently dropped.
+OpenTelemetry SDKs impose limits on span links. By default, most SDKs allow 128 links per span and 128 attributes per link. If you exceed these limits, additional links or link attributes may be dropped, or older links may be discarded depending on the SDK.
 
 You can adjust these limits in the SDK configuration:
 
@@ -256,19 +261,20 @@ In Go:
 package main
 
 import (
+    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func initTracer() {
     // Configure higher link limits for batch processing spans
+    spanLimits := trace.NewSpanLimits()
+    spanLimits.LinkCountLimit = 512
+    spanLimits.AttributePerLinkCountLimit = 64
+
     tp := trace.NewTracerProvider(
-        trace.WithSpanLimits(trace.SpanLimits{
-            // Allow up to 512 links per span
-            LinkCountLimit: 512,
-            // Allow up to 64 attributes per link
-            AttributePerLinkCountLimit: 64,
-        }),
+        trace.WithRawSpanLimits(spanLimits),
     )
+    otel.SetTracerProvider(tp)
 }
 ```
 
@@ -336,7 +342,7 @@ def consume_messages(messages):
 
 Some Collector processors can inadvertently remove link data. The `transform` processor and `attributes` processor generally do not touch links, but custom processors or certain filter configurations might.
 
-To verify the Collector is not stripping links, add a debug exporter at both the beginning and end of your processor chain:
+To verify the Collector is not stripping links, add a debug exporter alongside your backend exporter so you can inspect the data after the configured processor chain. If you need to compare before and after a processor, temporarily run the same test with that processor removed or split the test into separate pipelines.
 
 ```yaml
 # Collector config to check if processors strip links
@@ -351,7 +357,7 @@ processors:
     timeout: 5s
 
 exporters:
-  # Debug exporter to see spans before and after processing
+  # Debug exporter to see spans after processing
   debug:
     verbosity: detailed
 
@@ -360,14 +366,14 @@ exporters:
 
 service:
   pipelines:
-    # Pipeline with debug to inspect link data
+    # Pipeline with debug to inspect post-processor link data
     traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug, otlp]
 ```
 
-Compare the link data in the debug output with what appears in your backend. If links appear in the debug output but not after export, the issue is in the exporter or backend.
+Compare the link data in the debug output with what appears in your backend. If links appear in the debug output but not in the backend, the issue is in the exporter or backend.
 
 ## Verifying Links End to End
 
@@ -376,7 +382,7 @@ Here is a complete test you can run to verify that links work through your entir
 ```python
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace import Link
 import time
@@ -384,7 +390,7 @@ import time
 # Set up the tracer provider with OTLP export
 exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanExporter(exporter))
+provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer("link-verification")
