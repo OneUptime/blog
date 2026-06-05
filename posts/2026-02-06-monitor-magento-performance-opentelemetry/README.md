@@ -39,7 +39,7 @@ graph TB
 Create a custom Magento module for OpenTelemetry instrumentation. First, create the module structure:
 
 ```bash
-mkdir -p app/code/Vendor/OpenTelemetry
+mkdir -p app/code/Vendor/OpenTelemetry/{etc,Service,Plugin,Observer}
 ```
 
 Create `app/code/Vendor/OpenTelemetry/registration.php`:
@@ -53,7 +53,7 @@ Create `app/code/Vendor/OpenTelemetry/registration.php`:
 );
 ```
 
-Create `app/code/Vendor/OpenTelemetry/module.xml`:
+Create `app/code/Vendor/OpenTelemetry/etc/module.xml`:
 
 ```xml
 <?xml version="1.0"?>
@@ -79,7 +79,9 @@ Create `app/code/Vendor/OpenTelemetry/composer.json`:
         "php": "^8.1",
         "magento/framework": "*",
         "open-telemetry/sdk": "^1.0",
-        "open-telemetry/exporter-otlp": "^1.0"
+        "open-telemetry/exporter-otlp": "^1.0",
+        "open-telemetry/sem-conv": "^1.0",
+        "guzzlehttp/guzzle": "^7.0"
     },
     "autoload": {
         "files": [
@@ -102,49 +104,43 @@ declare(strict_types=1);
 
 namespace Vendor\OpenTelemetry\Service;
 
-use OpenTelemetry\API\Globals;
-use OpenTelemetry\API\Trace\SpanKind;
-use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
-use OpenTelemetry\SDK\Trace\TracerProvider;
-use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
+use OpenTelemetry\SDK\Common\Attribute\Attributes;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
-use OpenTelemetry\SDK\Common\Attribute\Attributes;
-use OpenTelemetry\SemConv\ResourceAttributes;
+use OpenTelemetry\SDK\Sdk;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
+use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
+use OpenTelemetry\SDK\Trace\TracerProvider;
+use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
+use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
 
 class TracerService
 {
     private TracerInterface $tracer;
-    private static $instance = null;
 
-    private function __construct()
+    public function __construct()
     {
         $this->initializeTracer();
-    }
-
-    public static function getInstance(): self
-    {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
     }
 
     private function initializeTracer(): void
     {
         $resource = ResourceInfoFactory::defaultResource()->merge(
             ResourceInfo::create(Attributes::create([
-                ResourceAttributes::SERVICE_NAME => 'magento',
-                ResourceAttributes::SERVICE_VERSION => '2.4.6',
-                ResourceAttributes::DEPLOYMENT_ENVIRONMENT => getenv('MAGE_MODE') ?: 'production',
+                ServiceAttributes::SERVICE_NAME => getenv('OTEL_SERVICE_NAME') ?: 'magento',
+                ServiceAttributes::SERVICE_VERSION => getenv('MAGENTO_VERSION') ?: '2.4.6',
+                DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME => getenv('MAGE_MODE') ?: 'production',
                 'magento.edition' => 'Community',
             ]))
         );
 
         $exporter = new SpanExporter(
-            \OpenTelemetry\Contrib\Otlp\HttpTransportFactory::create(
+            (new OtlpHttpTransportFactory())->create(
                 getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://localhost:4318/v1/traces',
                 'application/json'
             )
@@ -153,9 +149,17 @@ class TracerService
         $tracerProvider = TracerProvider::builder()
             ->addSpanProcessor(new BatchSpanProcessor($exporter))
             ->setResource($resource)
+            ->setSampler(new ParentBased(
+                new TraceIdRatioBasedSampler((float) (getenv('OTEL_TRACES_SAMPLER_ARG') ?: 1.0))
+            ))
             ->build();
 
-        Globals::registerInitializer(fn() => $tracerProvider);
+        Sdk::builder()
+            ->setTracerProvider($tracerProvider)
+            ->setPropagator(TraceContextPropagator::getInstance())
+            ->setAutoShutdown(true)
+            ->buildAndRegisterGlobal();
+
         $this->tracer = $tracerProvider->getTracer('magento-instrumentation');
     }
 
@@ -176,7 +180,7 @@ declare(strict_types=1);
 
 namespace Vendor\OpenTelemetry\Plugin;
 
-use Magento\Framework\App\ActionInterface;
+use Magento\Framework\App\FrontControllerInterface;
 use Magento\Framework\App\RequestInterface;
 use Vendor\OpenTelemetry\Service\TracerService;
 use OpenTelemetry\API\Trace\SpanKind;
@@ -192,15 +196,13 @@ class ControllerPlugin
         $this->tracerService = $tracerService;
     }
 
-    public function aroundExecute(
-        ActionInterface $subject,
+    public function aroundDispatch(
+        FrontControllerInterface $subject,
         callable $proceed,
         RequestInterface $request
     ) {
         $tracer = $this->tracerService->getTracer();
 
-        // Create span for this controller action
-        $actionName = get_class($subject);
         $routePath = $request->getModuleName() . '/' .
                      $request->getControllerName() . '/' .
                      $request->getActionName();
@@ -211,17 +213,15 @@ class ControllerPlugin
             ->setAttribute('http.method', $request->getMethod())
             ->setAttribute('http.route', $routePath)
             ->setAttribute('http.url', $request->getRequestUri())
-            ->setAttribute('magento.controller.class', $actionName)
-            ->setAttribute('magento.store.code', $request->getParam('___store'))
+            ->setAttribute('magento.front_controller.class', get_class($subject))
+            ->setAttribute('magento.store.code', (string) $request->getParam('___store', ''))
             ->setAttribute('magento.area', $this->getArea($request))
             ->startSpan();
 
         $scope = $this->currentSpan->activate();
 
         try {
-            $result = $proceed($request);
-            $this->currentSpan->setStatus(StatusCode::STATUS_OK);
-            return $result;
+            return $proceed($request);
         } catch (\Throwable $e) {
             $this->currentSpan
                 ->recordException($e)
@@ -254,7 +254,7 @@ Register the plugin in `app/code/Vendor/OpenTelemetry/etc/di.xml`:
 ```xml
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
-    <type name="Magento\Framework\App\ActionInterface">
+    <type name="Magento\Framework\App\FrontControllerInterface">
         <plugin name="vendor_opentelemetry_controller" type="Vendor\OpenTelemetry\Plugin\ControllerPlugin" sortOrder="1"/>
     </type>
 </config>
@@ -293,13 +293,14 @@ class DatabasePlugin
         $tracer = $this->tracerService->getTracer();
 
         // Extract operation type from SQL
-        $operation = $this->extractOperation($sql);
+        $sqlString = (string) $sql;
+        $operation = $this->extractOperation($sqlString);
 
         $span = $tracer
             ->spanBuilder('db.query')
             ->setSpanKind(SpanKind::KIND_CLIENT)
             ->setAttribute('db.system', 'mysql')
-            ->setAttribute('db.statement', $this->sanitizeSQL($sql))
+            ->setAttribute('db.statement', $this->sanitizeSQL($sqlString))
             ->setAttribute('db.operation', $operation)
             ->setAttribute('db.bind_params_count', count($bind))
             ->startSpan();
@@ -405,7 +406,7 @@ class CachePlugin
         $span = $tracer
             ->spanBuilder($operation)
             ->setSpanKind(SpanKind::KIND_CLIENT)
-            ->setAttribute('cache.system', 'redis')
+            ->setAttribute('cache.system', 'magento')
             ->setAttribute('cache.operation', $operation)
             ->setAttribute('cache.key', $key);
 
@@ -426,6 +427,14 @@ class CachePlugin
         }
     }
 }
+```
+
+Register in `app/code/Vendor/OpenTelemetry/etc/di.xml`:
+
+```xml
+<type name="Magento\Framework\Cache\FrontendInterface">
+    <plugin name="vendor_opentelemetry_cache" type="Vendor\OpenTelemetry\Plugin\CachePlugin" sortOrder="1"/>
+</type>
 ```
 
 ## Tracing Checkout Flow
@@ -502,22 +511,12 @@ php bin/magento setup:di:compile
 php bin/magento cache:flush
 ```
 
-Configure environment variables in your `app/etc/env.php`:
+Configure environment variables for PHP-FPM, your web server, or your container runtime:
 
-```php
-return [
-    // ... existing configuration
-    'system' => [
-        'default' => [
-            'dev' => [
-                'debug' => [
-                    'otel_endpoint' => 'http://localhost:4318/v1/traces',
-                    'otel_service_name' => 'magento-production',
-                ]
-            ]
-        ]
-    ]
-];
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+export OTEL_SERVICE_NAME=magento-production
+export OTEL_TRACES_SAMPLER_ARG=1.0
 ```
 
 ## Analyzing Performance Data
@@ -542,15 +541,10 @@ For high-traffic Magento stores, optimize OpenTelemetry overhead:
 3. Disable tracing for static asset requests
 4. Pre-compile the OpenTelemetry module with Magento's DI compiler
 
-Configure sampling in `app/etc/env.php`:
+Configure the global sampling ratio used by the `TracerService`, or implement a custom sampler if you need different rates per route:
 
-```php
-'otel_sampling_rate' => [
-    'checkout/*' => 1.0,
-    'customer/account/*' => 0.1,
-    'catalog/product/view' => 0.05,
-    'default' => 0.01,
-]
+```bash
+export OTEL_TRACES_SAMPLER_ARG=0.01
 ```
 
 ## Conclusion
