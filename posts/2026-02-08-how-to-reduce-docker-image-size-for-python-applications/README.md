@@ -107,11 +107,16 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Remove pip, setuptools, and wheel from the venv
-RUN pip uninstall -y pip setuptools wheel && \
+# Remove pip, setuptools, and wheel from the venv and base image
+RUN python -m pip uninstall -y pip setuptools wheel && \
     rm -rf /opt/venv/lib/python3.12/site-packages/pip* \
            /opt/venv/lib/python3.12/site-packages/setuptools* \
-           /opt/venv/lib/python3.12/site-packages/wheel*
+           /opt/venv/lib/python3.12/site-packages/wheel* \
+           /usr/local/lib/python3.12/site-packages/pip* \
+           /usr/local/lib/python3.12/site-packages/setuptools* \
+           /usr/local/lib/python3.12/site-packages/wheel* \
+           /usr/local/bin/pip* \
+           /usr/local/bin/wheel*
 
 COPY . .
 CMD ["python", "app.py"]
@@ -217,7 +222,7 @@ WORKDIR /app
 # Combine install and cleanup in a single layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 curl && \
-    apt-get purge -y --auto-remove && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=builder /opt/venv /opt/venv
@@ -262,7 +267,7 @@ Dockerfile*
 
 ## Step 9: Use UV for Smaller Installs
 
-UV's `--compile-bytecode` flag and lean installation approach produces smaller site-packages directories:
+UV's lean installation approach can keep dependency layers clean. Leave bytecode compilation off for the smallest install, or add `--compile-bytecode` if you want faster startup and can accept the extra `.pyc` files:
 
 ```dockerfile
 FROM python:3.12-slim AS builder
