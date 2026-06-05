@@ -23,7 +23,11 @@ The URLSessionInstrumentation package is part of the opentelemetry-swift ecosyst
 dependencies: [
     .package(
         url: "https://github.com/open-telemetry/opentelemetry-swift",
-        from: "1.5.0"
+        from: "2.4.1"
+    ),
+    .package(
+        url: "https://github.com/open-telemetry/opentelemetry-swift-core.git",
+        from: "2.4.1"
     )
 ]
 
@@ -31,8 +35,8 @@ dependencies: [
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift"),
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift"),
+        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
         .product(name: "URLSessionInstrumentation", package: "opentelemetry-swift")
     ]
 )
@@ -49,7 +53,7 @@ import URLSessionInstrumentation
 
 ## Basic URLSession Instrumentation Setup
 
-URLSessionInstrumentation works by wrapping URLSession instances with tracing capabilities. You configure it once and all requests made through that session automatically create spans.
+URLSessionInstrumentation works by instrumenting URLSession globally. Initialize it once during app startup, before creating sessions you want to observe, and URLSession requests automatically create spans.
 
 ```swift
 import Foundation
@@ -71,9 +75,9 @@ class NetworkService {
         )
 
         // Create instrumentation configuration
-        let configuration = URLSessionInstrumentationConfiguration()
+        let configuration = URLSessionInstrumentationConfiguration(tracer: tracer)
 
-        // Initialize the instrumentation
+        // Initialize the instrumentation before creating sessions
         instrumentation = URLSessionInstrumentation(configuration: configuration)
 
         // Create a URLSession with default configuration
@@ -81,10 +85,7 @@ class NetworkService {
         sessionConfig.timeoutIntervalForRequest = 30
         sessionConfig.timeoutIntervalForResource = 60
 
-        // Wrap the session with instrumentation
-        session = instrumentation.instrumentedSession(
-            configuration: sessionConfig
-        )
+        session = URLSession(configuration: sessionConfig)
     }
 
     func makeRequest(url: URL, completion: @escaping (Result<Data, Error>) -> Void) {
@@ -113,7 +114,7 @@ enum NetworkError: Error {
 }
 ```
 
-Now every request made through this session automatically creates a span. The instrumentation captures HTTP method, URL, status code, request and response sizes, and timing information.
+Now every request made through URLSession automatically creates a span. The instrumentation captures HTTP method, URL, status code, request body size, response body size when the response includes a Content-Length header, and request duration through the span timing.
 
 ## Understanding Auto-Generated Spans
 
@@ -130,11 +131,12 @@ class UserRepository {
             return
         }
 
-        // This request automatically creates a span with attributes:
+        // With the default legacy semantic convention, this request
+        // automatically creates a span with attributes such as:
         // - http.method: "GET"
         // - http.url: "https://api.example.com/users/123"
         // - http.status_code: 200 (after response)
-        // - http.response_content_length: size in bytes
+        // - http.response.body.size: size in bytes, when Content-Length is set
         // - net.peer.name: "api.example.com"
         // - net.peer.port: 443
 
@@ -167,7 +169,7 @@ enum NetworkError: Error {
 
 ## Customizing Instrumentation Behavior
 
-URLSessionInstrumentationConfiguration provides several options to control what gets traced and how spans are created. You can filter requests, add custom attributes, or modify span names.
+URLSessionInstrumentationConfiguration provides several options to control what gets traced and how spans are created. You can filter requests, add custom attributes through lifecycle callbacks, or modify span names.
 
 ```swift
 import URLSessionInstrumentation
@@ -176,6 +178,7 @@ class AdvancedNetworkService {
     static let shared = AdvancedNetworkService()
 
     private let session: URLSession
+    private let instrumentation: URLSessionInstrumentation
 
     private init() {
         var configuration = URLSessionInstrumentationConfiguration()
@@ -186,11 +189,11 @@ class AdvancedNetworkService {
             return host.contains("example.com") || host.contains("api.myapp.com")
         }
 
-        // Add custom attributes to every span
-        configuration.spanCustomizer = { span, request, response in
+        // Add custom attributes while the span is being built
+        configuration.spanCustomization = { request, spanBuilder in
             // Add request headers that are safe to log
             if let contentType = request.value(forHTTPHeaderField: "Content-Type") {
-                span.setAttribute(
+                spanBuilder.setAttribute(
                     key: "http.request.content_type",
                     value: contentType
                 )
@@ -198,11 +201,13 @@ class AdvancedNetworkService {
 
             // Add custom app-specific attributes
             if let url = request.url,
-               let userId = extractUserId(from: url) {
-                span.setAttribute(key: "user.id", value: userId)
+               let userId = AdvancedNetworkService.extractUserId(from: url) {
+                spanBuilder.setAttribute(key: "user.id", value: userId)
             }
+        }
 
-            // Add response timing information
+        // Add response information before the span ends
+        configuration.receivedResponse = { response, _, span in
             if let response = response as? HTTPURLResponse {
                 if let timing = response.value(forHTTPHeaderField: "Server-Timing") {
                     span.setAttribute(key: "http.server_timing", value: timing)
@@ -221,10 +226,10 @@ class AdvancedNetworkService {
             return "HTTP \(request.httpMethod ?? "GET")"
         }
 
-        let instrumentation = URLSessionInstrumentation(configuration: configuration)
+        instrumentation = URLSessionInstrumentation(configuration: configuration)
 
         let sessionConfig = URLSessionConfiguration.default
-        session = instrumentation.instrumentedSession(configuration: sessionConfig)
+        session = URLSession(configuration: sessionConfig)
     }
 
     private static func extractUserId(from url: URL) -> String? {
@@ -266,28 +271,20 @@ class AdvancedNetworkService {
 
 ## Handling Authentication Headers
 
-Many apps need to include authentication tokens in network requests. You can add these headers while still benefiting from automatic instrumentation.
+Many apps need to include authentication tokens in network requests. You can add these headers while still benefiting from automatic instrumentation. URLSessionInstrumentation does not record arbitrary request headers as span attributes by default, but you should avoid adding sensitive headers in your own customization callbacks.
 
 ```swift
 class AuthenticatedNetworkService {
     private let session: URLSession
+    private let instrumentation: URLSessionInstrumentation
     private var authToken: String?
 
     init() {
         let configuration = URLSessionInstrumentationConfiguration()
-
-        // Filter sensitive headers from span attributes
-        configuration.sanitizeHeaders = { headers in
-            var sanitized = headers
-            sanitized["Authorization"] = "REDACTED"
-            sanitized["X-API-Key"] = "REDACTED"
-            return sanitized
-        }
-
-        let instrumentation = URLSessionInstrumentation(configuration: configuration)
+        instrumentation = URLSessionInstrumentation(configuration: configuration)
         let sessionConfig = URLSessionConfiguration.default
 
-        session = instrumentation.instrumentedSession(configuration: sessionConfig)
+        session = URLSession(configuration: sessionConfig)
     }
 
     func setAuthToken(_ token: String) {
@@ -349,21 +346,22 @@ For operations that transfer large amounts of data, tracking progress provides v
 
 ```swift
 class FileUploadService: NSObject {
-    private let session: URLSession
+    private var session: URLSession!
+    private let instrumentation: URLSessionInstrumentation
     private var progressHandlers: [Int: (Double) -> Void] = [:]
 
     override init() {
         let configuration = URLSessionInstrumentationConfiguration()
-        let instrumentation = URLSessionInstrumentation(configuration: configuration)
+        instrumentation = URLSessionInstrumentation(configuration: configuration)
 
         let sessionConfig = URLSessionConfiguration.default
-        session = instrumentation.instrumentedSession(
+        super.init()
+
+        session = URLSession(
             configuration: sessionConfig,
             delegate: self,
             delegateQueue: nil
         )
-
-        super.init()
     }
 
     func uploadFile(
@@ -406,6 +404,8 @@ extension FileUploadService: URLSessionTaskDelegate {
         totalBytesSent: Int64,
         totalBytesExpectedToSend: Int64
     ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+
         let progress = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
 
         // Call the progress handler
@@ -451,8 +451,8 @@ class CheckoutService {
         checkoutSpan.setAttribute(key: "cart.id", value: cartId)
         checkoutSpan.setAttribute(key: "payment.method", value: paymentInfo.method)
 
-        // Set the checkout span as the active context
-        // Network requests will automatically become children of this span
+        // Set the checkout span as the active context before starting
+        // network requests. Those request spans will use it as their parent.
         OpenTelemetry.instance.contextProvider.setActiveSpan(checkoutSpan)
 
         // Validate cart - creates a child network span
@@ -469,17 +469,20 @@ class CheckoutService {
                             transactionId: transactionId
                         ) { orderResult in
                             checkoutSpan.end()
+                            OpenTelemetry.instance.contextProvider.removeContextForSpan(checkoutSpan)
                             completion(orderResult)
                         }
                     case .failure(let error):
                         checkoutSpan.status = .error(description: error.localizedDescription)
                         checkoutSpan.end()
+                        OpenTelemetry.instance.contextProvider.removeContextForSpan(checkoutSpan)
                         completion(.failure(error))
                     }
                 }
             case .failure(let error):
                 checkoutSpan.status = .error(description: error.localizedDescription)
                 checkoutSpan.end()
+                OpenTelemetry.instance.contextProvider.removeContextForSpan(checkoutSpan)
                 completion(.failure(error))
             }
         }
@@ -597,7 +600,7 @@ With automatic instrumentation in place, you can analyze network performance pat
 - Geographic performance differences
 - Peak usage times and load patterns
 
-URLSessionInstrumentation captures all the data needed for this analysis. The standardized HTTP semantic conventions make it easy to create dashboards and alerts that work across different endpoints and services.
+URLSessionInstrumentation captures request spans and common HTTP attributes for this analysis. The standardized HTTP semantic conventions make it easy to create dashboards and alerts that work across different endpoints and services. Current versions can emit legacy HTTP attributes, stable HTTP attributes, or both by setting the `semanticConvention` option.
 
 ## Performance Considerations
 
