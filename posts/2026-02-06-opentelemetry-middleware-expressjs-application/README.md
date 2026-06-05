@@ -53,26 +53,33 @@ Create a tracing initialization file that must run before your Express app:
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 
+const EXCLUDED_PATHS = ['/health', '/metrics', '/ready', '/favicon.ico'];
+
 export function initializeTracing() {
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'express-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'express-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   });
 
   const traceExporter = new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+    url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   });
 
   const sdk = new NodeSDK({
     resource,
     traceExporter,
     instrumentations: [
-      new HttpInstrumentation(),
+      new HttpInstrumentation({
+        ignoreIncomingRequestHook: (req) => {
+          const requestUrl = new URL(req.url || '/', 'http://localhost');
+          return EXCLUDED_PATHS.includes(requestUrl.pathname);
+        },
+      }),
       new ExpressInstrumentation(),
     ],
   });
@@ -100,30 +107,37 @@ Initialize tracing before creating your Express application:
 
 import { initializeTracing } from './tracing';
 
-// CRITICAL: Initialize tracing FIRST
+// CRITICAL: Initialize tracing before loading Express
 initializeTracing();
 
-// Now import and create Express app
-import express from 'express';
+async function main() {
+  // Now import and create Express app
+  const { default: express } = await import('express');
 
-const app = express();
-const port = process.env.PORT || 3000;
+  const app = express();
+  const port = process.env.PORT || 3000;
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  // Middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello, traced world!' });
-});
+  // Routes
+  app.get('/', (req, res) => {
+    res.json({ message: 'Hello, traced world!' });
+  });
 
-app.get('/users', (req, res) => {
-  res.json({ users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] });
-});
+  app.get('/users', (req, res) => {
+    res.json({ users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] });
+  });
 
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+  });
+}
+
+main().catch((error) => {
+  console.error('Failed to start server', error);
+  process.exit(1);
 });
 ```
 
@@ -134,23 +148,27 @@ While auto-instrumentation handles basic tracing, custom middleware gives you mo
 ```typescript
 // src/middleware/tracing-middleware.ts
 
-import { Request, Response, NextFunction } from 'express';
-import { trace, context, SpanStatusCode, Span } from '@opentelemetry/api';
+import type { Request, Response, NextFunction } from 'express';
+import { trace, context, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('express-app', '1.0.0');
 
 export function tracingMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
+    if ((req as any).skipTracing) {
+      return next();
+    }
+
     // Create a span for this request
     const span = tracer.startSpan(`${req.method} ${req.path}`, {
-      kind: 1, // SpanKind.SERVER
+      kind: SpanKind.SERVER,
       attributes: {
-        'http.method': req.method,
-        'http.url': req.url,
-        'http.target': req.path,
-        'http.host': req.hostname,
-        'http.scheme': req.protocol,
-        'http.user_agent': req.get('user-agent') || 'unknown',
+        'http.request.method': req.method,
+        'url.full': `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+        'url.path': req.path,
+        'url.scheme': req.protocol,
+        'server.address': req.hostname,
+        'user_agent.original': req.get('user-agent') || 'unknown',
       },
     });
 
@@ -167,11 +185,10 @@ export function tracingMiddleware() {
     (req as any).span = span;
 
     // Capture response details when response finishes
-    const originalEnd = res.end;
-    res.end = function (this: Response, ...args: any[]) {
+    res.on('finish', () => {
       // Add response attributes
-      span.setAttribute('http.status_code', res.statusCode);
-      span.setAttribute('http.response.content_length', res.get('content-length') || 0);
+      span.setAttribute('http.response.status_code', res.statusCode);
+      span.setAttribute('http.response.body.size', Number(res.get('content-length')) || 0);
 
       // Set span status based on status code
       if (res.statusCode >= 400) {
@@ -185,10 +202,7 @@ export function tracingMiddleware() {
 
       // End the span
       span.end();
-
-      // Call original end method
-      return originalEnd.apply(this, args);
-    };
+    });
 
     // Continue with request in traced context
     context.with(ctx, () => {
@@ -206,23 +220,30 @@ Apply the middleware to your Express app:
 import { initializeTracing } from './tracing';
 initializeTracing();
 
-import express from 'express';
-import { tracingMiddleware } from './middleware/tracing-middleware';
+async function main() {
+  const { default: express } = await import('express');
+  const { tracingMiddleware } = await import('./middleware/tracing-middleware');
 
-const app = express();
+  const app = express();
 
-// Add custom tracing middleware early in the chain
-app.use(tracingMiddleware());
+  // Add custom tracing middleware early in the chain
+  app.use(tracingMiddleware());
 
-// Other middleware
-app.use(express.json());
+  // Other middleware
+  app.use(express.json());
 
-// Routes
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello, traced world!' });
+  // Routes
+  app.get('/', (req, res) => {
+    res.json({ message: 'Hello, traced world!' });
+  });
+
+  app.listen(3000);
+}
+
+main().catch((error) => {
+  console.error('Failed to start server', error);
+  process.exit(1);
 });
-
-app.listen(3000);
 ```
 
 ## Adding Request Context Enrichment
@@ -232,7 +253,7 @@ Enhance spans with additional context from your application:
 ```typescript
 // src/middleware/context-enrichment.ts
 
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { trace } from '@opentelemetry/api';
 
 export function contextEnrichmentMiddleware() {
@@ -240,10 +261,16 @@ export function contextEnrichmentMiddleware() {
     const span = trace.getActiveSpan();
 
     if (span) {
+      const user = (req as Request & { user?: { id?: string; email?: string } }).user;
+
       // Add user information if authenticated
-      if (req.user) {
-        span.setAttribute('user.id', (req.user as any).id);
-        span.setAttribute('user.email', (req.user as any).email);
+      if (user) {
+        if (user.id) {
+          span.setAttribute('user.id', user.id);
+        }
+        if (user.email) {
+          span.setAttribute('user.email', user.email);
+        }
         span.setAttribute('auth.authenticated', true);
       } else {
         span.setAttribute('auth.authenticated', false);
@@ -284,23 +311,19 @@ Track request duration and performance metrics:
 ```typescript
 // src/middleware/performance-middleware.ts
 
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { trace } from '@opentelemetry/api';
 
 export function performanceMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
     const startTime = Date.now();
     const startHrTime = process.hrtime();
+    const span = trace.getActiveSpan();
 
-    // Store original end method
-    const originalEnd = res.end;
-
-    res.end = function (this: Response, ...args: any[]) {
-      const duration = Date.now() - startTime;
+    res.on('finish', () => {
       const [seconds, nanoseconds] = process.hrtime(startHrTime);
       const durationMs = seconds * 1000 + nanoseconds / 1000000;
 
-      const span = trace.getActiveSpan();
       if (span) {
         // Add performance metrics
         span.setAttribute('request.duration_ms', durationMs);
@@ -323,8 +346,7 @@ export function performanceMiddleware() {
         }
       }
 
-      return originalEnd.apply(this, args);
-    };
+    });
 
     next();
   };
@@ -338,7 +360,7 @@ Capture and trace errors properly:
 ```typescript
 // src/middleware/error-middleware.ts
 
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 export function errorMiddleware() {
@@ -391,56 +413,64 @@ Build a complete middleware stack with tracing:
 import { initializeTracing } from './tracing';
 initializeTracing();
 
-import express from 'express';
-import { tracingMiddleware } from './middleware/tracing-middleware';
-import { contextEnrichmentMiddleware } from './middleware/context-enrichment';
-import { performanceMiddleware } from './middleware/performance-middleware';
-import { errorMiddleware } from './middleware/error-middleware';
+async function main() {
+  const { default: express } = await import('express');
+  const { trace } = await import('@opentelemetry/api');
+  const { tracingMiddleware } = await import('./middleware/tracing-middleware');
+  const { contextEnrichmentMiddleware } = await import('./middleware/context-enrichment');
+  const { performanceMiddleware } = await import('./middleware/performance-middleware');
+  const { errorMiddleware } = await import('./middleware/error-middleware');
 
-const app = express();
+  const app = express();
 
-// Apply middleware in order
-app.use(tracingMiddleware());
-app.use(express.json());
-app.use(performanceMiddleware());
-app.use(contextEnrichmentMiddleware());
+  // Apply middleware in order
+  app.use(tracingMiddleware());
+  app.use(express.json());
+  app.use(performanceMiddleware());
+  app.use(contextEnrichmentMiddleware());
 
-// Routes
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello, world!' });
-});
+  // Routes
+  app.get('/', (req, res) => {
+    res.json({ message: 'Hello, world!' });
+  });
 
-app.get('/users/:id', (req, res) => {
-  const span = trace.getActiveSpan();
-  if (span) {
-    span.setAttribute('user.id', req.params.id);
-  }
+  app.get('/users/:id', (req, res) => {
+    const span = trace.getActiveSpan();
+    if (span) {
+      span.setAttribute('user.id', req.params.id);
+    }
 
-  res.json({ id: req.params.id, name: 'Alice' });
-});
+    res.json({ id: req.params.id, name: 'Alice' });
+  });
 
-app.post('/users', (req, res) => {
-  const span = trace.getActiveSpan();
-  if (span) {
-    span.addEvent('user.creation.requested');
-  }
+  app.post('/users', (req, res) => {
+    const span = trace.getActiveSpan();
+    if (span) {
+      span.addEvent('user.creation.requested');
+    }
 
-  // Simulate user creation
-  const user = { id: Math.random(), ...req.body };
+    // Simulate user creation
+    const user = { id: Math.random(), ...req.body };
 
-  res.status(201).json(user);
-});
+    res.status(201).json(user);
+  });
 
-// Error route for testing
-app.get('/error', (req, res, next) => {
-  next(new Error('Test error'));
-});
+  // Error route for testing
+  app.get('/error', (req, res, next) => {
+    next(new Error('Test error'));
+  });
 
-// Error handling middleware (must be last)
-app.use(errorMiddleware());
+  // Error handling middleware (must be last)
+  app.use(errorMiddleware());
 
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
+  app.listen(3000, () => {
+    console.log('Server running on http://localhost:3000');
+  });
+}
+
+main().catch((error) => {
+  console.error('Failed to start server', error);
+  process.exit(1);
 });
 ```
 
@@ -452,13 +482,14 @@ Add tracing middleware to specific routes:
 // src/routes/api.ts
 
 import { Router } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { trace } from '@opentelemetry/api';
 
 const router = Router();
 
 // Middleware for specific route
 function apiTracingMiddleware() {
-  return (req, res, next) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const span = trace.getActiveSpan();
     if (span) {
       span.setAttribute('api.route', req.route.path);
@@ -506,8 +537,8 @@ Skip tracing for health checks and other noise:
 ```typescript
 // src/middleware/selective-tracing.ts
 
-import { Request, Response, NextFunction } from 'express';
-import { trace, context, ROOT_CONTEXT } from '@opentelemetry/api';
+import type { Request, Response, NextFunction } from 'express';
+import { context, ROOT_CONTEXT } from '@opentelemetry/api';
 
 const EXCLUDED_PATHS = ['/health', '/metrics', '/ready', '/favicon.ico'];
 
@@ -515,6 +546,8 @@ export function selectiveTracingMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
     // Skip tracing for excluded paths
     if (EXCLUDED_PATHS.includes(req.path)) {
+      (req as any).skipTracing = true;
+
       // Continue without tracing context
       return context.with(ROOT_CONTEXT, () => {
         next();
@@ -542,19 +575,22 @@ Verify your tracing middleware works correctly:
 // src/middleware/__tests__/tracing-middleware.test.ts
 
 import request from 'supertest';
-import express from 'express';
+import type { Application } from 'express';
 import { initializeTracing } from '../../tracing';
-import { tracingMiddleware } from '../tracing-middleware';
 
 describe('Tracing Middleware', () => {
-  let app: express.Application;
+  let app: Application;
+  let createExpressApp: typeof import('express').default;
+  let tracingMiddleware: typeof import('../tracing-middleware').tracingMiddleware;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     initializeTracing();
+    ({ default: createExpressApp } = await import('express'));
+    ({ tracingMiddleware } = await import('../tracing-middleware'));
   });
 
   beforeEach(() => {
-    app = express();
+    app = createExpressApp();
     app.use(tracingMiddleware());
     app.get('/test', (req, res) => {
       res.json({ message: 'test' });
