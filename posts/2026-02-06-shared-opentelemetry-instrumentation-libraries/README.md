@@ -72,7 +72,7 @@ def init_telemetry(service_name: str, service_version: str = "unknown"):
         ResourceAttributes.SERVICE_NAME: service_name,
         ResourceAttributes.SERVICE_VERSION: service_version,
         # These come from environment variables set by the platform
-        "deployment.environment": os.getenv("DEPLOY_ENV", "development"),
+        "deployment.environment.name": os.getenv("DEPLOY_ENV", "development"),
         "k8s.cluster.name": os.getenv("CLUSTER_NAME", "local"),
         "platform.team": os.getenv("TEAM_NAME", "unknown"),
     })
@@ -156,11 +156,12 @@ This ASGI middleware wraps incoming HTTP requests with standard tracing attribut
 # platform_otel/middleware/http.py
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 
 _meter = metrics.get_meter("platform.http")
 _request_duration = _meter.create_histogram(
-    "http.server.duration",
-    unit="ms",
+    "http.server.request.duration",
+    unit="s",
     description="HTTP server request duration",
 )
 
@@ -183,44 +184,52 @@ class PlatformTracingMiddleware:
 
         method = scope.get("method", "UNKNOWN")
         path = scope.get("path", "/")
+        scheme = scope.get("scheme", "http")
 
         start = time.monotonic()
-        status_code = 500  # Default to error; overwrite on success
+        status_code = None
 
         with self.tracer.start_as_current_span(
-            f"{method} {path}",
+            method,
             kind=trace.SpanKind.SERVER,
         ) as span:
-            span.set_attribute("http.method", method)
-            span.set_attribute("http.target", path)
+            span.set_attribute("http.request.method", method)
+            span.set_attribute("url.path", path)
+            span.set_attribute("url.scheme", scheme)
 
             # Capture the response status code
             async def send_wrapper(message):
                 nonlocal status_code
                 if message["type"] == "http.response.start":
                     status_code = message["status"]
-                    span.set_attribute("http.status_code", status_code)
+                    span.set_attribute("http.response.status_code", status_code)
+                    if status_code >= 500:
+                        span.set_status(Status(StatusCode.ERROR))
                 await send(message)
 
             try:
                 await self.app(scope, receive, send_wrapper)
+            except Exception as exc:
+                span.set_attribute("error.type", type(exc).__name__)
+                raise
             finally:
-                duration_ms = (time.monotonic() - start) * 1000
-                _request_duration.record(
-                    duration_ms,
-                    attributes={
-                        "http.method": method,
-                        "http.status_code": status_code,
-                        "http.route": path,
-                    },
-                )
+                duration_s = time.monotonic() - start
+                attributes = {
+                    "http.request.method": method,
+                    "url.scheme": scheme,
+                }
+                if status_code is not None:
+                    attributes["http.response.status_code"] = status_code
+                    if status_code >= 500:
+                        attributes["error.type"] = str(status_code)
+                _request_duration.record(duration_s, attributes=attributes)
 ```
 
 ## Packaging and Distribution
 
 Package the library as an internal Python package with a clear version policy.
 
-This pyproject.toml defines the package with pinned OpenTelemetry SDK dependencies:
+This pyproject.toml defines the package with bounded OpenTelemetry SDK dependencies:
 
 ```toml
 # pyproject.toml
