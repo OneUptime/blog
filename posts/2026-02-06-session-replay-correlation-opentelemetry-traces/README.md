@@ -14,7 +14,7 @@ This post walks through implementing session replay correlation with OpenTelemet
 
 ## The Correlation Problem
 
-Session replays and distributed traces operate in different worlds. A replay tool records DOM mutations, mouse movements, and network requests from the user's perspective. OpenTelemetry records spans with timing data, attributes, and parent-child relationships across services. The challenge is linking these two data streams so that when you find a problematic trace, you can watch what the user saw, and when you spot odd behavior in a replay, you can pull up the exact traces involved.
+Session replays and distributed traces operate in different worlds. A replay tool records DOM mutations, mouse movements, and other browser-side events from the user's perspective. OpenTelemetry records spans with timing data, attributes, and parent-child relationships across services. The challenge is linking these two data streams so that when you find a problematic trace, you can watch what the user saw, and when you spot odd behavior in a replay, you can pull up the exact traces involved.
 
 The solution is straightforward: share a common session identifier between both systems and attach it as metadata to every span.
 
@@ -44,7 +44,9 @@ import { v4 as uuidv4 } from 'uuid';
 // so that both the replay SDK and OpenTelemetry can reference the same session
 class SessionManager {
   constructor() {
-    this.sessionId = this.getOrCreateSession();
+    const session = this.getOrCreateSession();
+    this.sessionId = session.sessionId;
+    this.sessionStartedAt = session.startedAt;
     this.replayId = null;
   }
 
@@ -52,11 +54,16 @@ class SessionManager {
   // keep the same session identifier
   getOrCreateSession() {
     let sessionId = sessionStorage.getItem('otel_session_id');
-    if (!sessionId) {
+    let startedAt = Number(sessionStorage.getItem('otel_session_started_at'));
+
+    if (!sessionId || !startedAt) {
       sessionId = uuidv4();
+      startedAt = Date.now();
       sessionStorage.setItem('otel_session_id', sessionId);
+      sessionStorage.setItem('otel_session_started_at', String(startedAt));
     }
-    return sessionId;
+
+    return { sessionId, startedAt };
   }
 
   // Called when a new replay recording segment starts
@@ -66,6 +73,10 @@ class SessionManager {
 
   getSessionId() {
     return this.sessionId;
+  }
+
+  getSessionStartedAt() {
+    return this.sessionStartedAt;
   }
 
   getReplayId() {
@@ -112,8 +123,6 @@ export function startRecording() {
         events.length = 0;
       }
     },
-    // Record network requests so they can be matched to spans
-    recordNetwork: true,
   });
 
   return replayId;
@@ -146,7 +155,7 @@ import { sessionManager } from '../replay/session-manager';
 // This processor runs every time a span starts and adds
 // session replay metadata as span attributes
 export class SessionReplaySpanProcessor {
-  onStart(span) {
+  onStart(span, _parentContext) {
     const sessionId = sessionManager.getSessionId();
     const replayId = sessionManager.getReplayId();
 
@@ -165,7 +174,7 @@ export class SessionReplaySpanProcessor {
     // to the exact moment this span was created
     span.setAttribute(
       'session.replay.offset_ms',
-      Date.now() - performance.timeOrigin
+      Date.now() - sessionManager.getSessionStartedAt()
     );
   }
 
@@ -197,46 +206,44 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SessionReplaySpanProcessor } from './session-span-processor';
 import { startRecording } from '../replay/recorder';
+import './session-propagator';
 
 export function initTracing() {
   const provider = new WebTracerProvider({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       'service.name': 'frontend-app',
       'service.version': '1.0.0',
     }),
+    // The session processor must be listed first so attributes
+    // are present before the batch processor exports spans
+    spanProcessors: [
+      new SessionReplaySpanProcessor(),
+      new BatchSpanProcessor(
+        new OTLPTraceExporter({
+          url: 'https://otel-collector.example.com/v1/traces',
+        })
+      ),
+    ],
   });
-
-  // The session processor must be added first so attributes
-  // are present before the batch processor exports spans
-  provider.addSpanProcessor(new SessionReplaySpanProcessor());
-
-  // Export spans to your OpenTelemetry collector
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(
-      new OTLPTraceExporter({
-        url: 'https://otel-collector.example.com/v1/traces',
-      })
-    )
-  );
 
   provider.register({
     contextManager: new ZoneContextManager(),
   });
 
+  // Start session recording before automatic instrumentations create spans
+  startRecording();
+
   // Enable automatic instrumentation for fetch, XHR, and user interactions
   registerInstrumentations({
     instrumentations: [getWebAutoInstrumentations()],
   });
-
-  // Start session recording after tracing is initialized
-  startRecording();
 }
 ```
 
-Registering the `SessionReplaySpanProcessor` before the `BatchSpanProcessor` is important. Span processors run in the order they are added, so the session attributes need to be set before the batch processor queues the span for export.
+Listing the `SessionReplaySpanProcessor` before the `BatchSpanProcessor` is important. Span processors run in the order they are configured, so the session attributes need to be set before the batch processor queues the span for export.
 
 ## Propagating Session Context to Backend Services
 
@@ -249,12 +256,14 @@ import { sessionManager } from '../replay/session-manager';
 // Intercept fetch calls to inject the session ID as a custom header
 const originalFetch = window.fetch;
 
-window.fetch = function (url, options = {}) {
+window.fetch = function (input, init = {}) {
   const sessionId = sessionManager.getSessionId();
   const replayId = sessionManager.getReplayId();
 
   // Merge session headers with any existing headers
-  const headers = new Headers(options.headers || {});
+  const headers = new Headers(
+    init.headers || (input instanceof Request ? input.headers : undefined)
+  );
   if (sessionId) {
     headers.set('X-Session-Id', sessionId);
   }
@@ -262,11 +271,11 @@ window.fetch = function (url, options = {}) {
     headers.set('X-Replay-Id', replayId);
   }
 
-  return originalFetch.call(this, url, { ...options, headers });
+  return originalFetch.call(this, input, { ...init, headers });
 };
 ```
 
-On the backend side, extract these headers and add them to your server-side spans.
+On the backend side, allow these headers in your CORS configuration if the API is cross-origin, then extract them and add them to your server-side spans.
 
 ```python
 # middleware/session_context.py
@@ -295,7 +304,7 @@ class SessionContextMiddleware:
         return self.get_response(request)
 ```
 
-With this middleware in place, every backend span in a request chain will carry the session and replay identifiers. When you search your trace backend for a specific session, you will see both frontend and backend spans together.
+With this middleware in place, each backend entry span that receives the headers will carry the session and replay identifiers. When you search your trace backend for a specific session, you will see both frontend and backend spans together in the same trace.
 
 ## Building the Correlation Lookup
 
@@ -306,17 +315,18 @@ The final piece is making it easy to jump between replays and traces. You need t
 
 // Given a trace ID, find the matching replay segment
 export async function findReplayForTrace(traceId) {
-  // Query your trace backend for the session.id attribute
-  // on the root span of this trace
+  // Query your trace backend for replay attributes
+  // on spans in this trace
   const response = await fetch(
     `/api/traces/${traceId}/attributes?key=session.replay.id`
   );
   const data = await response.json();
 
-  if (data.replayId) {
+  const replayId = data.attributes['session.replay.id'];
+  if (replayId) {
     // Return a deep link to the replay viewer at the correct timestamp
     const offsetMs = data.attributes['session.replay.offset_ms'];
-    return `/replays/${data.replayId}?seek=${offsetMs}`;
+    return `/replays/${replayId}?seek=${offsetMs}`;
   }
   return null;
 }
@@ -324,8 +334,9 @@ export async function findReplayForTrace(traceId) {
 // Given a session ID, find all traces generated during that session
 export async function findTracesForSession(sessionId) {
   // Query your trace backend filtering by the session.id attribute
+  const filter = encodeURIComponent(`session.id=${sessionId}`);
   const response = await fetch(
-    `/api/traces?filter=session.id%3D${sessionId}&sort=start_time`
+    `/api/traces?filter=${filter}&sort=start_time`
   );
   return response.json();
 }
@@ -340,8 +351,8 @@ To test that everything is connected, open your application in a browser and per
 ```bash
 # Query your OpenTelemetry backend for spans with session attributes
 # This example uses a curl request against a Jaeger-compatible API
-curl -s "http://localhost:16686/api/traces?service=frontend-app&tag=session.id" \
-  | jq '.data[0].spans[0].tags[] | select(.key == "session.id")'
+curl -s "http://localhost:16686/api/traces?service=frontend-app&limit=20" \
+  | jq '.data[].spans[].tags[] | select(.key == "session.id")'
 ```
 
 You should see the same session identifier appearing on both frontend and backend spans. Cross-reference this with your replay storage to confirm that a recording exists for that session.
