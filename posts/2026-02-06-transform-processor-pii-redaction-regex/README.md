@@ -8,13 +8,13 @@ Description: A hands-on guide to using the OpenTelemetry Collector transform pro
 
 ---
 
-The OpenTelemetry Collector's transform processor is one of the most powerful tools available for modifying telemetry data in flight. Unlike the simpler `attributes` processor, which can only delete or overwrite entire attribute values, the transform processor lets you surgically edit parts of a value using regular expressions. This makes it the right tool for PII redaction, where you want to replace a Social Security number inside a larger string without destroying the rest of the context.
+The OpenTelemetry Collector's transform processor is one of the most powerful tools available for modifying telemetry data in flight. Unlike the simpler `attributes` processor, which works at the attribute key/value level, the transform processor lets you surgically edit parts of a value using regular expressions. This makes it the right tool for PII redaction, where you want to replace a Social Security number inside a larger string without destroying the rest of the context.
 
 This guide covers everything you need to know to use the transform processor for regex-based PII redaction across traces, logs, and metrics.
 
 ## Understanding the Transform Processor
 
-The transform processor uses the OpenTelemetry Transformation Language (OTTL), a domain-specific language designed for modifying telemetry data. OTTL provides functions like `replace_pattern`, `replace_match`, and `replace_all_matches` that accept regex patterns and replacement strings.
+The transform processor uses the OpenTelemetry Transformation Language (OTTL), a domain-specific language designed for modifying telemetry data. OTTL provides functions like `replace_pattern` and `replace_all_patterns` that accept regex patterns and replacement strings. OTTL also provides match-based functions like `replace_match` and `replace_all_matches`, but those use wildcard-style match patterns rather than regular expressions.
 
 The key function for PII redaction is `replace_pattern`. It takes three arguments: the field to modify, the regex pattern to match, and the replacement string.
 
@@ -105,8 +105,10 @@ processors:
           - replace_pattern(attributes["user.phone"], "\\([0-9]{3}\\)\\s?[0-9]{3}-[0-9]{4}", "[PHONE-REDACTED]")
           # Match XXX-XXX-XXXX format
           - replace_pattern(attributes["user.phone"], "[0-9]{3}-[0-9]{3}-[0-9]{4}", "[PHONE-REDACTED]")
-          # Match +1XXXXXXXXXX format (international with country code)
-          - replace_pattern(attributes["user.phone"], "\\+1[0-9]{10}", "[PHONE-REDACTED]")
+          # Match +1XXXXXXXXXX and +1-XXX-XXX-XXXX formats (US country code)
+          - replace_pattern(attributes["user.phone"], "\\+1-?[0-9]{3}-?[0-9]{3}-?[0-9]{4}", "[PHONE-REDACTED]")
+          # Match XXXXXXXXXX format
+          - replace_pattern(attributes["user.phone"], "\\b[0-9]{10}\\b", "[PHONE-REDACTED]")
 
     log_statements:
       - context: log
@@ -114,6 +116,8 @@ processors:
           # Apply the same patterns to log bodies where phone numbers might appear
           - replace_pattern(body, "\\([0-9]{3}\\)\\s?[0-9]{3}-[0-9]{4}", "[PHONE-REDACTED]")
           - replace_pattern(body, "[0-9]{3}-[0-9]{3}-[0-9]{4}", "[PHONE-REDACTED]")
+          - replace_pattern(body, "\\+1-?[0-9]{3}-?[0-9]{3}-?[0-9]{4}", "[PHONE-REDACTED]")
+          - replace_pattern(body, "\\b[0-9]{10}\\b", "[PHONE-REDACTED]")
 ```
 
 ## Combining Multiple Redaction Rules
@@ -173,13 +177,13 @@ flowchart TD
 
 ## Handling Dynamic Attribute Keys
 
-Sometimes you do not know the exact attribute key that will contain PII. A span might have attributes like `request.param.email`, `request.param.ssn`, or other dynamically named keys. OTTL does not support wildcard attribute keys directly, but you can work around this by listing the known attribute keys explicitly or by using span events.
+Sometimes you do not know the exact attribute key that will contain PII. A span might have attributes like `request.param.email`, `request.param.ssn`, or other dynamically named keys. OTTL paths do not support wildcard attribute keys directly, but you can work around this by listing known attribute keys explicitly or by using `replace_all_patterns(attributes, "value", ...)` to scan string values across the attribute map.
 
-For dynamic keys, a better approach is to handle redaction at the application level with a custom SpanProcessor in the SDK, and use the Collector's transform processor as a second layer for known patterns.
+For dynamic keys, a better approach is often to handle redaction at the application level with a custom SpanProcessor in the SDK, and use the Collector's transform processor as a second layer for known patterns.
 
 ## Testing Your Redaction Rules
 
-Before deploying to production, test your regex patterns thoroughly. Use the Collector's `logging` exporter with detailed verbosity to inspect the output.
+Before deploying to production, test your regex patterns thoroughly. Use the Collector's `debug` exporter with detailed verbosity to inspect the output.
 
 ```yaml
 exporters:
@@ -211,7 +215,7 @@ To mitigate this:
 
 - Apply redaction only to attributes that actually need it. Do not scan `http.method` for email addresses.
 - Use specific attribute keys instead of applying patterns to every attribute.
-- Monitor the Collector's own metrics (specifically `otelcol_processor_transform_duration`) to track processing time.
+- Monitor the Collector's own metrics, such as `otelcol_processor_incoming_items`, `otelcol_processor_outgoing_items`, `otelcol_process_cpu_seconds`, and `otelcol_process_memory_rss`, to track throughput and resource usage.
 - Consider splitting redaction across multiple Collector instances if throughput is very high.
 
 The transform processor with regex is the most flexible tool the Collector offers for PII redaction. It sits at the right point in the pipeline - after your applications emit telemetry but before the data reaches your backend. Combined with SDK-level controls and proper application logging practices, it forms a solid defense against PII leakage in your observability data.
