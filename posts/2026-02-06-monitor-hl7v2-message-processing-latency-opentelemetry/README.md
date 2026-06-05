@@ -12,12 +12,13 @@ This post covers how to instrument HL7 v2 message processing with OpenTelemetry 
 
 ## Parsing and Tracing HL7 v2 Messages
 
-HL7 v2 messages are pipe-delimited text, not JSON or XML. You need to parse the message header (MSH segment) to extract the message type and other metadata before creating spans. Here is a Python implementation using the `hl7` library:
+HL7 v2 messages are typically pipe-delimited text with encoding characters defined in the MSH segment, not JSON or XML. You need to parse the message header (MSH segment) to extract the message type and other metadata before creating spans. Here is a Python implementation using the `hl7` library:
 
 ```python
 import hl7
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -70,7 +71,7 @@ def process_hl7_message(raw_message):
     Main entry point for HL7 v2 message processing.
     Parses the message, identifies its type, and routes it.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     # Parse the raw HL7 message
     parsed = hl7.parse(raw_message)
@@ -116,12 +117,13 @@ def process_hl7_message(raw_message):
             message_counter.add(1, attrs)
 
         except Exception as e:
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
             error_counter.add(1, attrs)
             raise
         finally:
             # Record processing duration regardless of success/failure
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
             processing_latency.record(duration_ms, attrs)
 ```
 
@@ -138,7 +140,7 @@ def process_adt_message(parsed, trigger_event):
         # Extract the PV1 (Patient Visit) segment for location info
         pv1 = parsed.segment("PV1")
         if pv1:
-            # Record the assigned location (ward/room/bed) - not PHI
+            # Avoid patient identifiers; review location granularity with your privacy policy.
             assigned_location = str(pv1[3])
             span.set_attribute("hl7v2.adt.patient_location", assigned_location)
 
@@ -200,6 +202,8 @@ def process_oru_message(parsed, trigger_event):
 
 ## Collector Configuration for HL7 v2 Monitoring
 
+The `groupbyattrs` processor used here is available in the OpenTelemetry Collector contrib and Kubernetes distributions.
+
 ```yaml
 # otel-collector-config.yaml
 receivers:
@@ -221,6 +225,8 @@ processors:
 exporters:
   otlp:
     endpoint: "oneuptime-collector:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
