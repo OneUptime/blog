@@ -41,12 +41,12 @@ receivers:
 processors:
   # Step 1: Enrich telemetry with geographic data
   geoip:
-    context: resource
+    context: record
     providers:
       maxmind:
         database_path: /etc/otel/GeoLite2-City.mmdb
-        # The attribute containing the IP address to look up
-        source_attribute: "client.address"
+    # The attributes containing the IP address to look up
+    attributes: ["client.address"]
 
   # Step 2: Flag requests from suspicious regions
   transform/flag_suspicious:
@@ -55,27 +55,31 @@ processors:
         statements:
           # Define a list of expected countries
           # Flag anything outside this list as suspicious
-          - set(attributes["geo.suspicious"], true)
-            where resource.attributes["geo.country_iso_code"] != "US"
-            and resource.attributes["geo.country_iso_code"] != "CA"
-            and resource.attributes["geo.country_iso_code"] != "GB"
-            and resource.attributes["geo.country_iso_code"] != "DE"
-            and resource.attributes["geo.country_iso_code"] != "FR"
+          - |
+            set(attributes["geo.suspicious"], true)
+            where attributes["geo.country.iso_code"] != "US"
+              and attributes["geo.country.iso_code"] != "CA"
+              and attributes["geo.country.iso_code"] != "GB"
+              and attributes["geo.country.iso_code"] != "DE"
+              and attributes["geo.country.iso_code"] != "FR"
 
-          - set(attributes["geo.suspicious"], false)
+          - |
+            set(attributes["geo.suspicious"], false)
             where attributes["geo.suspicious"] == nil
 
     log_statements:
       - context: log
         statements:
-          - set(attributes["geo.suspicious"], true)
-            where resource.attributes["geo.country_iso_code"] != "US"
-            and resource.attributes["geo.country_iso_code"] != "CA"
-            and resource.attributes["geo.country_iso_code"] != "GB"
-            and resource.attributes["geo.country_iso_code"] != "DE"
-            and resource.attributes["geo.country_iso_code"] != "FR"
+          - |
+            set(attributes["geo.suspicious"], true)
+            where attributes["geo.country.iso_code"] != "US"
+              and attributes["geo.country.iso_code"] != "CA"
+              and attributes["geo.country.iso_code"] != "GB"
+              and attributes["geo.country.iso_code"] != "DE"
+              and attributes["geo.country.iso_code"] != "FR"
 
-          - set(attributes["geo.suspicious"], false)
+          - |
+            set(attributes["geo.suspicious"], false)
             where attributes["geo.suspicious"] == nil
 
 exporters:
@@ -88,10 +92,15 @@ exporters:
 
 connectors:
   # Route suspicious events to the alerts exporter
-  routing:
+  routing/traces:
     table:
-      - statement: route()
+      - context: span
         pipelines: [traces/alerts]
+        condition: attributes["geo.suspicious"] == true
+  routing/logs:
+    table:
+      - context: log
+        pipelines: [logs/alerts]
         condition: attributes["geo.suspicious"] == true
 
 service:
@@ -99,19 +108,22 @@ service:
     traces:
       receivers: [otlp]
       processors: [geoip, transform/flag_suspicious]
-      exporters: [otlp]
+      exporters: [otlp, routing/traces]
     traces/alerts:
-      receivers: [routing]
+      receivers: [routing/traces]
       exporters: [otlp/alerts]
     logs:
       receivers: [otlp]
       processors: [geoip, transform/flag_suspicious]
-      exporters: [otlp]
+      exporters: [otlp, routing/logs]
+    logs/alerts:
+      receivers: [routing/logs]
+      exporters: [otlp/alerts]
 ```
 
 ## Application-Side: Setting the Client IP Attribute
 
-The GeoIP processor needs an attribute containing the client IP. Make sure your application sets this on spans:
+The GeoIP processor needs an attribute containing the client IP. Make sure your application sets this on spans, and include the same attribute on logs if you want the log pipeline to be enriched:
 
 ```python
 from opentelemetry import trace
@@ -141,7 +153,7 @@ def add_client_ip_to_span():
 
 ## Building Alerts for Suspicious Regions
 
-With the `geo.suspicious` attribute in place, you can set up alerts in your observability platform. Here is an example alert rule in PromQL format, assuming you are exporting metrics:
+With the `geo.suspicious` attribute in place, you can set up alerts in your observability platform. Here is an example alert rule in PromQL format, assuming you are exporting span- or log-derived metrics with `geo.suspicious` and `geo.country.iso_code` converted to Prometheus labels:
 
 ```yaml
 # alert-rules.yaml
