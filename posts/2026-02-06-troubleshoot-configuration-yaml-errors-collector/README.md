@@ -79,7 +79,7 @@ Error: yaml: line 3: mapping values are not allowed in this context
 ```bash
 # Check for tab characters (should be spaces)
 
-cat -A config.yaml | grep "^I"
+cat -A config.yaml | grep '\^I'
 
 # Use yamllint to check formatting
 yamllint config.yaml
@@ -134,6 +134,11 @@ exporters:
   otlp:
     # Properly quoted
     endpoint: "backend:4317"
+```
+
+```yaml
+exporters:
+  otlp:
     # Or without quotes (no special chars)
     endpoint: backend:4317
 ```
@@ -149,7 +154,7 @@ service:
   pipelines:
     traces:
       receivers: otlp  # Should be a list
-      exporters: logging
+      exporters: debug
 ```
 
 **Correct:**
@@ -160,13 +165,18 @@ service:
     traces:
       # Method 1: Flow style (inline list)
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
+```
 
+```yaml
+service:
+  pipelines:
+    traces:
       # Method 2: Block style (multi-line list)
       receivers:
         - otlp
       exporters:
-        - logging
+        - debug
 ```
 
 ## Using the Configuration Validator
@@ -178,7 +188,7 @@ The collector includes a built-in validation command:
 otelcol-contrib validate --config config.yaml
 
 # Expected output for valid config:
-# Config validation successful
+# No output and zero exit status (some older versions printed "Config validation successful")
 
 # Expected output for invalid config:
 # Error: failed to load config: ...
@@ -224,7 +234,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]  # batch is not defined above
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 **Solution:**
@@ -244,7 +254,7 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -252,7 +262,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]  # Now properly defined
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ### Error 2: Missing Required Fields
@@ -296,9 +306,8 @@ Providing wrong data type for a field.
 **Error message:**
 
 ```text
-Error: cannot unmarshal string into Go value of type int
-Error: time: invalid duration "10"
-Error: invalid boolean value "yes"
+Error: 'send_batch_size' expected type 'uint32', got unconvertible type 'string'
+Error: 'tls.insecure' expected type 'bool', got unconvertible type 'string'
 ```
 
 **Diagnosis:**
@@ -307,7 +316,7 @@ Error: invalid boolean value "yes"
 # Problem: incorrect types
 processors:
   batch:
-    # Should be duration string (e.g., "10s"), not integer
+    # Bare numeric durations can be interpreted unexpectedly; use explicit units
     timeout: 10
     # Should be integer, not string
     send_batch_size: "1024"
@@ -340,7 +349,7 @@ exporters:
 **Common type requirements:**
 
 ```yaml
-# Duration fields: must include units
+# Duration fields: should include units to avoid unintended values
 timeout: 30s
 check_interval: 1s
 max_elapsed_time: 5m
@@ -366,13 +375,12 @@ endpoint: "backend:4317"  # Both valid
 
 ### Error 4: Pipeline Component Order
 
-Certain processors must be in specific positions in the pipeline.
+Certain processors should be placed in a deliberate order in the pipeline.
 
-**Error message:**
+**Warning:**
 
 ```text
-Warning: memory_limiter processor should be first in pipeline
-Error: batch processor should come after memory_limiter
+Best practice: memory_limiter should be first in the pipeline, and batch should generally run after processors that transform, filter, or sample data.
 ```
 
 **Diagnosis:**
@@ -413,10 +421,10 @@ service:
 
 Using an extension without registering it in the service section.
 
-**Error message:**
+**Symptom:**
 
 ```text
-Error: failed to get extension: extension "health_check" not found
+The collector starts, but the health_check endpoint is not available.
 ```
 
 **Diagnosis:**
@@ -432,7 +440,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 **Solution:**
@@ -453,7 +461,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ### Error 6: Duplicate Component Names
@@ -523,14 +531,14 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Test the minimal configuration:
@@ -721,25 +729,23 @@ Configuration can reference environment variables to avoid hardcoding values.
 # config.yaml - Using environment variables
 exporters:
   otlp:
-    # Reference environment variable
-    endpoint: ${BACKEND_ENDPOINT}
-    # Provide default value if not set
-    endpoint: ${BACKEND_ENDPOINT:-backend:4317}
+    # Reference environment variable with a default value if not set
+    endpoint: ${env:BACKEND_ENDPOINT:-backend:4317}
     headers:
       # Secure way to pass credentials
-      authorization: "Bearer ${API_TOKEN}"
+      authorization: "Bearer ${env:API_TOKEN}"
 
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: ${OTLP_GRPC_ENDPOINT:-0.0.0.0:4317}
+        endpoint: ${env:OTLP_GRPC_ENDPOINT:-0.0.0.0:4317}
 
 service:
   telemetry:
     logs:
       # Control log level via environment
-      level: ${LOG_LEVEL:-info}
+      level: ${env:LOG_LEVEL:-info}
 ```
 
 Set variables before starting:
@@ -771,7 +777,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.111.0
         env:
         # From literal values
         - name: BACKEND_ENDPOINT
