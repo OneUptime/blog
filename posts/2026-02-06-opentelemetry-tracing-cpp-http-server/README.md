@@ -69,6 +69,7 @@ Include the necessary OpenTelemetry headers:
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/context/propagation/text_map_propagator.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
+#include "opentelemetry/nostd/string_view.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
@@ -76,6 +77,7 @@ Include the necessary OpenTelemetry headers:
 namespace trace_api = opentelemetry::trace;
 namespace context = opentelemetry::context;
 namespace propagation = opentelemetry::context::propagation;
+namespace nostd = opentelemetry::nostd;
 ```
 
 ## Extracting Trace Context from Headers
@@ -127,14 +129,14 @@ http::response<http::string_body> HandleRequestWithTracing(
     // Start a new span with the extracted context as parent
     trace_api::StartSpanOptions options;
     options.kind = trace_api::SpanKind::kServer;
-    options.parent = trace_api::GetSpan(current_ctx)->GetContext();
+    options.parent = current_ctx;
 
     auto span = tracer->StartSpan(
-        req.target().to_string(),
-        {{trace_api::SemanticConventions::kHttpMethod, std::string(req.method_string())},
-         {trace_api::SemanticConventions::kHttpTarget, std::string(req.target())},
-         {trace_api::SemanticConventions::kHttpScheme, "http"},
-         {trace_api::SemanticConventions::kHttpFlavor, "1.1"}},
+        std::string(req.target()),
+        {{"http.request.method", std::string(req.method_string())},
+         {"url.path", std::string(req.target())},
+         {"url.scheme", "http"},
+         {"network.protocol.version", "1.1"}},
         options
     );
 
@@ -149,7 +151,7 @@ http::response<http::string_body> HandleRequestWithTracing(
 
     // Add response attributes to span
     span->SetAttribute(
-        trace_api::SemanticConventions::kHttpStatusCode,
+        "http.response.status_code",
         static_cast<uint32_t>(res.result_int())
     );
 
@@ -181,7 +183,7 @@ public:
 
         trace_api::StartSpanOptions options;
         options.kind = trace_api::SpanKind::kServer;
-        options.parent = trace_api::GetSpan(current_ctx)->GetContext();
+        options.parent = current_ctx;
 
         std::string span_name = std::string(req.method_string()) + " " +
                                 std::string(req.target());
@@ -189,9 +191,9 @@ public:
         auto scope = tracer_->WithActiveSpan(span);
 
         // Add HTTP semantic conventions
-        span->SetAttribute("http.method", std::string(req.method_string()));
-        span->SetAttribute("http.target", std::string(req.target()));
-        span->SetAttribute("http.flavor", "1.1");
+        span->SetAttribute("http.request.method", std::string(req.method_string()));
+        span->SetAttribute("url.path", std::string(req.target()));
+        span->SetAttribute("network.protocol.version", "1.1");
 
         http::response<http::string_body> res;
 
@@ -199,20 +201,19 @@ public:
         std::string target(req.target());
         if (target == "/health") {
             res = HandleHealth(req);
-        } else if (target.starts_with("/api/users")) {
+        } else if (target.rfind("/api/users", 0) == 0) {
             res = HandleUsers(req);
-        } else if (target.starts_with("/api/orders")) {
+        } else if (target.rfind("/api/orders", 0) == 0) {
             res = HandleOrders(req);
         } else {
             res = HandleNotFound(req);
         }
 
         // Record response status
-        span->SetAttribute("http.status_code", res.result_int());
+        span->SetAttribute("http.response.status_code", res.result_int());
         if (res.result_int() >= 500) {
-            span->SetStatus(trace_api::StatusCode::kError, "Server Error");
-        } else if (res.result_int() >= 400) {
-            span->SetStatus(trace_api::StatusCode::kError, "Client Error");
+            span->SetStatus(trace_api::StatusCode::kError);
+            span->SetAttribute("error.type", std::to_string(res.result_int()));
         }
 
         span->End();
@@ -227,6 +228,7 @@ private:
     ) {
         // Create a child span for health check logic
         auto span = tracer_->StartSpan("check_health");
+        auto scope = tracer_->WithActiveSpan(span);
 
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::content_type, "application/json");
@@ -241,10 +243,12 @@ private:
         const http::request<http::string_body>& req
     ) {
         auto span = tracer_->StartSpan("handle_users");
+        auto scope = tracer_->WithActiveSpan(span);
         span->SetAttribute("handler.type", "users");
 
         // Simulate database query
         auto db_span = tracer_->StartSpan("database.query");
+        auto db_scope = tracer_->WithActiveSpan(db_span);
         db_span->SetAttribute("db.system", "postgresql");
         db_span->SetAttribute("db.statement", "SELECT * FROM users");
         // Simulate work
@@ -264,6 +268,7 @@ private:
         const http::request<http::string_body>& req
     ) {
         auto span = tracer_->StartSpan("handle_orders");
+        auto scope = tracer_->WithActiveSpan(span);
         span->SetAttribute("handler.type", "orders");
 
         http::response<http::string_body> res{http::status::ok, req.version()};
@@ -302,13 +307,14 @@ http::response<http::string_body> SafeHandleRequest(
 
     trace_api::StartSpanOptions options;
     options.kind = trace_api::SpanKind::kServer;
+    options.parent = current_ctx;
     auto span = tracer->StartSpan("http_request", {}, options);
     auto scope = tracer->WithActiveSpan(span);
 
     try {
         // Process request
         http::response<http::string_body> res = ProcessRequest(req);
-        span->SetAttribute("http.status_code", res.result_int());
+        span->SetAttribute("http.response.status_code", res.result_int());
         span->End();
         return res;
     } catch (const std::exception& e) {
@@ -318,6 +324,7 @@ http::response<http::string_body> SafeHandleRequest(
             {"exception.message", e.what()}
         });
         span->SetStatus(trace_api::StatusCode::kError, e.what());
+        span->SetAttribute("error.type", "std::exception");
         span->End();
 
         // Return error response
@@ -335,7 +342,7 @@ http::response<http::string_body> SafeHandleRequest(
 
 ## Complete Server Implementation
 
-Here's a complete example with tracing:
+Here's how to tie the earlier pieces together in the server loop:
 
 ```cpp
 #include <iostream>
@@ -344,8 +351,12 @@ Here's a complete example with tracing:
 #include <boost/beast/http.hpp>
 #include <boost/asio.hpp>
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
+#include "opentelemetry/nostd/shared_ptr.h"
+#include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
+#include "opentelemetry/sdk/trace/batch_span_processor_options.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 
 namespace beast = boost::beast;
@@ -355,13 +366,20 @@ using tcp = boost::asio::ip::tcp;
 
 void InitTracer() {
     auto exporter = opentelemetry::exporter::otlp::OtlpGrpcExporterFactory::Create();
+    opentelemetry::sdk::trace::BatchSpanProcessorOptions processor_options;
     auto processor = opentelemetry::sdk::trace::BatchSpanProcessorFactory::Create(
-        std::move(exporter)
+        std::move(exporter),
+        processor_options
     );
     auto provider = opentelemetry::sdk::trace::TracerProviderFactory::Create(
         std::move(processor)
     );
     opentelemetry::trace::Provider::SetTracerProvider(provider);
+    opentelemetry::context::propagation::GlobalTextMapPropagator::SetGlobalPropagator(
+        opentelemetry::nostd::shared_ptr<opentelemetry::context::propagation::TextMapPropagator>(
+            new opentelemetry::trace::propagation::HttpTraceContext()
+        )
+    );
 }
 
 int main() {
