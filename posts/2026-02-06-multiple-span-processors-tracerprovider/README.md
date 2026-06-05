@@ -6,7 +6,7 @@ Tags: OpenTelemetry, SpanProcessor, TracerProvider, SDK Configuration
 
 Description: Configure multiple span processors in a single OpenTelemetry TracerProvider for span enrichment, filtering, and multi-destination export.
 
-The OpenTelemetry SDK's TracerProvider supports adding multiple SpanProcessors. Each processor receives span start and end events, and they execute in the order they were added. This lets you build a processing pipeline within the SDK itself: one processor enriches spans with extra attributes, another filters out noisy spans, and a third exports the remaining spans to your backend.
+The OpenTelemetry SDK's TracerProvider supports adding multiple SpanProcessors. Each processor receives span start and end events, and they execute in the order they were added. This lets you build processing pipelines within the SDK itself: one processor enriches spans with extra attributes, while other processors export spans to one or more backends.
 
 ## Why Multiple Processors
 
@@ -14,8 +14,8 @@ Common use cases:
 
 - **Enrichment + Export**: Add request-scoped attributes before export
 - **Multi-destination export**: Send spans to both a local debugger and a remote backend
-- **Filtering + Export**: Drop health check spans before they reach the exporter
-- **Sampling + Export**: Implement custom sampling logic as a processor
+- **Filtering + Export**: Wrap exporter processors in a custom filtering processor when you need SDK-side export filtering
+- **Sampling + Export**: Configure a sampler on the TracerProvider for sampling decisions, then export sampled spans
 
 ## Python: Adding Multiple Processors
 
@@ -23,12 +23,10 @@ Common use cases:
 # multi_processor_setup.py
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
+from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
-    SpanExporter,
-    SpanExportResult,
     ConsoleSpanExporter,
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -36,7 +34,7 @@ from opentelemetry.sdk.resources import Resource
 
 
 # Custom processor that adds attributes to every span
-class EnrichmentProcessor:
+class EnrichmentProcessor(SpanProcessor):
     """Adds deployment metadata to all spans."""
 
     def __init__(self, attributes):
@@ -58,8 +56,8 @@ class EnrichmentProcessor:
 
 
 # Custom processor that filters out unwanted spans
-class FilteringProcessor:
-    """Drops spans that match filter criteria before they reach the exporter."""
+class FilteringProcessor(SpanProcessor):
+    """Drops spans that match filter criteria before they reach delegate processors."""
 
     def __init__(self, drop_span_names=None):
         self._drop_names = set(drop_span_names or [])
@@ -138,8 +136,8 @@ Processors run in the order they were added to the TracerProvider:
 
 # This means:
 # 1. Enrichment adds attributes (on_start)
-# 2. Console processor sees the enriched span
-# 3. Batch processor exports the enriched span
+# 2. Console processor observes the enriched span lifecycle
+# 3. Batch processor exports the enriched span when it ends
 ```
 
 ## Java: Multiple Processors
@@ -218,16 +216,16 @@ Each processor adds overhead to span start and end operations. Keep these guidel
 
 3. **Avoid too many processors.** Three to four processors is typical. If you need more complex logic, consider consolidating into a single custom processor.
 
-4. **Order matters for enrichment.** Put enrichment processors before export processors so the exported spans include the enriched attributes.
+4. **Order matters for processors that inspect spans on start.** Put enrichment processors before processors that read span attributes in `on_start` so they see the enriched span.
 
 ```python
-# Good order: enrich first, then export
+# Good order: enrich first, then processors that inspect on_start
 provider.add_span_processor(enrichment)    # Adds attributes
-provider.add_span_processor(batch_export)   # Exports enriched spans
+provider.add_span_processor(start_reader)   # Reads enriched attributes
 
-# Bad order: export sees spans without enrichment
-provider.add_span_processor(batch_export)   # Exports before enrichment
-provider.add_span_processor(enrichment)     # Too late
+# Bad order: start_reader sees spans before enrichment
+provider.add_span_processor(start_reader)   # Reads before enrichment
+provider.add_span_processor(enrichment)     # Adds attributes later in on_start
 ```
 
 Multiple span processors give you a flexible in-SDK pipeline for span processing. Use them to keep your SDK-side logic organized and your spans enriched before they leave the process.
