@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Baggage, Debugging, Distributed Tracing, Session IDs
 
 Description: Pass debug session IDs across service boundaries using OpenTelemetry baggage to enable targeted tracing in production systems.
 
-When debugging a specific user's issue in production, you often need to increase tracing verbosity for just that user's requests without drowning in data from everyone else. OpenTelemetry baggage lets you attach arbitrary key-value pairs to a request context that propagate across every service in the call chain. By attaching a debug session ID as baggage, you can tell every downstream service to capture extra detail for that specific request.
+When debugging a specific user's issue in production, you often need to increase tracing verbosity for just that user's requests without drowning in data from everyone else. OpenTelemetry baggage lets you attach arbitrary key-value pairs to a request context that propagate across service boundaries when context propagation is configured. By attaching a debug session ID as baggage, you can tell every downstream service to capture extra detail for that specific request.
 
 ## What Is OpenTelemetry Baggage?
 
-Baggage is a set of key-value pairs that travels alongside the trace context through HTTP headers. Unlike span attributes, which are local to a single span, baggage propagates across process boundaries. When Service A sets a baggage entry, Service B, C, and D all receive it automatically through the W3C Baggage header.
+Baggage is a set of key-value pairs that travels alongside the trace context through HTTP headers. Unlike span attributes, which are local to a single span, baggage propagates across process boundaries. When Service A sets a baggage entry, Service B, C, and D can all receive it through the W3C Baggage header when their instrumentation injects and extracts that context.
 
 ## Setting Up Debug Session Baggage
 
@@ -18,7 +18,6 @@ Here is how to attach a debug session ID at the edge of your system, typically i
 
 ```python
 from opentelemetry import baggage, context, trace
-from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 tracer = trace.get_tracer("api-gateway")
 
@@ -27,6 +26,7 @@ def handle_request(request):
 
     # Check if the request includes a debug header
     debug_session = request.headers.get("X-Debug-Session")
+    token = None
 
     if debug_session:
         # Attach the debug session ID as baggage
@@ -34,16 +34,20 @@ def handle_request(request):
         ctx = baggage.set_baggage(
             "debug.verbosity", "high", context=ctx
         )
-        context.attach(ctx)
+        token = context.attach(ctx)
 
-    with tracer.start_as_current_span("gateway.handle_request") as span:
-        span.set_attribute("debug.session_active", debug_session is not None)
-        if debug_session:
-            span.set_attribute("debug.session_id", debug_session)
+    try:
+        with tracer.start_as_current_span("gateway.handle_request") as span:
+            span.set_attribute("debug.session_active", debug_session is not None)
+            if debug_session:
+                span.set_attribute("debug.session_id", debug_session)
 
-        # Forward the request to the appropriate backend service
-        response = route_request(request)
-        return response
+            # Forward the request to the appropriate backend service
+            response = route_request(request)
+            return response
+    finally:
+        if token is not None:
+            context.detach(token)
 ```
 
 ## Reading Baggage in Downstream Services
@@ -81,9 +85,9 @@ def process_order(order):
         return execute_order(order)
 ```
 
-## Configuring the Collector for Baggage-Based Sampling
+## Configuring the Collector for Debug-Attribute-Based Sampling
 
-The OpenTelemetry Collector can use baggage to make sampling decisions. This lets you always capture traces for debug sessions while sampling normally for everything else:
+The OpenTelemetry Collector can use the `debug.session_id` span attribute copied from baggage to make sampling decisions. This lets you always capture traces for debug sessions while sampling normally for everything else:
 
 ```yaml
 receivers:
@@ -102,7 +106,7 @@ processors:
         type: string_attribute
         string_attribute:
           key: debug.session_id
-          values: []
+          values: [".+"]
           enabled_regex_matching: true
           # Match any non-empty value
           invert_match: false
@@ -163,22 +167,33 @@ class DebugSessionManager:
 
     def get_session_for_user(self, user_id):
         """Check if a user has an active debug session."""
-        return self.redis.get(f"debug:user:{user_id}")
+        session_id = self.redis.get(f"debug:user:{user_id}")
+        if isinstance(session_id, bytes):
+            return session_id.decode("utf-8")
+        return session_id
 ```
 
 Then in your API gateway middleware:
 
 ```python
+from opentelemetry import baggage, context
+
 async def debug_session_middleware(request, call_next):
     user_id = request.headers.get("X-User-ID")
+    token = None
+
     if user_id:
         session_id = debug_manager.get_session_for_user(user_id)
         if session_id:
             ctx = baggage.set_baggage("debug.session_id", session_id)
-            context.attach(ctx)
+            token = context.attach(ctx)
 
-    response = await call_next(request)
-    return response
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        if token is not None:
+            context.detach(token)
 ```
 
 ## Security Considerations
@@ -191,4 +206,4 @@ Baggage propagates to every service in the call chain, including third-party ser
 
 ## Summary
 
-OpenTelemetry baggage turns targeted production debugging from a pipe dream into a practical workflow. Set a debug session ID at the edge, let it propagate through every service via W3C Baggage headers, and have each service add extra instrumentation when it detects the debug flag. Combine this with tail-based sampling in your collector to guarantee that debug session traces are never dropped. The result is on-demand, targeted, high-verbosity tracing for specific requests without impacting the rest of your traffic.
+OpenTelemetry baggage turns targeted production debugging from a pipe dream into a practical workflow. Set a debug session ID at the edge, let it propagate through every service via W3C Baggage headers, and have each service add extra instrumentation when it detects the debug flag. Combine this with tail-based sampling on the copied span attribute in your collector to guarantee that debug session traces are never dropped. The result is on-demand, targeted, high-verbosity tracing for specific requests without impacting the rest of your traffic.
