@@ -75,9 +75,12 @@ what the template provides.
 """
 
 import yaml
+import os
+from pathlib import Path
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -89,8 +92,20 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 def load_config() -> dict:
     """Load telemetry configuration from the config file."""
-    with open("config/telemetry-config.yaml") as f:
-        return yaml.safe_load(f)
+    config_path = Path(
+        os.getenv("TELEMETRY_CONFIG_FILE", "config/telemetry-config.yaml")
+    )
+    if not config_path.exists():
+        return {}
+    with config_path.open() as f:
+        return yaml.safe_load(f) or {}
+
+def sampling_ratio(config: dict) -> float:
+    """Return sampling probability in the OpenTelemetry 0.0-1.0 range."""
+    rate = config.get("sampling", {}).get("rate")
+    if rate is not None:
+        return max(0.0, min(float(rate) / 100, 1.0))
+    return float(os.getenv("OTEL_TRACES_SAMPLER_ARG", "1.0"))
 
 def init_telemetry(app=None, db_engine=None):
     """
@@ -100,16 +115,24 @@ def init_telemetry(app=None, db_engine=None):
     config = load_config()
 
     resource = Resource.create({
-        "service.name": "{{cookiecutter.service_name}}",
+        "service.name": os.getenv("OTEL_SERVICE_NAME", "{{cookiecutter.service_name}}"),
         "service.version": "{{cookiecutter.version}}",
         "team.name": "{{cookiecutter.team_name}}",
-        "deployment.environment": config.get("environment", "development"),
+        "deployment.environment.name": config.get("environment", "development"),
     })
 
+    endpoint = config.get("exporter", {}).get(
+        "endpoint",
+        os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+    )
+
     # Traces
-    trace_provider = TracerProvider(resource=resource)
+    trace_provider = TracerProvider(
+        resource=resource,
+        sampler=ParentBased(TraceIdRatioBased(sampling_ratio(config))),
+    )
     trace_exporter = OTLPSpanExporter(
-        endpoint=config["exporter"]["endpoint"]
+        endpoint=endpoint
     )
     trace_provider.add_span_processor(
         BatchSpanProcessor(trace_exporter)
@@ -118,7 +141,7 @@ def init_telemetry(app=None, db_engine=None):
 
     # Metrics
     metric_reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(endpoint=config["exporter"]["endpoint"]),
+        OTLPMetricExporter(endpoint=endpoint),
         export_interval_millis=config.get("metrics_interval_ms", 30000),
     )
     metric_provider = MeterProvider(
@@ -181,7 +204,7 @@ COPY . .
 
 # OpenTelemetry environment variables as fallback configuration
 ENV OTEL_SERVICE_NAME="{{cookiecutter.service_name}}"
-ENV OTEL_RESOURCE_ATTRIBUTES="team.name={{cookiecutter.team_name}}"
+ENV OTEL_RESOURCE_ATTRIBUTES="team.name={{cookiecutter.team_name}},deployment.environment.name=development"
 ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector.internal:4317"
 ENV OTEL_TRACES_SAMPLER="parentbased_traceidratio"
 ENV OTEL_TRACES_SAMPLER_ARG="0.25"
