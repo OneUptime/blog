@@ -14,7 +14,7 @@ There are two ways to get OpenTelemetry traces into Cloud Trace: through the Ope
 
 ## How the Integration Works
 
-Cloud Trace speaks its own protocol, but the OpenTelemetry ecosystem provides exporters that translate OTLP trace data into the Cloud Trace format. The translation handles span attributes, resource attributes, status codes, and span links.
+Cloud Trace supports ingestion through the Cloud Trace API and Google Cloud's Telemetry (OTLP) API. The exporters shown below send data through the Cloud Trace API, translating OpenTelemetry trace data into the Cloud Trace format. The translation handles span attributes, resource attributes, status codes, and span links.
 
 ```mermaid
 graph LR
@@ -76,7 +76,7 @@ processors:
 
   # Detect GCP environment metadata and add as resource attributes
   # This adds cloud.provider, cloud.platform, cloud.region, etc.
-  resourcedetection:
+  resource_detection:
     detectors: [gcp]
     timeout: 5s
 
@@ -109,7 +109,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, resource_detection, batch]
       exporters: [googlecloud, otlphttp]
 ```
 
@@ -192,7 +192,7 @@ provider = TracerProvider(resource=resource)
 
 # The exporter auto-detects credentials from the environment
 # On GCE/GKE: uses the default service account
-# Locally: uses GOOGLE_APPLICATION_CREDENTIALS or gcloud auth
+# Locally: uses GOOGLE_APPLICATION_CREDENTIALS or Application Default Credentials
 cloud_trace_exporter = CloudTraceSpanExporter(
     project_id="my-gcp-project"
 )
@@ -206,6 +206,9 @@ trace.set_tracer_provider(provider)
 
 # Now create spans in your application code
 tracer = trace.get_tracer("my-service")
+
+def fetch_users():
+    return []
 
 def handle_request():
     with tracer.start_as_current_span("handle-request") as span:
@@ -312,6 +315,11 @@ func initTracing() (*sdktrace.TracerProvider, error) {
     return tp, nil
 }
 
+func processRequest(ctx context.Context) {
+    _, span := otel.Tracer("my-go-service").Start(ctx, "process-request")
+    defer span.End()
+}
+
 func main() {
     tp, err := initTracing()
     if err != nil {
@@ -371,7 +379,7 @@ graph LR
     subgraph Cloud Trace Labels
         B1[/http/method]
         B2[/http/status_code]
-        B3[g.co/agent]
+        B3[db.system]
         B4[service.name - auto mapped]
     end
 
