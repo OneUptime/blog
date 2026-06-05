@@ -25,14 +25,14 @@ graph TD
     A --> D[Metric Labels]
     A --> E[Resource Attributes]
     A --> F[Span Events]
-    B --> B1["http.url with query params<br/>user.email, user.id<br/>db.statement with WHERE clauses"]
+    B --> B1["url.full/http.url with query params<br/>user.email, user.id<br/>db.query.text/db.statement with WHERE clauses"]
     C --> C1["Unstructured log messages<br/>Exception stack traces<br/>Request/response payloads"]
     D --> D1["High-cardinality labels<br/>user_id, email, ip_address"]
     E --> E1["host.name, host.ip<br/>k8s.pod.name with usernames"]
     F --> F1["Exception messages<br/>Custom event payloads"]
 ```
 
-**Span attributes** are the most common culprit. The semantic conventions for HTTP instrumentation capture `http.url`, which often includes query parameters like `?email=user@example.com`. Database instrumentation captures `db.statement`, which can include `WHERE user_email = 'john@example.com'` in the query text.
+**Span attributes** are the most common culprit. Current HTTP semantic conventions use attributes like `url.full` and `url.query`; older instrumentation may still emit `http.url`. These fields often include query parameters like `?email=user@example.com`. Database instrumentation can capture `db.query.text`, or legacy attributes like `db.statement`, which can include `WHERE user_email = 'john@example.com'` in the query text.
 
 **Log bodies** are even worse because they are free-form text. Developers write `logger.info(f"Processing order for {user.email}")` without thinking about where that log line ends up.
 
@@ -42,7 +42,7 @@ graph TD
 
 The earliest place to catch PII is in your application code, before telemetry even reaches the Collector. OpenTelemetry SDKs support custom span processors and log processors that can modify or redact data inline.
 
-This Python example shows a custom span processor that redacts email addresses from all span attributes before they are exported.
+This Python example shows a custom span processor that redacts email addresses from all span attributes just before the span ends. In the Python SDK, the public `on_end` callback receives a read-only `ReadableSpan`, so the mutation has to happen in the SDK's pre-end hook.
 
 ```python
 # pii_span_processor.py
@@ -55,23 +55,26 @@ from opentelemetry.sdk.trace import SpanProcessor
 EMAIL_PATTERN = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 
 class PIIScrubber(SpanProcessor):
-    def on_end(self, span):
-        """Called when a span ends. Redact PII from all string attributes."""
-        for key, value in span.attributes.items():
+    def _on_ending(self, span):
+        """Called while the span is still mutable. Redact PII from string attributes."""
+        for key, value in list(span.attributes.items()):
             if isinstance(value, str):
                 # Replace any email address with a redacted placeholder
                 scrubbed = EMAIL_PATTERN.sub('[REDACTED_EMAIL]', value)
                 if scrubbed != value:
-                    span.attributes[key] = scrubbed
+                    span.set_attribute(key, scrubbed)
 
     def on_start(self, span, parent_context=None):
+        pass
+
+    def on_end(self, span):
         pass
 
     def shutdown(self):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 Register this processor when you configure the SDK.
@@ -82,6 +85,7 @@ Register this processor when you configure the SDK.
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from pii_span_processor import PIIScrubber
 
 provider = TracerProvider()
 
@@ -98,7 +102,7 @@ The Collector is the centralized chokepoint where all telemetry flows through. T
 
 ### Using the Attributes Processor
 
-The `attributes` processor can delete specific attributes by name, which is the simplest form of PII removal.
+The `attributes` processor can delete specific span, log, and metric datapoint attributes by name, which is the simplest form of PII removal. For resource attributes, use the `resource` processor with the same kind of actions.
 
 This configuration removes known PII attributes from both traces and logs.
 
@@ -118,6 +122,8 @@ processors:
       - key: enduser.id
         action: delete
       - key: http.client_ip
+        action: delete
+      - key: client.address
         action: delete
 
       # Hash user.id so it remains useful for correlation
@@ -150,12 +156,13 @@ processors:
   redaction:
     # Only these attribute keys are allowed through
     allowed_keys:
-      - http.method
-      - http.status_code
+      - http.request.method
+      - http.response.status_code
       - http.route
-      - service.name
-      - span.kind
-      - db.system
+      - url.full
+      - url.path
+      - http.url
+      - db.system.name
       - rpc.method
 
     # Block patterns in attribute values (even for allowed keys)
@@ -182,21 +189,18 @@ This configuration uses OTTL to truncate URLs at the query string boundary and r
 # Use OTTL statements to scrub PII from specific fields
 processors:
   transform/scrub-urls:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Remove query parameters from http.url to strip PII
-          # "replace_pattern" applies a regex replacement to the attribute value
-          - replace_pattern(attributes["url.full"], "\\?.*", "?[REDACTED]")
-          - replace_pattern(attributes["http.url"], "\\?.*", "?[REDACTED]")
+      # Remove query parameters from URL attributes to strip PII.
+      # "replace_pattern" applies a regex replacement to the attribute value.
+      - replace_pattern(span.attributes["url.full"], "\\?.*", "?[REDACTED]")
+      - replace_pattern(span.attributes["http.url"], "\\?.*", "?[REDACTED]")
 
     log_statements:
-      - context: log
-        statements:
-          # Redact email addresses in log message bodies
-          - replace_pattern(body, "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[REDACTED_EMAIL]")
-          # Redact IPv4 addresses in log bodies
-          - replace_pattern(body, "\\b[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\b", "[REDACTED_IP]")
+      # Redact email addresses in log message bodies
+      - replace_pattern(log.body, "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[REDACTED_EMAIL]")
+      # Redact IPv4 addresses in log bodies
+      - replace_pattern(log.body, "\\b[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\b", "[REDACTED_IP]")
 ```
 
 ## Strategy 3: Scrub PII from Metrics
@@ -253,20 +257,33 @@ processors:
         action: delete
       - key: http.client_ip
         action: delete
+      - key: client.address
+        action: delete
       - key: user.id
         action: hash
+
+  # Layer 1b: Delete resource attributes that can expose hosts or users
+  resource/delete-pii:
+    attributes:
+      - key: host.ip
+        action: delete
+      - key: host.name
+        action: delete
+      - key: k8s.pod.name
+        action: delete
 
   # Layer 2: Redact PII patterns in attribute values
   redaction:
     allowed_keys:
-      - http.method
-      - http.status_code
+      - http.request.method
+      - http.response.status_code
       - http.route
+      - url.full
       - url.path
-      - service.name
+      - http.url
       - service.version
-      - db.system
-      - db.operation
+      - db.system.name
+      - db.operation.name
       - rpc.system
       - rpc.method
     blocked_values:
@@ -276,14 +293,11 @@ processors:
 
   # Layer 3: Scrub URLs and log bodies with OTTL
   transform/scrub:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          - replace_pattern(attributes["url.full"], "\\?.*", "?[REDACTED]")
+      - replace_pattern(span.attributes["url.full"], "\\?.*", "?[REDACTED]")
     log_statements:
-      - context: log
-        statements:
-          - replace_pattern(body, "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[REDACTED_EMAIL]")
+      - replace_pattern(log.body, "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[REDACTED_EMAIL]")
 
   batch:
     send_batch_size: 8192
@@ -299,30 +313,32 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      # Processors run in order: delete, then redact, then transform, then batch
-      processors: [attributes/delete-pii, redaction, transform/scrub, batch]
+      # Processors run in order: resource delete, attribute delete, redact, transform, then batch
+      processors: [resource/delete-pii, attributes/delete-pii, redaction, transform/scrub, batch]
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [attributes/delete-pii, transform/scrub, batch]
+      processors: [resource/delete-pii, attributes/delete-pii, transform/scrub, batch]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [attributes/delete-pii, batch]
+      processors: [resource/delete-pii, attributes/delete-pii, batch]
       exporters: [otlp]
 ```
 
 ```mermaid
 flowchart LR
     A[App SDK] -->|OTLP| B[Collector Receiver]
-    B --> C[attributes/delete-pii]
-    C --> D[redaction processor]
-    D --> E[transform/scrub]
-    E --> F[batch]
-    F --> G[Backend Exporter]
+    B --> C[resource/delete-pii]
+    C --> D[attributes/delete-pii]
+    D --> E[redaction processor]
+    E --> F[transform/scrub]
+    F --> G[batch]
+    G --> H[Backend Exporter]
     style C fill:#ff9999
     style D fill:#ff9999
     style E fill:#ff9999
+    style F fill:#ff9999
 ```
 
 ## Testing Your PII Scrubbing
@@ -346,7 +362,7 @@ service:
       exporters: [debug]  # Output to stdout for visual inspection
 ```
 
-Send a test span with PII attributes, then check the Collector's stdout. The `user.email` attribute should be gone. The `http.url` query string should say `[REDACTED]`. Any credit card pattern in attribute values should be replaced.
+Send a test span with PII attributes, then check the Collector's stdout. The `user.email` attribute should be gone. The `url.full` or legacy `http.url` query string should say `[REDACTED]`. Any credit card pattern in allowed attribute values should be masked.
 
 ## Wrapping Up
 
