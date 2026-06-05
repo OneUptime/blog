@@ -16,13 +16,15 @@ This guide covers JMX receiver configuration from basics through production depl
 
 The JMX receiver connects to Java applications via JMX protocol and collects metrics from MBeans (Managed Beans). These MBeans expose operational data about the JVM and application components.
 
+As of January 30, 2026, the OpenTelemetry Collector `jmx` receiver is deprecated because it runs a Java subprocess from the Collector. It still works in the contrib distribution, but new deployments should evaluate the standalone OpenTelemetry JMX Scraper or the Java agent JMX metrics extension where possible.
+
 Key metrics collected include:
 
 - JVM memory usage (heap, non-heap, pools)
 - Garbage collection statistics and pause times
 - Thread counts and states
 - Class loading metrics
-- CPU usage and system load
+- CPU usage and system load when those MBeans are mapped explicitly
 - Application-specific MBeans (Tomcat, Kafka, etc.)
 - Database connection pools
 - Custom application metrics
@@ -104,11 +106,15 @@ receivers:
     # Format: service:jmx:rmi:///jndi/rmi://host:port/jmxrmi
     endpoint: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
 
+    # Path to the OpenTelemetry Java Contrib JMX metrics JAR
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
+
     # How often to scrape metrics
     collection_interval: 30s
 
     # Target system type for predefined metric mappings
-    # Options: jvm, tomcat, cassandra, kafka, activemq, jetty, wildfly
+    # Options include: jvm, tomcat, cassandra, kafka, activemq, jetty, wildfly,
+    # hbase, hadoop, kafka-consumer, kafka-producer, solr
     target_system: jvm
 
 # exporters: Define where telemetry is sent
@@ -117,7 +123,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # service: Wire receivers and exporters into pipelines
 service:
@@ -128,7 +134,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This basic setup connects to a local JMX endpoint, collects standard JVM metrics every 30 seconds, and exports to OneUptime.
+This basic setup connects to a local JMX endpoint, collects standard JVM metrics every 30 seconds, and exports to OneUptime. The Collector host or image must also include a Java runtime and the JMX metrics JAR at the configured `jar_path`.
 
 ## Production Configuration with Authentication
 
@@ -141,6 +147,9 @@ receivers:
     # Production JMX endpoint with authentication
     endpoint: service:jmx:rmi:///jndi/rmi://java-app.example.com:9999/jmxrmi
 
+    # Path to the OpenTelemetry Java Contrib JMX metrics JAR
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
+
     # Collection interval - balance freshness vs overhead
     # 10-30s for production applications
     collection_interval: 15s
@@ -149,30 +158,26 @@ receivers:
     target_system: jvm
 
     # JMX authentication credentials
-    username: ${JMX_USERNAME}
-    password: ${JMX_PASSWORD}
+    username: ${env:JMX_USERNAME}
+    password: ${env:JMX_PASSWORD}
 
-    # Additional JVM options for the JMX connection
-    # Useful for SSL and truststore configuration
+    # Additional JARs for client libraries such as WildFly's jboss-client.jar
     additional_jars:
       # Include custom client libraries if needed
       # - /path/to/custom-client.jar
 
     # Keystore configuration for SSL
-    keystore: /etc/ssl/keystore.jks
-    keystore_password: ${KEYSTORE_PASSWORD}
+    keystore_path: /etc/ssl/keystore.jks
+    keystore_password: ${env:KEYSTORE_PASSWORD}
     keystore_type: JKS
 
     # Truststore configuration for SSL
-    truststore: /etc/ssl/truststore.jks
-    truststore_password: ${TRUSTSTORE_PASSWORD}
+    truststore_path: /etc/ssl/truststore.jks
+    truststore_password: ${env:TRUSTSTORE_PASSWORD}
+    truststore_type: JKS
 
-    # Remote profile for connecting to remote JVMs
-    # Uses JMX over RMI
-    remote_profile: true
-
-    # Timeout for JMX operations
-    timeout: 30s
+    # Optional SASL/TLS remote profile, if your JMX server requires it
+    # remote_profile: "TLS SASL/PLAIN"
 
 # processors: Transform and enrich metrics
 processors:
@@ -186,7 +191,7 @@ processors:
         value: production
         action: upsert
       - key: host.name
-        value: ${HOSTNAME}
+        value: ${env:HOSTNAME}
         action: upsert
       - key: java.app.name
         value: order-service
@@ -219,7 +224,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     timeout: 30s
 
     # Retry configuration for reliability
@@ -253,59 +258,13 @@ Beyond predefined target systems, you can collect custom MBeans specific to your
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     collection_interval: 30s
     target_system: jvm
 
     # Custom MBean configurations
-    # This allows collecting application-specific metrics
-    mbeans:
-      # Example: Custom application metrics
-      - object_name: "com.example.app:type=RequestProcessor,name=*"
-        attributes:
-          - name: RequestCount
-            alias: app.request.count
-            description: "Total requests processed"
-            type: counter
-          - name: AverageResponseTime
-            alias: app.response.time.avg
-            description: "Average response time in milliseconds"
-            type: gauge
-          - name: ErrorCount
-            alias: app.error.count
-            description: "Total errors encountered"
-            type: counter
-
-      # Example: Database connection pool
-      - object_name: "com.zaxxer.hikari:type=Pool,name=*"
-        attributes:
-          - name: ActiveConnections
-            alias: db.pool.connections.active
-            type: gauge
-          - name: IdleConnections
-            alias: db.pool.connections.idle
-            type: gauge
-          - name: TotalConnections
-            alias: db.pool.connections.total
-            type: gauge
-          - name: ThreadsAwaitingConnection
-            alias: db.pool.threads.waiting
-            type: gauge
-
-      # Example: Cache metrics
-      - object_name: "com.example.cache:type=CacheManager,name=*"
-        attributes:
-          - name: HitCount
-            alias: cache.hits
-            type: counter
-          - name: MissCount
-            alias: cache.misses
-            type: counter
-          - name: Size
-            alias: cache.size
-            type: gauge
-          - name: EvictionCount
-            alias: cache.evictions
-            type: counter
+    # This allows collecting application-specific metrics from a YAML mapping file
+    jmx_configs: /etc/otel/custom-jmx-metrics.yaml
 
 processors:
   batch:
@@ -315,7 +274,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -323,6 +282,70 @@ service:
       receivers: [jmx]
       processors: [batch]
       exporters: [otlphttp]
+```
+
+Create `/etc/otel/custom-jmx-metrics.yaml` with your application-specific MBean mappings:
+
+```yaml
+rules:
+  # Example: Custom application metrics
+  - bean: "com.example.app:type=RequestProcessor,name=*"
+    mapping:
+      RequestCount:
+        metric: app.request.count
+        description: "Total requests processed"
+        type: counter
+        unit: "1"
+      AverageResponseTime:
+        metric: app.response.time.avg
+        description: "Average response time in milliseconds"
+        type: gauge
+        unit: ms
+      ErrorCount:
+        metric: app.error.count
+        description: "Total errors encountered"
+        type: counter
+        unit: "1"
+
+  # Example: Database connection pool
+  - bean: "com.zaxxer.hikari:type=Pool,name=*"
+    mapping:
+      ActiveConnections:
+        metric: db.pool.connections.active
+        type: gauge
+        unit: "1"
+      IdleConnections:
+        metric: db.pool.connections.idle
+        type: gauge
+        unit: "1"
+      TotalConnections:
+        metric: db.pool.connections.total
+        type: gauge
+        unit: "1"
+      ThreadsAwaitingConnection:
+        metric: db.pool.threads.waiting
+        type: gauge
+        unit: "1"
+
+  # Example: Cache metrics
+  - bean: "com.example.cache:type=CacheManager,name=*"
+    mapping:
+      HitCount:
+        metric: cache.hits
+        type: counter
+        unit: "1"
+      MissCount:
+        metric: cache.misses
+        type: counter
+        unit: "1"
+      Size:
+        metric: cache.size
+        type: gauge
+        unit: "1"
+      EvictionCount:
+        metric: cache.evictions
+        type: counter
+        unit: "1"
 ```
 
 This configuration collects both standard JVM metrics and custom application-specific MBeans.
@@ -336,34 +359,38 @@ receivers:
   # Order service
   jmx/order-service:
     endpoint: service:jmx:rmi:///jndi/rmi://order-service.example.com:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     collection_interval: 15s
     target_system: jvm
-    username: ${JMX_USERNAME}
-    password: ${JMX_PASSWORD}
+    username: ${env:JMX_USERNAME}
+    password: ${env:JMX_PASSWORD}
 
   # Payment service
   jmx/payment-service:
     endpoint: service:jmx:rmi:///jndi/rmi://payment-service.example.com:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     collection_interval: 15s
     target_system: jvm
-    username: ${JMX_USERNAME}
-    password: ${JMX_PASSWORD}
+    username: ${env:JMX_USERNAME}
+    password: ${env:JMX_PASSWORD}
 
   # Inventory service
   jmx/inventory-service:
     endpoint: service:jmx:rmi:///jndi/rmi://inventory-service.example.com:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     collection_interval: 15s
     target_system: jvm
-    username: ${JMX_USERNAME}
-    password: ${JMX_PASSWORD}
+    username: ${env:JMX_USERNAME}
+    password: ${env:JMX_PASSWORD}
 
   # Kafka cluster
   jmx/kafka:
     endpoint: service:jmx:rmi:///jndi/rmi://kafka-broker.example.com:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     collection_interval: 30s
     target_system: kafka
-    username: ${JMX_USERNAME}
-    password: ${JMX_PASSWORD}
+    username: ${env:JMX_USERNAME}
+    password: ${env:JMX_PASSWORD}
 
 processors:
   # Tag order service
@@ -413,7 +440,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
@@ -470,25 +497,9 @@ The JMX receiver exposes critical JVM and application metrics:
 - Growing thread count may indicate thread leaks
 - Set alerts for unusual increases
 
-**jvm.threads.daemon.count**
-- Number of daemon threads
-- Usually stable, sudden changes are suspicious
-
-**jvm.threads.peak.count**
-- Peak thread count since JVM started
-- Useful for capacity planning
-
 **jvm.classes.loaded**
 - Number of classes currently loaded
 - Growing without bounds indicates classloader leaks
-
-**jvm.cpu.usage**
-- JVM process CPU utilization (0.0 to 1.0)
-- High sustained values indicate CPU bottleneck
-
-**jvm.system.cpu.usage**
-- Overall system CPU utilization
-- Context for JVM CPU usage
 
 ## Predefined Target Systems
 
@@ -500,6 +511,7 @@ The JMX receiver includes predefined configurations for common Java systems:
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: jvm
 ```
 
@@ -509,6 +521,7 @@ receivers:
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://tomcat:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: tomcat
 ```
 
@@ -518,6 +531,7 @@ receivers:
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://kafka-broker:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: kafka
 ```
 
@@ -527,6 +541,7 @@ receivers:
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://cassandra:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: cassandra
 ```
 
@@ -536,6 +551,7 @@ receivers:
 receivers:
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://activemq:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: activemq
 ```
 
@@ -565,9 +581,9 @@ spec:
         - containerPort: 9999
           name: jmx
 
-    # Sidecar collector
+    # Sidecar collector. Use an image that includes a Java runtime and the JMX metrics JAR.
     - name: otel-collector
-      image: otel/opentelemetry-collector-contrib:latest
+      image: my-otelcol-contrib-with-jre-and-jmx:latest
       args: ["--config=/etc/otel/config.yaml"]
       volumeMounts:
         - name: config
@@ -591,6 +607,7 @@ receivers:
   # Use Kubernetes service discovery
   jmx:
     endpoint: service:jmx:rmi:///jndi/rmi://pod-ip:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     # Configure discovery to find Java pods
 ```
 
@@ -605,8 +622,10 @@ One collector monitors multiple Java services:
 receivers:
   jmx/service-01:
     endpoint: service:jmx:rmi:///jndi/rmi://service-01:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
   jmx/service-02:
     endpoint: service:jmx:rmi:///jndi/rmi://service-02:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
   # ... more services
 ```
 
@@ -714,6 +733,8 @@ OpenTelemetry's standard format integrates Java metrics with infrastructure metr
 ```yaml
 receivers:
   jmx:
+    endpoint: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     target_system: jvm
     # Automatically includes GC metrics
 ```
@@ -725,8 +746,10 @@ processors:
     attributes:
       - key: service.name
         value: order-service
+        action: upsert
       - key: java.version
         value: "17"
+        action: upsert
 ```
 
 **Secure JMX endpoints**:
@@ -738,11 +761,9 @@ processors:
 ```yaml
 receivers:
   jmx:
-    mbeans:
-      - object_name: "com.example:type=CustomMetrics"
-        attributes:
-          - name: MetricName
-            alias: custom.metric
+    endpoint: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
+    jmx_configs: /etc/otel/custom-jmx-metrics.yaml
 ```
 
 **Protect credentials**:
@@ -761,6 +782,7 @@ service:
         - periodic:
             exporter:
               otlp:
+                protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
 ```
 
