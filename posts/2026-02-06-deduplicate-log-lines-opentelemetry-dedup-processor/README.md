@@ -8,11 +8,11 @@ Description: Reduce log noise and storage costs by deduplicating repeated log li
 
 If you have ever looked at your log storage bill and wondered why it is so high, the answer is probably duplicate logs. Applications love to repeat themselves. A failed database connection retry might produce the same error message 500 times in a minute. A health check endpoint might log an identical line every second. These duplicates add no value, but they cost you real money in storage and make it harder to find the logs that actually matter.
 
-The OpenTelemetry Collector's log dedup processor solves this by collapsing repeated log lines into a single record with a count, reducing volume without losing information.
+The OpenTelemetry Collector's log dedup processor solves this by collapsing repeated log lines into a single record with a count, reducing volume while preserving the aggregate count.
 
 ## How the Dedup Processor Works
 
-The processor maintains a time window and groups log records by their content. When multiple logs with the same body and attributes arrive within the window, it emits a single log record with an additional attribute indicating how many duplicates were seen.
+The processor maintains a time window and groups log records by their content. When multiple logs with the same body, resource attributes, severity, and log attributes arrive within the window, it emits a single log record with additional attributes indicating how many duplicates were seen and the first and last observation times.
 
 Think of it as `uniq -c` for your log stream, but running in real time inside the collector.
 
@@ -24,7 +24,7 @@ The dedup processor is available in the OpenTelemetry Collector Contrib distribu
 # builder-config.yaml
 
 processors:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/logdedupprocessor v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/logdedupprocessor v0.153.0
 ```
 
 ## Basic Configuration
@@ -39,12 +39,12 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  logdedup:
+  log_dedup:
     # Time window for grouping duplicates
     interval: 10s
-    # Which log fields to use for determining duplicates
+    # Attribute name used to store the deduplicated log count
     log_count_attribute: log_count
-    # Timezone for the interval calculation
+    # Timezone for the first/last observed timestamp attributes
     timezone: UTC
 
   batch:
@@ -58,30 +58,30 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [logdedup, batch]
+      processors: [log_dedup, batch]
       exporters: [otlp]
 ```
 
-With this config, if the same log body appears 200 times within a 10-second window, the collector emits one log record with `log_count: 200` as an attribute.
+With this config, if the same log body, resource attributes, severity, and log attributes appear 200 times within a 10-second window, the collector emits one log record with `log_count: 200` as an attribute.
 
 ## Controlling What Counts as a Duplicate
 
-By default, the dedup processor considers the entire log body when determining duplicates. Two logs are duplicates if their bodies match exactly. But sometimes you want more control. For example, logs might have the same message but different timestamps embedded in the body.
+By default, the dedup processor considers the log body, resource attributes, severity, and log attributes when determining duplicates. Two logs are duplicates if those values match exactly. But sometimes you want more control. For example, structured logs might have the same message but different timestamps embedded in the body.
 
 You can configure which fields to exclude from the comparison:
 
 ```yaml
 processors:
-  logdedup:
+  log_dedup:
     interval: 10s
     log_count_attribute: log_count
-    # Define which conditions identify a log as a duplicate
+    # Exclude structured fields from duplicate matching and from the emitted log
     exclude_fields:
-      - timestamp
-      - observed_timestamp
+      - body.timestamp
+      - attributes.request_id
 ```
 
-This tells the processor to ignore timestamp differences when comparing logs.
+This tells the processor to ignore differences in those fields when comparing logs. Excluded fields are also removed from the aggregated log record, so use this for fields you do not need to preserve in the representative output.
 
 ## Combining with the Transform Processor
 
@@ -95,12 +95,12 @@ processors:
       - context: log
         statements:
           # Remove the request ID before dedup comparison
-          - delete_key(attributes, "request_id")
+          - delete_key(log.attributes, "request_id")
           # Normalize varying numeric values in the body
-          - replace_pattern(body, "took [0-9]+ms", "took Xms")
+          - replace_pattern(log.body, "took [0-9]+ms", "took Xms")
 
   # Then deduplicate the normalized logs
-  logdedup:
+  log_dedup:
     interval: 15s
     log_count_attribute: duplicate_count
 
@@ -111,7 +111,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [transform/normalize, logdedup, batch]
+      processors: [transform/normalize, log_dedup, batch]
       exporters: [otlp]
 ```
 
@@ -125,25 +125,22 @@ To give you a sense of the savings, here are some numbers from a production depl
 - After dedup (15-second window): 380,000 log records per hour
 - Reduction: roughly 84%
 
-The biggest contributors to duplication were health check logs, retry loops, and periodic status messages. The dedup processor collapsed all of these without losing any information, since the `duplicate_count` attribute preserved the original volume data.
+The biggest contributors to duplication were health check logs, retry loops, and periodic status messages. The dedup processor collapsed all of these while preserving the original volume data in the `duplicate_count` attribute.
 
 ## Preserving Important Details
 
 One concern with deduplication is losing context. If 200 copies of an error have slightly different stack traces, you want to keep at least one full copy. The dedup processor handles this by emitting the first log record it sees in each window as the representative record. All the original attributes and body of that first record are preserved. Only the subsequent duplicates are collapsed into the count.
 
-If you need to preserve the timestamps of individual occurrences, you can configure the processor to store them:
+The emitted log record also includes the first and last time the processor observed matching logs:
 
 ```yaml
 processors:
-  logdedup:
+  log_dedup:
     interval: 10s
     log_count_attribute: log_count
-    # Store the first and last timestamp of duplicates
-    first_observed_timestamp_attribute: first_seen
-    last_observed_timestamp_attribute: last_seen
 ```
 
-This adds `first_seen` and `last_seen` attributes so you know the time range of the duplicated logs.
+This adds `first_observed_timestamp` and `last_observed_timestamp` attributes so you know the time range of the duplicated logs. The emitted log record's own `Timestamp` and `ObservedTimestamp` are set when the aggregate is emitted, not copied from each original log.
 
 ## When Not to Deduplicate
 
