@@ -36,8 +36,8 @@ project/
     app.yaml
   src/
     app.py
-    tracing.py
     Dockerfile
+    requirements.txt
 ```
 
 ## The Skaffold Configuration
@@ -45,7 +45,7 @@ project/
 Create `skaffold.yaml`:
 
 ```yaml
-apiVersion: skaffold/v4beta8
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: otel-app
@@ -62,12 +62,14 @@ build:
           - src: '**/*.py'
             dest: /app
 
+manifests:
+  rawYaml:
+    - k8s/jaeger.yaml
+    - k8s/collector.yaml
+    - k8s/app.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/jaeger.yaml
-      - k8s/collector.yaml
-      - k8s/app.yaml
+  kubectl: {}
 
 portForward:
   - resourceType: service
@@ -85,6 +87,50 @@ The `sync` section is important. Instead of rebuilding the Docker image on every
 The `portForward` section automatically forwards Jaeger and your application ports to localhost.
 
 ## Kubernetes Manifests
+
+`k8s/jaeger.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.76.0
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 16686
+            - containerPort: 4317
+            - containerPort: 4318
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: ui
+      port: 16686
+    - name: otlp-grpc
+      port: 4317
+    - name: otlp-http
+      port: 4318
+```
 
 `k8s/collector.yaml`:
 
@@ -135,7 +181,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config", "/etc/otel/config.yaml"]
           volumeMounts:
             - name: config
@@ -203,6 +249,16 @@ spec:
 
 ## The Application
 
+`src/requirements.txt`:
+
+```text
+flask
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-flask
+```
+
 `src/Dockerfile`:
 
 ```dockerfile
@@ -211,7 +267,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
-# Use watchdog for file-sync triggered reloads
+# Use Flask's reloader for file-sync triggered reloads
 CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=8000", "--reload"]
 ```
 
@@ -264,27 +320,5 @@ Skaffold builds the Docker image, deploys everything to your local cluster, and 
 Open http://localhost:8000 to hit your app. Open http://localhost:16686 to see the traces in Jaeger.
 
 Now edit `src/app.py`. Add a new endpoint or change an attribute. Save the file. Skaffold detects the change, syncs the file into the running container, and Flask reloads. Within seconds, you can hit the updated endpoint and see the new traces.
-
-## Profiles for Different Environments
-
-Skaffold supports profiles for different configurations:
-
-```yaml
-profiles:
-  - name: no-tracing
-    patches:
-      - op: remove
-        path: /deploy/kubectl/manifests/1  # Remove collector
-      - op: remove
-        path: /deploy/kubectl/manifests/0  # Remove Jaeger
-```
-
-Use it when you want a lighter setup:
-
-```bash
-skaffold dev --profile no-tracing
-```
-
-This flexibility lets you choose between full observability and fast startup depending on what you are working on.
 
 Skaffold with OpenTelemetry creates a tight development loop: write code, save, see traces. The file sync feature keeps the iteration time under a few seconds, making it practical to instrument as you go rather than treating tracing as a separate task.
