@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Spring Data JPA, JDBC, Database Tracing, SQL, Java
 
 Description: Master database query tracing in Spring Boot with OpenTelemetry to identify slow queries, monitor connection pools, and optimize database performance.
 
-Database operations are often the primary performance bottleneck in applications. OpenTelemetry's automatic instrumentation for JDBC and JPA provides detailed visibility into every query, connection acquisition, and transaction.
+Database operations are often the primary performance bottleneck in applications. OpenTelemetry's automatic instrumentation for JDBC and Spring Data provides visibility into repository calls and SQL statement execution, while connection pool behavior is usually monitored with metrics.
 
 ## Understanding Database Tracing Layers
 
@@ -21,9 +21,9 @@ graph TD
     F[OpenTelemetry Agent] --> B
     F --> C
     F --> D
-    G[Spans Generated] --> H[Repository Method Span]
+    G[Telemetry Generated] --> H[Repository Method Span]
     G --> I[SQL Query Span]
-    G --> J[JDBC Connection Span]
+    G --> J[Connection Pool Metrics]
 ```
 
 ## Dependencies Setup
@@ -55,14 +55,14 @@ Configure dependencies for JPA and OpenTelemetry instrumentation:
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.33.0</version>
+        <version>1.62.0</version>
     </dependency>
 
     <!-- OpenTelemetry instrumentation for JDBC -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-jdbc</artifactId>
-        <version>1.33.0-alpha</version>
+        <version>2.28.1-alpha</version>
     </dependency>
 </dependencies>
 ```
@@ -118,11 +118,12 @@ spring:
 otel:
   instrumentation:
     jdbc:
-      # Include SQL statement in span attributes
-      statement: true
-      # Include bind parameters (be careful with sensitive data)
-      bind-parameters: false
+      # Keep SQL statements sanitized before adding them to span attributes
+      statement-sanitizer:
+        enabled: true
 ```
+
+When using the JDBC driver wrapper directly, initialize the OpenTelemetry driver with your `OpenTelemetry` instance before the connection pool starts, for example with `OpenTelemetryDriver.install(openTelemetry)`. If you use the OpenTelemetry Java agent or Spring Boot starter, follow that instrumentation mode's setup and configuration style instead.
 
 ## Automatic JDBC Instrumentation
 
@@ -173,7 +174,7 @@ public class Product {
 
 ## Spring Data Repository with Automatic Tracing
 
-Spring Data repositories are automatically instrumented:
+Spring Data repositories are automatically instrumented when you run with the OpenTelemetry Java agent:
 
 ```java
 package com.example.repository;
@@ -192,7 +193,8 @@ import java.util.Optional;
 
 /**
  * Repository interface with automatic OpenTelemetry tracing.
- * Each method call generates a span with database operation details.
+ * Each method call generates a repository span. JDBC instrumentation
+ * generates separate child spans for the SQL statements.
  */
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
@@ -205,7 +207,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     /**
      * Complex derived query with multiple conditions.
-     * Generates span with SQL details.
+     * Generates a repository span, with SQL details on the JDBC child span.
      */
     List<Product> findByCategoryAndPriceLessThan(
         String category,
@@ -213,7 +215,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     );
 
     /**
-     * Custom JPQL query - traced with query details.
+     * Custom JPQL query - traced through the repository and JDBC layers.
      */
     @Query("SELECT p FROM Product p WHERE p.name LIKE %:keyword% " +
            "AND p.stockQuantity > 0")
@@ -231,7 +233,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     );
 
     /**
-     * Pagination query - traces include page information.
+     * Pagination query - the custom service span below records page information.
      */
     Page<Product> findByCategoryOrderByPriceDesc(
         String category,
@@ -239,7 +241,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     );
 
     /**
-     * Optional return type - span shows if result was found.
+     * Optional return type - the repository and JDBC calls are traced.
      */
     Optional<Product> findByName(String name);
 
@@ -324,8 +326,8 @@ public class ProductService {
     }
 
     /**
-     * Transaction boundaries are visible in traces.
-     * Shows when transaction starts, commits, or rolls back.
+     * Database calls inside the transaction appear as child spans.
+     * The @Transactional boundary itself is not a JDBC span.
      */
     @Transactional
     public Product createProduct(Product product) {
@@ -456,14 +458,12 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -558,6 +558,13 @@ public class CustomProductRepository {
         }
     }
 
+    public record ProductSummary(
+        String category,
+        int count,
+        java.math.BigDecimal averagePrice,
+        int totalStock
+    ) {}
+
     /**
      * Batch update with explicit connection handling.
      * Each SQL statement is traced individually.
@@ -592,7 +599,7 @@ public class CustomProductRepository {
 
     /**
      * Raw JDBC with manual connection management.
-     * OpenTelemetry traces connection acquisition and query execution.
+     * OpenTelemetry traces query execution through the wrapped connection.
      */
     public int countProductsInPriceRange(double minPrice, double maxPrice) {
         Span span = tracer.spanBuilder("CustomProductRepository.countInPriceRange")
@@ -638,6 +645,7 @@ Monitor HikariCP connection pool metrics alongside traces:
 package com.example.config;
 
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.metrics.micrometer.MicrometerMetricsTrackerFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Configuration;
 
@@ -655,7 +663,9 @@ public class ConnectionPoolMetricsConfig {
     ) {
         if (dataSource instanceof HikariDataSource hikariDS) {
             // Bind HikariCP metrics to Micrometer registry
-            hikariDS.setMetricRegistry(registry);
+            hikariDS.setMetricsTrackerFactory(
+                new MicrometerMetricsTrackerFactory(registry)
+            );
 
             // Available metrics:
             // - hikaricp.connections.active
@@ -674,31 +684,25 @@ public class ConnectionPoolMetricsConfig {
 Identify slow queries using span attributes:
 
 ```yaml
-# Enable detailed query statistics in spans
+# Configure SQL statement sanitization in spans
 otel:
   instrumentation:
     jdbc:
-      # Include SQL statement text
-      statement: true
-
-      # Add query execution time threshold (ms)
-      slow-query-threshold: 1000
-
-      # Include result set size
-      result-set-size: true
-
-      # Tag spans with connection pool name
-      connection-pool-name: true
+      # Keep SQL statement text sanitized in span attributes
+      statement-sanitizer:
+        enabled: true
 ```
 
 Spans will include these attributes:
 
-- `db.system`: Database type (postgresql, mysql, etc.)
-- `db.name`: Database name
-- `db.statement`: SQL statement text
-- `db.operation`: Operation type (SELECT, INSERT, UPDATE, DELETE)
-- `db.sql.table`: Table name (when detectable)
-- `db.connection_string`: Connection URL (without credentials)
+- `db.system.name`: Database type (postgresql, mysql, etc.)
+- `db.namespace`: Database name or namespace, when available
+- `db.query.text`: Sanitized SQL statement text, depending on semantic convention mode
+- `db.operation.name`: Operation type (SELECT, INSERT, UPDATE, DELETE), when detectable
+- `server.address`: Database server address
+- `server.port`: Database server port
+
+Older OpenTelemetry Java instrumentation may emit the legacy database attributes such as `db.system`, `db.name`, and `db.statement` unless you opt in to the stable database semantic conventions.
 
 ## Troubleshooting Database Performance
 
@@ -706,12 +710,12 @@ Common patterns to look for in traces:
 
 **N+1 Query Problem:** Multiple sequential SELECT spans for related entities. Solution: Use `@EntityGraph` or JOIN FETCH in JPQL.
 
-**Missing Indexes:** High query duration for simple WHERE clauses. Check `db.statement` attribute and add appropriate indexes.
+**Missing Indexes:** High query duration for simple WHERE clauses. Check the SQL statement attribute and add appropriate indexes.
 
-**Connection Pool Exhaustion:** Long `hikaricp.connections.acquire` times. Increase pool size or optimize query performance.
+**Connection Pool Exhaustion:** High pending connection counts or long `hikaricp.connections.acquire` times. Increase pool size or optimize query performance.
 
 **Transaction Overhead:** Many small transactions instead of batching. Group operations into larger transactions.
 
-**Cartesian Products:** Extremely high `result-set-size` for JOIN queries. Review JOIN conditions and add proper WHERE clauses.
+**Cartesian Products:** Very large result sets or unusually long JOIN query spans. Review JOIN conditions and add proper WHERE clauses.
 
 OpenTelemetry's automatic database tracing transforms query performance from a black box into a transparent, measurable system where every millisecond is accounted for.
