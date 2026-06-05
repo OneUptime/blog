@@ -12,9 +12,11 @@ Writing custom instrumentation libraries for OpenTelemetry is only half the batt
 
 ## What Is contrib-test-utils?
 
-The `@opentelemetry/contrib-test-utils` package lives in the `opentelemetry-js-contrib` repository. It provides utility functions and helper classes that simplify the process of setting up a test environment for instrumentation libraries. The package handles the tedious parts of testing: creating tracer providers, configuring in-memory exporters, registering and unregistering instrumentations, and extracting finished spans for assertions.
+The `@opentelemetry/contrib-test-utils` package lives in the `opentelemetry-js-contrib` repository. It provides utility functions and helper classes that simplify the process of setting up a test environment for instrumentation libraries. The package handles the tedious parts of testing: creating tracer providers, configuring in-memory exporters, managing a shared instrumentation instance, and extracting finished spans for assertions.
 
 If you have ever written tests for an instrumentation library from scratch, you know how much boilerplate is involved. This package removes most of that overhead and lets you focus on verifying the actual telemetry your instrumentation produces.
+
+One caveat: the package is published for the OpenTelemetry contrib repository's own tests. Its README notes that no guarantees are given for use outside `open-telemetry/opentelemetry-js-contrib`, so pin it carefully if you use it in your own instrumentation project.
 
 ## Installing the Package
 
@@ -29,15 +31,15 @@ npm install --save-dev @opentelemetry/sdk-trace-base
 npm install --save-dev @opentelemetry/sdk-trace-node
 ```
 
-You will also want a test runner. The contrib repository uses Mocha, but Jest works fine too. The examples in this post use Mocha with the `assert` module since that aligns with the upstream testing patterns.
+You will also want a test runner. The contrib repository uses Mocha, and its root hook plugin is Mocha-specific. You can still use the lower-level helpers from another test runner if you set up the provider and exporter lifecycle yourself. The examples in this post use Mocha with the `assert` module since that aligns with the upstream testing patterns.
 
 ## Setting Up the Test Environment
 
-The core of `contrib-test-utils` revolves around the `InstrumentationTestHelper` pattern. Here is how you set up a basic test harness for a hypothetical HTTP client instrumentation:
+The core of `contrib-test-utils` revolves around a Mocha root hook plugin plus helpers such as `registerInstrumentationTesting`, `registerInstrumentationTestingProvider`, and `getTestSpans`. Here is how you set up a basic test harness for a hypothetical HTTP client instrumentation:
 
 ```typescript
 // test/http-client-instrumentation.test.ts
-import { context, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import {
   InMemorySpanExporter,
@@ -51,8 +53,9 @@ const memoryExporter = new InMemorySpanExporter();
 
 // Set up the tracer provider with a simple processor
 // SimpleSpanProcessor sends spans immediately, which is ideal for tests
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(new SimpleSpanProcessor(memoryExporter));
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(memoryExporter)],
+});
 provider.register();
 
 // Create the instrumentation instance
@@ -83,7 +86,11 @@ Now let's write a test that verifies our instrumentation creates the right spans
 
 ```typescript
 // test/http-client-instrumentation.test.ts (continued)
-import * as http from 'http';
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_URL_FULL,
+} from '@opentelemetry/semantic-conventions';
 
 describe('HttpClientInstrumentation', () => {
   // ... setup from above ...
@@ -108,9 +115,12 @@ describe('HttpClientInstrumentation', () => {
 
     // Check that required HTTP attributes are present
     const attrs = span.attributes;
-    assert.strictEqual(attrs['http.method'], 'GET');
-    assert.strictEqual(attrs['http.url'], 'http://example.com/api/users');
-    assert.ok(attrs['http.status_code'], 'Missing http.status_code attribute');
+    assert.strictEqual(attrs[ATTR_HTTP_REQUEST_METHOD], 'GET');
+    assert.strictEqual(attrs[ATTR_URL_FULL], 'http://example.com/api/users');
+    assert.ok(
+      attrs[ATTR_HTTP_RESPONSE_STATUS_CODE],
+      'Missing http.response.status_code attribute'
+    );
   });
 
   it('should set error status on failed requests', async () => {
@@ -169,9 +179,9 @@ it('should propagate context from parent span', async () => {
   );
 
   assert.strictEqual(
-    childSpan.parentSpanId,
+    childSpan.parentSpanContext?.spanId,
     parentSpan.spanContext().spanId,
-    'Child span parentSpanId should match parent spanId'
+    'Child span parentSpanContext spanId should match parent spanId'
   );
 });
 ```
@@ -180,47 +190,62 @@ This test creates a manual parent span, runs the instrumented code within that c
 
 ## Using the registerInstrumentationTesting Helper
 
-The `contrib-test-utils` package provides a convenience function called `registerInstrumentationTesting` that handles provider setup:
+The `contrib-test-utils` package provides a Mocha root hook plugin that handles provider setup when you load it with Mocha's `--require` option:
+
+```json
+{
+  "scripts": {
+    "test": "mocha --require @opentelemetry/contrib-test-utils"
+  }
+}
+```
+
+In your test file, `registerInstrumentationTesting` stores a single instrumentation instance for the root hook to configure, and `getTestSpans` reads spans from the shared in-memory exporter:
 
 ```typescript
 // A cleaner setup using the helper function
-import { registerInstrumentationTesting } from '@opentelemetry/contrib-test-utils';
+import {
+  getTestSpans,
+  registerInstrumentationTesting,
+} from '@opentelemetry/contrib-test-utils';
 import { HttpClientInstrumentation } from '../src/http-client-instrumentation';
+import * as assert from 'assert';
 
-// This registers the instrumentation and returns the configured provider
+// This registers the instrumentation singleton used by the Mocha root hook
 const instrumentation = registerInstrumentationTesting(
   new HttpClientInstrumentation()
 );
+
+it('should create a span', async () => {
+  await makeHttpRequest('http://example.com/api/users');
+  const spans = getTestSpans();
+  assert.strictEqual(spans.length, 1);
+});
 ```
 
-This single call sets up the tracer provider, configures the in-memory exporter, and registers the instrumentation. It returns the instrumentation instance so you can call `enable()` and `disable()` as needed. The exporter is available through the provider if you need to access it directly.
+The root hook sets up the tracer provider, configures the in-memory exporter, resets the exporter before each test, and assigns the provider to the registered instrumentation. The `registerInstrumentationTesting` call itself returns the instrumentation instance, or an already-registered instance if one exists.
 
 ## Testing Instrumentation Configuration Options
 
 Most instrumentations accept configuration options. You should test that these options work correctly:
 
 ```typescript
-it('should respect the ignoreIncomingPaths option', async () => {
-  // Disable and recreate with config options
-  instrumentation.disable();
-
-  const configuredInstrumentation = new HttpClientInstrumentation({
-    // Configure the instrumentation to ignore health check paths
-    ignoreIncomingPaths: [/\/health/, '/ready'],
+it('should respect the ignoreUrls option', async () => {
+  // Configure the registered instrumentation to ignore health check URLs
+  instrumentation.setConfig({
+    ignoreUrls: [/\/health/, '/ready'],
   });
-
-  registerInstrumentationTesting(configuredInstrumentation);
 
   // This request should be ignored based on the config
   await makeHttpRequest('http://example.com/health');
 
-  const spans = memoryExporter.getFinishedSpans();
+  const spans = getTestSpans();
 
   // No spans should be created for ignored paths
   assert.strictEqual(spans.length, 0, 'Health check path should be ignored');
 
   // Clean up
-  configuredInstrumentation.disable();
+  instrumentation.setConfig({});
 });
 ```
 
@@ -234,7 +259,7 @@ Many instrumentations provide hooks that let users add custom attributes. These 
 it('should call requestHook with correct arguments', async () => {
   const hookCalls: any[] = [];
 
-  const hookedInstrumentation = new HttpClientInstrumentation({
+  instrumentation.setConfig({
     // Hook function that records its arguments for verification
     requestHook: (span, request) => {
       hookCalls.push({ span, request });
@@ -242,18 +267,16 @@ it('should call requestHook with correct arguments', async () => {
     },
   });
 
-  registerInstrumentationTesting(hookedInstrumentation);
-
   await makeHttpRequest('http://example.com/api/test');
 
   // Verify the hook was called
   assert.strictEqual(hookCalls.length, 1, 'Hook should be called once');
 
   // Verify the custom attribute was added
-  const spans = memoryExporter.getFinishedSpans();
+  const spans = getTestSpans();
   assert.strictEqual(spans[0].attributes['custom.attribute'], 'hook-value');
 
-  hookedInstrumentation.disable();
+  instrumentation.setConfig({});
 });
 ```
 
@@ -262,15 +285,16 @@ it('should call requestHook with correct arguments', async () => {
 Instrumentation libraries often use monkey-patching or module wrapping to intercept calls. This means the order of module loading matters. Make sure your instrumentation is registered before the target module is imported:
 
 ```typescript
-// CORRECT: Register instrumentation before importing the target module
+// CORRECT: Register instrumentation before loading the target module
 import { registerInstrumentationTesting } from '@opentelemetry/contrib-test-utils';
 import { MyInstrumentation } from '../src';
 
 // Register first
 registerInstrumentationTesting(new MyInstrumentation());
 
-// Then import the module that will be instrumented
-import * as targetLibrary from 'target-library';
+// Then load the module that will be instrumented.
+// In ES modules, use `await import('target-library')` instead.
+const targetLibrary = require('target-library');
 ```
 
 Getting this order wrong is a common source of test failures where spans simply do not appear because the module was loaded before the instrumentation had a chance to wrap it.
