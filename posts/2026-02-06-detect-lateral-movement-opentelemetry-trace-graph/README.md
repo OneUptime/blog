@@ -37,17 +37,19 @@ import (
 var tracer = otel.Tracer("service-mesh-tracer")
 
 // InstrumentOutboundCall wraps an HTTP client call with
-// span attributes useful for lateral movement detection
-func InstrumentOutboundCall(ctx context.Context, req *http.Request) context.Context {
+// span attributes useful for lateral movement detection.
+// The caller should end the returned span after the request completes.
+func InstrumentOutboundCall(ctx context.Context, req *http.Request) (context.Context, trace.Span) {
     ctx, span := tracer.Start(ctx, "http.client.request",
         trace.WithSpanKind(trace.SpanKindClient),
     )
 
     span.SetAttributes(
         // The destination service and endpoint
-        attribute.String("peer.service", req.Host),
-        attribute.String("http.path", req.URL.Path),
-        attribute.String("http.method", req.Method),
+        attribute.String("service.peer.name", req.Host),
+        attribute.String("server.address", req.URL.Hostname()),
+        attribute.String("url.path", req.URL.Path),
+        attribute.String("http.request.method", req.Method),
 
         // The calling service identity
         attribute.String("service.caller", getServiceName()),
@@ -63,19 +65,33 @@ func InstrumentOutboundCall(ctx context.Context, req *http.Request) context.Cont
             extractDelegationChain(ctx)),
     )
 
-    return ctx
+    return ctx, span
 }
 
 // isKnownCallPath checks if this service-to-service call
 // matches the expected service dependency graph
 func isKnownCallPath(source, destination, path string) bool {
-    knownPaths := map[string][]string{
-        "api-gateway":    {"/orders", "/users", "/products"},
-        "order-service":  {"/inventory/check", "/payment/process"},
-        "user-service":   {"/auth/validate"},
+    knownPaths := map[string]map[string][]string{
+        "api-gateway": {
+            "order-service":   {"/orders"},
+            "user-service":    {"/users"},
+            "product-service": {"/products"},
+        },
+        "order-service": {
+            "inventory-service": {"/inventory/check"},
+            "payment-service":   {"/payment/process"},
+        },
+        "user-service": {
+            "auth-service": {"/auth/validate"},
+        },
     }
 
-    allowedPaths, exists := knownPaths[source]
+    destinations, exists := knownPaths[source]
+    if !exists {
+        return false
+    }
+
+    allowedPaths, exists := destinations[destination]
     if !exists {
         return false
     }
@@ -125,10 +141,13 @@ class LateralMovementDetector:
 
         for t in traces:
             spans = t.get_spans()
+            if not spans:
+                continue
+
             for span in spans:
                 caller = span.resource_attrs.get("service.name")
-                callee = span.attrs.get("peer.service")
-                path = span.attrs.get("http.path")
+                callee = span.attrs.get("service.peer.name")
+                path = span.attrs.get("url.path")
 
                 if callee:
                     key = f"{caller}->{callee}"
@@ -151,12 +170,14 @@ class LateralMovementDetector:
         """
         findings = []
         spans = t.get_spans()
+        if not spans:
+            return findings
 
         # Check 1: Unknown call pairs
         for span in spans:
             caller = span.resource_attrs.get("service.name")
-            callee = span.attrs.get("peer.service")
-            path = span.attrs.get("http.path")
+            callee = span.attrs.get("service.peer.name")
+            path = span.attrs.get("url.path")
 
             if not callee:
                 continue
@@ -249,18 +270,18 @@ class LateralMovementDetector:
         fan_out = defaultdict(set)
         for span in spans:
             caller = span.resource_attrs.get("service.name")
-            callee = span.attrs.get("peer.service")
+            callee = span.attrs.get("service.peer.name")
             if callee:
                 fan_out[caller].add(callee)
         return {k: len(v) for k, v in fan_out.items()}
 ```
 
-## Emitting Detection Results as OTel Events
+## Emitting Detection Results as OTel Metrics
 
-When the detector finds something suspicious, emit it back into the OpenTelemetry pipeline:
+When the detector finds something suspicious, emit it back into the OpenTelemetry pipeline as a metric:
 
 ```python
-from opentelemetry import trace, metrics
+from opentelemetry import metrics
 
 meter = metrics.get_meter("lateral-movement-detector")
 detection_counter = meter.create_counter(
