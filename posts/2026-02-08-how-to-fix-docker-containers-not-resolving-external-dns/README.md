@@ -14,7 +14,7 @@ Let's dig into why this happens and how to fix it across different environments.
 
 ## How Docker DNS Resolution Works
 
-Docker containers use an embedded DNS server at 127.0.0.11 for service discovery within user-defined networks. For external DNS resolution, Docker falls back to the DNS servers configured on the host machine. It reads from `/etc/resolv.conf` on the host and copies those settings into each container.
+Docker containers use an embedded DNS server at 127.0.0.11 for service discovery within user-defined networks. For external DNS resolution, Docker uses the DNS servers configured on the host machine by default. Containers on the default bridge network receive a copy of the host's `/etc/resolv.conf`; containers on user-defined networks use Docker's embedded DNS server, which forwards external lookups to the host's configured DNS servers.
 
 The problem starts when the host's `/etc/resolv.conf` contains a DNS entry that does not work from inside the container's network namespace.
 
@@ -40,11 +40,11 @@ On Ubuntu 18.04 and later, the host's `/etc/resolv.conf` points to `127.0.0.53`,
 Verify if this is your issue:
 
 ```bash
-# If you see 127.0.0.53, that's the problem
+# If you see 127.0.0.53 inside the container and DNS fails, that's the problem
 docker run --rm alpine cat /etc/resolv.conf
 ```
 
-Fix this by telling Docker to use a public DNS server directly. Edit the Docker daemon configuration:
+Docker may already detect systemd-resolved and use `/run/systemd/resolve/resolv.conf` instead of copying the stub address. If your container still gets an unreachable loopback resolver, fix it by telling Docker to use a reachable DNS server directly. Edit the Docker daemon configuration:
 
 ```bash
 # Create or edit the Docker daemon configuration file
@@ -76,7 +76,7 @@ resolvectl status | grep "DNS Servers"
 cat /run/systemd/resolve/resolv.conf
 ```
 
-You can then configure Docker to use the actual DNS file:
+You can then configure Docker to use the actual upstream DNS servers:
 
 ```json
 {
@@ -154,7 +154,7 @@ sudo ufw allow out 53/udp
 sudo ufw allow out 53/tcp
 ```
 
-## Cause 4: Custom Bridge Network Missing DNS Configuration
+## Cause 4: Default Bridge Network Missing Embedded DNS
 
 Containers on Docker's default bridge network do not get the built-in DNS server. They rely entirely on the host's DNS configuration. Containers on user-defined bridge networks get Docker's internal DNS server at 127.0.0.11.
 
@@ -188,7 +188,7 @@ docker run --dns 8.8.8.8 --dns 192.168.1.1 myimage
 
 ## Cause 6: DNS Search Domain Issues
 
-Sometimes DNS resolution fails because of a misconfigured search domain. The container tries to resolve `api.example.com.corp.internal` instead of `api.example.com`.
+Sometimes DNS resolution fails because of a misconfigured search domain. Depending on the resolver options and the name being queried, the container may try search-expanded names such as `api.example.com.corp.internal` in addition to `api.example.com`.
 
 Check the search domains:
 
@@ -236,7 +236,7 @@ docker run --rm alpine cat /etc/resolv.conf
 nslookup google.com
 
 # Step 5: Check Docker daemon DNS configuration
-docker info | grep -i dns
+sudo cat /etc/docker/daemon.json
 ```
 
 If step 1 fails, the problem is general networking, not DNS. If step 2 works but step 3 shows a broken DNS server, you need to reconfigure Docker's DNS. If step 4 fails, the problem is on the host, not in Docker.
