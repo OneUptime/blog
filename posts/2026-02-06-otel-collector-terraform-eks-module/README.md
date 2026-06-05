@@ -20,7 +20,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = var.cluster_name
-  cluster_version = "1.29"
+  cluster_version = "1.34"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -56,11 +56,11 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
 
-    exec {
+    exec = {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
       args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
@@ -98,6 +98,7 @@ resource "helm_release" "otel_collector" {
       environment     = var.environment
       otlp_endpoint   = var.otlp_endpoint
       aws_region      = var.aws_region
+      otel_iam_role_arn = module.otel_collector_irsa.iam_role_arn
     })
   ]
 
@@ -163,6 +164,8 @@ config:
         - sources:
             - from: resource_attribute
               name: k8s.pod.ip
+        - sources:
+            - from: connection
 
     resourcedetection:
       detectors: [eks, ec2, env]
@@ -235,6 +238,22 @@ module "otel_collector_irsa" {
 resource "aws_iam_role_policy_attachment" "otel_xray" {
   role       = module.otel_collector_irsa.iam_role_name
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
+resource "aws_iam_role_policy" "otel_resourcedetection" {
+  name = "otel-resourcedetection"
+  role = module.otel_collector_irsa.iam_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "ec2:DescribeInstances"
+        Resource = "*"
+      }
+    ]
+  })
 }
 ```
 
@@ -320,4 +339,4 @@ terraform plan \
 terraform apply
 ```
 
-This creates the EKS cluster, deploys the OpenTelemetry Collector, sets up RBAC, and configures IAM roles, all in a single Terraform apply. Every new cluster gets observability from the start, and the configuration is consistent across all your environments.
+This creates the EKS cluster, deploys the OpenTelemetry Collector, sets up RBAC, and configures IAM roles from Terraform. In production, keep the cluster and Kubernetes resources in separate apply stages if the Kubernetes or Helm provider cannot connect until the cluster API is available. Every new cluster gets observability from the start, and the configuration is consistent across all your environments.
