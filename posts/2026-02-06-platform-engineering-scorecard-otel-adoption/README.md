@@ -105,7 +105,7 @@ dimensions:
     weight: 0.25
     indicators:
       sdk_version_current:
-        description: "Using latest supported SDK wrapper version"
+        description: "Using latest supported SDK distribution version"
         weight: 0.5
       attribute_naming:
         description: "Custom attributes follow naming conventions"
@@ -147,11 +147,11 @@ CATALOG_API = "https://service-catalog.internal/api/v1"
 
 def check_traces_enabled(service_name: str) -> IndicatorResult:
     """Check if a service is actively emitting traces."""
-    query = f'sum(rate(traces_spanmetricsconnector_duration_seconds_count{{service_name="{service_name}"}}[1h]))'
+    query = f'sum(rate(traces_span_metrics_calls_total{{service_name="{service_name}"}}[1h]))'
     result = requests.get(METRICS_API, params={"query": query})
     data = result.json()["data"]["result"]
 
-    has_traces = len(data) > 0 and float(data[0]["value"][1]) > 0
+    has_traces = len(data) > 0 and float(data[0]["value"][1]) >= (1.0 / 60.0)
     return IndicatorResult(
         name="traces_enabled",
         score=100.0 if has_traces else 0.0,
@@ -160,7 +160,7 @@ def check_traces_enabled(service_name: str) -> IndicatorResult:
 
 def check_required_attributes(service_name: str) -> IndicatorResult:
     """Check how many required resource attributes are present."""
-    required = ["service.name", "team.name", "deployment.environment", "service.version"]
+    required = ["service.name", "team.name", "deployment.environment.name", "service.version"]
     present = 0
 
     # Query a recent span to check resource attributes
@@ -183,8 +183,8 @@ def check_required_attributes(service_name: str) -> IndicatorResult:
     )
 
 def check_sdk_version(service_name: str) -> IndicatorResult:
-    """Check if the service uses the current SDK wrapper version."""
-    # Query the telemetry.sdk.wrapper resource attribute
+    """Check if the service uses the current SDK distribution version."""
+    # Query the telemetry.distro.version resource attribute
     query = f'resource.service.name = "{service_name}"'
     result = requests.get(
         "https://traces.internal/api/v1/search",
@@ -193,20 +193,20 @@ def check_sdk_version(service_name: str) -> IndicatorResult:
 
     current_version = "internal-v2"
     if result.json().get("traces"):
-        wrapper_version = (
+        distro_version = (
             result.json()["traces"][0]
             .get("resource", {})
-            .get("telemetry.sdk.wrapper", "none")
+            .get("telemetry.distro.version", "none")
         )
-        is_current = wrapper_version == current_version
+        is_current = distro_version == current_version
     else:
-        wrapper_version = "unknown"
+        distro_version = "unknown"
         is_current = False
 
     return IndicatorResult(
         name="sdk_version_current",
         score=100.0 if is_current else 0.0,
-        details=f"Wrapper version: {wrapper_version} (current: {current_version})",
+        details=f"Distribution version: {distro_version} (current: {current_version})",
     )
 ```
 
@@ -217,6 +217,8 @@ The most useful view is per-team aggregation. It shows which teams are fully onb
 ```python
 # scorecard/aggregator.py
 from typing import List, Dict
+
+from scorecard.engine import ServiceScorecard
 
 def aggregate_team_scores(
     service_scorecards: List[ServiceScorecard],
@@ -259,6 +261,7 @@ Expose the scorecard through an API that your internal portal and reporting tool
 from flask import Flask, jsonify
 from scorecard.engine import compute_scorecard
 from scorecard.aggregator import aggregate_team_scores
+from scorecard.catalog import get_all_services_from_catalog
 
 app = Flask(__name__)
 
@@ -289,14 +292,19 @@ def team_scorecards():
     all_services = get_all_services_from_catalog()
     scorecards = [compute_scorecard(s) for s in all_services]
     team_summary = aggregate_team_scores(scorecards)
-
-    return jsonify({
-        "teams": list(team_summary.values()),
-        "org_average": round(
+    org_average = (
+        round(
             sum(t["average_score"] for t in team_summary.values())
             / len(team_summary),
             1,
-        ),
+        )
+        if team_summary
+        else 0.0
+    )
+
+    return jsonify({
+        "teams": list(team_summary.values()),
+        "org_average": org_average,
     })
 ```
 
