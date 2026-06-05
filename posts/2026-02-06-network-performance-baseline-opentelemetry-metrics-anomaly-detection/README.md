@@ -40,7 +40,7 @@ receivers:
       # Include CPU for correlation with network activity
       cpu:
 
-  # Also collect from your application spans
+  # Also collect application spans if you use span data for latency
   otlp:
     protocols:
       grpc:
@@ -56,8 +56,8 @@ processors:
         - system.network.dropped
       match_type: strict
 
-  # Calculate per-second rates from the deltas
-  metricstransform:
+  # Aggregate interface-level deltas by direction; calculate per-second rates in your backend
+  metrics_transform:
     transforms:
       - include: system.network.io
         action: update
@@ -77,7 +77,11 @@ service:
   pipelines:
     metrics:
       receivers: [hostmetrics]
-      processors: [cumulativetodelta, batch]
+      processors: [cumulativetodelta, metrics_transform, batch]
+      exporters: [otlp]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlp]
 ```
 
@@ -88,9 +92,9 @@ A good baseline accounts for time-of-day and day-of-week patterns. Here is a Pyt
 ```python
 # baseline_calculator.py
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
-def compute_hourly_baseline(metric_data, lookback_weeks=4):
+def compute_hourly_baseline(metric_data):
     """
     Compute baseline stats for each hour-of-week bucket.
     metric_data is a list of (timestamp, value) tuples.
@@ -99,7 +103,7 @@ def compute_hourly_baseline(metric_data, lookback_weeks=4):
     buckets = {}
 
     for timestamp, value in metric_data:
-        dt = datetime.fromtimestamp(timestamp)
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         key = (dt.weekday(), dt.hour)
 
         if key not in buckets:
@@ -146,37 +150,45 @@ You can run anomaly detection as a cron job that queries your metrics backend, c
 # anomaly_detector.py
 import requests
 from baseline_calculator import compute_hourly_baseline, is_anomalous
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Query the last 4 weeks of data to build the baseline
 def fetch_metric_history(metric_name, hours=672):
-    """Fetch historical metric data from your OTLP-compatible backend."""
+    """Fetch historical metric data from your Prometheus-compatible backend."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=hours)
     response = requests.get(
         "https://your-backend.example.com/api/v1/query_range",
         params={
             "query": metric_name,
-            "start": f"-{hours}h",
-            "end": "now",
+            "start": start.timestamp(),
+            "end": end.timestamp(),
             "step": "5m",
         },
     )
+    response.raise_for_status()
     data = response.json()
+    results = data["data"]["result"]
+    if not results:
+        return []
     # Return as list of (timestamp, value) tuples
-    return [(float(p[0]), float(p[1])) for p in data["data"]["result"][0]["values"]]
+    return [(float(p[0]), float(p[1])) for p in results[0]["values"]]
 
 
 def check_network_metrics():
     metrics_to_check = [
-        "system_network_io_total{direction='receive'}",
-        "system_network_io_total{direction='transmit'}",
+        "system_network_io_bytes_total{direction='receive'}",
+        "system_network_io_bytes_total{direction='transmit'}",
         "system_network_errors_total",
     ]
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     current_bucket = (now.weekday(), now.hour)
 
     for metric in metrics_to_check:
         history = fetch_metric_history(metric)
+        if not history:
+            continue
         baseline = compute_hourly_baseline(history)
 
         if current_bucket not in baseline:
