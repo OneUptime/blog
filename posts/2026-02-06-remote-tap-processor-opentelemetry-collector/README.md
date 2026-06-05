@@ -4,36 +4,35 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Remote Tap, Debugging, Telemetry
 
-Description: Learn how to configure the Remote Tap processor in the OpenTelemetry Collector to duplicate and forward telemetry data to additional endpoints for debugging and monitoring purposes.
+Description: Learn how to configure the Remote Tap processor in the OpenTelemetry Collector to expose a WebSocket tap for debugging and monitoring telemetry data.
 
-The Remote Tap processor is a powerful debugging and monitoring tool in the OpenTelemetry Collector that allows you to duplicate telemetry data and send it to additional endpoints without disrupting your primary data pipeline. This capability proves invaluable when troubleshooting production issues, validating data transformations, or implementing parallel processing workflows.
+The Remote Tap processor is a debugging and monitoring tool in the OpenTelemetry Collector that allows connected WebSocket clients to inspect a rate-limited copy of telemetry data without disrupting your primary data pipeline. This capability proves invaluable when troubleshooting production issues, validating data transformations, or observing data flowing through a Collector pipeline.
 
 ## Understanding the Remote Tap Processor
 
-The Remote Tap processor operates by creating a copy of incoming telemetry data and forwarding it to specified endpoints while allowing the original data to continue through the standard processing pipeline. This non-intrusive approach enables real-time observation and analysis without impacting production data flow.
+The Remote Tap processor operates by allowing telemetry data to pass through the standard processing pipeline while making a portion of that data available to WebSocket clients connected to its configured endpoint. This non-intrusive approach enables real-time observation and analysis without changing the normal production data flow.
 
-The processor supports all three telemetry signals: traces, metrics, and logs. It uses the OpenTelemetry Protocol (OTLP) to transmit duplicated data to remote endpoints, ensuring compatibility with any OTLP-compatible backend.
+The processor supports all three telemetry signals: traces, metrics, and logs. It serializes tapped telemetry as OpenTelemetry Collector pdata JSON over WebSocket connections, so clients connect to the processor endpoint to receive the sampled stream.
 
 ## Core Architecture
 
-The Remote Tap processor sits within the collector's processing pipeline and implements a fan-out pattern. When telemetry data arrives, the processor duplicates it and sends copies to configured tap endpoints while the original data proceeds to the next processor or exporter.
+The Remote Tap processor sits within the collector's processing pipeline and implements a tee-like pattern. When telemetry data arrives, the processor writes a rate-limited copy to connected WebSocket clients while the original data proceeds to the next processor or exporter.
 
 ```mermaid
 graph LR
     A[Receiver] --> B[Remote Tap Processor]
-    B --> C[Tap Endpoint 1]
-    B --> D[Tap Endpoint 2]
+    G[WebSocket Client] -. connects .-> B
+    B -. tapped JSON stream .-> G
     B --> E[Next Processor]
     E --> F[Exporter]
 
     style B fill:#f9f,stroke:#333,stroke-width:2px
-    style C fill:#bbf,stroke:#333,stroke-width:1px
-    style D fill:#bbf,stroke:#333,stroke-width:1px
+    style G fill:#bbf,stroke:#333,stroke-width:1px
 ```
 
 ## Basic Configuration
 
-The Remote Tap processor requires minimal configuration to get started. At its simplest, you specify one or more endpoints to receive the duplicated telemetry data.
+The Remote Tap processor requires minimal configuration to get started. At its simplest, you specify the endpoint on which the processor listens for WebSocket clients and the rate limit for tapped messages.
 
 Here is a basic configuration example:
 
@@ -42,83 +41,62 @@ Here is a basic configuration example:
 
 processors:
   remotetap:
-    # Specify the endpoint to receive duplicated telemetry
-    endpoint: localhost:4317
-    # Enable insecure connection for development
-    insecure: true
+    # Endpoint where WebSocket clients connect
+    endpoint: localhost:12001
+    # Rate limit in messages per second
+    limit: 1
 ```
 
-This configuration duplicates all telemetry data passing through the processor and sends it to a collector or backend running on `localhost:4317`.
+This configuration allows WebSocket clients on the local host to connect to `localhost:12001` and receive a rate-limited copy of telemetry passing through the processor.
 
 ## Advanced Configuration Options
 
-For production environments, you'll need more sophisticated configuration including security settings, timeout controls, and error handling.
+For production environments, you'll need more sophisticated configuration including secure listener settings, rate limiting, and careful network exposure.
 
 ```yaml
 # Advanced Remote Tap processor configuration
 processors:
   remotetap:
-    # Primary tap endpoint
-    endpoint: tap-collector.example.com:4317
+    # Listen only where authorized debugging clients can reach it
+    endpoint: 0.0.0.0:12001
 
-    # Security configuration
-    insecure: false
+    # Rate limit tapped telemetry to avoid overwhelming clients
+    limit: 5
+
+    # Server-side TLS configuration for the WebSocket endpoint
     tls:
-      # Path to CA certificate for verifying the tap endpoint
-      ca_file: /etc/ssl/certs/ca-bundle.crt
-      # Client certificate for mutual TLS authentication
-      cert_file: /etc/ssl/certs/client-cert.pem
-      key_file: /etc/ssl/private/client-key.pem
-      # Verify server certificate
-      insecure_skip_verify: false
-
-    # Timeout settings
-    timeout: 5s
-
-    # Retry configuration
-    retry_on_failure:
-      enabled: true
-      initial_interval: 1s
-      max_interval: 30s
-      max_elapsed_time: 5m
-
-    # Resource limits
-    sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 1000
+      cert_file: /etc/ssl/certs/remotetap-cert.pem
+      key_file: /etc/ssl/private/remotetap-key.pem
+      client_ca_file: /etc/ssl/certs/client-ca.pem
 ```
 
 In this advanced configuration:
-- TLS encryption secures data transmission to the tap endpoint
-- Timeouts prevent the processor from blocking on slow endpoints
-- Retry logic handles temporary network issues
-- Queue settings buffer data during endpoint unavailability
+- TLS encryption secures connections to the tap endpoint
+- The listener endpoint controls where WebSocket clients can connect
+- The rate limit controls how many telemetry messages per second are copied to connected clients
+- Mutual TLS can restrict access to clients with certificates signed by the configured CA
 
 ## Multiple Tap Endpoints
 
-You can configure multiple Remote Tap processors to send duplicated data to different endpoints, useful for sending data to various debugging tools or monitoring systems simultaneously.
+You can configure multiple Remote Tap processors with different listening endpoints, useful for exposing separate taps for different debugging workflows.
 
 ```yaml
 # Configuration with multiple tap endpoints
 processors:
   # Primary debugging tap
   remotetap/debug:
-    endpoint: debug-collector.example.com:4317
-    insecure: false
-    timeout: 3s
+    endpoint: localhost:12001
+    limit: 1
 
-  # Analytics tap
+  # Analytics inspection tap
   remotetap/analytics:
-    endpoint: analytics-backend.example.com:4317
-    insecure: false
-    timeout: 5s
+    endpoint: localhost:12002
+    limit: 2
 
   # Local development tap
   remotetap/local:
-    endpoint: localhost:4318
-    insecure: true
-    timeout: 2s
+    endpoint: localhost:12003
+    limit: 5
 
 # Apply processors in pipeline
 service:
@@ -129,29 +107,29 @@ service:
       exporters: [otlp]
 ```
 
-Each tap processor operates independently, so if one endpoint becomes unavailable, others continue functioning normally.
+Each tap processor exposes its own WebSocket endpoint. If no client is connected to one endpoint, the processor still passes telemetry through the pipeline normally.
 
 ## Signal-Specific Configuration
 
-You can configure Remote Tap processors for specific telemetry signals, allowing fine-grained control over what data gets duplicated.
+You can configure Remote Tap processors for specific telemetry signals by placing them only in the pipelines for those signals, allowing fine-grained control over what data can be inspected.
 
 ```yaml
 # Signal-specific Remote Tap configuration
 processors:
   # Tap for traces only
   remotetap/traces:
-    endpoint: trace-analyzer.example.com:4317
-    insecure: false
+    endpoint: localhost:12001
+    limit: 1
 
   # Tap for metrics only
   remotetap/metrics:
-    endpoint: metrics-debugger.example.com:4317
-    insecure: false
+    endpoint: localhost:12002
+    limit: 1
 
   # Tap for logs only
   remotetap/logs:
-    endpoint: log-inspector.example.com:4317
-    insecure: false
+    endpoint: localhost:12003
+    limit: 1
 
 service:
   pipelines:
@@ -174,17 +152,17 @@ service:
       exporters: [otlp/backend]
 ```
 
-This separation enables routing different signal types to specialized analysis tools.
+This separation enables connecting debugging clients to the specific signal stream they need to inspect.
 
 ## Performance Considerations
 
-The Remote Tap processor duplicates data, which impacts memory usage and network bandwidth. Consider these factors when deploying:
+The Remote Tap processor duplicates a rate-limited portion of data to connected WebSocket clients, which impacts CPU usage, memory usage, and network bandwidth while clients are connected. Consider these factors when deploying:
 
-1. **Memory Overhead**: Each tap creates a copy of telemetry data in memory. Monitor collector memory usage when adding taps.
+1. **Memory Overhead**: Connected WebSocket clients require buffering while tapped data is written. Monitor collector memory usage when clients are connected.
 
-2. **Network Bandwidth**: Duplicated data doubles network traffic. For high-volume environments, consider sampling or filtering before tapping.
+2. **Network Bandwidth**: Tapped data adds network traffic to each connected client. For high-volume environments, keep the `limit` low and consider sampling or filtering before tapping.
 
-3. **Endpoint Availability**: Configure appropriate timeouts and queues to prevent tap endpoint issues from affecting primary pipeline performance.
+3. **Endpoint Availability**: Bind the tap endpoint carefully and restrict access so debugging clients do not expose the Collector to unnecessary load.
 
 Here is a performance-optimized configuration:
 
@@ -195,20 +173,11 @@ processors:
   probabilistic_sampler:
     sampling_percentage: 10
 
-  # Remote tap with aggressive timeout
+  # Remote tap with a conservative message rate
   remotetap/perf:
-    endpoint: tap-endpoint.example.com:4317
-    insecure: false
-    # Short timeout prevents blocking
-    timeout: 1s
-    # Limited queue size
-    sending_queue:
-      enabled: true
-      num_consumers: 5
-      queue_size: 500
-    # Retry disabled for performance
-    retry_on_failure:
-      enabled: false
+    endpoint: localhost:12001
+    # Limit copied data to 1 message per second
+    limit: 1
 
 service:
   pipelines:
@@ -223,14 +192,13 @@ service:
 
 ### Debugging Production Issues
 
-When investigating production problems, configure a temporary tap to send data to a local debugging instance:
+When investigating production problems, configure a tap endpoint that authorized debugging clients can connect to:
 
 ```yaml
 processors:
   remotetap/debug:
-    endpoint: localhost:4317
-    insecure: true
-    timeout: 2s
+    endpoint: localhost:12001
+    limit: 1
 
 service:
   pipelines:
@@ -250,7 +218,8 @@ Use Remote Tap to compare data before and after transformations:
 processors:
   # Tap before transformation
   remotetap/before:
-    endpoint: validator.example.com:4317
+    endpoint: localhost:12001
+    limit: 1
 
   # Apply transformations
   transform:
@@ -261,7 +230,8 @@ processors:
 
   # Tap after transformation
   remotetap/after:
-    endpoint: validator.example.com:4318
+    endpoint: localhost:12002
+    limit: 1
 
 service:
   pipelines:
@@ -275,10 +245,10 @@ service:
 
 Always secure tap endpoints in production environments:
 
-1. **Use TLS**: Never transmit telemetry data over unencrypted connections in production
-2. **Authenticate Endpoints**: Implement mutual TLS or API key authentication
+1. **Use TLS**: Never expose telemetry data over unencrypted WebSocket connections in production
+2. **Authenticate Clients**: Use mutual TLS or another supported server authenticator to control access
 3. **Network Segmentation**: Restrict tap endpoint access through firewall rules
-4. **Audit Logging**: Monitor which endpoints receive duplicated data
+4. **Audit Logging**: Monitor which clients connect to the remote tap endpoint
 
 ## Troubleshooting
 
@@ -286,11 +256,11 @@ Common issues and solutions:
 
 **Tap endpoint connection failures**: Verify network connectivity and endpoint availability. Check firewall rules and DNS resolution.
 
-**High memory usage**: Reduce queue sizes or implement sampling before tapping.
+**High memory usage**: Lower the `limit`, reduce connected clients, or implement sampling before tapping.
 
-**Timeout errors**: Increase timeout values or improve tap endpoint performance.
+**No data received by clients**: Confirm the Remote Tap processor is included in the relevant pipeline and that telemetry is flowing through that pipeline.
 
-**Data not appearing at tap endpoint**: Confirm the tap endpoint supports OTLP and verify the protocol version matches.
+**Data not appearing at tap endpoint**: Confirm the client connects over WebSocket to the configured endpoint and can parse the JSON payloads produced by the Collector pdata marshaler.
 
 ## Related Resources
 
@@ -299,4 +269,4 @@ For more information on OpenTelemetry Collector processors and data processing, 
 - [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
 - [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/2026-02-06-filter-spans-ottl-opentelemetry-collector/view)
 
-The Remote Tap processor provides a non-intrusive way to observe and analyze telemetry data flowing through your OpenTelemetry Collector. By duplicating data to additional endpoints, you can debug issues, validate transformations, and implement parallel processing workflows without disrupting production data pipelines. Configure taps carefully considering performance impacts, and always secure tap endpoints in production environments.
+The Remote Tap processor provides a non-intrusive way to observe and analyze telemetry data flowing through your OpenTelemetry Collector. By exposing a WebSocket endpoint for a rate-limited copy of telemetry data, you can debug issues and validate transformations without disrupting production data pipelines. Configure taps carefully considering performance impacts, and always secure tap endpoints in production environments.
