@@ -18,7 +18,7 @@ This guide covers how to use span events effectively for exception recording, in
 
 A span event is a timestamped annotation attached to a span. Think of it as a log entry that lives inside the trace rather than in a separate logging system. Each event has a name, a timestamp, and a set of key-value attributes.
 
-The OpenTelemetry specification defines a special event type called an "exception event" with standardized attribute names. When you record an exception as a span event, tracing backends can display it with special formatting, including stack traces, exception types, and messages.
+The OpenTelemetry specification defines a special event type called an "exception event" with standardized attribute names. Current semantic convention guidance is moving instrumentation toward log-based exception events, but the span APIs still support recording exceptions as span events. When you record an exception as a span event, tracing backends can display it with special formatting, including stack traces, exception types, and messages.
 
 ```mermaid
 flowchart TD
@@ -45,7 +45,11 @@ from opentelemetry import trace
 tracer = trace.get_tracer("order-service")
 
 def process_order(order):
-    with tracer.start_as_current_span("process-order") as span:
+    with tracer.start_as_current_span(
+        "process-order",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         try:
             validate_order(order)
             result = charge_payment(order)
@@ -70,7 +74,7 @@ def process_order(order):
 
 The `record_exception` method does three things for you: it captures the exception type, the message, and the full stack trace. This follows the OpenTelemetry semantic conventions, so any compliant backend will know how to display it.
 
-There is an important subtlety here. Recording an exception does not automatically set the span status to ERROR. You need to do that separately. The reason is that some exceptions are expected (like a "not found" result) and should not mark the span as failed.
+There is an important subtlety here. Calling `record_exception` directly does not automatically set the span status to ERROR. You need to do that separately. The reason is that some exceptions are expected (like a "not found" result) and should not mark the span as failed. When you use `start_as_current_span` as a context manager in Python, disable its default exception handling if you want full manual control over which exceptions are recorded and which ones mark the span as failed.
 
 ---
 
@@ -79,10 +83,12 @@ There is an important subtlety here. Recording an exception does not automatical
 The basic exception event is a good start, but you often need more context. What was the HTTP status code from the upstream service? What was the request payload that caused the validation error? You can pass additional attributes to `record_exception`.
 
 ```python
-import traceback
-
 def call_payment_gateway(order):
-    with tracer.start_as_current_span("payment-gateway-call") as span:
+    with tracer.start_as_current_span(
+        "payment-gateway-call",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         span.set_attribute("order.id", order.id)
         span.set_attribute("payment.amount", order.total)
         span.set_attribute("payment.provider", order.payment_provider)
@@ -239,7 +245,7 @@ async function createUser(userData) {
 }
 ```
 
-The `addEvent` and `recordException` methods work identically to their Python counterparts. The event names and attribute keys follow the same semantic conventions, so your tracing backend will handle them consistently regardless of which language generated the span.
+The `addEvent` and `recordException` methods follow the same overall pattern as their Python counterparts, though JavaScript `recordException` does not take a custom attributes object. The exception event attributes follow the same semantic conventions, so your tracing backend can handle them consistently regardless of which language generated the span.
 
 ---
 
