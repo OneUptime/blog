@@ -14,8 +14,8 @@ This guide covers how to design your OpenTelemetry pipeline so you can actually 
 
 GDPR defines personal data broadly. Any information that can identify a natural person counts. In a typical OpenTelemetry setup, the following attributes are personal data:
 
-- `enduser.id` mapped to a real person
-- IP addresses in `net.peer.ip` or `http.client_ip`
+- `enduser.id` or `user.id` mapped to a real person
+- IP addresses in `client.address`, `network.peer.address`, or legacy `http.client_ip` and `net.peer.ip`
 - Email addresses appearing in span attributes or log messages
 - Session tokens or cookies that can be linked back to users
 
@@ -25,28 +25,35 @@ If you cannot find and extract (or delete) all telemetry records for a specific 
 
 The simplest approach is to pseudonymize personal data before it enters your telemetry pipeline. Replace direct identifiers with pseudonymous tokens and maintain a separate, access-controlled mapping table.
 
-Here is a Python span processor that pseudonymizes user identifiers:
+Here is a Python helper that pseudonymizes user identifiers before setting span attributes:
 
 ```python
-# Pseudonymize user identifiers in spans before export
+# Pseudonymize user identifiers before adding them to spans
 
 import hashlib
 import hmac
-from opentelemetry.sdk.trace.export import SpanExporter
+import os
+from typing import Any
 
-# This secret should come from a secrets manager, not hardcoded
-PSEUDONYM_SECRET = get_secret("telemetry-pseudonym-key")
+from opentelemetry import trace
+
+# This secret should come from a secrets manager or environment variable,
+# not be hardcoded in source control.
+PSEUDONYM_SECRET = os.environ["TELEMETRY_PSEUDONYM_KEY"]
 
 # Attributes that contain personal data
 PERSONAL_ATTRIBUTES = [
+    "user.id",
     "enduser.id",
     "enduser.email",
     "user.email",
+    "client.address",
+    "network.peer.address",
     "http.client_ip",
     "net.peer.ip",
 ]
 
-def pseudonymize(value):
+def pseudonymize(value: Any) -> str:
     """Create a consistent pseudonym for a personal data value.
     Same input always produces the same output, which is critical
     for being able to search telemetry by pseudonymized ID later."""
@@ -56,23 +63,17 @@ def pseudonymize(value):
         hashlib.sha256
     ).hexdigest()[:16]
 
-class PseudonymizingExporter:
-    """Wraps a SpanExporter to pseudonymize personal data."""
+def set_telemetry_attribute(attr_key: str, value: Any, mapping_store) -> None:
+    """Set a span attribute, pseudonymizing configured personal data keys."""
+    span = trace.get_current_span()
 
-    def __init__(self, delegate, mapping_store):
-        self._delegate = delegate
-        self._mapping = mapping_store  # Stores real_value -> pseudonym
-
-    def export(self, spans):
-        for span in spans:
-            for attr_key in PERSONAL_ATTRIBUTES:
-                if attr_key in span.attributes:
-                    original = span.attributes[attr_key]
-                    pseudo = pseudonymize(original)
-                    # Store the mapping for DSAR lookups
-                    self._mapping.store(original, pseudo, attr_key)
-                    span.attributes[attr_key] = pseudo
-        return self._delegate.export(spans)
+    if attr_key in PERSONAL_ATTRIBUTES:
+        pseudo = pseudonymize(value)
+        # Store the mapping for DSAR lookups
+        mapping_store.store(value, pseudo, attr_key)
+        span.set_attribute(attr_key, pseudo)
+    else:
+        span.set_attribute(attr_key, value)
 ```
 
 ## Strategy 2: Tag and Index for Retrieval
@@ -96,10 +97,10 @@ processors:
     actions:
       # Normalize various user ID attribute names to a single key
       - key: gdpr.data_subject_id
-        from_attribute: enduser.id
+        from_attribute: user.id
         action: upsert
       - key: gdpr.data_subject_id
-        from_attribute: user.id
+        from_attribute: enduser.id
         action: upsert
       # Tag with data category for easier DSAR processing
       - key: gdpr.contains_personal_data
@@ -133,11 +134,11 @@ service:
 
 When a DSAR comes in, you need to find all telemetry records associated with a data subject. With the normalized `gdpr.data_subject_id` attribute, this becomes a straightforward query.
 
-Here is an example query to extract all telemetry data for a specific user:
+Here is an example query to extract trace data for a specific user:
 
 ```sql
 -- DSAR data extraction query
--- Returns all traces and logs associated with a data subject
+-- Returns all traces associated with a data subject
 -- Export results as JSON for inclusion in the DSAR response
 
 -- Step 1: Find all trace IDs involving this user
@@ -165,9 +166,9 @@ ORDER BY s.start_time;
 
 Deletion is harder than retrieval. Most telemetry backends are not designed for targeted record deletion. You have a few options:
 
-1. **Pseudonymize, then destroy the key**: If you used the pseudonymization approach, deleting the mapping entry for a user effectively anonymizes all their telemetry data. Without the mapping, the pseudonymized data can no longer be linked to a person.
+1. **Pseudonymize, then remove the re-identification material**: If you used the pseudonymization approach, deleting the mapping entry and any per-user key or salt can reduce the remaining telemetry to data that is no longer attributable to that person, provided there are no other identifying attributes and the pseudonym cannot be regenerated. If you keep a global HMAC key that can recreate the pseudonym from the original user ID, the remaining telemetry is still linkable and should still be treated as personal data.
 
-2. **TTL-based retention**: Set aggressive retention periods on personal telemetry data. If you keep telemetry for 30 days, you can respond to deletion requests by confirming the data will be purged within 30 days. GDPR allows reasonable timeframes.
+2. **TTL-based retention**: Set aggressive retention periods on personal telemetry data. If you keep telemetry for 30 days, your deletion workflow can rely on that retention schedule only if it aligns with your GDPR response obligations, including handling erasure requests without undue delay and responding within the required timeframe.
 
 3. **Selective deletion API**: Some backends support deletion by attribute. Build an automation script:
 
@@ -175,7 +176,14 @@ Deletion is harder than retrieval. Most telemetry backends are not designed for 
 # DSAR deletion automation script
 import requests
 
-def delete_user_telemetry(user_id, backend_url, api_key):
+def delete_user_telemetry(
+    user_id,
+    backend_url,
+    api_key,
+    mapping_store,
+    audit_logger,
+    dsar_request_id,
+):
     """Delete all telemetry data for a specific data subject."""
 
     # Step 1: Invalidate the pseudonym mapping
@@ -200,7 +208,7 @@ def delete_user_telemetry(user_id, backend_url, api_key):
         "DSAR deletion completed",
         extra={
             "dsar.type": "erasure",
-            "dsar.request_id": generate_dsar_id(),
+            "dsar.request_id": dsar_request_id,
             "dsar.signals_deleted": ["traces", "logs"],
             "dsar.status": "completed" if response.ok else "partial",
         },
@@ -214,4 +222,4 @@ GDPR requires you to document how you handle DSARs. Use OpenTelemetry itself to 
 
 ## Key Points
 
-GDPR compliance for telemetry data is not optional if your spans and logs contain personal data. The cleanest approach is pseudonymization at the SDK level with a controlled mapping table. If that is not possible, normalize your personal data attributes and index them so you can run DSAR queries efficiently. For deletion, either destroy pseudonym mappings or use TTL-based retention with a clear policy. Whichever approach you choose, document it and test it before a DSAR actually arrives.
+GDPR compliance for telemetry data is not optional if your spans and logs contain personal data. The cleanest approach is pseudonymization at the SDK level with a controlled mapping table. If that is not possible, normalize your personal data attributes and index them so you can run DSAR queries efficiently. For deletion, either remove the re-identification material for pseudonymized records or use TTL-based retention with a clear policy. Whichever approach you choose, document it and test it before a DSAR actually arrives.
