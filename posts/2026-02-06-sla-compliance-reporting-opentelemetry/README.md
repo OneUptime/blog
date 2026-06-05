@@ -36,7 +36,7 @@ Each of these needs to be measured consistently, calculated over the agreed repo
 
 ### Availability Tracking
 
-Availability is typically measured as the percentage of time your service was operational during the reporting period. You need to track both successful and failed health checks or requests.
+Availability is typically measured as the percentage of time your service was operational during the reporting period. For request-based SLAs, you can approximate this by tracking both successful and failed requests. For time-based uptime SLAs, use the same pattern with synthetic health checks or probes.
 
 ```python
 # sla_metrics.py
@@ -82,7 +82,7 @@ failed_requests = meter.create_counter(
 )
 ```
 
-These counters form the foundation of your availability calculation. Every request gets counted in `total_requests`, and based on the HTTP status code, it also gets counted as either successful or failed. The availability percentage is simply `successful / total * 100`.
+These counters form the foundation of your request-based availability calculation. Every request gets counted in `total_requests`, and based on the HTTP status code, it also gets counted as either successful or failed. The availability percentage for this request-based SLA is simply `successful / total * 100`.
 
 ### Latency Tracking with Histograms
 
@@ -94,6 +94,7 @@ request_latency = meter.create_histogram(
     name="sla.request.duration",
     description="Duration of HTTP requests for SLA reporting",
     unit="ms",
+    explicit_bucket_boundaries_advisory=[50, 100, 200, 300, 500, 1000, 2500],
 )
 
 def handle_request(request):
@@ -104,7 +105,7 @@ def handle_request(request):
     attributes = {
         "service.name": "api-gateway",
         "sla.tier": request.headers.get("X-SLA-Tier", "standard"),
-        "http.method": request.method,
+        "http.request.method": request.method,
         "api.version": "v2",
     }
 
@@ -118,21 +119,22 @@ def handle_request(request):
         if response.status_code < 500:
             successful_requests.add(1, attributes)
         else:
+            attributes = {**attributes, "error.type": str(response.status_code)}
             failed_requests.add(1, attributes)
-            attributes["error.type"] = str(response.status_code)
 
         # Record latency for percentile calculations
         request_latency.record(elapsed_ms, {
             **attributes,
-            "http.status_code": str(response.status_code),
+            "http.response.status_code": response.status_code,
         })
 
         return response
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         total_requests.add(1, attributes)
-        failed_requests.add(1, {**attributes, "error.type": type(e).__name__})
-        request_latency.record(elapsed_ms, attributes)
+        error_attributes = {**attributes, "error.type": type(e).__name__}
+        failed_requests.add(1, error_attributes)
+        request_latency.record(elapsed_ms, error_attributes)
         raise
 ```
 
@@ -271,8 +273,8 @@ def generate_monthly_report(results: list[SLAResult]) -> str:
         "# SLA Compliance Report",
         f"Period: {results[0].period_start.strftime('%B %Y')}",
         "",
-        "| Service | Tier | Availability | P95 Latency | Error Rate | Status |",
-        "|---------|------|-------------|-------------|------------|--------|",
+        "| Tier | Availability | P95 Latency | Error Rate | Status |",
+        "|------|-------------|-------------|------------|--------|",
     ]
 
     for r in results:
@@ -296,7 +298,7 @@ def generate_monthly_report(results: list[SLAResult]) -> str:
     return "\n".join(report_lines)
 ```
 
-This generates a human-readable compliance report that you can send to customers or stakeholders. Because all the data comes from OpenTelemetry metrics that are also used for operational monitoring, there is never a discrepancy between what your dashboards show and what your SLA reports say.
+This generates a human-readable compliance report that you can send to customers or stakeholders. Because all the data comes from OpenTelemetry metrics that are also used for operational monitoring, you can keep dashboard and SLA report numbers consistent by using the same queries, labels, and reporting windows.
 
 ---
 
@@ -318,6 +320,6 @@ Set up a cron job or scheduled task that runs at the end of each reporting perio
 
 ## Key Takeaways
 
-Building SLA compliance reporting on top of OpenTelemetry data gives you several advantages. First, your SLA numbers are derived from the same telemetry data that powers your operational monitoring, so there is no possibility of discrepancy. Second, because OpenTelemetry provides structured attributes on every metric, you can easily segment by customer tier, region, API version, or any other relevant dimension. Third, the data is always available for drill-down investigation when a customer questions the numbers.
+Building SLA compliance reporting on top of OpenTelemetry data gives you several advantages. First, your SLA numbers can be derived from the same telemetry data that powers your operational monitoring, which helps reduce discrepancies. Second, because OpenTelemetry provides structured attributes on every metric, you can easily segment by customer tier, region, API version, or any other relevant dimension. Third, the data is always available for drill-down investigation when a customer questions the numbers.
 
 Start by identifying your SLA commitments and mapping them to specific OpenTelemetry metrics. Instrument your services to collect those metrics with the right attributes. Then build the calculation and reporting pipeline. Once it is running, SLA compliance reporting becomes a completely automated process instead of a monthly fire drill.
