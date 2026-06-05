@@ -26,8 +26,7 @@ my-qwik-app/
     routes/          # Qwik City routes
     components/      # Shared components
     entry.express.tsx # Express server entry (added by adapter)
-  server/
-    dist/            # Server build output
+  server/            # Server build output
   dist/              # Client build output
   package.json
 ```
@@ -44,25 +43,23 @@ import { manifest } from "@qwik-client-manifest";
 import render from "./entry.ssr";
 import express from "express";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
 
 // Create the Qwik City request handler
-const { router, notFound } = createQwikCity({
+const distDir = fileURLToPath(new URL("../dist", import.meta.url));
+
+const { router, notFound, staticFile } = createQwikCity({
   render,
   qwikCityPlan,
   manifest,
+  static: {
+    root: distDir,
+  },
 });
 
 const app = express();
 
-// Static file serving with caching
-const distDir = join(fileURLToPath(import.meta.url), "..", "..", "dist");
-const buildDir = join(distDir, "build");
-
-app.use("/build", express.static(buildDir, { immutable: true, maxAge: "1y" }));
-app.use(express.static(distDir, { redirect: false }));
-
-// Handle Qwik City routes
+// Serve static files, then handle Qwik City routes
+app.use(staticFile);
 app.use(router);
 app.use(notFound);
 
@@ -234,10 +231,13 @@ export const onGet: RequestHandler = async ({ json }) => {
 };
 ```
 
+For production deployments with the Node adapter, set `ORIGIN` to your public application origin so Qwik City can validate mutating requests for CSRF protection:
+
 ```bash
 docker run -d \
   -e DATABASE_URL="postgresql://user:pass@db:5432/mydb" \
   -e API_URL="https://api.example.com" \
+  -e ORIGIN="https://example.com" \
   -e SESSION_SECRET="production-secret" \
   -p 3000:3000 \
   myapp
@@ -256,6 +256,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:devpass@db:5432/qwik_dev
       - API_URL=http://localhost:3000/api
+      - ORIGIN=http://localhost:3000
     depends_on:
       db:
         condition: service_healthy
