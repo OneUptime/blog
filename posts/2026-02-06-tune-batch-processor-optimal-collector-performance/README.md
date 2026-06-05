@@ -23,7 +23,7 @@ Understanding how the batch processor makes decisions about when to send data is
 
 ## Core Batch Processor Parameters
 
-The batch processor uses several key parameters to determine when to send batched data:
+The batch processor uses several key parameters to determine when to send batched data and how large each outgoing batch can be:
 
 ```yaml
 processors:
@@ -32,12 +32,12 @@ processors:
     # Lower values = lower latency, higher values = better batching efficiency
     timeout: 10s
 
-    # Number of spans/metrics/logs after which to send a batch
-    # Reaches this size = immediate send
+    # Number of spans, metric data points, or log records after which to send a batch
+    # Acts as a trigger and does not enforce the final batch size
     send_batch_size: 8192
 
-    # Maximum number of items in a batch (hard limit)
-    # Prevents extremely large batches that could cause memory issues
+    # Maximum number of items in a batch sent to the next component (hard limit)
+    # Splits larger batches to prevent extremely large payloads
     send_batch_max_size: 16384
 
     # Additional metadata keys to use for creating separate batches
@@ -52,20 +52,21 @@ Each parameter influences different aspects of performance and behavior. Finding
 
 ## How Batch Processor Makes Sending Decisions
 
-The batch processor sends data when any of these conditions are met:
+The batch processor sends data when either the timeout expires or the `send_batch_size` trigger is reached. If `send_batch_max_size` is set, it limits the size of batches sent to the next component by splitting larger batches:
 
 ```mermaid
 graph TD
     A[Data arrives at batch processor] --> B{Check conditions}
     B --> C{Timeout reached?}
-    C -->|Yes| D[Send batch immediately]
+    C -->|Yes| D{Batch exceeds send_batch_max_size?}
     C -->|No| E{send_batch_size reached?}
     E -->|Yes| D
-    E -->|No| F{send_batch_max_size reached?}
-    F -->|Yes| D
-    F -->|No| G[Add to batch, continue waiting]
-    D --> H[Forward to exporter]
-    G --> B
+    E -->|No| F[Add to batch, continue waiting]
+    D -->|Yes| G[Split into smaller batches]
+    D -->|No| H[Forward batch]
+    G --> H
+    H --> I[Forward to exporter]
+    F --> B
 ```
 
 Understanding this decision tree helps you predict how your configuration will behave under different load patterns.
@@ -75,12 +76,18 @@ Understanding this decision tree helps you predict how your configuration will b
 Applications requiring low latency need telemetry data to reach backends quickly for real-time alerting and analysis.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   batch/low-latency:
     # Send batches frequently to minimize delay
     timeout: 1s
 
-    # Smaller batch size for faster throughput
+    # Smaller batch size for faster delivery
     send_batch_size: 512
 
     # Still set a reasonable max to prevent oversized batches
@@ -110,6 +117,12 @@ This configuration prioritizes speed over efficiency. Data typically reaches the
 High-throughput environments benefit from larger batches that maximize efficiency and reduce per-request overhead.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   batch/high-throughput:
     # Longer timeout allows more data to accumulate
@@ -147,6 +160,12 @@ This configuration maximizes batching efficiency, reducing the number of network
 Applications with irregular traffic patterns need configurations that handle both quiet periods and traffic spikes effectively.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   batch/bursty:
     # Moderate timeout handles both scenarios
@@ -175,6 +194,7 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel-collector/storage
+    create_directory: true
     timeout: 10s
 
 service:
@@ -195,6 +215,12 @@ This configuration provides headroom for traffic spikes while maintaining reason
 When running the collector with limited memory, batch sizing must be carefully controlled to prevent out-of-memory errors.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   batch/memory-limited:
     # Shorter timeout prevents excessive accumulation
@@ -209,10 +235,10 @@ processors:
   # Memory limiter should be placed BEFORE batch processor
   memory_limiter:
     check_interval: 1s
-    # Trigger at 80% of available memory
-    limit_mib: 1024
-    # Start dropping at 90%
-    spike_limit_mib: 1280
+    # Hard limit for process heap allocation
+    limit_mib: 1280
+    # Soft limit is limit_mib - spike_limit_mib (1024 MiB here)
+    spike_limit_mib: 256
 
 exporters:
   otlp/backend:
@@ -230,7 +256,7 @@ service:
       exporters: [otlp/backend]
 ```
 
-The memory limiter protects against excessive memory consumption by applying back-pressure when limits are approached.
+The memory limiter protects against excessive memory consumption by refusing data and applying back-pressure when limits are exceeded.
 
 **Important**: Always place the memory limiter before the batch processor in the pipeline to ensure it can effectively throttle incoming data.
 
@@ -239,6 +265,14 @@ The memory limiter protects against excessive memory consumption by applying bac
 When handling data from multiple tenants, you may want separate batches per tenant for isolation or routing purposes.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        # Required so incoming client metadata is available to metadata_keys
+        include_metadata: true
+
 processors:
   batch/multi-tenant:
     timeout: 10s
@@ -251,13 +285,6 @@ processors:
 
     # Limit number of unique tenants to prevent memory issues
     metadata_cardinality_limit: 100
-
-  # Extract tenant information from attributes
-  resource:
-    attributes:
-      - key: tenant_id
-        from_attribute: tenant.id
-        action: insert
 
 exporters:
   # Route different tenants to different backends if needed
@@ -275,17 +302,23 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, batch/multi-tenant]
+      processors: [batch/multi-tenant]
       exporters: [otlp/default]
 ```
 
-The `metadata_keys` parameter ensures that telemetry from different tenants is batched separately, even if it arrives interleaved.
+The `metadata_keys` parameter uses incoming client metadata, such as OTLP/gRPC metadata, to ensure that telemetry from different tenants is batched separately, even if it arrives interleaved.
 
 ## Signal-Specific Batch Configurations
 
 Different signal types (traces, metrics, logs) often have different characteristics and requirements.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Traces: Balance latency and throughput
   batch/traces:
@@ -364,7 +397,7 @@ exporters:
     endpoint: http://prometheus:9090/api/v1/write
 
 extensions:
-  # Enable internal metrics endpoint
+  # Enable diagnostic zPages
   zpages:
     endpoint: :55679
 
@@ -374,7 +407,12 @@ service:
     metrics:
       # Enable detailed internal metrics
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     # Application telemetry
@@ -415,6 +453,8 @@ Here's a script to generate test load and measure batch processor behavior:
 COLLECTOR_ENDPOINT="localhost:4317"
 DURATION=300  # 5 minutes
 SPANS_PER_SECOND=1000
+WORKERS=10
+RATE_PER_WORKER=$((SPANS_PER_SECOND / WORKERS))
 
 echo "Starting load test: ${SPANS_PER_SECOND} spans/sec for ${DURATION}s"
 
@@ -426,8 +466,8 @@ docker run --rm --network host \
   --otlp-endpoint ${COLLECTOR_ENDPOINT} \
   --otlp-insecure \
   --duration ${DURATION}s \
-  --rate ${SPANS_PER_SECOND} \
-  --workers 10
+  --rate ${RATE_PER_WORKER} \
+  --workers ${WORKERS}
 
 echo "Load test complete. Check collector metrics at http://localhost:8888/metrics"
 ```
@@ -531,6 +571,7 @@ extensions:
 
   file_storage:
     directory: /var/lib/otel-collector/storage
+    create_directory: true
 
   zpages:
     endpoint: :55679
@@ -541,7 +582,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
