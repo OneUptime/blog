@@ -10,11 +10,11 @@ Description: Learn how to monitor Envoy service mesh sidecar proxy performance u
 
 If you're running a service mesh in production, Envoy sidecars are probably handling most of your inter-service traffic. Every request between your microservices passes through these proxies, which makes them one of the most important components to monitor. When an Envoy sidecar starts misbehaving or consuming too many resources, it can cascade into performance problems across your entire cluster.
 
-In this guide, we'll walk through how to set up comprehensive monitoring for Envoy sidecars using OpenTelemetry. You'll learn how to collect traces, metrics, and logs from Envoy and pipe them into the OpenTelemetry Collector for processing and export.
+In this guide, we'll walk through how to set up comprehensive monitoring for Envoy sidecars using OpenTelemetry. You'll learn how to collect traces and metrics from Envoy and pipe them into the OpenTelemetry Collector for processing and export.
 
 ## Understanding Envoy's Role in a Service Mesh
 
-Before diving into configuration, it helps to understand what we're actually monitoring. In a service mesh like Istio, every pod gets an Envoy sidecar container injected alongside your application container. This sidecar intercepts all inbound and outbound network traffic.
+Before diving into configuration, it helps to understand what we're actually monitoring. In a service mesh like Istio sidecar mode, every pod with sidecar injection enabled gets an Envoy sidecar container injected alongside your application container. This sidecar intercepts inbound and outbound network traffic for that workload.
 
 ```mermaid
 graph LR
@@ -48,22 +48,22 @@ spec:
       tracing:
         # Sample 10% of requests in production (adjust based on traffic volume)
         sampling: 10.0
-        openCensusAgent:
-          address: "otel-collector.observability.svc.cluster.local:4317"
     extensionProviders:
       - name: otel-tracing
         opentelemetry:
           # Point to the OpenTelemetry Collector service in your cluster
           service: otel-collector.observability.svc.cluster.local
           port: 4317
+          resource_detectors:
+            environment: {}
 ```
 
-For newer versions of Istio (1.19+), you can use the Telemetry API for more granular control over which workloads send traces and at what sampling rate.
+For newer versions of Istio, you can use the Telemetry API for more granular control over which workloads send traces and at what sampling rate.
 
 ```yaml
 # telemetry-config.yaml
 # Use Istio's Telemetry API for fine-grained trace control
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-tracing
@@ -108,6 +108,7 @@ receivers:
           # Use Kubernetes service discovery to find all Envoy sidecars
           kubernetes_sd_configs:
             - role: pod
+          metrics_path: /stats/prometheus
           relabel_configs:
             # Only scrape pods that have the Istio sidecar annotation
             - source_labels: [__meta_kubernetes_pod_annotation_sidecar_istio_io_status]
@@ -127,7 +128,8 @@ processors:
     send_batch_size: 1024
 
   # Add Kubernetes metadata to all telemetry signals
-  k8s_attributes:
+  k8sattributes:
+    auth_type: serviceAccount
     extract:
       metadata:
         - k8s.pod.name
@@ -153,11 +155,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [k8s_attributes, filter, batch]
+      processors: [k8sattributes, filter, batch]
       exporters: [otlp]
     metrics:
       receivers: [prometheus]
-      processors: [k8s_attributes, batch]
+      processors: [k8sattributes, batch]
       exporters: [otlp]
 ```
 
@@ -175,6 +177,7 @@ graph TD
     B --> B3[envoy_http_downstream_rq_time]
     C --> C1[envoy_cluster_upstream_cx_active]
     C --> C2[envoy_cluster_upstream_cx_connect_timeout]
+    C --> C3[envoy_cluster_upstream_cx_overflow]
     D --> D1[envoy_server_memory_allocated]
     D --> D2[envoy_server_live]
 ```
@@ -207,7 +210,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           # Mount the collector config we defined earlier
           args: ["--config=/etc/otel/config.yaml"]
           ports:
@@ -250,7 +253,7 @@ spec:
 
 Beyond request-level metrics, you should track how much CPU and memory each Envoy sidecar consumes. Sidecars that are resource-starved will start dropping connections or adding latency.
 
-You can use the OpenTelemetry Collector's host metrics receiver alongside Kubernetes metrics to build this picture. But a simpler approach is to query the Envoy admin interface directly for its internal stats.
+You can use the OpenTelemetry Collector's kubeletstats receiver alongside Kubernetes metrics to build this picture. But a simpler approach for Envoy's own internal stats is to query the Envoy admin interface directly.
 
 Here's a script that queries the Envoy admin API and pushes the data to the OpenTelemetry Collector using OTLP.
 
@@ -276,20 +279,22 @@ meter = metrics.get_meter("envoy.sidecar.monitor")
 memory_gauge = meter.create_gauge(
     name="envoy.sidecar.memory.allocated",
     description="Memory allocated by the Envoy sidecar in bytes",
-    unit="bytes"
+    unit="By"
 )
 
 active_connections = meter.create_gauge(
     name="envoy.sidecar.connections.active",
     description="Number of active connections on the sidecar",
-    unit="connections"
+    unit="1"
 )
 
 def collect_envoy_stats(admin_url="http://localhost:15000"):
     """Fetch stats from the Envoy admin interface and record as OTel metrics."""
     # Query the Envoy stats endpoint in JSON format
-    response = requests.get(f"{admin_url}/stats?format=json")
+    response = requests.get(f"{admin_url}/stats?format=json", timeout=5)
+    response.raise_for_status()
     stats = response.json()
+    total_active_connections = 0
 
     for stat in stats.get("stats", []):
         name = stat["name"]
@@ -300,8 +305,10 @@ def collect_envoy_stats(admin_url="http://localhost:15000"):
             memory_gauge.set(value, {"source": "envoy_admin"})
 
         # Track active upstream connections
-        if name == "cluster.upstream_cx_active":
-            active_connections.set(value, {"source": "envoy_admin"})
+        if name.startswith("cluster.") and name.endswith(".upstream_cx_active"):
+            total_active_connections += value
+
+    active_connections.set(total_active_connections, {"source": "envoy_admin"})
 
 if __name__ == "__main__":
     import time
@@ -313,7 +320,7 @@ if __name__ == "__main__":
 
 ## Understanding Trace Context Propagation
 
-One of the biggest benefits of monitoring Envoy with OpenTelemetry is getting end-to-end trace context propagation across your service mesh. When Service A calls Service B, the Envoy sidecars automatically propagate the W3C Trace Context headers, so you get a single trace that spans both services.
+One of the biggest benefits of monitoring Envoy with OpenTelemetry is getting end-to-end trace context propagation across your service mesh. When Service A calls Service B, Envoy sidecars can participate in W3C Trace Context propagation, but the application still needs to forward trace headers on any downstream calls so you get a single trace that spans both services.
 
 ```mermaid
 sequenceDiagram
@@ -342,7 +349,7 @@ Once you have metrics flowing, set up alerts for conditions that indicate sideca
 - **High error rate**: Alert when the 5xx response ratio exceeds 1% over a 5-minute window. This usually means an upstream service is failing, but it could also indicate sidecar misconfiguration.
 - **Elevated latency**: Alert when the p99 request duration through the sidecar exceeds your SLO. For most services, adding more than 5ms of sidecar overhead is worth investigating.
 - **Memory pressure**: Alert when `server.memory_allocated` exceeds 80% of the sidecar's memory limit. Envoy doesn't handle OOM kills gracefully.
-- **Connection pool exhaustion**: Alert when `upstream_cx_active` approaches `upstream_cx_max`. This means the sidecar can't open new connections to upstream services.
+- **Connection pool exhaustion**: Alert when `upstream_cx_overflow` increases or when circuit breaker gauges like `circuit_breakers.<priority>.cx_open` report that the breaker is open. This means the sidecar can't open new connections to upstream services.
 
 ## Wrapping Up
 
