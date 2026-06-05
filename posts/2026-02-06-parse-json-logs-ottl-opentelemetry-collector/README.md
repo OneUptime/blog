@@ -25,7 +25,7 @@ Without parsing, a JSON log remains a plain string, limiting your ability to ana
 OTTL provides several functions for working with JSON data:
 
 - `ParseJSON()`: Converts a JSON string into a structured map
-- `ParseSimpleJSON()`: Parses JSON with limited depth
+- `String()`: Converts parsed values to strings when needed
 - Type checking functions to verify data types
 - Access operators to navigate nested structures
 
@@ -113,13 +113,13 @@ processors:
 
           # Parse JSON from a specific attribute
           # Some systems put JSON in attributes like "message" or "data"
-          - set(temp_parsed_attr, ParseJSON(attributes["json_data"])) where IsString(attributes["json_data"])
+          - set(cache["parsed_attr"], ParseJSON(attributes["json_data"])) where IsString(attributes["json_data"])
 
           # Extract fields from the parsed attribute to top-level attributes
-          - set(attributes["extracted_field"], temp_parsed_attr["field_name"]) where temp_parsed_attr != nil
+          - set(attributes["extracted_field"], cache["parsed_attr"]["field_name"]) where cache["parsed_attr"] != nil
 
           # Clean up temporary variable
-          - delete_key(temp_parsed_attr, "")
+          - delete_key(cache, "parsed_attr")
 ```
 
 ## Handling Parsing Errors Gracefully
@@ -130,19 +130,21 @@ Not all logs will be valid JSON. Here's how to handle parsing failures:
 # Handle JSON parsing errors
 processors:
   transform:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Try to parse JSON and set a flag if successful
-          - set(temp_parsed, ParseJSON(body)) where IsString(body) and IsMatch(body, "^[\\{\\[]")
+          - set(cache["parsed"], ParseJSON(body)) where IsString(body) and IsMatch(body, "^[\\{\\[]")
 
           # If parsing succeeded, use the parsed version
-          - set(body, temp_parsed) where temp_parsed != nil
-          - set(attributes["json_parsed"], true) where temp_parsed != nil
+          - set(body, cache["parsed"]) where cache["parsed"] != nil
+          - set(attributes["json_parsed"], true) where cache["parsed"] != nil
 
           # If parsing failed, keep original and flag it
-          - set(attributes["json_parsed"], false) where temp_parsed == nil and IsString(body)
-          - set(attributes["parsing_error"], "Invalid JSON format") where temp_parsed == nil and IsString(body)
+          - set(attributes["json_parsed"], false) where cache["parsed"] == nil and IsString(body)
+          - set(attributes["parsing_error"], "Invalid JSON format") where cache["parsed"] == nil and IsString(body)
+          - delete_key(cache, "parsed")
 ```
 
 ## Extracting and Flattening JSON
@@ -202,8 +204,7 @@ processors:
           - set(attributes["last_tag"], body["tags"][Len(body["tags"]) - 1]) where body["tags"] != nil and Len(body["tags"]) > 0
 
           # Check if array contains specific value
-          # Note: This requires iterating or using Contains if available
-          - set(attributes["is_urgent"], IsMatch(String(body["tags"]), "urgent")) where body["tags"] != nil
+          - set(attributes["is_urgent"], ContainsValue(body["tags"], "urgent")) where body["tags"] != nil
 
           # Process array of objects
           # Example: {"events": [{"type": "click", "timestamp": "..."}, {"type": "view", "timestamp": "..."}]}
@@ -240,6 +241,7 @@ processors:
 
   # Parse JSON logs using transform processor
   transform:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
@@ -253,8 +255,8 @@ processors:
           - set(attributes["app.logger"], body["logger"]) where body["logger"] != nil
 
           # Step 3: Extract trace context from JSON
-          - set(attributes["trace_id"], body["trace_id"]) where body["trace_id"] != nil
-          - set(attributes["span_id"], body["span_id"]) where body["span_id"] != nil
+          - set(trace_id, TraceID(body["trace_id"])) where IsString(body["trace_id"])
+          - set(span_id, SpanID(body["span_id"])) where IsString(body["span_id"])
 
           # Step 4: Extract error information
           - set(attributes["error.code"], body["error"]["code"]) where body["error"] != nil
@@ -274,21 +276,14 @@ processors:
 
           # Step 7: Set severity based on parsed level
           - set(severity_text, body["level"]) where body["level"] != nil
-          - set(severity_number, 9) where body["level"] == "error"
-          - set(severity_number, 13) where body["level"] == "warn"
-          - set(severity_number, 17) where body["level"] == "info"
+          - set(severity_number, SEVERITY_NUMBER_ERROR) where body["level"] == "error"
+          - set(severity_number, SEVERITY_NUMBER_WARN) where body["level"] == "warn"
+          - set(severity_number, SEVERITY_NUMBER_INFO) where body["level"] == "info"
 
   # Batch for efficiency
   batch:
     timeout: 10s
     send_batch_size: 1024
-
-  # Attributes processor to organize data
-  attributes:
-    actions:
-      # Remove temporary fields
-      - key: temp_parsed
-        action: delete
 
 exporters:
   # Export to backend
@@ -305,7 +300,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp, filelog]
-      processors: [memory_limiter, transform, batch, attributes]
+      processors: [memory_limiter, transform, batch]
       exporters: [otlp, debug]
 ```
 
@@ -371,12 +366,12 @@ processors:
       - context: log
         statements:
           # Kubernetes logs often have nested JSON in the message
-          - set(temp_k8s_msg, ParseJSON(body["message"])) where IsString(body["message"])
-          - set(body, temp_k8s_msg) where temp_k8s_msg != nil
+          - set(cache["k8s_msg"], ParseJSON(body["message"])) where IsMap(body) and IsString(body["message"])
+          - set(body, cache["k8s_msg"]) where cache["k8s_msg"] != nil
 
           # Docker logs wrap JSON in a "log" field
-          - set(temp_docker_log, ParseJSON(body["log"])) where IsString(body["log"])
-          - set(body, temp_docker_log) where temp_docker_log != nil
+          - set(cache["docker_log"], ParseJSON(body["log"])) where IsMap(body) and IsString(body["log"])
+          - set(body, cache["docker_log"]) where cache["docker_log"] != nil
 
           # Direct JSON body
           - set(body, ParseJSON(body)) where IsString(body) and IsMatch(body, "^\\{")
@@ -398,7 +393,7 @@ processors:
           - set(attributes["status_code"], Int(body["status"])) where IsString(body["status"])
 
           # Convert timestamps
-          - set(attributes["event_time"], Time(body["timestamp"], "%Y-%m-%dT%H:%M:%SZ")) where body["timestamp"] != nil
+          - set(time, Time(body["timestamp"], "%Y-%m-%dT%H:%M:%SZ")) where IsString(body["timestamp"])
 
           # Convert boolean strings
           - set(attributes["is_success"], body["success"] == "true" or body["success"] == true) where body["success"] != nil
