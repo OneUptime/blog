@@ -26,6 +26,7 @@ from opentelemetry import trace, metrics
 from opentelemetry.trace import Link, SpanContext, TraceFlags
 import uuid
 import json
+import time
 
 tracer = trace.get_tracer("wishlist.service")
 meter = metrics.get_meter("wishlist.service")
