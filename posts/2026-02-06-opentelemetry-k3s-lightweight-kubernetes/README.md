@@ -68,6 +68,8 @@ helm repo update
 helm install otel-operator open-telemetry/opentelemetry-operator \
   --namespace otel-system \
   --create-namespace \
+  --set admissionWebhooks.certManager.enabled=false \
+  --set admissionWebhooks.autoGenerateCert.enabled=true \
   --set manager.resources.requests.cpu=50m \
   --set manager.resources.requests.memory=64Mi \
   --set manager.resources.limits.cpu=100m \
@@ -75,6 +77,13 @@ helm install otel-operator open-telemetry/opentelemetry-operator \
 ```
 
 Now deploy a lightweight collector configuration tailored for k3s.
+
+```bash
+# Store the backend API key as a Kubernetes Secret
+kubectl create secret generic oneuptime-otel \
+  --namespace otel-system \
+  --from-literal=api-key="$OTEL_API_KEY"
+```
 
 ```yaml
 # Minimal collector for k3s - DaemonSet mode
@@ -93,6 +102,12 @@ spec:
     limits:
       cpu: 100m
       memory: 128Mi
+  env:
+    - name: OTEL_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: oneuptime-otel
+          key: api-key
   config:
     receivers:
       otlp:
@@ -136,7 +151,7 @@ spec:
       otlp:
         endpoint: "https://oneuptime-ingest.example.com:4317"
         headers:
-          Authorization: "Bearer ${OTEL_API_KEY}"
+          Authorization: "Bearer ${env:OTEL_API_KEY}"
         # Enable compression to save bandwidth on edge connections
         compression: gzip
         # Retry settings for intermittent connectivity
@@ -225,7 +240,7 @@ Here is a Python example using the OpenTelemetry SDK with minimal overhead.
 # Lightweight OpenTelemetry setup for edge applications
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
@@ -245,7 +260,7 @@ exporter = OTLPSpanExporter(
 )
 # Use a smaller batch and shorter schedule to minimize memory usage
 provider.add_span_processor(
-    BatchSpanExporter(
+    BatchSpanProcessor(
         exporter,
         max_queue_size=256,
         max_export_batch_size=64,
@@ -266,7 +281,7 @@ with tracer.start_as_current_span("read-sensor-data") as span:
 
 ## Collecting k3s-Specific Metrics
 
-k3s uses SQLite or etcd for its datastore, and it bundles components like Traefik as the default ingress controller. You can collect metrics from these k3s-specific components.
+k3s uses SQLite, embedded etcd, or an external datastore, and it bundles components like Traefik as the default ingress controller. You can collect metrics from these k3s-specific components.
 
 ```yaml
 # Prometheus receiver to scrape k3s component metrics
@@ -274,12 +289,18 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        # Scrape k3s server metrics
-        - job_name: 'k3s-server'
+        # Scrape k3s supervisor metrics.
+        # Start k3s with --supervisor-metrics and grant the collector
+        # service account permission to GET the non-resource URL /metrics.
+        - job_name: 'k3s-supervisor'
           scrape_interval: 60s
+          scheme: https
           static_configs:
-            - targets: ['127.0.0.1:10249']
+            - targets: ['kubernetes.default.svc:443']
           metrics_path: /metrics
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
         # Scrape Traefik ingress metrics (k3s default ingress)
         - job_name: 'traefik'
@@ -325,9 +346,14 @@ For **K0s**, the Helm-based installation works the same as k3s. Just make sure t
 
 ```bash
 # K0s uses a different kubeconfig location
-export KUBECONFIG=/var/lib/k0s/pki/admin.conf
-helm install otel-operator open-telemetry/opentelemetry-helm-charts \
-  --namespace otel-system --create-namespace
+mkdir -p ~/.kube
+sudo k0s kubeconfig admin > ~/.kube/k0s.config
+export KUBECONFIG=~/.kube/k0s.config
+helm install otel-operator open-telemetry/opentelemetry-operator \
+  --namespace otel-system \
+  --create-namespace \
+  --set admissionWebhooks.certManager.enabled=false \
+  --set admissionWebhooks.autoGenerateCert.enabled=true
 ```
 
 ## Summary
