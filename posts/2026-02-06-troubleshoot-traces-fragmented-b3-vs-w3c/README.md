@@ -50,7 +50,9 @@ Inspect the HTTP headers between services:
 def log_trace_headers():
     headers_of_interest = [
         'traceparent', 'tracestate',           # W3C
-        'x-b3-traceid', 'x-b3-spanid', 'b3',  # B3
+        'x-b3-traceid', 'x-b3-spanid',
+        'x-b3-parentspanid', 'x-b3-sampled',
+        'x-b3-flags', 'b3',                    # B3
     ]
     for h in headers_of_interest:
         value = request.headers.get(h)
@@ -117,30 +119,28 @@ otel.SetTextMapPropagator(
 With a composite propagator, the outgoing request will include both sets of headers:
 
 ```text
-traceparent: 00-abc123...-def456...-01
-X-B3-TraceId: abc123...
-X-B3-SpanId: def456...
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+X-B3-TraceId: 4bf92f3577b34da6a3ce929d0e0e4736
+X-B3-SpanId: 00f067aa0ba902b7
 X-B3-Sampled: 1
 ```
 
 The receiving service can extract from whichever format it understands.
 
-## Fix 3: Use the Collector as a Propagation Bridge
+## Fix 3: Do Not Use the Collector as a Propagation Bridge
 
-If you cannot change the SDKs, deploy the Collector between services and configure it to translate between propagation formats. However, the Collector does not actually change propagation headers in pass-through mode. It can re-export with different context, but this only works if the Collector is actively involved in the request path (not just receiving telemetry data).
+If you cannot change the SDKs, do not rely on the OpenTelemetry Collector to translate propagation formats between services. The Collector receives telemetry data after spans are produced; it does not rewrite the HTTP propagation headers that Service A sends to Service B.
 
-A better approach is to use a service mesh (like Istio or Linkerd) that can handle header translation:
+If you use a service mesh like Istio, the mesh can create proxy spans, but your applications still need to forward the trace headers on downstream requests. For mixed W3C and B3 environments, make sure services forward the relevant headers:
 
-```yaml
-# Istio can be configured to support multiple trace header formats
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      tracing:
-        zipkin:
-          address: otel-collector.observability:9411
+```text
+traceparent
+tracestate
+x-b3-traceid
+x-b3-spanid
+x-b3-parentspanid
+x-b3-sampled
+x-b3-flags
 ```
 
 ## Fix 4: Migrate B3 Services Gradually
