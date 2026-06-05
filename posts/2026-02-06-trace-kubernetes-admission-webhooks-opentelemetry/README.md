@@ -60,7 +60,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -81,7 +81,7 @@ func initTracer() func() {
         resource.WithAttributes(
             semconv.ServiceName("admission-webhook"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
 
@@ -122,6 +122,7 @@ Now instrument the actual validation logic with detailed span attributes.
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "io"
@@ -130,7 +131,6 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/trace"
     admissionv1 "k8s.io/api/admission/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -141,9 +141,7 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
     // Start a span for the validation operation
-    ctx, span := tracer.Start(ctx, "validate-resource",
-        trace.WithSpanKind(trace.SpanKindServer),
-    )
+    ctx, span := tracer.Start(ctx, "validate-resource")
     defer span.End()
 
     // Read and parse the admission review request
@@ -164,6 +162,13 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
     }
 
     req := review.Request
+    if req == nil {
+        err := fmt.Errorf("admission review request is missing")
+        span.RecordError(err)
+        span.SetStatus(codes.Error, "missing admission review request")
+        http.Error(w, "bad request", http.StatusBadRequest)
+        return
+    }
 
     // Add resource details as span attributes for filtering and analysis
     span.SetAttributes(
@@ -173,6 +178,7 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
         attribute.String("k8s.operation", string(req.Operation)),
         attribute.String("k8s.user", req.UserInfo.Username),
         attribute.String("k8s.uid", string(req.UID)),
+        attribute.Int("admission.timeout_seconds", 5),
     )
 
     // Run the actual policy validation
@@ -234,12 +240,11 @@ If your webhook is written in Python (for example, using Flask), the instrumenta
 from flask import Flask, request, jsonify
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-import json
 
 # Configure OpenTelemetry
 resource = Resource.create({
@@ -247,7 +252,7 @@ resource = Resource.create({
     "service.version": "1.0.0",
 })
 provider = TracerProvider(resource=resource)
-provider.add_span_processor(BatchSpanExporter(
+provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="otel-collector.otel-system:4317", insecure=True)
 ))
 trace.set_tracer_provider(provider)
@@ -277,7 +282,7 @@ def validate():
         span.set_attribute("admission.reason", reason)
 
         if not allowed:
-            span.set_status(StatusCode.ERROR, f"denied: {reason}")
+            span.set_status(Status(StatusCode.ERROR, f"denied: {reason}"))
 
     # Return admission response
     return jsonify({
@@ -314,6 +319,8 @@ The OpenTelemetry SDK can produce these metrics alongside traces.
 package main
 
 import (
+    "log"
+
     "go.opentelemetry.io/otel/metric"
 )
 
@@ -353,7 +360,7 @@ func initMetrics(meter metric.Meter) {
 
 The Kubernetes API server enforces a timeout on webhook calls (default 10 seconds, configurable down to 1 second). If your webhook does not respond in time, it either fails open or fails closed depending on the `failurePolicy`.
 
-Add the webhook timeout to your spans so you can detect when you are getting close to the limit.
+Record the configured webhook timeout as a span attribute so you can detect when you are getting close to the limit.
 
 ```yaml
 # ValidatingWebhookConfiguration with timeout settings
@@ -385,7 +392,7 @@ webhooks:
 
 Once you have tracing in place, here are the patterns to watch for.
 
-**High latency webhooks**: Filter spans by `admission.request.duration` to find slow policy evaluations. Common causes are external API calls (like checking an image registry) inside the webhook handler.
+**High latency webhooks**: Sort or filter by span duration, and use the `admission.request.duration` histogram to find slow policy evaluations. Common causes are external API calls (like checking an image registry) inside the webhook handler.
 
 **Spurious denials**: Search for spans where `admission.allowed = false` and group by `admission.reason` to find the most common denial causes. Sometimes a misconfigured policy blocks legitimate workloads.
 
@@ -415,7 +422,13 @@ metadata:
   namespace: webhook-system
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: admission-webhook
   template:
+    metadata:
+      labels:
+        app: admission-webhook
     spec:
       containers:
         # The webhook server
@@ -456,6 +469,6 @@ spec:
 
 Admission webhooks are critical infrastructure that most teams treat as black boxes. Adding OpenTelemetry tracing turns them transparent. You get visibility into every policy decision, latency measurements that help prevent timeout issues, and structured attributes that make debugging denials straightforward.
 
-The instrumentation is lightweight. A few span creations and attribute sets add microseconds to your webhook response time. That is a small price for the ability to answer "why did this pod fail to create?" in seconds instead of hours.
+The instrumentation is lightweight when you use batching and keep span attributes bounded. A few span creations and attribute sets are a small price for the ability to answer "why did this pod fail to create?" in seconds instead of hours.
 
 Start with your most critical webhooks and expand from there. The traces will pay for themselves the first time a misconfigured policy blocks a production deployment.
