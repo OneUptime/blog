@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector Processors, Testing, Go, Custom Component
 
-Description: Build a test harness in Go that lets you unit test custom OpenTelemetry Collector processors with real trace and metric data.
+Description: Build a test harness in Go that lets you unit test custom OpenTelemetry Collector processors with real trace data.
 
 Writing a custom OpenTelemetry Collector processor is only half the work. The other half is testing it. The Collector SDK provides interfaces and test utilities that let you feed synthetic data into your processor and inspect what comes out, without running a full Collector instance. This post shows you how to build a proper test harness.
 
 ## The Processor Interface
 
-Every Collector processor implements the `processor` interface from the `go.opentelemetry.io/collector/processor` package. For traces, the key method is `ConsumeTraces`, which receives a `ptrace.Traces` object and returns it (possibly modified) to the next consumer in the pipeline.
+Trace processors implement the `processor.Traces` interface from the `go.opentelemetry.io/collector/processor` package. The data path comes from the embedded `consumer.Traces` interface: `ConsumeTraces` receives a `ptrace.Traces` object, modifies it if needed, and returns an error after sending it to the next consumer in the pipeline.
 
 ## A Sample Processor to Test
 
-Let us say you have written a processor that adds a `deployment.environment` attribute to all spans based on a configuration value:
+Let us say you have written a processor that adds a `deployment.environment` resource attribute to every resource span based on a configuration value:
 
 ```go
 // processor.go
@@ -23,6 +23,8 @@ package envprocessor
 import (
     "context"
 
+    "go.opentelemetry.io/collector/component"
+    "go.opentelemetry.io/collector/consumer"
     "go.opentelemetry.io/collector/pdata/ptrace"
     "go.opentelemetry.io/collector/processor"
 )
@@ -34,6 +36,16 @@ type Config struct {
 type envProcessor struct {
     config *Config
     next   consumer.Traces
+}
+
+var _ processor.Traces = (*envProcessor)(nil)
+
+func (p *envProcessor) Start(ctx context.Context, host component.Host) error {
+    return nil
+}
+
+func (p *envProcessor) Shutdown(ctx context.Context) error {
+    return nil
 }
 
 func (p *envProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
@@ -60,11 +72,13 @@ package envprocessor
 
 import (
     "context"
+    "fmt"
     "testing"
 
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
     "go.opentelemetry.io/collector/consumer/consumertest"
+    "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/ptrace"
 )
 
@@ -185,6 +199,14 @@ func createRealisticTrace() ptrace.Traces {
     spanB.Attributes().PutStr("db.system", "postgresql")
 
     return td
+}
+
+func generateTraceID() pcommon.TraceID {
+    return pcommon.TraceID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}
+}
+
+func generateSpanID() pcommon.SpanID {
+    return pcommon.SpanID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 }
 
 func TestEnvProcessor_HandlesMultipleResourceSpans(t *testing.T) {
