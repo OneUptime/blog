@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Honeycomb, Markers, Deployment Annotations
 
-Description: Create Honeycomb markers from your CI/CD pipeline to annotate deployment events on trace visualizations for faster incident correlation.
+Description: Create Honeycomb markers from your CI/CD pipeline to annotate deployment events on Honeycomb graphs for faster incident correlation.
 
-Honeycomb Markers let you annotate your trace visualizations with deployment events. When you see a latency spike in Honeycomb, a marker shows you exactly when a deploy happened, making it trivial to correlate performance changes with code changes. While Markers use the Honeycomb API (not OTLP), you can integrate them into OpenTelemetry workflows.
+Honeycomb Markers let you annotate your Honeycomb graphs with deployment events. When you see a latency spike in Honeycomb, a marker shows you exactly when a deploy happened, making it trivial to correlate performance changes with code changes. While Markers use the Honeycomb API (not OTLP), you can integrate them into OpenTelemetry workflows.
 
 ## What Are Honeycomb Markers?
 
@@ -18,9 +18,10 @@ The most common approach is to create a marker when your CI/CD pipeline deploys 
 
 ```bash
 # Create a deployment marker via the Honeycomb API
+# HONEYCOMB_CONFIG_KEY must be a Honeycomb Configuration Key with Manage Markers permission.
 
 curl -X POST "https://api.honeycomb.io/1/markers/${HONEYCOMB_DATASET}" \
-  -H "X-Honeycomb-Team: ${HONEYCOMB_API_KEY}" \
+  -H "X-Honeycomb-Team: ${HONEYCOMB_CONFIG_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"message\": \"Deploy ${SERVICE_NAME} v${VERSION}\",
@@ -36,8 +37,6 @@ Here is a more robust Python script you can call from your deployment pipeline:
 ```python
 import requests
 import os
-import json
-from datetime import datetime
 
 class HoneycombMarkerClient:
     def __init__(self, api_key, dataset):
@@ -59,9 +58,9 @@ class HoneycombMarkerClient:
 
         if url:
             payload["url"] = url
-        if start_time:
+        if start_time is not None:
             payload["start_time"] = int(start_time)
-        if end_time:
+        if end_time is not None:
             payload["end_time"] = int(end_time)
 
         response = requests.post(
@@ -76,7 +75,7 @@ class HoneycombMarkerClient:
 def create_deploy_marker():
     """Create a deployment marker with metadata from environment."""
     client = HoneycombMarkerClient(
-        api_key=os.environ["HONEYCOMB_API_KEY"],
+        api_key=os.environ["HONEYCOMB_CONFIG_KEY"],
         dataset=os.environ.get("HONEYCOMB_DATASET", "production"),
     )
 
@@ -107,6 +106,8 @@ You can also create a deployment span in OpenTelemetry and a Honeycomb marker at
 
 ```python
 from opentelemetry import trace
+from datetime import datetime, timezone
+import os
 import time
 
 tracer = trace.get_tracer("deployment")
@@ -114,7 +115,7 @@ tracer = trace.get_tracer("deployment")
 def deploy_with_tracing_and_marker(service_name, version, deploy_fn):
     """Run a deployment with both an OTel span and a Honeycomb marker."""
     marker_client = HoneycombMarkerClient(
-        api_key=os.environ["HONEYCOMB_API_KEY"],
+        api_key=os.environ["HONEYCOMB_CONFIG_KEY"],
         dataset=os.environ.get("HONEYCOMB_DATASET", "production"),
     )
 
@@ -123,7 +124,7 @@ def deploy_with_tracing_and_marker(service_name, version, deploy_fn):
         attributes={
             "deployment.service": service_name,
             "deployment.version": version,
-            "deployment.start_time": datetime.utcnow().isoformat(),
+            "deployment.start_time": datetime.now(timezone.utc).isoformat(),
         }
     ) as span:
         start_time = time.time()
@@ -187,7 +188,7 @@ jobs:
           MESSAGE="Deploy ${{ github.repository }} ${GITHUB_SHA::8} - ${STATUS}"
 
           curl -X POST "https://api.honeycomb.io/1/markers/${HONEYCOMB_DATASET}" \
-            -H "X-Honeycomb-Team: ${{ secrets.HONEYCOMB_API_KEY }}" \
+            -H "X-Honeycomb-Team: ${{ secrets.HONEYCOMB_CONFIG_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{
               \"message\": \"${MESSAGE}\",
