@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, SQL, Database Monitoring, Metric, Observability
 
-Description: Learn how to configure the SQL Query receiver in OpenTelemetry Collector to monitor any SQL database through custom queries, track performance metrics.
+Description: Learn how to configure the SQL Query receiver in OpenTelemetry Collector to monitor supported SQL databases through custom queries, track performance metrics.
 
-The SQL Query receiver is one of the most flexible receivers in the OpenTelemetry Collector ecosystem. Unlike database-specific receivers that are limited to particular database types, the SQL Query receiver works with any SQL-compliant database. This makes it invaluable when you need custom metrics from databases that don't have dedicated receivers, or when you want to track business-specific metrics stored in your database.
+The SQL Query receiver is one of the most flexible receivers in the OpenTelemetry Collector ecosystem. Unlike database-specific receivers that are limited to particular database types, the SQL Query receiver works with many SQL databases through its supported drivers. This makes it invaluable when you need custom metrics from databases that don't have dedicated receivers, or when you want to track business-specific metrics stored in your database.
 
 ## What is the SQL Query Receiver?
 
-The SQL Query receiver executes SQL queries against a database at regular intervals and converts the results into OpenTelemetry metrics. It supports any database with a SQL driver, including PostgreSQL, MySQL, Microsoft SQL Server, Oracle, SQLite, and more. The receiver is particularly useful for:
+The SQL Query receiver executes SQL queries against a database at regular intervals and converts the results into OpenTelemetry metrics. It supports drivers such as PostgreSQL, MySQL, Microsoft SQL Server, Oracle, Snowflake, SAP HANA, Sybase, and ClickHouse. The receiver is particularly useful for:
 
 - Monitoring custom business metrics stored in databases
 - Tracking table row counts and growth rates
-- Measuring query execution times
+- Collecting metrics derived from query results
 - Monitoring data freshness and staleness
 - Collecting application-specific metrics that live in your database
 
@@ -45,7 +45,7 @@ The SQL Query receiver requires three main components: database connection detai
 receivers:
   # SQL Query receiver for custom database monitoring
   sqlquery:
-    # Database driver - supported: postgres, mysql, sqlserver, oracle, sqlite
+    # Database driver - supported: postgres, mysql, sqlserver, oracle, snowflake, hdb, tds, clickhouse
     driver: postgres
 
     # Data Source Name (DSN) - connection string for your database
@@ -60,7 +60,7 @@ receivers:
         metrics:
           # Metric name in OpenTelemetry format
           - metric_name: database.users.active.count
-            # Metric type: gauge (point-in-time value) or sum (cumulative)
+            # Metric value type: int or double
             value_type: int
             # Column name from query result containing the metric value
             value_column: "user_count"
@@ -177,32 +177,32 @@ receivers:
 
 ## Advanced Configuration: Multiple Queries and Scheduling
 
-In production, you'll typically run multiple queries with different collection intervals. Here's a comprehensive example:
+In production, you'll typically run multiple queries. A receiver instance has one `collection_interval`, so use multiple named receiver instances when different schedules are needed. Here's a comprehensive example:
 
 ```yaml
 receivers:
-  sqlquery:
+  # Fast-changing metric: active sessions (collect frequently)
+  sqlquery/sessions:
     driver: postgres
     datasource: "host=prod-db.internal port=5432 user=monitor password=${DB_PASSWORD} dbname=production sslmode=require"
-
-    # Collection interval - how often to execute queries (default: 10s)
-    collection_interval: 30s
-
+    collection_interval: 5s
     queries:
-      # Fast-changing metric: active sessions (collect frequently)
       - sql: |
           SELECT COUNT(*) as session_count
           FROM pg_stat_activity
           WHERE state = 'active'
-        # Override collection interval for this specific query
-        collection_interval: 5s
         metrics:
           - metric_name: postgres.sessions.active
             value_type: int
             value_column: "session_count"
             description: "Number of active database sessions"
 
-      # Table-level metrics with labels
+  # Table-level metrics with labels
+  sqlquery/tables:
+    driver: postgres
+    datasource: "host=prod-db.internal port=5432 user=monitor password=${DB_PASSWORD} dbname=production sslmode=require"
+    collection_interval: 30s
+    queries:
       - sql: |
           SELECT
             schemaname,
@@ -221,7 +221,12 @@ receivers:
             value_column: "dead_rows"
             attribute_columns: ["schemaname", "tablename"]
 
-      # Business metric: orders processed per hour
+  # Business metric: orders processed per hour
+  sqlquery/business:
+    driver: postgres
+    datasource: "host=prod-db.internal port=5432 user=monitor password=${DB_PASSWORD} dbname=production sslmode=require"
+    collection_interval: 60s
+    queries:
       - sql: |
           SELECT
             COUNT(*) as order_count,
@@ -230,7 +235,6 @@ receivers:
           FROM orders
           WHERE created_at > NOW() - INTERVAL '1 hour'
             AND status = 'completed'
-        collection_interval: 60s
         metrics:
           - metric_name: business.orders.hourly.count
             value_type: int
@@ -243,11 +247,16 @@ receivers:
             value_type: double
             value_column: "avg_order_value"
             unit: "USD"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [sqlquery/sessions, sqlquery/tables, sqlquery/business]
 ```
 
 This configuration demonstrates several important patterns:
 
-1. **Global and per-query intervals**: The receiver has a default 30s interval, but individual queries override it as needed
+1. **Different intervals through named receivers**: Each receiver instance has its own collection interval
 2. **Multiple metrics from one query**: The table stats query produces two metrics efficiently
 3. **Business metrics**: Track domain-specific KPIs directly from your database
 4. **Attribute columns**: Add labels to metrics for filtering and grouping
@@ -264,12 +273,8 @@ receivers:
 
     collection_interval: 30s
 
-    # Connection pool settings - reuse connections for efficiency
-    max_open_connections: 5
-    max_idle_connections: 2
-
-    # Timeout for query execution - prevents hanging on slow queries
-    query_timeout: 10s
+    # Connection pool setting - reuse connections for efficiency
+    max_open_conn: 5
 
     queries:
       - sql: |
@@ -334,7 +339,7 @@ service:
 
 ## Monitoring Query Performance
 
-The SQL Query receiver itself emits internal metrics about query execution. Enable these to monitor the health of your monitoring:
+The Collector emits internal component metrics that help you monitor the health of your monitoring pipeline. Enable these to watch whether the receiver and exporters are accepting or dropping metric points:
 
 ```yaml
 # Enable Collector internal metrics
@@ -503,7 +508,7 @@ If queries are slow or timing out:
 2. Reduce collection intervals for expensive queries
 3. Optimize SQL queries with EXPLAIN ANALYZE
 4. Consider creating materialized views for complex metrics
-5. Increase query_timeout if legitimate queries need more time
+5. Use database or driver-specific timeout settings if legitimate queries need more time
 
 ## Related Topics
 
@@ -516,7 +521,7 @@ For more information about OpenTelemetry Collector receivers and database monito
 
 ## Summary
 
-The SQL Query receiver provides unmatched flexibility for database monitoring. By writing custom SQL queries, you can collect exactly the metrics your team needs, whether that's system-level database stats, business KPIs, or application-specific measurements. The receiver works with any SQL database and integrates seamlessly into OpenTelemetry pipelines.
+The SQL Query receiver provides unmatched flexibility for database monitoring. By writing custom SQL queries, you can collect exactly the metrics your team needs, whether that's system-level database stats, business KPIs, or application-specific measurements. The receiver works with its supported SQL database drivers and integrates seamlessly into OpenTelemetry pipelines.
 
 Start with simple queries to monitor basic metrics, then expand to track business-critical data as your observability practice matures. Remember to follow security best practices, optimize query performance, and monitor the receiver itself to ensure reliable telemetry collection.
 
