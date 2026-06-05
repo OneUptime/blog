@@ -10,11 +10,11 @@ Description: Step-by-step guide to tracing HTTP requests through NGINX reverse p
 
 NGINX sits in front of a huge number of production systems, handling reverse proxying, load balancing, TLS termination, and static file serving. It's often the first thing a request touches and the last thing a response passes through. But when you're looking at distributed traces, there's usually a gap right where NGINX sits. Your traces start at the application layer, and you have no idea how much latency NGINX added or which upstream it selected.
 
-The OpenTelemetry NGINX module changes that. It instruments NGINX to generate spans for every proxied request and propagate trace context to your backend services. Setting it up takes a bit of work since NGINX doesn't have a plugin ecosystem as flexible as some other tools, but the result is worth it. You get complete traces from the proxy layer all the way through your service mesh.
+The OpenTelemetry NGINX module changes that. It instruments NGINX to generate spans for proxied requests and propagate trace context to your backend services. Setting it up takes a bit of work since NGINX doesn't have a plugin ecosystem as flexible as some other tools, but the result is worth it. You get complete traces from the proxy layer all the way through your service mesh.
 
 ## How the NGINX OpenTelemetry Module Works
 
-The `otel_ngx_module` is a dynamic module for NGINX that hooks into the request processing lifecycle. It creates a span when a request arrives, attaches relevant HTTP attributes, and injects trace context headers into the proxied request. When the response comes back, it records the status code and finalizes the span.
+The `ngx_otel_module` is a dynamic module for NGINX that hooks into the request processing lifecycle. It creates a span when tracing is enabled for a request, attaches relevant HTTP attributes, and injects trace context headers into the proxied request. When the response comes back, it records the status code and finalizes the span.
 
 ```mermaid
 graph LR
@@ -29,80 +29,43 @@ The module exports spans using OTLP over gRPC directly to an OpenTelemetry Colle
 
 ## Installing the Module
 
-There are a few ways to get the OpenTelemetry module into your NGINX setup. The easiest approach for production is to use the official NGINX Docker image and add the module at build time.
+There are a few ways to get the OpenTelemetry module into your NGINX setup. The easiest approach for production is to use the official NGINX packages and install the prebuilt dynamic module that matches your NGINX package.
 
-Here's a Dockerfile that builds NGINX with the OpenTelemetry module compiled in.
+Here's a Dockerfile that installs the NGINX OpenTelemetry dynamic module into the official NGINX image.
 
 ```dockerfile
 # Start from the official NGINX base image
 
-FROM nginx:1.25
+FROM nginx:1.29-bookworm
 
-# Install dependencies needed to build the OpenTelemetry module
-RUN apt-get update && apt-get install -y \
-    cmake \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev \
-    libpcre3-dev \
-    pkg-config \
-    libc-ares-dev \
-    libre2-dev \
-    libcurl4-openssl-dev \
-    git
-
-# Clone and build the OpenTelemetry NGINX module
-RUN git clone https://github.com/open-telemetry/opentelemetry-cpp-contrib.git /opt/otel-cpp-contrib \
-    && cd /opt/otel-cpp-contrib/instrumentation/nginx \
-    && mkdir build && cd build \
-    && cmake -DNGINX_BIN=/usr/sbin/nginx .. \
-    && make -j$(nproc)
-
-# Copy the compiled module to the NGINX modules directory
-RUN cp /opt/otel-cpp-contrib/instrumentation/nginx/build/otel_ngx_module.so /usr/lib/nginx/modules/
-
-# Clean up build dependencies to keep the image small
-RUN apt-get remove -y cmake build-essential git && apt-get autoremove -y
+# Install the OpenTelemetry module package from the NGINX package repository
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx-module-otel \
+    && rm -rf /var/lib/apt/lists/*
 ```
 
-Alternatively, if you're using a package manager, some distributions provide pre-built packages for the module. Check the opentelemetry-cpp-contrib repository for the latest installation options.
+Alternatively, if you're using a package manager outside Docker, install the `nginx-module-otel` package for NGINX Open Source or `nginx-plus-module-otel` for NGINX Plus from the official NGINX repositories.
 
 ## Configuring NGINX for OpenTelemetry
 
 Once the module is installed, you need to load it and configure it in your `nginx.conf`. The configuration has two parts: the module-level settings that define where to send traces, and the per-location settings that control which requests get instrumented.
 
-First, create the OpenTelemetry configuration file that the module reads at startup.
+First, configure the exporter and batching settings in the `http` block.
 
-```yaml
-# otel-nginx.toml - OpenTelemetry module configuration
-# This file is referenced by the otel_config directive in nginx.conf
+```nginx
+otel_exporter {
+    # gRPC endpoint of the OpenTelemetry Collector
+    endpoint otel-collector:4317;
 
-exporter = "otlp"
+    # Maximum interval between exports
+    interval 5s;
 
-processor = "batch"
+    # Maximum spans per batch, per worker
+    batch_size 512;
 
-[exporters.otlp]
-# gRPC endpoint of the OpenTelemetry Collector
-host = "otel-collector"
-port = 4317
-# Use insecure connection for local/internal collector
-use_ssl = false
-
-[processors.batch]
-# Maximum number of spans to batch before exporting
-max_queue_size = 2048
-# Export interval in milliseconds
-schedule_delay_millis = 5000
-# Maximum batch size per export
-max_export_batch_size = 512
-
-[service]
-# Service name that appears in traces
-name = "nginx-proxy"
-
-[sampler]
-# Always sample (ratio of 1.0)
-name = "AlwaysOn"
+    # Number of pending batches per worker before spans are dropped
+    batch_count 4;
+}
 ```
 
 Now configure NGINX itself to load the module and reference this configuration.
@@ -111,16 +74,19 @@ Now configure NGINX itself to load the module and reference this configuration.
 # nginx.conf - NGINX configuration with OpenTelemetry tracing
 
 # Load the OpenTelemetry dynamic module
-load_module modules/otel_ngx_module.so;
+load_module modules/ngx_otel_module.so;
 
 events {
     worker_connections 1024;
 }
 
 http {
-    # Point to the OpenTelemetry configuration file
+    # Configure the OpenTelemetry exporter and batch settings
     otel_exporter {
         endpoint otel-collector:4317;
+        interval 5s;
+        batch_size 512;
+        batch_count 4;
     }
 
     # Set the service name for all spans from this NGINX instance
@@ -129,8 +95,7 @@ http {
     # Enable trace context propagation using W3C format
     otel_trace_context propagate;
 
-    # Capture common HTTP attributes on spans
-    otel_capture_headers on;
+    # Common HTTP attributes are added automatically
 
     # Upstream backend servers
     upstream user_service {
@@ -184,7 +149,7 @@ http {
             return 200 "OK";
         }
 
-        # Static assets - trace with sampling to reduce volume
+        # Static assets - trace only if this volume is useful
         location /static/ {
             otel_trace on;
             root /var/www;
@@ -217,6 +182,7 @@ The spans from NGINX include these attributes by default:
 
 - `http.method` - the request method (GET, POST, etc.)
 - `http.target` - the request URI path
+- `http.route` - the matching route
 - `http.status_code` - the response status code
 - `http.scheme` - whether the connection was HTTP or HTTPS
 - `net.host.name` - the server name from the Host header
@@ -228,8 +194,6 @@ Here's a complete Docker Compose file that runs NGINX with OpenTelemetry alongsi
 
 ```yaml
 # docker-compose.yml - NGINX with OpenTelemetry tracing
-version: "3.8"
-
 services:
   nginx:
     build:
@@ -238,19 +202,17 @@ services:
     ports:
       - "80:80"
     volumes:
-      # Mount the NGINX config and OTel config
+      # Mount the NGINX config
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./otel-nginx.toml:/etc/nginx/otel-nginx.toml:ro
     depends_on:
       - otel-collector
       - user-service
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.146.0
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
-      - "8889:8889"   # Prometheus metrics
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
 
@@ -259,6 +221,7 @@ services:
     environment:
       # Configure the backend service to export traces to the same collector
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_SERVICE_NAME: user-service
 ```
 
@@ -283,14 +246,16 @@ processors:
 
   # Filter out health check spans to reduce noise
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/ready"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/ready"'
 
 exporters:
   otlp:
-    endpoint: https://your-tracing-backend:4317
+    endpoint: your-tracing-backend:4317
+    tls:
+      insecure: false
 
   # Also log spans for debugging during setup
   debug:
@@ -306,18 +271,18 @@ service:
 
 ## Handling TLS Termination
 
-When NGINX handles TLS termination, the spans it generates will show `https` as the scheme. But the connection between NGINX and your backend is typically plain HTTP. This is normal and expected. The span attributes will correctly reflect what NGINX sees: an HTTPS connection from the client and an HTTP connection to the upstream.
+When NGINX handles TLS termination, the spans it generates will show `https` as the scheme. But the connection between NGINX and your backend is typically plain HTTP. This is normal and expected. The NGINX span attributes reflect the client-facing connection that NGINX handles, while backend spans reflect the request as the upstream service receives it.
 
 If you need to trace the TLS handshake itself, that's not something the OpenTelemetry module captures. TLS negotiation happens before the HTTP module runs. For TLS-level metrics, you'll want to look at NGINX's built-in ssl module metrics or use a separate exporter.
 
 ## Performance Considerations
 
-Adding tracing to NGINX does have a performance cost, but it's usually small. The module performs span creation and header injection synchronously in the request path, which typically adds less than a millisecond of latency. Span export happens asynchronously via the batch processor, so it doesn't block request handling.
+Adding tracing to NGINX does have a performance cost. NGINX's module documentation describes request processing overhead around 10-15% for the native module, so measure the impact in your own workload before enabling it everywhere. Span export happens asynchronously in batches, so exporting does not require each request to wait for a collector round trip.
 
-If you're running a high-traffic NGINX instance and concerned about overhead, consider using sampling. You can set the sampler to `TraceIdRatioBased` in the OpenTelemetry configuration to only trace a percentage of requests. A 10% sampling rate still gives you excellent visibility while reducing the data volume by 90%.
+If you're running a high-traffic NGINX instance and concerned about overhead, consider using sampling. You can use NGINX's `split_clients` directive with `$otel_trace_id` and then set `otel_trace` from the resulting variable. A 10% sampling rate still gives you excellent visibility while reducing the data volume by 90%.
 
-For very high-throughput scenarios, make sure the batch processor's `max_queue_size` is large enough to handle burst traffic. If the queue fills up, spans will be dropped. Monitor the collector's metrics to watch for dropped spans.
+For very high-throughput scenarios, make sure `batch_size` and `batch_count` are large enough to handle burst traffic. If the pending batch limit is exceeded, spans will be dropped. Monitor the collector's metrics to watch for dropped spans.
 
 ## Wrapping Up
 
-Tracing requests through NGINX with OpenTelemetry fills an important gap in your observability stack. Without it, your distributed traces have a blind spot right at the entry point of your infrastructure. With the OpenTelemetry module configured, you can see exactly how long NGINX takes to process each request, which upstream it selected, and how the trace context flows through to your backend services. The setup requires a custom NGINX build, but once it's running, the traces flow automatically with no changes needed in your application code.
+Tracing requests through NGINX with OpenTelemetry fills an important gap in your observability stack. Without it, your distributed traces have a blind spot right at the entry point of your infrastructure. With the OpenTelemetry module configured, you can see exactly how long NGINX takes to process each request, which upstream it selected, and how the trace context flows through to your backend services. The setup requires loading the NGINX OpenTelemetry dynamic module, but once it's running, the traces flow automatically with no changes needed in your application code.
