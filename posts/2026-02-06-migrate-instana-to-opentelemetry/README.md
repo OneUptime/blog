@@ -16,7 +16,7 @@ This guide walks through a complete migration from Instana to OpenTelemetry. We 
 
 ## Instana vs OpenTelemetry: Key Differences
 
-Instana's approach is heavily agent-based. You install a host agent that auto-discovers processes, injects instrumentation, and manages configuration centrally. OpenTelemetry takes a different approach where instrumentation lives in your application (via SDKs or auto-instrumentation) and a separate Collector handles routing and processing.
+Instana's approach is heavily agent-based. You install a host agent that auto-discovers processes and coordinates with in-process collectors or sensors for application telemetry. OpenTelemetry takes a different approach where instrumentation lives in your application (via SDKs or auto-instrumentation) and a separate Collector handles routing and processing.
 
 | Instana Concept | OpenTelemetry Equivalent |
 |---|---|
@@ -52,7 +52,7 @@ graph TD
     end
 ```
 
-The main structural difference is that Instana uses a host-level agent that discovers and instruments processes automatically, while OpenTelemetry uses per-application SDKs that you configure explicitly.
+The main structural difference is that Instana uses a host-level agent plus language-specific sensors or collectors, while OpenTelemetry uses per-application SDKs or auto-instrumentation that you configure explicitly.
 
 ---
 
@@ -68,10 +68,12 @@ sudo systemctl disable instana-agent
 
 # Remove the Instana agent package
 # On Debian/Ubuntu systems
-sudo apt-get remove instana-agent
+apt list --installed | grep instana-agent
+sudo apt-get purge <package-name>
 
 # On RHEL/CentOS systems
-sudo yum remove instana-agent
+yum list installed | grep instana-agent
+sudo yum remove <package-name>
 
 # On systems using the static agent install
 sudo rm -rf /opt/instana/agent
@@ -80,14 +82,14 @@ sudo rm -rf /opt/instana/agent
 If you are running in Kubernetes, remove the Instana agent DaemonSet:
 
 ```bash
-# Remove the Instana agent DaemonSet from Kubernetes
+# Remove the Instana Helm release if installed via Helm
+helm uninstall instana-agent -n instana-agent
+
+# Remove the Instana agent DaemonSet if it was installed manually
 kubectl delete daemonset instana-agent -n instana-agent
 
 # Remove the namespace if it was dedicated to Instana
 kubectl delete namespace instana-agent
-
-# Remove the Instana Helm release if installed via Helm
-helm uninstall instana-agent -n instana-agent
 ```
 
 ---
@@ -111,6 +113,7 @@ Update your Java application startup to use the OpenTelemetry agent instead of r
 java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.service.name=order-service \
      -Dotel.exporter.otlp.endpoint=http://otel-collector:4317 \
+     -Dotel.exporter.otlp.protocol=grpc \
      -Dotel.resource.attributes="deployment.environment=production,service.namespace=ecommerce" \
      -jar order-service.jar
 ```
@@ -133,6 +136,7 @@ COPY target/order-service.jar /app/order-service.jar
 ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/otel/javaagent.jar"
 ENV OTEL_SERVICE_NAME="order-service"
 ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"
+ENV OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
 ENV OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
 
 ENTRYPOINT ["java", "-jar", "/app/order-service.jar"]
@@ -142,7 +146,7 @@ ENTRYPOINT ["java", "-jar", "/app/order-service.jar"]
 
 ## Step 3: Install OpenTelemetry for Node.js Applications
 
-Instana auto-discovers Node.js processes and injects its sensor. With OpenTelemetry, you add the SDK as a dependency and initialize it before your application code:
+Instana's Node.js monitoring uses the `@instana/collector` package or the Instana AutoTrace webhook to add the in-process collector. With OpenTelemetry, you add the SDK as a dependency and initialize it before your application code:
 
 ```bash
 # Install OpenTelemetry packages for Node.js
@@ -158,20 +162,20 @@ Create a tracing initialization file that runs before your application. This rep
 ```javascript
 // tracing.js
 // This file must be loaded before any other application code
-// It replaces the Instana sensor that was auto-injected by the host agent
+// It replaces the Instana in-process collector initialization
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Configure the SDK with resource attributes
 // service.name replaces the Instana service name that was auto-detected
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'payment-service',
     [ATTR_SERVICE_VERSION]: '2.1.0',
     'deployment.environment': process.env.NODE_ENV || 'development',
@@ -217,7 +221,7 @@ process.on('SIGTERM', () => {
 Update your application startup to load the tracing file first:
 
 ```bash
-# BEFORE: Instana auto-detected Node.js and injected its sensor
+# BEFORE: Instana collector initialized before application code
 # node app.js
 
 # AFTER: Require the tracing setup before your application code
@@ -287,6 +291,7 @@ receivers:
   # Host metrics replace Instana infrastructure monitoring
   hostmetrics:
     collection_interval: 30s
+    root_path: /hostfs
     scrapers:
       cpu: {}
       memory: {}
@@ -308,9 +313,10 @@ processors:
     spike_limit_mib: 128
 
 exporters:
-  # Send all telemetry to your backend via OTLP
-  otlp:
+  # Send all telemetry to your backend via OTLP HTTP
+  otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
       x-oneuptime-token: your-token-here
 
@@ -319,15 +325,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [memory_limiter, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 Deploy the Collector as a DaemonSet in Kubernetes to replace the Instana agent DaemonSet:
@@ -358,10 +364,17 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
+            - name: hostfs
+              mountPath: /hostfs
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: otel-collector-config
+        - name: hostfs
+          hostPath:
+            path: /
+            type: Directory
 ```
 
 ---
@@ -380,6 +393,7 @@ If you used Instana's SDK for custom spans or metrics, convert them to OpenTelem
 
 # AFTER: OpenTelemetry custom span
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 # Get a tracer instance for your component
 tracer = trace.get_tracer("myapp.payments")
@@ -398,7 +412,7 @@ def process_payment(order_id, amount):
         except Exception as e:
             # Record exception details on the span
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
