@@ -81,8 +81,9 @@ def submit_assignment(student_id, assignment_id, files, submission_time):
 The grading worker runs asynchronously. To maintain trace context across the queue boundary, propagate the trace context in the message:
 
 ```python
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
+from opentelemetry.trace import SpanKind, StatusCode
 
 tracer = trace.get_tracer("grading.worker")
 
@@ -200,11 +201,19 @@ def grade_code_submission(submission):
 Track how long submissions wait in the queue before being graded:
 
 ```python
+from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+
 meter = metrics.get_meter("grading.pipeline")
+
+def observe_queue_depth(options: CallbackOptions):
+    yield Observation(get_queue_depth("grading-tasks"))
 
 queue_depth = meter.create_observable_gauge(
     "grading.queue_depth",
+    callbacks=[observe_queue_depth],
     description="Number of submissions waiting to be graded",
+    unit="1",
 )
 
 grading_latency = meter.create_histogram(
