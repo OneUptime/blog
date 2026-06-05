@@ -47,18 +47,18 @@ Install OpenTelemetry packages for Node.js along with Fastify-specific instrumen
 
 ```bash
 npm install fastify @fastify/cors @fastify/helmet
+npm install fastify-plugin
 
 npm install @opentelemetry/api \
   @opentelemetry/sdk-node \
   @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/instrumentation-http \
-  @opentelemetry/instrumentation-fastify \
+  @fastify/otel \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
 
-The `@opentelemetry/instrumentation-fastify` package provides automatic route and hook instrumentation specific to Fastify's architecture.
+The `@fastify/otel` package provides automatic route and hook instrumentation specific to Fastify's architecture.
 
 ## Configuring OpenTelemetry
 
@@ -71,11 +71,14 @@ Create an instrumentation module that initializes OpenTelemetry before your Fast
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify');
-const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
+const { FastifyOtelInstrumentation } = require('@fastify/otel');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure OTLP exporter for sending traces to collector
 const traceExporter = new OTLPTraceExporter({
@@ -86,47 +89,56 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 // Define service resource attributes
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'fastify-api',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
-    'service.framework': 'fastify',
-  })
-);
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'fastify-api',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
+  'service.framework': 'fastify',
+});
 
 // Initialize OpenTelemetry SDK with Fastify-specific instrumentation
 const sdk = new NodeSDK({
   resource,
   traceExporter,
   instrumentations: [
-    // HTTP instrumentation for incoming and outgoing requests
-    new HttpInstrumentation({
-      ignoreIncomingRequestHook: (req) => {
+    // Fastify-specific instrumentation for routes and hooks
+    new FastifyOtelInstrumentation({
+      registerOnInitialization: true,
+      ignorePaths: (requestOptions) => {
         // Ignore health checks and metrics endpoints
-        return req.url === '/health' || req.url === '/metrics';
+        return requestOptions.url === '/health' || requestOptions.url === '/metrics';
       },
       requestHook: (span, request) => {
-        // Add custom attributes to HTTP spans
-        span.setAttribute('http.user_agent', request.headers['user-agent'] || 'unknown');
-      },
-      responseHook: (span, response) => {
-        // Add response-specific attributes
-        span.setAttribute('http.response.content_length', response.headers['content-length'] || 0);
-      },
-    }),
-    // Fastify-specific instrumentation for routes and hooks
-    new FastifyInstrumentation({
-      requestHook: (span, info) => {
         // Enrich spans with Fastify-specific context
-        span.setAttribute('fastify.type', info.type);
-        if (info.route) {
-          span.setAttribute('fastify.route', info.route);
-        }
+        span.setAttribute('request.id', request.id);
+        span.setAttribute('http.route', request.routeOptions?.url || request.url);
+      },
+      lifecycleHook: (span, info) => {
+        span.setAttribute('fastify.hook', info.hookName);
       },
     }),
     // Other auto-instrumentations (database, etc.)
     getNodeAutoInstrumentations({
+      '@opentelemetry/instrumentation-http': {
+        ignoreIncomingRequestHook: (req) => {
+          // Ignore health checks and metrics endpoints
+          return req.url === '/health' || req.url === '/metrics';
+        },
+        requestHook: (span, request) => {
+          // Add custom attributes to HTTP spans
+          span.setAttribute('user_agent.original', request.headers['user-agent'] || 'unknown');
+        },
+        responseHook: (span, response) => {
+          // Add response-specific attributes
+          const contentLength = typeof response.getHeader === 'function'
+            ? response.getHeader('content-length')
+            : response.headers?.['content-length'];
+          span.setAttribute('http.response.header.content_length', contentLength || 0);
+        },
+      },
+      '@opentelemetry/instrumentation-fastify': {
+        enabled: false, // Use @fastify/otel for Fastify instrumentation
+      },
       '@opentelemetry/instrumentation-fs': {
         enabled: false, // Reduce noise from filesystem operations
       },
@@ -161,7 +173,7 @@ Create your Fastify server with OpenTelemetry initialization loaded first, then 
 require('./instrumentation');
 
 const fastify = require('fastify');
-const { trace, context } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 
 // Create tracer for custom spans
 const tracer = trace.getTracer('fastify-server');
@@ -216,7 +228,7 @@ app.addHook('onResponse', async (request, reply) => {
   const span = trace.getActiveSpan();
   if (span) {
     span.setAttribute('http.status_code', reply.statusCode);
-    span.setAttribute('response.time_ms', reply.getResponseTime());
+    span.setAttribute('response.time_ms', reply.elapsedTime);
   }
 });
 
@@ -252,7 +264,7 @@ Implement custom tracing within route handlers to monitor specific operations li
 // routes/users.js
 // User routes with detailed OpenTelemetry tracing
 
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('fastify-routes');
 
@@ -287,11 +299,11 @@ async function userRoutes(fastify, options) {
           try {
             const result = await fetchUsersFromDatabase(page, limit);
             dbSpan.setAttribute('db.result.count', result.length);
-            dbSpan.setStatus({ code: 1 }); // OK
+            dbSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             dbSpan.recordException(error);
-            dbSpan.setStatus({ code: 2, message: error.message }); // ERROR
+            dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             dbSpan.end();
@@ -306,11 +318,11 @@ async function userRoutes(fastify, options) {
           try {
             const count = await getUserCount();
             countSpan.setAttribute('db.result.count', count);
-            countSpan.setStatus({ code: 1 });
+            countSpan.setStatus({ code: SpanStatusCode.OK });
             return count;
           } catch (error) {
             countSpan.recordException(error);
-            countSpan.setStatus({ code: 2, message: error.message });
+            countSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             countSpan.end();
@@ -319,7 +331,7 @@ async function userRoutes(fastify, options) {
 
         span.setAttribute('response.user_count', users.length);
         span.setAttribute('response.total_users', total);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return {
           users,
@@ -332,7 +344,7 @@ async function userRoutes(fastify, options) {
         };
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         reply.code(500).send({ error: 'Failed to fetch users' });
       } finally {
         span.end();
@@ -370,22 +382,22 @@ async function userRoutes(fastify, options) {
             if (!result) {
               throw new Error('User not found');
             }
-            dbSpan.setStatus({ code: 1 });
+            dbSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             dbSpan.recordException(error);
-            dbSpan.setStatus({ code: 2, message: error.message });
+            dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             dbSpan.end();
           }
         });
 
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
         return user;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         if (error.message === 'User not found') {
           reply.code(404).send({ error: 'User not found' });
@@ -428,11 +440,11 @@ async function userRoutes(fastify, options) {
           try {
             const result = await checkEmailExists(email);
             checkSpan.setAttribute('email.exists', result);
-            checkSpan.setStatus({ code: 1 });
+            checkSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             checkSpan.recordException(error);
-            checkSpan.setStatus({ code: 2, message: error.message });
+            checkSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             checkSpan.end();
@@ -441,7 +453,7 @@ async function userRoutes(fastify, options) {
 
         if (exists) {
           span.setAttribute('validation.failed', true);
-          span.setStatus({ code: 2, message: 'Email already exists' });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: 'Email already exists' });
           return reply.code(409).send({ error: 'Email already exists' });
         }
 
@@ -453,11 +465,11 @@ async function userRoutes(fastify, options) {
           try {
             const id = await insertUser({ name, email });
             insertSpan.setAttribute('user.id', id);
-            insertSpan.setStatus({ code: 1 });
+            insertSpan.setStatus({ code: SpanStatusCode.OK });
             return id;
           } catch (error) {
             insertSpan.recordException(error);
-            insertSpan.setStatus({ code: 2, message: error.message });
+            insertSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             insertSpan.end();
@@ -465,12 +477,12 @@ async function userRoutes(fastify, options) {
         });
 
         span.setAttribute('user.id', userId);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return reply.code(201).send({ id: userId, name, email });
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         reply.code(500).send({ error: 'Failed to create user' });
       } finally {
         span.end();
@@ -522,7 +534,7 @@ Fastify's plugin system allows you to encapsulate functionality. Add tracing to 
 // Database plugin with OpenTelemetry tracing
 
 const fp = require('fastify-plugin');
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('fastify-plugins');
 
@@ -536,11 +548,11 @@ async function databasePlugin(fastify, options) {
       // Simulate connection delay
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       fastify.log.info('Database connected');
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -561,12 +573,12 @@ async function databasePlugin(fastify, options) {
 
           const result = { rows: [], rowCount: 0 };
           span.setAttribute('db.result.count', result.rowCount);
-          span.setStatus({ code: 1 });
+          span.setStatus({ code: SpanStatusCode.OK });
 
           return result;
         } catch (error) {
           span.recordException(error);
-          span.setStatus({ code: 2, message: error.message });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           span.end();
@@ -579,26 +591,25 @@ async function databasePlugin(fastify, options) {
   fastify.decorate('db', db);
 
   // Add onClose hook to disconnect database
-  fastify.addHook('onClose', async (instance, done) => {
+  fastify.addHook('onClose', async (instance) => {
     await tracer.startActiveSpan('plugin.database.disconnect', async (span) => {
       try {
         await new Promise(resolve => setTimeout(resolve, 50));
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
         instance.log.info('Database disconnected');
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       } finally {
         span.end();
       }
-      done();
     });
   });
 }
 
 module.exports = fp(databasePlugin, {
   name: 'database-plugin',
-  fastify: '4.x',
+  fastify: '5.x',
 });
 ```
 
@@ -610,8 +621,7 @@ When your Fastify application calls external APIs, tracing these operations help
 // services/external-api.js
 // External API service with OpenTelemetry tracing
 
-const { trace, propagation, context } = require('@opentelemetry/api');
-const fetch = require('node-fetch');
+const { trace, propagation, context, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('fastify-services');
 
@@ -652,12 +662,12 @@ class ExternalAPIService {
         }
 
         const data = await response.json();
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return data;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
