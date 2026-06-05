@@ -49,8 +49,10 @@ server:
 agent:
   # Path to the collector binary
   executable: /usr/local/bin/otelcol-contrib
+
+storage:
   # Directory for storing runtime data
-  storage_dir: /var/lib/opamp-supervisor
+  directory: /var/lib/opamp-supervisor
 
 capabilities:
   # Report the running config back to the server
@@ -61,15 +63,13 @@ capabilities:
   accepts_remote_config: true
   # Report the collector's own resource usage
   reports_own_metrics: true
-  # Accept package (binary) updates
-  accepts_packages: true
   # Allow restart commands from the server
   accepts_restart_command: true
 ```
 
 ## Configuring Auto-Restart Behavior
 
-The supervisor automatically restarts the collector when it exits unexpectedly. You can tune this behavior through additional configuration:
+The supervisor automatically restarts the collector when it exits unexpectedly. You can add a base collector configuration and a supervisor health check endpoint through additional configuration:
 
 ```yaml
 # /etc/opamp-supervisor/supervisor.yaml
@@ -79,20 +79,23 @@ server:
 
 agent:
   executable: /usr/local/bin/otelcol-contrib
-  storage_dir: /var/lib/opamp-supervisor
   # Provide a base collector config for initial startup
   # before the server pushes a remote config
-  bootstrap_config_file: /etc/otelcol/bootstrap-config.yaml
+  config_files:
+    - /etc/otelcol/bootstrap-config.yaml
+    - $OPAMP_EXTENSION_CONFIG
+    - $OWN_TELEMETRY_CONFIG
+    - $REMOTE_CONFIG
 
-# Health check settings
-health_check:
-  # The collector's health check endpoint
-  endpoint: http://localhost:13133
-  # How often to poll health
-  interval: 15s
+storage:
+  directory: /var/lib/opamp-supervisor
+
+# Supervisor health check endpoint
+healthcheck:
+  endpoint: localhost:13134
 ```
 
-The bootstrap configuration is important. It gives the collector something to run with on first start, before the OpAMP server has pushed a remote configuration:
+The bootstrap configuration is important. It gives the collector something to run with on first start, before the OpAMP server has pushed a remote configuration. The supervisor merges these files in order and writes the effective configuration that the collector starts with:
 
 ```yaml
 # /etc/otelcol/bootstrap-config.yaml
@@ -109,8 +112,8 @@ processors:
     timeout: 5s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 extensions:
   health_check:
@@ -122,7 +125,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ## Running the Supervisor as a Systemd Service
@@ -145,6 +148,8 @@ User=otel
 Group=otel
 # Give the supervisor time to gracefully stop the collector
 TimeoutStopSec=30
+# The supervisor handles SIGINT and then stops the collector cleanly
+KillSignal=SIGINT
 
 [Install]
 WantedBy=multi-user.target
@@ -176,13 +181,13 @@ The supervisor also reports this restart event to the OpAMP server, so your cent
 
 ## Handling Graceful Shutdowns
 
-When the supervisor receives a SIGTERM (for example during a host reboot), it performs a graceful shutdown sequence:
+When the supervisor receives SIGINT (for example from the systemd unit above during a host reboot), it performs a graceful shutdown sequence:
 
-1. Sends SIGTERM to the collector process
-2. Waits for the collector to finish flushing its internal buffers
+1. Sends a graceful shutdown signal to the collector process
+2. Waits for the collector to finish flushing its internal buffers, killing it if it does not stop within the timeout
 3. Reports the shutdown status to the OpAMP server
 4. Exits cleanly
 
-This ensures you do not lose telemetry data during planned maintenance windows. The collector's internal batch processor has time to flush pending data before the process terminates.
+This helps reduce telemetry loss during planned maintenance windows. The collector's internal batch processor has time to flush pending data before the process terminates.
 
 The combination of the OpAMP supervisor and systemd gives you a resilient setup where your collectors recover automatically from both process crashes and configuration issues, while keeping your central management server informed about every lifecycle event.
