@@ -40,7 +40,9 @@ When and to whom to escalate.
 
 ## Example: High Error Rate Alert
 
-```markdown
+The PromQL examples below assume `service.name` has been promoted to a Prometheus label as `service_name`.
+
+````markdown
 ## Alert: order-service-high-error-rate
 
 **Metric**:
@@ -52,7 +54,7 @@ sum(rate(http_server_request_duration_seconds_count{
 sum(rate(http_server_request_duration_seconds_count{
   service_name="order-service"
 }[5m])) > 0.05
-```bash
+```
 
 **Threshold**: Error rate > 5% for 5 minutes
 **Severity**: P2
@@ -68,7 +70,7 @@ Customers may be unable to complete purchases.
    ```bash
    kubectl rollout history deployment/order-service -n commerce
    # If a rollout happened in the last 30 minutes, consider rolling back
-   ```bash
+   ```
 
 2. Check the error breakdown by endpoint:
    ```promql
@@ -78,17 +80,17 @@ Customers may be unable to complete purchases.
        http_response_status_code=~"5.."
      }[5m])
    )
-   ```bash
+   ```
 
 3. Find error traces in your observability backend:
    ```text
    # Tempo/Grafana TraceQL query
    {
      resource.service.name = "order-service"
-     && status = error
+     && span:status = error
      && span.http.response.status_code >= 500
-   } | select(span.http.route, status)
-   ```bash
+   } | select(span.http.route, span:status)
+   ```
 
 ### Diagnosis
 
@@ -99,26 +101,26 @@ Look for:
 - If the error originates from a downstream service, check that service's health
 
 Common patterns:
-- **Database timeout**: Look for spans with `db.system=postgresql` that have durations > 5s
+- **Database timeout**: Look for spans with `db.system.name=postgresql` that have durations > 5s
   ```text
   {
     resource.service.name = "order-service"
-    && span.db.system = "postgresql"
-    && duration > 5s
+    && span.db.system.name = "postgresql"
+    && span:duration > 5s
   }
-  ```bash
+  ```
 - **Downstream service failure**: Look for HTTP client spans with 5xx responses
   ```text
   {
     resource.service.name = "order-service"
-    && kind = client
+    && span:kind = client
     && span.http.response.status_code >= 500
   }
-  ```bash
+  ```
 - **Memory pressure**: Check the runtime metrics dashboard
   ```promql
-  process_runtime_jvm_memory_usage_bytes{service_name="order-service"}
-  ```bash
+  jvm_memory_used_bytes{service_name="order-service"}
+  ```
 
 ### Remediation
 
@@ -133,11 +135,11 @@ Common patterns:
 - If error rate > 20%: Escalate to P1, page engineering manager
 - If database-related: Page the database team (dba-oncall)
 - If unresolved after 30 minutes: Page the checkout team lead
-```text
+````
 
 ## Example: Latency Degradation Alert
 
-```markdown
+````markdown
 ## Alert: order-service-latency-p99
 
 **Metric**:
@@ -148,7 +150,7 @@ histogram_quantile(0.99,
     http_route="/api/v1/orders"
   }[5m])) by (le)
 ) > 2.0
-```bash
+```
 
 **Threshold**: P99 latency > 2 seconds for 5 minutes
 **Severity**: P3
@@ -169,20 +171,20 @@ This may indicate a performance regression or resource contention.
        }[5m])
      )
    )
-   ```bash
+   ```
 
 2. Find the slowest traces:
    ```text
    {
      resource.service.name = "order-service"
-     && name = "HTTP POST /api/v1/orders"
-     && duration > 2s
+     && span:name = "HTTP POST /api/v1/orders"
+     && span:duration > 2s
    }
-   ```bash
+   ```
 
 3. In the trace waterfall, identify the slowest child span.
    The bottleneck is usually the longest bar in the waterfall.
-```text
+````
 
 ## Linking Alerts to Queries Programmatically
 
@@ -209,7 +211,7 @@ groups:
           summary: "Order service error rate is {{ $value | humanizePercentage }}"
           runbook_url: "https://runbooks.internal/order-service-high-error-rate"
           trace_query: |
-            {resource.service.name="order-service" && status=error}
+            {resource.service.name="order-service" && span:status=error}
           dashboard_url: "https://grafana.internal/d/order-service/overview?from=now-1h"
 ```
 
