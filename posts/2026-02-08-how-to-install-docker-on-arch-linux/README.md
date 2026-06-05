@@ -94,7 +94,7 @@ Docker Compose is packaged separately on Arch.
 sudo pacman -S docker-compose
 ```
 
-This installs the standalone `docker-compose` binary. For the plugin version that runs as `docker compose`, install `docker-buildx` as well.
+This installs both the standalone `docker-compose` binary and the Compose CLI plugin that runs as `docker compose`. If you plan to build container images, install `docker-buildx` as well so Docker can use the current BuildKit-based builder.
 
 ```bash
 # Install Docker Buildx for multi-platform builds
@@ -103,7 +103,7 @@ sudo pacman -S docker-buildx
 
 ## Configuring the Storage Driver
 
-Arch Linux uses `btrfs` or `ext4` as the default filesystem depending on your installation choices. Docker defaults to the `overlay2` storage driver, which works well on ext4 and xfs. If your root partition is btrfs, consider switching Docker to the btrfs driver.
+Arch Linux uses the filesystem you choose during installation, commonly `btrfs`, `ext4`, or `xfs`. Current Docker releases use the containerd image store by default on new installations; with classic storage drivers, `overlay2` is the broadly compatible default and works well on ext4 and xfs. If your root partition is btrfs, you usually do not need to switch Docker to the btrfs driver.
 
 Check your current filesystem.
 
@@ -112,7 +112,7 @@ Check your current filesystem.
 df -Th /var/lib/docker
 ```
 
-For btrfs filesystems, configure Docker accordingly.
+If you specifically want to use Docker's btrfs storage driver, configure Docker accordingly. This is optional, and existing images and containers become inaccessible after changing storage drivers unless you back them up or migrate them first.
 
 ```bash
 # Create daemon.json for btrfs storage driver
@@ -127,7 +127,7 @@ EOF
 sudo systemctl restart docker
 ```
 
-For ext4 or xfs, stick with the default `overlay2` driver. No configuration change is needed.
+For ext4 or xfs, stick with Docker's default storage configuration. No configuration change is needed.
 
 Verify the active storage driver.
 
@@ -138,7 +138,7 @@ docker info | grep "Storage Driver"
 
 ## Enabling IP Forwarding
 
-Arch Linux does not enable IP forwarding by default. Docker needs this for container networking.
+Docker needs IP forwarding for bridge networking. With the default iptables firewall backend, Docker enables the relevant sysctl settings when the daemon starts. If container networking does not work, or if you use the experimental nftables backend, check the setting manually.
 
 ```bash
 # Check current IP forwarding status
@@ -160,11 +160,11 @@ EOF
 sudo sysctl --system
 ```
 
-Without IP forwarding, containers will not be able to reach the internet.
+Without IP forwarding, containers on bridge networks will not be able to reach the internet.
 
 ## Configuring DNS for Containers
 
-Arch Linux uses `systemd-resolved` by default, which listens on `127.0.0.53`. Docker containers cannot use this address because it refers to the host's loopback. You may need to specify external DNS servers.
+Some Arch installations use `systemd-resolved`, which can listen on `127.0.0.53`. Docker normally detects this special case and uses the upstream resolver file from `systemd-resolved`, but other loopback-only resolvers can still break container DNS because loopback addresses inside a container refer to the container itself. If containers cannot resolve names, specify reachable DNS servers.
 
 ```bash
 # Configure Docker to use public DNS servers
@@ -183,6 +183,8 @@ EOF
 sudo systemctl restart docker
 ```
 
+If `/etc/docker/daemon.json` already contains settings such as `"storage-driver"`, merge the `"dns"` and logging keys into the existing JSON object instead of replacing the file.
+
 Test DNS resolution inside a container.
 
 ```bash
@@ -192,9 +194,9 @@ docker run --rm alpine nslookup google.com
 
 ## Using Docker with Firewalld or Iptables
 
-If you use `iptables` or `nftables` directly, Docker should work without any extra configuration. Docker manages its own chains in iptables.
+If you use `iptables` or `nftables` directly, Docker should work without any extra configuration as long as Docker is allowed to manage its firewall rules.
 
-If you use `firewalld` (less common on Arch), trust the Docker bridge interface.
+If you use `firewalld` (less common on Arch), Docker creates a `docker` zone and places Docker bridge interfaces such as `docker0` in that zone when its iptables integration is enabled. Only add the interface manually if your local firewalld configuration does not do this automatically.
 
 ```bash
 # Trust the docker0 interface in firewalld
@@ -298,4 +300,4 @@ sudo systemctl restart docker
 
 ## Summary
 
-Installing Docker on Arch Linux is as simple as running `pacman -S docker`, but the real work lies in post-install configuration. Enable IP forwarding, configure DNS, set up the right storage driver, and add yourself to the `docker` group. Arch's rolling release model ensures you always have the latest Docker version without adding third-party repositories, making it an excellent choice for developers who want to stay on the cutting edge.
+Installing Docker on Arch Linux is as simple as running `pacman -S docker`, but the real work lies in post-install configuration. Check IP forwarding if networking fails, configure DNS only when containers cannot resolve names, keep Docker's default storage settings unless you have a specific reason to change them, and add yourself to the `docker` group. Arch's rolling release model keeps Docker current without adding third-party repositories, making it an excellent choice for developers who want to stay on the cutting edge.
