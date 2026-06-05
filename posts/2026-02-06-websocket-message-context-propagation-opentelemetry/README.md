@@ -25,7 +25,7 @@ interface TracedMessage<T> {
   payload: T;
   // OpenTelemetry trace context
   traceContext: {
-    traceparent: string;
+    traceparent?: string;
     tracestate?: string;
   };
   // Message metadata
@@ -43,7 +43,7 @@ On the sending side, inject the current trace context into each message:
 
 ```typescript
 // ws-client.ts
-import { trace, context, propagation } from '@opentelemetry/api';
+import { trace, context, propagation, SpanKind } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 
 const tracer = trace.getTracer('ws-client');
@@ -57,7 +57,7 @@ class TracedWebSocket {
 
   send<T>(type: string, payload: T): void {
     // Start a new span for this outgoing message
-    tracer.startActiveSpan(`ws.send: ${type}`, (span) => {
+    tracer.startActiveSpan(`ws.send: ${type}`, { kind: SpanKind.PRODUCER }, (span) => {
       span.setAttribute('ws.message.type', type);
       span.setAttribute('ws.direction', 'outgoing');
 
@@ -93,15 +93,15 @@ On the receiving side, extract the trace context and create a child span:
 ```typescript
 // ws-server.ts
 import { trace, context, propagation, SpanKind } from '@opentelemetry/api';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer, RawData } from 'ws';
 
 const tracer = trace.getTracer('ws-server');
 
 const wss = new WebSocketServer({ port: 8080 });
 
 wss.on('connection', (ws) => {
-  ws.on('message', (raw: string) => {
-    const message: TracedMessage<any> = JSON.parse(raw);
+  ws.on('message', (raw: RawData) => {
+    const message: TracedMessage<any> = JSON.parse(raw.toString());
 
     // Extract trace context from the message envelope
     const extractedContext = propagation.extract(
@@ -113,7 +113,7 @@ wss.on('connection', (ws) => {
     context.with(extractedContext, () => {
       tracer.startActiveSpan(
         `ws.receive: ${message.meta.type}`,
-        { kind: SpanKind.SERVER },
+        { kind: SpanKind.CONSUMER },
         (span) => {
           span.setAttribute('ws.message.type', message.meta.type);
           span.setAttribute('ws.message.id', message.meta.messageId);
@@ -142,12 +142,12 @@ function handleMessage(type: string, payload: any) {
 
 ## Bidirectional: Tracing Request-Response Patterns
 
-Many WebSocket protocols use a request-response pattern where the client sends a message and expects a reply. Link them together with span links:
+Many WebSocket protocols use a request-response pattern where the client sends a message and expects a reply. Correlate them with reply metadata and propagate the active trace context:
 
 ```typescript
 // On the server, when sending a response to a specific incoming message
 function sendResponse<T>(ws: WebSocket, requestMessageId: string, type: string, payload: T) {
-  tracer.startActiveSpan(`ws.reply: ${type}`, (span) => {
+  tracer.startActiveSpan(`ws.reply: ${type}`, { kind: SpanKind.PRODUCER }, (span) => {
     span.setAttribute('ws.message.type', type);
     span.setAttribute('ws.reply_to', requestMessageId);
     span.setAttribute('ws.direction', 'outgoing');
