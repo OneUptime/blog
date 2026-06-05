@@ -42,8 +42,9 @@ receivers:
 exporters:
   kafka:
     brokers: ["kafka:9092"]
-    topic: otel-traces-lake
-    encoding: otlp_json
+    traces:
+      topic: otel-traces-lake
+      encoding: otlp_json
     producer:
       compression: zstd
 
@@ -118,7 +119,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField, StringType,
-    LongType, ArrayType, MapType
+    IntegerType, DoubleType, BooleanType, ArrayType
 )
 
 spark = SparkSession.builder \
@@ -127,6 +128,51 @@ spark = SparkSession.builder \
     .config("spark.sql.catalog.lakehouse.type", "hadoop") \
     .config("spark.sql.catalog.lakehouse.warehouse", "s3a://telemetry-lake/warehouse") \
     .getOrCreate()
+
+value_schema = StructType([
+    StructField("stringValue", StringType()),
+    StructField("intValue", StringType()),
+    StructField("doubleValue", DoubleType()),
+    StructField("boolValue", BooleanType()),
+])
+
+attribute_schema = StructType([
+    StructField("key", StringType()),
+    StructField("value", value_schema),
+])
+
+event_schema = StructType([
+    StructField("timeUnixNano", StringType()),
+    StructField("name", StringType()),
+    StructField("attributes", ArrayType(attribute_schema)),
+])
+
+span_schema = StructType([
+    StructField("traceId", StringType()),
+    StructField("spanId", StringType()),
+    StructField("parentSpanId", StringType()),
+    StructField("name", StringType()),
+    StructField("kind", IntegerType()),
+    StructField("startTimeUnixNano", StringType()),
+    StructField("endTimeUnixNano", StringType()),
+    StructField("attributes", ArrayType(attribute_schema)),
+    StructField("events", ArrayType(event_schema)),
+    StructField("status", StructType([
+        StructField("code", IntegerType()),
+        StructField("message", StringType()),
+    ])),
+])
+
+otlp_schema = StructType([
+    StructField("resourceSpans", ArrayType(StructType([
+        StructField("resource", StructType([
+            StructField("attributes", ArrayType(attribute_schema)),
+        ])),
+        StructField("scopeSpans", ArrayType(StructType([
+            StructField("spans", ArrayType(span_schema)),
+        ]))),
+    ]))),
+])
 
 # Read from Kafka
 kafka_df = spark.readStream \
@@ -152,8 +198,8 @@ parsed_df = kafka_df \
     ) \
     .select(
         # Convert nanosecond timestamp to timestamp type
-        (F.col("span.startTimeUnixNano").cast("long") / 1e9)
-            .cast("timestamp").alias("timestamp"),
+        F.expr("timestamp_micros(CAST(span.startTimeUnixNano AS BIGINT) DIV 1000)")
+            .alias("timestamp"),
         F.col("span.traceId").alias("trace_id"),
         F.col("span.spanId").alias("span_id"),
         F.col("span.parentSpanId").alias("parent_span_id"),
@@ -163,21 +209,58 @@ parsed_df = kafka_df \
                    x -> x.key = 'service.name')[0].value.stringValue
         """).alias("service_name"),
         F.col("span.name").alias("operation_name"),
+        F.col("span.kind").cast("string").alias("span_kind"),
         # Calculate duration in milliseconds
         ((F.col("span.endTimeUnixNano").cast("long")
           - F.col("span.startTimeUnixNano").cast("long")) / 1e6)
             .alias("duration_ms"),
-        F.col("span.status.code").alias("status_code")
+        F.col("span.status.code").alias("status_code"),
+        F.col("span.status.message").alias("status_message"),
+        F.expr("""
+            map_from_entries(transform(span.attributes, x ->
+                struct(x.key, coalesce(
+                    x.value.stringValue,
+                    x.value.intValue,
+                    cast(x.value.doubleValue as string),
+                    cast(x.value.boolValue as string)
+                ))
+            ))
+        """).alias("attributes"),
+        F.expr("""
+            map_from_entries(transform(resource.attributes, x ->
+                struct(x.key, coalesce(
+                    x.value.stringValue,
+                    x.value.intValue,
+                    cast(x.value.doubleValue as string),
+                    cast(x.value.boolValue as string)
+                ))
+            ))
+        """).alias("resource_attributes"),
+        F.expr("""
+            transform(span.events, e ->
+                named_struct(
+                    'timestamp', timestamp_micros(CAST(e.timeUnixNano AS BIGINT) DIV 1000),
+                    'name', e.name,
+                    'attributes', map_from_entries(transform(e.attributes, x ->
+                        struct(x.key, coalesce(
+                            x.value.stringValue,
+                            x.value.intValue,
+                            cast(x.value.doubleValue as string),
+                            cast(x.value.boolValue as string)
+                        ))
+                    ))
+                )
+            )
+        """).alias("events")
     )
 
 # Write to Iceberg table
 query = parsed_df.writeStream \
     .format("iceberg") \
     .outputMode("append") \
-    .option("path", "lakehouse.telemetry.traces") \
     .option("checkpointLocation", "s3a://telemetry-lake/checkpoints/traces") \
     .trigger(processingTime="30 seconds") \
-    .start()
+    .toTable("lakehouse.telemetry.traces")
 
 query.awaitTermination()
 ```
@@ -214,7 +297,7 @@ Schedule regular compaction to keep query performance optimal:
 CALL lakehouse.system.rewrite_data_files(
     table => 'telemetry.traces',
     strategy => 'sort',
-    sort_order => 'timestamp ASC, service_name ASC'
+    sort_order => 'timestamp ASC NULLS LAST, service_name ASC NULLS LAST'
 );
 
 -- Expire old snapshots to reclaim metadata storage
