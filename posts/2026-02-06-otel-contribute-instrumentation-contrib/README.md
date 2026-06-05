@@ -43,7 +43,8 @@ Multiple users have requested this in issues #1234 and #5678.
 ## Semantic Conventions
 Will follow the messaging semantic conventions:
 - messaging.system = "fastmq"
-- messaging.operation = "publish" | "process"
+- messaging.operation.name = "publish" | "process"
+- messaging.operation.type = "send" | "process"
 - messaging.destination.name = queue name
 ```
 
@@ -81,8 +82,12 @@ instrumentation/opentelemetry-instrumentation-fastmq/
         __init__.py
         test_fastmq_instrumentation.py
     pyproject.toml
+    test-requirements.txt
     README.rst
     LICENSE
+
+docs/instrumentation/fastmq/
+    fastmq.rst
 ```
 
 ## Step 4: Implement the Instrumentation
@@ -91,21 +96,27 @@ Follow the patterns established by existing instrumentations in the repo:
 
 ```python
 # src/opentelemetry/instrumentation/fastmq/__init__.py
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
 """OpenTelemetry FastMQ instrumentation"""
 
+import time
 from typing import Collection
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.fastmq.version import __version__
-from opentelemetry.instrumentation.fastmq.package import _instruments
-from opentelemetry.trace import SpanKind, get_tracer
-from opentelemetry.propagate import inject, extract
-from opentelemetry.semconv.trace import SpanAttributes
-from opentelemetry.metrics import get_meter
+
 import fastmq
+from opentelemetry.instrumentation.fastmq.package import _instruments
+from opentelemetry.instrumentation.fastmq.version import __version__
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.metrics import get_meter
+from opentelemetry.propagate import inject
+from opentelemetry.trace import SpanKind, get_tracer
 
 _SPAN_ATTR_MESSAGING_SYSTEM = "messaging.system"
-_SPAN_ATTR_MESSAGING_OPERATION = "messaging.operation"
+_SPAN_ATTR_MESSAGING_OPERATION_NAME = "messaging.operation.name"
+_SPAN_ATTR_MESSAGING_OPERATION_TYPE = "messaging.operation.type"
 _SPAN_ATTR_MESSAGING_DESTINATION = "messaging.destination.name"
+_SPAN_ATTR_ERROR_TYPE = "error.type"
 
 
 class FastMQInstrumentor(BaseInstrumentor):
@@ -123,16 +134,18 @@ class FastMQInstrumentor(BaseInstrumentor):
         )
         meter = get_meter(__name__, __version__, meter_provider)
 
-        # Create metrics following semantic conventions
-        self._publish_duration = meter.create_histogram(
-            name="messaging.publish.duration",
-            description="Duration of message publish operations",
-            unit="ms",
+        # Create metrics following semantic conventions.
+        self._operation_duration = meter.create_histogram(
+            name="messaging.client.operation.duration",
+            description=(
+                "Duration of messaging operations initiated by the client"
+            ),
+            unit="s",
         )
         self._process_duration = meter.create_histogram(
             name="messaging.process.duration",
             description="Duration of message processing",
-            unit="ms",
+            unit="s",
         )
 
         # Save original methods for uninstrument
@@ -146,11 +159,14 @@ class FastMQInstrumentor(BaseInstrumentor):
         def instrumented_publish(client_self, queue, message, **kw):
             attrs = {
                 _SPAN_ATTR_MESSAGING_SYSTEM: "fastmq",
-                _SPAN_ATTR_MESSAGING_OPERATION: "publish",
+                _SPAN_ATTR_MESSAGING_OPERATION_NAME: "publish",
+                _SPAN_ATTR_MESSAGING_OPERATION_TYPE: "send",
                 _SPAN_ATTR_MESSAGING_DESTINATION: queue,
             }
+            start_time = time.perf_counter()
+            error_type = None
             with instrumentor._tracer.start_as_current_span(
-                f"{queue} publish",
+                f"publish {queue}",
                 kind=SpanKind.PRODUCER,
                 attributes=attrs,
             ) as span:
@@ -159,7 +175,20 @@ class FastMQInstrumentor(BaseInstrumentor):
                 inject(headers)
                 kw["headers"] = headers
 
-                return original_publish(client_self, queue, message, **kw)
+                try:
+                    return original_publish(client_self, queue, message, **kw)
+                except Exception as exc:
+                    error_type = exc.__class__.__name__
+                    span.set_attribute(_SPAN_ATTR_ERROR_TYPE, error_type)
+                    raise
+                finally:
+                    metric_attrs = dict(attrs)
+                    if error_type:
+                        metric_attrs[_SPAN_ATTR_ERROR_TYPE] = error_type
+                    instrumentor._operation_duration.record(
+                        time.perf_counter() - start_time,
+                        metric_attrs,
+                    )
 
         fastmq.Client.publish = instrumented_publish
 
@@ -174,12 +203,14 @@ The contrib repo expects thorough tests:
 
 ```python
 # tests/test_fastmq_instrumentation.py
-import unittest
-from unittest.mock import patch, MagicMock
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+import fastmq
 from opentelemetry.test.test_base import TestBase
 from opentelemetry.instrumentation.fastmq import FastMQInstrumentor
 from opentelemetry.trace import SpanKind
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.trace.status import StatusCode
 
 
 class TestFastMQInstrumentation(TestBase):
@@ -199,10 +230,16 @@ class TestFastMQInstrumentation(TestBase):
         self.assertEqual(len(spans), 1)
 
         span = spans[0]
-        self.assertEqual(span.name, "orders publish")
+        self.assertEqual(span.name, "publish orders")
         self.assertEqual(span.kind, SpanKind.PRODUCER)
         self.assertEqual(
             span.attributes["messaging.system"], "fastmq"
+        )
+        self.assertEqual(
+            span.attributes["messaging.operation.name"], "publish"
+        )
+        self.assertEqual(
+            span.attributes["messaging.operation.type"], "send"
         )
         self.assertEqual(
             span.attributes["messaging.destination.name"], "orders"
@@ -238,7 +275,7 @@ class TestFastMQInstrumentation(TestBase):
 
 ## Step 6: Write Documentation
 
-Create a `README.rst` following the repo's format:
+Create a `README.rst` following the repo's format, and add a matching Sphinx entry under `docs/instrumentation/fastmq/fastmq.rst` so it is included in the generated documentation:
 
 ```rst
 OpenTelemetry FastMQ Instrumentation
@@ -263,6 +300,7 @@ Usage
 
 .. code-block:: python
 
+    import fastmq
     from opentelemetry.instrumentation.fastmq import FastMQInstrumentor
 
     FastMQInstrumentor().instrument()
@@ -279,7 +317,11 @@ Usage
 tox -e py311-test-instrumentation-fastmq
 
 # Run linting
-tox -e lint
+tox -e lint-instrumentation-fastmq
+
+# Regenerate bootstrap metadata and workflows after adding tox environments
+tox -e generate
+tox -e generate-workflows
 
 # Commit and push
 git add .
