@@ -143,9 +143,10 @@ When you instrument your application:
 
 ```go
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 func processOrder(ctx context.Context, orderID string) {
@@ -217,8 +218,8 @@ groups:
   rules:
   - alert: HighErrorRate
     expr: |
-      sum(rate(http_server_requests{status="error"}[5m])) /
-      sum(rate(http_server_requests[5m])) > 0.05
+      sum(rate(http_server_requests_total{status="error"}[5m])) /
+      sum(rate(http_server_requests_total[5m])) > 0.05
     for: 5m
     annotations:
       summary: "Error rate above 5%"
@@ -269,6 +270,7 @@ You configure sampling in OpenTelemetry:
 
 ```python
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.sdk.trace import TracerProvider
 
 # Sample 1% of traces
 sampler = TraceIdRatioBased(0.01)
@@ -285,7 +287,7 @@ But OpenTelemetry doesn't know or care about the cost implications. Your backend
 OpenTelemetry can pass authentication headers to backends:
 
 ```bash
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer token123"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20token123"
 ```
 
 But it doesn't authenticate users, manage permissions, or control access to data. If you have multiple teams, you need a backend with multi-tenancy and RBAC (Role-Based Access Control).
