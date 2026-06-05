@@ -25,7 +25,7 @@ receivers:
   rabbitmq:
     endpoint: http://rabbitmq:15672
     username: monitoring
-    password: "${RABBITMQ_PASSWORD}"
+    password: "${env:RABBITMQ_PASSWORD}"
     collection_interval: 15s
     metrics:
       rabbitmq.consumer.count:
@@ -124,17 +124,24 @@ receivers:
           scrape_interval: 15s
           static_configs:
             - targets: ["rabbitmq:15692"]
-          metrics_path: /metrics
+          metrics_path: /metrics/detailed
+          params:
+            family:
+              - queue_coarse_metrics
+              - queue_consumer_count
+              - queue_delivery_metrics
+              - queue_exchange_metrics
 ```
 
 The Prometheus plugin exposes per-queue metrics:
 
 ```text
-rabbitmq_queue_messages_ready              - Ready messages per queue
-rabbitmq_queue_messages_unacked            - Unacked messages per queue
-rabbitmq_queue_consumers                   - Consumers per queue
-rabbitmq_queue_messages_published_total    - Published messages per queue
-rabbitmq_queue_messages_delivered_total    - Delivered messages per queue
+rabbitmq_detailed_queue_messages_ready                    - Ready messages per queue
+rabbitmq_detailed_queue_messages_unacked                  - Unacked messages per queue
+rabbitmq_detailed_queue_consumers                         - Consumers per queue
+rabbitmq_detailed_queue_exchange_messages_published_total - Published messages per queue
+rabbitmq_detailed_queue_messages_delivered_total          - Delivered messages per queue in automatic acknowledgement mode
+rabbitmq_detailed_queue_messages_delivered_ack_total      - Delivered messages per queue in manual acknowledgement mode
 ```
 
 ## Per-Queue Monitoring
@@ -144,14 +151,9 @@ Monitor specific queues that are critical to your application:
 ```yaml
 processors:
   filter/important-queues:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "rabbitmq.*"
-        resource_attributes:
-          - key: rabbitmq.queue.name
-            value: "(orders|payments|notifications)"
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, "^rabbitmq\\.") and not IsMatch(resource.attributes["rabbitmq.queue.name"], "^(orders|payments|notifications)$")'
 ```
 
 ## Alert Conditions
@@ -200,10 +202,10 @@ Create a dedicated monitoring user with read-only access:
 ```bash
 rabbitmqctl add_user monitoring monitor_password
 rabbitmqctl set_user_tags monitoring monitoring
-rabbitmqctl set_permissions -p / monitoring "" "" ".*"
+rabbitmqctl set_permissions --vhost / monitoring "^$" "^$" "^$"
 ```
 
-The `monitoring` tag gives read-only access to the management API.
+The `monitoring` tag grants access to management API monitoring data, while the empty permissions avoid granting configure, write, or read access to AMQP resources.
 
 ## Docker Compose Example
 
@@ -223,7 +225,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     environment:
-      RABBITMQ_PASSWORD: admin
+      RABBITMQ_PASSWORD: monitor_password
     volumes:
       - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
