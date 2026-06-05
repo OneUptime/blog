@@ -33,21 +33,23 @@ The OpenTelemetry SDK configuration that enables all of this:
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
   sampler:
     parent_based:
       root:
@@ -60,20 +62,20 @@ meter_provider:
     - periodic:
         interval: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Step 1: Start with the Metric Spike
@@ -104,7 +106,7 @@ If you do not have exemplars, use the time range and attributes to search for tr
 {
   resource.service.name = "checkout-service" &&
   name = "POST /api/checkout" &&
-  duration > 2s
+  trace:duration > 2s
 } | select(status.code)
 ```
 
@@ -159,32 +161,35 @@ apiVersion: 1
 datasources:
   - name: Mimir
     type: prometheus
+    uid: mimir
     url: http://mimir:9009/prometheus
     jsonData:
       exemplarTraceIdDestinations:
-        - name: traceID
+        - name: trace_id
           datasourceUid: tempo
           urlDisplayLabel: "View Trace"
 
   - name: Tempo
     type: tempo
+    uid: tempo
     url: http://tempo:3200
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: "loki"
-        tags: ["service.name"]
-        mappedTags: [{ key: "service.name", value: "service_name" }]
-        mapTagNamesEnabled: true
+        spanStartTimeShift: "-2s"
+        spanEndTimeShift: "2s"
+        tags: [{ key: "service.name", value: "service_name" }]
         filterByTraceID: true
         filterBySpanID: true
       tracesToMetrics:
         datasourceUid: "mimir"
-        tags: ["service.name", "http.route"]
+        tags: [{ key: "service.name", value: "service_name" }, { key: "http.route", value: "http_route" }]
       serviceMap:
         datasourceUid: "mimir"
 
   - name: Loki
     type: loki
+    uid: loki
     url: http://loki:3100
     jsonData:
       derivedFields:
@@ -219,7 +224,7 @@ LOKI_URL = "http://loki:3100"
 
 def find_slow_traces(service, route, start, end, min_duration="2s"):
     """Find traces that match the spike criteria."""
-    query = f'{{resource.service.name="{service}" && name=~".*{route}.*" && duration > {min_duration}}}'
+    query = f'{{resource.service.name="{service}" && name=~".*{route}.*" && trace:duration > {min_duration}}}'
     resp = requests.get(f"{TEMPO_URL}/api/search", params={
         "q": query, "start": start, "end": end, "limit": 10
     })
@@ -234,7 +239,7 @@ def get_logs_for_trace(trace_id, service):
     return resp.json()
 
 # Example usage
-traces = find_slow_traces("checkout-service", "/api/checkout", "1706745600", "1706749200")
+traces = find_slow_traces("checkout-service", "/api/checkout", "1770387600", "1770388200")
 for t in traces[:5]:
     print(f"Trace: {t['traceID']} Duration: {t['durationMs']}ms")
     logs = get_logs_for_trace(t["traceID"], "checkout-service")
