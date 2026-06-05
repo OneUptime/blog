@@ -23,14 +23,13 @@ Here's a simple example that converts all log bodies to uppercase:
 
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Convert the log body to uppercase
-          - set(body, Concat([Upper(body)], ""))
+      # Convert the log body to uppercase
+      - set(log.body, ConvertCase(log.body, "upper")) where IsString(log.body)
 ```
 
-The `set` function modifies a field, while `Upper` converts text to uppercase. The `Concat` function ensures the result is properly formatted as a string.
+The `set` function modifies a field, while `ConvertCase` converts text to uppercase.
 
 ## Extracting Information from Log Bodies
 
@@ -40,18 +39,17 @@ A common scenario is extracting specific information from unstructured log bodie
 # Extract error codes from log bodies
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Extract error code from logs like "Error: ERR_500 - Internal Server Error"
-          # This uses regex to find patterns like ERR_XXX
-          - set(attributes["error_code"], ExtractPatterns(body, "ERR_\\d+"))
+      # Extract error code from logs like "Error: ERR_500 - Internal Server Error"
+      # This uses a named regex capture group to find patterns like ERR_XXX
+      - merge_maps(log.attributes, ExtractPatterns(log.body, ".*(?P<error_code>ERR_\\d+).*"), "upsert") where IsString(log.body) and IsMatch(log.body, "ERR_\\d+")
 
-          # Extract the severity level if present in the body
-          - set(attributes["extracted_severity"], ExtractPatterns(body, "(ERROR|WARN|INFO|DEBUG)"))
+      # Extract the severity level if present in the body
+      - merge_maps(log.attributes, ExtractPatterns(log.body, ".*(?P<extracted_severity>ERROR|WARN|INFO|DEBUG).*"), "upsert") where IsString(log.body) and IsMatch(log.body, "(ERROR|WARN|INFO|DEBUG)")
 
-          # Add a flag attribute if the log contains an error
-          - set(attributes["has_error"], body != nil and IsMatch(body, "(?i)error"))
+      # Add a flag attribute if the log contains an error
+      - set(log.attributes["has_error"], true) where IsString(log.body) and IsMatch(log.body, "(?i)error")
 ```
 
 This configuration extracts structured information from free-form log bodies and stores them as attributes, making the logs more searchable and analyzable.
@@ -64,20 +62,19 @@ Security and compliance often require removing or masking sensitive data from lo
 # Redact sensitive information from log bodies
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Redact credit card numbers (basic pattern)
-          - replace_pattern(body, "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b", "****-****-****-****")
+      # Redact credit card numbers (basic pattern)
+      - replace_pattern(log.body, "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b", "****-****-****-****") where IsString(log.body)
 
-          # Redact email addresses
-          - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "[EMAIL_REDACTED]")
+      # Redact email addresses
+      - replace_pattern(log.body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL_REDACTED]") where IsString(log.body)
 
-          # Redact API keys (assuming format: api_key=xxxxx)
-          - replace_pattern(body, "api_key=[A-Za-z0-9]+", "api_key=[REDACTED]")
+      # Redact API keys (assuming format: api_key=xxxxx)
+      - replace_pattern(log.body, "api_key=[A-Za-z0-9]+", "api_key=[REDACTED]") where IsString(log.body)
 
-          # Redact IP addresses
-          - replace_pattern(body, "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", "[IP_REDACTED]")
+      # Redact IP addresses
+      - replace_pattern(log.body, "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", "[IP_REDACTED]") where IsString(log.body)
 ```
 
 The `replace_pattern` function uses regular expressions to find and replace sensitive data patterns in the log body.
@@ -90,21 +87,20 @@ When logs arrive as structured data (like JSON), you can access nested fields di
 # Transform structured log bodies
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Access nested fields in a JSON log body
-          # Assuming body is {"level": "error", "message": "Failed", "user": {"id": 123}}
-          - set(attributes["user_id"], body["user"]["id"])
+      # Access nested fields in a JSON log body
+      # Assuming body is {"level": "error", "message": "Failed", "user": {"id": 123}}
+      - set(log.attributes["user_id"], log.body["user"]["id"]) where IsMap(log.body) and log.body["user"] != nil
 
-          # Extract the message to a top-level attribute
-          - set(attributes["log_message"], body["message"])
+      # Extract the message to a top-level attribute
+      - set(log.attributes["log_message"], log.body["message"]) where IsMap(log.body)
 
-          # Modify the body to remove sensitive user info
-          - delete_key(body, "user")
+      # Modify the body to remove sensitive user info
+      - delete_key(log.body, "user") where IsMap(log.body)
 
-          # Add computed fields to the body
-          - set(body["processed_at"], UnixMicro(time_now()))
+      # Add computed fields to the body
+      - set(log.body["processed_at"], UnixMicro(Now())) where IsMap(log.body)
 ```
 
 This approach works when the log body is already parsed as a structured object (map). If your logs arrive as JSON strings, you need to parse them first using the JSON parsing capabilities covered in a related post on [parsing JSON logs with OTTL](https://oneuptime.com/blog/post/2026-02-06-parse-json-logs-ottl-opentelemetry-collector/view).
@@ -117,22 +113,19 @@ Different log sources often use different formats. OTTL allows you to normalize 
 # Normalize log bodies from different sources
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Check if the log is from nginx (based on resource attribute)
-          - set(temp_is_nginx, resource.attributes["service.name"] == "nginx")
+      # For nginx logs, extract status code from body pattern
+      # Example: "GET /api/users 200 1.234ms"
+      - merge_maps(log.cache, ExtractPatterns(log.body, ".*\\s(?P<status_code>\\d{3})\\s.*"), "upsert") where resource.attributes["service.name"] == "nginx" and IsString(log.body) and IsMatch(log.body, "\\s\\d{3}\\s")
+      - set(log.attributes["http.status_code"], log.cache["status_code"]) where log.cache["status_code"] != nil
 
-          # For nginx logs, extract status code from body pattern
-          # Example: "GET /api/users 200 1.234ms"
-          - set(attributes["http.status_code"], ExtractPatterns(body, "\\s(\\d{3})\\s")) where temp_is_nginx
+      # For application logs, status might already be in attributes
+      # Ensure all logs have status_code in the same attribute
+      - set(log.attributes["http.status_code"], log.attributes["status"]) where log.attributes["status"] != nil and log.attributes["http.status_code"] == nil
 
-          # For application logs, status might already be in attributes
-          # Ensure all logs have status_code in the same attribute
-          - set(attributes["http.status_code"], attributes["status"]) where attributes["status"] != nil and attributes["http.status_code"] == nil
-
-          # Normalize the body format to include timestamp and level
-          - set(body, Concat([String(time_now()), " [", String(severity_text), "] ", body], ""))
+      # Normalize the body format to include timestamp and level
+      - set(log.body, Concat([String(Now()), " [", String(log.severity_text), "] ", log.body], "")) where IsString(log.body)
 ```
 
 This configuration demonstrates conditional transformations using the `where` clause, which is covered in more detail in the post about [conditional logic in OTTL](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view).
@@ -145,17 +138,16 @@ You can add contextual information to log bodies to make them more informative.
 # Enrich log bodies with additional context
 processors:
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Prepend service name to log body
-          - set(body, Concat(["[", resource.attributes["service.name"], "] ", body], ""))
+      # Prepend service name to log body
+      - set(log.body, Concat(["[", resource.attributes["service.name"], "] ", log.body], "")) where IsString(log.body) and resource.attributes["service.name"] != nil
 
-          # Add trace context to logs when available
-          - set(body, Concat([body, " | trace_id=", String(trace_id)], "")) where trace_id != nil
+      # Add trace context to logs when available
+      - set(log.body, Concat([log.body, " | trace_id=", log.trace_id], "")) where IsString(log.body) and log.trace_id != nil
 
-          # Add environment information
-          - set(body, Concat([body, " | env=", resource.attributes["deployment.environment"]], "")) where resource.attributes["deployment.environment"] != nil
+      # Add environment information
+      - set(log.body, Concat([log.body, " | env=", resource.attributes["deployment.environment"]], "")) where IsString(log.body) and resource.attributes["deployment.environment"] != nil
 ```
 
 ## Complete Pipeline Example
@@ -196,23 +188,22 @@ processors:
 
   # Transform log bodies
   transform:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Redact sensitive data
-          - replace_pattern(body, "password=[^&\\s]+", "password=[REDACTED]")
-          - replace_pattern(body, "token=[^&\\s]+", "token=[REDACTED]")
+      # Redact sensitive data
+      - replace_pattern(log.body, "password=[^&\\s]+", "password=[REDACTED]") where IsString(log.body)
+      - replace_pattern(log.body, "token=[^&\\s]+", "token=[REDACTED]") where IsString(log.body)
 
-          # Extract error codes to attributes
-          - set(attributes["error_code"], ExtractPatterns(body, "ERR_\\d+")) where IsMatch(body, "ERR_\\d+")
+      # Extract error codes to attributes
+      - merge_maps(log.attributes, ExtractPatterns(log.body, ".*(?P<error_code>ERR_\\d+).*"), "upsert") where IsString(log.body) and IsMatch(log.body, "ERR_\\d+")
 
-          # Add service context to body
-          - set(body, Concat(["[", resource.attributes["service.name"], "] ", body], ""))
+      # Add service context to body
+      - set(log.body, Concat(["[", resource.attributes["service.name"], "] ", log.body], "")) where IsString(log.body) and resource.attributes["service.name"] != nil
 
-          # Normalize severity mentions in body
-          - replace_pattern(body, "(?i)\\[error\\]", "[ERROR]")
-          - replace_pattern(body, "(?i)\\[warn\\]", "[WARN]")
-          - replace_pattern(body, "(?i)\\[info\\]", "[INFO]")
+      # Normalize severity mentions in body
+      - replace_pattern(log.body, "(?i)\\[error\\]", "[ERROR]") where IsString(log.body)
+      - replace_pattern(log.body, "(?i)\\[warn\\]", "[WARN]") where IsString(log.body)
+      - replace_pattern(log.body, "(?i)\\[info\\]", "[INFO]") where IsString(log.body)
 
 exporters:
   # Export to OTLP endpoint
