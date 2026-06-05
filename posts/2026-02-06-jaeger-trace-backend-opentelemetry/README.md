@@ -8,7 +8,7 @@ Description: Complete guide to deploying Jaeger as a distributed tracing backend
 
 ---
 
-Jaeger is one of the most widely used distributed tracing platforms. Originally developed at Uber and now a graduated CNCF project, Jaeger provides trace collection, storage, and visualization. With native OTLP support added in recent versions, Jaeger works seamlessly as a trace backend for OpenTelemetry instrumented applications.
+Jaeger is one of the most widely used distributed tracing platforms. Originally developed at Uber and now a graduated CNCF project, Jaeger provides trace collection, storage, and visualization. With native OTLP support available since Jaeger v1.35, Jaeger works seamlessly as a trace backend for OpenTelemetry instrumented applications.
 
 This guide covers deploying Jaeger, configuring it to receive OpenTelemetry traces, setting up the OpenTelemetry Collector to export to Jaeger, and running the whole stack in production.
 
@@ -39,6 +39,8 @@ The fastest way to get Jaeger running is the all-in-one Docker image, which incl
 
 docker run -d \
   --name jaeger \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
   -p 16686:16686 \
   -p 4317:4317 \
   -p 4318:4318 \
@@ -77,7 +79,7 @@ resource = Resource.create({
 
 # Configure the OTLP exporter pointing at Jaeger
 exporter = OTLPSpanExporter(
-    endpoint="localhost:4317",  # Jaeger OTLP gRPC endpoint
+    endpoint="http://localhost:4317",  # Jaeger OTLP gRPC endpoint
     insecure=True,              # No TLS for local dev
 )
 
@@ -106,7 +108,7 @@ After running this script, you should see the `order-service` in the Jaeger UI w
 
 ## Production Deployment with Elasticsearch
 
-For production, you need persistent storage. Jaeger supports Elasticsearch, OpenSearch, Cassandra, and Badger (embedded key-value store). Elasticsearch is the most popular choice for its search capabilities and scalability.
+For production, you need persistent storage. Jaeger supports distributed storage backends such as Elasticsearch, OpenSearch, and Cassandra, and also supports Badger as an embedded single-node store. Elasticsearch is the most popular choice for its search capabilities and scalability.
 
 Here is a Docker Compose setup for Jaeger with Elasticsearch.
 
@@ -162,7 +164,7 @@ services:
     ports:
       # Jaeger UI
       - "16686:16686"
-      # Jaeger Query API
+      # Jaeger Query admin endpoint
       - "16687:16687"
     depends_on:
       - elasticsearch
@@ -337,9 +339,9 @@ Jaeger creates daily indices in Elasticsearch. Without management, these grow in
 ```bash
 # Run the Jaeger index cleaner to remove traces older than 14 days
 docker run -e ROLLOVER=true \
-  -e ES_SERVER_URLS=http://elasticsearch:9200 \
   jaegertracing/jaeger-es-index-cleaner:1.62 \
-  14
+  14 \
+  http://elasticsearch:9200
 ```
 
 For automated cleanup in Kubernetes, run the index cleaner as a CronJob.
@@ -361,10 +363,10 @@ spec:
           containers:
             - name: cleaner
               image: jaegertracing/jaeger-es-index-cleaner:1.62
-              args: ["14"]
+              args: ["14", "http://elasticsearch:9200"]
               env:
-                - name: ES_SERVER_URLS
-                  value: "http://elasticsearch:9200"
+                - name: ROLLOVER
+                  value: "true"
           restartPolicy: OnFailure
 ```
 
@@ -378,7 +380,7 @@ On the Jaeger collector side, increase the queue size and number of workers.
 # Jaeger Collector environment variables for high throughput
 COLLECTOR_QUEUE_SIZE=5000
 COLLECTOR_NUM_WORKERS=100
-COLLECTOR_OTLP_GRPC_MAX_RECV_MSG_SIZE_MIB=32
+COLLECTOR_OTLP_GRPC_MAX_MESSAGE_SIZE=33554432
 ```
 
 On the Elasticsearch side, tune bulk indexing parameters.
