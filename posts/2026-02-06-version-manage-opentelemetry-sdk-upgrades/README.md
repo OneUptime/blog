@@ -17,11 +17,11 @@ If team A upgrades to the latest SDK while team B stays on a version from six mo
 Each language SDK has its own version number, and they do not stay in sync:
 
 ```text
-Java SDK:     1.36.0
-Python SDK:   1.25.0
-Go SDK:       1.28.0
-Node.js SDK:  1.22.0
-.NET SDK:     1.8.0
+Java SDK:     1.62.0
+Python SDK:   1.42.1
+Go SDK:       1.44.0
+Node.js SDK:  2.7.1
+.NET SDK:     1.15.3
 ```
 
 Each SDK also depends on the OpenTelemetry API package, the OTLP exporter, and various instrumentation libraries. A single service might depend on five or more OpenTelemetry packages, each with its own version.
@@ -47,34 +47,36 @@ policy:
   # Minimum supported versions (updated quarterly)
   minimum_versions:
     java:
-      api: "1.34.0"
-      sdk: "1.34.0"
-      agent: "2.2.0"
+      api: "1.56.0"
+      sdk: "1.56.0"
+      agent: "2.22.0"
     python:
-      api: "1.23.0"
-      sdk: "1.23.0"
+      api: "1.37.0"
+      sdk: "1.37.0"
     go:
-      api: "1.26.0"
-      sdk: "1.26.0"
+      api: "1.38.0"
+      sdk: "1.38.0"
     nodejs:
-      api: "1.20.0"
-      sdk: "0.50.0"
+      api: "1.9.0"
+      sdk: "2.2.0"
+      exporter: "0.208.0"
 
   # Recommended versions (latest tested and approved)
   recommended_versions:
     java:
-      api: "1.36.0"
-      sdk: "1.36.0"
-      agent: "2.4.0"
+      api: "1.62.0"
+      sdk: "1.62.0"
+      agent: "2.28.1"
     python:
-      api: "1.25.0"
-      sdk: "1.25.0"
+      api: "1.42.1"
+      sdk: "1.42.1"
     go:
-      api: "1.28.0"
-      sdk: "1.28.0"
+      api: "1.44.0"
+      sdk: "1.44.0"
     nodejs:
-      api: "1.22.0"
-      sdk: "0.52.0"
+      api: "1.9.1"
+      sdk: "2.7.1"
+      exporter: "0.218.0"
 ```
 
 ## Automated Version Checking
@@ -88,6 +90,7 @@ Build a CI check that runs in every service repository to verify SDK versions:
 import json
 import sys
 import subprocess
+import re
 from packaging import version
 
 # Load the version policy
@@ -137,11 +140,26 @@ def check_nodejs_versions():
     min_versions = policy["policy"]["minimum_versions"]["nodejs"]
     errors = []
 
-    if "@opentelemetry/api" in all_deps:
-        ver = all_deps["@opentelemetry/api"].lstrip("^~>=")
-        if version.parse(ver) < version.parse(min_versions["api"]):
+    otel_packages = {
+        "@opentelemetry/api": min_versions["api"],
+        "@opentelemetry/sdk-trace-node": min_versions["sdk"],
+        "@opentelemetry/exporter-trace-otlp-http": min_versions["exporter"],
+    }
+
+    for package, min_ver in otel_packages.items():
+        if package in all_deps:
+            match = re.search(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", all_deps[package])
+            if not match:
+                errors.append(f"{package} version {all_deps[package]} could not be parsed")
+                continue
+            ver = match.group(0)
+            if version.parse(ver) < version.parse(min_ver):
+                errors.append(
+                    f"{package} {ver} is below minimum {min_ver}"
+                )
+        else:
             errors.append(
-                f"@opentelemetry/api {ver} is below minimum {min_versions['api']}"
+                f"{package} is not listed in dependencies or devDependencies"
             )
 
     return errors
@@ -173,10 +191,10 @@ Use a shared dependency constraint at the root level:
   "name": "my-org-monorepo",
   "private": true,
   "overrides": {
-    "@opentelemetry/api": "1.22.0",
-    "@opentelemetry/sdk-trace-base": "1.22.0",
-    "@opentelemetry/sdk-trace-node": "1.22.0",
-    "@opentelemetry/exporter-trace-otlp-http": "0.52.0"
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/sdk-trace-base": "2.7.1",
+    "@opentelemetry/sdk-trace-node": "2.7.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.218.0"
   }
 }
 ```
@@ -189,20 +207,21 @@ Maintain a shared constraints file:
 # otel-constraints.txt
 # Shared across all Python services. Reference with:
 # pip install -c otel-constraints.txt -r requirements.txt
-opentelemetry-api==1.25.0
-opentelemetry-sdk==1.25.0
-opentelemetry-exporter-otlp-proto-http==1.25.0
-opentelemetry-instrumentation-flask==0.46b0
-opentelemetry-instrumentation-requests==0.46b0
-opentelemetry-instrumentation-sqlalchemy==0.46b0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+opentelemetry-instrumentation-flask==0.63b1
+opentelemetry-instrumentation-requests==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1
 ```
 
-### For Go (go.work or shared tooling)
+### For Go (go.work plus shared tooling)
 
 ```text
 // go.work
-// Use a workspace to align Go module versions across services
-go 1.22
+// Use a workspace to test services together, then run go work sync
+// to sync the workspace build list back to each module's go.mod.
+go 1.24
 
 use (
     ./services/api-gateway
@@ -210,7 +229,7 @@ use (
     ./services/user-service
 )
 
-// Each module's go.mod should reference the same OTel versions
+// Each module's go.mod should still require the approved OTel versions.
 ```
 
 ### For Java (Maven BOM)
@@ -222,14 +241,14 @@ use (
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-bom</artifactId>
-            <version>1.36.0</version>
+            <version>1.62.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-instrumentation-bom</artifactId>
-            <version>2.4.0</version>
+            <version>2.28.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -307,6 +326,9 @@ on:
 jobs:
   upgrade-python:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     strategy:
       matrix:
         service: [order-service, user-service, billing-service]
@@ -316,14 +338,18 @@ jobs:
       - name: Check current version
         id: check
         run: |
-          CURRENT=$(grep opentelemetry-sdk services/${{ matrix.service }}/requirements.txt | cut -d= -f3)
-          RECOMMENDED="1.25.0"
+          CURRENT=$(grep '^opentelemetry-sdk==' services/${{ matrix.service }}/requirements.txt | cut -d= -f3)
+          RECOMMENDED="1.42.1"
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
           echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
 
       - name: Create upgrade PR
         if: steps.check.outputs.current != steps.check.outputs.recommended
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b otel-upgrade/${{ matrix.service }}
           sed -i "s/opentelemetry-sdk==.*/opentelemetry-sdk==${{ steps.check.outputs.recommended }}/" \
             services/${{ matrix.service }}/requirements.txt
@@ -331,7 +357,8 @@ jobs:
           git commit -m "Upgrade OpenTelemetry SDK to ${{ steps.check.outputs.recommended }}"
           git push origin otel-upgrade/${{ matrix.service }}
           gh pr create --title "Upgrade OTel SDK for ${{ matrix.service }}" \
-            --body "Automated upgrade to recommended version"
+            --body "Automated upgrade to recommended version" \
+            --head "otel-upgrade/${{ matrix.service }}"
 ```
 
 ## Tracking Compliance
