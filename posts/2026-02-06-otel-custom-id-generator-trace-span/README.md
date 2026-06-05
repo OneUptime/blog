@@ -24,7 +24,6 @@ Common reasons to customize ID generation:
 
 import time
 import os
-import struct
 import threading
 from opentelemetry.sdk.trace.id_generator import IdGenerator
 
@@ -105,6 +104,13 @@ class CorrelationIdGenerator(IdGenerator):
 
         return trace_id
 
+    def is_trace_id_random(self) -> bool:
+        """
+        The least significant 56 bits are uniformly random, which lets
+        OpenTelemetry mark generated trace IDs as random for sampling.
+        """
+        return True
+
 
 def extract_metadata_from_trace_id(trace_id_hex: str) -> dict:
     """
@@ -169,7 +175,7 @@ with tracer.start_as_current_span("process-order") as span:
     trace_id = format(span.get_span_context().trace_id, "032x")
     print(f"Trace ID: {trace_id}")
     # Output: Trace ID: 65a1b2c300010000a1b2c3d4e5f67890
-    # Decodes to: timestamp=2025-01-12, region=us-east-1, shard=0
+    # Decodes to: generated_at=2024-01-12 21:44:35 UTC, region=us-east-1, shard=0
 ```
 
 ## Java: Custom ID Generator
@@ -218,6 +224,11 @@ public class CorrelationIdGenerator implements IdGenerator {
                     | random;
 
         return String.format("%016x", spanId == 0 ? 1 : spanId);
+    }
+
+    @Override
+    public boolean generatesRandomTraceIds() {
+        return true;
     }
 
     private static int regionToCode(String region) {
