@@ -39,6 +39,8 @@ npm install @opentelemetry/sdk-node \
             @opentelemetry/resources \
             @opentelemetry/semantic-conventions \
             @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/sdk-trace-base \
+            @opentelemetry/auto-instrumentations-node \
             drizzle-orm \
             postgres
 ```
@@ -49,8 +51,12 @@ Initialize OpenTelemetry before any application code:
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
 // Configure OTLP exporter for trace data
@@ -61,10 +67,10 @@ const traceExporter = new OTLPTraceExporter({
 
 // Initialize the SDK with resource attributes
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'drizzle-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'drizzle-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
   traceExporter,
   instrumentations: [getNodeAutoInstrumentations()],
@@ -91,7 +97,13 @@ Build a wrapper around Drizzle's database client that adds tracing:
 // instrumented-drizzle.ts
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { trace, context, SpanStatusCode, Span } from '@opentelemetry/api';
+import { trace, SpanStatusCode, Span } from '@opentelemetry/api';
+import {
+  ATTR_DB_OPERATION_NAME,
+  ATTR_DB_QUERY_TEXT,
+  ATTR_DB_SYSTEM_NAME,
+  DB_SYSTEM_NAME_VALUE_POSTGRESQL,
+} from '@opentelemetry/semantic-conventions';
 import * as schema from './schema';
 
 const tracer = trace.getTracer('drizzle-instrumentation', '1.0.0');
@@ -119,48 +131,81 @@ export function createInstrumentedDrizzle(connectionString: string) {
  * Wraps a postgres client to add OpenTelemetry spans
  */
 function createInstrumentedPostgresClient(client: any) {
+  const runTracedQuery = async (
+    spanName: string,
+    query: unknown,
+    params: unknown[],
+    execute: () => Promise<unknown>
+  ) => {
+    const statement = getStatement(query);
+
+    return tracer.startActiveSpan(spanName, async (span: Span) => {
+      try {
+        // Add semantic attributes for database operations
+        span.setAttribute(ATTR_DB_SYSTEM_NAME, DB_SYSTEM_NAME_VALUE_POSTGRESQL);
+        span.setAttribute(ATTR_DB_QUERY_TEXT, statement);
+        span.setAttribute(ATTR_DB_OPERATION_NAME, extractOperation(statement));
+
+        // Add parameter count (not values to protect sensitive data)
+        span.setAttribute('db.parameter.count', params.length);
+
+        // Execute the actual query
+        const startTime = Date.now();
+        const result = await execute();
+        const duration = Date.now() - startTime;
+
+        // Add result metadata
+        span.setAttribute('db.query.duration_ms', duration);
+        if (Array.isArray(result)) {
+          span.setAttribute('db.result.count', result.length);
+        }
+
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error: any) {
+        span.recordException(error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error.message,
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  };
+
+  const wrapPendingQuery = (pendingQuery: any, spanName: string, query: unknown, params: unknown[]) => {
+    return new Proxy(pendingQuery, {
+      get(target, prop, receiver) {
+        const originalProperty = Reflect.get(target, prop, receiver);
+
+        // Awaiting a postgres.js query uses its thenable interface.
+        if (prop === 'then') {
+          return (onFulfilled: any, onRejected: any) =>
+            runTracedQuery(spanName, query, params, () => Promise.resolve(target))
+              .then(onFulfilled, onRejected);
+        }
+
+        if (typeof originalProperty === 'function' && (prop === 'values' || prop === 'execute')) {
+          return (...args: unknown[]) =>
+            runTracedQuery(spanName, query, params, () =>
+              Promise.resolve(Reflect.apply(originalProperty, target, args))
+            );
+        }
+
+        return originalProperty;
+      },
+    });
+  };
+
   // Create a proxy that intercepts all calls
   return new Proxy(client, {
     apply(target, thisArg, argumentsList) {
       // This handles the direct call syntax: sql`SELECT * FROM users`
-      const [query, params] = argumentsList;
-
-      return tracer.startActiveSpan('drizzle.query', async (span: Span) => {
-        try {
-          // Add semantic attributes for database operations
-          span.setAttribute('db.system', 'postgresql');
-          span.setAttribute('db.statement', query);
-          span.setAttribute('db.operation', extractOperation(query));
-
-          // Add parameter count (not values to protect sensitive data)
-          if (params && Array.isArray(params)) {
-            span.setAttribute('db.parameter.count', params.length);
-          }
-
-          // Execute the actual query
-          const startTime = Date.now();
-          const result = await Reflect.apply(target, thisArg, argumentsList);
-          const duration = Date.now() - startTime;
-
-          // Add result metadata
-          span.setAttribute('db.query.duration_ms', duration);
-          if (result && result.count !== undefined) {
-            span.setAttribute('db.result.count', result.count);
-          }
-
-          span.setStatus({ code: SpanStatusCode.OK });
-          return result;
-        } catch (error: any) {
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-          throw error;
-        } finally {
-          span.end();
-        }
-      });
+      const [query, ...params] = argumentsList;
+      const pendingQuery = Reflect.apply(target, thisArg, argumentsList);
+      return wrapPendingQuery(pendingQuery, 'postgres.query', query, params);
     },
     get(target, prop, receiver) {
       const originalProperty = Reflect.get(target, prop, receiver);
@@ -169,31 +214,33 @@ function createInstrumentedPostgresClient(client: any) {
       if (typeof originalProperty === 'function') {
         return new Proxy(originalProperty, {
           apply(fnTarget, fnThisArg, fnArgumentsList) {
-            // For query-like methods, add tracing
-            if (prop === 'query' || prop === 'execute') {
-              const [query, params] = fnArgumentsList;
+            // Drizzle's postgres-js driver executes SQL through client.unsafe(query, params).
+            if (prop === 'unsafe') {
+              const [query, params = []] = fnArgumentsList;
+              const parameterList = Array.isArray(params) ? params : [];
+              const pendingQuery = Reflect.apply(fnTarget, target, fnArgumentsList);
 
-              return tracer.startActiveSpan(`drizzle.${String(prop)}`, async (span: Span) => {
-                try {
-                  span.setAttribute('db.system', 'postgresql');
-                  span.setAttribute('db.statement', query);
-                  span.setAttribute('db.operation', extractOperation(query));
+              return wrapPendingQuery(pendingQuery, 'drizzle.query', query, parameterList);
+            }
 
-                  const result = await Reflect.apply(fnTarget, fnThisArg, fnArgumentsList);
-                  span.setStatus({ code: SpanStatusCode.OK });
-                  return result;
-                } catch (error: any) {
-                  span.recordException(error);
-                  span.setStatus({ code: SpanStatusCode.ERROR });
-                  throw error;
-                } finally {
-                  span.end();
-                }
-              });
+            // Transactions receive a scoped postgres.js client. Wrap it as well.
+            if (prop === 'begin' || prop === 'savepoint') {
+              const callbackIndex = fnArgumentsList.findIndex((arg) => typeof arg === 'function');
+              if (callbackIndex >= 0) {
+                const originalCallback = fnArgumentsList[callbackIndex];
+                fnArgumentsList[callbackIndex] = (transactionClient: any) =>
+                  originalCallback(createInstrumentedPostgresClient(transactionClient));
+              }
+            }
+
+            // Explicitly reserved connections return a scoped client too.
+            if (prop === 'reserve') {
+              return Reflect.apply(fnTarget, target, fnArgumentsList)
+                .then((reservedClient: any) => createInstrumentedPostgresClient(reservedClient));
             }
 
             // For other methods, execute without tracing
-            return Reflect.apply(fnTarget, fnThisArg, fnArgumentsList);
+            return Reflect.apply(fnTarget, target, fnArgumentsList);
           }
         });
       }
@@ -210,6 +257,18 @@ function extractOperation(query: string): string {
   const normalized = query.trim().toUpperCase();
   const firstWord = normalized.split(/\s+/)[0];
   return firstWord || 'UNKNOWN';
+}
+
+function getStatement(query: unknown): string {
+  if (typeof query === 'string') {
+    return query;
+  }
+
+  if (Array.isArray(query)) {
+    return query.join('?');
+  }
+
+  return String(query);
 }
 
 export { tracer };
@@ -516,40 +575,44 @@ import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('drizzle-pool-monitor', '1.0.0');
 
-// Create pool metrics
-const poolActiveConnections = meter.createObservableGauge(
-  'db.drizzle.pool.active',
+// Postgres.js does not expose stable public active/idle pool counters.
+// Track reserved connections when you explicitly reserve clients.
+let reservedConnectionCount = 0;
+
+const poolReservedConnections = meter.createObservableGauge(
+  'db.drizzle.pool.reserved',
   {
-    description: 'Active database connections',
+    description: 'Reserved database connections',
     unit: 'connections',
   }
 );
 
-const poolIdleConnections = meter.createObservableGauge(
-  'db.drizzle.pool.idle',
-  {
-    description: 'Idle database connections',
-    unit: 'connections',
-  }
-);
+poolReservedConnections.addCallback((result) => {
+  result.observe(reservedConnectionCount);
+});
 
 /**
- * Setup pool monitoring callbacks
+ * Reserve a dedicated postgres.js connection and release it safely.
  */
-export function setupPoolMonitoring(client: any) {
-  poolActiveConnections.addCallback((result) => {
-    // Access postgres.js client statistics
-    if (client.options) {
-      const stats = client.options.connection?.count || 0;
-      result.observe(stats);
-    }
-  });
+export async function withReservedConnection<T>(
+  client: any,
+  callback: (reservedClient: any) => Promise<T>
+) {
+  const reservedClient = await client.reserve();
+  reservedConnectionCount++;
+
+  try {
+    return await callback(reservedClient);
+  } finally {
+    reservedConnectionCount--;
+    await reservedClient.release();
+  }
 }
 ```
 
 ## Handling Prepared Statements
 
-Drizzle's prepared statements need special handling:
+Drizzle's prepared statements can also be wrapped in a parent span:
 
 ```typescript
 // Example of tracing prepared statements
@@ -578,11 +641,11 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
 
 const sdk = new NodeSDK({
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
+  spanProcessors: [new BatchSpanProcessor(traceExporter, {
     maxQueueSize: 2048,
     maxExportBatchSize: 512,
     scheduledDelayMillis: 5000,
-  }),
+  })],
   sampler: new TraceIdRatioBasedSampler(0.1), // Sample 10% of traces
 });
 ```
@@ -602,9 +665,9 @@ require('./tracing');
 const { db } = require('./database');
 ```
 
-**Issue**: Lost context in async operations
+**Issue**: Lost context in detached async operations
 
-Use async/await consistently to maintain trace context:
+Return or await promises inside the active span so the parent span stays open until the query finishes:
 
 ```typescript
 // Correct
@@ -613,9 +676,11 @@ async function correct() {
   return result;
 }
 
-// Incorrect - breaks context
-function incorrect() {
-  return db.select().from(users).then(result => result);
+// Incorrect - ends the parent span before the query promise settles
+function incorrect(span) {
+  const result = db.select().from(users);
+  span.end();
+  return result;
 }
 ```
 
@@ -626,15 +691,26 @@ Write tests that verify tracing behavior:
 ```typescript
 // __tests__/tracing.test.ts
 import { trace } from '@opentelemetry/api';
-import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor
+} from '@opentelemetry/sdk-trace-base';
 
 describe('Drizzle Tracing', () => {
   let spanExporter: InMemorySpanExporter;
 
-  beforeEach(() => {
+  beforeAll(() => {
     spanExporter = new InMemorySpanExporter();
-    const provider = new BasicTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(spanExporter));
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+    });
+
+    trace.setGlobalTracerProvider(provider);
+  });
+
+  beforeEach(() => {
+    spanExporter.reset();
   });
 
   it('should create spans for queries', async () => {
