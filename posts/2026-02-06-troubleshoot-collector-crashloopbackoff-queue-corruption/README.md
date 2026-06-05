@@ -22,7 +22,7 @@ Persistent queues store telemetry data on disk so it survives Collector restarts
 1. The Collector is OOM-killed mid-write
 2. The node's disk fills up during a write
 3. The persistent volume is shared or has filesystem issues
-4. A Collector upgrade changes the queue serialization format
+4. A Collector upgrade changes how the queue storage is read
 
 ## Diagnosing the Issue
 
@@ -41,14 +41,16 @@ Look for messages like:
 Check the persistent volume:
 
 ```bash
-# Exec into a debug container that mounts the same PVC
+# Create a debug pod that mounts the same PVC
 
 kubectl run debug --image=busybox --restart=Never \
-  --overrides='{"spec":{"volumes":[{"name":"queue","persistentVolumeClaim":{"claimName":"otel-collector-queue"}}],"containers":[{"name":"debug","image":"busybox","command":["sh"],"stdin":true,"tty":true,"volumeMounts":[{"name":"queue","mountPath":"/queue"}]}]}}'
+  --overrides='{"apiVersion":"v1","spec":{"volumes":[{"name":"queue","persistentVolumeClaim":{"claimName":"otel-collector-queue"}}],"containers":[{"name":"debug","image":"busybox","command":["sleep","3600"],"volumeMounts":[{"name":"queue","mountPath":"/queue"}]}]}}'
+
+kubectl wait --for=condition=Ready pod/debug --timeout=60s
 
 # Check the queue directory
-ls -la /queue/
-du -sh /queue/
+kubectl exec debug -- ls -la /queue/
+kubectl exec debug -- du -sh /queue/
 ```
 
 ## Fix 1: Delete the Corrupted Queue Data
@@ -62,6 +64,7 @@ kubectl scale deployment otel-collector --replicas=0
 # Create a temporary pod to clean the PVC
 kubectl run cleanup --image=busybox --restart=Never \
   --overrides='{
+    "apiVersion": "v1",
     "spec": {
       "volumes": [{
         "name": "queue",
@@ -70,7 +73,7 @@ kubectl run cleanup --image=busybox --restart=Never \
       "containers": [{
         "name": "cleanup",
         "image": "busybox",
-        "command": ["rm", "-rf", "/queue/*"],
+        "command": ["sh", "-c", "rm -rf /queue/* /queue/.[!.]* /queue/..?*"],
         "volumeMounts": [{
           "name": "queue",
           "mountPath": "/queue"
@@ -80,7 +83,7 @@ kubectl run cleanup --image=busybox --restart=Never \
   }'
 
 # Wait for cleanup to complete
-kubectl wait --for=condition=ready pod/cleanup --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/cleanup --timeout=60s
 
 # Delete the cleanup pod
 kubectl delete pod cleanup
@@ -91,7 +94,7 @@ kubectl scale deployment otel-collector --replicas=1
 
 ## Fix 2: Use an Init Container for Automatic Cleanup
 
-Add an init container that validates the queue on startup:
+Add an init container that checks the queue on startup:
 
 ```yaml
 apiVersion: apps/v1
@@ -159,6 +162,7 @@ Prevent queue corruption by limiting queue size and ensuring the volume has enou
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     # Set a compaction interval to clean up
     compaction:
       directory: /var/lib/otelcol/queue/compact
@@ -171,6 +175,9 @@ exporters:
       enabled: true
       storage: file_storage
       queue_size: 5000  # limit the number of items
+
+service:
+  extensions: [file_storage]
 ```
 
 Also ensure the PVC has enough space:
@@ -189,17 +196,26 @@ spec:
 
 ## Fix 4: Handle Corruption Gracefully in Newer Versions
 
-Newer Collector versions have better error handling for corrupted queues. Check if upgrading to the latest version resolves the crash:
+Newer Collector versions support `recreate` in the `file_storage` extension for some bbolt corruption cases. Check if upgrading to a current version and enabling `recreate` resolves the crash:
 
 ```yaml
-# Update the image to the latest version
+# Update the image to a current version
 containers:
 - name: collector
-  image: otel/opentelemetry-collector-contrib:0.121.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
+
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    create_directory: true
+    recreate: true
+
+service:
+  extensions: [file_storage]
 ```
 
-Some versions will log a warning and start with an empty queue instead of crashing.
+With `recreate`, the Collector can rename the corrupted bbolt database and create a fresh one for certain corruption failures. You may still need to remove or rename the corrupted files manually if recovery does not apply.
 
 ## Summary
 
-Persistent queue corruption causes CrashLoopBackOff because the Collector cannot load the queue on startup. The immediate fix is to clear the queue data. For prevention, use compaction, limit queue size, ensure adequate disk space, and consider using an init container that validates queue integrity before the Collector starts.
+Persistent queue corruption causes CrashLoopBackOff because the Collector cannot load the queue on startup. The immediate fix is to clear the queue data. For prevention, use compaction, limit queue size, ensure adequate disk space, and consider using an init container that checks the queue directory before the Collector starts.
