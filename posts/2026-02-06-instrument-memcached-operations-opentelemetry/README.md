@@ -86,8 +86,8 @@ mc = Client(('memcached-server', 11211))
 
 # Each of these operations produces an OpenTelemetry span with attributes:
 # - db.system: "memcached"
-# - db.operation: "get", "set", etc.
-# - db.memcached.key: the key being accessed
+# - db.statement: "get user:1234:profile", "set user:1234:profile", etc.
+# - net.peer.name and net.peer.port for the Memcached server
 mc.set('user:1234:profile', '{"name": "Alice"}', expire=300)
 result = mc.get('user:1234:profile')
 
@@ -236,8 +236,9 @@ The Memcached receiver exposes several important metrics that help you understan
 
 **Throughput and hit rate:**
 - `memcached.commands` - Count of get, set, and other commands processed
-- `memcached.operations.hit_ratio` - Ratio of get hits to total gets
-- `memcached.network.sent` and `memcached.network.received` - Bytes transferred
+- `memcached.operation_hit_ratio` - Ratio of hits to total operations, as a percentage
+- `memcached.operations` - Count of get, increment, and decrement hits and misses
+- `memcached.network` - Bytes transferred, with a `direction` attribute of `sent` or `received`
 
 **Memory and eviction:**
 - `memcached.bytes` - Current number of bytes used for storage
@@ -249,7 +250,7 @@ The Memcached receiver exposes several important metrics that help you understan
 - `memcached.connections.total` - Total connections since startup
 - `memcached.threads` - Number of worker threads
 
-Eviction rate is particularly important. If Memcached is evicting items frequently, it means you either need more memory or your TTLs are too aggressive. High eviction rates directly cause cache misses, which in turn increase database load.
+Eviction rate is particularly important. If Memcached is evicting items frequently, it means you either need more memory or some cached items are living too long for the available memory. High eviction rates directly cause cache misses, which in turn increase database load.
 
 ## Correlating Client and Server Data
 
@@ -263,7 +264,7 @@ flowchart LR
         C[memcached.client.latency]
     end
     subgraph Server Metrics
-        D[memcached.operations.hit_ratio]
+        D[memcached.operation_hit_ratio]
         E[memcached.evictions]
         F[memcached.bytes]
     end
@@ -272,7 +273,7 @@ flowchart LR
     C -->|correlates with| D
 ```
 
-A common debugging scenario: your client-side miss rate suddenly increases. You check the server-side metrics and see that evictions have spiked. You look at `memcached.bytes` and see it is at the limit. The fix is either to increase the Memcached memory allocation or to reduce TTLs on less critical cache entries.
+A common debugging scenario: your client-side miss rate suddenly increases. You check the server-side metrics and see that evictions have spiked. You look at `memcached.bytes` and see it is near the memory limit configured for the server. The fix is either to increase the Memcached memory allocation or to reduce TTLs on less critical cache entries.
 
 ## Alert Configuration
 
@@ -310,10 +311,11 @@ groups:
             Memcached is evicting more than 100 items per second.
             This indicates the cache is too small for the workload.
 
-      # Alert when memory is nearly full
+      # Alert when memory is nearly full. Replace 536870912 with the
+      # configured memory limit for this Memcached instance, in bytes.
       - alert: MemcachedMemoryNearLimit
         expr: |
-          memcached_bytes / memcached_limit_bytes > 0.95
+          memcached_bytes / 536870912 > 0.95
         for: 5m
         labels:
           severity: critical
@@ -337,17 +339,56 @@ receivers:
   memcached/node3:
     endpoint: "memcached-3:11211"
     collection_interval: 60s
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  resource/node1:
+    attributes:
+      - key: memcached.instance
+        value: "memcached-1:11211"
+        action: upsert
+  resource/node2:
+    attributes:
+      - key: memcached.instance
+        value: "memcached-2:11211"
+        action: upsert
+  resource/node3:
+    attributes:
+      - key: memcached.instance
+        value: "memcached-3:11211"
+        action: upsert
+  batch:
+
+exporters:
+  otlp:
+    endpoint: "http://your-backend:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
-    metrics:
-      # All three receivers feed into a single metrics pipeline
-      receivers: [memcached/node1, memcached/node2, memcached/node3, otlp]
-      processors: [resource, batch]
+    metrics/node1:
+      receivers: [memcached/node1]
+      processors: [resource/node1, batch]
+      exporters: [otlp]
+    metrics/node2:
+      receivers: [memcached/node2]
+      processors: [resource/node2, batch]
+      exporters: [otlp]
+    metrics/node3:
+      receivers: [memcached/node3]
+      processors: [resource/node3, batch]
+      exporters: [otlp]
+    metrics/app:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlp]
 ```
 
-Each receiver instance will tag its metrics with the endpoint, so you can distinguish between nodes in your dashboards and alerts.
+Adding a distinct resource attribute for each receiver lets you distinguish between nodes in your dashboards and alerts.
 
 ## Wrapping Up
 
