@@ -64,6 +64,7 @@ def handle_inform(inform_request):
     """Handle a TR-069 Inform from a CPE device."""
     device_serial = inform_request.device_id.serial_number
     device_oui = inform_request.device_id.oui
+    device_product_class = inform_request.device_id.product_class
     event_codes = inform_request.event_codes
 
     with tracer.start_as_current_span("cpe.inform") as span:
@@ -71,8 +72,7 @@ def handle_inform(inform_request):
             "cpe.serial_number": device_serial,
             "cpe.oui": device_oui,
             "cpe.manufacturer": inform_request.device_id.manufacturer,
-            "cpe.model": inform_request.device_id.model_name,
-            "cpe.firmware_version": inform_request.device_id.firmware_version,
+            "cpe.product_class": device_product_class,
             "cpe.event_codes": ",".join(event_codes),
         })
 
@@ -88,34 +88,42 @@ def handle_inform(inform_request):
 def handle_bootstrap(parent_span, inform_request):
     """Handle initial provisioning for a new CPE device."""
     device_serial = inform_request.device_id.serial_number
-    start_time = time.time()
+    start_time = time.perf_counter()
+    result = "unknown"
+    service_plan = "unknown"
 
     active_sessions.add(1)
 
     try:
         # Step 1: Authenticate device against inventory
         with tracer.start_as_current_span("cpe.provision.authenticate") as auth_span:
-            step_start = time.time()
+            step_start = time.perf_counter()
             device_record = lookup_device_in_inventory(device_serial)
 
             if not device_record:
                 auth_span.set_status(StatusCode.ERROR, "Device not in inventory")
+                provision_step_duration.record(
+                    (time.perf_counter() - step_start) * 1000,
+                    {"step": "authenticate"}
+                )
+                result = "unknown_device"
                 provision_counter.add(1, {"result": "unknown_device"})
                 return create_fault_response("Device not registered")
 
+            service_plan = device_record.service_plan
             auth_span.set_attributes({
                 "cpe.customer_id": device_record.customer_id,
                 "cpe.service_plan": device_record.service_plan,
                 "cpe.location_id": device_record.location_id,
             })
             provision_step_duration.record(
-                (time.time() - step_start) * 1000,
+                (time.perf_counter() - step_start) * 1000,
                 {"step": "authenticate"}
             )
 
         # Step 2: Fetch service profile from BSS
         with tracer.start_as_current_span("cpe.provision.fetch_profile") as profile_span:
-            step_start = time.time()
+            step_start = time.perf_counter()
             service_profile = fetch_service_profile(
                 device_record.customer_id,
                 device_record.service_plan
@@ -123,6 +131,11 @@ def handle_bootstrap(parent_span, inform_request):
 
             if not service_profile:
                 profile_span.set_status(StatusCode.ERROR, "No service profile found")
+                provision_step_duration.record(
+                    (time.perf_counter() - step_start) * 1000,
+                    {"step": "fetch_profile"}
+                )
+                result = "no_profile"
                 provision_counter.add(1, {"result": "no_profile"})
                 return create_fault_response("Service profile missing")
 
@@ -131,13 +144,13 @@ def handle_bootstrap(parent_span, inform_request):
                 len(service_profile.parameters)
             )
             provision_step_duration.record(
-                (time.time() - step_start) * 1000,
+                (time.perf_counter() - step_start) * 1000,
                 {"step": "fetch_profile"}
             )
 
         # Step 3: Build and push configuration
         with tracer.start_as_current_span("cpe.provision.push_config") as config_span:
-            step_start = time.time()
+            step_start = time.perf_counter()
             config_params = build_config(service_profile, device_record)
 
             config_span.set_attributes({
@@ -156,17 +169,22 @@ def handle_bootstrap(parent_span, inform_request):
                     f"SetParameterValues fault: {rpc_response.fault_string}"
                 )
                 config_span.set_attribute("cpe.fault_code", rpc_response.fault_code)
+                provision_step_duration.record(
+                    (time.perf_counter() - step_start) * 1000,
+                    {"step": "push_config"}
+                )
+                result = "config_push_failed"
                 provision_counter.add(1, {"result": "config_push_failed"})
                 return rpc_response
 
             provision_step_duration.record(
-                (time.time() - step_start) * 1000,
+                (time.perf_counter() - step_start) * 1000,
                 {"step": "push_config"}
             )
 
         # Step 4: Verify configuration was applied
         with tracer.start_as_current_span("cpe.provision.verify") as verify_span:
-            step_start = time.time()
+            step_start = time.perf_counter()
             verification = send_get_parameter_values(
                 [p.name for p in config_params[:5]]  # spot-check a few params
             )
@@ -176,23 +194,25 @@ def handle_bootstrap(parent_span, inform_request):
 
             if mismatches:
                 verify_span.set_status(StatusCode.ERROR, "Config verification failed")
+                result = "verification_failed"
                 provision_counter.add(1, {"result": "verification_failed"})
             else:
+                result = "success"
                 provision_counter.add(1, {"result": "success"})
 
             provision_step_duration.record(
-                (time.time() - step_start) * 1000,
+                (time.perf_counter() - step_start) * 1000,
                 {"step": "verify"}
             )
 
-        # Record total provisioning duration
-        total_ms = (time.time() - start_time) * 1000
-        provision_duration.record(total_ms, {
-            "cpe.model": inform_request.device_id.model_name,
-            "cpe.service_plan": device_record.service_plan,
-        })
-
     finally:
+        # Record total provisioning duration, including failed attempts.
+        total_ms = (time.perf_counter() - start_time) * 1000
+        provision_duration.record(total_ms, {
+            "cpe.product_class": inform_request.device_id.product_class,
+            "cpe.service_plan": service_plan,
+            "result": result,
+        })
         active_sessions.add(-1)
 ```
 
@@ -212,9 +232,9 @@ processors:
 
   # Filter out periodic inform noise - only keep bootstrap and boot events
   filter:
-    traces:
-      span:
-        - 'attributes["cpe.event_codes"] == "2 PERIODIC"'
+    error_mode: ignore
+    trace_conditions:
+      - 'IsMatch(span.attributes["cpe.event_codes"], ".*2 PERIODIC.*")'
 
 exporters:
   otlp:
@@ -226,7 +246,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter, batch]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
