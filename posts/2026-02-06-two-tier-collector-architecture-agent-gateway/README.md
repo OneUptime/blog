@@ -31,8 +31,8 @@ graph LR
 
 This architecture provides several benefits:
 
-- **Reduced network traffic**: Agents batch and compress data before sending to gateways
-- **Improved reliability**: Agents buffer data locally if gateways are unavailable
+- **Reduced network traffic**: Agents batch data and can compress OTLP payloads before sending to gateways
+- **Improved reliability**: Agents queue data locally if gateways are temporarily unavailable
 - **Centralized control**: Apply organization-wide policies at the gateway level
 - **Scalability**: Scale agents and gateways independently based on workload
 - **Security**: Terminate TLS at gateways and manage backend credentials centrally
@@ -94,9 +94,10 @@ processors:
     spike_limit_mib: 128
 
 exporters:
-  # Forward all telemetry to gateway collectors
+  # Forward metrics and logs to gateway collectors
   otlp:
     endpoint: gateway-collector.observability.svc.cluster.local:4317
+    compression: gzip
     tls:
       insecure: false
       ca_file: /etc/ssl/certs/ca.crt
@@ -112,8 +113,31 @@ exporters:
       num_consumers: 10
       queue_size: 5000
 
+  # Route traces by trace ID so a gateway with tail_sampling sees complete traces
+  loadbalancing/traces:
+    routing_key: traceID
+    protocol:
+      otlp:
+        compression: gzip
+        tls:
+          insecure: false
+          ca_file: /etc/ssl/certs/ca.crt
+    resolver:
+      dns:
+        hostname: gateway-collector-headless.observability.svc.cluster.local
+        port: "4317"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
   # Debug exporter for troubleshooting (disable in production)
-  # logging:
+  # debug:
   #   verbosity: detailed
 
 service:
@@ -121,7 +145,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, resourcedetection, batch]
-      exporters: [otlp]
+      exporters: [loadbalancing/traces]
 
     metrics:
       receivers: [otlp, hostmetrics]
@@ -138,7 +162,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key considerations for agent collectors:
@@ -164,8 +193,14 @@ receivers:
         endpoint: 0.0.0.0:4317
         max_recv_msg_size_mib: 32
         max_concurrent_streams: 100
+        tls:
+          cert_file: /etc/otel/tls/tls.crt
+          key_file: /etc/otel/tls/tls.key
       http:
         endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /etc/otel/tls/tls.crt
+          key_file: /etc/otel/tls/tls.key
 
 processors:
   # Memory protection for high-throughput scenarios
@@ -181,7 +216,7 @@ processors:
     send_batch_max_size: 16384
 
   # Implement tail-based sampling for traces
-  # Only traces with errors or long duration are kept
+  # Keep errors and slow traces, plus a sample of normal traces
   tail_sampling:
     decision_wait: 10s
     num_traces: 100000
@@ -216,7 +251,7 @@ processors:
 
   # Redact sensitive data from logs
   redaction:
-    allow_all_keys: false
+    allow_all_keys: true
     blocked_values:
       - "password"
       - "api_key"
@@ -227,10 +262,10 @@ processors:
   # Transform metric names to match backend conventions
   metricstransform:
     transforms:
-      - include: "^system\\.cpu\\..*"
+      - include: "^system\\.cpu\\.(.*)$$"
         match_type: regexp
         action: update
-        new_name: "host.cpu.$1"
+        new_name: "host.cpu.$${1}"
 
   # Add gateway-specific resource attributes
   resource:
@@ -263,9 +298,9 @@ exporters:
     retry_on_failure:
       enabled: true
 
-  # Export logs to Loki
-  loki:
-    endpoint: https://loki.example.com/loki/api/v1/push
+  # Export logs to Loki over OTLP/HTTP
+  otlphttp/loki:
+    endpoint: https://loki.example.com/otlp
     tls:
       insecure: false
     headers:
@@ -281,7 +316,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, tail_sampling, resource]
+      processors: [memory_limiter, resource, tail_sampling, batch]
       exporters: [otlp/jaeger, otlp/backup]
 
     metrics:
@@ -292,13 +327,18 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, redaction, batch, resource]
-      exporters: [loki, otlp/backup]
+      exporters: [otlphttp/loki, otlp/backup]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Gateway collectors should:
@@ -332,7 +372,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/agent-config.yaml
         resources:
@@ -389,7 +429,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/gateway-config.yaml
         resources:
@@ -409,6 +449,9 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /conf
+        - name: gateway-tls
+          mountPath: /etc/otel/tls
+          readOnly: true
         env:
         - name: HOSTNAME
           valueFrom:
@@ -423,6 +466,9 @@ spec:
       - name: config
         configMap:
           name: otel-gateway-config
+      - name: gateway-tls
+        secret:
+          secretName: otel-gateway-tls
 ---
 # gateway-service.yaml
 # Expose gateway collectors via a Service
@@ -445,13 +491,29 @@ spec:
     port: 8888
     targetPort: 8888
   type: ClusterIP
+---
+# gateway-headless-service.yaml
+# Let the load balancing exporter discover individual gateway pods for trace-aware routing
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-collector-headless
+  namespace: observability
+spec:
+  clusterIP: None
+  selector:
+    app: otel-gateway
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
 ```
 
 ## Load Balancing and High Availability
 
 For production deployments, implement proper load balancing between agents and gateways:
 
-**For agents forwarding to gateways**, use Kubernetes DNS with service load balancing. The gateway Service automatically distributes connections across gateway pods.
+**For agents forwarding metrics and logs to gateways**, use Kubernetes DNS with service load balancing. The gateway Service automatically distributes connections across gateway pods. For traces that use tail-based sampling, configure the agent's `loadbalancing` exporter with `routing_key: traceID` and a headless gateway Service so all spans from a trace reach the same gateway instance.
 
 **For applications sending to agents**, use hostPort or hostNetwork to ensure each node exposes agent endpoints. Applications can send telemetry to `localhost:4317` which routes to the local agent.
 
@@ -493,6 +555,8 @@ Both agent and gateway collectors expose metrics on port 8888. Monitor these key
 - `otelcol_receiver_refused_spans`: Spans rejected due to errors
 - `otelcol_exporter_sent_spans`: Spans successfully exported
 - `otelcol_exporter_send_failed_spans`: Failed exports requiring retry
+- `otelcol_exporter_enqueue_failed_spans`: Spans that could not enter the sending queue
+- `otelcol_exporter_queue_capacity`: Configured sending queue capacity
 - `otelcol_processor_batch_batch_send_size`: Batch sizes being sent
 - `otelcol_exporter_queue_size`: Current queue depth (watch for backpressure)
 
