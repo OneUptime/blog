@@ -38,26 +38,26 @@ First, download the latest OpenTelemetry Java agent JAR. This is a standalone fi
 ```bash
 # Download the latest agent (check for newer versions)
 
-curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.1.0/opentelemetry-javaagent.jar \
+curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar \
   -o opentelemetry-javaagent.jar
 
 # Verify the download
 ls -lh opentelemetry-javaagent.jar
-# Should be around 60-70 MB
+# Should be around 20-30 MB
 ```
 
-For production deployments, pin to a specific version and verify checksums:
+For production deployments, pin to a specific version and verify signatures:
 
 ```bash
-# Download with checksum verification
-curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.1.0/opentelemetry-javaagent.jar \
+# Download with signature verification
+curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.28.1/opentelemetry-javaagent.jar \
   -o opentelemetry-javaagent.jar
 
-curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.1.0/opentelemetry-javaagent.jar.sha256 \
-  -o opentelemetry-javaagent.jar.sha256
+curl -L https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.28.1/opentelemetry-javaagent.jar.asc \
+  -o opentelemetry-javaagent.jar.asc
 
-# Verify checksum (Linux/Mac)
-sha256sum -c opentelemetry-javaagent.jar.sha256
+# Verify signature after importing the OpenTelemetry release signing key
+gpg --verify opentelemetry-javaagent.jar.asc opentelemetry-javaagent.jar
 ```
 
 ## Basic Usage
@@ -122,7 +122,7 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
 # Download OpenTelemetry agent at build time
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.1.0/opentelemetry-javaagent.jar \
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.28.1/opentelemetry-javaagent.jar \
   /app/opentelemetry-javaagent.jar
 
 # Verify agent was downloaded correctly
@@ -203,7 +203,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
+          value: "deployment.environment=production,k8s.cluster.name=prod-us-east-1,k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
         resources:
           requests:
             memory: "512Mi"
@@ -265,7 +265,7 @@ The agent can export to multiple destinations simultaneously:
 ```bash
 # Export traces to OTLP, logs to console
 -Dotel.traces.exporter=otlp \
--Dotel.logs.exporter=logging \
+-Dotel.logs.exporter=console \
 -Dotel.metrics.exporter=otlp
 
 # Export to multiple trace backends (comma-separated)
@@ -340,22 +340,17 @@ The agent has minimal overhead (typically 2-5% CPU, 50-100MB memory), but you ca
 
 ## Using with Spring Boot Profiles
 
-Integrate the agent with Spring Boot profiles for environment-specific configuration:
+Use Spring Boot profiles for application configuration, and pass the matching OpenTelemetry settings to the agent through system properties or environment variables:
 
 ```bash
 # application.properties (Spring Boot)
-# These get picked up by both Spring and the agent
+# These get picked up by Spring Boot
 
 # Development profile
 spring.application.name=payment-service
-otel.service.name=${spring.application.name}
-otel.exporter.otlp.endpoint=http://localhost:4318
 
 # Production profile (application-production.properties)
-otel.exporter.otlp.endpoint=http://otel-collector.prod.internal:4318
-otel.traces.sampler=parentbased_traceidratio
-otel.traces.sampler.arg=0.05
-otel.resource.attributes=deployment.environment=production
+spring.application.name=payment-service
 ```
 
 Start with the profile:
@@ -363,6 +358,11 @@ Start with the profile:
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
   -Dspring.profiles.active=production \
+  -Dotel.service.name=payment-service \
+  -Dotel.exporter.otlp.endpoint=http://otel-collector.prod.internal:4318 \
+  -Dotel.traces.sampler=parentbased_traceidratio \
+  -Dotel.traces.sampler.arg=0.05 \
+  -Dotel.resource.attributes=deployment.environment=production \
   -jar payment-service.jar
 ```
 
@@ -383,13 +383,13 @@ stringData:
 ---
 # Reference secret in deployment
 env:
-- name: OTEL_EXPORTER_OTLP_HEADERS
-  value: "api-key=$(OTEL_API_KEY)"
 - name: OTEL_API_KEY
   valueFrom:
     secretKeyRef:
       name: otel-secrets
       key: api-key
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: "api-key=$(OTEL_API_KEY)"
 ```
 
 Never hardcode credentials in Docker images or configuration files.
@@ -400,7 +400,7 @@ Confirm the agent is working correctly:
 
 ```bash
 # Check agent loaded successfully (look for log line at startup)
-# "OpenTelemetry Javaagent version: 2.1.0"
+# "opentelemetry-javaagent - version: 2.28.1"
 
 # Enable startup logs
 -Dotel.javaagent.debug=true
