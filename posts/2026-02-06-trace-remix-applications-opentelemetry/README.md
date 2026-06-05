@@ -8,7 +8,7 @@ Description: Complete guide to implementing distributed tracing in Remix applica
 
 Remix has become a popular choice for building full-stack web applications with React, offering server-side rendering, optimistic UI updates, and nested routing out of the box. As your Remix application grows and handles more traffic, understanding performance bottlenecks across both server and client becomes critical. OpenTelemetry provides the instrumentation needed to trace requests from the browser through your loaders, actions, and backend services.
 
-This guide walks through implementing comprehensive tracing for Remix applications, covering both server-side instrumentation and client-side monitoring to give you complete visibility into your full-stack application.
+This guide walks through implementing comprehensive server-side tracing for Remix applications, covering request instrumentation, loaders, actions, and downstream calls to give you visibility into your full-stack application.
 
 ## Why Trace Remix Applications
 
@@ -43,7 +43,7 @@ graph TD
 
 ## Installing Dependencies
 
-Start by installing the necessary OpenTelemetry packages for Node.js and Remix-specific instrumentation.
+Start by installing the necessary OpenTelemetry packages for Node.js and an Express-based Remix server.
 
 ```bash
 npm install @opentelemetry/api \
@@ -56,7 +56,7 @@ npm install @opentelemetry/api \
   @opentelemetry/semantic-conventions
 ```
 
-These packages provide automatic instrumentation for HTTP servers, Express middleware (which Remix uses internally), and exporters for sending traces to your observability backend.
+These packages provide automatic instrumentation for HTTP servers, Express middleware used by this custom Remix server, and exporters for sending traces to your observability backend.
 
 ## Setting Up OpenTelemetry Instrumentation
 
@@ -70,21 +70,25 @@ Create a dedicated instrumentation file that initializes OpenTelemetry before yo
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { defaultResource, resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure the OTLP exporter to send traces to your collector
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {},
 });
 
 // Create a resource that identifies this service
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'remix-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'remix-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   })
 );
 
@@ -171,7 +175,7 @@ Automatic instrumentation captures HTTP requests, but you'll want custom spans t
 
 import { json, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData } from '@remix-run/react';
-import { trace, context } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('remix-app-loaders');
 
@@ -195,47 +199,47 @@ export async function loader({ params }: LoaderFunctionArgs) {
       span.setAttribute('user.id', userId || 'unknown');
       span.setAttribute('route', '/users/:userId');
 
-      // Fetch user data with a custom span
-      const user = await tracer.startActiveSpan('db.fetch.user', async (dbSpan) => {
-        dbSpan.setAttribute('db.operation', 'SELECT');
-        dbSpan.setAttribute('db.table', 'users');
+      // Fetch user data and activity in parallel with custom spans
+      const [user, activity] = await Promise.all([
+        tracer.startActiveSpan('db.fetch.user', async (dbSpan) => {
+          dbSpan.setAttribute('db.operation', 'SELECT');
+          dbSpan.setAttribute('db.table', 'users');
 
-        try {
-          const userData = await fetchUserFromDatabase(userId);
-          dbSpan.setStatus({ code: 1 }); // OK status
-          return userData;
-        } catch (error) {
-          dbSpan.recordException(error as Error);
-          dbSpan.setStatus({ code: 2, message: (error as Error).message }); // ERROR status
-          throw error;
-        } finally {
-          dbSpan.end();
-        }
-      });
+          try {
+            const userData = await fetchUserFromDatabase(userId);
+            dbSpan.setStatus({ code: SpanStatusCode.OK });
+            return userData;
+          } catch (error) {
+            dbSpan.recordException(error as Error);
+            dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+            throw error;
+          } finally {
+            dbSpan.end();
+          }
+        }),
+        tracer.startActiveSpan('api.fetch.activity', async (apiSpan) => {
+          apiSpan.setAttribute('api.endpoint', '/activity');
+          apiSpan.setAttribute('user.id', userId || 'unknown');
 
-      // Fetch user activity in parallel with another custom span
-      const activity = await tracer.startActiveSpan('api.fetch.activity', async (apiSpan) => {
-        apiSpan.setAttribute('api.endpoint', '/activity');
-        apiSpan.setAttribute('user.id', userId || 'unknown');
+          try {
+            const activityData = await fetchUserActivity(userId);
+            apiSpan.setStatus({ code: SpanStatusCode.OK });
+            return activityData;
+          } catch (error) {
+            apiSpan.recordException(error as Error);
+            apiSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+            throw error;
+          } finally {
+            apiSpan.end();
+          }
+        }),
+      ]);
 
-        try {
-          const activityData = await fetchUserActivity(userId);
-          apiSpan.setStatus({ code: 1 });
-          return activityData;
-        } catch (error) {
-          apiSpan.recordException(error as Error);
-          apiSpan.setStatus({ code: 2, message: (error as Error).message });
-          throw error;
-        } finally {
-          apiSpan.end();
-        }
-      });
-
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return json({ user, activity });
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       throw error;
     } finally {
       span.end();
@@ -287,7 +291,7 @@ Actions in Remix handle form submissions and mutations. Tracing these operations
 
 import { json, redirect, ActionFunctionArgs } from '@remix-run/node';
 import { Form, useActionData } from '@remix-run/react';
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('remix-app-actions');
 
@@ -314,10 +318,10 @@ export async function action({ params, request }: ActionFunctionArgs) {
           if (!email || !email.includes('@')) {
             throw new Error('Invalid email address');
           }
-          validationSpan.setStatus({ code: 1 });
+          validationSpan.setStatus({ code: SpanStatusCode.OK });
         } catch (error) {
           validationSpan.recordException(error as Error);
-          validationSpan.setStatus({ code: 2, message: (error as Error).message });
+          validationSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
           throw error;
         } finally {
           validationSpan.end();
@@ -332,21 +336,21 @@ export async function action({ params, request }: ActionFunctionArgs) {
 
         try {
           await updateUserInDatabase(userId, { name, email });
-          dbSpan.setStatus({ code: 1 });
+          dbSpan.setStatus({ code: SpanStatusCode.OK });
         } catch (error) {
           dbSpan.recordException(error as Error);
-          dbSpan.setStatus({ code: 2, message: (error as Error).message });
+          dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
           throw error;
         } finally {
           dbSpan.end();
         }
       });
 
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return redirect(`/users/${userId}`);
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       return json({ error: (error as Error).message }, { status: 400 });
     } finally {
       span.end();
@@ -393,7 +397,7 @@ Remix's nested routing means multiple loaders can execute for a single page load
 
 import { json, LoaderFunctionArgs } from '@remix-run/node';
 import { Outlet, useLoaderData } from '@remix-run/react';
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('remix-app-loaders');
 
@@ -407,18 +411,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
       const navigation = await tracer.startActiveSpan('db.fetch.navigation', async (navSpan) => {
         try {
           const data = await fetchNavigationItems();
-          navSpan.setStatus({ code: 1 });
+          navSpan.setStatus({ code: SpanStatusCode.OK });
           return data;
         } finally {
           navSpan.end();
         }
       });
 
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return json({ navigation });
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       throw error;
     } finally {
       span.end();
@@ -465,7 +469,7 @@ Set up environment variables to configure OpenTelemetry behavior across differen
 # OpenTelemetry configuration for production environment
 
 # OTLP endpoint for trace export
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.yourcompany.com:4318/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://otel-collector.yourcompany.com:4318/v1/traces
 
 # Service identification
 OTEL_SERVICE_NAME=remix-app
@@ -476,7 +480,7 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Resource attributes
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,team=frontend
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,team=frontend
 
 NODE_ENV=production
 ```
