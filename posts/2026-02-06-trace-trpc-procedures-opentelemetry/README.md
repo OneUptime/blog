@@ -6,7 +6,7 @@ Tags: OpenTelemetry, tRPC, TypeScript, Node.js, RPC, Tracing
 
 Description: Learn how to instrument tRPC procedures with OpenTelemetry to gain full visibility into your end-to-end type-safe API calls, from client requests to server responses.
 
-tRPC has revolutionized how TypeScript developers build type-safe APIs by eliminating the need for code generation or runtime validation. However, the abstraction that makes tRPC powerful can also obscure what happens under the hood. OpenTelemetry instrumentation bridges this gap, providing complete visibility into your RPC calls while preserving the type safety you rely on.
+tRPC has revolutionized how TypeScript developers build type-safe APIs by eliminating the need for code generation while letting you add runtime validation where needed. However, the abstraction that makes tRPC powerful can also obscure what happens under the hood. OpenTelemetry instrumentation bridges this gap, providing complete visibility into your RPC calls while preserving the type safety you rely on.
 
 ## Why tRPC Needs Observability
 
@@ -20,7 +20,8 @@ Start with a basic tRPC setup and add OpenTelemetry instrumentation. Install the
 
 ```bash
 npm install @trpc/server @trpc/client @trpc/react-query
-npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/instrumentation
+npm install zod
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/instrumentation @opentelemetry/resources @opentelemetry/semantic-conventions
 npm install @opentelemetry/exporter-trace-otlp-http
 ```
 
@@ -30,13 +31,16 @@ Initialize OpenTelemetry before your application code runs:
 // tracing.ts - Initialize before importing any application code
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'trpc-api-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'trpc-api-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -56,26 +60,25 @@ The tRPC context is the perfect place to inject OpenTelemetry tracing capabiliti
 
 ```typescript
 // context.ts - Create context with tracing support
-import { inferAsyncReturnType } from '@trpc/server';
-import { CreateNextContextOptions } from '@trpc/server/adapters/next';
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import type { CreateNextContextOptions } from '@trpc/server/adapters/next';
+import { trace, context, propagation } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('trpc-procedures', '1.0.0');
 
 export async function createContext({ req, res }: CreateNextContextOptions) {
   // Extract trace context from incoming request headers
-  const activeContext = context.active();
+  const traceContext = propagation.extract(context.active(), req.headers);
 
   return {
     req,
     res,
     tracer,
-    traceContext: activeContext,
+    traceContext,
     userId: req.headers['x-user-id'] as string | undefined,
   };
 }
 
-export type Context = inferAsyncReturnType<typeof createContext>;
+export type Context = Awaited<ReturnType<typeof createContext>>;
 ```
 
 ## Building an Instrumented Middleware
@@ -84,10 +87,13 @@ Create middleware that automatically traces all procedure calls:
 
 ```typescript
 // middleware.ts - Tracing middleware for tRPC
-import { middleware } from './trpc';
-import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
+import { initTRPC } from '@trpc/server';
+import { context, trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
+import type { Context } from './context';
 
-export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawInput }) => {
+const t = initTRPC.context<Context>().create();
+
+export const tracingMiddleware = t.middleware(async ({ path, type, next, ctx, getRawInput }) => {
   const span = ctx.tracer.startSpan(
     `trpc.${type}.${path}`,
     {
@@ -104,6 +110,7 @@ export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawI
   );
 
   // Attach input parameters as attributes (be careful with sensitive data)
+  const rawInput = await getRawInput();
   if (rawInput && typeof rawInput === 'object') {
     span.setAttribute('rpc.input.keys', Object.keys(rawInput).join(','));
   }
@@ -112,21 +119,38 @@ export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawI
 
   try {
     // Execute the procedure within the span context
-    const result = await trace.context.with(
-      trace.setSpan(ctx.traceContext, span),
+    const spanContext = trace.setSpan(ctx.traceContext, span);
+    const result = await context.with(
+      spanContext,
       async () => {
-        return await next();
+        return await next({
+          ctx: {
+            traceContext: spanContext,
+          },
+        });
       }
     );
 
     const duration = Date.now() - startTime;
 
-    span.setAttributes({
-      'rpc.duration.ms': duration,
-      'rpc.status': 'success',
-    });
+    if (result.ok) {
+      span.setAttributes({
+        'rpc.duration.ms': duration,
+        'rpc.status': 'success',
+      });
+      span.setStatus({ code: SpanStatusCode.OK });
+    } else {
+      span.setAttributes({
+        'rpc.duration.ms': duration,
+        'rpc.status': 'error',
+      });
+      span.recordException(result.error);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: result.error.message,
+      });
+    }
 
-    span.setStatus({ code: SpanStatusCode.OK });
     span.end();
 
     return result;
@@ -157,7 +181,7 @@ Apply the tracing middleware to your tRPC router:
 ```typescript
 // trpc.ts - Configure tRPC with tracing
 import { initTRPC } from '@trpc/server';
-import { Context } from './context';
+import type { Context } from './context';
 import { tracingMiddleware } from './middleware';
 
 const t = initTRPC.context<Context>().create();
@@ -175,7 +199,7 @@ Create procedures with detailed tracing for complex operations:
 // routes/user.ts - Example user procedures with tracing
 import { z } from 'zod';
 import { router, publicProcedure } from '../trpc';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 export const userRouter = router({
   getUser: publicProcedure
@@ -210,11 +234,16 @@ export const userRouter = router({
           'db.rows.returned': 1,
           'db.query.success': true,
         });
+        dbSpan.setStatus({ code: SpanStatusCode.OK });
         dbSpan.end();
 
         return user;
       } catch (error) {
         dbSpan.recordException(error as Error);
+        dbSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
         dbSpan.end();
         throw error;
       }
@@ -254,12 +283,15 @@ export const userRouter = router({
 
       try {
         const result = await updateUserInDatabase(input);
-        updateSpan.setStatus({ code: 1 });
+        updateSpan.setStatus({ code: SpanStatusCode.OK });
         updateSpan.end();
         return result;
       } catch (error) {
         updateSpan.recordException(error as Error);
-        updateSpan.setStatus({ code: 2 });
+        updateSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
         updateSpan.end();
         throw error;
       }
@@ -273,6 +305,10 @@ When procedures call other procedures, maintain the trace context:
 
 ```typescript
 // routes/posts.ts - Nested procedure calls with tracing
+import { z } from 'zod';
+import { SpanStatusCode } from '@opentelemetry/api';
+import { router, publicProcedure } from '../trpc';
+
 export const postsRouter = router({
   getPostWithAuthor: publicProcedure
     .input(z.object({ postId: z.string() }))
@@ -284,8 +320,18 @@ export const postsRouter = router({
         ctx.traceContext
       );
 
-      const post = await fetchPostFromDatabase(input.postId);
+      const post = await fetchPostFromDatabase(input.postId).catch((error) => {
+        postSpan.recordException(error as Error);
+        postSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
+        postSpan.end();
+        throw error;
+      });
+
       postSpan.setAttribute('post.title.length', post.title.length);
+      postSpan.setStatus({ code: SpanStatusCode.OK });
       postSpan.end();
 
       // Fetch author data using the user procedure
@@ -303,6 +349,7 @@ export const postsRouter = router({
 
       try {
         const author = await fetchUserFromDatabase(post.authorId);
+        authorSpan.setStatus({ code: SpanStatusCode.OK });
         authorSpan.end();
 
         return {
@@ -311,6 +358,10 @@ export const postsRouter = router({
         };
       } catch (error) {
         authorSpan.recordException(error as Error);
+        authorSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
         authorSpan.end();
         throw error;
       }
@@ -326,10 +377,8 @@ Extend tracing to the frontend to see end-to-end request flow:
 // client/trpc.ts - Client with tracing support
 import { createTRPCReact } from '@trpc/react-query';
 import { httpBatchLink } from '@trpc/client';
-import { trace, context as otelContext } from '@opentelemetry/api';
+import { context as otelContext, propagation } from '@opentelemetry/api';
 import type { AppRouter } from '../server/router';
-
-const tracer = trace.getTracer('trpc-client', '1.0.0');
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -342,18 +391,8 @@ export function getTRPCClient() {
         // Inject trace context into request headers
         headers: async () => {
           const activeContext = otelContext.active();
-          const span = trace.getSpan(activeContext);
-
-          if (!span) return {};
-
           const headers: Record<string, string> = {};
-
-          // Propagate trace context via W3C Trace Context headers
-          const spanContext = span.spanContext();
-          if (spanContext) {
-            headers['traceparent'] =
-              `00-${spanContext.traceId}-${spanContext.spanId}-01`;
-          }
+          propagation.inject(activeContext, headers);
 
           return headers;
         },
@@ -414,6 +453,10 @@ WebSocket subscriptions require different instrumentation:
 
 ```typescript
 // routes/notifications.ts - Subscription with tracing
+import { z } from 'zod';
+import { SpanStatusCode } from '@opentelemetry/api';
+import { router, publicProcedure } from '../trpc';
+
 export const notificationsRouter = router({
   onNewNotification: publicProcedure
     .input(z.object({ userId: z.string() }))
@@ -430,6 +473,8 @@ export const notificationsRouter = router({
       );
 
       subscriptionSpan.addEvent('subscription.started');
+
+      let hadError = false;
 
       try {
         // Simulate listening to events
@@ -450,9 +495,21 @@ export const notificationsRouter = router({
 
           yield notification;
 
+          notificationSpan.setStatus({ code: SpanStatusCode.OK });
           notificationSpan.end();
         }
+      } catch (error) {
+        hadError = true;
+        subscriptionSpan.recordException(error as Error);
+        subscriptionSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
+        throw error;
       } finally {
+        if (!hadError) {
+          subscriptionSpan.setStatus({ code: SpanStatusCode.OK });
+        }
         subscriptionSpan.addEvent('subscription.ended');
         subscriptionSpan.end();
       }
@@ -466,6 +523,7 @@ Aggregate trace data to understand procedure performance patterns:
 
 ```typescript
 // middleware/metrics.ts - Performance metrics collection
+import { trace } from '@opentelemetry/api';
 import { middleware } from '../trpc';
 
 const procedureMetrics = new Map<string, {
@@ -477,36 +535,34 @@ const procedureMetrics = new Map<string, {
 export const metricsMiddleware = middleware(async ({ path, next, ctx }) => {
   const startTime = Date.now();
 
-  try {
-    const result = await next();
-    const duration = Date.now() - startTime;
+  const result = await next();
+  const duration = Date.now() - startTime;
 
-    // Update metrics
-    const metrics = procedureMetrics.get(path) || {
-      count: 0,
-      totalDuration: 0,
-      errors: 0,
-    };
+  // Update metrics
+  const metrics = procedureMetrics.get(path) || {
+    count: 0,
+    totalDuration: 0,
+    errors: 0,
+  };
 
-    metrics.count++;
-    metrics.totalDuration += duration;
-    procedureMetrics.set(path, metrics);
+  metrics.count++;
+  metrics.totalDuration += duration;
 
-    // Add metrics to span
-    const span = trace.getSpan(ctx.traceContext);
-    span?.setAttributes({
-      'procedure.metrics.total_calls': metrics.count,
-      'procedure.metrics.avg_duration': metrics.totalDuration / metrics.count,
-    });
-
-    return result;
-  } catch (error) {
-    const metrics = procedureMetrics.get(path);
-    if (metrics) {
-      metrics.errors++;
-    }
-    throw error;
+  if (!result.ok) {
+    metrics.errors++;
   }
+
+  procedureMetrics.set(path, metrics);
+
+  // Add metrics to span
+  const span = trace.getSpan(ctx.traceContext);
+  span?.setAttributes({
+    'procedure.metrics.total_calls': metrics.count,
+    'procedure.metrics.avg_duration': metrics.totalDuration / metrics.count,
+    'procedure.metrics.errors': metrics.errors,
+  });
+
+  return result;
 });
 ```
 
@@ -534,12 +590,16 @@ Capture detailed error information for failed procedures:
 ```typescript
 // middleware/errorTracking.ts - Enhanced error tracking
 import { TRPCError } from '@trpc/server';
+import { trace } from '@opentelemetry/api';
+import { middleware } from '../trpc';
 
-export const errorTrackingMiddleware = middleware(async ({ path, type, next, ctx, rawInput }) => {
-  try {
-    return await next();
-  } catch (error) {
+export const errorTrackingMiddleware = middleware(async ({ path, type, next, ctx, getRawInput }) => {
+  const result = await next();
+
+  if (!result.ok) {
+    const error = result.error;
     const span = trace.getSpan(ctx.traceContext);
+    const rawInput = await getRawInput();
 
     if (error instanceof TRPCError) {
       span?.setAttributes({
@@ -562,9 +622,9 @@ export const errorTrackingMiddleware = middleware(async ({ path, type, next, ctx
       'procedure.type': type,
       'procedure.input': JSON.stringify(rawInput),
     });
-
-    throw error;
   }
+
+  return result;
 });
 ```
 
