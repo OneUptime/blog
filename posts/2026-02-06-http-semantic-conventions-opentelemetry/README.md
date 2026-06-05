@@ -36,7 +36,7 @@ The key insight is that client spans and server spans capture slightly different
 
 ## Span Naming for HTTP Operations
 
-The convention for naming HTTP spans is straightforward. For HTTP server spans, use the HTTP method and the route pattern. For HTTP client spans, use just the HTTP method.
+The convention for naming HTTP spans is straightforward. For HTTP server spans, use the HTTP method and the route pattern. For HTTP client spans, use the HTTP method, and include a low-cardinality URL template only when the client instrumentation has one available and enabled.
 
 ```text
 # Server span names
@@ -48,9 +48,10 @@ DELETE /sessions/{sessionId}
 # Client span names
 GET
 POST
+GET /users/{id}
 ```
 
-If the route is not known, fall back to just the HTTP method. Never put the full URL in the span name because it creates high-cardinality issues that will blow up your tracing backend.
+If the route or URL template is not known, fall back to just the HTTP method. Never put the full URL in the span name because it creates high-cardinality issues that will blow up your tracing backend.
 
 ## Server-Side Implementation in Node.js
 
@@ -58,11 +59,14 @@ Let us start with a practical server-side example using Express and the OpenTele
 
 ```javascript
 // tracing.js - Initialize the OpenTelemetry SDK with HTTP semantic conventions
+// Emit the stable HTTP semantic conventions such as http.request.method.
+process.env.OTEL_SEMCONV_STABILITY_OPT_IN = 'http';
+
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -70,7 +74,7 @@ const {
 
 // Configure the SDK with HTTP and Express auto-instrumentation
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'user-api',
     [ATTR_SERVICE_VERSION]: '1.4.0',
   }),
@@ -86,7 +90,7 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-The `HttpInstrumentation` module automatically applies HTTP semantic conventions to every incoming and outgoing request. It sets attributes like `http.request.method`, `http.response.status_code`, `url.scheme`, `url.path`, and `server.address` without you having to write any manual instrumentation code.
+The `HttpInstrumentation` module automatically applies HTTP semantic conventions to every incoming and outgoing request. With the stable HTTP semantic conventions enabled, it sets attributes like `http.request.method`, `http.response.status_code`, `url.scheme`, `url.path`, and `server.address` without you having to write any manual instrumentation code.
 
 For cases where auto-instrumentation does not capture everything you need, you can add custom attributes that follow the conventions.
 
@@ -100,7 +104,13 @@ app.get('/users/:id', async (req, res) => {
   if (span) {
     // Set standard HTTP semantic convention attributes
     span.setAttribute('http.route', '/users/:id');
-    span.setAttribute('http.request.header.x-request-id', req.headers['x-request-id']);
+    const requestId = req.headers['x-request-id'];
+    if (requestId) {
+      span.setAttribute(
+        'http.request.header.x-request-id',
+        Array.isArray(requestId) ? requestId : [requestId]
+      );
+    }
 
     // Set custom attributes that follow the convention patterns
     span.setAttribute('app.user.lookup_type', 'by_id');
@@ -124,6 +134,8 @@ On the client side, HTTP semantic conventions help you understand how your servi
 
 ```python
 # http_client.py - Instrumented HTTP client with semantic conventions
+import os
+
 from opentelemetry import trace
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
@@ -131,6 +143,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.semconv.resource import ResourceAttributes
+
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
 
 # Set up the tracer provider with resource attributes
 resource = Resource.create({
@@ -144,11 +158,11 @@ provider.add_span_processor(
 )
 trace.set_tracer_provider(provider)
 
-# This automatically instruments all requests library calls
+# This automatically instruments all requests library calls.
 RequestsInstrumentor().instrument()
 ```
 
-Once instrumented, every call made through the `requests` library will generate a client span with the proper HTTP semantic convention attributes. The instrumentation handles `http.request.method`, `url.full`, `server.address`, `server.port`, and `http.response.status_code` automatically.
+Once instrumented, every call made through the `requests` library will generate a client span with the proper HTTP semantic convention attributes. With the stable HTTP semantic conventions enabled, the instrumentation handles `http.request.method`, `url.full`, `server.address`, `server.port`, and `http.response.status_code` automatically.
 
 For more granular control, you can create manual spans that still follow the conventions.
 
@@ -196,9 +210,9 @@ This function wraps an HTTP GET call in a span that captures all the relevant HT
 Here are the most important HTTP semantic convention attributes you should be using:
 
 ```yaml
-# Required attributes for HTTP spans
+# Core attributes for HTTP spans
 http.request.method: "GET"          # The HTTP method (GET, POST, PUT, DELETE, etc.)
-http.response.status_code: 200      # The HTTP response status code
+http.response.status_code: 200      # The HTTP response status code, when one was sent or received
 
 # Server span attributes
 http.route: "/users/{id}"           # The matched route pattern
@@ -210,7 +224,7 @@ url.full: "https://api.example.com/users/42"  # Full request URL
 server.address: "api.example.com"              # The server hostname
 server.port: 443                               # The server port
 
-# Optional but useful
+# Optional or opt-in but useful
 http.request.body.size: 1024        # Request body size in bytes
 http.response.body.size: 8192      # Response body size in bytes
 network.protocol.version: "1.1"    # HTTP version (1.0, 1.1, 2, 3)
@@ -231,7 +245,6 @@ function setHttpSpanStatus(span, statusCode) {
   if (statusCode >= 500) {
     span.setStatus({
       code: SpanStatusCode.ERROR,
-      message: `HTTP ${statusCode}`,
     });
     span.setAttribute('error.type', statusCode.toString());
   }
@@ -243,7 +256,6 @@ function setHttpClientSpanStatus(span, statusCode) {
   if (statusCode >= 400) {
     span.setStatus({
       code: SpanStatusCode.ERROR,
-      message: `HTTP ${statusCode}`,
     });
     span.setAttribute('error.type', statusCode.toString());
   }
@@ -254,7 +266,7 @@ This distinction is important. A 404 on a server span is not an error from the s
 
 ## Filtering Sensitive Data
 
-HTTP requests often carry sensitive information in headers, query parameters, or request bodies. The semantic conventions give you hooks to sanitize this data before it gets exported.
+HTTP requests often carry sensitive information in headers, query parameters, or request bodies. OpenTelemetry instrumentation gives you hooks and configuration options to sanitize this data before it gets exported.
 
 ```javascript
 // sanitize.js - Strip sensitive data from HTTP spans
@@ -263,20 +275,19 @@ const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const httpInstrumentation = new HttpInstrumentation({
   // Hook into request processing to filter sensitive headers
   requestHook: (span, request) => {
-    // Remove authorization tokens from span attributes
-    const sanitizedHeaders = { ...request.headers };
-    delete sanitizedHeaders['authorization'];
-    delete sanitizedHeaders['cookie'];
-    delete sanitizedHeaders['x-api-key'];
+    const safeHeaders = { ...request.headers };
 
     // Only record safe headers
-    if (sanitizedHeaders['content-type']) {
+    if (safeHeaders['content-type']) {
+      const contentType = safeHeaders['content-type'];
       span.setAttribute(
         'http.request.header.content-type',
-        sanitizedHeaders['content-type']
+        Array.isArray(contentType) ? contentType : [contentType]
       );
     }
   },
+  // Redact custom sensitive query parameters in addition to the defaults
+  redactedQueryParams: ['token', 'api_key', 'signature'],
   // Control which URLs get traced at all
   ignoreIncomingRequestHook: (request) => {
     // Skip health check endpoints to reduce noise
@@ -285,7 +296,7 @@ const httpInstrumentation = new HttpInstrumentation({
 });
 ```
 
-This configuration prevents sensitive headers from ending up in your tracing backend while still capturing the useful metadata. It also filters out health check endpoints, which would otherwise flood your traces with uninteresting data.
+This configuration avoids adding sensitive headers to your tracing backend while still capturing useful metadata. It also filters out health check endpoints, which would otherwise flood your traces with uninteresting data.
 
 ## Querying HTTP Telemetry
 
