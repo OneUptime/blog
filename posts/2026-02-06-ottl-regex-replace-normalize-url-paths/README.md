@@ -39,21 +39,21 @@ processors:
       - context: span
         statements:
           # Replace UUIDs in URL paths
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-
-          # Replace numeric IDs
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
 
           # Replace MongoDB ObjectIDs (24 hex characters)
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{24}", "/{objectId}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{24}", "/{objectId}")
 
           # Replace base64-encoded tokens in URLs
-          - replace_pattern(attributes["http.url"], "/[A-Za-z0-9+/=]{20,}", "/{token}")
+          - replace_pattern(span.attributes["url.path"], "/[A-Za-z0-9_-]{20,}", "/{token}")
+
+          # Replace numeric IDs
+          - replace_pattern(span.attributes["url.path"], "/[0-9]+", "/{id}")
 ```
 
 ## Normalizing http.route and span.name
 
-In addition to `http.url`, normalize `http.route` and the span name:
+In addition to `url.path`, normalize `http.route` and the span name:
 
 ```yaml
 processors:
@@ -62,16 +62,16 @@ processors:
       - context: span
         statements:
           # Normalize http.route attribute
-          - replace_pattern(attributes["http.route"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(attributes["http.route"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["http.route"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["http.route"], "/[0-9]+", "/{id}")
 
-          # Normalize http.url attribute
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
+          # Normalize url.path attribute
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9]+", "/{id}")
 
           # Normalize span name (often includes the URL path)
-          - replace_pattern(name, "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(name, "/[0-9]+", "/{id}")
+          - replace_pattern(span.name, "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.name, "/[0-9]+", "/{id}")
 ```
 
 ## Order of Replacement Matters
@@ -85,25 +85,25 @@ processors:
       - context: span
         statements:
           # Step 1: Replace UUIDs first (most specific)
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
 
           # Step 2: Replace MongoDB ObjectIDs
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{24}", "/{objectId}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{24}", "/{objectId}")
 
           # Step 3: Replace long hex strings (API keys, hashes)
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{16,}", "/{hash}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{16,}", "/{hash}")
 
           # Step 4: Replace numeric IDs last (most generic)
           # This runs after UUIDs and ObjectIDs are already replaced,
           # so it won't interfere with them
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9]+", "/{id}")
 ```
 
 If you run the numeric ID replacement first, it would partially match UUIDs and produce broken placeholders.
 
 ## Removing Query Parameters
 
-Query strings add even more cardinality. Strip them or normalize them:
+Query strings add even more cardinality. Current HTTP server spans store the path in `url.path` and the query string in `url.query`. Delete `url.query`, normalize it, or strip it from `url.full` when working with client spans:
 
 ```yaml
 processors:
@@ -111,11 +111,22 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Remove everything after the question mark in URLs
-          - replace_pattern(attributes["http.url"], "\\?.*$", "")
+          # Remove query strings from server spans
+          - delete_key(span.attributes, "url.query")
 
+  transform/normalize_query:
+    trace_statements:
+      - context: span
+        statements:
           # Or keep the query parameter names but remove values
-          - replace_pattern(attributes["http.url"], "=([^&]*)", "={value}")
+          - replace_pattern(span.attributes["url.query"], "=([^&]*)", "={value}")
+
+  transform/strip_client_query:
+    trace_statements:
+      - context: span
+        statements:
+          # Or remove everything after the question mark from client span URLs
+          - replace_pattern(span.attributes["url.full"], "\\?.*$", "")
 ```
 
 ## Handling Specific Route Patterns
@@ -130,19 +141,19 @@ processors:
         statements:
           # Normalize: /api/v1/users/123/orders/456
           # To:        /api/v1/users/{userId}/orders/{orderId}
-          - replace_pattern(attributes["http.url"], "/users/[^/]+", "/users/{userId}")
-          - replace_pattern(attributes["http.url"], "/orders/[^/]+", "/orders/{orderId}")
-          - replace_pattern(attributes["http.url"], "/products/[^/]+", "/products/{productId}")
+          - replace_pattern(span.attributes["url.path"], "/users/[^/]+", "/users/{userId}")
+          - replace_pattern(span.attributes["url.path"], "/orders/[^/]+", "/orders/{orderId}")
+          - replace_pattern(span.attributes["url.path"], "/products/[^/]+", "/products/{productId}")
 
           # Normalize span name to match
-          - replace_pattern(name, "/users/[^/]+", "/users/{userId}")
-          - replace_pattern(name, "/orders/[^/]+", "/orders/{orderId}")
-          - replace_pattern(name, "/products/[^/]+", "/products/{productId}")
+          - replace_pattern(span.name, "/users/[^/]+", "/users/{userId}")
+          - replace_pattern(span.name, "/orders/[^/]+", "/orders/{orderId}")
+          - replace_pattern(span.name, "/products/[^/]+", "/products/{productId}")
 ```
 
-## Preserving the Original URL
+## Preserving the Original URL Path
 
-If you need the original URL for debugging, save it before normalizing:
+If you need the original URL path for debugging, save it before normalizing:
 
 ```yaml
 processors:
@@ -150,12 +161,12 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Save original URL before normalization
-          - set(attributes["http.url.original"], attributes["http.url"]) where attributes["http.url"] != nil
+          # Save original URL path before normalization
+          - set(span.attributes["url.path.original"], span.attributes["url.path"]) where span.attributes["url.path"] != nil
 
           # Then normalize
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9]+", "/{id}")
 ```
 
 ## Full Configuration
@@ -173,17 +184,17 @@ processors:
       - context: span
         statements:
           # UUID normalization
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(attributes["http.route"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
-          - replace_pattern(name, "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.attributes["http.route"], "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
+          - replace_pattern(span.name, "/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", "/{uuid}")
 
           # Numeric ID normalization
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
-          - replace_pattern(attributes["http.route"], "/[0-9]+", "/{id}")
-          - replace_pattern(name, "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["url.path"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.attributes["http.route"], "/[0-9]+", "/{id}")
+          - replace_pattern(span.name, "/[0-9]+", "/{id}")
 
-          # Strip query parameters from URL
-          - replace_pattern(attributes["http.url"], "\\?.*$", "")
+          # Strip query parameters from server spans
+          - delete_key(span.attributes, "url.query")
 
   batch:
     send_batch_size: 512
