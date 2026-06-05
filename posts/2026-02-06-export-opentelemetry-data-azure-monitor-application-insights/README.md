@@ -36,7 +36,7 @@ Before getting started, make sure you have:
 
 - An Azure subscription with an Application Insights resource
 - Your Application Insights connection string (found in the Azure Portal under your App Insights resource)
-- Python 3.8+ or Node.js 18+ (depending on your stack)
+- Python 3.10+ or an active Node.js LTS version (depending on your stack)
 - Basic familiarity with OpenTelemetry concepts like traces, spans, and metrics
 
 ---
@@ -53,7 +53,7 @@ Install the distro package along with the core OpenTelemetry dependencies.
 # Install the Azure Monitor OpenTelemetry Distro
 
 # This includes the exporter and common auto-instrumentation libraries
-pip install azure-monitor-opentelemetry
+pip install azure-monitor-opentelemetry flask
 ```
 
 ### Configuration
@@ -83,6 +83,9 @@ Once the distro is configured, the OpenTelemetry API works as expected. You can 
 
 from flask import Flask
 from opentelemetry import trace
+
+# Load Azure Monitor setup before creating the Flask app
+import configure_telemetry
 
 app = Flask(__name__)
 
@@ -212,7 +215,7 @@ exporters:
   azuremonitor:
     # Connection string from your Application Insights resource
     connection_string: "InstrumentationKey=your-key;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/"
-    # Maximum number of concurrent connections to Azure Monitor
+    # Maximum number of telemetry items sent in each request
     maxbatchsize: 100
     maxbatchinterval: 10s
 
@@ -285,7 +288,7 @@ requests
 A few things to watch out for when setting up this integration:
 
 - **Connection string vs. instrumentation key**: The connection string is the modern approach and includes the ingestion endpoint. Do not use the instrumentation key alone, as it does not support newer features like regional endpoints.
-- **Sampling**: Azure Monitor applies adaptive sampling by default. If you are missing traces, check the sampling settings in both the OpenTelemetry SDK and Application Insights.
+- **Sampling**: Sampling behavior depends on the SDK, distro, and ingestion settings you use. If you are missing traces, check the sampling settings in both the OpenTelemetry SDK and Application Insights.
 - **Collector version**: The Azure Monitor exporter is only available in the `contrib` distribution of the OpenTelemetry Collector. The core distribution does not include it.
 - **Flush on shutdown**: Always call `sdk.shutdown()` or `flush()` before your process exits. Without this, the last batch of telemetry may be lost.
 
