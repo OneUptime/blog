@@ -6,7 +6,7 @@ Tags: OpenTelemetry, PCI-DSS, Logging, Security Monitoring
 
 Description: Configure OpenTelemetry to satisfy PCI-DSS requirements for logging, monitoring, and audit trails in payment systems.
 
-PCI-DSS v4.0 has specific requirements around logging and monitoring that apply to any system handling cardholder data. Requirements 10.1 through 10.7 spell out exactly what you need: audit trails for access to cardholder data, tamper-evident logs, daily log reviews, and retention for at least 12 months. If you are already running OpenTelemetry in your payment infrastructure, you can map these requirements directly to your telemetry pipeline.
+PCI-DSS v4.0 has specific requirements around logging and monitoring that apply to any system handling cardholder data. Requirement 10 spells out exactly what you need: audit trails for access to cardholder data, tamper-evident logs, daily log reviews, and retention for at least 12 months. If you are already running OpenTelemetry in your payment infrastructure, you can map these requirements directly to your telemetry pipeline.
 
 This post walks through the PCI-DSS logging requirements and shows how to configure OpenTelemetry to satisfy each one.
 
@@ -14,38 +14,45 @@ This post walks through the PCI-DSS logging requirements and shows how to config
 
 Here is how the key PCI-DSS Requirement 10 sub-requirements map to OpenTelemetry features:
 
-- **10.2.1** - Audit trails for individual user access to cardholder data: Use trace spans with `enduser.id` attributes
-- **10.2.2** - Actions taken by anyone with root or admin privileges: Span attributes tracking elevated privilege usage
-- **10.2.4** - Invalid logical access attempts: Log records for authentication failures
-- **10.2.5** - Changes to identification and authentication mechanisms: Audit spans for auth config changes
-- **10.3** - Record specific fields for each event: OpenTelemetry attributes cover user ID, event type, timestamp, success/failure, origination, and resource identity
-- **10.5** - Secure audit trails against modification: Collector routing to append-only storage
-- **10.7** - Retain audit trail history for at least 12 months: Retention policies on your backend
+- **10.2.1.1** - Audit trails for individual user access to cardholder data: Use trace spans with `enduser.id` attributes
+- **10.2.1.2** - Actions taken by anyone with administrative access: Span attributes tracking elevated privilege usage
+- **10.2.1.4** - Invalid logical access attempts: Log records for authentication failures
+- **10.2.1.5** - Changes to identification and authentication credentials: Audit spans for auth config changes
+- **10.2.2** - Record specific fields for each event: OpenTelemetry attributes cover user ID, event type, timestamp, success/failure, origination, and resource identity
+- **10.3** - Secure audit trails against modification: Collector routing to append-only storage
+- **10.5.1** - Retain audit trail history for at least 12 months: Retention policies on your backend
 
 ## Instrumenting Cardholder Data Access
 
-Every access to cardholder data needs a trace span with the fields PCI-DSS Requirement 10.3 mandates. Here is how to instrument a payment service endpoint:
+Every access to cardholder data needs a trace span with the fields PCI-DSS Requirement 10.2.2 mandates. Here is how to instrument a payment service endpoint:
 
 ```python
 # Instrument cardholder data access with PCI-DSS required fields
 
 from opentelemetry import trace
-from datetime import datetime, timezone
 
 tracer = trace.get_tracer("payment-service")
 
 def get_card_details(request, card_token):
     with tracer.start_as_current_span("cardholder_data.access") as span:
-        # PCI-DSS 10.3.1 - User identification
+        # PCI-DSS 10.2.2.1 - User identification
         span.set_attribute("enduser.id", request.user.id)
-        span.set_attribute("enduser.role", request.user.role)
+        span.set_attribute("user.roles", [request.user.role])
 
-        # PCI-DSS 10.3.2 - Type of event
+        # PCI-DSS 10.2.2.2 - Type of event
         span.set_attribute("pci.event_type", "cardholder_data_read")
 
-        # PCI-DSS 10.3.3 - Date and time (automatic via span timestamps)
+        # PCI-DSS 10.2.2.3 - Date and time (automatic via span timestamps)
 
-        # PCI-DSS 10.3.4 - Success or failure indication
+        # PCI-DSS 10.2.2.5 - Origination of event
+        span.set_attribute("pci.source_ip", request.client_ip)
+        span.set_attribute("pci.source_service", "checkout-api")
+
+        # PCI-DSS 10.2.2.6 - Identity of affected resource
+        span.set_attribute("pci.resource_type", "cardholder_data")
+        span.set_attribute("pci.resource_id", card_token)
+
+        # PCI-DSS 10.2.2.4 - Success or failure indication
         try:
             result = vault_service.retrieve(card_token)
             span.set_attribute("pci.outcome", "success")
@@ -57,19 +64,11 @@ def get_card_details(request, card_token):
             span.set_attribute("pci.outcome", "failure")
             span.set_attribute("pci.failure_reason", "access_denied")
             raise
-
-        # PCI-DSS 10.3.5 - Origination of event
-        span.set_attribute("pci.source_ip", request.client_ip)
-        span.set_attribute("pci.source_service", "checkout-api")
-
-        # PCI-DSS 10.3.6 - Identity of affected resource
-        span.set_attribute("pci.resource_type", "cardholder_data")
-        span.set_attribute("pci.resource_id", card_token)
 ```
 
-## Logging Authentication Failures (Requirement 10.2.4)
+## Logging Authentication Failures (Requirement 10.2.1.4)
 
-PCI-DSS requires you to log all failed authentication attempts. Use OpenTelemetry's Logs SDK to capture these:
+PCI-DSS requires you to log all failed authentication attempts. Use Python logging with OpenTelemetry logging instrumentation or an OpenTelemetry log handler to capture these:
 
 ```python
 # Log authentication failures with PCI-DSS required context
@@ -118,34 +117,29 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # PCI-DSS 10.5 - Strip any accidental cardholder data from telemetry
+  # PCI-DSS 10.3 - Strip any accidental cardholder data from telemetry
   transform/pci_scrub:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Remove anything that looks like a PAN (Primary Account Number)
-          - replace_pattern(attributes["db.statement"],
-              "[0-9]{13,19}", "[PAN-REDACTED]")
-          - replace_pattern(attributes["http.request.body"],
-              "[0-9]{13,19}", "[PAN-REDACTED]")
-          # Delete attributes that should never exist
-          - delete_key(attributes, "card.number")
-          - delete_key(attributes, "card.cvv")
-          - delete_key(attributes, "card.expiry")
+      # Remove anything that looks like a PAN (Primary Account Number)
+      - replace_pattern(span.attributes["db.statement"],
+          "[0-9]{13,19}", "[PAN-REDACTED]")
+      - replace_pattern(span.attributes["http.request.body"],
+          "[0-9]{13,19}", "[PAN-REDACTED]")
+      # Delete attributes that should never exist
+      - delete_key(span.attributes, "card.number")
+      - delete_key(span.attributes, "card.cvv")
+      - delete_key(span.attributes, "card.expiry")
     log_statements:
-      - context: log
-        statements:
-          - replace_pattern(body,
-              "[0-9]{13,19}", "[PAN-REDACTED]")
+      - replace_pattern(log.body,
+          "[0-9]{13,19}", "[PAN-REDACTED]")
 
   # Route PCI audit events to dedicated storage
   filter/pci_audit:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: pci.event_type
-            value: ".*"
+    error_mode: ignore
+    traces:
+      span:
+        - span.attributes["pci.event_type"] == nil
 
   batch:
     timeout: 5s
@@ -205,7 +199,7 @@ HAVING COUNT(CASE WHEN attributes['pci.outcome'] = 'failure' THEN 1 END) > 0
 ORDER BY failures DESC;
 ```
 
-## Retention Configuration (Requirement 10.7)
+## Retention Configuration (Requirement 10.5.1)
 
 PCI-DSS requires at least 12 months of audit trail retention, with at least 3 months immediately available for analysis. Configure your backend storage with tiered retention to satisfy this:
 
