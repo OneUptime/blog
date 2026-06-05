@@ -20,12 +20,12 @@ Value:  10    25    40    55    <- Always increasing
 Rate:   -     15    15    15    <- Backend computes this
 ```
 
-**Delta**: Each data point contains only the change since the last report. The backend uses the value directly.
+**Delta**: Each data point contains only the change since the last report. The backend can use the value directly for interval totals, or divide by the interval when it needs a per-second rate.
 
 ```text
 Time:   T1    T2    T3    T4
 Value:  10    15    15    15    <- Each point is the delta
-Rate:   10    15    15    15    <- Value IS the rate
+Change: 10    15    15    15    <- Value IS the interval change
 ```
 
 ## What Goes Wrong
@@ -37,17 +37,17 @@ If you send cumulative values to a backend that expects delta, the backend inter
 ```text
 SDK sends (cumulative):   10    25    40
 Backend interprets (delta): 10    25    40  <- WAY too high!
-Actual rate should be:      10    15    15
+Actual interval change:     10    15    15
 ```
 
 ### Sending Delta to a Cumulative-Expecting Backend
 
-Prometheus expects cumulative metrics. If you send delta values, Prometheus sees what looks like a counter reset on every scrape:
+Prometheus counters are cumulative. If you expose delta values as counters, Prometheus sees a flat or frequently resetting counter, so `rate()` and `increase()` return incorrect results:
 
 ```text
-SDK sends (delta):          15    15    15
-Prometheus interprets:      15 -> 15 (reset?) -> 15 (reset?)
-                           Treats each as a new counter starting from scratch
+SDK sends (delta):          15    12    20
+Prometheus interprets:      15 -> 12 (reset?) -> 20
+                           Treats decreases as counter resets
 ```
 
 ## Diagnosing the Mismatch
@@ -76,10 +76,10 @@ Different backends expect different temporality:
 | Backend | Expected Temporality |
 |---------|---------------------|
 | Prometheus | Cumulative |
-| OTLP/gRPC backend | Usually both (check docs) |
-| Datadog | Delta |
-| New Relic | Delta or Cumulative |
-| Splunk | Cumulative |
+| OTLP/gRPC backend | Backend-specific; OTLP supports both |
+| Datadog | Delta preferred for monotonic sums and histograms |
+| New Relic | Accepts delta and cumulative; delta preferred |
+| Splunk Observability Cloud | Backend-specific; cumulative histograms may need conversion to delta |
 
 Configure the SDK:
 
@@ -97,6 +97,7 @@ For Python:
 
 ```python
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import Counter, Histogram, UpDownCounter
 from opentelemetry.sdk.metrics.export import AggregationTemporality
 
 # For Prometheus-style backends (cumulative)
@@ -114,7 +115,7 @@ exporter = OTLPMetricExporter(
     endpoint="http://otel-collector:4317",
     preferred_temporality={
         Counter: AggregationTemporality.DELTA,
-        UpDownCounter: AggregationTemporality.CUMULATIVE,  # UpDownCounter is always cumulative
+        UpDownCounter: AggregationTemporality.CUMULATIVE,
         Histogram: AggregationTemporality.DELTA,
     }
 )
@@ -126,19 +127,20 @@ For Go:
 import (
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 exporter, err := otlpmetricgrpc.New(ctx,
     otlpmetricgrpc.WithEndpoint("otel-collector:4317"),
     otlpmetricgrpc.WithInsecure(),
     otlpmetricgrpc.WithTemporalitySelector(
-        func(kind metric.InstrumentKind) metric.Temporality {
+        func(kind metric.InstrumentKind) metricdata.Temporality {
             switch kind {
             case metric.InstrumentKindCounter,
                  metric.InstrumentKindHistogram:
-                return metric.TemporalityCumulative
+                return metricdata.CumulativeTemporality
             default:
-                return metric.TemporalityCumulative
+                return metricdata.CumulativeTemporality
             }
         },
     ),
@@ -157,7 +159,7 @@ processors:
       match_type: strict
       metrics:
         - http.server.request.duration
-        - http.server.active_requests
+        - http.server.response.body.size
 
 # Convert delta to cumulative
 processors:
