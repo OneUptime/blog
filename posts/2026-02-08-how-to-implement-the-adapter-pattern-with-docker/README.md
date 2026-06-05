@@ -42,7 +42,6 @@ Create a log adapter that converts plain-text Apache logs to structured JSON:
 
 import json
 import re
-import sys
 import time
 
 LOG_FILE = "/var/log/app/access.log"
@@ -106,12 +105,13 @@ Wire everything together with Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   # The web server writes Apache-format logs
   web:
     image: httpd:2.4-alpine
+    command: >
+      sh -c "sed -i 's|CustomLog /proc/self/fd/1 common|CustomLog logs/access.log combined|' /usr/local/apache2/conf/httpd.conf &&
+             httpd-foreground"
     ports:
       - "80:80"
     volumes:
@@ -148,10 +148,9 @@ Create a metrics adapter that converts custom metrics to Prometheus format:
 # metrics-adapter/adapter.py
 # Scrapes custom metrics from the app and exposes them in Prometheus format
 
-import requests
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+from urllib.request import urlopen
 
 APP_METRICS_URL = "http://localhost:8080/internal/stats"
 LISTEN_PORT = 9090
@@ -163,8 +162,8 @@ def fetch_and_convert():
     global cached_metrics
 
     try:
-        response = requests.get(APP_METRICS_URL, timeout=5)
-        data = response.json()
+        with urlopen(APP_METRICS_URL, timeout=5) as response:
+            data = json.load(response)
 
         lines = []
 
@@ -191,7 +190,8 @@ def fetch_and_convert():
             lines.append("# HELP app_errors_total Total errors by type")
             lines.append("# TYPE app_errors_total counter")
             for error_type, count in data["errors"].items():
-                lines.append(f'app_errors_total{{type="{error_type}"}} {count}')
+                safe_type = str(error_type).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+                lines.append(f'app_errors_total{{type="{safe_type}"}} {count}')
 
         cached_metrics = "\n".join(lines) + "\n"
 
@@ -222,8 +222,6 @@ if __name__ == "__main__":
 The Compose configuration:
 
 ```yaml
-version: "3.8"
-
 services:
   legacy-app:
     image: my-legacy-app:latest
@@ -232,7 +230,7 @@ services:
   metrics-adapter:
     build: ./metrics-adapter
     network_mode: "service:legacy-app"
-    # Now Prometheus can scrape localhost:9090/metrics
+    # The adapter listens on legacy-app's network namespace
 
   prometheus:
     image: prom/prometheus:latest
@@ -324,8 +322,6 @@ if __name__ == "__main__":
 The Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   report-generator:
     image: my-report-app:latest
