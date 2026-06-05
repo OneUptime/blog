@@ -6,15 +6,15 @@ Tags: OpenTelemetry, Deadlock, Thread Contention, Concurrency, Debugging
 
 Description: Use OpenTelemetry span timing gaps to detect deadlocks and thread contention issues in concurrent applications.
 
-Deadlocks and thread contention are among the hardest bugs to reproduce and diagnose. A thread waiting on a lock does not throw an error or write a log line. It just sits there, silently, while your request hangs. OpenTelemetry spans, however, record precise timing information. By analyzing the gaps between spans, you can detect when threads are blocked waiting for resources.
+Deadlocks and thread contention are among the hardest bugs to reproduce and diagnose. A thread waiting on a lock does not throw an error or write a log line. It just sits there, silently, while your request hangs. OpenTelemetry spans, however, record precise timing information. By analyzing the gaps between spans, you can find strong signals that threads may be blocked waiting for resources.
 
 ## Understanding Span Timing Gaps
 
-A span records when work starts and when it finishes. Between a parent span's start and its first child span, or between consecutive child spans, there should be minimal idle time in a healthy system. If you see a parent span that lasts 10 seconds but its child spans only account for 2 seconds of actual work, the remaining 8 seconds are unaccounted for. That gap is where your thread was blocked.
+A span records when work starts and when it finishes. Between a parent span's start and its first child span, or between consecutive child spans, large idle-looking gaps can indicate blocking, especially when the surrounding operation is otherwise well instrumented. If you see a parent span that lasts 10 seconds but its child spans only account for 2 seconds of actual work, the remaining 8 seconds are unaccounted for by child spans. That gap may be where your thread was blocked, or it may be uninstrumented work that needs more visibility.
 
 ## Instrumenting Lock Acquisition
 
-The first step is to make lock acquisition visible in your traces. Here is a Java example that wraps a `ReentrantLock` with span instrumentation:
+The first step is to make lock acquisition visible in your traces. Here is a Java example that wraps a `ReentrantLock` with span instrumentation and custom `lock.*` attributes:
 
 ```java
 import io.opentelemetry.api.trace.Tracer;
@@ -97,10 +97,33 @@ def analyze_contention(trace_data):
         if parent_duration == 0:
             continue
 
-        # Sum up all child span durations
-        child_duration_total = sum(
-            c["endTime"] - c["startTime"] for c in children
+        # Merge overlapping child intervals before summing them.
+        child_intervals = sorted(
+            (max(c["startTime"], parent["startTime"]),
+             min(c["endTime"], parent["endTime"]))
+            for c in children
         )
+
+        child_duration_total = 0
+        current_start = None
+        current_end = None
+
+        for start, end in child_intervals:
+            if end <= start:
+                continue
+
+            if current_start is None:
+                current_start = start
+                current_end = end
+            elif start <= current_end:
+                current_end = max(current_end, end)
+            else:
+                child_duration_total += current_end - current_start
+                current_start = start
+                current_end = end
+
+        if current_start is not None:
+            child_duration_total += current_end - current_start
 
         # Calculate the gap (time not accounted for by children)
         gap = parent_duration - child_duration_total
@@ -124,7 +147,7 @@ def analyze_contention(trace_data):
 
 ## Detecting Deadlock Patterns
 
-A deadlock shows up as a span that never ends (or times out after a very long period). You can detect potential deadlocks by looking for spans with durations near your configured timeout thresholds:
+A deadlock can show up as a lock acquisition span that never ends while the process is still running, or as a lock acquisition attempt that times out after a very long period. You can detect potential deadlocks by looking for completed lock spans with durations near your configured timeout thresholds:
 
 ```python
 def detect_potential_deadlocks(spans, lock_timeout_ms=30000):
@@ -142,7 +165,7 @@ def detect_potential_deadlocks(spans, lock_timeout_ms=30000):
         acquired = span.get("attributes", {}).get("lock.acquired", True)
 
         # If the lock was not acquired and duration is near timeout,
-        # this looks like a deadlock
+        # this may indicate a deadlock or severe contention
         if not acquired and duration_ms > (lock_timeout_ms * 0.9):
             suspects.append({
                 "trace_id": span["traceId"],
@@ -167,9 +190,9 @@ When you pull up a trace in your tracing UI, look for these visual patterns:
 Add span events when locks are acquired and released to build a timeline of lock ownership:
 
 ```java
-Span.current().addEvent("lock.acquired", Attributes.of(
-    AttributeKey.stringKey("lock.name"), lockName,
-    AttributeKey.stringKey("thread.name"), Thread.currentThread().getName()
+Span.current().addEvent("lock.acquired", io.opentelemetry.api.common.Attributes.of(
+    io.opentelemetry.api.common.AttributeKey.stringKey("lock.name"), lockName,
+    io.opentelemetry.api.common.AttributeKey.stringKey("thread.name"), Thread.currentThread().getName()
 ));
 ```
 
