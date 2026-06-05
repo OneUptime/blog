@@ -22,6 +22,7 @@ npm install @opentelemetry/api \
   @opentelemetry/instrumentation \
   @opentelemetry/auto-instrumentations-web \
   @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/context-zone \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
@@ -36,13 +37,17 @@ Angular's dependency injection system makes it natural to encapsulate OpenTeleme
 // src/app/services/tracing.service.ts
 
 import { Injectable } from '@angular/core';
-import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 import { Tracer } from '@opentelemetry/api';
 import { environment } from '../../environments/environment';
 
@@ -59,15 +64,10 @@ export class TracingService {
 
   private initializeTracing(): void {
     // Create resource with application metadata
-    const resource = new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'angular-app',
-      [SemanticResourceAttributes.SERVICE_VERSION]: environment.version,
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment.name,
-    });
-
-    // Initialize the tracer provider
-    this.provider = new WebTracerProvider({
-      resource: resource,
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'angular-app',
+      [ATTR_SERVICE_VERSION]: environment.version,
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment.name,
     });
 
     // Configure the exporter to send traces to backend
@@ -78,15 +78,22 @@ export class TracingService {
       },
     });
 
-    // Add batch span processor for efficient trace export
-    this.provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-      maxQueueSize: 2048,
-      maxExportBatchSize: 512,
-      scheduledDelayMillis: 5000,
-    }));
+    // Initialize the tracer provider
+    this.provider = new WebTracerProvider({
+      resource: resource,
+      spanProcessors: [
+        new BatchSpanProcessor(exporter, {
+          maxQueueSize: 2048,
+          maxExportBatchSize: 512,
+          scheduledDelayMillis: 5000,
+        }),
+      ],
+    });
 
     // Register the provider globally
-    this.provider.register();
+    this.provider.register({
+      contextManager: new ZoneContextManager(),
+    });
 
     // Get tracer instance for manual instrumentation
     this.tracer = this.provider.getTracer('angular-app');
@@ -158,7 +165,7 @@ export const environment = {
   version: '1.0.0',
   apiUrl: 'https://api.yourapp.com',
   otelCollectorUrl: 'https://collector.yourapp.com/v1/traces',
-  otelApiKey: process.env['OTEL_API_KEY'] || '',
+  otelApiKey: 'your-production-browser-token',
 };
 ```
 
@@ -169,20 +176,11 @@ Initialize the tracing service when the Angular application bootstraps. This ens
 ```typescript
 // src/app/app.module.ts
 
-import { NgModule, APP_INITIALIZER } from '@angular/core';
+import { inject, NgModule, provideAppInitializer } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { HttpClientModule } from '@angular/common/http';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 import { AppComponent } from './app.component';
 import { TracingService } from './services/tracing.service';
-
-// Factory function to initialize tracing before app starts
-export function initializeTracing(tracingService: TracingService) {
-  return () => {
-    // Tracing initialization happens in the service constructor
-    // This factory ensures the service is instantiated early
-    return Promise.resolve();
-  };
-}
 
 @NgModule({
   declarations: [
@@ -190,16 +188,14 @@ export function initializeTracing(tracingService: TracingService) {
   ],
   imports: [
     BrowserModule,
-    HttpClientModule,
   ],
   providers: [
     TracingService,
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeTracing,
-      deps: [TracingService],
-      multi: true,
-    },
+    provideHttpClient(withInterceptorsFromDi()),
+    provideAppInitializer(() => {
+      // Tracing initialization happens in the service constructor.
+      inject(TracingService);
+    }),
   ],
   bootstrap: [AppComponent]
 })
@@ -208,7 +204,7 @@ export class AppModule { }
 
 ## Creating a Tracing Interceptor for HTTP Requests
 
-Angular's HTTP interceptors integrate perfectly with OpenTelemetry, allowing you to add custom attributes to automatically instrumented requests.
+Angular's HTTP interceptors integrate perfectly with OpenTelemetry, allowing you to create Angular-level spans around `HttpClient` requests.
 
 ```typescript
 // src/app/interceptors/tracing.interceptor.ts
@@ -222,8 +218,8 @@ import {
   HttpResponse,
   HttpErrorResponse,
 } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { defer, Observable } from 'rxjs';
+import { finalize, tap } from 'rxjs/operators';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 @Injectable()
@@ -234,53 +230,62 @@ export class TracingInterceptor implements HttpInterceptor {
     request: HttpRequest<unknown>,
     next: HttpHandler
   ): Observable<HttpEvent<unknown>> {
-    // Create a span for this HTTP request
-    const span = this.tracer.startSpan(`HTTP ${request.method} ${request.url}`, {
-      attributes: {
-        'http.method': request.method,
-        'http.url': request.url,
-        'http.target': request.urlWithParams,
-      },
-    });
-
-    // Execute request within span context
-    return context.with(trace.setSpan(context.active(), span), () => {
+    return defer(() => {
+      let spanEnded = false;
       const startTime = Date.now();
+      const span = this.tracer.startSpan(`HTTP ${request.method} ${request.url}`, {
+        attributes: {
+          'http.request.method': request.method,
+          'url.full': request.urlWithParams,
+        },
+      });
 
-      return next.handle(request).pipe(
-        tap({
-          next: (event) => {
-            if (event instanceof HttpResponse) {
-              const duration = Date.now() - startTime;
+      // Execute request within span context
+      return context.with(trace.setSpan(context.active(), span), () =>
+        next.handle(request).pipe(
+          tap({
+            next: (event) => {
+              if (event instanceof HttpResponse) {
+                const duration = Date.now() - startTime;
 
-              // Add response attributes
-              span.setAttributes({
-                'http.status_code': event.status,
-                'http.response_time_ms': duration,
-                'http.response_content_length':
-                  event.headers.get('content-length') || 0,
-              });
+                // Add response attributes
+                span.setAttributes({
+                  'http.response.status_code': event.status,
+                  'http.response_time_ms': duration,
+                  'http.response.body.size':
+                    Number(event.headers.get('content-length')) || 0,
+                });
 
-              span.setStatus({ code: SpanStatusCode.OK });
+                if (event.status >= 400) {
+                  span.setStatus({
+                    code: SpanStatusCode.ERROR,
+                    message: event.statusText,
+                  });
+                }
+              }
+            },
+            error: (error) => {
+              if (error instanceof HttpErrorResponse) {
+                span.setAttributes({
+                  'http.response.status_code': error.status,
+                  'error.message': error.message,
+                });
+
+                span.recordException(error);
+                span.setStatus({
+                  code: SpanStatusCode.ERROR,
+                  message: error.message,
+                });
+              }
+            },
+          }),
+          finalize(() => {
+            if (!spanEnded) {
+              spanEnded = true;
               span.end();
             }
-          },
-          error: (error) => {
-            if (error instanceof HttpErrorResponse) {
-              span.setAttributes({
-                'http.status_code': error.status,
-                'http.error_message': error.message,
-              });
-
-              span.recordException(error);
-              span.setStatus({
-                code: SpanStatusCode.ERROR,
-                message: error.message,
-              });
-            }
-            span.end();
-          },
-        })
+          })
+        )
       );
     });
   }
@@ -316,9 +321,9 @@ Instrument Angular services to track business logic execution and service method
 
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { defer, Observable } from 'rxjs';
+import { finalize, tap } from 'rxjs/operators';
+import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import { TracingService } from './tracing.service';
 import { environment } from '../../environments/environment';
 
@@ -341,76 +346,85 @@ export class UserService {
   ) {}
 
   getUsers(): Observable<User[]> {
-    const span = this.tracer.startSpan('UserService.getUsers');
+    return defer(() => {
+      const span = this.tracer.startSpan('UserService.getUsers');
 
-    return this.http.get<User[]>(this.apiUrl).pipe(
-      tap({
-        next: (users) => {
-          span.setAttribute('users.count', users.length);
-          span.setStatus({ code: SpanStatusCode.OK });
-          span.end();
-        },
-        error: (error) => {
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-          span.end();
-        },
-      })
-    );
+      return context.with(trace.setSpan(context.active(), span), () =>
+        this.http.get<User[]>(this.apiUrl).pipe(
+          tap({
+            next: (users) => {
+              span.setAttribute('users.count', users.length);
+              span.setStatus({ code: SpanStatusCode.OK });
+            },
+            error: (error) => {
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            },
+          }),
+          finalize(() => span.end())
+        )
+      );
+    });
   }
 
   getUserById(id: string): Observable<User> {
-    const span = this.tracer.startSpan('UserService.getUserById', {
-      attributes: { 'user.id': id },
-    });
+    return defer(() => {
+      const span = this.tracer.startSpan('UserService.getUserById', {
+        attributes: { 'user.id': id },
+      });
 
-    return this.http.get<User>(`${this.apiUrl}/${id}`).pipe(
-      tap({
-        next: (user) => {
-          span.setAttribute('user.name', user.name);
-          span.setStatus({ code: SpanStatusCode.OK });
-          span.end();
-        },
-        error: (error) => {
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-          span.end();
-        },
-      })
-    );
+      return context.with(trace.setSpan(context.active(), span), () =>
+        this.http.get<User>(`${this.apiUrl}/${id}`).pipe(
+          tap({
+            next: (user) => {
+              span.setAttribute('user.name', user.name);
+              span.setStatus({ code: SpanStatusCode.OK });
+            },
+            error: (error) => {
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            },
+          }),
+          finalize(() => span.end())
+        )
+      );
+    });
   }
 
   createUser(user: Omit<User, 'id'>): Observable<User> {
-    const span = this.tracer.startSpan('UserService.createUser', {
-      attributes: {
-        'user.name': user.name,
-        'user.email': user.email,
-      },
-    });
+    return defer(() => {
+      const span = this.tracer.startSpan('UserService.createUser', {
+        attributes: {
+          'user.name': user.name,
+          'user.email': user.email,
+        },
+      });
 
-    return this.http.post<User>(this.apiUrl, user).pipe(
-      tap({
-        next: (createdUser) => {
-          span.setAttribute('user.id', createdUser.id);
-          span.setStatus({ code: SpanStatusCode.OK });
-          span.end();
-        },
-        error: (error) => {
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-          span.end();
-        },
-      })
-    );
+      return context.with(trace.setSpan(context.active(), span), () =>
+        this.http.post<User>(this.apiUrl, user).pipe(
+          tap({
+            next: (createdUser) => {
+              span.setAttribute('user.id', createdUser.id);
+              span.setStatus({ code: SpanStatusCode.OK });
+            },
+            error: (error) => {
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            },
+          }),
+          finalize(() => span.end())
+        )
+      );
+    });
   }
 }
 ```
@@ -423,7 +437,9 @@ Track component lifecycle events and user interactions to understand how users n
 // src/app/components/user-list/user-list.component.ts
 
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { trace, Span } from '@opentelemetry/api';
+import { Span, SpanStatusCode } from '@opentelemetry/api';
+import { Subscription } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 import { TracingService } from '../../services/tracing.service';
 import { UserService } from '../../services/user.service';
 
@@ -439,6 +455,7 @@ export class UserListComponent implements OnInit, OnDestroy {
 
   private tracer = this.tracingService.getTracer();
   private componentSpan: Span | null = null;
+  private usersSubscription: Subscription | null = null;
 
   constructor(
     private userService: UserService,
@@ -456,6 +473,9 @@ export class UserListComponent implements OnInit, OnDestroy {
     if (this.componentSpan) {
       this.componentSpan.end();
     }
+    if (this.usersSubscription) {
+      this.usersSubscription.unsubscribe();
+    }
   }
 
   loadUsers(): void {
@@ -463,22 +483,26 @@ export class UserListComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = null;
 
-    this.userService.getUsers().subscribe({
-      next: (users) => {
-        this.users = users;
-        this.loading = false;
+    this.usersSubscription = this.userService.getUsers()
+      .pipe(finalize(() => span.end()))
+      .subscribe({
+        next: (users) => {
+          this.users = users;
+          this.loading = false;
 
-        span.setAttribute('users.loaded', users.length);
-        span.end();
-      },
-      error: (error) => {
-        this.error = error.message;
-        this.loading = false;
+          span.setAttribute('users.loaded', users.length);
+        },
+        error: (error) => {
+          this.error = error.message;
+          this.loading = false;
 
-        span.recordException(error);
-        span.end();
-      },
-    });
+          span.recordException(error);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error.message,
+          });
+        },
+      });
   }
 
   onUserClick(userId: string): void {
@@ -496,7 +520,7 @@ export class UserListComponent implements OnInit, OnDestroy {
 
 ## Creating a Tracing Decorator
 
-Use TypeScript decorators to automatically instrument methods across your application.
+Use TypeScript decorators to automatically instrument async methods across your application.
 
 ```typescript
 // src/app/decorators/traced.decorator.ts
@@ -574,9 +598,15 @@ Track route changes and navigation timing to understand how users move through y
 // src/app/services/router-tracing.service.ts
 
 import { Injectable } from '@angular/core';
-import { Router, NavigationStart, NavigationEnd, NavigationError } from '@angular/router';
+import {
+  Router,
+  NavigationCancel,
+  NavigationStart,
+  NavigationEnd,
+  NavigationError,
+} from '@angular/router';
 import { filter } from 'rxjs/operators';
-import { trace, Span } from '@opentelemetry/api';
+import { Span, SpanStatusCode } from '@opentelemetry/api';
 import { TracingService } from './tracing.service';
 
 @Injectable({
@@ -596,7 +626,7 @@ export class RouterTracingService {
   private initializeRouterTracing(): void {
     // Track navigation start
     this.router.events
-      .pipe(filter(event => event instanceof NavigationStart))
+      .pipe(filter((event): event is NavigationStart => event instanceof NavigationStart))
       .subscribe((event: NavigationStart) => {
         const span = this.tracer.startSpan('route.navigation', {
           attributes: {
@@ -610,7 +640,7 @@ export class RouterTracingService {
 
     // Track navigation end
     this.router.events
-      .pipe(filter(event => event instanceof NavigationEnd))
+      .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe((event: NavigationEnd) => {
         const span = this.navigationSpans.get(event.id);
         if (span) {
@@ -622,11 +652,27 @@ export class RouterTracingService {
 
     // Track navigation errors
     this.router.events
-      .pipe(filter(event => event instanceof NavigationError))
+      .pipe(filter((event): event is NavigationError => event instanceof NavigationError))
       .subscribe((event: NavigationError) => {
         const span = this.navigationSpans.get(event.id);
         if (span) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: event.error?.message,
+          });
           span.recordException(event.error);
+          span.end();
+          this.navigationSpans.delete(event.id);
+        }
+      });
+
+    // Track navigation cancellations
+    this.router.events
+      .pipe(filter((event): event is NavigationCancel => event instanceof NavigationCancel))
+      .subscribe((event: NavigationCancel) => {
+        const span = this.navigationSpans.get(event.id);
+        if (span) {
+          span.setAttribute('navigation.cancel_reason', event.reason);
           span.end();
           this.navigationSpans.delete(event.id);
         }
@@ -695,8 +741,8 @@ const sampler = environment.production
 const provider = new WebTracerProvider({
   resource: resource,
   sampler: sampler,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
 });
 ```
 
 OpenTelemetry integrates naturally with Angular's architecture, providing comprehensive observability without compromising performance or developer experience. By combining automatic instrumentation with strategic manual tracing, you gain deep insights into how your Angular application behaves in production.
-
