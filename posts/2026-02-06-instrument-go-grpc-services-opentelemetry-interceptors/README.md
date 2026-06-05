@@ -1,16 +1,16 @@
-# How to Instrument Go gRPC Services with OpenTelemetry Interceptors
+# How to Instrument Go gRPC Services with OpenTelemetry Stats Handlers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, gRPC, Interceptors, Tracing, Microservice
+Tags: OpenTelemetry, Go, gRPC, Stats Handlers, Tracing, Microservice
 
-Description: Learn how to instrument Go gRPC services using OpenTelemetry interceptors for comprehensive distributed tracing across your microservices architecture.
+Description: Learn how to instrument Go gRPC services using OpenTelemetry stats handlers for comprehensive distributed tracing across your microservices architecture.
 
-When building microservices with gRPC in Go, observability becomes critical for debugging and performance optimization. OpenTelemetry provides powerful interceptors that automatically capture traces for both unary and streaming RPCs, giving you complete visibility into your service mesh.
+When building microservices with gRPC in Go, observability becomes critical for debugging and performance optimization. OpenTelemetry provides powerful stats handlers that automatically capture traces for both unary and streaming RPCs, giving you complete visibility into your service mesh.
 
 ## Understanding gRPC Interceptors
 
-gRPC interceptors work like middleware in HTTP servers. They wrap around RPC calls, allowing you to inject cross-cutting concerns like logging, authentication, and tracing without modifying business logic. OpenTelemetry leverages this pattern to automatically instrument your gRPC services.
+gRPC interceptors work like middleware in HTTP servers. They wrap around RPC calls, allowing you to inject cross-cutting concerns like logging and authentication without modifying business logic. OpenTelemetry's current Go gRPC instrumentation uses gRPC stats handlers to automatically instrument your gRPC services.
 
 There are four types of interceptors:
 - Unary server interceptors (for simple request-response calls)
@@ -27,11 +27,10 @@ package main
 
 import (
     "context"
-    "log"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -70,6 +69,10 @@ func initTracer(serviceName string) (*sdktrace.TracerProvider, error) {
 
     // Set global tracer provider
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    ))
 
     return tp, nil
 }
@@ -77,7 +80,7 @@ func initTracer(serviceName string) (*sdktrace.TracerProvider, error) {
 
 ## Instrumenting a gRPC Server
 
-Now we'll create a gRPC server with OpenTelemetry interceptors. These interceptors automatically create spans for incoming requests.
+Now we'll create a gRPC server with an OpenTelemetry stats handler. This handler automatically creates spans for incoming requests.
 
 ```go
 package main
@@ -102,7 +105,7 @@ type server struct {
 // GetUser is a unary RPC method that retrieves user information
 func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
     // Your business logic here
-    // The span is automatically created by the interceptor
+    // The span is automatically created by the stats handler
 
     user := &pb.User{
         Id:    req.GetId(),
@@ -116,7 +119,7 @@ func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User,
 // ListUsers is a server streaming RPC method
 func (s *server) ListUsers(req *pb.ListUsersRequest, stream pb.UserService_ListUsersServer) error {
     // Stream multiple users back to client
-    // The interceptor handles streaming spans automatically
+    // The stats handler handles streaming spans automatically
 
     users := []*pb.User{
         {Id: 1, Name: "Alice", Email: "alice@example.com"},
@@ -151,10 +154,9 @@ func startGRPCServer() error {
         return fmt.Errorf("failed to listen: %w", err)
     }
 
-    // Create gRPC server with OpenTelemetry interceptors
+    // Create gRPC server with OpenTelemetry stats handler
     grpcServer := grpc.NewServer(
-        grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
-        grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
+        grpc.StatsHandler(otelgrpc.NewServerHandler()),
     )
 
     // Register service implementation
@@ -167,7 +169,7 @@ func startGRPCServer() error {
 
 ## Instrumenting a gRPC Client
 
-Client-side instrumentation is equally important for end-to-end tracing. The client interceptors propagate trace context to downstream services.
+Client-side instrumentation is equally important for end-to-end tracing. The client stats handler propagates trace context to downstream services.
 
 ```go
 package main
@@ -184,14 +186,13 @@ import (
     pb "your-module/proto"
 )
 
-// Create a gRPC client with OpenTelemetry interceptors
+// Create a gRPC client with an OpenTelemetry stats handler
 func createInstrumentedClient(address string) (*grpc.ClientConn, error) {
-    // Dial with OpenTelemetry interceptors for automatic instrumentation
-    conn, err := grpc.Dial(
+    // Create a client with OpenTelemetry stats handler for automatic instrumentation
+    conn, err := grpc.NewClient(
         address,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-        grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+        grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
     )
     if err != nil {
         return nil, err
@@ -273,7 +274,7 @@ type instrumentedServer struct {
 
 // GetUser with custom span attributes
 func (s *instrumentedServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
-    // Get the current span from context (created by interceptor)
+    // Get the current span from context (created by the stats handler)
     span := trace.SpanFromContext(ctx)
 
     // Add custom attributes to the span
@@ -307,6 +308,7 @@ func (s *instrumentedServer) GetUser(ctx context.Context, req *pb.GetUserRequest
 
 func fetchUserFromDB(ctx context.Context, id int64) *pb.User {
     // Simulated database query
+    _ = ctx
     return &pb.User{
         Id:    id,
         Name:  "John Doe",
@@ -326,8 +328,9 @@ import (
     "context"
     "fmt"
 
-    "google.golang.org/grpc/codes"
+    grpcCodes "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    otelCodes "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 
     pb "your-module/proto"
@@ -343,37 +346,47 @@ func (s *errorHandlingServer) GetUser(ctx context.Context, req *pb.GetUserReques
 
     // Validate request
     if req.GetId() <= 0 {
-        err := status.Error(codes.InvalidArgument, "user ID must be positive")
+        err := status.Error(grpcCodes.InvalidArgument, "user ID must be positive")
 
         // Record the error in the span
         span.RecordError(err)
-        span.SetStatus(codes.InvalidArgument, "invalid user ID")
+        span.SetStatus(otelCodes.Error, "invalid user ID")
 
         return nil, err
     }
 
     // Attempt to fetch user
-    user, err := fetchUserFromDB(ctx, req.GetId())
+    user, err := fetchUserFromDBWithError(ctx, req.GetId())
     if err != nil {
         // Record the error with additional context
         span.RecordError(err)
-        span.SetStatus(codes.Internal, "database query failed")
+        span.SetStatus(otelCodes.Error, "database query failed")
 
-        return nil, status.Error(codes.Internal, fmt.Sprintf("failed to fetch user: %v", err))
+        return nil, status.Error(grpcCodes.Internal, fmt.Sprintf("failed to fetch user: %v", err))
     }
 
     if user == nil {
-        err := status.Error(codes.NotFound, "user not found")
+        err := status.Error(grpcCodes.NotFound, "user not found")
         span.RecordError(err)
-        span.SetStatus(codes.NotFound, "user not found")
+        span.SetStatus(otelCodes.Error, "user not found")
 
         return nil, err
     }
 
     // Success - mark span as OK
-    span.SetStatus(codes.Ok, "")
+    span.SetStatus(otelCodes.Ok, "")
 
     return user, nil
+}
+
+func fetchUserFromDBWithError(ctx context.Context, id int64) (*pb.User, error) {
+    // Simulated database query
+    _ = ctx
+    return &pb.User{
+        Id:    id,
+        Name:  "John Doe",
+        Email: "john@example.com",
+    }, nil
 }
 ```
 
@@ -409,7 +422,7 @@ func gatewayHandler(ctx context.Context) error {
     defer conn.Close()
 
     userClient := pb.NewUserServiceClient(conn)
-    user, err := userClient.GetUser(ctx, &pb.GetUserRequest{Id: 123})
+    _, err := userClient.GetUser(ctx, &pb.GetUserRequest{Id: 123})
 
     return err
 }
@@ -427,6 +440,9 @@ func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User,
 
     authClient := pb.NewAuthServiceClient(conn)
     authorized, err := authClient.CheckAuth(ctx, &pb.AuthRequest{UserId: req.Id})
+    if err != nil {
+        return nil, err
+    }
 
     if !authorized {
         return nil, status.Error(codes.PermissionDenied, "unauthorized")
@@ -438,7 +454,7 @@ func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User,
 
 ## Performance Considerations
 
-OpenTelemetry interceptors add minimal overhead, but you should consider these optimization strategies:
+OpenTelemetry stats handlers add minimal overhead, but you should consider these optimization strategies:
 
 **Sampling**: Use sampling to reduce trace volume in high-throughput services.
 
@@ -477,8 +493,10 @@ package main
 
 import (
     "context"
+    "strings"
     "testing"
 
+    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -491,6 +509,7 @@ func TestTracedGRPCCall(t *testing.T) {
         trace.WithSyncer(exporter),
     )
     defer tp.Shutdown(context.Background())
+    otel.SetTracerProvider(tp)
 
     // Start your instrumented server and client
     // Make test RPC calls
@@ -503,10 +522,10 @@ func TestTracedGRPCCall(t *testing.T) {
 
     // Verify span attributes
     span := spans[0]
-    if span.Name != "user_service.GetUser" {
+    if !strings.Contains(span.Name, "UserService/GetUser") {
         t.Errorf("unexpected span name: %s", span.Name)
     }
 }
 ```
 
-OpenTelemetry's gRPC interceptors provide comprehensive, automated instrumentation for your Go microservices. By following these patterns, you gain complete visibility into service interactions, request flows, and performance bottlenecks without cluttering your business logic with tracing code. The automatic context propagation ensures that traces flow seamlessly across service boundaries, giving you end-to-end observability in distributed systems.
+OpenTelemetry's gRPC stats handlers provide comprehensive, automated instrumentation for your Go microservices. By following these patterns, you gain complete visibility into service interactions, request flows, and performance bottlenecks without cluttering your business logic with tracing code. The automatic context propagation ensures that traces flow seamlessly across service boundaries, giving you end-to-end observability in distributed systems.
