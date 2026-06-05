@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Linkerd, Service Mesh, Networking, Observability, DevOps, Microservice
 
-Description: Set up Linkerd as a service mesh for Docker containers to get automatic mTLS, traffic observability, and reliability features.
+Description: Set up Linkerd as a service mesh for container workloads on Kubernetes to get automatic mTLS, traffic observability, and reliability features.
 
 ---
 
-A service mesh adds a layer of infrastructure between your services that handles the hard parts of service-to-service communication: encryption, retries, load balancing, and observability. Linkerd is the lightest-weight service mesh available. It consumes fewer resources than alternatives like Istio and is simpler to operate. This guide walks through installing and using Linkerd with Docker containers.
+A service mesh adds a layer of infrastructure between your services that handles the hard parts of service-to-service communication: encryption, retries, load balancing, and observability. Linkerd is a lightweight service mesh that consumes fewer resources than alternatives like Istio and is simpler to operate. This guide walks through installing and using Linkerd with container workloads running on Kubernetes.
 
 ## What Linkerd Gives You
 
@@ -20,11 +20,11 @@ Before diving into setup, here is what Linkerd adds to your container networking
 - **Load balancing** that is smarter than round-robin (uses latency-aware algorithms)
 - **Traffic splitting** for canary deployments
 
-All of this happens transparently through a sidecar proxy injected alongside each container.
+All of this happens transparently through a sidecar proxy injected alongside each application container in a Kubernetes pod.
 
 ## Prerequisites
 
-Linkerd runs on Kubernetes, so you need a lightweight Kubernetes setup. For Docker-focused teams, the easiest path is k3s, a minimal Kubernetes distribution that runs Docker containers.
+Linkerd runs on Kubernetes, so you need a lightweight Kubernetes setup. For Docker-focused teams, the easiest path is k3s, a minimal Kubernetes distribution that runs container workloads from Docker or OCI images.
 
 Install k3s on your server:
 
@@ -55,7 +55,7 @@ Download and install the Linkerd command-line tool:
 
 ```bash
 # Install the Linkerd CLI
-curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | sh
 
 # Add Linkerd to your PATH
 export PATH=$HOME/.linkerd2/bin:$PATH
@@ -69,6 +69,9 @@ linkerd version --client
 Linkerd has a built-in validation tool that checks if your cluster is ready:
 
 ```bash
+# Install the Gateway API CRDs if they are not already present
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+
 # Run pre-installation checks
 # This verifies cluster prerequisites like RBAC and version compatibility
 linkerd check --pre
@@ -199,6 +202,37 @@ spec:
   ports:
   - port: 8080
     targetPort: 8080
+---
+# Traffic generator that calls the backend API so Linkerd has traffic to observe
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator
+  namespace: sample-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator
+  template:
+    metadata:
+      labels:
+        app: traffic-generator
+    spec:
+      containers:
+      - name: slow-cooker
+        image: buoyantio/slow_cooker:1.3.0
+        command:
+        - /bin/sh
+        args:
+        - -c
+        - |
+          sleep 5
+          /slow_cooker/slow_cooker --qps 1 http://backend-api:8080
+        resources:
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
 ```
 
 Deploy the application:
@@ -222,16 +256,16 @@ Linkerd automatically encrypts all traffic between meshed services. Verify this:
 linkerd viz edges deployment -n sample-app
 ```
 
-You will see output showing the secured connections between your services with a padlock icon indicating mTLS.
+You will see output showing the secured connections between your services, including the source and destination proxy identities.
 
 For more detail on the TLS status:
 
 ```bash
 # Show detailed mTLS information
-linkerd viz tap deployment/frontend -n sample-app --to deployment/backend-api
+linkerd viz tap deployment/traffic-generator -n sample-app --to deployment/backend-api
 ```
 
-This shows live traffic between the frontend and backend with TLS status for each request.
+This shows live traffic from the traffic generator to the backend.
 
 ## Observing Traffic
 
@@ -262,36 +296,38 @@ linkerd viz dashboard
 
 ## Configuring Retries
 
-Linkerd can automatically retry failed requests. Define a service profile to enable retries:
+Linkerd can automatically retry failed requests. Add retry annotations to an HTTPRoute to enable retries for GET requests that receive HTTP 5xx responses:
 
 ```yaml
-# backend-api-profile.yaml - Service profile with retry configuration
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# backend-api-retries.yaml - HTTPRoute retry configuration
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: backend-api.sample-app.svc.cluster.local
+  name: backend-api-retries
   namespace: sample-app
+  annotations:
+    # Retry failed HTTP responses automatically
+    retry.linkerd.io/http: "5xx"
+    retry.linkerd.io/limit: "2"
 spec:
-  routes:
-  - name: "GET /api"
-    condition:
-      method: GET
-      pathRegex: "/api.*"
-    # Retry failed GET requests automatically
-    isRetryable: true
-  - name: "POST /api"
-    condition:
-      method: POST
-      pathRegex: "/api.*"
-    # Do not retry POST requests to avoid duplicate submissions
-    isRetryable: false
+  parentRefs:
+  - name: backend-api
+    kind: Service
+    group: core
+    port: 8080
+  rules:
+  - matches:
+    - method: GET
+      path:
+        type: PathPrefix
+        value: "/"
 ```
 
-Apply the service profile:
+Apply the retry configuration:
 
 ```bash
 # Apply the retry configuration
-kubectl apply -f backend-api-profile.yaml
+kubectl apply -f backend-api-retries.yaml
 ```
 
 ## Configuring Timeouts
@@ -299,52 +335,53 @@ kubectl apply -f backend-api-profile.yaml
 Add timeout settings to prevent slow services from cascading failures:
 
 ```yaml
-# backend-api-timeout.yaml - Service profile with timeouts
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# backend-api-timeout.yaml - Service timeout configuration
+apiVersion: v1
+kind: Service
 metadata:
-  name: backend-api.sample-app.svc.cluster.local
+  name: backend-api
   namespace: sample-app
-spec:
-  routes:
-  - name: "GET /api"
-    condition:
-      method: GET
-      pathRegex: "/api.*"
-    isRetryable: true
+  annotations:
     # Timeout after 5 seconds
-    timeout: 5s
-  - name: "POST /api/upload"
-    condition:
-      method: POST
-      pathRegex: "/api/upload.*"
-    # Longer timeout for file uploads
-    timeout: 30s
+    timeout.linkerd.io/request: "5s"
+spec:
+  selector:
+    app: backend-api
+  ports:
+  - port: 8080
+    targetPort: 8080
 ```
 
 ## Traffic Splitting for Canary Deployments
 
-Linkerd supports traffic splitting, which is useful for gradually rolling out new versions:
+Linkerd supports traffic splitting, which is useful for gradually rolling out new versions. After creating separate `backend-api-v1` and `backend-api-v2` Services, define an HTTPRoute:
 
 ```yaml
 # traffic-split.yaml - Send 90% of traffic to v1 and 10% to v2
-apiVersion: split.smi-spec.io/v1alpha2
-kind: TrafficSplit
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: backend-api-split
+  name: backend-api-route
   namespace: sample-app
 spec:
-  service: backend-api
-  backends:
-  - service: backend-api-v1
-    weight: 900    # 90% of traffic
-  - service: backend-api-v2
-    weight: 100    # 10% of traffic
+  parentRefs:
+  - name: backend-api
+    kind: Service
+    group: core
+    port: 8080
+  rules:
+  - backendRefs:
+    - name: backend-api-v1
+      port: 8080
+      weight: 90
+    - name: backend-api-v2
+      port: 8080
+      weight: 10
 ```
 
 This sends 90% of requests to the stable version and 10% to the canary. Monitor error rates through the viz dashboard and increase the canary weight gradually.
 
-Resource Usage
+## Resource Usage
 
 One concern with service meshes is overhead. Linkerd's proxy is written in Rust and is lightweight. Check the resource consumption:
 
@@ -355,9 +392,9 @@ kubectl top pods -n sample-app --containers
 
 Typically, each Linkerd proxy uses 10-20MB of memory and minimal CPU. This is significantly less than Envoy-based meshes.
 
-## Meshing Existing Docker Containers
+## Meshing Existing Kubernetes Deployments
 
-If you already have Docker containers running on k3s, inject Linkerd into existing deployments:
+If you already have Kubernetes deployments running on k3s, inject Linkerd into existing deployments:
 
 ```bash
 # Inject Linkerd sidecar into an existing deployment
@@ -373,4 +410,4 @@ The pods will restart with the Linkerd proxy sidecar added automatically.
 
 ## Summary
 
-Linkerd adds enterprise-grade networking features to your Docker containers with minimal overhead. You get encrypted communication, detailed observability, and automatic reliability features without changing a single line of application code. For Docker teams that need service mesh capabilities without the complexity of Istio, Linkerd is the practical choice. Start by meshing your most critical services and expand from there as you gain confidence in the setup.
+Linkerd adds enterprise-grade networking features to your Kubernetes container workloads with minimal overhead. You get encrypted communication, detailed observability, and automatic reliability features without changing a single line of application code. For teams that need service mesh capabilities without the complexity of Istio, Linkerd is the practical choice. Start by meshing your most critical services and expand from there as you gain confidence in the setup.
