@@ -29,7 +29,7 @@ receivers:
     nodes: ["_all"]
     # Enable specific metric groups
     metrics:
-      elasticsearch.cluster.health.status:
+      elasticsearch.cluster.health:
         enabled: true
       elasticsearch.cluster.shards:
         enabled: true
@@ -68,7 +68,7 @@ service:
 ### Cluster Status
 
 ```text
-elasticsearch.cluster.health.status - Cluster status (green, yellow, red)
+elasticsearch.cluster.health - Cluster status with status attribute (green, yellow, red)
   green:  All primary and replica shards assigned
   yellow: All primaries assigned, some replicas unassigned
   red:    Some primary shards unassigned (data loss risk)
@@ -77,12 +77,12 @@ elasticsearch.cluster.health.status - Cluster status (green, yellow, red)
 ### Shard Metrics
 
 ```text
-elasticsearch.cluster.shards                  - Total shard count
-elasticsearch.cluster.health.active_shards    - Active shards
-elasticsearch.cluster.health.relocating_shards - Shards being moved
-elasticsearch.cluster.health.initializing_shards - Shards being initialized
-elasticsearch.cluster.health.unassigned_shards - Unassigned shards
-elasticsearch.cluster.health.active_primary_shards - Active primary shards
+elasticsearch.cluster.shards{state="active"}             - Active shards
+elasticsearch.cluster.shards{state="active_primary"}     - Active primary shards
+elasticsearch.cluster.shards{state="relocating"}         - Shards being moved
+elasticsearch.cluster.shards{state="initializing"}        - Shards being initialized
+elasticsearch.cluster.shards{state="unassigned"}         - Unassigned shards
+elasticsearch.cluster.shards{state="unassigned_delayed"} - Delayed unassigned shards
 ```
 
 ### Pending Tasks
@@ -96,8 +96,8 @@ A growing pending task queue indicates the cluster master node is overloaded.
 ### Node Status
 
 ```text
-elasticsearch.cluster.health.number_of_nodes       - Total nodes
-elasticsearch.cluster.health.number_of_data_nodes   - Data nodes
+elasticsearch.cluster.nodes       - Total nodes
+elasticsearch.cluster.data_nodes  - Data nodes
 ```
 
 ## Creating a Monitoring User
@@ -164,7 +164,7 @@ volumes:
 
 ```yaml
 - alert: ElasticsearchClusterRed
-  condition: elasticsearch.cluster.health.status == "red"
+  condition: elasticsearch.cluster.health{status="red"} > 0
   for: 1m
   severity: critical
   message: "Elasticsearch cluster is RED. Primary shards are unassigned."
@@ -174,7 +174,7 @@ volumes:
 
 ```yaml
 - alert: ElasticsearchUnassignedShards
-  condition: elasticsearch.cluster.health.unassigned_shards > 0
+  condition: elasticsearch.cluster.shards{state="unassigned"} > 0
   for: 10m
   severity: warning
   message: "{{ value }} unassigned shards detected."
@@ -184,7 +184,7 @@ volumes:
 
 ```yaml
 - alert: ElasticsearchNodeDown
-  condition: elasticsearch.cluster.health.number_of_data_nodes < 3
+  condition: elasticsearch.cluster.data_nodes < 3
   for: 2m
   severity: critical
   message: "Expected 3 data nodes, found {{ value }}."
@@ -228,4 +228,4 @@ service:
 
 ## Summary
 
-The OpenTelemetry Collector's Elasticsearch receiver provides direct access to cluster health metrics without installing plugins on Elasticsearch nodes. Monitor cluster status (green/yellow/red), shard distribution, pending tasks, and node count. Set up alerts on cluster status changes and unassigned shards to catch issues before they impact search and indexing performance. Use a dedicated monitoring user with minimal permissions for security.
+The OpenTelemetry Collector's Elasticsearch receiver provides direct access to cluster health metrics without installing plugins on Elasticsearch nodes. Monitor cluster status (green/yellow/red), shard distribution by state, pending tasks, and node count. Set up alerts on cluster status changes and unassigned shards to catch issues before they impact search and indexing performance. Use a dedicated monitoring user with minimal permissions for security.
