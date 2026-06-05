@@ -34,7 +34,7 @@ graph TD
 
 ## Issue 1: gRPC Native Extension Fails to Build
 
-The gRPC Python package (`grpcio`) includes native C/C++ code that must be compiled on Alpine. Without the right build tools, you get errors like this:
+The gRPC Python package (`grpcio`) includes native C/C++ code. Recent `grpcio` releases publish musllinux wheels for common Alpine architectures, so a normal install often does not compile anything. But if your Python version, CPU architecture, pinned `grpcio` version, or build policy does not have a compatible wheel, pip falls back to a source build. Without the right build tools, you get errors like this:
 
 ```text
 Building wheels for collected packages: grpcio
@@ -113,7 +113,7 @@ WORKDIR /app
 CMD ["python", "main.py"]
 ```
 
-The key packages you need for building grpcio on Alpine are `gcc`, `g++`, `musl-dev`, and `linux-headers`. Without any one of them, the build will fail with different error messages.
+The key packages you need for building grpcio on Alpine are `gcc`, `g++`, `musl-dev`, and `linux-headers`, with library development packages such as `openssl-dev` and `libffi-dev` needed by some dependency sets. If you are getting a musllinux wheel instead of building from source, you may not need these build packages at all.
 
 ## Issue 2: Node.js gRPC Binary Not Available for Alpine
 
@@ -135,10 +135,10 @@ The solution is straightforward. Make sure you are using `@grpc/grpc-js` instead
 ```json
 {
   "dependencies": {
-    "@opentelemetry/api": "^1.7.0",
-    "@opentelemetry/sdk-trace-node": "^1.21.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.48.0",
-    "@grpc/grpc-js": "^1.9.0"
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-trace-node": "^2.7.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",
+    "@grpc/grpc-js": "^1.14.4"
   }
 }
 ```
@@ -175,14 +175,14 @@ CMD ["node", "index.js"]
 
 ## Issue 3: Missing CA Certificates for TLS
 
-Alpine ships with a minimal set of CA certificates. If your OpenTelemetry exporter connects to a collector or backend over TLS, it might fail with certificate verification errors:
+Plain Alpine images do not install CA certificates by default. Official `python:3.12-alpine` images already include `ca-certificates`, but if you are using a minimal Alpine image or a custom runtime stage without it, your OpenTelemetry exporter can fail with certificate verification errors:
 
 ```text
 SSL: CERTIFICATE_VERIFY_FAILED
 unable to get local issuer certificate
 ```
 
-This happens because the `ca-certificates` package is not installed by default:
+This happens when the `ca-certificates` package is missing:
 
 ```dockerfile
 # Fix: Install CA certificates on Alpine
@@ -225,7 +225,7 @@ CMD ["python", "main.py"]
 
 ## Issue 4: DNS Resolution Differences
 
-Alpine's musl libc handles DNS resolution differently than glibc. One notorious difference is that musl does not support the `search` directive in `/etc/resolv.conf` the same way glibc does. In Kubernetes, this can cause DNS lookups for short service names to fail:
+Alpine's musl libc handles DNS resolution differently than glibc. musl supports `search` and `domain` in `/etc/resolv.conf`, but its behavior is not identical to glibc, especially around `ndots` and long search lists. In Kubernetes, this can make short or ambiguous service names harder to troubleshoot:
 
 ```python
 # This might fail on Alpine in Kubernetes
@@ -235,7 +235,7 @@ exporter = OTLPSpanExporter(
 )
 ```
 
-The fix is to use the fully qualified domain name:
+The fix is to use the fully qualified domain name, or at least the namespace-qualified service name when crossing namespaces:
 
 ```python
 # Use FQDN to avoid DNS resolution issues on Alpine
@@ -245,22 +245,7 @@ exporter = OTLPSpanExporter(
 )
 ```
 
-Alternatively, you can install the `libc6-compat` package which provides some glibc compatibility:
-
-```dockerfile
-# Install glibc compatibility layer
-FROM python:3.12-alpine
-
-RUN apk add --no-cache libc6-compat
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . /app
-WORKDIR /app
-
-CMD ["python", "main.py"]
-```
+Installing a glibc compatibility package such as `gcompat` can help with some glibc-linked binaries, but it does not replace musl's DNS resolver behavior. Use explicit service names for DNS issues.
 
 ## Issue 5: Segfaults with Auto-Instrumentation
 
@@ -313,10 +298,10 @@ RequestsInstrumentor().instrument()
 
 ## Issue 6: Timezone and Locale Problems
 
-Alpine does not include timezone data by default. This can cause timestamp-related issues in spans:
+Plain Alpine images do not include timezone data by default. Official `python:3.12-alpine` images already include `tzdata`, but if you are using a minimal image without it, application code that formats local time can behave unexpectedly:
 
 ```dockerfile
-# Install timezone data for correct span timestamps
+# Install timezone data for application-local time handling
 FROM python:3.12-alpine
 
 RUN apk add --no-cache tzdata
@@ -382,7 +367,7 @@ RUN apk add --no-cache \
     libstdc++ \
     libgcc \
     tzdata \
-    libc6-compat
+    gcompat
 
 ENV TZ=UTC
 
