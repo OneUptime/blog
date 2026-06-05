@@ -39,7 +39,7 @@ def update_user_role(request, user_id, new_role):
     with tracer.start_as_current_span("user.role.update") as span:
         # Identity attributes - who performed the action
         span.set_attribute("enduser.id", request.authenticated_user.id)
-        span.set_attribute("enduser.role", request.authenticated_user.role)
+        span.set_attribute("user.roles", [request.authenticated_user.role])
         span.set_attribute("enduser.ip", request.client_ip)
 
         # Action attributes - what was changed
@@ -75,19 +75,13 @@ receivers:
 processors:
   # Filter processor to identify audit-relevant spans
   filter/audit:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: audit.action
-            value: ".*"
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["audit.action"] == nil
 
-  # Add a timestamp in ISO 8601 for auditor readability
+  # Add pipeline metadata for auditor readability
   attributes/audit_metadata:
     actions:
-      - key: audit.collector_received_at
-        action: insert
-        value: ""
       - key: audit.pipeline
         value: "soc2-audit-trail"
         action: insert
@@ -133,7 +127,7 @@ Here is how to emit a structured audit log when a configuration change is detect
 # Emit structured audit logs for system-level events
 import logging
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
@@ -144,7 +138,10 @@ logger_provider.add_log_record_processor(
 )
 set_logger_provider(logger_provider)
 
+handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
 logger = logging.getLogger("audit.system")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 def on_config_change(old_config, new_config, changed_by):
     logger.info(
