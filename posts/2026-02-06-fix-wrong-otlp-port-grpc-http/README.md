@@ -13,7 +13,7 @@ The OpenTelemetry Collector listens on two different ports for two different pro
 OTLP (OpenTelemetry Protocol) supports two transport mechanisms:
 
 - **OTLP/gRPC** on port **4317**: Uses HTTP/2 with protocol buffers. This is the original OTLP transport.
-- **OTLP/HTTP** on port **4318**: Uses HTTP/1.1 with protocol buffers (or JSON). This was added later for environments where gRPC is difficult to use (proxies, load balancers, serverless).
+- **OTLP/HTTP** on port **4318**: Uses HTTP/1.1 or HTTP/2 with protocol buffers (or JSON). This was added later for environments where gRPC is difficult to use (proxies, load balancers, serverless).
 
 ## Common Error Messages
 
@@ -49,7 +49,7 @@ These error messages never say "you are using the wrong port." You have to know 
 
 ```javascript
 // Using HTTP/protobuf exporter - connects to port 4318
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
 
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',  // Port 4318 for HTTP
@@ -97,7 +97,7 @@ Notice that the URL format differs between the two protocols:
 | Protocol | Port | URL Format | Package |
 |----------|------|------------|---------|
 | gRPC | 4317 | `http://host:4317` | `exporter-trace-otlp-grpc` |
-| HTTP | 4318 | `http://host:4318/v1/traces` | `exporter-trace-otlp-http` |
+| HTTP | 4318 | `http://host:4318/v1/traces` | `exporter-trace-otlp-proto` |
 
 The HTTP URL includes the path (`/v1/traces`, `/v1/metrics`, `/v1/logs`). The gRPC URL does not use a path because gRPC uses service definitions instead of URL paths.
 
