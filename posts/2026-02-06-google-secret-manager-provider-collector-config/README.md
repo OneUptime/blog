@@ -71,8 +71,8 @@ echo -n "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." | gcloud secrets create otel-a
   --replication-policy=automatic \
   --data-file=-
 
-# Create a secret for the Prometheus remote write password
-echo -n "prom-write-password-xyz" | gcloud secrets create prometheus-write-password \
+# Create a secret for the Prometheus remote write Basic auth credential
+echo -n "dXNlcm5hbWU6cHJvbS13cml0ZS1wYXNzd29yZC14eXo=" | gcloud secrets create prometheus-write-basic-auth \
   --project=my-project \
   --replication-policy=automatic \
   --data-file=-
@@ -98,7 +98,7 @@ gcloud projects add-iam-policy-binding my-project \
 
 For more granular control, you can grant access to individual secrets instead of all secrets in the project.
 
-This command grants access to a single specific secret.
+These commands grant access to specific secrets.
 
 ```bash
 # Grant access to only the specific secrets the Collector needs
@@ -136,11 +136,11 @@ exporters:
     tls:
       insecure: false
 
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
     headers:
       # Prometheus auth from Secret Manager
-      Authorization: "Basic ${googlesecretmanager:projects/my-project/secrets/prometheus-write-password/versions/latest}"
+      Authorization: "Basic ${googlesecretmanager:projects/my-project/secrets/prometheus-write-basic-auth/versions/latest}"
 
 extensions:
   bearertokenauth:
@@ -155,6 +155,9 @@ receivers:
         auth:
           authenticator: bearertokenauth
 
+processors:
+  batch:
+
 service:
   extensions: [bearertokenauth]
   pipelines:
@@ -165,21 +168,31 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Step 4: Deploy on Google Kubernetes Engine
 
-When running on GKE, the recommended approach is to use Workload Identity instead of service account key files. Workload Identity maps a Kubernetes service account to a GCP service account without requiring any key files.
+When running on GKE, the recommended approach is to use Workload Identity Federation for GKE instead of service account key files. Workload Identity Federation for GKE maps a Kubernetes service account to a GCP service account without requiring any key files.
 
-These commands configure Workload Identity for the Collector.
+These commands configure Workload Identity Federation for GKE for the Collector.
 
 ```bash
-# Enable Workload Identity on the GKE cluster (if not already enabled)
+# Enable Workload Identity Federation for GKE on the cluster (if not already enabled)
 gcloud container clusters update my-cluster \
   --project=my-project \
-  --zone=us-central1-a \
+  --location=us-central1-a \
   --workload-pool=my-project.svc.id.goog
+
+# Enable the GKE metadata server on an existing Standard node pool
+gcloud container node-pools update my-node-pool \
+  --project=my-project \
+  --cluster=my-cluster \
+  --location=us-central1-a \
+  --workload-metadata=GKE_METADATA
+
+# Create the namespace for Collector resources
+kubectl create namespace observability
 
 # Create a Kubernetes service account for the Collector
 kubectl create serviceaccount otel-collector -n observability
@@ -281,7 +294,7 @@ This configuration pins secrets to specific versions for predictable deployments
 # collector-config-pinned.yaml
 exporters:
   otlp/backend:
-    # Pin to version 3 of the API key - update this when rotating secrets
+    # Pin to version 3 of the endpoint - update this when rotating secrets
     endpoint: "${googlesecretmanager:projects/my-project/secrets/otel-backend-endpoint/versions/3}"
     headers:
       api-key: "${googlesecretmanager:projects/my-project/secrets/otel-exporter-api-key/versions/5}"
