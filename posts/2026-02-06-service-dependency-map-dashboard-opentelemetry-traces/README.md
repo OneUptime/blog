@@ -91,6 +91,7 @@ The servicegraph connector produces these metrics:
 - `traces_service_graph_request_server_seconds_bucket` - server-side latency histogram per edge
 
 Each metric has labels `client` and `server` identifying the two services in the edge.
+The metrics also include a `connection_type` label for direct (`unset`), database, messaging, or virtual-node edges.
 
 ## Step 2: Use Grafana's Node Graph Panel
 
@@ -101,8 +102,11 @@ Grafana has a built-in Node Graph panel type that renders directed graphs. It re
 ```promql
 # Node data: each service with its inbound request rate
 # This becomes the node size in the graph visualization
-sum by (server) (
-  rate(traces_service_graph_request_total[5m])
+label_replace(
+  sum by (server) (
+    rate(traces_service_graph_request_total[5m])
+  ),
+  "id", "$1", "server", "(.+)"
 )
 ```
 
@@ -110,8 +114,17 @@ sum by (server) (
 
 ```promql
 # Edge data: call rate between each service pair
-sum by (client, server) (
-  rate(traces_service_graph_request_total[5m])
+label_join(
+  label_replace(
+    label_replace(
+      sum by (client, server) (
+        rate(traces_service_graph_request_total[5m])
+      ),
+      "source", "$1", "client", "(.+)"
+    ),
+    "target", "$1", "server", "(.+)"
+  ),
+  "id", " -> ", "client", "server"
 )
 ```
 
@@ -139,33 +152,15 @@ The Node Graph panel needs field mappings to understand your data. Here is the p
   "targets": [
     {
       "refId": "nodes",
-      "expr": "sum by (server) (rate(traces_service_graph_request_total[5m]))",
+      "expr": "label_replace(sum by (server) (rate(traces_service_graph_request_total[5m])), \"id\", \"$1\", \"server\", \"(.+)\")",
       "format": "table",
       "instant": true
     },
     {
       "refId": "edges",
-      "expr": "sum by (client, server) (rate(traces_service_graph_request_total[5m]))",
+      "expr": "label_join(label_replace(label_replace(sum by (client, server) (rate(traces_service_graph_request_total[5m])), \"source\", \"$1\", \"client\", \"(.+)\"), \"target\", \"$1\", \"server\", \"(.+)\"), \"id\", \" -> \", \"client\", \"server\")",
       "format": "table",
       "instant": true
-    }
-  ],
-  "transformations": [
-    {
-      "id": "configFromData",
-      "options": {
-        "configRefId": "nodes",
-        "mappings": [
-          {
-            "fieldName": "server",
-            "handlerKey": "field.name"
-          },
-          {
-            "fieldName": "Value",
-            "handlerKey": "field.name"
-          }
-        ]
-      }
     }
   ]
 }
@@ -173,7 +168,7 @@ The Node Graph panel needs field mappings to understand your data. Here is the p
 
 ## Step 4: Use Tempo's Service Graph Feature
 
-If you use Grafana Tempo as your trace backend, it has a built-in service graph feature that works directly with the Node Graph panel without needing separate Prometheus metrics. Enable it in Tempo:
+If you use Grafana Tempo as your trace backend, it can generate service graph metrics for Grafana's built-in Service Graph view. You do not need the OpenTelemetry Collector `servicegraph` connector for this path, but Tempo still writes the generated metrics to a Prometheus-compatible backend and Grafana reads them from the linked Prometheus data source. Enable it in Tempo:
 
 ```yaml
 # tempo-config.yaml
@@ -195,7 +190,10 @@ metrics_generator:
         - http.status_code
       enable_client_server_prefix: true
       peer_attributes:
-        - service.name
+        - peer.service
+        - server.address
+        - db.namespace
+        - db.system.name
         - db.system
         - messaging.system
       max_items: 10000
@@ -206,6 +204,11 @@ metrics_generator:
         - http.method
         - http.route
         - http.status_code
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 ```
 
 In Grafana, add Tempo as a data source and enable the "Service Graph" feature:
@@ -276,7 +279,7 @@ Each node and edge in the graph should link to deeper dashboards. Configure data
 
 ## Handling External Dependencies
 
-Not all dependencies are OpenTelemetry-instrumented services. Databases, message queues, and third-party APIs appear in traces as client spans without corresponding server spans. The servicegraph connector handles these as "virtual nodes" using the `db.system`, `messaging.system`, or `peer.service` span attributes. Make sure your instrumentation sets these attributes on outgoing calls:
+Not all dependencies are OpenTelemetry-instrumented services. Databases, message queues, and third-party APIs appear in traces as client spans without corresponding server spans. The servicegraph connector handles these as "virtual nodes" using peer attributes such as `peer.service`, and database or messaging semantic convention attributes such as `db.namespace`, `db.system.name`, or `messaging.system`. Make sure your instrumentation sets these attributes on outgoing calls:
 
 ```python
 # Python example: setting peer attributes for external dependencies
@@ -287,8 +290,9 @@ tracer = trace.get_tracer("checkout-service")
 with tracer.start_as_current_span(
     "query_orders",
     attributes={
-        "db.system": "postgresql",
-        "db.name": "orders",
+        "peer.service": "orders-db",
+        "db.system.name": "postgresql",
+        "db.namespace": "orders",
         "server.address": "orders-db.internal",
     }
 ) as span:
