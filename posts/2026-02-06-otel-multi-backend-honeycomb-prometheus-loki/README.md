@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Honeycomb, Prometheus, Loki
 
 Description: Set up a single OpenTelemetry Collector instance that exports traces to Honeycomb, metrics to Prometheus, and logs to Loki simultaneously.
 
-One of the strongest features of the OpenTelemetry Collector is its ability to fan out telemetry data to multiple backends from a single pipeline. Instead of running separate collection agents for each backend, you configure one Collector with multiple exporters. This post walks through a production-ready setup that sends traces to Honeycomb, metrics to Prometheus (via remote write), and logs to Loki.
+One of the strongest features of the OpenTelemetry Collector is its ability to route telemetry data to multiple backends from a single Collector configuration. Instead of running separate collection agents for each backend, you configure one Collector with multiple signal-specific pipelines and exporters. This post walks through a production-ready setup that sends traces to Honeycomb, metrics to Prometheus (via remote write), and logs to Loki's native OTLP endpoint.
 
 ## Architecture Overview
 
@@ -14,7 +14,7 @@ Your applications send all telemetry (traces, metrics, logs) to the Collector vi
 
 - Traces go to Honeycomb via the OTLP exporter
 - Metrics go to Prometheus via the Prometheus remote write exporter
-- Logs go to Loki via the Loki exporter
+- Logs go to Loki via the OTLP HTTP exporter
 
 ## Full Collector Configuration
 
@@ -77,7 +77,7 @@ exporters:
     compression: gzip
 
   # Metrics to Prometheus via remote write
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus-server:9090/api/v1/write"
     tls:
       insecure: true
@@ -87,17 +87,11 @@ exporters:
     external_labels:
       cluster: "production-us-east"
 
-  # Logs to Loki
-  loki:
-    endpoint: "http://loki-gateway:3100/loki/api/v1/push"
-    default_labels_enabled:
-      exporter: false
-      job: true
-    labels:
-      attributes:
-        service.name: "service"
-        deployment.environment: "env"
-        log.level: "level"
+  # Logs to Loki via its native OTLP endpoint
+  otlphttp/loki:
+    endpoint: "http://loki-gateway:3100/otlp"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -109,12 +103,12 @@ service:
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, resource, batch/metrics]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch/logs]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ## Per-Signal Batch Tuning
@@ -159,31 +153,39 @@ If you are using Honeycomb's Environments feature (recommended), you can omit th
 The Prometheus remote write exporter converts OTLP metrics to Prometheus format:
 
 ```yaml
-prometheusremotewrite:
+prometheus_remote_write:
   endpoint: "http://prometheus-server:9090/api/v1/write"
   resource_to_telemetry_conversion:
     enabled: true
 ```
 
-The `resource_to_telemetry_conversion` setting is important. When enabled, it converts resource attributes (like `service.name`) into metric labels. Without it, you lose service identification on your Prometheus metrics.
+Make sure the receiving Prometheus server is started with `--web.enable-remote-write-receiver`; otherwise `/api/v1/write` will reject remote write requests.
 
-## Loki Exporter Label Mapping
+The `resource_to_telemetry_conversion` setting is important. When enabled, it converts resource attributes (like `service.name`) into metric labels. Without it, those attributes are exposed through the generated `target_info` metric instead of being copied onto every time series.
 
-Loki indexes logs by labels, so choosing the right label mapping is critical for query performance:
+## Loki OTLP Label Mapping
+
+Loki indexes logs by labels, so choosing the right label mapping is critical for query performance. When using Loki's native OTLP endpoint, send logs with the OTLP HTTP exporter and configure index-label mapping in Loki's OTLP settings:
 
 ```yaml
-loki:
-  endpoint: "http://loki-gateway:3100/loki/api/v1/push"
-  labels:
-    attributes:
-      service.name: "service"
-      deployment.environment: "env"
-      log.level: "level"
-    resource:
-      k8s.namespace.name: "namespace"
+otlphttp/loki:
+  endpoint: "http://loki-gateway:3100/otlp"
+  tls:
+    insecure: true
+
+# In loki.yaml
+limits_config:
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name
+            - deployment.environment
+            - k8s.namespace.name
 ```
 
-Keep the label count low (under 10) to avoid high cardinality issues in Loki. Put high-cardinality data like request IDs in the log body, not in labels.
+Keep the label count low (around 10-15 labels at most) to avoid high cardinality issues in Loki. Put high-cardinality data like request IDs in structured metadata or the log body, not in index labels.
 
 ## Adding Redundancy with Failover
 
@@ -216,8 +218,15 @@ When exporting to multiple backends, the Collector becomes a critical piece of i
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Scrape `http://collector:8888/metrics` with Prometheus and alert on:
