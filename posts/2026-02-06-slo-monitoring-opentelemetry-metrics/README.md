@@ -61,7 +61,7 @@ var (
     // Counter for total requests - the denominator of our SLI
     // Every request increments this, regardless of outcome
     requestCounter, _ = meter.Int64Counter(
-        "http.server.request.total",
+        "http.server.requests",
         metric.WithDescription("Total number of HTTP requests received"),
         metric.WithUnit("1"),
     )
@@ -76,13 +76,13 @@ var (
 
     // Histogram for request duration - used for latency SLI
     // The bucket boundaries are chosen to align with our SLO thresholds
-    // We care about 200ms and 500ms as our fast/slow boundaries
+    // We care about 0.2s and 0.5s as our fast/slow boundaries
     latencyHistogram, _ = meter.Float64Histogram(
         "http.server.request.duration",
-        metric.WithDescription("Duration of HTTP requests in milliseconds"),
-        metric.WithUnit("ms"),
+        metric.WithDescription("Duration of HTTP requests in seconds"),
+        metric.WithUnit("s"),
         metric.WithExplicitBucketBoundaries(
-            5, 10, 25, 50, 100, 200, 500, 1000, 2500, 5000,
+            0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2.5, 5,
         ),
     )
 )
@@ -96,12 +96,16 @@ func sliMiddleware(next http.Handler) http.Handler {
         wrapped := &statusRecorder{ResponseWriter: w, statusCode: 200}
         next.ServeHTTP(wrapped, r)
 
-        duration := float64(time.Since(start).Milliseconds())
+        duration := time.Since(start).Seconds()
+        scheme := "http"
+        if r.TLS != nil {
+            scheme = "https"
+        }
 
         // Common attributes for all SLI metrics
         attrs := []attribute.KeyValue{
-            attribute.String("http.method", r.Method),
-            attribute.String("http.route", r.URL.Path),
+            attribute.String("http.request.method", r.Method),
+            attribute.String("url.scheme", scheme),
         }
 
         // Record total requests (SLI denominator)
@@ -155,16 +159,16 @@ groups:
           1 - (
             sum(increase(http_server_request_errors_total[30d]))
             /
-            sum(increase(http_server_request_total[30d]))
+            sum(increase(http_server_requests_total[30d]))
           )
 
       # Latency SLO: percentage of requests faster than 200ms
       # Uses the histogram bucket for the 200ms boundary
       - record: slo:latency_200ms:ratio_30d
         expr: |
-          sum(increase(http_server_request_duration_bucket{le="200"}[30d]))
+          sum(increase(http_server_request_duration_seconds_bucket{le="0.2"}[30d]))
           /
-          sum(increase(http_server_request_duration_count[30d]))
+          sum(increase(http_server_request_duration_seconds_count[30d]))
 
       # Error budget remaining: how much of the budget is left
       # SLO target is 99.9%, so budget is 0.1%
@@ -184,7 +188,7 @@ groups:
           (
             sum(increase(http_server_request_errors_total[1h]))
             /
-            sum(increase(http_server_request_total[1h]))
+            sum(increase(http_server_requests_total[1h]))
           )
           /
           (1 - 0.999)
@@ -213,12 +217,12 @@ groups:
         expr: |
           (
             sum(increase(http_server_request_errors_total[1h]))
-            / sum(increase(http_server_request_total[1h]))
+            / sum(increase(http_server_requests_total[1h]))
           ) > (14.4 * (1 - 0.999))
           and
           (
             sum(increase(http_server_request_errors_total[5m]))
-            / sum(increase(http_server_request_total[5m]))
+            / sum(increase(http_server_requests_total[5m]))
           ) > (14.4 * (1 - 0.999))
         for: 2m
         labels:
@@ -227,26 +231,26 @@ groups:
           summary: "SLO budget burning at 14.4x rate"
           description: "At this rate, the entire 30-day error budget will be exhausted in 2 days"
 
-      # Warning: burning 3x the budget over 6 hours
+      # Warning: burning 6x the budget over 6 hours
       # AND sustained over a 30-minute window
       # This catches slower, sustained degradation
       - alert: SLOBudgetBurnWarning
         expr: |
           (
             sum(increase(http_server_request_errors_total[6h]))
-            / sum(increase(http_server_request_total[6h]))
-          ) > (3 * (1 - 0.999))
+            / sum(increase(http_server_requests_total[6h]))
+          ) > (6 * (1 - 0.999))
           and
           (
             sum(increase(http_server_request_errors_total[30m]))
-            / sum(increase(http_server_request_total[30m]))
-          ) > (3 * (1 - 0.999))
+            / sum(increase(http_server_requests_total[30m]))
+          ) > (6 * (1 - 0.999))
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "SLO budget burning at 3x rate"
-          description: "At this rate, the entire 30-day error budget will be exhausted in 10 days"
+          summary: "SLO budget burning at 6x rate"
+          description: "At this rate, the entire 30-day error budget will be exhausted in 5 days"
 ```
 
 The dual-window approach prevents alert fatigue. A brief spike in errors might trigger the 5-minute window but not the 1-hour window, so the critical alert does not fire. Conversely, a slow but steady degradation will show up in the 6-hour window even though no single 5-minute window looks alarming.
@@ -272,7 +276,7 @@ Here is a Python script that computes dashboard values from OpenTelemetry metric
 # slo_dashboard.py
 # Compute SLO dashboard values from OpenTelemetry metric data
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def compute_slo_status(metrics_client, slo_config):
     """
@@ -287,11 +291,11 @@ def compute_slo_status(metrics_client, slo_config):
     service = slo_config["service_name"]
 
     # Query total and error counts over the SLO window
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=window_days)
 
     total_requests = metrics_client.query_sum(
-        metric="http.server.request.total",
+        metric="http.server.requests",
         filters={"service.name": service},
         start=start_time,
         end=end_time,
@@ -319,7 +323,7 @@ def compute_slo_status(metrics_client, slo_config):
 
     # Compute burn rate over the last hour
     recent_total = metrics_client.query_sum(
-        metric="http.server.request.total",
+        metric="http.server.requests",
         filters={"service.name": service},
         start=end_time - timedelta(hours=1),
         end=end_time,
@@ -345,15 +349,15 @@ def compute_slo_status(metrics_client, slo_config):
         "error_budget_remaining_pct": round(budget_percentage, 2),
         "burn_rate_1h": round(burn_rate, 2),
         "budget_exhaustion_forecast": forecast_exhaustion(
-            remaining_budget, burn_rate, target, window_days
+            budget_percentage, burn_rate, window_days
         ),
     }
 
-def forecast_exhaustion(remaining_budget, burn_rate, target, window_days):
+def forecast_exhaustion(budget_percentage, burn_rate, window_days):
     """Predict when the error budget will run out at current burn rate"""
-    if burn_rate <= 1.0:
+    if burn_rate <= 0:
         return "Budget is sustainable"
-    days_remaining = window_days / burn_rate
+    days_remaining = (budget_percentage / 100) * window_days / burn_rate
     return f"Budget exhausted in {days_remaining:.1f} days at current rate"
 ```
 
