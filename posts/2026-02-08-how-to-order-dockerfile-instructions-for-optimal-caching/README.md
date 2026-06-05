@@ -8,7 +8,7 @@ Description: Learn how to structure Dockerfile instructions to maximize build ca
 
 ---
 
-Docker builds images layer by layer. Each instruction in a Dockerfile creates a layer, and Docker caches these layers. When you rebuild an image, Docker checks each instruction from top to bottom. If an instruction and all instructions before it have not changed, Docker reuses the cached layer instead of rebuilding it. The moment an instruction changes, Docker invalidates the cache for that instruction and everything that follows.
+Docker builds images layer by layer. Dockerfile instructions participate in the build cache, and filesystem-changing instructions such as `RUN`, `COPY`, and `ADD` create image layers. When you rebuild an image, Docker checks each instruction from top to bottom. If an instruction and all instructions before it have not changed, Docker reuses the cached result instead of rebuilding it. The moment an instruction changes, Docker invalidates the cache for that instruction and everything that follows.
 
 This caching behavior means the order of instructions in your Dockerfile has a direct impact on build speed. A well-ordered Dockerfile can rebuild in seconds after a code change. A poorly ordered one rebuilds from scratch every time.
 
@@ -34,7 +34,7 @@ graph TD
     style F fill:#f96
 ```
 
-In this example, when `requirements.txt` changes, layers C through F are rebuilt. But layers A and B are reused from cache.
+In this example, when `requirements.txt` changes, steps C through F are rebuilt. But steps A and B are reused from cache.
 
 ## The Golden Rule
 
@@ -311,14 +311,14 @@ RUN npm ci
 COPY VERSION .
 ```
 
-**Using ADD with a remote URL** (ADD always fetches, potentially invalidating cache):
+**Using ADD with a remote URL without pinning the content**:
 
 ```dockerfile
-# Bad - ADD with URL may invalidate cache unpredictably
+# Bad - remote content can change without the Dockerfile changing
 ADD https://example.com/config.tar.gz /app/
 
-# Better - use RUN with curl for predictable caching
-RUN curl -fsSL https://example.com/config.tar.gz | tar -xz -C /app/
+# Better - verify the remote artifact with a checksum
+ADD --checksum=sha256:<expected-sha256> https://example.com/config.tar.gz /app/
 ```
 
 ## Summary
