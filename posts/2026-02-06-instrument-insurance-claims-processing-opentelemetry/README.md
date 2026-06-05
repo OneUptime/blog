@@ -40,11 +40,17 @@ Standard distributed traces work well for synchronous request-response flows. Bu
 ```python
 # claim_tracing.py - Trace management for long-running claims
 
-from opentelemetry import trace, context
+from datetime import datetime, timezone
+
+from opentelemetry import metrics, trace
+from opentelemetry.context import Context
 from opentelemetry.trace import Link, SpanKind
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 def setup_tracing(service_name: str):
@@ -62,6 +68,21 @@ def setup_tracing(service_name: str):
     return trace.get_tracer(service_name)
 
 
+def setup_metrics(service_name: str):
+    """Configure metrics for a claims processing service."""
+    resource = Resource.create({
+        SERVICE_NAME: service_name,
+        "service.namespace": "claims-processing",
+        "deployment.environment": "production",
+    })
+
+    exporter = OTLPMetricExporter(endpoint="otel-collector:4317", insecure=True)
+    reader = PeriodicExportingMetricReader(exporter)
+    provider = MeterProvider(resource=resource, metric_readers=[reader])
+    metrics.set_meter_provider(provider)
+    return metrics.get_meter(service_name)
+
+
 class ClaimTraceManager:
     """Manages trace context across long-running claim processing stages."""
 
@@ -77,7 +98,7 @@ class ClaimTraceManager:
                 "claim.id": claim_id,
                 "claim.type": claim_type,
                 "claimant.id": claimant_id,
-                "claim.submitted_at": datetime.utcnow().isoformat(),
+                "claim.submitted_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -107,12 +128,13 @@ class ClaimTraceManager:
         # Create a new trace with a link to the original submission
         span = self.tracer.start_span(
             f"claim.stage.{stage_name}",
+            context=Context(),
             kind=SpanKind.CONSUMER,
             links=[Link(original_context, {"link.type": "claim_origin"})],
             attributes={
                 "claim.id": claim_id,
                 "claim.stage": stage_name,
-                "claim.stage_started_at": datetime.utcnow().isoformat(),
+                "claim.stage_started_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -127,12 +149,13 @@ Document intake is the first processing stage after submission. It handles docum
 
 ```python
 # document_intake.py - Document processing with detailed instrumentation
-from opentelemetry import trace, metrics
-from claim_tracing import setup_tracing, ClaimTraceManager
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from claim_tracing import setup_metrics, setup_tracing, ClaimTraceManager
 import time
 
 tracer = setup_tracing("document-intake-service")
-meter = metrics.get_meter("document-intake-service")
+meter = setup_metrics("document-intake-service")
 trace_manager = ClaimTraceManager(tracer)
 
 # Metrics for document processing
@@ -160,46 +183,47 @@ async def process_document_intake(claim_id: str, documents: list, trace_ref: dic
         stage_span.set_attribute("documents.count", len(documents))
         extracted_data = {}
 
-        for doc in documents:
-            # Each document gets its own child span
-            with tracer.start_as_current_span(
-                "process_document",
-                attributes={
-                    "document.type": doc.doc_type,
-                    "document.size_bytes": doc.size,
-                    "document.format": doc.format,
-                },
-            ) as doc_span:
-                start = time.monotonic()
+        with trace.use_span(stage_span, end_on_exit=False):
+            for doc in documents:
+                # Each document gets its own child span
+                with tracer.start_as_current_span(
+                    "process_document",
+                    attributes={
+                        "document.type": doc.doc_type,
+                        "document.size_bytes": doc.size,
+                        "document.format": doc.format,
+                    },
+                ) as doc_span:
+                    start = time.monotonic()
 
-                # Run OCR on the document
-                with tracer.start_as_current_span("ocr_extraction") as ocr_span:
-                    ocr_result = await ocr_service.extract_text(doc)
-                    ocr_span.set_attribute("ocr.confidence", ocr_result.confidence)
-                    ocr_span.set_attribute("ocr.page_count", ocr_result.pages)
-                    ocr_confidence.record(ocr_result.confidence, {
-                        "document_type": doc.doc_type,
-                    })
-
-                # Validate extracted data against expected schema
-                with tracer.start_as_current_span("data_validation") as val_span:
-                    validation = validate_extracted_data(ocr_result, doc.doc_type)
-                    val_span.set_attribute("validation.passed", validation.passed)
-                    val_span.set_attribute("validation.errors", len(validation.errors))
-
-                    if not validation.passed:
-                        doc_span.add_event("validation_failed", {
-                            "errors": str(validation.errors[:5]),
+                    # Run OCR on the document
+                    with tracer.start_as_current_span("ocr_extraction") as ocr_span:
+                        ocr_result = await ocr_service.extract_text(doc)
+                        ocr_span.set_attribute("ocr.confidence", ocr_result.confidence)
+                        ocr_span.set_attribute("ocr.page_count", ocr_result.pages)
+                        ocr_confidence.record(ocr_result.confidence, {
+                            "document_type": doc.doc_type,
                         })
 
-                elapsed = time.monotonic() - start
-                doc_processing_time.record(elapsed, {"doc_type": doc.doc_type})
-                doc_count.add(1, {
-                    "doc_type": doc.doc_type,
-                    "status": "valid" if validation.passed else "invalid",
-                })
+                    # Validate extracted data against expected schema
+                    with tracer.start_as_current_span("data_validation") as val_span:
+                        validation = validate_extracted_data(ocr_result, doc.doc_type)
+                        val_span.set_attribute("validation.passed", validation.passed)
+                        val_span.set_attribute("validation.errors", len(validation.errors))
 
-                extracted_data[doc.doc_type] = ocr_result.data
+                        if not validation.passed:
+                            doc_span.add_event("validation_failed", {
+                                "errors": str(validation.errors[:5]),
+                            })
+
+                    elapsed = time.monotonic() - start
+                    doc_processing_time.record(elapsed, {"doc_type": doc.doc_type})
+                    doc_count.add(1, {
+                        "doc_type": doc.doc_type,
+                        "status": "valid" if validation.passed else "invalid",
+                    })
+
+                    extracted_data[doc.doc_type] = ocr_result.data
 
         stage_span.set_attribute("documents.all_valid",
             all(d.get("valid", False) for d in extracted_data.values()))
@@ -209,7 +233,7 @@ async def process_document_intake(claim_id: str, documents: list, trace_ref: dic
 
     except Exception as e:
         stage_span.record_exception(e)
-        stage_span.set_status(trace.StatusCode.ERROR, str(e))
+        stage_span.set_status(Status(StatusCode.ERROR, str(e)))
         raise
     finally:
         stage_span.end()
@@ -223,11 +247,12 @@ Fraud detection is often the most computationally expensive stage. It runs the c
 
 ```python
 # fraud_detection.py - Fraud scoring with model performance tracking
-from opentelemetry import trace, metrics
-from claim_tracing import setup_tracing, ClaimTraceManager
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from claim_tracing import setup_metrics, setup_tracing, ClaimTraceManager
 
 tracer = setup_tracing("fraud-detection-service")
-meter = metrics.get_meter("fraud-detection-service")
+meter = setup_metrics("fraud-detection-service")
 trace_manager = ClaimTraceManager(tracer)
 
 # Fraud detection metrics
@@ -257,52 +282,53 @@ async def run_fraud_detection(claim_id: str, claim_data: dict, trace_ref: dict):
     try:
         scores = {}
 
-        # Run multiple fraud detection models in parallel
-        with tracer.start_as_current_span("run_fraud_models") as models_span:
+        # Run multiple fraud detection models
+        with trace.use_span(stage_span, end_on_exit=False):
+            with tracer.start_as_current_span("run_fraud_models") as models_span:
 
-            # Model 1: Pattern-based rules engine
-            with tracer.start_as_current_span("rules_engine") as rule_span:
-                import time
-                start = time.monotonic()
-                rules_result = await rules_engine.evaluate(claim_data)
-                elapsed_ms = (time.monotonic() - start) * 1000
+                # Model 1: Pattern-based rules engine
+                with tracer.start_as_current_span("rules_engine") as rule_span:
+                    import time
+                    start = time.monotonic()
+                    rules_result = await rules_engine.evaluate(claim_data)
+                    elapsed_ms = (time.monotonic() - start) * 1000
 
-                rule_span.set_attribute("rules.triggered", len(rules_result.triggered_rules))
-                rule_span.set_attribute("rules.score", rules_result.score)
-                model_latency.record(elapsed_ms, {"model": "rules_engine"})
-                scores["rules"] = rules_result.score
+                    rule_span.set_attribute("rules.triggered", len(rules_result.triggered_rules))
+                    rule_span.set_attribute("rules.score", rules_result.score)
+                    model_latency.record(elapsed_ms, {"model": "rules_engine"})
+                    scores["rules"] = rules_result.score
 
-                # Log each triggered rule as a span event
-                for rule in rules_result.triggered_rules:
-                    rule_span.add_event("rule_triggered", {
-                        "rule.id": rule.id,
-                        "rule.name": rule.name,
-                        "rule.severity": rule.severity,
-                    })
-                    fraud_flags.add(1, {"flag_type": rule.name})
+                    # Log each triggered rule as a span event
+                    for rule in rules_result.triggered_rules:
+                        rule_span.add_event("rule_triggered", {
+                            "rule.id": rule.id,
+                            "rule.name": rule.name,
+                            "rule.severity": rule.severity,
+                        })
+                        fraud_flags.add(1, {"flag_type": rule.name})
 
-            # Model 2: ML-based anomaly detection
-            with tracer.start_as_current_span("ml_anomaly_detection") as ml_span:
-                start = time.monotonic()
-                ml_result = await ml_model.predict(claim_data)
-                elapsed_ms = (time.monotonic() - start) * 1000
+                # Model 2: ML-based anomaly detection
+                with tracer.start_as_current_span("ml_anomaly_detection") as ml_span:
+                    start = time.monotonic()
+                    ml_result = await ml_model.predict(claim_data)
+                    elapsed_ms = (time.monotonic() - start) * 1000
 
-                ml_span.set_attribute("ml.score", ml_result.score)
-                ml_span.set_attribute("ml.model_version", ml_result.model_version)
-                ml_span.set_attribute("ml.features_used", ml_result.feature_count)
-                model_latency.record(elapsed_ms, {"model": "ml_anomaly"})
-                scores["ml_anomaly"] = ml_result.score
+                    ml_span.set_attribute("ml.score", ml_result.score)
+                    ml_span.set_attribute("ml.model_version", ml_result.model_version)
+                    ml_span.set_attribute("ml.features_used", ml_result.feature_count)
+                    model_latency.record(elapsed_ms, {"model": "ml_anomaly"})
+                    scores["ml_anomaly"] = ml_result.score
 
-            # Model 3: Network analysis (checks for connected suspicious claims)
-            with tracer.start_as_current_span("network_analysis") as net_span:
-                start = time.monotonic()
-                network_result = await network_analyzer.check_connections(claim_data)
-                elapsed_ms = (time.monotonic() - start) * 1000
+                # Model 3: Network analysis (checks for connected suspicious claims)
+                with tracer.start_as_current_span("network_analysis") as net_span:
+                    start = time.monotonic()
+                    network_result = await network_analyzer.check_connections(claim_data)
+                    elapsed_ms = (time.monotonic() - start) * 1000
 
-                net_span.set_attribute("network.connections_found", network_result.connections)
-                net_span.set_attribute("network.suspicious_links", network_result.suspicious)
-                model_latency.record(elapsed_ms, {"model": "network_analysis"})
-                scores["network"] = network_result.score
+                    net_span.set_attribute("network.connections_found", network_result.connections)
+                    net_span.set_attribute("network.suspicious_links", network_result.suspicious)
+                    model_latency.record(elapsed_ms, {"model": "network_analysis"})
+                    scores["network"] = network_result.score
 
         # Calculate composite fraud score
         composite_score = calculate_composite_score(scores)
@@ -329,7 +355,7 @@ async def run_fraud_detection(claim_id: str, claim_data: dict, trace_ref: dict):
 
     except Exception as e:
         stage_span.record_exception(e)
-        stage_span.set_status(trace.StatusCode.ERROR, str(e))
+        stage_span.set_status(Status(StatusCode.ERROR, str(e)))
         raise
     finally:
         stage_span.end()
@@ -343,9 +369,9 @@ Beyond individual stage instrumentation, you need metrics that show the overall 
 
 ```python
 # pipeline_metrics.py - Pipeline-level claim lifecycle metrics
-from opentelemetry import metrics
+from claim_tracing import setup_metrics
 
-meter = metrics.get_meter("claims-pipeline")
+meter = setup_metrics("claims-pipeline")
 
 # How long claims spend in each stage
 stage_duration = meter.create_histogram(
