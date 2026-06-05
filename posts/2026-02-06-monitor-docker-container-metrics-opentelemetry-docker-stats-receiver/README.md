@@ -33,7 +33,7 @@ The receiver runs inside the OpenTelemetry Collector, so you need the collector 
 
 You'll need:
 
-- Docker Engine 19.03 or later
+- Docker Engine with Docker API 1.25 or later
 - Docker Compose (optional, but makes things easier)
 - The OpenTelemetry Collector Contrib distribution (the core distribution doesn't include this receiver)
 
@@ -53,8 +53,8 @@ receivers:
     collection_interval: 10s
     # Timeout for each stats API call
     timeout: 5s
-    # Which Docker API version to use
-    api_version: 1.24
+    # Optional: pin a Docker API version instead of auto-negotiating
+    api_version: "1.25"
 
 processors:
   batch:
@@ -82,7 +82,6 @@ The collector needs access to the Docker socket to query container stats. Here's
 ```yaml
 # docker-compose.yaml
 # Runs the OTel Collector with access to Docker socket for stats collection
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -130,22 +129,21 @@ The Docker Stats Receiver collects a comprehensive set of metrics. Here are the 
 | Metric | Description | Unit |
 |--------|-------------|------|
 | `container.cpu.usage.total` | Total CPU time consumed | nanoseconds |
-| `container.cpu.percent` | Percentage of CPU used | percent |
+| `container.cpu.utilization` | Percentage of CPU used | 1 |
 | `container.cpu.usage.kernelmode` | CPU time in kernel mode | nanoseconds |
 | `container.cpu.usage.usermode` | CPU time in user mode | nanoseconds |
-| `container.memory.usage.total` | Current memory usage including cache | bytes |
+| `container.memory.usage.total` | Current memory usage excluding cache | bytes |
 | `container.memory.usage.limit` | Memory limit for the container | bytes |
-| `container.memory.percent` | Percentage of memory limit used | percent |
+| `container.memory.percent` | Percentage of memory limit used | 1 |
 | `container.network.io.usage.rx_bytes` | Bytes received on network | bytes |
 | `container.network.io.usage.tx_bytes` | Bytes transmitted on network | bytes |
-| `container.blockio.io_service_bytes_recursive.read` | Bytes read from disk | bytes |
-| `container.blockio.io_service_bytes_recursive.write` | Bytes written to disk | bytes |
+| `container.blockio.io_service_bytes_recursive` | Bytes transferred to or from disk, with an `operation` attribute such as `read` or `write` | bytes |
 
 Each metric gets tagged with resource attributes like `container.name`, `container.id`, `container.image.name`, and `container.runtime`, which let you filter and group by container in your backend.
 
 ## Filtering Containers
 
-You probably don't want to monitor every container on the host. The collector itself, sidecar containers, and short-lived utility containers can add noise. You can filter containers by name, image, or label.
+You probably don't want to monitor every container on the host. The collector itself, sidecar containers, and short-lived utility containers can add noise. You can exclude containers by image and enrich metrics with selected labels or environment variables.
 
 ```yaml
 # Collector config with container filtering
@@ -153,7 +151,7 @@ receivers:
   docker_stats:
     endpoint: unix:///var/run/docker.sock
     collection_interval: 10s
-    # Only monitor containers with specific labels
+    # Copy selected Docker labels to metric attributes
     container_labels_to_metric_labels:
       # Map Docker labels to metric attributes
       com.docker.compose.service: "compose_service"
@@ -189,7 +187,7 @@ service:
       exporters: [otlp]
 ```
 
-The `excluded_images` field supports glob patterns, so you can use wildcards to exclude whole families of images. The `container_labels_to_metric_labels` field is particularly useful because it lets you carry Docker labels (like the ones Docker Compose sets) through to your metrics as attributes.
+The `excluded_images` field supports strings, regular expressions, and glob patterns, so you can use wildcards to exclude whole families of images. The `container_labels_to_metric_labels` field is particularly useful because it lets you carry Docker labels (like the ones Docker Compose sets) through to your metrics as attributes.
 
 ## Enabling Optional Metrics
 
@@ -219,20 +217,16 @@ receivers:
         enabled: true
       container.network.io.usage.tx_errors:
         enabled: true
-      container.network.io.usage.rx_dropped:
-        enabled: true
-      container.network.io.usage.tx_dropped:
-        enabled: true
 ```
 
 The detailed memory metrics help you understand whether memory usage is from your application's heap allocations (anonymous pages) or from filesystem cache (file-backed pages). This distinction matters when you're troubleshooting OOM kills.
 
 ## Adding Alerts with a Metrics Pipeline
 
-A common pattern is to use the collector to derive alerting signals from raw container metrics. You can do this with the `transform` processor to compute useful ratios.
+A common pattern is to use the collector to keep only the raw container metrics that matter for alerting and dashboards. You can do this with the `filter` processor.
 
 ```yaml
-# Configuration with metric transforms for alerting
+# Configuration with metric filtering for alerting
 receivers:
   docker_stats:
     endpoint: unix:///var/run/docker.sock
@@ -253,7 +247,7 @@ processors:
       include:
         match_type: regexp
         metric_names:
-          - "container\\.cpu\\.percent"
+          - "container\\.cpu\\.utilization"
           - "container\\.memory\\.percent"
           - "container\\.memory\\.usage\\.total"
           - "container\\.network\\.io\\.usage\\.*"
@@ -284,8 +278,13 @@ service:
   telemetry:
     metrics:
       # Expose collector internal metrics on port 8888
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   extensions: [health_check]
   pipelines:
     metrics:
