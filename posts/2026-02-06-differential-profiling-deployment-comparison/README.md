@@ -48,16 +48,31 @@ Pyroscope has built-in diff profile support. In the UI:
 4. Select the comparison time range on the right.
 5. The diff flame graph renders automatically.
 
-Programmatically, you can query the diff API:
+Programmatically, you can query the diff API. Pyroscope's current server API uses the Connect endpoint and expects timestamps in milliseconds since the Unix epoch:
 
 ```bash
 # Query Pyroscope for a diff profile
-curl -G http://pyroscope:4040/api/v1/diff \
-  --data-urlencode 'query=process_cpu:cpu:nanoseconds{service_name="order-service"}' \
-  --data-urlencode "leftFrom=$BASELINE_FROM" \
-  --data-urlencode "leftUntil=$BASELINE_UNTIL" \
-  --data-urlencode "rightFrom=$COMPARISON_FROM" \
-  --data-urlencode "rightUntil=$COMPARISON_UNTIL"
+BASELINE_FROM_MS=$(($(date -u -d "$BASELINE_FROM" +%s) * 1000))
+BASELINE_UNTIL_MS=$(($(date -u -d "$BASELINE_UNTIL" +%s) * 1000))
+COMPARISON_FROM_MS=$(($(date -u -d "$COMPARISON_FROM" +%s) * 1000))
+COMPARISON_UNTIL_MS=$(($(date -u -d "$COMPARISON_UNTIL" +%s) * 1000))
+
+curl -H "Content-Type: application/json" \
+  -d '{
+    "left": {
+      "profileTypeID": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+      "labelSelector": "{service_name=\"order-service\"}",
+      "start": '"$BASELINE_FROM_MS"',
+      "end": '"$BASELINE_UNTIL_MS"'
+    },
+    "right": {
+      "profileTypeID": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+      "labelSelector": "{service_name=\"order-service\"}",
+      "start": '"$COMPARISON_FROM_MS"',
+      "end": '"$COMPARISON_UNTIL_MS"'
+    }
+  }' \
+  http://pyroscope:4040/querier.v1.QuerierService/Diff
 ```
 
 ## Automating Diff Profiles in CI/CD
@@ -66,15 +81,17 @@ You can integrate differential profiling into your deployment pipeline. After a 
 
 ```python
 import requests
-import json
 from datetime import datetime, timedelta
+
+def timestamp_ms(dt):
+    return int(dt.timestamp() * 1000)
 
 def generate_deployment_diff(service_name, deploy_time_utc):
     """
     Generate a differential profile comparing pre and post deployment.
     Returns the diff data that can be rendered or stored.
     """
-    deploy_dt = datetime.fromisoformat(deploy_time_utc)
+    deploy_dt = datetime.fromisoformat(deploy_time_utc.replace("Z", "+00:00"))
 
     # Baseline: 1 hour before deployment
     baseline_start = deploy_dt - timedelta(hours=1)
@@ -84,16 +101,24 @@ def generate_deployment_diff(service_name, deploy_time_utc):
     comparison_start = deploy_dt + timedelta(minutes=30)
     comparison_end = comparison_start + timedelta(hours=1)
 
-    response = requests.get(
-        "http://pyroscope:4040/api/v1/diff",
-        params={
-            "query": f'process_cpu:cpu:nanoseconds{{service_name="{service_name}"}}',
-            "leftFrom": int(baseline_start.timestamp()),
-            "leftUntil": int(baseline_end.timestamp()),
-            "rightFrom": int(comparison_start.timestamp()),
-            "rightUntil": int(comparison_end.timestamp()),
+    response = requests.post(
+        "http://pyroscope:4040/querier.v1.QuerierService/Diff",
+        json={
+            "left": {
+                "profileTypeID": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+                "labelSelector": f'{{service_name="{service_name}"}}',
+                "start": timestamp_ms(baseline_start),
+                "end": timestamp_ms(baseline_end),
+            },
+            "right": {
+                "profileTypeID": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+                "labelSelector": f'{{service_name="{service_name}"}}',
+                "start": timestamp_ms(comparison_start),
+                "end": timestamp_ms(comparison_end),
+            },
         }
     )
+    response.raise_for_status()
 
     diff_data = response.json()
     return diff_data
@@ -105,19 +130,33 @@ def find_regressions(diff_data, threshold_pct=2.0):
     Returns a list of (function_name, delta_percentage) tuples.
     """
     regressions = []
-    flamegraph = diff_data.get("flamebearer", {})
+    flamegraph = diff_data.get("flamegraph", {})
     names = flamegraph.get("names", [])
     levels = flamegraph.get("levels", [])
+    left_ticks = flamegraph.get("leftTicks", 0)
+    right_ticks = flamegraph.get("rightTicks", 0)
+
+    if left_ticks == 0 or right_ticks == 0:
+        return regressions
 
     for level in levels:
-        # Each level entry: [offset, self_left, self_right, total_left, total_right, name_idx]
-        for i in range(0, len(level), 6):
-            name_idx = level[i + 5]
-            self_left = level[i + 1]
-            self_right = level[i + 2]
+        values = level.get("values", level) if isinstance(level, dict) else level
+        # Diff levels are encoded as:
+        # [left_offset, left_total, left_self, right_offset, right_total, right_self, name_idx]
+        for i in range(0, len(values), 7):
+            if i + 6 >= len(values):
+                continue
+            left_self = values[i + 2]
+            right_self = values[i + 5]
+            name_idx = values[i + 6]
+            if name_idx >= len(names):
+                continue
 
-            if self_left > 0:
-                delta_pct = ((self_right - self_left) / self_left) * 100
+            left_share = left_self / left_ticks
+            right_share = right_self / right_ticks
+
+            if left_share > 0:
+                delta_pct = ((right_share - left_share) / left_share) * 100
                 if delta_pct > threshold_pct:
                     regressions.append((names[name_idx], delta_pct))
 
@@ -150,12 +189,22 @@ This immediately tells you: the deployment introduced a regression in `matchPatt
 Diff profiling works for allocation profiles too. If memory usage increased after a deployment:
 
 ```bash
-curl -G http://pyroscope:4040/api/v1/diff \
-  --data-urlencode 'query=memory:alloc_space:bytes{service_name="order-service"}' \
-  --data-urlencode "leftFrom=$BASELINE_FROM" \
-  --data-urlencode "leftUntil=$BASELINE_UNTIL" \
-  --data-urlencode "rightFrom=$COMPARISON_FROM" \
-  --data-urlencode "rightUntil=$COMPARISON_UNTIL"
+curl -H "Content-Type: application/json" \
+  -d '{
+    "left": {
+      "profileTypeID": "memory:alloc_space:bytes:space:bytes",
+      "labelSelector": "{service_name=\"order-service\"}",
+      "start": '"$BASELINE_FROM_MS"',
+      "end": '"$BASELINE_UNTIL_MS"'
+    },
+    "right": {
+      "profileTypeID": "memory:alloc_space:bytes:space:bytes",
+      "labelSelector": "{service_name=\"order-service\"}",
+      "start": '"$COMPARISON_FROM_MS"',
+      "end": '"$COMPARISON_UNTIL_MS"'
+    }
+  }' \
+  http://pyroscope:4040/querier.v1.QuerierService/Diff
 ```
 
 A red function in the allocation diff means it is allocating more memory after the deployment. This can help catch memory leaks or inefficient data structure changes.
