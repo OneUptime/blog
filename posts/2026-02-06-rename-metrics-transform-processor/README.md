@@ -121,9 +121,9 @@ service:
       exporters: [otlp]
 ```
 
-## Adding and Removing Labels
+## Adding Labels and Deleting Label Values
 
-Beyond renaming, you can add new labels or remove existing ones:
+Beyond renaming, you can add new labels or delete data points with specific label values:
 
 ```yaml
 processors:
@@ -138,13 +138,14 @@ processors:
             new_label: environment
             new_value: production
 
-      # Remove a high-cardinality label
+      # Delete data points for a high-cardinality label value
       - include: http_requests_total
         match_type: strict
         action: update
         operations:
           - action: delete_label_value
             label: instance
+            label_value: "localhost:8080"
 ```
 
 ## Aggregating Label Values
@@ -177,7 +178,7 @@ processors:
             aggregation_type: sum
 ```
 
-## Combining and Splitting Metrics
+## Combining Metrics
 
 You can combine multiple metrics into one:
 
@@ -185,52 +186,40 @@ You can combine multiple metrics into one:
 processors:
   metricstransform:
     transforms:
-      # Combine two gauges into one with a label
-      - include: cache_hits_total
-        match_type: strict
+      # Combine two counters into one with a result label
+      - include: ^cache_(?P<result>hits|misses)_total$
+        match_type: regexp
         action: combine
         new_name: cache_operations_total
+        aggregation_type: sum
         submatch_case: lower
-        operations:
-          - action: add_label
-            new_label: result
-            new_value: hit
-      - include: cache_misses_total
-        match_type: strict
-        action: combine
-        new_name: cache_operations_total
-        submatch_case: lower
-        operations:
-          - action: add_label
-            new_label: result
-            new_value: miss
 ```
 
-## Practical Example: Prometheus to OTel Convention
+## Practical Example: Prometheus to Dotted Names
 
-Here is a real-world transform that converts common Prometheus metric names to OpenTelemetry semantic conventions:
+Here is a real-world transform that converts common Prometheus metric names to dotted names:
 
 ```yaml
 processors:
-  metricstransform/prom-to-otel:
+  metricstransform/prom-to-dotted:
     transforms:
       - include: go_goroutines
         match_type: strict
         action: update
-        new_name: process.runtime.go.goroutines
+        new_name: go.goroutine.count
       - include: go_memstats_alloc_bytes
         match_type: strict
         action: update
-        new_name: process.runtime.go.mem.heap_alloc
+        new_name: go.memory.used
       - include: go_gc_duration_seconds
         match_type: strict
         action: update
-        new_name: process.runtime.go.gc.pause_ns
-      # Bulk rename with regex
+        new_name: go.memory.gc.pause.duration
+      # Bulk rename remaining byte-valued memstats metrics with regex
       - include: ^go_memstats_(.*)_bytes$
         match_type: regexp
         action: update
-        new_name: process.runtime.go.mem.$${1}
+        new_name: go.memstats.$${1}
 ```
 
 ## Order of Operations
