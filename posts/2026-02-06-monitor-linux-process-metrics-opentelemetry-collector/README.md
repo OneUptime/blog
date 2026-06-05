@@ -14,13 +14,13 @@ The OpenTelemetry Collector provides a `process` scraper within the hostmetrics 
 
 ## What the Process Scraper Collects
 
-The process scraper reads from the Linux `/proc` filesystem to gather per-process statistics. Each scrape produces metrics tagged with the process name, PID, executable path, and command line arguments.
+The process scraper reads from the Linux `/proc` filesystem to gather per-process statistics. Each scrape produces metrics with resource attributes such as the process name, PID, executable path, and command line.
 
 The key metrics include:
 
 - **process.cpu.time**: Cumulative CPU time consumed by the process, split by user and system
-- **process.memory.physical_usage**: Resident set size (RSS) of the process in bytes
-- **process.memory.virtual_usage**: Virtual memory size of the process
+- **process.memory.usage**: Physical memory in use by the process in bytes
+- **process.memory.virtual**: Virtual memory size of the process
 - **process.disk.io**: Bytes read and written by the process
 - **process.threads**: Number of threads in the process
 
@@ -30,8 +30,8 @@ These metrics follow OpenTelemetry semantic conventions and carry resource attri
 flowchart TD
     A["/proc filesystem"] --> B["process scraper"]
     B --> C["process.cpu.time"]
-    B --> D["process.memory.physical_usage"]
-    B --> E["process.memory.virtual_usage"]
+    B --> D["process.memory.usage"]
+    B --> E["process.memory.virtual"]
     B --> F["process.disk.io"]
     B --> G["process.threads"]
     C --> H["Collector Pipeline"]
@@ -58,9 +58,9 @@ receivers:
         metrics:
           process.cpu.time:
             enabled: true
-          process.memory.physical_usage:
+          process.memory.usage:
             enabled: true
-          process.memory.virtual_usage:
+          process.memory.virtual:
             enabled: true
           process.disk.io:
             enabled: true
@@ -87,7 +87,7 @@ With this configuration, the collector scrapes metrics for every running process
 
 ## Filtering by Process Name
 
-Most of the time, you only care about a handful of processes: your application servers, databases, and critical system services. The process scraper supports include and exclude filters based on process name, executable path, or command line.
+Most of the time, you only care about a handful of processes: your application servers, databases, and critical system services. The process scraper supports include and exclude filters based on process name.
 
 ```yaml
 receivers:
@@ -107,7 +107,7 @@ receivers:
 
 Strict matching requires the process name to match exactly. Regexp matching lets you use regular expressions for broader patterns. For example, `java.*` catches both `java` and `javac`, while `python.*` matches `python3`, `python3.11`, and any other Python variant.
 
-You can also filter by executable path if process names are ambiguous:
+If process names are ambiguous, keep the scraper filter narrow and use the emitted executable path attribute in your backend queries:
 
 ```yaml
 receivers:
@@ -118,7 +118,7 @@ receivers:
         include:
           names: ["java"]
           match_type: strict
-        # Mute metrics for processes we know are irrelevant
+        # Mute expected read errors for process attributes
         mute_process_name_error: true
         mute_process_exe_error: true
         mute_process_io_error: true
@@ -164,7 +164,7 @@ Raw process metrics tagged only with PID and process name can be hard to correla
 ```yaml
 processors:
   # Attach host identity to all metrics
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: ["os"]
@@ -174,9 +174,9 @@ processors:
         os.type:
           enabled: true
 
-  # Add custom attributes to help identify process roles
-  attributes:
-    actions:
+  # Add custom resource attributes to help identify process roles
+  resource:
+    attributes:
       - key: environment
         value: production
         action: upsert
@@ -191,7 +191,7 @@ service:
   pipelines:
     metrics:
       receivers: [hostmetrics]
-      processors: [resourcedetection, attributes, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp]
 ```
 
@@ -207,14 +207,12 @@ To collect process metrics from within containers accurately, mount the host's `
 # Docker Compose configuration for process monitoring
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     pid: host
     volumes:
       # Mount host proc for process visibility
       - /proc:/hostfs/proc:ro
       - /sys:/hostfs/sys:ro
-    environment:
-      - HOST_PROC=/hostfs/proc
 ```
 
 The `pid: host` setting is important. It places the collector in the host PID namespace, allowing it to see all processes on the host rather than only processes in its own container namespace.
@@ -240,7 +238,7 @@ Process metrics are most valuable when they drive alerts. Here are some common a
 
 **High process CPU usage**: Alert when a single process consistently uses more than 90% of a CPU core. The metric `process.cpu.time` is cumulative, so you need to compute the rate of change and compare it against the scrape interval.
 
-**Memory growth (potential leak)**: Track `process.memory.physical_usage` over time. If a process shows a steady upward trend without corresponding workload increase, it may have a memory leak.
+**Memory growth (potential leak)**: Track `process.memory.usage` over time. If a process shows a steady upward trend without corresponding workload increase, it may have a memory leak.
 
 **Process disappearance**: If a process you expect to be running (like your primary application server) stops appearing in the metrics, that signals a crash or unexpected shutdown.
 
@@ -266,9 +264,9 @@ receivers:
           # Only collect the metrics we actually alert on
           process.cpu.time:
             enabled: true
-          process.memory.physical_usage:
+          process.memory.usage:
             enabled: true
-          process.memory.virtual_usage:
+          process.memory.virtual:
             enabled: false
           process.disk.io:
             enabled: false
