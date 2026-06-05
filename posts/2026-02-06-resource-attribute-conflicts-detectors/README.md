@@ -18,17 +18,17 @@ Here is a concrete example. You have three sources of resource attributes:
 code_resource = Resource.create({
     "service.name": "my-service",
     "host.name": "localhost",
-    "deployment.environment": "development",
+    "deployment.environment.name": "development",
 })
 
 # Source 2: Host detector discovers
 # host.name = "ip-172-31-42-7.ec2.internal"
 
 # Source 3: Environment variables
-# OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-svc,deployment.environment=production"
+# OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-svc,deployment.environment.name=production"
 ```
 
-The key `host.name` appears in both code and host detector. The keys `service.name` and `deployment.environment` appear in both code and environment variables. Which value wins?
+The key `host.name` appears in both code and host detector. The keys `service.name` and `deployment.environment.name` appear in both code and environment variables. Which value wins?
 
 ## The Merge Algorithm
 
@@ -36,7 +36,7 @@ The OpenTelemetry SDK specification defines that `Resource.merge(other)` creates
 
 - All attributes from both resources are included
 - When the same key exists in both, the "other" resource's value wins
-- The schema URL from "other" takes precedence if both are set
+- The schema URL from "other" is used only when the original resource has no schema URL. If both resources have different non-empty schema URLs, the merge reports a schema conflict.
 
 ```python
 from opentelemetry.sdk.resources import Resource
@@ -58,14 +58,29 @@ The merge order determines the winner. This is not always obvious when using `ge
 ## Controlling Priority with Detector Ordering
 
 ```python
-from opentelemetry.sdk.resources import Resource, get_aggregated_resources, OTELResourceDetector
+from opentelemetry.sdk.resources import (
+    OTELResourceDetector,
+    Resource,
+    ResourceDetector,
+    get_aggregated_resources,
+)
+
+
+class StaticResourceDetector(ResourceDetector):
+    def __init__(self, attributes):
+        super().__init__()
+        self.attributes = attributes
+
+    def detect(self):
+        return Resource(self.attributes)
+
 
 # Detectors listed later have HIGHER priority
 # because get_aggregated_resources merges them in order
 detectors = [
-    HostResourceDetector(),      # Priority 1 (lowest)
-    CloudResourceDetector(),     # Priority 2
-    OTELResourceDetector(),      # Priority 3 (highest)
+    StaticResourceDetector({"host.name": "localhost"}),       # Priority 1 (lowest)
+    StaticResourceDetector({"host.name": "cloud-host-name"}), # Priority 2
+    OTELResourceDetector(),                                   # Priority 3 (highest)
 ]
 
 detected = get_aggregated_resources(detectors)
@@ -87,7 +102,7 @@ def merge_with_priority(*resources):
     Resources are listed from lowest to highest priority.
     Later resources override earlier ones for conflicting keys.
     """
-    result = Resource.create({})
+    result = Resource.get_empty()
     for res in resources:
         result = result.merge(res)
     return result
@@ -96,32 +111,32 @@ def merge_with_priority(*resources):
 # Usage with explicit priority
 final_resource = merge_with_priority(
     # Priority 1 (lowest): SDK defaults
-    Resource.create({
+    Resource({
         "service.name": "unknown_service",
-        "deployment.environment": "development",
+        "deployment.environment.name": "development",
     }),
 
     # Priority 2: Host detection
-    Resource.create({
+    Resource({
         "host.name": get_hostname(),
         "host.arch": get_arch(),
     }),
 
     # Priority 3: Cloud provider detection
-    Resource.create({
+    Resource({
         "cloud.provider": "aws",
         "cloud.region": "us-east-1",
         "host.name": "i-0123456789abcdef0",  # Overrides host detection
     }),
 
     # Priority 4: Application config
-    Resource.create({
+    Resource({
         "service.name": "checkout-service",
         "service.version": "2.1.0",
     }),
 
     # Priority 5 (highest): Environment variable overrides
-    Resource.create(
+    Resource(
         parse_env_resource_attributes()
     ),
 )
@@ -178,14 +193,13 @@ resource = merge_with_logging(
 ## Go: Handling Conflicts
 
 ```go
-package main
+package telemetry
 
 import (
     "context"
-    "fmt"
-    "go.opentelemetry.io/otel/attribute"
+
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func buildResource(ctx context.Context) (*resource.Resource, error) {
@@ -193,7 +207,7 @@ func buildResource(ctx context.Context) (*resource.Resource, error) {
     base, _ := resource.New(ctx,
         resource.WithAttributes(
             semconv.ServiceName("default-service"),
-            semconv.DeploymentEnvironment("development"),
+            semconv.DeploymentEnvironmentName("development"),
         ),
     )
 
@@ -237,7 +251,7 @@ func buildResource(ctx context.Context) (*resource.Resource, error) {
 processors:
   resource:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: "production"
         action: insert  # Only set if not already present
 ```
