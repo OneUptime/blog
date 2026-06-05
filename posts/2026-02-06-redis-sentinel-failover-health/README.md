@@ -36,7 +36,7 @@ receivers:
   redis/master:
     endpoint: "redis-master:6379"
     collection_interval: 15s
-    password: "${REDIS_PASSWORD}"
+    password: "${env:REDIS_PASSWORD}"
 
 processors:
   batch:
@@ -63,7 +63,7 @@ service:
 
 ## Querying Sentinel for Status
 
-Sentinel exposes status information through Redis commands. Use a script to collect these and send to the Collector:
+Sentinel exposes status information through Redis commands. Use a script to collect these and print or export them:
 
 ```python
 import redis
@@ -72,7 +72,7 @@ import json
 
 # Connect to Sentinel
 
-sentinel = redis.Redis(host='sentinel-1', port=26379)
+sentinel = redis.Redis(host='sentinel-1', port=26379, decode_responses=True)
 
 def collect_sentinel_metrics():
     """Collect Sentinel-specific metrics."""
@@ -90,10 +90,13 @@ def collect_sentinel_metrics():
 
     # Check if master is reachable
     try:
-        master_addr = sentinel.sentinel_get_master_addr_by_name('mymaster')
-        metrics["sentinel.master.address"] = f"{master_addr[0]}:{master_addr[1]}"
-        metrics["sentinel.master.reachable"] = 1
-    except redis.exceptions.ConnectionError:
+        master_addr = sentinel.sentinel_get_master_addr_by_name('mymaster', return_responses=True)
+        if master_addr:
+            metrics["sentinel.master.address"] = f"{master_addr[0]}:{master_addr[1]}"
+            metrics["sentinel.master.reachable"] = 1
+        else:
+            metrics["sentinel.master.reachable"] = 0
+    except redis.exceptions.RedisError:
         metrics["sentinel.master.reachable"] = 0
 
     # Get replica status
@@ -136,7 +139,7 @@ receivers:
         to: body
       # Filter for important events
       - type: filter
-        expr: 'body contains "failover" or body contains "switch-master" or body contains "+sdown" or body contains "-sdown" or body contains "+odown"'
+        expr: 'not (body contains "failover" or body contains "switch-master" or body contains "+sdown" or body contains "-sdown" or body contains "+odown")'
 ```
 
 Key Sentinel log events:
@@ -172,14 +175,14 @@ Key Sentinel log events:
 
 # Sentinel instance down
 - alert: RedisSentinelDown
-  condition: redis.uptime{instance=~"sentinel.*"} == 0
+  condition: redis.uptime is missing for a Sentinel instance
   for: 1m
   severity: critical
   message: "Sentinel instance {{ instance }} is down. Quorum at risk."
 
 # Not enough Sentinels for quorum
 - alert: RedisSentinelQuorumRisk
-  condition: count(redis.uptime{instance=~"sentinel.*"} > 0) < 2
+  condition: count of Sentinel instances reporting redis.uptime < 2
   severity: critical
   message: "Only {{ value }} Sentinels are up. Quorum requires at least 2."
 ```
@@ -197,13 +200,25 @@ services:
 
   redis-replica:
     image: redis:latest
-    command: redis-server --slaveof redis-master 6379
+    command: redis-server --replicaof redis-master 6379
 
   sentinel-1:
     image: redis:latest
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel-1.conf:/etc/redis/sentinel.conf
+
+  sentinel-2:
+    image: redis:latest
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel-2.conf:/etc/redis/sentinel.conf
+
+  sentinel-3:
+    image: redis:latest
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel-3.conf:/etc/redis/sentinel.conf
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -216,7 +231,7 @@ services:
 Sentinel configuration:
 
 ```text
-# sentinel.conf
+sentinel resolve-hostnames yes
 sentinel monitor mymaster redis-master 6379 2
 sentinel down-after-milliseconds mymaster 5000
 sentinel failover-timeout mymaster 10000
