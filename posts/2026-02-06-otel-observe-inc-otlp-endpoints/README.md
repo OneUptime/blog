@@ -1,20 +1,19 @@
-# How to Send OpenTelemetry Data to Observe Inc via the Observe Agent OTLP gRPC
+# How to Send OpenTelemetry Data to Observe Inc via OTLP HTTP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Observe Inc, OTLP, Data Ingestion
 
-Description: Send OpenTelemetry traces, metrics, and logs to Observe Inc using their OTLP-compatible gRPC and HTTP ingestion endpoints.
+Description: Send OpenTelemetry traces, metrics, and logs to Observe Inc using their OTLP-compatible HTTP ingestion endpoint.
 
-Observe Inc provides a cloud-native observability platform built on a data lake architecture. It accepts OpenTelemetry data through standard OTLP endpoints, making integration straightforward. You can send data directly from your applications or through the OpenTelemetry Collector.
+Observe Inc provides a cloud-native observability platform built on a data lake architecture. It accepts OpenTelemetry data through standard OTLP HTTP endpoints, making integration straightforward. You can send data directly from your applications or through the OpenTelemetry Collector.
 
 ## Observe OTLP Endpoints
 
-Observe provides both gRPC and HTTP endpoints:
-- gRPC: `collect.observeinc.com:4317`
-- HTTP: `collect.observeinc.com:443/v1/otel`
+Observe provides an OTLP HTTP/protobuf endpoint on your customer-specific collection hostname:
+- HTTP: `https://<customer-id>.collect.observeinc.com/v2/otel`
 
-Authentication uses a Bearer token derived from your Observe customer ID and datastream token.
+Authentication uses a Bearer token with your Observe datastream token.
 
 ## Go Configuration
 
@@ -23,11 +22,10 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -35,25 +33,22 @@ import (
 )
 
 const (
-    observeEndpoint  = "collect.observeinc.com:4317"
     observeCustomerID = "123456789"
     observeToken      = "your-observe-datastream-token"
 )
 
-func observeAuthToken() string {
-    // Observe uses a Bearer token format: customerID:datastreamToken
-    return fmt.Sprintf("%s:%s", observeCustomerID, observeToken)
+func observeEndpoint(path string) string {
+    return "https://" + observeCustomerID + ".collect.observeinc.com/v2/otel" + path
 }
 
 func initObserveTracing() (*sdktrace.TracerProvider, error) {
     ctx := context.Background()
 
-    exporter, err := otlptracegrpc.New(ctx,
-        otlptracegrpc.WithEndpoint(observeEndpoint),
-        otlptracegrpc.WithHeaders(map[string]string{
-            "Authorization": "Bearer " + observeAuthToken(),
+    exporter, err := otlptracehttp.New(ctx,
+        otlptracehttp.WithEndpointURL(observeEndpoint("/v1/traces")),
+        otlptracehttp.WithHeaders(map[string]string{
+            "Authorization": "Bearer " + observeToken,
         }),
-        // TLS is required
     )
     if err != nil {
         return nil, err
@@ -81,10 +76,10 @@ func initObserveTracing() (*sdktrace.TracerProvider, error) {
 func initObserveMetrics() (*sdkmetric.MeterProvider, error) {
     ctx := context.Background()
 
-    exporter, err := otlpmetricgrpc.New(ctx,
-        otlpmetricgrpc.WithEndpoint(observeEndpoint),
-        otlpmetricgrpc.WithHeaders(map[string]string{
-            "Authorization": "Bearer " + observeAuthToken(),
+    exporter, err := otlpmetrichttp.New(ctx,
+        otlpmetrichttp.WithEndpointURL(observeEndpoint("/v1/metrics")),
+        otlpmetrichttp.WithHeaders(map[string]string{
+            "Authorization": "Bearer " + observeToken,
         }),
     )
     if err != nil {
@@ -107,15 +102,13 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 
 OBSERVE_CUSTOMER_ID = "123456789"
 OBSERVE_TOKEN = "your-observe-datastream-token"
-OBSERVE_ENDPOINT = "collect.observeinc.com:4317"
-
-auth_token = f"{OBSERVE_CUSTOMER_ID}:{OBSERVE_TOKEN}"
+OBSERVE_ENDPOINT = f"https://{OBSERVE_CUSTOMER_ID}.collect.observeinc.com/v2/otel"
 
 resource = Resource.create({
     "service.name": "order-processor",
@@ -126,8 +119,8 @@ resource = Resource.create({
 # Traces
 
 trace_exporter = OTLPSpanExporter(
-    endpoint=OBSERVE_ENDPOINT,
-    headers=(("authorization", f"Bearer {auth_token}"),),
+    endpoint=f"{OBSERVE_ENDPOINT}/v1/traces",
+    headers={"Authorization": f"Bearer {OBSERVE_TOKEN}"},
 )
 
 trace_provider = TracerProvider(resource=resource)
@@ -136,8 +129,8 @@ trace.set_tracer_provider(trace_provider)
 
 # Metrics
 metric_exporter = OTLPMetricExporter(
-    endpoint=OBSERVE_ENDPOINT,
-    headers=(("authorization", f"Bearer {auth_token}"),),
+    endpoint=f"{OBSERVE_ENDPOINT}/v1/metrics",
+    headers={"Authorization": f"Bearer {OBSERVE_TOKEN}"},
 )
 
 metric_reader = PeriodicExportingMetricReader(metric_exporter)
@@ -147,15 +140,15 @@ metrics.set_meter_provider(meter_provider)
 
 ## Using the HTTP Endpoint
 
-If gRPC is not available (behind a proxy that does not support HTTP/2), use the HTTP endpoint:
+Use the signal-specific OTLP HTTP/protobuf endpoint when configuring individual exporters directly:
 
 ```python
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 trace_exporter = OTLPSpanExporter(
-    endpoint="https://collect.observeinc.com/v1/otel",
+    endpoint=f"https://{OBSERVE_CUSTOMER_ID}.collect.observeinc.com/v2/otel/v1/traces",
     headers={
-        "Authorization": f"Bearer {auth_token}",
+        "Authorization": f"Bearer {OBSERVE_TOKEN}",
     },
 )
 ```
@@ -163,8 +156,9 @@ trace_exporter = OTLPSpanExporter(
 ## Environment Variables
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://collect.observeinc.com:4317"
-export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer 123456789:your-token"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://123456789.collect.observeinc.com/v2/otel"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer%20your-observe-datastream-token"
 export OTEL_SERVICE_NAME="my-service"
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
 ```
