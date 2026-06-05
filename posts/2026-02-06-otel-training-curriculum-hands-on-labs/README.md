@@ -21,16 +21,17 @@ git clone https://github.com/open-telemetry/opentelemetry-demo.git
 cd opentelemetry-demo
 
 # Start the full application stack
-docker compose up -d
+docker compose -f compose.yaml -f compose.full.yaml -f compose.observability.yaml up -d
 
 # Verify everything is running
 docker compose ps
 
 # Access points:
 # Web store:      http://localhost:8080
-# Jaeger UI:      http://localhost:16686
-# Grafana:        http://localhost:3000
-# Feature flags:  http://localhost:8081
+# Jaeger UI:      http://localhost:8080/jaeger/ui/
+# Grafana:        http://localhost:8080/grafana/
+# Feature flags:  http://localhost:8080/feature
+# Prometheus:     http://localhost:9090
 ```
 
 The demo includes a load generator that simulates user traffic, so traces and metrics start flowing immediately.
@@ -47,7 +48,7 @@ Organize the training into four modules, each building on the previous one:
 
 ```markdown
 Instructions:
-1. Open Jaeger at http://localhost:16686
+1. Open Jaeger at http://localhost:8080/jaeger/ui/
 2. Select the "frontend" service
 3. Find a trace for the "HTTP GET /api/products" operation
 4. Answer these questions:
@@ -77,7 +78,7 @@ The demo includes feature flags that can inject errors:
 
 ```bash
 # Enable the product catalog failure feature flag
-# Access the feature flag UI at http://localhost:8081
+# Access the feature flag UI at http://localhost:8080/feature
 # Enable "productCatalogFailure"
 
 # Now browse the store and observe the error in traces
@@ -86,7 +87,7 @@ The demo includes feature flags that can inject errors:
 ```markdown
 Instructions:
 1. Enable the productCatalogFailure feature flag
-2. Browse the store and trigger the error
+2. Browse to the product with ID OLJCESPC7Z and trigger the error
 3. In Jaeger, search for traces with errors (tags: error=true)
 4. Find the root cause span and read the exception message
 5. Disable the feature flag when done
@@ -100,7 +101,7 @@ Instructions:
 
 ```markdown
 Instructions:
-1. Open Grafana at http://localhost:3000
+1. Open Grafana at http://localhost:8080/grafana/
 2. Navigate to the "Demo Dashboard"
 3. Identify these metrics for the checkout service:
    - Request rate (requests per second)
@@ -111,7 +112,7 @@ Instructions:
 
 ```promql
 # Query to write:
-sum(rate(http_server_request_duration_seconds_count{service_name="checkoutservice"}[5m]))
+sum(rate(traces_span_metrics_calls_total{service_name="checkout"}[5m]))
 ```
 
 **Lab 2.2: Create a Custom Dashboard**
@@ -135,31 +136,27 @@ Instructions:
 Pick a service in the demo and add a custom span. The Python recommendation service is a good choice because it is straightforward:
 
 ```python
-# File: src/recommendationservice/recommendation_server.py
+# File: src/recommendation/recommendation_server.py
 # Task: Add a custom span around the recommendation filtering logic
 
-from opentelemetry import trace
+# Inside get_product_list, after product_ids has been populated:
 
-tracer = trace.get_tracer("recommendation-service")
+with tracer.start_as_current_span("recommendation.filter") as filter_span:
+    filter_span.set_attribute("input.product_count", len(request_product_ids))
 
-def get_recommendations(product_ids, num_recommendations):
-    # Add a span to measure the filtering step
-    with tracer.start_as_current_span("recommendation.filter") as span:
-        span.set_attribute("input.product_count", len(product_ids))
-        span.set_attribute("requested.count", num_recommendations)
+    filtered_products = list(set(product_ids) - set(request_product_ids))
+    num_products = len(filtered_products)
 
-        # Existing filtering logic
-        filtered = filter_products(product_ids)
+    filter_span.set_attribute("output.product_count", num_products)
 
-        span.set_attribute("output.product_count", len(filtered))
-        return filtered[:num_recommendations]
+span.set_attribute("demo.product.filtered.count", num_products)
 ```
 
 ```markdown
 Instructions:
 1. Add the custom span shown above to the recommendation service
-2. Rebuild the service: docker compose build recommendationservice
-3. Restart: docker compose up -d recommendationservice
+2. Rebuild the service: docker compose build recommendation
+3. Restart: docker compose up -d recommendation
 4. Generate some traffic by browsing products
 5. Find your new span in Jaeger - verify the attributes appear
 ```
@@ -181,13 +178,13 @@ Instructions:
 **Lab 4.1: Debug a Performance Regression**
 
 ```bash
-# Enable the slow checkout feature flag
-# This simulates a performance regression in the payment service
+# Enable the international shipping slowdown feature flag
+# This simulates a performance regression in the shipping service
 ```
 
 ```markdown
 Instructions:
-1. Enable the "paymentServiceSlowResponse" feature flag
+1. Enable the "intlShippingSlowdown" feature flag
 2. Monitor the checkout service latency dashboard
 3. When you notice the latency increase:
    - Find a slow trace in Jaeger
