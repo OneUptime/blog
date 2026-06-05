@@ -38,7 +38,7 @@ graph TD
 
 ## Basic Filter Configuration
 
-The Filter processor supports both include and exclude patterns. Spans matching include patterns are kept, while those matching exclude patterns are dropped.
+The Filter processor drops telemetry when any configured OTTL condition evaluates to true.
 
 Here is a basic configuration filtering health check spans:
 
@@ -47,14 +47,11 @@ Here is a basic configuration filtering health check spans:
 
 processors:
   filter:
-    # Define spans to exclude
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - /health
-          - /healthz
-          - /ping
+    # Define spans to drop
+    trace_conditions:
+      - span.name == "/health"
+      - span.name == "/healthz"
+      - span.name == "/ping"
 
 service:
   pipelines:
@@ -68,49 +65,43 @@ This configuration drops all spans with names exactly matching the health check 
 
 ## OTTL Expression Filtering
 
-OTTL expressions provide far more flexibility than simple name matching. The `expr` match type enables complex filtering logic based on any span attribute, status, duration, or other properties.
+OTTL expressions provide far more flexibility than simple name matching. The `trace_conditions` setting enables complex filtering logic based on span attributes, status, duration, or other properties.
 
 ```yaml
 # OTTL expression filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop health check spans
-          - name == "/health"
-          # Drop successful requests from specific endpoints
-          - name == "/api/v1/users" and status.code == STATUS_CODE_OK
-          # Drop fast requests (under 10ms)
-          - (end_time - start_time) < 10000000
+    trace_conditions:
+      # Drop health check spans
+      - span.name == "/health"
+      # Drop successful requests from specific endpoints
+      - span.name == "/api/v1/users" and span.status.code == STATUS_CODE_OK
+      # Drop fast requests (under 10ms)
+      - (span.end_time - span.start_time) < Duration("10ms")
 ```
 
 OTTL expressions combine conditions using logical operators (`and`, `or`, `not`) and comparison operators (`==`, `!=`, `<`, `<=`, `>`, `>=`).
 
 ## Filtering by Attributes
 
-Most filtering decisions depend on span attributes. OTTL provides full access to span attributes through the `attributes` map.
+Most filtering decisions depend on span attributes. OTTL provides full access to span attributes through the `span.attributes` map.
 
 ```yaml
 # Attribute-based filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop internal testing traffic
-          - attributes["http.user_agent"] == "HealthCheckBot"
+    trace_conditions:
+      # Drop internal testing traffic
+      - span.attributes["user_agent.original"] == "HealthCheckBot"
 
-          # Drop requests from specific client
-          - attributes["client.id"] == "internal-monitoring"
+      # Drop requests from specific client
+      - span.attributes["client.id"] == "internal-monitoring"
 
-          # Drop spans without important attributes
-          - attributes["user.id"] == nil
+      # Drop spans without important attributes
+      - span.attributes["user.id"] == nil
 
-          # Drop debug spans in production
-          - attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] == "production"
+      # Drop debug spans in production
+      - span.attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] == "production"
 ```
 
 Attribute-based filtering enables precise control over what telemetry is retained.
@@ -123,21 +114,15 @@ For HTTP services, filtering by status code is a common requirement. Keep error 
 # HTTP status filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop successful health checks
-          - name == "/health" and attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
+    trace_conditions:
+      # Drop successful health checks
+      - span.name == "/health" and span.attributes["http.response.status_code"] >= 200 and span.attributes["http.response.status_code"] < 300
 
-          # Drop redirects
-          - attributes["http.status_code"] >= 300 and attributes["http.status_code"] < 400
+      # Drop redirects
+      - span.attributes["http.response.status_code"] >= 300 and span.attributes["http.response.status_code"] < 400
 
-      # Alternatively, use include to keep only errors
-      # include:
-      #   match_type: expr
-      #   expressions:
-      #     - attributes["http.status_code"] >= 400
+      # Alternatively, drop non-errors to keep only errors
+      # - span.status.code != STATUS_CODE_ERROR and (span.attributes["http.response.status_code"] == nil or span.attributes["http.response.status_code"] < 400)
 ```
 
 This approach dramatically reduces volume while preserving error traces for debugging.
@@ -150,20 +135,12 @@ Filter spans based on duration to focus on slow requests that impact user experi
 # Duration-based filtering
 processors:
   filter:
-    spans:
-      # Keep only slow spans
-      include:
-        match_type: expr
-        expressions:
-          # Keep spans longer than 1 second (1 billion nanoseconds)
-          - (end_time - start_time) > 1000000000
+    trace_conditions:
+      # Drop spans faster than 1 second
+      - (span.end_time - span.start_time) < Duration("1s")
 
-      # Or exclude fast spans
-      # exclude:
-      #   match_type: expr
-      #   expressions:
-      #     # Drop spans faster than 10ms
-      #     - (end_time - start_time) < 10000000
+      # Or use a lower threshold
+      # - (span.end_time - span.start_time) < Duration("10ms")
 ```
 
 Duration filtering helps identify performance bottlenecks while reducing volume from fast, successful operations.
@@ -176,30 +153,18 @@ Combine multiple conditions to implement sophisticated filtering strategies.
 # Complex filtering logic
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop fast, successful health checks
-          - name == "/health" and (end_time - start_time) < 100000000 and status.code == STATUS_CODE_OK
+    trace_conditions:
+      # Drop fast, successful health checks
+      - span.name == "/health" and (span.end_time - span.start_time) < Duration("100ms") and span.status.code == STATUS_CODE_OK
 
-          # Drop internal API calls that succeeded quickly
-          - attributes["http.target"] matches "^/internal/" and attributes["http.status_code"] < 300 and (end_time - start_time) < 50000000
+      # Drop internal API calls that succeeded quickly
+      - IsMatch(span.attributes["url.path"], "^/internal/") and span.attributes["http.response.status_code"] < 300 and (span.end_time - span.start_time) < Duration("50ms")
 
-          # Drop GET requests to static assets that succeeded
-          - attributes["http.method"] == "GET" and attributes["http.target"] matches "\\.(js|css|png|jpg|gif)$" and attributes["http.status_code"] == 200
+      # Drop GET requests to static assets that succeeded
+      - span.attributes["http.request.method"] == "GET" and IsMatch(span.attributes["url.path"], "\\.(js|css|png|jpg|gif)$") and span.attributes["http.response.status_code"] == 200
 
-      include:
-        match_type: expr
-        expressions:
-          # Always keep errors
-          - status.code == STATUS_CODE_ERROR
-
-          # Always keep slow requests
-          - (end_time - start_time) > 1000000000
-
-          # Always keep requests from premium customers
-          - attributes["customer.tier"] == "premium"
+      # Preserve errors, slow requests, and premium customers by only dropping other fast successful spans
+      - span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) < Duration("1s") and span.attributes["customer.tier"] != "premium" and (span.attributes["http.response.status_code"] == nil or span.attributes["http.response.status_code"] < 400)
 ```
 
 Complex logic enables fine-tuned filtering that balances cost reduction with observability requirements.
@@ -212,18 +177,15 @@ Different services have different filtering needs. Use service name or other res
 # Service-specific filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop health checks only from web service
-          - name == "/health" and resource.attributes["service.name"] == "web"
+    trace_conditions:
+      # Drop health checks only from web service
+      - span.name == "/health" and resource.attributes["service.name"] == "web"
 
-          # Drop debug logs only from non-production
-          - attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] != "production"
+      # Drop debug spans only from non-production
+      - span.attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] != "production"
 
-          # Drop fast spans only from API service
-          - (end_time - start_time) < 10000000 and resource.attributes["service.name"] == "api"
+      # Drop fast spans only from API service
+      - (span.end_time - span.start_time) < Duration("10ms") and resource.attributes["service.name"] == "api"
 ```
 
 Service-specific filtering ensures each service's unique characteristics are handled appropriately.
@@ -236,21 +198,18 @@ Use regular expressions for pattern-based filtering.
 # Regular expression filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop all health check variations
-          - name matches "^/(health|ping|ready|live)"
+    trace_conditions:
+      # Drop all health check variations
+      - IsMatch(span.name, "^/(health|ping|ready|live)")
 
-          # Drop API versioned endpoint patterns
-          - attributes["http.target"] matches "^/api/v[0-9]+/internal"
+      # Drop API versioned endpoint patterns
+      - IsMatch(span.attributes["url.path"], "^/api/v[0-9]+/internal")
 
-          # Drop test user traffic
-          - attributes["user.email"] matches ".*@test\\.example\\.com$"
+      # Drop test user traffic
+      - IsMatch(span.attributes["user.email"], ".*@test\\.example\\.com$")
 
-          # Drop static file requests
-          - attributes["http.target"] matches "\\.(css|js|png|jpg|gif|ico|woff|woff2)$"
+      # Drop static file requests
+      - IsMatch(span.attributes["url.path"], "\\.(css|js|png|jpg|gif|ico|woff|woff2)$")
 ```
 
 Regular expressions provide flexible pattern matching for complex filtering scenarios.
@@ -264,25 +223,14 @@ Use multiple Filter processor instances for different filtering stages.
 processors:
   # First stage: drop obvious noise
   filter/noise:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          - name == "/health"
-          - name == "/metrics"
+    trace_conditions:
+      - span.name == "/health"
+      - span.name == "/metrics"
 
-  # Second stage: keep only interesting spans
+  # Second stage: drop less interesting spans
   filter/interesting:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          # Keep errors
-          - status.code == STATUS_CODE_ERROR
-          # Keep slow requests
-          - (end_time - start_time) > 500000000
-          # Keep specific endpoints
-          - name matches "^/api/v1/(orders|payments)"
+    trace_conditions:
+      - span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) <= Duration("500ms") and not IsMatch(span.name, "^/api/v1/(orders|payments)")
 
   # Third stage: sample remaining spans
   probabilistic_sampler:
@@ -300,7 +248,7 @@ service:
       exporters: [otlp]
 ```
 
-This multi-stage approach first removes noise, then keeps high-value spans, then samples the remainder.
+This multi-stage approach first removes noise, then drops lower-value spans, then samples the remainder.
 
 ## Filtering Root Spans vs Child Spans
 
@@ -310,24 +258,15 @@ Filter root spans (entry points) differently from child spans (internal operatio
 # Root span vs child span filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop fast child spans (internal operations)
-          - parent_span_id != "" and (end_time - start_time) < 5000000
+    trace_conditions:
+      # Drop fast child spans (internal operations)
+      - span.parent_span_id != SpanID(0x0000000000000000) and (span.end_time - span.start_time) < Duration("5ms")
 
-          # Drop successful internal operations
-          - parent_span_id != "" and status.code == STATUS_CODE_OK and attributes["span.kind"] == "INTERNAL"
-
-      include:
-        match_type: expr
-        expressions:
-          # Always keep root spans (entry points)
-          - parent_span_id == ""
+      # Drop successful internal operations
+      - span.parent_span_id != SpanID(0x0000000000000000) and span.status.code == STATUS_CODE_OK and span.kind == SPAN_KIND_INTERNAL
 ```
 
-This preserves complete traces while filtering internal operations that provide limited value.
+This keeps root spans intact while filtering internal operations that provide limited value.
 
 ## Error-Focused Filtering
 
@@ -337,24 +276,9 @@ Focus on errors by keeping error spans and their context while dropping successf
 # Error-focused filtering
 processors:
   filter:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          # Keep all errors
-          - status.code == STATUS_CODE_ERROR
-
-          # Keep HTTP errors (4xx, 5xx)
-          - attributes["http.status_code"] >= 400
-
-          # Keep spans with error in name
-          - name matches "(?i)error"
-
-          # Keep spans with exception events
-          - events exists and events[0].name == "exception"
-
-          # Keep spans that are parents of errors (requires context)
-          - trace_state contains "error=true"
+    trace_conditions:
+      # Drop spans that are not marked as errors
+      - span.status.code != STATUS_CODE_ERROR and (span.attributes["http.response.status_code"] == nil or span.attributes["http.response.status_code"] < 400) and not IsMatch(span.name, "(?i)error") and span.trace_state["error"] != "true"
 ```
 
 Error-focused filtering ensures debugging information is retained while reducing volume from successful operations.
@@ -368,20 +292,18 @@ Combine filtering with sampling for comprehensive volume control.
 processors:
   # First, filter obvious noise
   filter/noise:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          - name matches "^/(health|ping|metrics)"
+    trace_conditions:
+      - IsMatch(span.name, "^/(health|ping|metrics)")
 
-  # Then, separate into high and low priority
+  # Drop low-priority spans from the high-priority pipeline
   filter/high_priority:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          # High priority: errors and slow requests
-          - status.code == STATUS_CODE_ERROR or (end_time - start_time) > 1000000000
+    trace_conditions:
+      - span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) <= Duration("1s")
+
+  # Drop high-priority spans from the sampled low-priority pipeline
+  filter/low_priority:
+    trace_conditions:
+      - span.status.code == STATUS_CODE_ERROR or (span.end_time - span.start_time) > Duration("1s")
 
   # Sample low priority spans
   probabilistic_sampler:
@@ -403,6 +325,7 @@ service:
       receivers: [otlp]
       processors:
         - filter/noise
+        - filter/low_priority
         - probabilistic_sampler
         - batch
       exporters: [otlp/backend]
@@ -418,24 +341,15 @@ Filter based on user attributes for multi-tenant applications.
 # User-based filtering
 processors:
   filter:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          # Keep all spans for premium users
-          - attributes["user.tier"] == "premium"
+    trace_conditions:
+      # Drop anonymous user traffic
+      - span.attributes["user.id"] == "anonymous"
 
-          # Keep all spans for specific test users during development
-          - attributes["user.id"] matches "^test-"
+      # Drop banned user traffic
+      - span.attributes["user.status"] == "banned"
 
-      exclude:
-        match_type: expr
-        expressions:
-          # Drop anonymous user traffic
-          - attributes["user.id"] == "anonymous"
-
-          # Drop banned user traffic
-          - attributes["user.status"] == "banned"
+      # Drop low-tier traffic unless it is a test user during development
+      - span.attributes["user.tier"] != "premium" and not IsMatch(span.attributes["user.id"], "^test-")
 ```
 
 User-based filtering enables different observability levels for different user segments.
@@ -448,17 +362,14 @@ Apply different filtering rules per environment.
 # Environment-based filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # In production: drop debug spans
-          - attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] == "production"
+    trace_conditions:
+      # In production: drop debug spans
+      - span.attributes["log.level"] == "debug" and resource.attributes["deployment.environment"] == "production"
 
-          # In development: keep everything (no exclusions)
+      # In development: keep everything (no exclusions)
 
-          # In staging: drop health checks only
-          - name == "/health" and resource.attributes["deployment.environment"] == "staging"
+      # In staging: drop health checks only
+      - span.name == "/health" and resource.attributes["deployment.environment"] == "staging"
 ```
 
 Environment-specific filtering ensures appropriate telemetry collection for each deployment stage.
@@ -480,19 +391,16 @@ Optimized configuration:
 # Performance-optimized filtering
 processors:
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          # Fast checks first
-          - name == "/health"
-          - name == "/metrics"
+    trace_conditions:
+      # Fast checks first
+      - span.name == "/health"
+      - span.name == "/metrics"
 
-          # More expensive checks only if needed
-          - name != "/health" and name != "/metrics" and attributes["http.status_code"] < 300 and (end_time - start_time) < 10000000
+      # More expensive checks only if needed
+      - span.name != "/health" and span.name != "/metrics" and span.attributes["http.response.status_code"] < 300 and (span.end_time - span.start_time) < Duration("10ms")
 
-          # Regex last
-          - name != "/health" and attributes["http.target"] matches "\\.(css|js|png)$"
+      # Regex last
+      - span.name != "/health" and IsMatch(span.attributes["url.path"], "\\.(css|js|png)$")
 ```
 
 ## Monitoring Filter Effectiveness
@@ -506,7 +414,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     traces:
@@ -518,18 +425,18 @@ service:
 Key metrics to monitor:
 - Spans received vs spans exported (filter ratio)
 - Processing latency
-- Dropped span counts by reason
+- Processor accepted/refused span counts
 - Resource usage before and after filtering
 
 ## Troubleshooting
 
 **Spans unexpectedly dropped**: Review filter expressions carefully. Enable debug logging to see evaluation details. Test expressions against sample data.
 
-**Spans not filtering**: Verify attribute names match exactly (case-sensitive). Check that attributes exist before comparison. Ensure match_type is correct.
+**Spans not filtering**: Verify attribute names match exactly (case-sensitive). Check that attributes exist before comparison. Ensure the conditions are configured under `trace_conditions`.
 
 **Performance degradation**: Simplify complex expressions. Evaluate fast conditions first. Consider multiple simple filters instead of one complex filter.
 
-**Important spans lost**: Use include patterns instead of exclude when possible. Always keep error spans. Review filter rules regularly against production data.
+**Important spans lost**: Express drop conditions narrowly so error spans and other high-value spans do not match them. Review filter rules regularly against production data.
 
 ## Testing Filter Configuration
 
@@ -546,15 +453,8 @@ receivers:
 processors:
   # Your filter configuration
   filter:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          - name == "/health"
-
-  # Add debug exporter to see what's kept
-  debug:
-    verbosity: detailed
+    trace_conditions:
+      - span.name == "/health"
 
 exporters:
   debug:
@@ -564,7 +464,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [filter, debug]
+      processors: [filter]
       exporters: [debug]
 ```
 
@@ -579,43 +479,28 @@ Here are reusable filtering patterns for common scenarios:
 processors:
   # Pattern 1: Keep only errors
   filter/errors_only:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          - status.code == STATUS_CODE_ERROR or attributes["http.status_code"] >= 400
+    trace_conditions:
+      - span.status.code != STATUS_CODE_ERROR and (span.attributes["http.response.status_code"] == nil or span.attributes["http.response.status_code"] < 400)
 
   # Pattern 2: Drop health checks
   filter/no_health_checks:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          - name matches "^/(health|ping|ready|live|metrics)"
+    trace_conditions:
+      - IsMatch(span.name, "^/(health|ping|ready|live|metrics)")
 
   # Pattern 3: Keep slow requests
   filter/slow_only:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          - (end_time - start_time) > 1000000000
+    trace_conditions:
+      - (span.end_time - span.start_time) <= Duration("1s")
 
   # Pattern 4: Drop successful internal calls
   filter/no_internal_success:
-    spans:
-      exclude:
-        match_type: expr
-        expressions:
-          - attributes["span.kind"] == "INTERNAL" and status.code == STATUS_CODE_OK
+    trace_conditions:
+      - span.kind == SPAN_KIND_INTERNAL and span.status.code == STATUS_CODE_OK
 
   # Pattern 5: Keep production errors, sample everything else
   filter/prod_errors:
-    spans:
-      include:
-        match_type: expr
-        expressions:
-          - resource.attributes["deployment.environment"] == "production" and status.code == STATUS_CODE_ERROR
+    trace_conditions:
+      - resource.attributes["deployment.environment"] != "production" or span.status.code != STATUS_CODE_ERROR
 ```
 
 Combine these patterns based on your specific requirements.
