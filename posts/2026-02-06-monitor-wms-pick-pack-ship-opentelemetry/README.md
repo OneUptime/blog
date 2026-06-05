@@ -140,11 +140,18 @@ Traces are great for debugging individual orders, but you also want aggregate me
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 meter = metrics.get_meter("wms.operations")
 
 # Track orders processed per stage
-
 orders_picked = meter.create_counter("wms.orders.picked", description="Orders completed picking")
 orders_packed = meter.create_counter("wms.orders.packed", description="Orders completed packing")
 orders_shipped = meter.create_counter("wms.orders.shipped", description="Orders shipped")
@@ -159,6 +166,10 @@ pick_exceptions = meter.create_counter(
 pick_duration = meter.create_histogram("wms.pick.duration_seconds", unit="s")
 pack_duration = meter.create_histogram("wms.pack.duration_seconds", unit="s")
 ship_duration = meter.create_histogram("wms.ship.duration_seconds", unit="s")
+
+orders_picked.add(1)
+pick_exceptions.add(1, {"reason": "scan_failure"})
+pick_duration.record(92.4)
 ```
 
 ## Tying It All Together
