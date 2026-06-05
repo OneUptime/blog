@@ -13,19 +13,15 @@ Tail-based sampling is powerful but tricky. A misconfigured rule can either drop
 telemetrygen is part of the OpenTelemetry Collector contrib repository:
 
 ```bash
-# Install from the releases page
-
 go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
 
-# Or download a pre-built binary
-curl -L -o telemetrygen \
-  "https://github.com/open-telemetry/opentelemetry-collector-contrib/releases/download/v0.96.0/telemetrygen_linux_amd64"
-chmod +x telemetrygen
+# Or run the telemetrygen container image
+docker run --rm ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest --help
 ```
 
 ## Setting Up the Test Environment
 
-You need a collector with tail-based sampling configured and a way to see what it keeps versus what it drops. Set up two exporters: one before sampling (to count total traces) and one after (to count sampled traces).
+You need a collector with tail-based sampling configured and a way to see what it keeps. Use the number of traces you send as the total, and a file exporter after sampling to count sampled traces.
 
 ```yaml
 # collector-config.yaml
@@ -39,7 +35,7 @@ processors:
   # Tail-based sampling rules to test
   tail_sampling:
     decision_wait: 10s
-    num_traces: 1000
+    num_traces: 2000
     policies:
       # Always keep error traces
       - name: keep-errors
@@ -67,10 +63,6 @@ exporters:
   # File exporter to count sampled traces
   file/sampled:
     path: /tmp/sampled-traces.json
-
-  # Counting exporter (use logging for simplicity)
-  logging:
-    loglevel: info
 
 service:
   pipelines:
@@ -100,7 +92,7 @@ telemetrygen traces \
   --traces 100 \
   --service "test-error-service" \
   --status-code Error \
-  --otlp-attributes 'test.scenario=error-traces'
+  --otlp-attributes 'test.scenario="error-traces"'
 
 echo "Sent 100 error traces. All 100 should be sampled."
 ```
@@ -114,8 +106,8 @@ telemetrygen traces \
   --otlp-insecure \
   --traces 100 \
   --service "test-slow-service" \
-  --duration 3s \
-  --otlp-attributes 'test.scenario=slow-traces'
+  --span-duration 3s \
+  --otlp-attributes 'test.scenario="slow-traces"'
 
 echo "Sent 100 slow traces. All 100 should be sampled."
 ```
@@ -129,9 +121,9 @@ telemetrygen traces \
   --otlp-insecure \
   --traces 1000 \
   --service "test-normal-service" \
-  --duration 100ms \
+  --span-duration 100ms \
   --status-code Ok \
-  --otlp-attributes 'test.scenario=normal-traces'
+  --otlp-attributes 'test.scenario="normal-traces"'
 
 echo "Sent 1000 normal traces. Approximately 100 should be sampled (10%)."
 ```
@@ -145,26 +137,30 @@ After the decision_wait period (10 seconds in our config), check what the collec
 cat /tmp/sampled-traces.json | python3 -c "
 import sys, json
 
-traces = []
+trace_ids_by_scenario = {}
 for line in sys.stdin:
     try:
         data = json.loads(line.strip())
-        traces.append(data)
     except json.JSONDecodeError:
         continue
 
-# Group by test scenario
-from collections import Counter
-scenarios = Counter()
-for t in traces:
-    for rs in t.get('resourceSpans', []):
+    for rs in data.get('resourceSpans', []):
+        scenario = None
         for attr in rs.get('resource', {}).get('attributes', []):
-            if attr['key'] == 'test.scenario':
-                scenarios[attr['value']['stringValue']] += 1
+            if attr.get('key') == 'test.scenario':
+                scenario = attr.get('value', {}).get('stringValue')
+                break
+        if not scenario:
+            continue
+        ids = trace_ids_by_scenario.setdefault(scenario, set())
+        for ss in rs.get('scopeSpans', []):
+            for span in ss.get('spans', []):
+                if span.get('traceId'):
+                    ids.add(span['traceId'])
 
 print('Sampled trace counts by scenario:')
-for scenario, count in sorted(scenarios.items()):
-    print(f'  {scenario}: {count}')
+for scenario, trace_ids in sorted(trace_ids_by_scenario.items()):
+    print(f'  {scenario}: {len(trace_ids)}')
 "
 ```
 
@@ -198,23 +194,53 @@ echo "=== Testing tail-based sampling rules ==="
 
 # Send error traces (expect 100% retention)
 telemetrygen traces --otlp-endpoint $COLLECTOR_ENDPOINT --otlp-insecure \
-  --traces 50 --service error-test --status-code Error --otlp-attributes 'scenario=errors'
+  --traces 50 --service error-test --status-code Error --otlp-attributes 'scenario="errors"'
 
 # Send slow traces (expect 100% retention)
 telemetrygen traces --otlp-endpoint $COLLECTOR_ENDPOINT --otlp-insecure \
-  --traces 50 --service slow-test --duration 3s --otlp-attributes 'scenario=slow'
+  --traces 50 --service slow-test --span-duration 3s --otlp-attributes 'scenario="slow"'
 
 # Send normal traces (expect ~10% retention)
 telemetrygen traces --otlp-endpoint $COLLECTOR_ENDPOINT --otlp-insecure \
-  --traces 500 --service normal-test --duration 50ms --status-code Ok --otlp-attributes 'scenario=normal'
+  --traces 500 --service normal-test --span-duration 50ms --status-code Ok --otlp-attributes 'scenario="normal"'
 
 echo "Waiting ${WAIT_TIME}s for sampling decisions..."
 sleep $WAIT_TIME
 
-# Count results
-ERROR_COUNT=$(grep -c '"scenario":"errors"' "$OUTPUT_FILE" || echo 0)
-SLOW_COUNT=$(grep -c '"scenario":"slow"' "$OUTPUT_FILE" || echo 0)
-NORMAL_COUNT=$(grep -c '"scenario":"normal"' "$OUTPUT_FILE" || echo 0)
+# Count unique sampled trace IDs per scenario
+COUNTS=$(python3 - "$OUTPUT_FILE" <<'PY'
+import json
+import sys
+
+trace_ids_by_scenario = {"errors": set(), "slow": set(), "normal": set()}
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    for line in f:
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        for rs in data.get("resourceSpans", []):
+            scenario = None
+            for attr in rs.get("resource", {}).get("attributes", []):
+                if attr.get("key") == "scenario":
+                    scenario = attr.get("value", {}).get("stringValue")
+                    break
+            if scenario not in trace_ids_by_scenario:
+                continue
+            for ss in rs.get("scopeSpans", []):
+                for span in ss.get("spans", []):
+                    trace_id = span.get("traceId")
+                    if trace_id:
+                        trace_ids_by_scenario[scenario].add(trace_id)
+
+print(f"ERROR_COUNT={len(trace_ids_by_scenario['errors'])}")
+print(f"SLOW_COUNT={len(trace_ids_by_scenario['slow'])}")
+print(f"NORMAL_COUNT={len(trace_ids_by_scenario['normal'])}")
+PY
+)
+eval "$COUNTS"
 
 echo "Results:"
 echo "  Error traces: $ERROR_COUNT / 50 (expected: 50)"
@@ -256,11 +282,11 @@ For composite policies that combine multiple conditions, generate traces that ma
 ```bash
 # Traces that are both slow AND have errors (should definitely be kept)
 telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure \
-  --traces 20 --service composite-test --duration 5s --status-code Error
+  --traces 20 --service composite-test --span-duration 5s --status-code Error
 
 # Traces that are fast with no errors (should be probabilistically sampled)
 telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure \
-  --traces 200 --service composite-test --duration 10ms --status-code Ok
+  --traces 200 --service composite-test --span-duration 10ms --status-code Ok
 ```
 
 Testing your sampling rules with telemetrygen before deploying them is a low-effort practice that prevents expensive mistakes. A bad sampling rule in production can mean either missing critical error traces or unexpectedly high ingestion costs. Spending ten minutes with telemetrygen saves you from both.
