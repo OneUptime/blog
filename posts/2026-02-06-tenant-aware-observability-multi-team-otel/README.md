@@ -67,17 +67,10 @@ Set baggage at the entry point where the team is known:
 
 ```python
 # In the team's service, before calling a shared service
-from opentelemetry import baggage, context
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.propagators.b3 import B3MultiFormat
+import requests
+from opentelemetry import baggage
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
-
-# Configure propagators to include baggage
-set_global_textmap(CompositePropagator([
-    B3MultiFormat(),
-    W3CBaggagePropagator(),
-]))
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def make_downstream_call(endpoint: str, team_name: str):
     """
@@ -85,10 +78,13 @@ def make_downstream_call(endpoint: str, team_name: str):
     The downstream shared service can read this to attribute telemetry.
     """
     ctx = baggage.set_baggage("team.name", team_name)
+    headers = {}
 
-    # The propagator automatically injects baggage into HTTP headers
-    with context.attach(ctx):
-        response = requests.get(endpoint)
+    # Inject trace context and baggage into HTTP headers.
+    TraceContextTextMapPropagator().inject(headers, ctx)
+    W3CBaggagePropagator().inject(headers, ctx)
+
+    response = requests.get(endpoint, headers=headers)
     return response
 ```
 
@@ -97,13 +93,18 @@ In the shared service, extract the baggage and set it as a span attribute:
 ```python
 # In the shared API gateway service
 from opentelemetry import baggage, trace
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def handle_request(request):
     """
     Extract tenant identity from baggage and apply it to the current span.
     This ensures traces from the gateway are attributed to the calling team.
     """
-    team_name = baggage.get_baggage("team.name") or "unknown"
+    headers = {key.lower(): value for key, value in request.headers.items()}
+    ctx = TraceContextTextMapPropagator().extract(headers)
+    ctx = W3CBaggagePropagator().extract(headers, context=ctx)
+    team_name = baggage.get_baggage("team.name", ctx) or "unknown"
 
     span = trace.get_current_span()
     span.set_attribute("team.name", team_name)
@@ -126,17 +127,6 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Route telemetry based on the team.name resource attribute
-  routing:
-    from_attribute: team.name
-    attribute_source: resource
-    table:
-      - value: alpha
-        pipelines: [traces/alpha]
-      - value: beta
-        pipelines: [traces/beta]
-    default_pipelines: [traces/platform]
-
   # Add tenant isolation metadata
   attributes/alpha:
     actions:
@@ -149,6 +139,18 @@ processors:
       - key: storage.partition
         value: "tenant-beta"
         action: upsert
+
+connectors:
+  # Route telemetry based on the team.name resource attribute
+  routing:
+    default_pipelines: [traces/platform]
+    table:
+      - context: resource
+        condition: attributes["team.name"] == "alpha"
+        pipelines: [traces/alpha]
+      - context: resource
+        condition: attributes["team.name"] == "beta"
+        pipelines: [traces/beta]
 
 exporters:
   otlphttp/alpha:
@@ -168,16 +170,19 @@ exporters:
 
 service:
   pipelines:
-    traces/alpha:
+    traces/in:
       receivers: [otlp]
+      exporters: [routing]
+    traces/alpha:
+      receivers: [routing]
       processors: [attributes/alpha]
       exporters: [otlphttp/alpha]
     traces/beta:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [attributes/beta]
       exporters: [otlphttp/beta]
     traces/platform:
-      receivers: [otlp]
+      receivers: [routing]
       processors: []
       exporters: [otlphttp/platform]
 ```
