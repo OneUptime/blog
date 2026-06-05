@@ -18,7 +18,7 @@ Logs tell you what happened, but not why it was slow. Metrics show aggregate pat
 
 ## Core OpenTelemetry Components for Sinatra
 
-Unlike Rails, Sinatra doesn't have a dedicated instrumentation gem. You'll use the Rack instrumentation since Sinatra is built on Rack. This actually gives you more control over what gets instrumented and how.
+Sinatra has a dedicated OpenTelemetry instrumentation gem. Since Sinatra is built on Rack, the Sinatra instrumentation uses Rack-level request handling and still gives you control over what gets instrumented and how.
 
 Add these gems to your Gemfile:
 
@@ -36,8 +36,8 @@ gem 'opentelemetry-sdk'
 # OTLP exporter for sending traces
 gem 'opentelemetry-exporter-otlp'
 
-# Rack instrumentation (works with Sinatra)
-gem 'opentelemetry-instrumentation-rack'
+# Sinatra instrumentation for automatic HTTP tracing
+gem 'opentelemetry-instrumentation-sinatra'
 
 # HTTP client instrumentation for outbound requests
 gem 'opentelemetry-instrumentation-net-http'
@@ -58,6 +58,7 @@ Here's a typical Sinatra application before instrumentation:
 
 require 'sinatra'
 require 'json'
+require 'securerandom'
 
 # Simple in-memory data store for demo purposes
 USERS = {}
@@ -111,8 +112,19 @@ Create a configuration file that sets up the OpenTelemetry SDK:
 
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
-require 'opentelemetry/instrumentation/rack'
+require 'opentelemetry/instrumentation/sinatra'
 require 'opentelemetry/instrumentation/net_http'
+
+def build_exporter_headers
+  headers = {}
+
+  # Add authentication if your backend requires it
+  if ENV['OTEL_EXPORTER_AUTH_TOKEN']
+    headers['Authorization'] = "Bearer #{ENV['OTEL_EXPORTER_AUTH_TOKEN']}"
+  end
+
+  headers
+end
 
 # Configure the SDK before your application starts
 OpenTelemetry::SDK.configure do |c|
@@ -137,17 +149,9 @@ OpenTelemetry::SDK.configure do |c|
   c.add_span_processor(
     OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(exporter)
   )
-end
 
-def build_exporter_headers
-  headers = {}
-
-  # Add authentication if your backend requires it
-  if ENV['OTEL_EXPORTER_AUTH_TOKEN']
-    headers['Authorization'] = "Bearer #{ENV['OTEL_EXPORTER_AUTH_TOKEN']}"
-  end
-
-  headers
+  c.use 'OpenTelemetry::Instrumentation::Sinatra'
+  c.use 'OpenTelemetry::Instrumentation::Net::HTTP'
 end
 ```
 
@@ -160,10 +164,8 @@ Now modify your Sinatra application to use OpenTelemetry instrumentation:
 
 require 'sinatra'
 require 'json'
+require 'securerandom'
 require_relative 'config/opentelemetry'
-
-# Enable Rack instrumentation for automatic HTTP tracing
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
 
 USERS = {}
 
@@ -213,7 +215,7 @@ post '/users' do
       span.add_event('Missing required fields')
 
       status 400
-      return { error: 'Name and email are required' }.to_json
+      next({ error: 'Name and email are required' }.to_json)
     end
 
     user_id = SecureRandom.uuid
@@ -239,7 +241,7 @@ post '/users' do
 end
 ```
 
-The Rack middleware automatically creates spans for every HTTP request. Your manual spans add detail about specific operations within each request.
+The Sinatra instrumentation automatically creates spans for every HTTP request. Your manual spans add detail about specific operations within each request.
 
 ## Request Lifecycle and Span Structure
 
@@ -247,7 +249,7 @@ When a request hits your Sinatra app, OpenTelemetry creates a hierarchy of spans
 
 ```mermaid
 graph TD
-    A[HTTP Request] --> B[Rack Middleware Span]
+    A[HTTP Request] --> B[Sinatra Request Span]
     B --> C[Sinatra Route Handler]
     C --> D[Custom Span: fetch_user]
     D --> E[Database Query]
@@ -257,7 +259,7 @@ graph TD
     H --> I[External API]
 ```
 
-Each span captures timing, attributes, and any errors that occur. The root span (created by Rack middleware) represents the entire HTTP request/response cycle.
+Each span captures timing, attributes, and any errors that occur. The root span created by the Sinatra instrumentation represents the entire HTTP request/response cycle.
 
 ## Adding Detailed Instrumentation
 
@@ -352,6 +354,7 @@ When your Sinatra app calls external services, you want those calls traced too:
 
 require 'net/http'
 require 'uri'
+require 'json'
 
 class NotificationService
   def initialize
@@ -383,9 +386,10 @@ class NotificationService
         true
       else
         span.set_attribute('error', true)
+        span.status = OpenTelemetry::Trace::Status.error("Email service returned #{response.code}")
         span.add_event('Email send failed', attributes: {
           'http.status' => response.code,
-          'response.body' => response.body
+          'response.body.size' => response.body.to_s.bytesize
         })
         false
       end
@@ -404,10 +408,9 @@ Proper error handling ensures failures are captured in traces:
 # app.rb
 
 require 'sinatra'
+require 'json'
 require_relative 'config/opentelemetry'
 require_relative 'lib/user_service'
-
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
 
 # Global error handler
 error do
@@ -418,6 +421,7 @@ error do
   if span && span.recording?
     span.record_exception(err)
     span.set_attribute('error', true)
+    span.status = OpenTelemetry::Trace::Status.error(err.message)
   end
 
   status 500
@@ -450,6 +454,7 @@ post '/users/:id/verify' do
       # Record exception in the current span
       span.record_exception(e)
       span.set_attribute('error', true)
+      span.status = OpenTelemetry::Trace::Status.error(e.message)
 
       # Return error response
       status 422
@@ -481,7 +486,7 @@ export RACK_ENV="production"
 ruby app.rb
 ```
 
-For production deployments with Puma or Passenger, the instrumentation works the same way. The middleware integrates at the Rack level, so any Rack-compatible server will work.
+For production deployments with Puma or Passenger, the instrumentation works the same way. Sinatra runs on Rack, so any Rack-compatible server will work.
 
 ## Performance Considerations
 
@@ -489,13 +494,9 @@ OpenTelemetry adds minimal overhead, but you should still be mindful of performa
 
 **Sampling**: Don't trace every request in high-traffic applications. Use sampling to reduce volume:
 
-```ruby
-OpenTelemetry::SDK.configure do |c|
-  # Sample 10% of traces
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
-
-  # Rest of configuration...
-end
+```bash
+export OTEL_TRACES_SAMPLER="traceidratio"
+export OTEL_TRACES_SAMPLER_ARG="0.1"
 ```
 
 **Attribute Size**: Keep span attributes small. Don't add large payloads or full response bodies.
@@ -533,14 +534,13 @@ OpenTelemetry::SDK.configure do |c|
 end
 ```
 
-**Middleware Order**: Ensure the Rack middleware is registered early:
+**Instrumentation Setup**: Ensure the Sinatra instrumentation is installed during SDK configuration:
 
 ```ruby
-# This should be near the top of your app.rb
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
-
-# Other middleware
-use SomeOtherMiddleware
+OpenTelemetry::SDK.configure do |c|
+  c.use 'OpenTelemetry::Instrumentation::Sinatra'
+  c.use 'OpenTelemetry::Instrumentation::Net::HTTP'
+end
 ```
 
 OpenTelemetry transforms Sinatra from a black box into an observable system. You see exactly what happens during each request, how long operations take, and where errors occur. This visibility is essential for maintaining reliable services in production.
