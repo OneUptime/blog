@@ -55,30 +55,21 @@ Here is how you set up a parent process to inject trace context into the environ
 
 import os
 import subprocess
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject
+from opentelemetry.propagators.textmap import Setter
 
 tracer = trace.get_tracer(__name__)
 
-class EnvVarCarrier:
-    """Carrier that writes trace context to a dictionary for env vars."""
+def _header_to_env(key: str) -> str:
+    return key.upper().replace("-", "_")
 
-    def __init__(self, env=None):
-        # Start with the current environment or a provided dict
-        self.env = env if env is not None else {}
+class EnvVarSetter(Setter[dict[str, str]]):
+    """Setter that writes trace context fields to environment variables."""
 
-    def get(self, key):
-        # Map header-style keys to env var names (uppercase, hyphens to underscores)
-        env_key = key.upper().replace("-", "_")
-        return self.env.get(env_key)
-
-    def set(self, key, value):
+    def set(self, carrier, key, value):
         # Convert traceparent -> TRACEPARENT, tracestate -> TRACESTATE
-        env_key = key.upper().replace("-", "_")
-        self.env[env_key] = value
-
-    def keys(self):
-        return list(self.env.keys())
+        carrier[_header_to_env(key)] = value
 
 def run_child_process(command: list[str]):
     with tracer.start_as_current_span(
@@ -87,8 +78,7 @@ def run_child_process(command: list[str]):
     ) as span:
         # Build environment with trace context injected
         child_env = os.environ.copy()
-        carrier = EnvVarCarrier(child_env)
-        inject(carrier=carrier)
+        inject(carrier=child_env, setter=EnvVarSetter())
 
         span.set_attribute("subprocess.command", " ".join(command))
         span.set_attribute("trace.propagation.method", "environment_variable")
@@ -109,7 +99,7 @@ def run_child_process(command: list[str]):
         return result
 ```
 
-The `EnvVarCarrier` does the translation between the W3C header names (`traceparent`, `tracestate`) and the environment variable convention (`TRACEPARENT`, `TRACESTATE`). The `inject()` call writes the current span's context into the carrier, which flows into the child's environment.
+The `EnvVarSetter` does the translation between the W3C header names (`traceparent`, `tracestate`) and the environment variable convention (`TRACEPARENT`, `TRACESTATE`). The `inject()` call writes the current span's context into the carrier, which flows into the child's environment.
 
 ## Extracting Context in the Child Process
 
@@ -118,33 +108,29 @@ The child process reads the environment variables at startup and uses them to es
 ```python
 # child_process.py
 import os
-from opentelemetry import trace, context
+from collections.abc import Mapping
+from opentelemetry import trace
 from opentelemetry.propagate import extract
+from opentelemetry.propagators.textmap import Getter
 
 tracer = trace.get_tracer(__name__)
 
-class EnvVarCarrier:
-    """Carrier that reads trace context from environment variables."""
+def _header_to_env(key: str) -> str:
+    return key.upper().replace("-", "_")
 
-    def __init__(self):
-        self.env = os.environ
+class EnvVarGetter(Getter[Mapping[str, str]]):
+    """Getter that reads trace context fields from environment variables."""
 
-    def get(self, key):
-        env_key = key.upper().replace("-", "_")
-        return self.env.get(env_key)
+    def get(self, carrier, key):
+        value = carrier.get(_header_to_env(key))
+        return [value] if value is not None else None
 
-    def set(self, key, value):
-        env_key = key.upper().replace("-", "_")
-        os.environ[env_key] = value
-
-    def keys(self):
-        # Return the keys the propagator cares about
-        return ["TRACEPARENT", "TRACESTATE"]
+    def keys(self, carrier):
+        return list(carrier.keys())
 
 def main():
     # Extract trace context from environment variables
-    carrier = EnvVarCarrier()
-    ctx = extract(carrier=carrier)
+    ctx = extract(carrier=os.environ, getter=EnvVarGetter())
 
     # Start the main span of this process linked to the parent trace
     with tracer.start_as_current_span(
@@ -230,7 +216,7 @@ jobs:
 
       - name: Build
         run: |
-          # The build process and any subprocesses inherit TRACEPARENT
+          # Dockerfile must declare ARG TRACEPARENT before RUN steps can use it
           docker build -t myapp:latest \
             --build-arg TRACEPARENT="$TRACEPARENT" .
 
@@ -248,7 +234,6 @@ When launching containers, you can pass trace context through the `-e` flag or t
 
 ```yaml
 # docker-compose.yml - Pass trace context to containers
-version: "3.8"
 services:
   worker:
     image: myapp-worker:latest
@@ -267,19 +252,27 @@ And programmatically when using the Docker SDK:
 import docker
 from opentelemetry import trace
 from opentelemetry.propagate import inject
+from opentelemetry.propagators.textmap import Setter
 
 tracer = trace.get_tracer(__name__)
+
+def _header_to_env(key: str) -> str:
+    return key.upper().replace("-", "_")
+
+class EnvVarSetter(Setter[dict[str, str]]):
+    def set(self, carrier, key, value):
+        carrier[_header_to_env(key)] = value
 
 def launch_container(image: str, command: str):
     with tracer.start_as_current_span("launch-container") as span:
         # Inject context into environment variables
-        carrier = EnvVarCarrier({})
-        inject(carrier=carrier)
+        carrier = {}
+        inject(carrier=carrier, setter=EnvVarSetter())
 
         # Build the environment for the container
         env_vars = {
-            "TRACEPARENT": carrier.env.get("TRACEPARENT", ""),
-            "TRACESTATE": carrier.env.get("TRACESTATE", ""),
+            "TRACEPARENT": carrier.get("TRACEPARENT", ""),
+            "TRACESTATE": carrier.get("TRACESTATE", ""),
             "OTEL_SERVICE_NAME": "worker",
         }
 
@@ -299,17 +292,17 @@ def launch_container(image: str, command: str):
 
 One subtle issue with environment variable carriers is the key mapping. The W3C propagator uses lowercase header names (`traceparent`, `tracestate`), but environment variables conventionally use uppercase (`TRACEPARENT`, `TRACESTATE`). Your carrier needs to handle this translation.
 
-Some OpenTelemetry propagators might also use keys with hyphens, like `baggage` or custom vendor headers. Since environment variable names cannot contain hyphens on all platforms, you should replace them with underscores in your carrier implementation.
+Some OpenTelemetry propagators might also use keys with hyphens, such as custom vendor headers. Since environment variable names cannot contain hyphens on all platforms, you should replace them with underscores in your carrier implementation.
 
 ```python
 # Robust key mapping for environment variable carriers
-def _header_to_env(self, key: str) -> str:
+def _header_to_env(key: str) -> str:
     """Convert an HTTP header name to an environment variable name."""
     # traceparent -> TRACEPARENT
     # x-custom-header -> X_CUSTOM_HEADER
     return key.upper().replace("-", "_")
 
-def _env_to_header(self, env_key: str) -> str:
+def _env_to_header(env_key: str) -> str:
     """Convert an environment variable name back to an HTTP header name."""
     # TRACEPARENT -> traceparent
     return env_key.lower().replace("_", "-")
