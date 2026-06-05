@@ -170,7 +170,7 @@ http_request_duration_summary_count 150
 
 Resource Attribute Mapping
 
-OpenTelemetry metrics include resource attributes (metadata about the source) that need to be converted to Prometheus labels. The exporter handles this automatically:
+OpenTelemetry metrics include resource attributes (metadata about the source). By default, the exporter exposes resource attributes on the `target_info` metric. To copy resource attributes directly onto each metric as Prometheus labels, enable resource-to-telemetry conversion:
 
 ```yaml
 exporters:
@@ -303,17 +303,15 @@ processors:
 
   # Filter out high-cardinality metrics that could overwhelm Prometheus
   filter/drop_noisy:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*\.user_id"  # Drop metrics with user IDs (high cardinality)
-          - ".*\.request_id"  # Drop per-request metrics
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, ".*\\.user_id")'  # Drop metrics with user IDs (high cardinality)
+      - 'IsMatch(metric.name, ".*\\.request_id")'  # Drop per-request metrics
 
   # Rename metrics for consistency with existing Prometheus metrics
   metricstransform:
     transforms:
-      - include: "^http\\.server\\..*"
+      - include: "^http\\.server\\.(.*)$$"
         match_type: regexp
         action: update
         new_name: "http_$${1}"  # http.server.duration -> http_duration
@@ -533,7 +531,7 @@ graph TD
     D --> F
 ```
 
-Prometheus automatically deduplicates metrics from multiple collectors that have identical label sets. To distinguish metrics from different collectors, use const labels:
+Prometheus stores each scraped time series with its label set, including target labels such as `job` and `instance`. It does not automatically deduplicate identical application metrics from multiple Collector replicas, so make sure each Collector has distinct target labels or const labels when you need to tell replicas apart:
 
 ```yaml
 # collector-1.yaml
@@ -574,13 +572,11 @@ This allows you to track per-collector metrics while still aggregating across co
 ```yaml
 processors:
   filter/drop_high_cardinality:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*\\.user_id"  # Drop user ID labels
-          - ".*\\.trace_id"  # Drop trace ID labels
-          - ".*\\.request_id"  # Drop request ID labels
+    error_mode: ignore
+    metric_conditions:
+      - 'datapoint.attributes["user_id"] != nil'  # Drop points with user ID labels
+      - 'datapoint.attributes["trace_id"] != nil'  # Drop points with trace ID labels
+      - 'datapoint.attributes["request_id"] != nil'  # Drop points with request ID labels
 ```
 
 Monitor cardinality with Prometheus queries:
@@ -616,17 +612,17 @@ exporters:
 
 ## Monitoring the Exporter
 
-The Prometheus exporter itself emits internal metrics about its operation:
+The Collector emits internal metrics about exporter operation:
 
 ```promql
-# Number of metrics currently exposed
-otelcol_exporter_prometheus_total_metric_points
+# Number of metric points successfully exported
+otelcol_exporter_sent_metric_points_total
 
-# Scrape duration
-otelcol_exporter_prometheus_scrape_duration_seconds
+# Exporter queue size
+otelcol_exporter_queue_size
 
 # Failed metric exports
-otelcol_exporter_sent_failed_metric_points_total
+otelcol_exporter_send_failed_metric_points_total
 ```
 
 Create alerts for export failures:
@@ -638,7 +634,7 @@ groups:
     interval: 30s
     rules:
       - alert: CollectorMetricExportFailure
-        expr: rate(otelcol_exporter_sent_failed_metric_points_total[5m]) > 0
+        expr: rate(otelcol_exporter_send_failed_metric_points_total[5m]) > 0
         for: 5m
         annotations:
           summary: "Collector failing to export metrics"
