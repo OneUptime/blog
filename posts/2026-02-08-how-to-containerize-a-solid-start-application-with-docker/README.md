@@ -73,8 +73,8 @@ ENV HOST=0.0.0.0
 ENV PORT=3000
 
 # Create non-root user
-RUN addgroup --system --gid 1001 solidjs
-RUN adduser --system --uid 1001 solidjs
+RUN addgroup -S -g 1001 solidjs
+RUN adduser -S -u 1001 -G solidjs solidjs
 
 # Copy the Vinxi/Nitro output (self-contained)
 COPY --from=builder --chown=solidjs:solidjs /app/.output ./.output
@@ -107,7 +107,7 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 
-RUN addgroup --system solidjs && adduser --system solidjs --ingroup solidjs
+RUN addgroup -S solidjs && adduser -S -G solidjs solidjs
 
 COPY --from=builder --chown=solidjs:solidjs /app/.output ./.output
 COPY --from=production-deps --chown=solidjs:solidjs /app/node_modules ./node_modules
@@ -161,7 +161,7 @@ export async function getConfig() {
 }
 ```
 
-For client-accessible environment variables, use Vinxi's public env prefix or pass them through a server function:
+For client-accessible environment variables, use Vite's `VITE_` prefix with `import.meta.env` at build time, or pass runtime values through a server function:
 
 ```typescript
 // src/routes/index.tsx - Access server config from a component
@@ -295,7 +295,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system solidjs && adduser --system solidjs --ingroup solidjs
+RUN addgroup -S solidjs && adduser -S -G solidjs solidjs
 
 # Copy the built output
 COPY --from=builder --chown=solidjs:solidjs /app/.output ./.output
@@ -337,4 +337,4 @@ docker images solidapp --format "{{.Size}}"
 # ~170-200MB (with production node_modules)
 ```
 
-Solid Start's Nitro-based output produces compact Docker images. The self-contained server bundle means most applications run without `node_modules` in the production image. Combined with Alpine and a multi-stage build, you get a production-ready image that is typically smaller than equivalent Next.js or Remix images because SolidJS itself has a smaller runtime footprint.
+Solid Start's Nitro-based output can produce compact Docker images. The self-contained server bundle means most applications run without `node_modules` in the production image. Combined with Alpine and a multi-stage build, you get a production-ready image whose final size depends on your app code, dependencies, and whether runtime `node_modules` are needed.
