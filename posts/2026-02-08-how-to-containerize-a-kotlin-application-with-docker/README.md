@@ -57,6 +57,10 @@ application {
     mainClass.set("com.example.ApplicationKt")
 }
 
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation("io.ktor:ktor-server-core-jvm")
     implementation("io.ktor:ktor-server-netty-jvm")
@@ -84,7 +88,7 @@ FROM eclipse-temurin:21-jdk-jammy AS builder
 WORKDIR /build
 
 # Copy Gradle wrapper and build files first for layer caching
-COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY gradlew build.gradle.kts settings.gradle.kts ./
 COPY gradle ./gradle
 
 # Download dependencies (this layer is cached unless build files change)
@@ -98,6 +102,10 @@ RUN ./gradlew buildFatJar --no-daemon
 
 # === Runtime Stage ===
 FROM eclipse-temurin:21-jre-jammy
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Security: run as non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
@@ -202,6 +210,10 @@ RUN java -Djarmode=layertools -jar build/libs/*.jar extract --destination /extra
 # === Runtime Stage ===
 FROM eclipse-temurin:21-jre-jammy
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
 
 WORKDIR /app
@@ -217,7 +229,7 @@ USER appuser
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=30s \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
   -XX:MaxRAMPercentage=75.0 \
@@ -286,12 +298,10 @@ ENTRYPOINT ["./app"]
 
 ## Docker Compose for Development
 
-A development setup with hot reload for Kotlin:
+A development setup with a debugger port for Kotlin:
 
 ```yaml
 # docker-compose.dev.yml - Kotlin development environment
-version: "3.9"
-
 services:
   app:
     build:
@@ -331,8 +341,6 @@ A production-ready configuration:
 
 ```yaml
 # docker-compose.prod.yml - Kotlin application in production
-version: "3.9"
-
 services:
   app:
     image: kotlin-app:${VERSION:-latest}
@@ -341,7 +349,7 @@ services:
       - "8080:8080"
     environment:
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC
-      - DATABASE_URL=jdbc:postgresql://db:5432/kotlinapp
+      - DATABASE_URL=${DATABASE_URL}
     deploy:
       resources:
         limits:
