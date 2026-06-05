@@ -44,7 +44,7 @@ The first line of defense is the application itself. When you instrument a healt
 # Instrument a healthcare API endpoint with PHI-safe span attributes
 
 from opentelemetry import trace
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("patient-service", "1.0.0")
 
@@ -65,18 +65,18 @@ def get_patient_record(patient_id: str, requesting_user: str):
             # Safe: record the operation outcome without the data itself
             span.set_attribute("record.found", record is not None)
             span.set_attribute("record.section_count", len(record.sections) if record else 0)
-            span.set_status(StatusCode.OK)
+            span.set_status(Status(StatusCode.OK))
 
             return record
 
         except Exception as e:
             # Safe: log the error type but not the message, which may contain PHI
             span.set_attribute("error.type", type(e).__name__)
-            span.set_status(StatusCode.ERROR, "Patient record lookup failed")
+            span.set_status(Status(StatusCode.ERROR, "Patient record lookup failed"))
             raise
 ```
 
-The key principle here is to record operational metadata (whether the record was found, how many sections it contained, who requested it) without recording the actual clinical data. The `hash_identifier` function converts the raw patient ID into a consistent but non-reversible token that lets you correlate spans without exposing the real identifier.
+The key principle here is to record operational metadata (whether the record was found, how many sections it contained, who requested it) without recording the actual clinical data. The `hash_identifier` function converts the raw patient ID into a consistent keyed token that lets you correlate spans without exposing the real identifier.
 
 Here is the hashing utility:
 
@@ -85,23 +85,23 @@ Here is the hashing utility:
 # Utility functions for PHI-safe identifier handling
 
 import hashlib
+import hmac
 import os
 
-# Load the salt from environment, never hardcode it
-PHI_HASH_SALT = os.environ.get("PHI_HASH_SALT", "")
+# Load the HMAC key from the environment, never hardcode it
+PHI_HASH_KEY = os.environ["PHI_HASH_KEY"].encode("utf-8")
 
 def hash_identifier(raw_id: str) -> str:
-    """Create a one-way hash of a patient identifier.
+    """Create a keyed one-way token for a patient identifier.
 
-    Uses SHA-256 with a salt to prevent rainbow table attacks.
+    Uses HMAC-SHA256 with a secret key to prevent offline guessing.
     The same raw_id always produces the same hash, allowing
     correlation across spans without exposing the real ID.
     """
-    salted = f"{PHI_HASH_SALT}{raw_id}".encode("utf-8")
-    return hashlib.sha256(salted).hexdigest()[:16]
+    return hmac.new(PHI_HASH_KEY, raw_id.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
 ```
 
-This salted hash approach lets you trace a single patient's journey through the system (by searching for the same hash) while making it computationally infeasible to reverse the hash back to the original ID.
+This keyed hash approach lets you trace a single patient's journey through the system (by searching for the same hash) while making offline guessing impractical as long as the key stays secret and has enough entropy. Treat the token as pseudonymous data, not as a guarantee that the telemetry is de-identified.
 
 ## Configuring the Collector as a PHI Scrubbing Layer
 
@@ -124,6 +124,7 @@ receivers:
 processors:
   # Redact known PHI patterns from all telemetry
   transform/redact_phi:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -151,6 +152,8 @@ processors:
       - key: http.response.body
         action: delete
       - key: db.statement
+        action: delete
+      - key: db.query.text
         action: delete
       - key: patient.name
         action: delete
@@ -218,7 +221,7 @@ HIPAA requires audit logs that record who accessed what patient data and when. O
 
 import logging
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
@@ -230,6 +233,9 @@ provider.add_log_record_processor(
 set_logger_provider(provider)
 
 audit_logger = logging.getLogger("hipaa.audit")
+audit_logger.setLevel(logging.INFO)
+audit_logger.addHandler(LoggingHandler(level=logging.INFO, logger_provider=provider))
+audit_logger.propagate = False
 
 def log_phi_access(user_id: str, patient_id_hash: str, action: str, resource_type: str):
     """Record a HIPAA audit event for PHI access.
@@ -259,7 +265,7 @@ This audit logger integrates with the OpenTelemetry log pipeline, so audit event
 
 ## Encrypting Telemetry in Transit and at Rest
 
-HIPAA requires encryption for PHI both in transit and at rest. Even though our pipeline scrubs PHI before export, applying encryption everywhere is a best practice that provides defense in depth.
+HIPAA requires reasonable and appropriate safeguards for ePHI, and encryption is an addressable implementation specification that should be implemented when it is reasonable and appropriate after a risk analysis. Even though our pipeline scrubs PHI before export, applying encryption everywhere is a best practice that provides defense in depth.
 
 For the collector-to-backend connection, use mutual TLS:
 
@@ -367,10 +373,10 @@ Run these tests as part of your CI/CD pipeline. Any configuration change to the 
 
 ## Retention and Disposal
 
-HIPAA requires that organizations define retention periods and properly dispose of data when those periods expire. Configure your observability backend with appropriate retention policies. Even though your telemetry should be free of PHI after scrubbing, maintaining short retention periods reduces risk:
+HIPAA requires retention of required policies, procedures, and documentation for six years, and organizations should define retention and disposal policies for operational data based on their legal, security, and business requirements. Configure your observability backend with appropriate retention policies. Even though your telemetry should be free of PHI after scrubbing, maintaining short retention periods reduces risk:
 
 - Traces: 30 days for operational troubleshooting
-- Logs: 30 days for operational use, with audit logs retained for 6 years (HIPAA minimum)
+- Logs: 30 days for operational use, with audit documentation and reports retained for 6 years where required
 - Metrics: 90 days at full resolution, then downsampled for capacity planning
 
 ## Conclusion
