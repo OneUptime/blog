@@ -39,14 +39,33 @@ exporters:
     endpoint: https://clickhouse-proxy:4318
 
   # Archive path: to Kafka for batch reprocessing
-  kafka:
+  kafka/traces:
     brokers:
       - kafka:9092
-    topic: otel-archive
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces-archive
+      encoding: otlp_proto
     producer:
       compression: zstd
-      required_acks: all
+      required_acks: -1
+  kafka/metrics:
+    brokers:
+      - kafka:9092
+    metrics:
+      topic: otel-metrics-archive
+      encoding: otlp_proto
+    producer:
+      compression: zstd
+      required_acks: -1
+  kafka/logs:
+    brokers:
+      - kafka:9092
+    logs:
+      topic: otel-logs-archive
+      encoding: otlp_proto
+    producer:
+      compression: zstd
+      required_acks: -1
 
 processors:
   batch:
@@ -58,22 +77,22 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/realtime, kafka]
+      exporters: [otlphttp/realtime, kafka/traces]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/realtime, kafka]
+      exporters: [otlphttp/realtime, kafka/metrics]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/realtime, kafka]
+      exporters: [otlphttp/realtime, kafka/logs]
 ```
 
 The important detail here is the dual export: every piece of telemetry goes to both the real-time backend and Kafka simultaneously.
 
 ## Kafka to S3 Archival
 
-Use Kafka Connect to continuously archive topic data to S3 in Parquet format:
+Use Kafka Connect to continuously archive decoded, schemaful span data to S3 in Parquet format. The S3 sink cannot turn the Collector Kafka exporter's raw OTLP protobuf messages into Parquet by itself, so run this after a small decoder job has converted `otel-traces-archive` into a normalized span topic such as `otel-traces-parquet`:
 
 ```json
 {
@@ -81,7 +100,7 @@ Use Kafka Connect to continuously archive topic data to S3 in Parquet format:
   "config": {
     "connector.class": "io.confluent.connect.s3.S3SinkConnector",
     "tasks.max": "8",
-    "topics": "otel-archive",
+    "topics": "otel-traces-parquet",
     "s3.region": "us-east-1",
     "s3.bucket.name": "telemetry-archive",
     "s3.part.size": "67108864",
@@ -89,8 +108,11 @@ Use Kafka Connect to continuously archive topic data to S3 in Parquet format:
     "rotate.interval.ms": "3600000",
     "storage.class": "io.confluent.connect.s3.storage.S3Storage",
     "format.class": "io.confluent.connect.s3.format.parquet.ParquetFormat",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
     "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
-    "path.format": "'signal_type'=YYYY/'month'=MM/'day'=dd/'hour'=HH",
+    "topics.dir": "topics",
+    "path.format": "'year'=YYYY/'month'=MM/'day'=dd/'hour'=HH",
     "partition.duration.ms": "3600000",
     "locale": "en-US",
     "timezone": "UTC",
@@ -108,26 +130,33 @@ The batch layer reads from S3 and recomputes aggregations with complete data:
 # batch_reprocessor.py
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 spark = SparkSession.builder \
     .appName("TelemetryBatchReprocessor") \
     .config("spark.jars.packages",
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0") \
+            "com.clickhouse:clickhouse-jdbc:0.9.8") \
     .getOrCreate()
 
 # Read archived telemetry from S3
-yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y/%m/%d")
+process_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
 traces_df = spark.read.parquet(
-    f"s3a://telemetry-archive/signal_type=traces/month=*/"
-    f"day={yesterday.split('/')[2]}/*"
+    "s3a://telemetry-archive/topics/otel-traces-parquet/"
+    f"year={process_date:%Y}/month={process_date:%m}/"
+    f"day={process_date:%d}/hour=*"
 )
+
+# Deduplicate spans that might have been ingested multiple times
+deduped_traces = traces_df.dropDuplicates(["trace_id", "span_id"])
 
 # Compute accurate daily aggregations
 # These replace the approximate real-time values
-service_stats = traces_df \
-    .groupBy("service_name", "operation_name") \
+service_stats = deduped_traces \
+    .groupBy(
+        "service_name",
+        "operation_name",
+        F.lit(process_date.isoformat()).cast("date").alias("date")
+    ) \
     .agg(
         F.count("*").alias("total_spans"),
         F.expr("percentile_approx(duration_ns / 1000000, 0.50)")
@@ -141,12 +170,6 @@ service_stats = traces_df \
         F.countDistinct("trace_id").alias("unique_traces")
     )
 
-# Deduplicate spans that might have been ingested multiple times
-deduped_traces = traces_df.dropDuplicates(["trace_id", "span_id"])
-dedup_stats = deduped_traces \
-    .groupBy("service_name") \
-    .agg(F.count("*").alias("deduped_span_count"))
-
 # Write batch results to ClickHouse
 service_stats.write \
     .format("jdbc") \
@@ -156,7 +179,7 @@ service_stats.write \
     .mode("overwrite") \
     .save()
 
-print(f"Batch processing complete for {yesterday}")
+print(f"Batch processing complete for {process_date}")
 spark.stop()
 ```
 
@@ -168,16 +191,17 @@ The serving layer queries both the real-time and batch tables and merges the res
 -- ClickHouse view that merges real-time and batch data
 CREATE VIEW service_stats_merged AS
 SELECT
-    service_name,
-    operation_name,
+    coalesce(rt.service_name, batch.service_name) as service_name,
+    coalesce(rt.operation_name, batch.operation_name) as operation_name,
+    coalesce(rt.date, batch.date) as date,
     -- Use batch stats for completed days, real-time for today
-    if(date = today(),
+    if(coalesce(rt.date, batch.date) = today(),
        rt.total_spans,
        batch.total_spans) as total_spans,
-    if(date = today(),
+    if(coalesce(rt.date, batch.date) = today(),
        rt.p99_ms,
        batch.p99_ms) as p99_ms,
-    if(date = today(),
+    if(coalesce(rt.date, batch.date) = today(),
        rt.error_count,
        batch.error_count) as error_count
 FROM (
@@ -195,7 +219,8 @@ FROM (
 ) rt
 FULL OUTER JOIN service_stats_batch batch
     ON rt.service_name = batch.service_name
-    AND rt.operation_name = batch.operation_name;
+    AND rt.operation_name = batch.operation_name
+    AND rt.date = batch.date;
 ```
 
 ## Scheduling the Batch Job
@@ -204,14 +229,15 @@ Use Apache Airflow to schedule daily reprocessing:
 
 ```python
 # airflow_dag.py
-from airflow import DAG
+from airflow.sdk import DAG
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from datetime import datetime, timedelta
+from datetime import timedelta
+import pendulum
 
 dag = DAG(
     "telemetry_batch_reprocessor",
-    schedule_interval="0 4 * * *",  # Run at 4 AM UTC daily
-    start_date=datetime(2026, 1, 1),
+    schedule="0 4 * * *",  # Run at 4 AM UTC daily
+    start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)}
 )
