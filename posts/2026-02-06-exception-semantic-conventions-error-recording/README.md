@@ -10,34 +10,33 @@ Description: Learn how to apply OpenTelemetry exception semantic conventions to 
 
 ## Introduction
 
-Every production system encounters errors. The question is not whether exceptions will happen, but how quickly you can understand them when they do. OpenTelemetry's exception semantic conventions define a standard way to record exceptions as span events, ensuring that error information is captured consistently across all your services regardless of language or framework.
+Every production system encounters errors. The question is not whether exceptions will happen, but how quickly you can understand them when they do. OpenTelemetry's exception semantic conventions define a standard way to record exceptions. Existing span-event-based instrumentation records them as span events, ensuring that error information is captured consistently across all your services regardless of language or framework.
 
 This guide walks through the exception semantic conventions in detail. You will learn the attribute schema, see how to record exceptions properly in application code, understand how exception events relate to span status, and set up pipelines that make exception data actionable.
 
 ## Exception Event Attributes
 
-In OpenTelemetry, exceptions are recorded as span events with a specific set of attributes. The event name is always `exception`, and the attributes describe what went wrong.
+In existing OpenTelemetry span-event-based instrumentation, exceptions are recorded as span events with a specific set of attributes. The event name is always `exception`, and the attributes describe what went wrong. The exception semantic convention for span events is now deprecated in favor of recording exceptions as logs, but existing span event instrumentation continues to use this shape for compatibility.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `exception.type` | string | Conditionally | The type or class name of the exception |
 | `exception.message` | string | Conditionally | The exception message |
-| `exception.stacktrace` | string | No | The full stack trace as a string |
-| `exception.escaped` | boolean | No | Whether the exception escaped the scope of the span |
+| `exception.stacktrace` | string | Recommended | The full stack trace as a string |
+| `exception.escaped` | boolean | Deprecated | Whether the exception escaped the scope of the span |
 
 At least one of `exception.type` or `exception.message` must be present. In practice, you should always include both when they are available.
 
-The `exception.escaped` attribute deserves special attention. It indicates whether the exception propagated beyond the boundary of the span. If a span catches and handles an exception, `exception.escaped` should be `false`. If the exception propagates to the caller, it should be `true`.
+The `exception.escaped` attribute deserves special attention. It indicates whether the exception propagated beyond the boundary of the span. Current semantic conventions no longer recommend recording exceptions that are handled and do not escape the span, so set `exception.escaped` to `true` when you know the exception is escaping and avoid using handled exceptions as routine span exception events.
 
 ```mermaid
 flowchart TD
     A[Exception Thrown] --> B{Caught within span?}
-    B -->|Yes| C[exception.escaped = false]
+    B -->|Yes| C[Do not record routine handled exception]
     B -->|No| D[exception.escaped = true]
     C --> E[Span status may remain OK]
     D --> F[Span status set to ERROR]
-    C --> G[Exception recorded as event]
-    D --> G
+    D --> G[Exception recorded as event]
 ```
 
 ## Recording Exceptions in Python
@@ -58,7 +57,11 @@ import traceback
 tracer = trace.get_tracer("payment-service")
 
 def process_payment(payment_id, amount):
-    with tracer.start_as_current_span("process_payment") as span:
+    with tracer.start_as_current_span(
+        "process_payment",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         span.set_attribute("app.payment.id", payment_id)
         span.set_attribute("app.payment.amount", amount)
 
@@ -70,7 +73,7 @@ def process_payment(payment_id, amount):
             # Approach 1: Use the built-in record_exception method.
             # This extracts exception.type, exception.message, and
             # exception.stacktrace from the exception object.
-            span.record_exception(e)
+            span.record_exception(e, escaped=True)
             span.set_status(
                 trace.StatusCode.ERROR,
                 f"Payment failed: insufficient funds"
@@ -107,7 +110,9 @@ Java applications often deal with checked exceptions, which adds nuance to how y
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.context.Scope;
 
 public class OrderService {
     private final Tracer tracer;
@@ -121,7 +126,7 @@ public class OrderService {
             .setAttribute("app.order.customer_id", request.getCustomerId())
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Validate the order
             validateOrder(request);
 
@@ -135,22 +140,22 @@ public class OrderService {
             return order;
 
         } catch (ValidationException e) {
-            // Client error: record but mark as handled
-            span.recordException(e, Attributes.of(
-                AttributeKey.booleanKey("exception.escaped"), false
-            ));
-            // Not setting ERROR status because this is expected behavior
+            // Client error: do not set ERROR status because this is expected behavior
             throw new BadRequestException(e.getMessage());
 
         } catch (PaymentDeclinedException e) {
             // Business logic error: record with escaped = true
-            span.recordException(e);
+            span.recordException(e, Attributes.of(
+                AttributeKey.booleanKey("exception.escaped"), true
+            ));
             span.setStatus(StatusCode.ERROR, "Payment declined");
             throw e;
 
         } catch (Exception e) {
             // Unexpected error: always record and mark as error
-            span.recordException(e);
+            span.recordException(e, Attributes.of(
+                AttributeKey.booleanKey("exception.escaped"), true
+            ));
             span.setStatus(StatusCode.ERROR, "Unexpected error in order creation");
             throw new InternalServerException("Order creation failed", e);
 
@@ -161,7 +166,7 @@ public class OrderService {
 }
 ```
 
-Notice how different exception types get different treatment. Validation errors are recorded but do not set the span status to ERROR because they represent expected client mistakes. Payment failures set ERROR status because they indicate a problem that needs investigation. Unexpected exceptions always get full error treatment.
+Notice how different exception types get different treatment. Validation errors do not set the span status to ERROR because they represent expected client mistakes. Payment failures set ERROR status because they indicate a problem that needs investigation. Unexpected exceptions always get full error treatment.
 
 ## The Relationship Between Exceptions and Span Status
 
@@ -169,31 +174,36 @@ A common point of confusion is the relationship between recording an exception e
 
 ```mermaid
 graph TD
-    A[Exception Occurs] --> B[Record exception event]
+    A[Exception Occurs] --> B{Escapes span and represents a failure?}
     A --> C{Is this a real error?}
+    B -->|Yes| F[Exception details in span events]
+    B -->|No| H[Do not record routine handled exception]
     C -->|Yes: server error, timeout, etc.| D[Set span status = ERROR]
     C -->|No: validation, not found, etc.| E[Keep span status = OK or UNSET]
-    B --> F[Exception details in span events]
     D --> G[Span appears in error queries]
-    E --> H[Span does not pollute error rates]
+    E --> I[Span does not pollute error rates]
 ```
 
-You should record the exception event whenever an exception is thrown, because it provides valuable debugging context. But you should only set the span status to ERROR when the exception represents a genuine failure. A 404 Not Found is not an error in most APIs. A timeout connecting to a database is.
+You should record the exception event when an exception escapes the span and represents a genuine failure, because it provides valuable debugging context. A 404 Not Found is not an error in most APIs. A timeout connecting to a database is.
 
 This distinction keeps your error rates meaningful. If every caught exception sets ERROR status, your dashboards will show inflated error rates that mask real problems.
 
 ## Recording Multiple Exceptions
 
-A single span can have multiple exception events. This is useful when a function catches one exception, attempts a retry, and encounters another. The following example shows how to record a retry sequence with multiple exceptions:
+A single span can have multiple exception events. Current semantic conventions no longer recommend recording routine handled exceptions as span exception events, so retry attempts are usually better captured as custom retry events and the final escaping exception is recorded as the exception event:
 
 ```python
-# Recording multiple exceptions on a single span during retries.
-# Each exception is recorded as a separate event with a timestamp,
-# so you can see the full retry history in the trace.
+# Recording retry failures and the final exception on a single span.
+# Each retry failure is recorded as a custom event with a timestamp,
+# and the final escaping exception uses the exception semantic convention.
 import time
 
 def fetch_with_retry(url, max_retries=3):
-    with tracer.start_as_current_span("fetch_with_retry") as span:
+    with tracer.start_as_current_span(
+        "fetch_with_retry",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         span.set_attribute("http.request.method", "GET")
         span.set_attribute("url.full", url)
         span.set_attribute("app.max_retries", max_retries)
@@ -209,19 +219,21 @@ def fetch_with_retry(url, max_retries=3):
                 return response
 
             except ConnectionError as e:
-                # Record each failed attempt as an exception event
-                span.record_exception(e, attributes={
+                # Record handled retry attempts as custom events
+                span.add_event("retry.failed", attributes={
                     "app.retry.attempt": attempt,
-                    "exception.escaped": False,
+                    "error.type": type(e).__name__,
+                    "app.retry.error_message": str(e),
                 })
                 last_exception = e
                 # Wait before retrying
                 time.sleep(2 ** attempt)
 
             except TimeoutError as e:
-                span.record_exception(e, attributes={
+                span.add_event("retry.failed", attributes={
                     "app.retry.attempt": attempt,
-                    "exception.escaped": False,
+                    "error.type": type(e).__name__,
+                    "app.retry.error_message": str(e),
                 })
                 last_exception = e
                 time.sleep(2 ** attempt)
@@ -237,7 +249,7 @@ def fetch_with_retry(url, max_retries=3):
         raise last_exception
 ```
 
-When you view this span in your observability tool, you will see a timeline of exception events showing exactly what went wrong at each retry attempt.
+When you view this span in your observability tool, you will see a timeline of retry events showing what went wrong at each retry attempt, plus the final exception event if all retries fail.
 
 ## Adding Custom Context to Exceptions
 
@@ -248,7 +260,11 @@ The semantic conventions define the minimum attributes for exception events, but
 # Custom attributes on the exception event provide the
 # information that engineers need to reproduce the issue.
 def process_order(order):
-    with tracer.start_as_current_span("process_order") as span:
+    with tracer.start_as_current_span(
+        "process_order",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         try:
             validate_inventory(order)
         except OutOfStockError as e:
@@ -274,9 +290,9 @@ When an engineer investigates this error, they immediately see which product was
 
 Always use `record_exception` when the SDK provides it. It handles edge cases like missing stack frames and exception chaining better than manual event creation.
 
-Be deliberate about when you set span status to ERROR. Record the exception event always, but reserve ERROR status for failures that genuinely need attention. This keeps your error rate metrics useful.
+Be deliberate about when you set span status to ERROR. Record span exception events for failures that escape the span, and reserve ERROR status for failures that genuinely need attention. This keeps your error rate metrics useful.
 
-Set `exception.escaped` accurately. It tells you whether the error was handled locally or propagated upward, which changes how you triage the issue.
+Set `exception.escaped` accurately when you use span exception events. It tells you whether the error propagated upward, which changes how you triage the issue.
 
 Include the full stack trace in `exception.stacktrace`. It costs some bytes in storage, but the debugging time it saves is worth it. If storage is a concern, use sampling rather than stripping stack traces.
 
@@ -284,4 +300,4 @@ Add business context as custom attributes on exception events. The combination o
 
 ## Conclusion
 
-Exception semantic conventions turn your error handling into structured, queryable data. By consistently recording exceptions with their type, message, stack trace, and escape status, you create a foundation for error dashboards, alerting, and root cause analysis that works across all services in your system. The small investment in proper exception recording pays for itself every time you need to diagnose a production incident.
+Exception semantic conventions turn your error handling into structured, queryable data. By consistently recording exceptions with their type, message, stack trace, and escape status when you use span events, you create a foundation for error dashboards, alerting, and root cause analysis that works across all services in your system. The small investment in proper exception recording pays for itself every time you need to diagnose a production incident.
