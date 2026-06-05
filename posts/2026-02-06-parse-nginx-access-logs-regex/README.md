@@ -31,7 +31,7 @@ receivers:
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<time_local>[^\]]+)\] "(?P<method>[A-Z]+) (?P<request_uri>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)"'
         timestamp:
           parse_from: attributes.time_local
-          layout: "02/Jan/2006:15:04:05 -0700"
+          layout: "%d/%b/%Y:%H:%M:%S %z"
 ```
 
 ## Parsing Custom NGINX Log Formats
@@ -64,7 +64,7 @@ receivers:
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<time_local>[^\]]+)\] "(?P<method>[A-Z]+) (?P<request_uri>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)" (?P<request_time>[0-9.]+) (?P<upstream_response_time>[0-9.]+|-)'
         timestamp:
           parse_from: attributes.time_local
-          layout: "02/Jan/2006:15:04:05 -0700"
+          layout: "%d/%b/%Y:%H:%M:%S %z"
 
       # Map to OpenTelemetry semantic conventions
       - type: move
@@ -75,10 +75,7 @@ receivers:
         to: attributes["http.request.method"]
       - type: move
         from: attributes.request_uri
-        to: attributes["url.path"]
-      - type: move
-        from: attributes.protocol
-        to: attributes["network.protocol.version"]
+        to: attributes["url.original"]
       - type: move
         from: attributes.status
         to: attributes["http.response.status_code"]
@@ -90,10 +87,10 @@ receivers:
         to: attributes["user_agent.original"]
       - type: move
         from: attributes.request_time
-        to: attributes["http.server.request.duration"]
+        to: attributes["nginx.request_time"]
       - type: move
         from: attributes.upstream_response_time
-        to: attributes["http.server.upstream.duration"]
+        to: attributes["nginx.upstream_response_time"]
 
       # Clean up unused fields
       - type: remove
@@ -120,7 +117,7 @@ receivers:
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<time_local>[^\]]+)\] "(?P<method>[A-Z]+) (?P<request_uri>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)" (?P<request_time>[0-9.]+) (?P<upstream_response_time>[0-9.]+|-)'
         timestamp:
           parse_from: attributes.time_local
-          layout: "02/Jan/2006:15:04:05 -0700"
+          layout: "%d/%b/%Y:%H:%M:%S %z"
       - type: move
         from: attributes.remote_addr
         to: attributes["client.address"]
@@ -129,7 +126,7 @@ receivers:
         to: attributes["http.request.method"]
       - type: move
         from: attributes.request_uri
-        to: attributes["url.path"]
+        to: attributes["url.original"]
       - type: move
         from: attributes.status
         to: attributes["http.response.status_code"]
@@ -200,7 +197,7 @@ receivers:
       - type: json_parser
         timestamp:
           parse_from: attributes.time
-          layout: "%Y-%m-%dT%H:%M:%S%z"
+          layout: "%Y-%m-%dT%H:%M:%S%j"
 ```
 
 JSON logs are easier to parse and less prone to regex breakage, so consider switching to JSON format if you control the NGINX configuration.
