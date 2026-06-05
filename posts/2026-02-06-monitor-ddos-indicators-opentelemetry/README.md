@@ -77,6 +77,8 @@ from collections import deque
 import time
 import statistics
 
+from ddos_metrics import request_rate, requests_by_country, tracer
+
 class RequestSpikeDetector:
     def __init__(self, window_size: int = 60, spike_multiplier: float = 3.0):
         self.window_size = window_size  # seconds
@@ -150,7 +152,9 @@ Sudden traffic from countries you do not normally serve is a strong DDoS indicat
 
 ```python
 # geo_anomaly_detector.py
-from collections import defaultdict, Counter
+from collections import Counter
+
+from ddos_metrics import tracer
 
 class GeoAnomalyDetector:
     def __init__(self):
@@ -224,6 +228,10 @@ Application-layer connection floods try to exhaust your server's connection pool
 
 ```python
 # connection_monitor.py
+from collections import defaultdict
+
+from ddos_metrics import active_connections, new_connections_rate, tracer
+
 class ConnectionFloodDetector:
     def __init__(self, max_connections_per_ip: int = 100):
         self.connections_per_ip = defaultdict(int)
@@ -260,6 +268,8 @@ Slowloris attacks send requests very slowly to tie up server threads:
 
 ```python
 # slowloris_detector.py
+from ddos_metrics import tracer
+
 class SlowlorisDetector:
     def track_request_duration(self, source_ip: str, request_start: float,
                                 headers_complete: float, body_complete: float):
@@ -275,7 +285,7 @@ class SlowlorisDetector:
                 "ddos.body_time_s": body_time,
             }
         ) as span:
-            # Normal requests complete headers in under 5 seconds
+            # Flag requests whose headers take longer than 10 seconds
             if header_time > 10:
                 span.add_event("slow_headers_detected", {
                     "ddos.header_time_s": header_time,
