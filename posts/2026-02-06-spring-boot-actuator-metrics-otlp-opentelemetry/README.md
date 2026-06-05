@@ -26,6 +26,18 @@ graph LR
 Add the OpenTelemetry Micrometer bridge to your `pom.xml`:
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+            <version>2.28.1-alpha</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring Boot Actuator for metrics -->
     <dependency>
@@ -35,23 +47,20 @@ Add the OpenTelemetry Micrometer bridge to your `pom.xml`:
 
     <!-- OpenTelemetry Micrometer bridge -->
     <dependency>
-        <groupId>io.opentelemetry</groupId>
+        <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-micrometer-1.5</artifactId>
-        <version>1.33.0-alpha</version>
     </dependency>
 
     <!-- OpenTelemetry SDK for metrics -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-sdk</artifactId>
-        <version>1.33.0</version>
     </dependency>
 
     <!-- OTLP exporter -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-exporter-otlp</artifactId>
-        <version>1.33.0</version>
     </dependency>
 </dependencies>
 ```
@@ -70,7 +79,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics
 
   # Enable all metrics
   metrics:
@@ -80,10 +89,6 @@ management:
       system: true
       tomcat: true
       hikaricp: true
-    export:
-      # Disable Prometheus export if using only OTLP
-      prometheus:
-        enabled: false
 
     # Add common tags to all metrics
     tags:
@@ -99,7 +104,7 @@ otel:
     otlp:
       endpoint: http://localhost:4318
       protocol: http/protobuf
-  metrics:
+  metric:
     export:
       interval: 60s
 ```
@@ -121,7 +126,6 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.semconv.ResourceAttributes;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -140,6 +144,9 @@ public class MetricsConfig {
     @Value("${otel.exporter.otlp.protocol:http/protobuf}")
     private String protocol;
 
+    @Value("${otel.metric.export.interval:60s}")
+    private Duration metricExportInterval;
+
     /**
      * Creates the OpenTelemetry SDK instance configured for metrics.
      * This SDK will be used to create the Micrometer registry.
@@ -150,9 +157,9 @@ public class MetricsConfig {
         Resource resource = Resource.getDefault()
             .merge(Resource.create(
                 Attributes.builder()
-                    .put(ResourceAttributes.SERVICE_NAME, serviceName)
-                    .put(ResourceAttributes.SERVICE_VERSION, "1.0.0")
-                    .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production")
+                    .put("service.name", serviceName)
+                    .put("service.version", "1.0.0")
+                    .put("deployment.environment.name", "production")
                     .build()
             ));
 
@@ -165,17 +172,17 @@ public class MetricsConfig {
                     .setTimeout(Duration.ofSeconds(10))
                     .build()
             )
-            .setInterval(Duration.ofSeconds(60))
+            .setInterval(metricExportInterval)
             .build();
         } else {
             // HTTP/protobuf protocol
             metricReader = PeriodicMetricReader.builder(
                 OtlpHttpMetricExporter.builder()
-                    .setEndpoint(otlpEndpoint + "/v1/metrics")
+                    .setEndpoint(metricsEndpoint(otlpEndpoint))
                     .setTimeout(Duration.ofSeconds(10))
                     .build()
             )
-            .setInterval(Duration.ofSeconds(60))
+            .setInterval(metricExportInterval)
             .build();
         }
 
@@ -200,6 +207,15 @@ public class MetricsConfig {
         return OpenTelemetryMeterRegistry.builder(openTelemetry)
             .build();
     }
+
+    private String metricsEndpoint(String endpoint) {
+        String normalizedEndpoint = endpoint.endsWith("/")
+            ? endpoint.substring(0, endpoint.length() - 1)
+            : endpoint;
+        return normalizedEndpoint.endsWith("/v1/metrics")
+            ? normalizedEndpoint
+            : normalizedEndpoint + "/v1/metrics";
+    }
 }
 ```
 
@@ -210,13 +226,11 @@ You can still use Micrometer's API to create custom metrics, and they'll be expo
 ```java
 package com.example.service;
 
-import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Service;
-
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class PaymentService {
@@ -224,6 +238,7 @@ public class PaymentService {
     private final Counter paymentCounter;
     private final Counter failedPaymentCounter;
     private final Timer paymentProcessingTimer;
+    private final DistributionSummary paymentAmountSummary;
     private final MeterRegistry registry;
 
     public PaymentService(MeterRegistry registry) {
@@ -245,9 +260,14 @@ public class PaymentService {
         this.paymentProcessingTimer = Timer.builder("payments.processing.time")
             .description("Time taken to process payments")
             .register(registry);
+
+        // Distribution summary for payment amounts
+        this.paymentAmountSummary = DistributionSummary.builder("payments.amount")
+            .description("Payment amounts")
+            .baseUnit("dollars")
+            .register(registry);
     }
 
-    @Timed(value = "payments.process", description = "Payment processing time")
     public void processPayment(String orderId, double amount) {
         // Record processing time manually
         Timer.Sample sample = Timer.start(registry);
@@ -259,8 +279,8 @@ public class PaymentService {
             if (Math.random() > 0.1) {
                 paymentCounter.increment();
 
-                // Record gauge for payment amount
-                registry.gauge("payments.amount", amount);
+                // Record payment amount
+                paymentAmountSummary.record(amount);
             } else {
                 failedPaymentCounter.increment();
                 throw new RuntimeException("Payment failed");
