@@ -32,13 +32,13 @@ brew install colima docker docker-compose docker-buildx
 This installs:
 - `colima` - the VM manager
 - `docker` - the Docker CLI (not the daemon)
-- `docker-compose` - standalone Compose binary
-- `docker-buildx` - multi-platform build support
+- `docker-compose` - Compose v2 CLI plugin and compatibility command
+- `docker-buildx` - Buildx CLI plugin for multi-platform builds
 
 ### Start Colima
 
 ```bash
-# Start Colima with default settings (2 CPUs, 2 GB RAM, 60 GB disk)
+# Start Colima with default settings (2 CPUs, 2 GB RAM, 100 GB disk)
 colima start
 ```
 
@@ -46,7 +46,7 @@ For more resources:
 
 ```bash
 # Start with custom resources
-colima start --cpu 4 --memory 8 --disk 100
+colima start --cpus 4 --memory 8 --disk 100
 ```
 
 For Apple Silicon Macs, Colima runs an ARM64 VM by default. To also build x86_64 images:
@@ -79,10 +79,10 @@ colima stop
 
 # Restart with different resources
 colima stop
-colima start --cpu 4 --memory 8
+colima start --cpus 4 --memory 8
 
-# Delete the VM entirely
-colima delete
+# Delete the VM and all associated container data
+colima delete --data
 ```
 
 ### File Sharing
@@ -91,14 +91,14 @@ Colima mounts your home directory by default. Files under `~` are accessible ins
 
 ```bash
 # Mount your project into a container
-docker run -it --rm -v $(pwd):/app -w /app node:20-alpine sh
+docker run -it --rm -v "$(pwd)":/app -w /app node:20-alpine sh
 ```
 
 For directories outside your home, configure additional mounts.
 
 ```bash
 # Start Colima with additional mount points
-colima start --mount /Volumes/data:/data:w
+colima start --mount /Volumes/data:w
 ```
 
 The `:w` suffix enables writable access.
@@ -118,17 +118,17 @@ brew install lima
 
 ```bash
 # Create a VM from Docker's template
-limactl start --name=docker template://docker
+limactl start --name=docker template:docker
 
 # Set the Docker host to use the Lima VM
-export DOCKER_HOST=unix://$HOME/.lima/docker/sock/docker.sock
+export DOCKER_HOST=$(limactl list docker --format 'unix://{{.Dir}}/sock/docker.sock')
 ```
 
 Add the export to your shell profile.
 
 ```bash
 # Add to your shell profile (~/.zshrc for Zsh, ~/.bash_profile for Bash)
-echo 'export DOCKER_HOST=unix://$HOME/.lima/docker/sock/docker.sock' >> ~/.zshrc
+echo 'export DOCKER_HOST=$(limactl list docker --format '"'"'unix://{{.Dir}}/sock/docker.sock'"'"')' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -161,7 +161,7 @@ OrbStack is a commercial but lightweight alternative to Docker Desktop. It provi
 
 ```bash
 # Install OrbStack
-brew install orbstack
+brew install --cask orbstack
 ```
 
 Launch OrbStack from Applications. It provides full Docker compatibility and automatically configures the Docker CLI.
@@ -175,7 +175,7 @@ OrbStack is free for personal use and has a commercial license for teams.
 
 ## Setting Up Docker Compose
 
-If you installed `docker-compose` via Homebrew, it is ready to use.
+If you installed `docker-compose` via Homebrew, Compose is ready to use as a Docker CLI plugin.
 
 ```bash
 # Verify Docker Compose
@@ -183,7 +183,7 @@ docker compose version
 docker-compose version
 ```
 
-Both the plugin (`docker compose`) and standalone (`docker-compose`) versions should work.
+The plugin command (`docker compose`) should work, and Homebrew also provides the `docker-compose` compatibility command.
 
 ### Test with a Compose Stack
 
@@ -226,10 +226,10 @@ If you started Colima with `--vm-type vz --vz-rosetta`, you can build for both a
 
 ```bash
 # Create a builder that supports multiple platforms
-docker buildx create --name multiarch --use
+docker buildx create --name multiarch --driver docker-container --use --bootstrap
 
-# Build for both architectures
-docker buildx build --platform linux/amd64,linux/arm64 -t my-app:latest .
+# Build and push for both architectures
+docker buildx build --platform linux/amd64,linux/arm64 -t registry.example.com/my-app:latest --push .
 ```
 
 ### With QEMU
@@ -283,7 +283,7 @@ Adjust resources based on your workload.
 ```bash
 # Restart Colima with more memory for heavy workloads
 colima stop
-colima start --cpu 6 --memory 12
+colima start --cpus 6 --memory 12
 ```
 
 ## Docker Context Management
