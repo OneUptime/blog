@@ -12,28 +12,28 @@ I've used the demo to train teams on OpenTelemetry, and it consistently delivers
 
 ## What the Demo Application Provides
 
-The demo simulates a microservices architecture for an online store called "Astronomy Shop". It includes 11 services written in different languages: Go, Python, Node.js, Java, .NET, PHP, and Ruby.
+The demo simulates a microservices architecture for an online store called "Astronomy Shop". It includes services and supporting components written in different languages: Go, Python, TypeScript, JavaScript, Java, .NET, C++, Kotlin, PHP, Ruby, Rust, and Elixir.
 
 Each service demonstrates OpenTelemetry instrumentation for that language. You see auto-instrumentation and manual instrumentation side by side. The polyglot nature shows how OpenTelemetry creates unified observability across language boundaries.
 
 The application includes realistic interactions:
 
 - Frontend service serving the web UI
-- Product catalog service with database queries
-- Shopping cart service with Redis caching
+- Product catalog service serving product data
+- Shopping cart service with Valkey caching
 - Checkout service orchestrating order processing
-- Payment service simulating external API calls
-- Shipping service with queue-based processing
+- Payment service processing and validating payments
+- Shipping service calculating quotes and tracking IDs
 - Email service for notifications
 - Ad service for product recommendations
-- Feature flag service for A/B testing
+- Feature flag service for scenario control
 - Load generator creating realistic traffic
 
 The demo deploys with the OpenTelemetry Collector, Jaeger for traces, Prometheus for metrics, and Grafana for visualization. Everything runs in Docker Compose or Kubernetes, giving you a complete observability stack in minutes.
 
 ## Setting Up the Demo
 
-Prerequisites are minimal: Docker, Docker Compose, and 4GB of available RAM. The demo handles everything else.
+Prerequisites are minimal: Docker, Docker Compose v2, and about 6GB of available RAM for the full application. The demo handles everything else.
 
 Clone the repository and start the demo:
 
@@ -44,7 +44,7 @@ git clone https://github.com/open-telemetry/opentelemetry-demo.git
 cd opentelemetry-demo
 
 # Start the demo with Docker Compose
-docker compose up -d
+docker compose up --force-recreate --remove-orphans --detach
 
 # Wait for all services to be healthy (takes 2-3 minutes)
 docker compose ps
@@ -53,10 +53,11 @@ docker compose ps
 Once running, access the components:
 
 - Web Store: http://localhost:8080
-- Jaeger UI: http://localhost:16686
-- Grafana: http://localhost:3000
+- Jaeger UI: http://localhost:8080/jaeger/ui/
+- Grafana: http://localhost:8080/grafana/
 - Prometheus: http://localhost:9090
-- Feature Flags UI: http://localhost:8081
+- Feature Flags UI: http://localhost:8080/feature
+- Load Generator UI: http://localhost:8080/loadgen/
 
 The load generator automatically creates traffic, so you'll immediately see traces and metrics flowing.
 
@@ -73,7 +74,19 @@ helm install my-otel-demo open-telemetry/opentelemetry-demo \
   --namespace otel-demo
 ```
 
-Kubernetes deployment includes ingress configuration and persistence for metrics and traces.
+After installing on Kubernetes, port-forward the frontend proxy to access the UIs:
+
+```bash
+kubectl port-forward svc/my-otel-demo-frontendproxy 8080:8080 \
+  --namespace otel-demo
+```
+
+If you want browser spans from the web store to be collected, also expose the Collector's OTLP/HTTP receiver:
+
+```bash
+kubectl port-forward svc/my-otel-demo-otelcol 4318:4318 \
+  --namespace otel-demo
+```
 
 ## Exploring Your First Trace
 
@@ -83,12 +96,11 @@ Pick a trace and examine its structure. You'll see spans from multiple services:
 
 ```mermaid
 graph TD
-    A[frontend: HTTP GET /cart] --> B[cartservice: GetCart]
-    A --> C[productcatalogservice: GetProducts]
-    A --> D[adservice: GetAds]
+    A[frontend: HTTP GET /api/cart] --> B[cart: GetCart]
+    A --> C[product-catalog: ListProducts]
+    A --> D[ad: GetAds]
 
-    B --> E[redis: GET cart:*]
-    C --> F[postgres: SELECT * FROM products]
+    B --> E[valkey-cart: GET cart:*]
 
     style A fill:#FFB6C1
     style B fill:#90EE90
@@ -104,7 +116,7 @@ Each span shows:
 - Events marking specific moments
 - Status (OK or Error)
 
-Click on individual spans to see their attributes. The HTTP spans include `http.method`, `http.status_code`, and `http.url`. Database spans show `db.system`, `db.statement`, and `db.operation`.
+Click on individual spans to see their attributes. Current HTTP spans use semantic convention attributes such as `http.request.method`, `http.response.status_code`, and URL attributes like `url.full` or `url.path`. Database spans use attributes such as `db.system.name`, `db.query.text`, and `db.operation.name`.
 
 These attributes follow semantic conventions, making traces consistent across services and languages.
 
@@ -116,7 +128,7 @@ Notice the dependencies:
 
 - Frontend depends on nearly all other services
 - Checkout service orchestrates multiple downstream calls
-- Services use different data stores (Redis, PostgreSQL)
+- Services use different data stores (Valkey, PostgreSQL)
 - Some services have optional dependencies (ad service, recommendation service)
 
 Follow a checkout flow trace. Watch how the checkout service calls:
@@ -134,31 +146,31 @@ Any of these calls could fail or be slow, and the trace shows you exactly where 
 
 The demo includes intentional problems. Finding and fixing these issues teaches practical debugging with OpenTelemetry.
 
-**Memory Leak in Ad Service**: The ad service gradually consumes more memory. Check metrics in Grafana to see memory usage climbing. Correlate with traces to understand what the service does when memory spikes.
+**Memory Leak in Recommendation Service**: The `recommendationServiceCacheFailure` flag simulates memory growth in the recommendation service. Check metrics in Grafana to see memory usage climbing. Correlate with traces to understand what the service does when memory spikes.
 
-**Slow Database Queries**: Some product catalog queries are inefficiently indexed. Search for slow traces (use Jaeger's duration filter). Examine the spans to see which queries take longest. The `db.statement` attribute shows the actual SQL.
+**Product Catalog Failures**: The `productCatalogFailure` flag generates errors for `GetProduct` requests with a specific product ID. Search for error traces and examine the spans to see where the failure occurs.
 
-**Intermittent Payment Failures**: The payment service randomly fails. Find error traces and look at the span status. The error details explain why payment failed. Check if there's a pattern to failures.
+**Payment Failures**: The `paymentServiceFailure` flag generates an error when the payment service calls its charge method. Find error traces and look at the span status. The error details explain why payment failed.
 
-**Cache Misses**: The cart service uses Redis for caching. Find traces with cache misses versus cache hits. Compare their duration. This demonstrates how caching affects performance.
+**Cart Failures**: The `cartServiceFailure` flag generates an error whenever `EmptyCart` is called. Find checkout traces that include cart operations and compare successful and failing flows.
 
 Here's how to find these issues:
 
 ```bash
 # In Jaeger, search for slow traces
-# Service: productcatalogservice
+# Service: product-catalog
 # Min Duration: 100ms
 # Look for GetProduct operations
 
 # Search for errors
-# Service: paymentservice
-# Tags: error=true
+# Service: payment
+# Tags: error.type
 # Examine the error messages in span attributes
 
-# Compare cache hit vs miss
-# Service: cartservice
-# Look for redis spans
-# Compare durations of GET operations that hit vs miss
+# Compare successful and failing cart flows
+# Service: cart
+# Look for EmptyCart operations
+# Compare spans with and without error attributes
 ```
 
 ## Experimenting with Feature Flags
@@ -167,11 +179,11 @@ The demo includes a feature flag service that lets you enable/disable features d
 
 Access the feature flags UI and toggle features:
 
-- **Product Catalog Cache**: Enable/disable caching in the product catalog
-- **Cart Service Failure**: Simulate cart service failures
-- **Recommendation Service**: Enable/disable product recommendations
+- **Product Catalog Failure**: Simulate a product catalog error for one product
+- **Cart Service Failure**: Simulate cart service failures when carts are emptied
+- **Recommendation Service Cache Failure**: Simulate memory growth in the recommendation service cache
 
-Toggle a feature and watch traces change. Enable cart failures and see how error traces differ from successful ones. Disable caching and observe performance impact in trace durations.
+Toggle a feature and watch traces change. Enable cart failures and see how error traces differ from successful ones. Enable recommendation service cache failures and observe the impact in metrics and traces.
 
 Feature flags demonstrate a critical observability pattern: correlating behavior changes with telemetry. You can mark deployments or configuration changes in traces to understand their impact.
 
@@ -199,11 +211,11 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 }
 ```
 
-**Node.js (Frontend)**: Uses auto-instrumentation that captures Express.js routes, HTTP calls, and more automatically. Minimal code changes required.
+**TypeScript (Frontend)**: Uses OpenTelemetry instrumentation for the Next.js frontend and browser telemetry. This shows how frontend and backend telemetry can participate in the same trace.
 
-**Python (Recommendation Service)**: Combines auto-instrumentation with custom spans for business logic. This hybrid approach balances convenience and custom telemetry.
+**Python (Recommendation Service)**: Uses automatic instrumentation and manual instrumentation for service-specific telemetry. This hybrid approach balances convenience and custom telemetry.
 
-**Java (Ad Service)**: Uses the Java agent for zero-code auto-instrumentation. The entire service is instrumented without modifying application code.
+**Java (Ad Service)**: Uses the Java agent for automatic instrumentation and also records service-specific telemetry. This provides broad coverage while still allowing custom spans and metrics where needed.
 
 Compare the instrumentation code in each service's repository. Notice how different languages balance auto-instrumentation capabilities with manual span creation.
 
@@ -222,12 +234,12 @@ Metrics complement traces. Traces show individual request details, metrics show 
 Create a custom dashboard:
 
 ```bash
-# Access Grafana at http://localhost:3000
+# Access Grafana at http://localhost:8080/grafana/
 # Default credentials: admin/admin
 
 # Create a new dashboard
 # Add a panel with PromQL query:
-rate(http_server_duration_count[5m])
+rate(http_server_request_duration_seconds_count[5m])
 
 # This shows HTTP request rate across all services
 # Add labels to filter by service or endpoint
@@ -264,10 +276,10 @@ Rebuild the service and restart the demo. Your custom spans appear in traces.
 Add custom metrics:
 
 ```javascript
-// In frontend service (Node.js)
+// In a Node.js service
 const { metrics } = require('@opentelemetry/api');
 
-const meter = metrics.getMeter('frontend');
+const meter = metrics.getMeter('cart-example');
 const addToCartCounter = meter.createCounter('cart.items.added', {
   description: 'Number of items added to cart'
 });
@@ -279,7 +291,7 @@ app.post('/cart', (req, res) => {
     'product.id': req.body.productId
   });
 
-  res.send(result);
+  res.status(204).send();
 });
 ```
 
@@ -293,7 +305,7 @@ Stop a service:
 
 ```bash
 # Stop the payment service
-docker compose stop paymentservice
+docker compose stop payment
 
 # Try to checkout in the web store
 # Examine traces to see how the failure manifests
@@ -305,7 +317,7 @@ Simulate network latency:
 
 ```bash
 # Add latency to cart service
-# This requires modifying docker-compose.yml to add a sidecar proxy
+# This requires modifying compose.yaml to add a sidecar proxy
 # Or use the feature flag service to enable artificial delays
 ```
 
@@ -314,7 +326,7 @@ Slow traces reveal exactly which operations are delayed. You can see if timeouts
 Cause a service to crash:
 
 ```bash
-# The feature flags can trigger crashes in some services
+# The feature flags can trigger failures in some services
 # Enable "Cart Service Failure" flag
 # Watch for error traces and check if services recover
 ```
@@ -327,14 +339,14 @@ The demo's Collector configuration is production-like but simplified. Study it t
 
 ```bash
 # View the Collector configuration
-cat src/otelcollector/otelcol-config.yml
+cat src/otel-collector/otelcol-config.yml
 ```
 
 The configuration shows:
 
 - Multiple receivers (OTLP gRPC and HTTP)
 - Processors for batching and memory limiting
-- Multiple exporters (Jaeger, Prometheus, logging)
+- Multiple exporters layered by configuration (debug in the base file, plus Jaeger, Prometheus, and OpenSearch in the observability configuration)
 - Service pipelines connecting receivers to exporters
 
 Modify the configuration to experiment:
@@ -350,7 +362,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [probabilistic_sampler, batch]
-      exporters: [jaeger, logging]
+      exporters: [debug, otlp_grpc/jaeger]
 ```
 
 Restart the Collector and observe reduced trace volume in Jaeger. This teaches how sampling affects observability coverage.
