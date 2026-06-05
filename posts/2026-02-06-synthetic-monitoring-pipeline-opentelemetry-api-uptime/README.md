@@ -31,7 +31,7 @@ Each probe location runs a lightweight collector that executes HTTP checks and f
 # endpoints and forwards the results to the central aggregation collector.
 
 receivers:
-  httpcheck/api:
+  http_check/api:
     targets:
       # Core API endpoints
       - endpoint: "https://api.example.com/v1/health"
@@ -83,7 +83,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck/api]
+      receivers: [http_check/api]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -106,7 +106,7 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 processors:
-  # Add timestamps and test metadata
+  # Add test metadata
   resource:
     attributes:
       - key: monitoring.pipeline
@@ -116,13 +116,11 @@ processors:
         value: "2.1"
         action: upsert
 
-  # Filter out noise - only keep failed checks and sampled successes
+  # Filter out noise - only keep the default HTTP check metrics
   filter/reduce:
-    metrics:
-      metric:
-        - 'name == "httpcheck.duration" and value > 0'
-        - 'name == "httpcheck.status"'
-        - 'name == "httpcheck.error"'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name != "httpcheck.duration" and metric.name != "httpcheck.status" and metric.name != "httpcheck.error"'
 
   batch:
     timeout: 10s
@@ -149,15 +147,15 @@ With the data in your backend, you can calculate uptime as a percentage. Here is
 
 ```text
 # Calculate uptime percentage per endpoint over the last 30 days.
-# A check is "up" if the status code is between 200 and 399.
+# A check is "up" if the status class is 2xx or 3xx.
 
 (
-  sum_over_time(
-    (httpcheck_status >= 200 and httpcheck_status < 400)[30d:1m]
+  sum(
+    sum_over_time(httpcheck_status{http_status_class=~"2xx|3xx"}[30d])
   )
   /
-  count_over_time(
-    httpcheck_status[30d:1m]
+  sum(
+    sum_over_time(httpcheck_status{http_status_class=~"1xx|2xx|3xx|4xx|5xx"}[30d])
   )
 ) * 100
 ```
@@ -168,22 +166,18 @@ For SLA reporting, you typically need per-endpoint and per-region breakdowns:
 # Per-endpoint, per-region uptime over 30 days
 (
   sum by (http_url, probe_location) (
-    sum_over_time(
-      (httpcheck_status >= 200 and httpcheck_status < 400)[30d:1m]
-    )
+    sum_over_time(httpcheck_status{http_status_class=~"2xx|3xx"}[30d])
   )
   /
   sum by (http_url, probe_location) (
-    count_over_time(
-      httpcheck_status[30d:1m]
-    )
+    sum_over_time(httpcheck_status{http_status_class=~"1xx|2xx|3xx|4xx|5xx"}[30d])
   )
 ) * 100
 ```
 
 ## Multi-Step API Checks
 
-Single-endpoint checks are useful, but real API usage involves sequences of calls. You can simulate multi-step workflows by chaining checks with dependencies. Here is a Python script that runs as a custom receiver, performing a multi-step API check and pushing results as OTLP metrics:
+Single-endpoint checks are useful, but real API usage involves sequences of calls. You can simulate multi-step workflows by chaining checks with dependencies. Here is a Python script that runs as a small synthetic-check process, performing a multi-step API check and pushing results as OTLP metrics:
 
 ```python
 # multi_step_check.py
@@ -196,6 +190,7 @@ Single-endpoint checks are useful, but real API usage involves sequences of call
 
 import requests
 import time
+import os
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -219,7 +214,7 @@ def run_check():
     try:
         resp = requests.post(f"{API_BASE}/auth/token", json={
             "client_id": "synthetic-monitor",
-            "client_secret": "secret-from-env"
+            "client_secret": os.environ["CLIENT_SECRET"]
         }, timeout=10)
         duration = (time.time() - start) * 1000
         step_duration.record(duration, {"step": "authenticate"})
