@@ -41,12 +41,10 @@ This setup gives you a complete observability platform where you can develop, te
 Create a `docker-compose.yml` file in your project root. We'll build this incrementally, explaining each service:
 
 ```yaml
-version: '3.8'
-
 services:
   # OpenTelemetry Collector - the central hub for all telemetry
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
@@ -68,15 +66,13 @@ services:
 
   # Jaeger - distributed tracing backend and UI
   jaeger:
-    image: jaegertracing/all-in-one:1.53
+    image: jaegertracing/all-in-one:1.75
     container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       # Jaeger UI
       - "16686:16686"
-      # OTLP gRPC receiver (backup, collector is primary)
-      - "4317"
       # Jaeger native receiver
       - "14268:14268"
     networks:
@@ -84,7 +80,7 @@ services:
 
   # Prometheus - metrics storage and querying
   prometheus:
-    image: prom/prometheus:v2.48.1
+    image: prom/prometheus:v3.5.3
     container_name: prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -100,7 +96,7 @@ services:
 
   # Loki - log aggregation system
   loki:
-    image: grafana/loki:2.9.3
+    image: grafana/loki:3.7.2
     container_name: loki
     command: -config.file=/etc/loki/local-config.yaml
     ports:
@@ -110,7 +106,7 @@ services:
 
   # Grafana - unified visualization for metrics, traces, and logs
   grafana:
-    image: grafana/grafana:10.2.3
+    image: grafana/grafana:12.4.3
     container_name: grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -159,14 +155,10 @@ receivers:
             - "http://*"
             - "https://*"
 
-  # Prometheus receiver scrapes metrics from instrumented applications
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'otel-collector'
-          scrape_interval: 10s
-          static_configs:
-            - targets: ['localhost:8889']
+extensions:
+  # Health check extension exposes the collector health endpoint
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 # Processors transform and filter telemetry data
 processors:
@@ -203,33 +195,34 @@ exporters:
       environment: development
 
   # Send logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
-  # Logging exporter for debugging (prints to console)
-  logging:
-    loglevel: debug
+  # Debug exporter for troubleshooting (prints to console)
+  debug:
+    verbosity: detailed
 
 # Service defines the telemetry pipeline
 service:
+  extensions: [health_check]
   pipelines:
     # Traces pipeline: receive -> process -> export
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [otlp/jaeger, logging]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger, debug]
 
     # Metrics pipeline
     metrics:
-      receivers: [otlp, prometheus]
-      processors: [memory_limiter, batch, resource]
-      exporters: [prometheus, logging]
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus, debug]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [loki, logging]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki, debug]
 ```
 
 This collector configuration receives telemetry via OTLP, processes it for efficiency, and exports to appropriate backends.
@@ -249,11 +242,11 @@ scrape_configs:
     static_configs:
       - targets: ['otel-collector:8889']
 
-  # Add your application's metrics endpoint here
-  - job_name: 'my-application'
-    static_configs:
-      - targets: ['host.docker.internal:8080']
-    metrics_path: '/metrics'
+  # If your application exposes Prometheus-format metrics directly, add it here
+  # - job_name: 'my-application'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:8080']
+  #   metrics_path: '/metrics'
 ```
 
 This configuration tells Prometheus to scrape metrics from the collector and optionally from your application.
@@ -297,10 +290,10 @@ Now that all configuration files are in place, start the entire stack:
 
 ```bash
 # Start all services in detached mode
-docker-compose up -d
+docker compose up -d
 
 # Watch the logs to ensure everything starts correctly
-docker-compose logs -f
+docker compose logs -f
 ```
 
 You should see output indicating each service is starting. Once complete, you can access:
@@ -319,11 +312,14 @@ Create a simple Node.js application to test your environment. First, create `sam
   "name": "otel-sample-app",
   "version": "1.0.0",
   "dependencies": {
-    "@opentelemetry/api": "^1.7.0",
-    "@opentelemetry/sdk-node": "^0.45.1",
-    "@opentelemetry/auto-instrumentations-node": "^0.39.4",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.45.1",
-    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.45.1",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/sdk-metrics": "^2.7.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.218.0",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
     "express": "^4.18.2"
   }
 }
@@ -336,16 +332,17 @@ Create `sample-app/tracing.js` to initialize OpenTelemetry:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Configure the OpenTelemetry SDK
 const sdk = new NodeSDK({
   // Define resource attributes to identify this service
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'sample-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'sample-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
 
   // Configure trace export to the collector
@@ -354,8 +351,10 @@ const sdk = new NodeSDK({
   }),
 
   // Configure metric export to the collector
-  metricExporter: new OTLPMetricExporter({
-    url: 'http://localhost:4317',
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: 'http://localhost:4317',
+    }),
   }),
 
   // Enable automatic instrumentation for common libraries
@@ -392,7 +391,7 @@ const tracer = trace.getTracer('sample-app');
 const meter = metrics.getMeter('sample-app');
 
 // Create a custom counter metric
-const requestCounter = meter.createCounter('http_requests_total', {
+const requestCounter = meter.createCounter('http_requests', {
   description: 'Total number of HTTP requests',
 });
 
@@ -479,7 +478,7 @@ Now open each UI to see your telemetry:
 
 **Jaeger UI (http://localhost:16686)**: Select "sample-app" from the service dropdown and click "Find Traces". You'll see all the requests you made, including timing information and any errors. Click on a trace to see the detailed span hierarchy.
 
-**Prometheus (http://localhost:9090)**: Query metrics like `http_requests_total` to see request counts. Use PromQL to aggregate and analyze your metrics.
+**Prometheus (http://localhost:9090)**: Query metrics like `otel_http_requests_total` to see request counts. Use PromQL to aggregate and analyze your metrics.
 
 **Grafana (http://localhost:3000)**: Create dashboards combining metrics from Prometheus, traces from Jaeger, and logs from Loki. Build correlations between different telemetry signals.
 
@@ -495,6 +494,7 @@ To add another service to your environment, simply configure it to send telemetr
     build: ./another-service
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=another-service
     networks:
       - otel-network
@@ -509,7 +509,7 @@ The current setup loses data when you restart containers. For persistent storage
 ```yaml
 # Add to services in docker-compose.yml
   jaeger:
-    image: jaegertracing/all-in-one:1.53
+    image: jaegertracing/all-in-one:1.75
     environment:
       - SPAN_STORAGE_TYPE=badger
       - BADGER_DIRECTORY_VALUE=/badger/data
@@ -533,7 +533,7 @@ For high-traffic applications, configure sampling in the collector:
 # Update traces pipeline
   traces:
     receivers: [otlp]
-    processors: [memory_limiter, probabilistic_sampler, batch, resource]
+    processors: [memory_limiter, resource, probabilistic_sampler, batch]
     exporters: [otlp/jaeger]
 ```
 
@@ -545,10 +545,10 @@ Check that your application is using the correct endpoint:
 
 ```bash
 # Verify the collector is listening
-docker-compose ps otel-collector
+docker compose ps otel-collector
 
 # Check collector logs
-docker-compose logs otel-collector
+docker compose logs otel-collector
 ```
 
 ### Port Conflicts
@@ -567,7 +567,7 @@ If containers crash due to memory, adjust limits:
 
 ```yaml
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     deploy:
       resources:
         limits:
@@ -580,13 +580,13 @@ When you're done developing, clean up resources:
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Remove volumes (deletes all data)
-docker-compose down -v
+docker compose down -v
 
 # Remove everything including images
-docker-compose down -v --rmi all
+docker compose down -v --rmi all
 ```
 
 ## Next Steps
