@@ -169,7 +169,7 @@ class InstrumentedWebhookSender:
         return urlparse(url).hostname or "unknown"
 ```
 
-## Adding a Gauge for In-Flight Deliveries
+## Adding an UpDownCounter for In-Flight Deliveries
 
 Track how many webhooks are currently being delivered to spot concurrency issues:
 
@@ -202,11 +202,11 @@ Once you are collecting these metrics, here are some useful queries you can run 
 # Success rate per subscriber over the last hour
 sum(rate(webhook_delivery_successes_total[1h])) by (webhook_subscriber_id)
 /
-sum(rate(webhook_delivery_attempts_total[1h])) by (webhook_subscriber_id)
+sum(rate({__name__=~"webhook_delivery_(successes|failures)_total"}[1h])) by (webhook_subscriber_id)
 
-# Average delivery latency by event type
+# P95 delivery latency by event type
 histogram_quantile(0.95,
-  sum(rate(webhook_delivery_latency_bucket[5m])) by (le, webhook_event_type)
+  sum(rate(webhook_delivery_latency_milliseconds_bucket[5m])) by (le, webhook_event_type)
 )
 
 # Retry rate (what fraction of attempts are retries)
@@ -233,7 +233,7 @@ groups:
         expr: |
           sum(rate(webhook_delivery_successes_total[15m])) by (webhook_subscriber_id)
           /
-          sum(rate(webhook_delivery_attempts_total[15m])) by (webhook_subscriber_id)
+          sum(rate({__name__=~"webhook_delivery_(successes|failures)_total"}[15m])) by (webhook_subscriber_id)
           < 0.95
         for: 10m
         labels:
@@ -244,7 +244,7 @@ groups:
       - alert: WebhookDeliveryLatencyHigh
         expr: |
           histogram_quantile(0.99,
-            sum(rate(webhook_delivery_latency_bucket[5m])) by (le)
+            sum(rate(webhook_delivery_latency_milliseconds_bucket[5m])) by (le)
           ) > 30000
         for: 5m
         labels:
