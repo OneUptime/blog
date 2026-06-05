@@ -23,7 +23,7 @@ There are three ways to set it, listed from most to least recommended.
 
 ### Method 1: OTEL_SERVICE_NAME Environment Variable
 
-The simplest approach. Every OpenTelemetry SDK reads this variable:
+The simplest approach. OpenTelemetry SDKs that support environment configuration read this variable:
 
 ```bash
 export OTEL_SERVICE_NAME=order-service
@@ -51,7 +51,7 @@ env:
 You can set `service.name` along with other resource attributes:
 
 ```bash
-export OTEL_RESOURCE_ATTRIBUTES="service.name=order-service,service.version=1.2.3,deployment.environment=production"
+export OTEL_RESOURCE_ATTRIBUTES="service.name=order-service,service.version=1.2.3,deployment.environment.name=production"
 ```
 
 ### Method 3: In Code
@@ -61,14 +61,15 @@ If you prefer to set it programmatically:
 **Node.js:**
 
 ```javascript
-const { Resource } = require('@opentelemetry/resources');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'order-service',
     'service.version': '1.2.3',
-    'deployment.environment': 'production',
+    'deployment.environment.name': 'production',
   }),
   // ... other config
 });
@@ -78,11 +79,12 @@ const sdk = new NodeSDK({
 
 ```python
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.trace import TracerProvider
 
 resource = Resource.create({
     SERVICE_NAME: "order-service",
     "service.version": "1.2.3",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 provider = TracerProvider(resource=resource)
@@ -91,11 +93,13 @@ provider = TracerProvider(resource=resource)
 **Java:**
 
 ```java
+import io.opentelemetry.api.common.AttributeKey;
+
 Resource resource = Resource.getDefault()
     .merge(Resource.create(Attributes.builder()
-        .put(ResourceAttributes.SERVICE_NAME, "order-service")
-        .put(ResourceAttributes.SERVICE_VERSION, "1.2.3")
-        .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production")
+        .put(AttributeKey.stringKey("service.name"), "order-service")
+        .put(AttributeKey.stringKey("service.version"), "1.2.3")
+        .put(AttributeKey.stringKey("deployment.environment.name"), "production")
         .build()));
 
 SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
@@ -105,7 +109,7 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
 
 ## What Happens Without service.name
 
-The SDK constructs a default value using the pattern `unknown_service:<process_name>`. For a Node.js app, this is `unknown_service:node`. For Python, it is `unknown_service:python`. For Java, it is `unknown_service:java`.
+The SDK constructs a default value using the pattern `unknown_service:<process_executable_name>`. For a Node.js app, this is `unknown_service:node`. For Python, it is commonly `unknown_service:python`. For Java, it is `unknown_service:java`.
 
 If you have three Node.js microservices, they all show up as `unknown_service:node` in your backend, which is completely useless.
 
@@ -114,14 +118,14 @@ If you have three Node.js microservices, they all show up as `unknown_service:no
 While you are setting `service.name`, add these additional resource attributes for better observability:
 
 ```bash
-OTEL_RESOURCE_ATTRIBUTES="service.name=order-service,service.version=1.2.3,deployment.environment=production,service.namespace=ecommerce"
+OTEL_RESOURCE_ATTRIBUTES="service.name=order-service,service.version=1.2.3,deployment.environment.name=production,service.namespace=ecommerce"
 ```
 
 | Attribute | Purpose | Example |
 |-----------|---------|---------|
 | `service.name` | Identifies the service | `order-service` |
 | `service.version` | Identifies the deployed version | `1.2.3` or `abc123` |
-| `deployment.environment` | Distinguishes prod from staging | `production`, `staging` |
+| `deployment.environment.name` | Distinguishes prod from staging | `production`, `staging` |
 | `service.namespace` | Groups related services | `ecommerce`, `payments` |
 
 ## Setting service.name in the Collector
@@ -135,7 +139,7 @@ processors:
       - key: service.name
         value: "order-service"
         action: upsert
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: "production"
         action: upsert
 ```
@@ -175,8 +179,8 @@ You should see your service name in the resource attributes of every batch of sp
 ## Common Mistakes
 
 - Setting `OTEL_SERVICE_NAME` in the wrong shell or Dockerfile layer so it does not actually reach the application process
-- Setting it in the Collector config but not in the SDK, which means the SDK still logs "unknown_service" warnings
-- Using spaces or special characters in the service name (stick to lowercase letters, numbers, and hyphens)
+- Setting it in the Collector config but not in the SDK, which means telemetry may still start out with `unknown_service` before the Collector rewrites it
+- Using inconsistent service name formats across services (prefer lowercase letters, numbers, and hyphens)
 - Forgetting to set it for background workers and cron jobs that share the same codebase as the web service
 
 Setting `service.name` is a two-minute task that transforms your observability from a confusing mess into something actually useful.
