@@ -55,9 +55,9 @@ class PIIMaskingProcessor(SpanProcessor):
     Runs inside the application process before data reaches the exporter.
     """
 
-    # Regex for credit card numbers: 13-19 digits, with optional dashes or spaces
-    # Covers Visa, Mastercard, Amex, Discover, and other major networks
-    CC_PATTERN = re.compile(r'\b([0-9]{4})[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}[\s\-]?([0-9]{1,4})\b')
+    # Regex for PAN-shaped numbers: 13-19 digits, with optional dashes or spaces
+    # This does not validate card networks or the Luhn checksum.
+    CC_PATTERN = re.compile(r'\b([0-9]{4})[\s\-]?(?:[0-9][\s\-]?){5,11}([0-9]{4})\b')
 
     # Regex for email addresses
     EMAIL_PATTERN = re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}')
@@ -80,25 +80,25 @@ class PIIMaskingProcessor(SpanProcessor):
     def on_start(self, span, parent_context=None):
         pass
 
-    def on_end(self, span):
-        """Mask sensitive data in all span attributes before export."""
+    def _on_ending(self, span):
+        """Mask sensitive data while the span is still mutable."""
         if not span.attributes:
             return
 
-        # Build a new attributes dict with masked values
-        masked_attrs = {}
-        for key, value in span.attributes.items():
-            masked_attrs[key] = self._mask_value(value)
+        for key, value in list(span.attributes.items()):
+            masked_value = self._mask_value(value)
+            if masked_value != value:
+                span.set_attribute(key, masked_value)
 
-        # Note: ReadableSpan attributes are immutable after end.
-        # To modify them, you need to use a wrapper or modify before end.
-        # In practice, use on_start or a custom exporter wrapper.
+    def on_end(self, span):
+        # ReadableSpan attributes are immutable after end, so masking happens in _on_ending.
+        pass
 
     def shutdown(self):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 A more practical approach for production is to wrap the exporter itself. Here is how to set up the masking processor with the tracer provider.
@@ -107,6 +107,7 @@ A more practical approach for production is to wrap the exporter itself. Here is
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry import trace
 
 # Create the OTLP exporter
 
@@ -120,6 +121,8 @@ provider.add_span_processor(PIIMaskingProcessor())
 
 # Then add the batch processor for export
 provider.add_span_processor(BatchSpanProcessor(exporter))
+
+trace.set_tracer_provider(provider)
 ```
 
 For Java applications, you can achieve similar masking using a custom `SpanExporter` wrapper.
@@ -218,7 +221,7 @@ processors:
         action: hash
 ```
 
-The `hash` action is useful for email addresses. It replaces the value with a SHA-256 hash, so you can still correlate spans by user without seeing the actual email address.
+The `hash` action is useful for email addresses. It replaces the value with a SHA1 hash, so you can still correlate spans by user without seeing the actual email address.
 
 ## Combining Both Approaches in a Full Pipeline
 
