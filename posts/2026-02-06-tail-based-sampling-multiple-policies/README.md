@@ -8,7 +8,7 @@ Description: Learn how to configure and combine multiple tail-based sampling pol
 
 ---
 
-A single sampling policy rarely captures the full range of what you care about in production. You want to keep all errors, but you also want slow traces, traces from VIP customers, traces that hit specific services, and a random baseline of everything else. Tail-based sampling in the OpenTelemetry Collector supports multiple policies that work together to cover all of these scenarios.
+A single sampling policy rarely captures the full range of what you care about in production. You want to keep all errors, but you also want slow traces, traces from VIP customers, traces that hit specific services, and a random baseline of everything else. Tail-based sampling in OpenTelemetry Collector distributions that include the `tail_sampling` processor, such as the contrib and Kubernetes distributions, supports multiple policies that work together to cover all of these scenarios.
 
 This post covers how to design, configure, and operate a multi-policy tail sampling pipeline. You will learn how policies are evaluated, how to combine them effectively, and how to avoid common pitfalls that lead to missing data or excessive costs.
 
@@ -16,23 +16,24 @@ This post covers how to design, configure, and operate a multi-policy tail sampl
 
 ## How Policy Evaluation Works
 
-The tail sampling processor in the OpenTelemetry Collector evaluates policies in order. Each policy independently examines the trace and returns one of three decisions: `Sampled`, `NotSampled`, or `InvertNotSampled`. The final decision follows an OR-like logic. If any policy says "keep this trace," the trace is kept.
+The tail sampling processor in the OpenTelemetry Collector evaluates the configured policies for each trace. Each policy independently examines the trace and returns a sampling decision such as `Sampled`, `NotSampled`, `InvertSampled`, `InvertNotSampled`, or `Dropped`. For ordinary keep policies, the final decision follows an OR-like logic: if any policy says "keep this trace," the trace is kept. A `drop` policy or deprecated inverted not-sample decision can still override a sampled vote.
 
 ```mermaid
 flowchart TD
-    A[Trace Complete] --> B[Policy 1: Error Check]
-    B -->|Sampled| K[Keep Trace]
-    B -->|NotSampled| C[Policy 2: Latency Check]
-    C -->|Sampled| K
-    C -->|NotSampled| D[Policy 3: Attribute Check]
-    D -->|Sampled| K
-    D -->|NotSampled| E[Policy 4: Probabilistic]
-    E -->|Sampled| K
-    E -->|NotSampled| F[Drop Trace]
+    A[Trace Ready for Decision] --> B[Policy 1: Error Check]
+    A --> C[Policy 2: Latency Check]
+    A --> D[Policy 3: Attribute Check]
+    A --> E[Policy 4: Probabilistic]
+    B --> H[Combine Policy Decisions]
+    C --> H
+    D --> H
+    E --> H
+    H -->|Any Sampled and no Drop Override| K[Keep Trace]
+    H -->|No Sampled Vote or Drop Override| F[Drop Trace]
     K --> G[Export]
 ```
 
-This means you should put your most specific, highest-priority policies first and your catch-all probabilistic policy last. The order does not affect correctness since any match keeps the trace, but it makes the configuration easier to read and reason about.
+This means you should put your most specific, highest-priority policies first and your catch-all probabilistic policy last. For ordinary top-level keep policies, the order does not affect correctness since any match keeps the trace, but it makes the configuration easier to read and reason about.
 
 ---
 
@@ -105,7 +106,7 @@ This gives you a solid foundation. Errors are always captured, latency outliers 
 
 ## Adding Attribute-Based Policies
 
-The real power of multi-policy sampling comes from attribute-based rules. You can sample based on any span attribute, which lets you implement business-aware sampling.
+The real power of multi-policy sampling comes from attribute-based rules. You can sample based on span or resource attributes, which lets you implement business-aware sampling.
 
 ```yaml
     policies:
@@ -126,7 +127,7 @@ The real power of multi-policy sampling comes from attribute-based rules. You ca
 
       # Keep traces from enterprise customers.
       # This requires your application to set a user.tier
-      # attribute on root spans.
+      # attribute on relevant spans or resources.
       - name: keep-enterprise-customers
         type: string_attribute
         string_attribute:
@@ -223,11 +224,11 @@ The `and` policy is powerful but keep it focused. Deeply nested AND conditions b
 
 ## Rate-Limited Policies
 
-Sometimes you want to keep a category of traces but cap how many you keep per second. The `rate_limiting` policy type handles this.
+Sometimes you want to keep a category of traces but cap the span rate you keep. The `rate_limiting` policy type handles this with a `spans_per_second` limit.
 
 ```yaml
     policies:
-      # Keep errors but cap at 100 traces per second.
+      # Keep errors but cap the sampled span rate at 100 spans per second.
       # This protects against error storms flooding your backend.
       - name: keep-errors-rate-limited
         type: and
@@ -242,7 +243,7 @@ Sometimes you want to keep a category of traces but cap how many you keep per se
               rate_limiting:
                 spans_per_second: 100
 
-      # Keep traces from the search service but cap at 50/sec.
+      # Keep traces from the search service but cap the sampled span rate at 50/sec.
       # Search is high-volume and you want visibility without
       # blowing your budget.
       - name: keep-search-limited
@@ -266,7 +267,7 @@ Sometimes you want to keep a category of traces but cap how many you keep per se
           sampling_percentage: 3
 ```
 
-Rate limiting is especially useful during incident response. If a service starts throwing thousands of errors per second, the rate limit prevents your observability backend from being overwhelmed while still keeping a representative sample of the error traces.
+Rate limiting is especially useful during incident response. If a service starts throwing thousands of errors per second, the span rate limit prevents your observability backend from being overwhelmed while still keeping a representative sample of the error traces.
 
 ---
 
@@ -279,7 +280,12 @@ When your sampling configuration gets complex, you need to verify that policies 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
     logs:
       level: info
 
@@ -293,28 +299,29 @@ service:
 With telemetry enabled, the tail sampling processor emits metrics including:
 
 - `otelcol_processor_tail_sampling_count_traces_sampled`: Count of traces sampled, labeled by policy name and decision
-- `otelcol_processor_tail_sampling_count_traces_dropped`: Count of traces dropped
+- `otelcol_processor_tail_sampling_global_count_traces_sampled`: Global count of traces sampled or not sampled
+- `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early`: Count of traces dropped before the configured wait time
 - `otelcol_processor_tail_sampling_new_trace_id_received`: Count of new trace IDs seen
 
 You can scrape these with Prometheus or send them to your metrics backend to build dashboards that show which policies are firing and how much traffic each one retains.
 
 ```yaml
-# Add a Prometheus exporter for Collector self-monitoring
-exporters:
-  otlp:
-    endpoint: "https://otel-backend.example.com:4317"
-  prometheus:
-    endpoint: 0.0.0.0:9090
-
+# Expose Collector internal metrics for Prometheus scraping
 service:
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
   pipelines:
     traces:
       receivers: [otlp]
       processors: [tail_sampling]
       exporters: [otlp]
-    metrics:
-      receivers: [prometheus/self]
-      exporters: [prometheus]
 ```
 
 ---
@@ -344,7 +351,7 @@ processors:
     expected_new_traces_per_sec: 8000
 
     policies:
-      # 1. All errors, rate-limited to prevent storms
+      # 1. All errors, span-rate-limited to prevent storms
       - name: errors-capped
         type: and
         and:
