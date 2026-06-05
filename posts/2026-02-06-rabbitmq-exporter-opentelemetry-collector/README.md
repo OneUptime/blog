@@ -6,19 +6,19 @@ Tags: OpenTelemetry, Collector, Exporter, RabbitMQ, Message Queue, AMQP, Event-D
 
 Description: Learn how to configure the RabbitMQ exporter in the OpenTelemetry Collector to send telemetry data to RabbitMQ message queues for event-driven observability architectures.
 
-The RabbitMQ exporter enables the OpenTelemetry Collector to send telemetry data to RabbitMQ message queues using the AMQP protocol. This capability is valuable for event-driven architectures where you want to process telemetry data asynchronously, integrate with existing message-based workflows, or build decoupled observability pipelines.
+The RabbitMQ exporter enables the OpenTelemetry Collector to send telemetry data to RabbitMQ message queues using the AMQP 0.9.1 protocol. This capability is valuable for event-driven architectures where you want to process telemetry data asynchronously, integrate with existing message-based workflows, or build decoupled observability pipelines.
 
 ## Understanding the RabbitMQ Exporter
 
-RabbitMQ is a widely-used message broker that implements the Advanced Message Queuing Protocol (AMQP). By exporting telemetry data to RabbitMQ, you can leverage its robust message delivery guarantees, flexible routing capabilities, and extensive ecosystem of consumers.
+RabbitMQ is a widely-used message broker that supports the Advanced Message Queuing Protocol (AMQP). By exporting telemetry data to RabbitMQ, you can leverage its message delivery features, routing capabilities, and extensive ecosystem of consumers.
 
-The RabbitMQ exporter publishes traces, metrics, and logs as messages to RabbitMQ exchanges. These messages can then be consumed by various systems for processing, storage, analysis, or forwarding. This architecture provides flexibility and scalability, allowing you to build sophisticated observability pipelines.
+The RabbitMQ exporter publishes traces, metrics, and logs as messages to RabbitMQ. By default, it publishes to the default direct exchange, and it can optionally publish to a named direct exchange. The exporter does not currently create exchanges, queues, or bindings, so those RabbitMQ entities must already exist.
 
 ```mermaid
 graph LR
     A[Applications] --> B[OTel Collector]
     B --> C[RabbitMQ Exporter]
-    C --> D[RabbitMQ Exchange]
+    C --> D[RabbitMQ Direct Exchange]
     D --> E[Queue 1: Analytics]
     D --> F[Queue 2: Alerting]
     D --> G[Queue 3: Storage]
@@ -34,13 +34,13 @@ The RabbitMQ exporter supports several important use cases:
 
 **Asynchronous Processing**: Decouple telemetry collection from processing, allowing consumers to process data at their own pace without blocking the collector.
 
-**Fan-Out Distribution**: Send telemetry data to multiple consumers simultaneously using RabbitMQ's exchange types and routing patterns.
+**Direct Routing**: Send telemetry data to one or more queues bound to a direct exchange with the configured routing key.
 
 **Buffer and Backpressure**: Use RabbitMQ as a buffer during traffic spikes or when downstream systems are temporarily unavailable.
 
 **Integration with Legacy Systems**: Connect OpenTelemetry to existing message-based workflows and systems that consume from RabbitMQ.
 
-**Event-Driven Alerting**: Trigger alerts or workflows based on specific telemetry patterns by routing messages to specialized consumers.
+**Event-Driven Alerting**: Trigger alerts or workflows based on telemetry messages consumed from RabbitMQ queues.
 
 ## Basic Configuration
 
@@ -65,21 +65,15 @@ processors:
 exporters:
   # Configure RabbitMQ exporter
   rabbitmq:
-    # RabbitMQ connection URL
     connection:
-      endpoint: amqp://guest:guest@localhost:5672/
-    # Exchange configuration
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-      auto_delete: false
-    # Routing key for messages
-    routing_key: otel.traces
-    # Message encoding format
-    encoding: json
-    # Connection timeout
-    timeout: 30s
+      endpoint: amqp://localhost:5672
+      auth:
+        plain:
+          username: guest
+          password: guest
+    routing:
+      routing_key: otlp_spans
+    durable: true
 
 service:
   pipelines:
@@ -89,11 +83,11 @@ service:
       exporters: [rabbitmq]
 ```
 
-This configuration connects to a local RabbitMQ instance and publishes trace data to a topic exchange named "telemetry" with the routing key "otel.traces". Messages are encoded in JSON format for easy consumption by downstream systems.
+This configuration connects to a local RabbitMQ instance and publishes trace data to the default exchange with the routing key "otlp_spans". With the default exchange, RabbitMQ routes the message to a queue with the same name as the routing key, so a queue named "otlp_spans" must already exist.
 
 ## Exchange Types and Routing
 
-RabbitMQ supports several exchange types that determine how messages are routed to queues. Configure the appropriate exchange type for your use case:
+RabbitMQ supports several exchange types that determine how messages are routed to queues. The RabbitMQ exporter currently supports the default exchange or a named direct exchange:
 
 ```yaml
 receivers:
@@ -107,63 +101,49 @@ processors:
     timeout: 10s
 
 exporters:
-  # Direct exchange for single consumer
+  # Default exchange: routes to a queue whose name matches the routing key
+  rabbitmq/default:
+    connection:
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      routing_key: otlp_spans
+    durable: true
+
+  # Named direct exchange: exchange and queue bindings must already exist
   rabbitmq/direct:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry-direct
-      type: direct
-      durable: true
-    routing_key: traces
-    encoding: json
-
-  # Topic exchange for pattern-based routing
-  rabbitmq/topic:
-    connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry-topic
-      type: topic
-      durable: true
-    # Routing key with service name
-    routing_key_template: "otel.traces.{{ .Resource.service.name }}"
-    encoding: json
-
-  # Fanout exchange for broadcasting
-  rabbitmq/fanout:
-    connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry-fanout
-      type: fanout
-      durable: true
-    # Routing key is ignored for fanout exchanges
-    encoding: json
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: traces
+    durable: true
 
 service:
   pipelines:
+    traces/default:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [rabbitmq/default]
+
     traces/direct:
       receivers: [otlp]
       processors: [batch]
       exporters: [rabbitmq/direct]
-
-    traces/topic:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [rabbitmq/topic]
-
-    traces/fanout:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [rabbitmq/fanout]
 ```
 
-**Direct Exchange**: Routes messages to queues whose binding key exactly matches the routing key. Use this for single-consumer scenarios.
+**Direct Exchange**: Routes messages to queues whose binding key exactly matches the routing key. This is the exchange type supported by the RabbitMQ exporter.
 
-**Topic Exchange**: Routes messages based on pattern matching between the routing key and binding patterns. Use this when you need flexible routing based on message characteristics.
+**Topic Exchange**: Routes messages based on pattern matching between the routing key and binding patterns. RabbitMQ supports topic exchanges, but the current OpenTelemetry Collector RabbitMQ exporter does not support configuring topic exchanges.
 
-**Fanout Exchange**: Broadcasts messages to all bound queues, ignoring routing keys. Use this when multiple consumers need all messages.
+**Fanout Exchange**: Broadcasts messages to all bound queues, ignoring routing keys. RabbitMQ supports fanout exchanges, but the current OpenTelemetry Collector RabbitMQ exporter does not support configuring fanout exchanges.
 
 ## Secure Connection Configuration
 
@@ -183,31 +163,31 @@ processors:
 exporters:
   rabbitmq:
     connection:
-      # Use AMQPS for TLS-encrypted connections
-      endpoint: amqps://username:password@rabbitmq.example.com:5671/production
-      # TLS configuration
+      endpoint: amqps://rabbitmq.example.com:5671
+      vhost: production
+      auth:
+        plain:
+          username: username
+          password: password
       tls:
         insecure: false
         ca_file: /etc/ssl/certs/rabbitmq-ca.crt
         cert_file: /etc/ssl/certs/client.crt
         key_file: /etc/ssl/private/client.key
         server_name_override: rabbitmq.example.com
-      # Connection settings
       connection_timeout: 30s
-      heartbeat_interval: 60s
-      # Channel prefetch count
-      prefetch_count: 100
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-      auto_delete: false
-    routing_key: otel.traces
-    encoding: json
-    # Message persistence
-    delivery_mode: persistent
-    # Confirm published messages
-    confirm_mode: true
+      heartbeat: 60s
+      publish_confirmation_timeout: 30s
+      name: otel-collector-traces
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans
+    durable: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
 service:
   pipelines:
@@ -217,7 +197,7 @@ service:
       exporters: [rabbitmq]
 ```
 
-TLS encryption protects telemetry data in transit. The persistent delivery mode ensures messages survive RabbitMQ restarts, and confirm mode provides acknowledgment that messages were successfully published.
+TLS encryption protects telemetry data in transit. The `durable` setting marks published messages as persistent, but durable queues are still required on the RabbitMQ side if messages need to survive broker restarts.
 
 ## Multiple Pipeline Configuration
 
@@ -247,38 +227,41 @@ exporters:
   # Traces to RabbitMQ
   rabbitmq/traces:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    routing_key: otel.traces
-    encoding: protobuf
-    delivery_mode: persistent
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans
+    durable: true
 
   # Metrics to RabbitMQ
   rabbitmq/metrics:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    routing_key: otel.metrics
-    encoding: json
-    delivery_mode: persistent
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_metrics
+    durable: true
 
   # Logs to RabbitMQ
   rabbitmq/logs:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    routing_key: otel.logs
-    encoding: json
-    delivery_mode: persistent
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_logs
+    durable: true
 
 service:
   pipelines:
@@ -298,11 +281,11 @@ service:
       exporters: [rabbitmq/logs]
 ```
 
-Separate pipelines allow you to configure different batching strategies and routing keys for each signal type. Using Protocol Buffers encoding for traces reduces message size, while JSON encoding for metrics and logs provides easier consumption by downstream systems.
+Separate pipelines allow you to configure different batching strategies and routing keys for each signal type. If you omit `routing.routing_key`, the exporter uses `otlp_spans` for traces, `otlp_metrics` for metrics, and `otlp_logs` for logs.
 
 ## Dynamic Routing with Message Attributes
 
-Use message attributes and routing key templates to enable dynamic routing based on telemetry characteristics:
+The current RabbitMQ exporter uses a static routing key per exporter instance. To route by service, environment, or severity, configure separate exporter instances and route telemetry through separate Collector pipelines or separate Collector configurations:
 
 ```yaml
 receivers:
@@ -312,55 +295,41 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Add routing attributes
-  attributes:
-    actions:
-      - key: routing.service
-        from_attribute: service.name
-        action: upsert
-      - key: routing.environment
-        from_attribute: deployment.environment
-        action: upsert
-      - key: routing.severity
-        from_attribute: severity
-        action: upsert
-
   batch:
     timeout: 10s
 
 exporters:
-  rabbitmq:
+  rabbitmq/production:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    # Dynamic routing key based on attributes
-    routing_key_template: "otel.{{ .routing.environment }}.{{ .routing.service }}"
-    encoding: json
-    # Message headers from attributes
-    headers:
-      severity: "{{ .routing.severity }}"
-      service: "{{ .routing.service }}"
-      environment: "{{ .routing.environment }}"
-    delivery_mode: persistent
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans_production
+    durable: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes, batch]
-      exporters: [rabbitmq]
+      processors: [batch]
+      exporters: [rabbitmq/production]
 ```
 
-This configuration creates routing keys like "otel.production.checkout-service" or "otel.staging.user-service", allowing consumers to subscribe to specific services or environments. Message headers provide additional metadata that consumers can use for filtering or processing.
+This configuration sends the traces in this pipeline to a static routing key, such as "otlp_spans_production". The current exporter does not support routing key templates or templated RabbitMQ message headers.
 
 ## Message Encoding Options
 
-The RabbitMQ exporter supports multiple encoding formats. Choose the format that best suits your consumers:
+By default, the RabbitMQ exporter serializes telemetry with OTLP Protocol Buffers. You can configure an OTLP encoding extension when consumers need OTLP JSON:
 
 ```yaml
+extensions:
+  otlp_encoding/json:
+    protocol: otlp_json
+
 receivers:
   otlp:
     protocols:
@@ -372,65 +341,56 @@ processors:
     timeout: 10s
 
 exporters:
-  # JSON encoding for human readability
-  rabbitmq/json:
-    connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-    routing_key: otel.traces.json
-    encoding: json
-    # Pretty print JSON (development only)
-    json_indent: true
-
-  # Protocol Buffers for efficiency
+  # Default OTLP Protocol Buffers encoding
   rabbitmq/protobuf:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-    routing_key: otel.traces.protobuf
-    encoding: protobuf
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans_proto
+    durable: true
 
-  # MessagePack for compact binary
-  rabbitmq/messagepack:
+  # OTLP JSON encoding
+  rabbitmq/json:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-    routing_key: otel.traces.msgpack
-    encoding: messagepack
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans_json
+    encoding_extension: otlp_encoding/json
+    durable: true
 
 service:
+  extensions: [otlp_encoding/json]
   pipelines:
-    traces/json:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [rabbitmq/json]
-
     traces/protobuf:
       receivers: [otlp]
       processors: [batch]
       exporters: [rabbitmq/protobuf]
 
-    traces/messagepack:
+    traces/json:
       receivers: [otlp]
       processors: [batch]
-      exporters: [rabbitmq/messagepack]
+      exporters: [rabbitmq/json]
 ```
 
-**JSON**: Human-readable, easy to debug, larger message size.
+**OTLP JSON**: Human-readable, easier to debug, larger message size.
 
-**Protocol Buffers**: Efficient binary format, smaller message size, requires schema knowledge.
+**OTLP Protocol Buffers**: Efficient binary format, smaller message size, requires OTLP schema knowledge.
 
-**MessagePack**: Compact binary format, good balance between size and compatibility.
+**MessagePack**: RabbitMQ can carry MessagePack payloads, but the current RabbitMQ exporter does not provide a MessagePack encoding option.
 
 ## High Availability Configuration
 
-Configure the exporter for high availability with connection pooling and cluster support:
+Configure the exporter for reliable publishing with retries and RabbitMQ cluster endpoints managed outside the exporter:
 
 ```yaml
 receivers:
@@ -447,32 +407,18 @@ processors:
 exporters:
   rabbitmq:
     connection:
-      # Multiple RabbitMQ cluster nodes
-      endpoints:
-        - amqp://user:password@rabbitmq-1.example.com:5672/
-        - amqp://user:password@rabbitmq-2.example.com:5672/
-        - amqp://user:password@rabbitmq-3.example.com:5672/
-      # Connection pool settings
-      connection_pool:
-        max_connections: 10
-        max_channels_per_connection: 100
-      # Reconnection settings
-      reconnect:
-        enabled: true
-        initial_interval: 1s
-        max_interval: 30s
-        max_elapsed_time: 300s
-      # Heartbeat for connection health
-      heartbeat_interval: 60s
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    routing_key: otel.traces
-    encoding: json
-    delivery_mode: persistent
-    confirm_mode: true
-    # Retry failed publishes
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+      connection_timeout: 30s
+      heartbeat: 60s
+      publish_confirmation_timeout: 30s
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans
+    durable: true
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -487,11 +433,11 @@ service:
       exporters: [rabbitmq]
 ```
 
-Multiple RabbitMQ endpoints provide failover capability. The exporter automatically connects to an available node if the current connection fails. Connection pooling improves throughput by maintaining multiple connections and channels.
+For RabbitMQ clusters, point `connection.endpoint` at a stable endpoint such as a load balancer or service name. The current exporter accepts one endpoint per exporter instance and does not expose connection pool settings.
 
 ## Message Priority and TTL
 
-Configure message priority and time-to-live for fine-grained control over message handling:
+Configure message priority and time-to-live on the RabbitMQ side when you need fine-grained control over message handling:
 
 ```yaml
 receivers:
@@ -501,48 +447,31 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Add priority attribute based on severity
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          - set(attributes["message.priority"], 5) where severity_number >= 17
-          - set(attributes["message.priority"], 3) where severity_number < 17 and severity_number >= 13
-          - set(attributes["message.priority"], 1) where severity_number < 13
-
   batch:
     timeout: 10s
 
 exporters:
   rabbitmq:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-      # Enable priority queue support
-      arguments:
-        x-max-priority: 10
-    routing_key: otel.traces
-    encoding: json
-    # Message priority from attribute
-    priority_template: "{{ .attributes.message.priority }}"
-    # Message time-to-live (milliseconds)
-    ttl: 3600000  # 1 hour
-    # Expiration template for dynamic TTL
-    expiration_template: "{{ .attributes.message.ttl }}"
-    delivery_mode: persistent
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans
+    durable: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform, batch]
+      processors: [batch]
       exporters: [rabbitmq]
 ```
 
-Message priority ensures that critical telemetry data is processed before lower-priority messages. TTL prevents old messages from accumulating in queues by automatically expiring them after a specified time.
+Message priority and TTL are RabbitMQ message or queue features, but the current RabbitMQ exporter does not expose priority, expiration, or TTL configuration fields. Use RabbitMQ queue policies for TTL where appropriate.
 
 ## Consumer Example
 
@@ -553,7 +482,6 @@ import pika
 import json
 
 # Connect to RabbitMQ
-
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='rabbitmq.example.com',
@@ -563,27 +491,27 @@ connection = pika.BlockingConnection(
 )
 channel = connection.channel()
 
-# Declare exchange (should match exporter configuration)
+# Declare exchange (should match existing RabbitMQ configuration)
 channel.exchange_declare(
-    exchange='telemetry',
-    exchange_type='topic',
+    exchange='telemetry-direct',
+    exchange_type='direct',
     durable=True
 )
 
 # Declare queue
 channel.queue_declare(queue='traces-consumer', durable=True)
 
-# Bind queue to exchange with routing pattern
+# Bind queue to exchange with routing key
 channel.queue_bind(
-    exchange='telemetry',
+    exchange='telemetry-direct',
     queue='traces-consumer',
-    routing_key='otel.traces.#'
+    routing_key='otlp_spans_json'
 )
 
 # Process messages
 def callback(ch, method, properties, body):
     try:
-        # Parse JSON message
+        # Parse JSON message when the exporter uses an OTLP JSON encoding extension
         trace_data = json.loads(body)
 
         # Process trace data
@@ -604,7 +532,7 @@ print('Waiting for messages...')
 channel.start_consuming()
 ```
 
-This consumer connects to RabbitMQ, subscribes to trace messages, and processes them. The routing pattern "otel.traces.#" matches all trace messages regardless of service or environment.
+This consumer connects to RabbitMQ, subscribes to trace messages, and processes them. If the exporter uses the default OTLP Protocol Buffers encoding, the consumer must decode OTLP protobuf payloads instead of calling `json.loads`.
 
 ## Monitoring and Performance
 
@@ -624,17 +552,15 @@ processors:
 exporters:
   rabbitmq:
     connection:
-      endpoint: amqp://user:password@rabbitmq.example.com:5672/
-    exchange:
-      name: telemetry
-      type: topic
-      durable: true
-    routing_key: otel.traces
-    encoding: json
-
-  # Export collector metrics
-  prometheus:
-    endpoint: "0.0.0.0:8888"
+      endpoint: amqp://rabbitmq.example.com:5672
+      auth:
+        plain:
+          username: user
+          password: password
+    routing:
+      exchange: telemetry-direct
+      routing_key: otlp_spans
+    durable: true
 
 service:
   pipelines:
@@ -648,15 +574,20 @@ service:
       level: info
     metrics:
       level: detailed
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Monitor these key metrics:
 
-- Messages published and failed counts
-- Connection status and reconnections
-- Publish confirmation latency
-- Queue depth and consumer lag (from RabbitMQ management API)
+- Exporter send and failure counts from the Collector's internal metrics
+- Exporter queue size and capacity if a sending queue is enabled
+- RabbitMQ connection health and publish errors in Collector logs
+- Queue depth and consumer lag from RabbitMQ management metrics
 
 For more details on collector monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
@@ -664,21 +595,23 @@ For more details on collector monitoring, see our guide on [monitoring the OpenT
 
 Follow these best practices when using the RabbitMQ exporter:
 
-**Use Durable Exchanges and Queues**: Ensure messages survive RabbitMQ restarts by making exchanges and queues durable.
+**Pre-create Exchanges and Queues**: Ensure the required direct exchange, queues, and bindings exist before starting the Collector.
 
-**Enable Persistent Delivery**: Set delivery mode to persistent for critical telemetry data.
+**Use Durable Queues**: Ensure queues survive RabbitMQ restarts by making them durable.
 
-**Configure Confirm Mode**: Use publisher confirms to ensure messages are successfully written to disk.
+**Enable Persistent Delivery**: Keep `durable: true` for critical telemetry data so messages are published as persistent.
 
-**Implement Connection Pooling**: Use multiple connections and channels for better throughput.
+**Use Publisher Confirm Timeouts**: Configure `publish_confirmation_timeout` to avoid waiting indefinitely for broker publish confirmations.
 
-**Set Appropriate TTL**: Prevent unbounded queue growth by setting message expiration times.
+**Configure Retry on Failure**: Enable `retry_on_failure` so transient publish failures can be retried by the Collector.
+
+**Set Appropriate TTL**: Use RabbitMQ queue policies to prevent unbounded queue growth when consumers lag.
 
 **Monitor Queue Depth**: Track queue sizes to detect consumer lag or processing bottlenecks.
 
 **Secure Connections**: Use TLS encryption and strong authentication in production environments.
 
-**Choose the Right Exchange Type**: Select exchange types and routing patterns that match your distribution requirements.
+**Choose Supported Routing**: Use the default exchange or a named direct exchange with pre-created bindings.
 
 ## Integration with Event-Driven Architectures
 
@@ -686,6 +619,6 @@ The RabbitMQ exporter enables integration with event-driven observability system
 
 ## Conclusion
 
-The RabbitMQ exporter enables powerful event-driven observability architectures by publishing telemetry data to message queues. This approach provides flexibility, scalability, and resilience through asynchronous processing, message persistence, and sophisticated routing capabilities.
+The RabbitMQ exporter enables event-driven observability architectures by publishing telemetry data to RabbitMQ queues. This approach provides flexibility and resilience through asynchronous processing, persistent messages, and direct exchange routing.
 
-Configure the exporter based on your architecture requirements, choosing appropriate exchange types, encoding formats, and reliability settings. With proper configuration and monitoring, the RabbitMQ exporter becomes a valuable component for building decoupled, scalable observability systems that integrate seamlessly with message-based workflows and event-driven applications.
+Configure the exporter based on its current supported options: connection settings, static routing keys, optional direct exchange names, durable publishing, retry settings, and OTLP encoding extensions. With proper RabbitMQ setup and monitoring, the RabbitMQ exporter becomes a useful component for building decoupled observability systems that integrate with message-based workflows and event-driven applications.
