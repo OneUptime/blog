@@ -12,7 +12,7 @@ OpenTelemetry Collectors can serve as lightweight synthetic probing agents when 
 
 ## Architecture Overview
 
-The setup is straightforward. You deploy an OpenTelemetry Collector in each region you care about. Each collector runs the `httpcheck` receiver, which periodically hits your endpoints and generates metrics about response time, status codes, and errors. All collectors export their metrics to a single central backend.
+The setup is straightforward. You deploy an OpenTelemetry Collector in each region you care about. Each collector runs the `http_check` receiver, which periodically hits your endpoints and generates metrics about response time, status classes, and errors. All collectors export their metrics to a single central backend.
 
 ```text
 [Collector: US-East]  ----\
@@ -24,14 +24,14 @@ Each collector tags its metrics with its region, so you can compare performance 
 
 ## Collector Configuration
 
-Here is the configuration for a collector running in one region. You would deploy this same config to each region, changing only the region attribute:
+Here is the configuration for a collector running in one region. You would deploy this same config to each region, changing only the region environment variables:
 
 ```yaml
 # otel-collector-synthetic.yaml
 
 receivers:
   # HTTP check receiver probes endpoints on a schedule
-  httpcheck:
+  http_check:
     targets:
       - endpoint: https://api.example.com/health
         method: GET
@@ -46,10 +46,10 @@ processors:
   attributes:
     actions:
       - key: probe.region
-        value: "us-east-1"
+        value: "${env:PROBE_REGION}"
         action: upsert
       - key: probe.collector_id
-        value: "synthetic-us-east-1"
+        value: "${env:PROBE_COLLECTOR_ID}"
         action: upsert
 
   # Add resource-level attributes
@@ -59,7 +59,7 @@ processors:
         value: "synthetic-monitor"
         action: upsert
       - key: deployment.region
-        value: "us-east-1"
+        value: "${env:PROBE_REGION}"
         action: upsert
 
   batch:
@@ -77,15 +77,15 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [attributes, resource, batch]
       exporters: [otlp]
 ```
 
-The `httpcheck` receiver generates several useful metrics:
-- `httpcheck.status` - 1 for up, 0 for down
+The `http_check` receiver generates several useful metrics with the `httpcheck.*` prefix:
+- `httpcheck.status` - 1 when the response matches a status class such as 2xx, 0 otherwise
 - `httpcheck.duration` - response time in milliseconds
-- `httpcheck.error` - count of failed checks
+- `httpcheck.error` - records errors that occur during checks
 
 ## Deploying Across Regions with Terraform
 
@@ -102,11 +102,12 @@ module "synthetic_collector" {
   for_each = toset(var.regions)
 
   region              = each.value
-  collector_image     = "otel/opentelemetry-collector-contrib:0.96.0"
+  collector_image     = "otel/opentelemetry-collector-contrib:0.153.0"
   config_template     = file("${path.module}/otel-collector-synthetic.yaml")
-  # Substitute the region into the config
-  config_vars = {
-    region = each.value
+  # Inject the region into the collector config through environment variables
+  environment = {
+    PROBE_REGION       = each.value
+    PROBE_COLLECTOR_ID = "synthetic-${each.value}"
   }
   cpu    = 256
   memory = 512
@@ -115,15 +116,12 @@ module "synthetic_collector" {
 }
 ```
 
-For the config templating, use a sed replacement or envsubst to swap the region value at deploy time:
+After updating the ECS task definition or service configuration, force a new deployment in the target region:
 
 ```bash
 # deploy.sh - Deploy collector to a specific region
 #!/bin/bash
 REGION=$1
-
-# Replace the region placeholder in the config
-sed "s/us-east-1/${REGION}/g" otel-collector-synthetic.yaml > /tmp/config-${REGION}.yaml
 
 # Deploy to ECS in the target region
 aws ecs update-service \
@@ -146,9 +144,9 @@ avg by (probe_region) (
   avg_over_time(httpcheck_duration{http_url="https://api.example.com/health"}[10m])
 )
 
-# Availability percentage per region (1 = up, 0 = down)
+# Availability percentage per region based on 2xx responses
 avg by (probe_region) (
-  avg_over_time(httpcheck_status{http_url="https://api.example.com/health"}[1h])
+  avg_over_time(httpcheck_status{http_url="https://api.example.com/health", http_status_class="2xx"}[1h])
 ) * 100
 ```
 
@@ -163,7 +161,7 @@ groups:
     rules:
       - alert: RegionalEndpointDown
         # Endpoint has been down for 5 minutes from a specific region
-        expr: httpcheck_status == 0
+        expr: httpcheck_status{http_status_class="2xx"} == 0
         for: 5m
         labels:
           severity: critical
