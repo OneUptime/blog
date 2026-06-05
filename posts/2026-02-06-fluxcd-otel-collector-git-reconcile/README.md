@@ -43,7 +43,8 @@ otel-infrastructure/
   base/
     otel-collector/
       kustomization.yaml
-      configmap.yaml
+      namespace.yaml
+      config.yaml
       daemonset.yaml
       service.yaml
       serviceaccount.yaml
@@ -52,7 +53,6 @@ otel-infrastructure/
       kustomization.yaml
       patches/
         resources.yaml
-        config.yaml
     staging/
       kustomization.yaml
       patches/
@@ -70,51 +70,48 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - serviceaccount.yaml
-  - configmap.yaml
   - daemonset.yaml
   - service.yaml
+configMapGenerator:
+  - name: otel-collector-config
+    namespace: observability
+    files:
+      - config.yaml
 ```
 
 ```yaml
-# base/otel-collector/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-collector-config
-  namespace: observability
-data:
-  config.yaml: |
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-    processors:
-      batch:
-        send_batch_size: 4096
-        timeout: 1s
-      memory_limiter:
-        check_interval: 5s
-        limit_mib: 1536
-    exporters:
-      otlphttp:
-        endpoint: https://backend:4318
-    service:
-      pipelines:
-        traces:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [otlphttp]
-        metrics:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [otlphttp]
-        logs:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [otlphttp]
+# base/otel-collector/config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch:
+    send_batch_size: 4096
+    timeout: 1s
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 1536
+exporters:
+  otlphttp:
+    endpoint: https://backend:4318
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]
 ```
 
 ```yaml
@@ -136,7 +133,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config", "/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
@@ -162,7 +159,6 @@ resources:
   - ../../base/otel-collector
 patches:
   - path: patches/resources.yaml
-  - path: patches/config.yaml
 ```
 
 ```yaml
@@ -206,14 +202,13 @@ spec:
     name: flux-system
   path: ./overlays/production
   prune: true
-  wait: true
   # Health checks to ensure the rollout succeeds
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
       name: otel-collector
       namespace: observability
-  # Send notifications on reconciliation events
+  # Substitute deployment-time variables from a ConfigMap
   postBuild:
     substituteFrom:
       - kind: ConfigMap
@@ -226,7 +221,7 @@ Set up Flux notifications so your team knows when configs change:
 
 ```yaml
 # clusters/production/otel/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -237,7 +232,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: otel-collector-alerts
@@ -261,7 +256,7 @@ The workflow is simple:
 ```bash
 # 1. Edit the config on a branch
 git checkout -b update-batch-size
-# Edit overlays/production/patches/config.yaml
+# Edit base/otel-collector/config.yaml
 
 # 2. Commit and push
 git add -A && git commit -m "Increase batch size to 8192"
