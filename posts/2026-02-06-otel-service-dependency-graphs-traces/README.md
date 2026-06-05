@@ -32,8 +32,7 @@ receivers:
 
 connectors:
   servicegraph:
-    # How long to wait for matching client/server spans
-    # Spans from different services may arrive at different times
+    # Histogram buckets for request duration metrics
     latency_histogram_buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
       - "http.request.method"
@@ -44,8 +43,7 @@ connectors:
       ttl: 10s          # how long to hold unmatched spans
       max_items: 100000  # max pending span pairs in memory
 
-    # Which resource attributes identify a service
-    # Used as the node labels in the graph
+    # Cache cleanup and store expiration intervals
     cache_loop: 2m
     store_expiration_loop: 10s
 
@@ -93,16 +91,14 @@ The Service Graph Connector produces these metrics for each service-to-service e
 traces_service_graph_request_total{
   client="checkout-service",
   server="payment-service",
-  connection_type="",
-  failed="false"
+  connection_type=""
 }
 
 # Failed request count
-traces_service_graph_request_total{
+traces_service_graph_request_failed_total{
   client="checkout-service",
   server="payment-service",
-  connection_type="",
-  failed="true"
+  connection_type=""
 }
 
 # Request duration histogram (client perspective)
@@ -119,8 +115,8 @@ traces_service_graph_request_server_seconds_bucket{
   le="0.1"
 }
 
-# Unmatched spans (useful for debugging the connector itself)
-traces_service_graph_request_failed_total{
+# Unpaired spans (useful for debugging the connector itself)
+traces_service_graph_unpaired_spans_total{
   client="checkout-service",
   server="unknown"
 }
@@ -135,7 +131,7 @@ Use PromQL to explore your service topology:
 sum(rate(traces_service_graph_request_total[5m])) by (client, server)
 
 # Error rate between specific services
-sum(rate(traces_service_graph_request_total{failed="true"}[5m])) by (client, server)
+sum(rate(traces_service_graph_request_failed_total[5m])) by (client, server)
 /
 sum(rate(traces_service_graph_request_total[5m])) by (client, server)
 
@@ -173,7 +169,7 @@ datasources:
         enabled: true
 ```
 
-In Grafana, go to the Tempo data source Explore view and select the "Service Graph" tab. You will see an interactive graph where:
+In Grafana, go to the Tempo data source Explore view and select the "Service Graph" query type. You will see an interactive graph where:
 
 - Each node is a service
 - Each edge shows request rate and error rate
@@ -198,7 +194,7 @@ connectors:
 This means your service graph will show edges like:
 
 ```text
-checkout-service -> postgresql (db.name="orders")
+checkout-service -> orders (db.name="orders")
 checkout-service -> redis (db.system="redis")
 order-service -> kafka (messaging.system="kafka")
 ```
@@ -218,7 +214,7 @@ connectors:
     store_expiration_loop: 10s
 ```
 
-If you see many `request_failed_total` metrics with `server="unknown"`, it means client spans are not being matched with server spans. Common causes:
+If you see many `unpaired_spans_total` metrics with `server="unknown"`, it means client spans are not being matched with server spans. Common causes:
 
 - The server span arrives after the TTL expires
 - The server is not instrumented (use virtual nodes instead)
