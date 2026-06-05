@@ -54,14 +54,14 @@ Create `.vscode/tasks.json` in your project:
     {
       "label": "Check Collector Health",
       "type": "shell",
-      "command": "curl -s http://localhost:13133/health | jq .",
+      "command": "curl -s http://localhost:13133/ | jq .",
       "problemMatcher": []
     }
   ]
 }
 ```
 
-The `runOn: folderOpen` option for the "Start OTel Collector" task means the collector starts automatically when someone opens the project in VS Code. The collector runs in the background and is ready when the developer starts the application.
+The `runOn: folderOpen` option for the "Start OTel Collector" task means the collector starts automatically when someone opens the project in VS Code, after they allow automatic tasks for the trusted workspace. The collector runs in the background and is ready when the developer starts the application.
 
 ## Launch Configurations for Node.js
 
@@ -80,6 +80,7 @@ Create `.vscode/launch.json`:
       "env": {
         "OTEL_SERVICE_NAME": "${workspaceFolderBasename}",
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_TRACES_EXPORTER": "otlp",
         "NODE_ENV": "development"
       },
@@ -95,6 +96,7 @@ Create `.vscode/launch.json`:
       "env": {
         "OTEL_SERVICE_NAME": "${workspaceFolderBasename}",
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_TRACES_EXPORTER": "otlp",
         "NODE_ENV": "development"
       },
@@ -121,29 +123,36 @@ A few things to notice:
 - The `runtimeArgs` includes `--require ./src/tracing.js`, which loads the OpenTelemetry SDK before your application code runs.
 - The `preLaunchTask` starts the collector before the application launches.
 - The `OTEL_SERVICE_NAME` uses `${workspaceFolderBasename}`, which automatically uses the project directory name. This is handy in monorepos.
+- The `OTEL_EXPORTER_OTLP_PROTOCOL` value matches the Collector's OTLP HTTP receiver on port 4318.
 - There is a "Run WITHOUT Tracing" option for when you want to start the app quickly without the overhead.
 
 ## Launch Configurations for Python
 
 ```json
 {
-  "name": "Python: Run with Tracing",
-  "type": "debugpy",
-  "request": "launch",
-  "module": "opentelemetry.instrumentation.auto_instrumentation",
-  "args": ["python", "${workspaceFolder}/app.py"],
-  "env": {
-    "OTEL_SERVICE_NAME": "${workspaceFolderBasename}",
-    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
-    "OTEL_TRACES_EXPORTER": "otlp",
-    "OTEL_PYTHON_LOG_CORRELATION": "true"
-  },
-  "preLaunchTask": "Start OTel Collector",
-  "console": "integratedTerminal"
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Python: Run with Tracing",
+      "type": "shell",
+      "command": "opentelemetry-instrument python ${workspaceFolder}/app.py",
+      "dependsOn": "Start OTel Collector",
+      "options": {
+        "env": {
+          "OTEL_SERVICE_NAME": "${workspaceFolderBasename}",
+          "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+          "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+          "OTEL_TRACES_EXPORTER": "otlp",
+          "OTEL_PYTHON_LOG_CORRELATION": "true"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
 }
 ```
 
-This uses the `opentelemetry-instrument` auto-instrumentation approach, which wraps your Python application without modifying its code.
+This uses the `opentelemetry-instrument` auto-instrumentation approach, which wraps your Python application without modifying its code. If you need VS Code breakpoints, start the application with `opentelemetry-instrument python -m debugpy --listen 5678 --wait-for-client ${workspaceFolder}/app.py`, then attach to port 5678 with a separate debug configuration.
 
 ## Launch Configurations for Go
 
@@ -157,13 +166,14 @@ This uses the `opentelemetry-instrument` auto-instrumentation approach, which wr
   "env": {
     "OTEL_SERVICE_NAME": "${workspaceFolderBasename}",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
     "OTEL_TRACES_EXPORTER": "otlp"
   },
   "preLaunchTask": "Start OTel Collector"
 }
 ```
 
-Go does not have auto-instrumentation, so the tracing initialization must be in your application code. The environment variables tell the SDK where to send data.
+This configuration assumes tracing initialization is in your application code. Go also has zero-code options for some environments, but a standard VS Code Go launch configuration does not add instrumentation by itself. The environment variables tell the SDK where to send data.
 
 ## Compound Launch Configurations
 
@@ -190,6 +200,6 @@ Hit F5 with "Full Stack with Tracing" selected, and VS Code starts the collector
 
 ## Sharing with the Team
 
-Commit the `.vscode` directory to your repository. When another developer clones the repo and opens it in VS Code, they get the same tasks and launch configurations. The first time they open the project, the collector starts automatically. When they press F5, the application launches with tracing enabled.
+Commit the `.vscode` directory to your repository. When another developer clones the repo and opens it in VS Code, they get the same tasks and launch configurations. The first time they open the project, VS Code asks whether to allow automatic tasks for the trusted workspace. When they press F5, the application launches with tracing enabled.
 
 This is one of those small investments that removes friction from the development workflow and makes observability a default rather than an opt-in.
