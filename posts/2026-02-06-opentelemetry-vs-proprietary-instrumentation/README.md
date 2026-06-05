@@ -25,8 +25,10 @@ from ddtrace import tracer
 def process_payment(amount, currency):
     # Business logic here
     result = charge_card(amount, currency)
-    tracer.set_tag("payment.amount", amount)
-    tracer.set_tag("payment.currency", currency)
+    span = tracer.current_span()
+    if span:
+        span.set_tag("payment.amount", amount)
+        span.set_tag("payment.currency", currency)
     return result
 ```
 
@@ -143,12 +145,12 @@ exporters:
       x-honeycomb-team: ${HONEYCOMB_API_KEY}
 
   # Metrics to Prometheus for long-term storage
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: https://prometheus.example.com/api/v1/write
 
   # Logs to Loki for cost-effective storage
-  loki:
-    endpoint: https://loki.example.com/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: https://loki.example.com/otlp
 
 service:
   pipelines:
@@ -159,11 +161,11 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 Proprietary instrumentation can't do this. Each SDK only talks to its own backend. You'd need multiple instrumentation libraries fighting for control of your application.
@@ -181,20 +183,16 @@ processors:
 
   # Drop high-cardinality metrics
   filter/metrics:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - '.*_histogram_bucket'  # Drop histogram details, keep summaries
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, ".*\\.debug\\..*")'
 
   # Remove verbose debug logs
   filter/logs:
-    logs:
-      exclude:
-        match_type: strict
-        bodies:
-          - "Debug: cache hit"
-          - "Debug: cache miss"
+    error_mode: ignore
+    log_conditions:
+      - 'log.body == "Debug: cache hit"'
+      - 'log.body == "Debug: cache miss"'
 
   # Tail sampling: keep all error traces, sample success
   tail_sampling:
@@ -224,7 +222,7 @@ graph TD
     E --> F
 ```
 
-Self-hosting isn't free (you pay for infrastructure, maintenance, and operational complexity), but it's an option. Proprietary instrumentation requires the vendor's SaaS platform.
+Self-hosting isn't free (you pay for infrastructure, maintenance, and operational complexity), but it's an option. Proprietary instrumentation requires the vendor's backend or agent pipeline.
 
 ### Future-Proofing Architecture
 
