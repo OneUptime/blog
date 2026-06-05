@@ -10,9 +10,9 @@ Spring Boot has a well-defined application lifecycle with shutdown hooks. The Op
 
 ## The Default Behavior
 
-When using the OpenTelemetry Spring Boot Starter, the SDK registers a JVM shutdown hook automatically. This hook calls `shutdown()` on the TracerProvider and MeterProvider. The default timeout for this operation is 10 seconds.
+When using the OpenTelemetry Spring Boot Starter, the SDK is configured through SDK autoconfiguration, which registers a JVM shutdown hook by default. This hook closes the `OpenTelemetrySdk`, which shuts down the SDK providers, processors, readers, and exporters. The default OTLP exporter timeout is 10 seconds per export request, while the BatchSpanProcessor export timeout defaults to 30 seconds.
 
-The problem: if your batch queue is large and your exporter endpoint is slow, 10 seconds may not be enough to flush everything.
+The problem: if your batch queue is large and your exporter endpoint is slow, the default export timeouts may not be enough to flush everything.
 
 ## Manual SDK Configuration with Custom Shutdown
 
@@ -23,11 +23,10 @@ If you are configuring the SDK manually (not using auto-configuration), you need
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.semconv.ResourceAttributes;
+import io.opentelemetry.api.common.AttributeKey;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -57,11 +56,14 @@ public class OtelConfig {
 
     @Bean
     public SdkTracerProvider tracerProvider(BatchSpanProcessor processor) {
+        AttributeKey<String> serviceName = AttributeKey.stringKey("service.name");
+        AttributeKey<String> serviceVersion = AttributeKey.stringKey("service.version");
+
         return SdkTracerProvider.builder()
             .addSpanProcessor(processor)
             .setResource(Resource.create(Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "order-service",
-                ResourceAttributes.SERVICE_VERSION, "2.1.0"
+                serviceName, "order-service",
+                serviceVersion, "2.1.0"
             )))
             .build();
     }
@@ -81,7 +83,6 @@ Use Spring's `@PreDestroy` annotation or implement `DisposableBean` to trigger S
 
 ```java
 // OtelShutdownHandler.java
-import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -163,10 +164,13 @@ Since `@PreDestroy` runs after in-flight requests complete, all spans from those
 
 ```java
 // ApplicationShutdownListener.java
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.TimeUnit;
 
 @Component
 @Order(1)  // Run early in the shutdown sequence
@@ -191,12 +195,13 @@ public class ApplicationShutdownListener
 
 ## Using the Auto-Configuration Approach
 
-If you use the OpenTelemetry Spring Boot Starter with auto-configuration, shutdown is handled for you. You can still customize the timeout via environment variables:
+If you use the OpenTelemetry Spring Boot Starter with auto-configuration, shutdown is handled for you. You can still customize the batch processor and exporter timeouts via environment variables:
 
 ```bash
 # Set via environment variables
 export OTEL_BSP_EXPORT_TIMEOUT=30000
 export OTEL_BSP_MAX_QUEUE_SIZE=8192
+export OTEL_EXPORTER_OTLP_TIMEOUT=30000
 ```
 
 Or in `application.yml`:
@@ -209,6 +214,9 @@ otel:
     max:
       queue:
         size: 8192
+  exporter:
+    otlp:
+      timeout: 30000
 ```
 
 ## Verifying Shutdown Behavior
