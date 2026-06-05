@@ -125,8 +125,15 @@ exporters:
     brokers:
       - kafka-us-east-1.internal:9092
       - kafka-us-east-2.internal:9092
-    topic: otel-dlq-region-a
-    encoding: otlp_proto
+    traces:
+      topic: otel-dlq-region-a-traces
+      encoding: otlp_proto
+    metrics:
+      topic: otel-dlq-region-a-metrics
+      encoding: otlp_proto
+    logs:
+      topic: otel-dlq-region-a-logs
+      encoding: otlp_proto
     producer:
       compression: snappy
       required_acks: -1
@@ -134,7 +141,6 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel/queue
-    max_file_size_mib: 8192
 
   health_check:
     endpoint: 0.0.0.0:13133
@@ -165,13 +171,11 @@ Wait, sending to all three destinations simultaneously means triple the bandwidt
 connectors:
   failover/traces:
     priority_levels:
-      - [otlp/primary]
-      - [otlp/secondary]
-      - [kafka/dlq]
-    # Wait 30 seconds before trying the next level
-    retry_gap: 30s
+      - [traces/primary]
+      - [traces/secondary]
+      - [traces/dlq]
+    # Periodically try to recover higher-priority pipelines
     retry_interval: 15s
-    max_retries: 3
 
 service:
   pipelines:
@@ -238,8 +242,8 @@ The health check should probe the collector's health endpoint:
 
 ```json
 {
-  "Type": "HTTPS",
-  "ResourcePath": "/health",
+  "Type": "HTTP",
+  "ResourcePath": "/",
   "Port": 13133,
   "RequestInterval": 10,
   "FailureThreshold": 3,
@@ -343,14 +347,14 @@ The resource attributes we added earlier (`deployment.region` and `collector.reg
 - Identify data that might have higher latency due to cross-region transit
 
 ```promql
-# Track data volume by source region to detect failover
-sum by (deployment_region) (
-  rate(otelcol_receiver_accepted_spans[5m])
+# Track data volume by exporter to detect failover
+sum by (exporter) (
+  rate(otelcol_exporter_sent_spans_total[5m])
 )
 
-# Monitor cross-region export latency
-histogram_quantile(0.99,
-  rate(otelcol_exporter_send_latency_bucket{exporter="otlp/secondary"}[5m])
+# Monitor failed exports by destination
+sum by (exporter) (
+  rate(otelcol_exporter_send_failed_spans_total[5m])
 )
 ```
 
@@ -390,7 +394,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           env:
             - name: REGION
@@ -473,12 +477,13 @@ echo "$(date): Starting failover test"
 
 # Step 1: Verify baseline -- both regions healthy
 echo "Step 1: Checking baseline health..."
-SENT_A=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans{.*primary' | awk '{print $2}')
-echo "Primary export rate: $SENT_A"
+SENT_A=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans_total{.*primary' | awk '{sum += $2} END {print sum+0}')
+echo "Primary sent spans: $SENT_A"
 
 # Step 2: Simulate Region A backend failure
 echo "Step 2: Simulating backend failure in Region A..."
 # Block traffic to the primary backend using a network policy
+# Replace 10.10.0.0/24 with the CIDR used by the primary backend.
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -496,7 +501,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 10.0.0.0/8
+              - 10.10.0.0/24
 EOF
 
 # Step 3: Wait for failover to occur
@@ -505,8 +510,8 @@ sleep 90
 
 # Step 4: Verify data is flowing to secondary
 echo "Step 4: Checking secondary export rate..."
-SENT_B=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans{.*secondary' | awk '{print $2}')
-echo "Secondary export rate: $SENT_B"
+SENT_B=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans_total{.*secondary' | awk '{sum += $2} END {print sum+0}')
+echo "Secondary sent spans: $SENT_B"
 
 if [ "$SENT_B" -gt 0 ]; then
     echo "PASS: Data is flowing to secondary backend"
@@ -524,8 +529,8 @@ sleep 60
 
 # Step 7: Verify return to primary
 echo "Step 7: Checking primary export rate..."
-SENT_A_AFTER=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans{.*primary' | awk '{print $2}')
-echo "Primary export rate after recovery: $SENT_A_AFTER"
+SENT_A_AFTER=$(curl -s "$COLLECTOR_METRICS/metrics" | grep 'otelcol_exporter_sent_spans_total{.*primary' | awk '{sum += $2} END {print sum+0}')
+echo "Primary sent spans after recovery: $SENT_A_AFTER"
 
 echo "=== Failover test complete ==="
 ```
@@ -545,10 +550,10 @@ To reduce costs, consider sending only critical telemetry (errors and high-laten
 processors:
   # During failover, only forward critical data cross-region
   filter/critical_only:
+    error_mode: ignore
     traces:
       span:
-        - 'status.code == STATUS_CODE_ERROR'
-        - 'duration > 5000000000'  # 5 seconds in nanoseconds
+        - 'span.status.code != STATUS_CODE_ERROR and (span.end_time - span.start_time) <= Duration("5s")'
 ```
 
 ## Wrapping Up
