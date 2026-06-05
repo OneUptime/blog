@@ -130,7 +130,7 @@ class CommissionCalculator:
                         category=item["category"],
                         seller_id=sub_order["seller_id"]
                     )
-                    item_span.set_attribute("commission.rate", rate)
+                    item_span.set_attribute("commission.rate", rate["percentage"])
                     item_span.set_attribute("commission.rate_source", rate["source"])
 
                     # Calculate the commission amount
@@ -193,7 +193,7 @@ Different sellers use different fulfillment methods. Some handle their own shipp
 ```python
 class SellerRouter:
     def route_to_seller(self, sub_order: dict, commission_result: dict):
-        start = time.time()
+        start = time.perf_counter()
 
         with tracer.start_as_current_span("marketplace.route_to_seller") as span:
             span.set_attribute("sub_order.id", sub_order["sub_order_id"])
@@ -214,14 +214,14 @@ class SellerRouter:
                                    f"Unknown fulfillment type: {fulfillment_type}")
                     raise ValueError(f"Unknown fulfillment type: {fulfillment_type}")
 
-                latency = (time.time() - start) * 1000
+                latency = (time.perf_counter() - start) * 1000
                 routing_latency.record(latency, {
                     "fulfillment.type": fulfillment_type,
                     "routing.status": "success"
                 })
 
             except Exception as e:
-                latency = (time.time() - start) * 1000
+                latency = (time.perf_counter() - start) * 1000
                 routing_latency.record(latency, {
                     "fulfillment.type": fulfillment_type,
                     "routing.status": "error"
