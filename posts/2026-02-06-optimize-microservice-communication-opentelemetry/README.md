@@ -45,7 +45,10 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 resource = Resource.create({SERVICE_NAME: "order-service"})
 reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="https://otel.oneuptime.com/v1/metrics"),
+    OTLPMetricExporter(
+        endpoint="https://oneuptime.com/otlp/v1/metrics",
+        headers={"x-oneuptime-token": "YOUR_ONEUPTIME_SERVICE_TOKEN"},
+    ),
     export_interval_millis=10000,
 )
 provider = MeterProvider(resource=resource, metric_readers=[reader])
@@ -94,7 +97,6 @@ A chatty service makes many small calls when fewer, larger calls would be more e
 ```python
 # chattiness_analyzer.py
 from collections import defaultdict
-from datetime import datetime
 
 class ChattinessAnalyzer:
     """
@@ -159,10 +161,13 @@ Long synchronous call chains are a latency killer. If Service A calls Service B,
 
 ```python
 # chain_analyzer.py
+from collections import defaultdict
+
 def find_critical_path(trace_spans: list) -> list:
     """
-    Find the longest synchronous call chain in a trace.
-    This is the critical path that determines overall request latency.
+    Find the deepest synchronous service-hop chain in a trace.
+    Use span start and end timestamps in your tracing backend when you need
+    exact critical-path latency analysis.
     """
     span_map = {s["span_id"]: s for s in trace_spans}
 
@@ -249,7 +254,7 @@ protocol_errors = meter.create_counter(
 def record_service_call(protocol: str, target_service: str, duration_ms: float, success: bool):
     """Record metrics for a service-to-service call."""
     attributes = {
-        "rpc.protocol": protocol,  # "http", "grpc", "kafka"
+        "service.communication.protocol": protocol,  # "http", "grpc", "kafka"
         "target.service": target_service,
     }
 
@@ -304,9 +309,13 @@ async def execute_with_span(service: str, method: str, params: dict):
     """Execute a single service call with its own trace span."""
     with tracer.start_as_current_span(f"call.{service}.{method}") as span:
         span.set_attribute("target.service", service)
-        span.set_attribute("rpc.method", method)
+        span.set_attribute("service.communication.method", method)
         result = await make_service_call(service, method, params)
         return result
+
+async def make_service_call(service: str, method: str, params: dict):
+    """Replace this with your HTTP, gRPC, or messaging client call."""
+    raise NotImplementedError("Implement the service client call here")
 ```
 
 The `fanout.parallel` span captures the total time for the fan-out, while each child span captures individual call timings. If you see that 3 out of 5 parallel calls complete in 20ms but the other 2 take 200ms, you know exactly which downstream services are the bottleneck.
