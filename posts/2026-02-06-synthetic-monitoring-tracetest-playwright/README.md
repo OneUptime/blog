@@ -116,7 +116,7 @@ spec:
       name: Inventory check performance
       assertions:
         - attr:tracetest.span.duration < 50ms
-        - attr:cache.hit exists
+        - attr:cache.hit = true
 
     # No span should have errors
     - selector: span[status.code="ERROR"]
@@ -132,19 +132,17 @@ A shell script orchestrates Playwright and Tracetest:
 ```bash
 #!/bin/bash
 # run-synthetic-test.sh
+set -euo pipefail
 
 # Run the Playwright test and capture the trace ID from output
-OUTPUT=$(npx playwright test tests/synthetic/checkout-flow.spec.ts 2>&1)
-PLAYWRIGHT_EXIT=$?
-
-if [ $PLAYWRIGHT_EXIT -ne 0 ]; then
+if ! OUTPUT=$(npx playwright test tests/synthetic/checkout-flow.spec.ts 2>&1); then
   echo "Playwright test failed"
   echo "$OUTPUT"
   exit 1
 fi
 
 # Extract the trace ID from Playwright output
-TRACE_ID=$(echo "$OUTPUT" | grep "TRACE_ID=" | sed 's/TRACE_ID=//')
+TRACE_ID=$(printf '%s\n' "$OUTPUT" | sed -n 's/.*TRACE_ID=//p' | tail -n 1)
 
 if [ -z "$TRACE_ID" ]; then
   echo "Could not extract trace ID from Playwright output"
@@ -153,18 +151,28 @@ fi
 
 echo "Captured trace ID: $TRACE_ID"
 
+: "${TRACETEST_SERVER_URL:?Set TRACETEST_SERVER_URL to your Tracetest server URL}"
+
+TRACETEST_VARS_FILE=$(mktemp)
+trap 'rm -f "$TRACETEST_VARS_FILE"' EXIT
+
+cat > "$TRACETEST_VARS_FILE" <<EOF
+type: VariableSet
+spec:
+  name: synthetic-runtime-vars
+  values:
+    - key: TRACE_ID
+      value: "$TRACE_ID"
+EOF
+
 # Wait a few seconds for the trace to be fully collected
 sleep 5
 
 # Run Tracetest assertions against the captured trace
-tracetest run test \
+if ! tracetest --server-url "$TRACETEST_SERVER_URL" run test \
   --file tracetest/checkout-assertions.yaml \
-  --vars "TRACE_ID=$TRACE_ID" \
-  --output pretty
-
-TRACETEST_EXIT=$?
-
-if [ $TRACETEST_EXIT -ne 0 ]; then
+  --vars "$TRACETEST_VARS_FILE" \
+  --output pretty; then
   echo "Trace-based assertions failed!"
   exit 1
 fi
@@ -202,10 +210,13 @@ jobs:
 
       - name: Alert on failure
         if: failure()
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
-          channel-id: 'C01234PERF'
-          slack-message: 'Synthetic performance test failed! Check the trace at ${{ env.TRACE_URL }}'
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: C01234PERF
+            text: 'Synthetic performance test failed! Check the trace at ${{ env.TRACE_URL }}'
 ```
 
 ## Why Trace-Based Synthetic Testing Wins
