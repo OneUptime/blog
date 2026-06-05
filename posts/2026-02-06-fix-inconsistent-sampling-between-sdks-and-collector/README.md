@@ -33,18 +33,20 @@ The key problem is this: head sampling in the SDK decides whether to record a sp
 
 The most obvious symptom is broken traces in your backend. You will see traces where a parent span exists but child spans are missing, or child spans appear without their parent. Another common sign is that your actual ingestion volume does not match what you would expect from your configured sample rates.
 
-Here is a quick way to check. If you have a service A calling service B, and both use a 50% sample rate independently, you might expect 50% of traces to come through. But what actually happens is that each service makes its own coin flip. About 25% of traces will have both spans, 25% will have only the span from A, 25% will have only the span from B, and 25% will be fully dropped. That means half of your "sampled" traces are incomplete.
+Here is a quick way to check. If you have a service A calling service B, and both use independent non-parent-based samplers with a 50% sample rate, you might expect 50% of traces to come through. But what actually happens is that each service can make its own decision. About 25% of traces can have both spans, 25% can have only the span from A, 25% can have only the span from B, and 25% can be fully dropped. That means half of your "sampled" traces are incomplete.
 
-You can verify this by checking the `otelcol_receiver_accepted_spans` and `otelcol_processor_dropped_spans` metrics on your Collector:
+You can verify this by checking the `otelcol_receiver_accepted_spans` metric and the tail sampling decision metrics on your Collector:
 
 ```bash
-# Check how many spans the Collector receives vs drops
+# Check how many spans the Collector receives
 
-# A large gap indicates aggressive sampling somewhere in the pipeline
 curl -s http://localhost:8888/metrics | grep otelcol_receiver_accepted_spans
 
 # Check tail sampling decisions
-curl -s http://localhost:8888/metrics | grep otelcol_processor_dropped_spans
+curl -s http://localhost:8888/metrics | grep otelcol_processor_tail_sampling_global_count_traces_sampled
+
+# Check whether traces are being dropped before a decision can be made
+curl -s http://localhost:8888/metrics | grep otelcol_processor_tail_sampling_sampling_trace_dropped_too_early
 ```
 
 If you see a high drop rate at the Collector after already sampling at the SDK level, you are double-sampling and losing more data than intended.
@@ -223,7 +225,7 @@ service:
       exporters: [otlp]
 ```
 
-This configuration keeps all error traces and slow traces while sampling 10% of normal traffic. Because the decision happens after all spans arrive, every trace that gets kept is complete.
+This configuration keeps all error traces and slow traces while sampling 10% of normal traffic. Because the decision happens after the Collector waits for the trace, kept traces are complete as long as all spans reach the same Collector before the decision window expires.
 
 ## The Gateway Pattern for Consistent Tail Sampling
 
@@ -291,7 +293,7 @@ export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.25
 ```
 
-Second, inspect the `tracestate` and sampling flag on spans arriving at the Collector. The W3C trace context carries sampling information in the `traceparent` header. A sampled trace has the flag set to `01`:
+Second, inspect the sampling flag on spans arriving at the Collector. The W3C trace context carries sampling information in the `traceparent` header. A sampled trace has the flag set to `01`:
 
 ```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
