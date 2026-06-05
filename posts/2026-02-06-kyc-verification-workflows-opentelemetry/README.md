@@ -73,7 +73,6 @@ Document verification typically involves OCR to extract data and machine learnin
 # kyc_document_verification.py
 def verify_document(customer_id: str, document):
     with tracer.start_as_current_span("kyc.document.verify") as span:
-        span.set_attribute("kyc.customer_id", customer_id)
         span.set_attribute("kyc.document.type", document.type)
         span.set_attribute("kyc.document.country", document.issuing_country)
 
@@ -194,8 +193,6 @@ def verify_address(customer_id: str, address):
             postal_duration = (time.monotonic() - postal_t0) * 1000
 
             postal_span.set_attribute("kyc.address.postal_valid", postal_result.valid)
-            postal_span.set_attribute("kyc.address.postal_normalized",
-                postal_result.normalized_address)
 
             kyc_vendor_latency.record(postal_duration, {
                 "vendor": "postal_service",
@@ -219,7 +216,10 @@ def verify_address(customer_id: str, address):
             })
             results.append(bureau_result)
 
-        verified = any(r.valid or r.match for r in results)
+        verified = any(
+            getattr(r, "valid", False) or getattr(r, "match", False)
+            for r in results
+        )
         span.set_attribute("kyc.address.verified", verified)
 
         return AddressVerificationResult(verified=verified, sources=results)
@@ -233,7 +233,6 @@ Putting it all together, the KYC orchestrator runs all verification steps and ma
 # kyc_orchestrator.py
 def run_kyc_verification(customer_id: str, onboarding_data):
     with tracer.start_as_current_span("kyc.verification.full") as root_span:
-        root_span.set_attribute("kyc.customer_id", customer_id)
         root_span.set_attribute("kyc.channel", onboarding_data.channel)
         root_span.set_attribute("kyc.product", onboarding_data.product_type)
 
@@ -278,6 +277,6 @@ def run_kyc_verification(customer_id: str, onboarding_data):
 
 ## Compliance Reporting From Telemetry
 
-The metrics and traces you collect feed directly into compliance reporting. You can report on average KYC completion times (regulators want this to be reasonable so you are not discouraging customers), rejection rates by reason, the percentage of cases escalated for manual review, and vendor reliability. The trace data provides an audit trail showing every step taken for each customer verification, which is exactly what examiners ask for during regulatory audits.
+The metrics and traces you collect can support compliance reporting. You can report on average KYC completion times (regulators want this to be reasonable so you are not discouraging customers), rejection rates by reason, the percentage of cases escalated for manual review, and vendor reliability. The trace data can supplement an audit trail showing every step taken for each customer verification when it is retained and protected according to your compliance requirements.
 
 Track `kyc.vendor.latency_ms` closely. Third-party vendor performance is often the biggest variable in your KYC pipeline. When a vendor degrades, your entire onboarding flow slows down. Having historical latency data lets you hold vendors accountable to their SLAs and make informed decisions about when to switch providers.
