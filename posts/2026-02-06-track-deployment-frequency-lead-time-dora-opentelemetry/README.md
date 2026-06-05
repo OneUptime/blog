@@ -8,7 +8,7 @@ Description: Learn how to implement DORA metrics for deployment frequency and le
 
 ---
 
-The DORA (DevOps Research and Assessment) metrics have become the standard way to measure software delivery performance. Of the four key metrics, deployment frequency and lead time for changes are the two that most directly reflect how fast a team can deliver value. Deployment frequency measures how often you ship to production. Lead time for changes measures how long it takes from code commit to production deployment.
+The DORA metrics have become the standard way to measure software delivery performance. Of the software delivery performance metrics, deployment frequency and change lead time are the two that most directly reflect how fast a team can deliver value. Deployment frequency measures how often you ship to production. Change lead time measures how long it takes from code commit to production deployment.
 
 Most teams track these metrics manually or through vendor-specific integrations. But if you already have an OpenTelemetry pipeline in place, you can capture DORA metrics alongside your existing traces and metrics, giving you a unified observability stack that covers both application health and delivery performance.
 
@@ -18,9 +18,9 @@ This guide shows you how to instrument your deployment pipeline to emit DORA-ali
 
 Before writing any code, let us be precise about what we are measuring.
 
-**Deployment frequency** is the number of successful deployments to production within a given time period. A deployment counts when new code is actually running in production, not when a CI build finishes or when an artifact is published. The DORA research categorizes teams as elite (on-demand, multiple deploys per day), high (between once per day and once per week), medium (between once per week and once per month), and low (between once per month and once every six months).
+**Deployment frequency** is the number of successful deployments to production within a given time period. A deployment counts when new code is actually running in production, not when a CI build finishes or when an artifact is published. DORA benchmark ranges include values from fewer than once per six months through on-demand deployments multiple times per day.
 
-**Lead time for changes** is the time between when a commit is made and when that commit is running in production. This includes CI build time, approval time, deployment time, and any manual steps in between. Elite teams have lead times under one day. Low performers can take over six months.
+**Lead time for changes** is the time between when a commit is made and when that commit is running in production. This includes CI build time, approval time, deployment time, and any manual steps in between. DORA benchmark ranges include values from more than six months through less than one hour.
 
 ```mermaid
 graph LR
@@ -52,8 +52,6 @@ Here is a Python module that you can call from your deployment pipeline to recor
 
 # Records DORA deployment frequency and lead time metrics via OpenTelemetry
 
-import time
-import os
 from datetime import datetime, timezone
 
 from opentelemetry import trace, metrics
@@ -114,17 +112,19 @@ lead_time_histogram = meter.create_histogram(
 
 
 def record_deployment(commit_sha, commit_timestamp_iso, service_name,
-                      environment="production", deployer=None, branch="main"):
+                      environment="production", deployer=None, branch="main",
+                      count_deployment=True):
     """
     Record a deployment event with both trace and metric telemetry.
 
     Args:
         commit_sha: The git commit SHA being deployed
-        commit_timestamp_iso: ISO 8601 timestamp of when the commit was created
+        commit_timestamp_iso: ISO 8601 committer timestamp for the commit
         service_name: Name of the service being deployed
         environment: Target environment (should be 'production' for DORA)
         deployer: Username or system that triggered the deployment
         branch: Git branch name
+        count_deployment: Whether to increment the deployment frequency counter
     """
     # Parse the commit timestamp and calculate lead time
     commit_time = datetime.fromisoformat(commit_timestamp_iso.replace("Z", "+00:00"))
@@ -151,8 +151,9 @@ def record_deployment(commit_sha, commit_timestamp_iso, service_name,
         span.set_attribute("vcs.commit.timestamp", commit_timestamp_iso)
         span.set_status(Status(StatusCode.OK))
 
-    # Increment the deployment counter
-    deployment_counter.add(1, attributes)
+    # Increment the deployment counter once per actual production deployment
+    if count_deployment:
+        deployment_counter.add(1, attributes)
 
     # Record the lead time in the histogram
     lead_time_histogram.record(lead_time_seconds, attributes)
@@ -210,27 +211,29 @@ jobs:
         if: success()
         run: |
           # Install OpenTelemetry dependencies
-          pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
+          python3 -m pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
 
-          # Get the commit timestamp from git
-          COMMIT_TIMESTAMP=$(git show -s --format=%cI ${{ github.sha }})
+          # Get the committer timestamp from git
+          export COMMIT_TIMESTAMP=$(git show -s --format=%cI "$GITHUB_SHA")
 
           # Record the deployment event
-          python -c "
+          python3 <<'PY'
+          import os
           from dora_telemetry import record_deployment
+
           result = record_deployment(
-              commit_sha='${{ github.sha }}',
-              commit_timestamp_iso='${COMMIT_TIMESTAMP}',
+              commit_sha=os.environ["GITHUB_SHA"],
+              commit_timestamp_iso=os.environ["COMMIT_TIMESTAMP"],
               service_name='my-application',
               environment='production',
-              deployer='${{ github.actor }}',
-              branch='${{ github.ref_name }}',
+              deployer=os.environ["GITHUB_ACTOR"],
+              branch=os.environ["GITHUB_REF_NAME"],
           )
-          print(f'Deployment recorded. Lead time: {result[\"lead_time_hours\"]:.2f} hours')
-          "
+          print(f'Deployment recorded. Lead time: {result["lead_time_hours"]:.2f} hours')
+          PY
 ```
 
-The key detail here is using `git show -s --format=%cI` to get the commit timestamp in ISO 8601 format. This gives you the actual moment the commit was created, which is the starting point for lead time calculation.
+The key detail here is using `git show -s --format=%cI` to get the committer timestamp in strict ISO 8601 format. This gives you a consistent commit timestamp, which is the starting point for lead time calculation.
 
 ## Handling Multi-Commit Deployments
 
@@ -241,6 +244,8 @@ In practice, a single deployment often includes multiple commits. The DORA defin
 # Extension to handle multi-commit deployments
 
 import subprocess
+
+from dora_telemetry import record_deployment
 
 def get_commits_since_last_deploy(last_deployed_sha, current_sha):
     """Get all commits between the last deployment and this one."""
@@ -266,6 +271,7 @@ def record_batch_deployment(last_deployed_sha, current_sha, service_name):
             commit_sha=commit["sha"],
             commit_timestamp_iso=commit["timestamp"],
             service_name=service_name,
+            count_deployment=False,
         )
 
     # Also record the batch as a whole
@@ -296,19 +302,9 @@ processors:
   batch:
     timeout: 10s
 
-  # Add DORA classification based on lead time
-  transform:
-    metric_statements:
-      - context: datapoint
-        statements:
-          # Tag metrics with DORA performance level based on lead time
-          - set(attributes["dora.performance_level"], "elite")
-            where attributes["dora.lead_time.seconds"] != nil
-            and attributes["dora.lead_time.seconds"] < 86400
-
 exporters:
   otlp:
-    endpoint: your-backend:4317
+    endpoint: https://your-backend:4317
 
 service:
   pipelines:
@@ -326,7 +322,7 @@ service:
 
 With telemetry flowing, build dashboards that show your DORA metrics clearly:
 
-**Deployment Frequency Panel**: Query the `dora.deployments.total` counter, grouped by `deployment.service` and bucketed by day or week. Show this as a bar chart over time. Compare against DORA benchmarks to see which category your team falls into.
+**Deployment Frequency Panel**: Query the `dora.deployments.total` counter, grouped by `deployment.service` and bucketed by day or week. Show this as a bar chart over time. Compare against DORA benchmarks to understand where your team sits.
 
 **Lead Time Distribution Panel**: Query the `dora.lead_time.duration` histogram to show p50, p75, and p95 lead times. A widening gap between p50 and p95 means some changes are getting stuck while others flow quickly, which often points to a bottleneck in the review or approval process.
 
@@ -334,4 +330,4 @@ With telemetry flowing, build dashboards that show your DORA metrics clearly:
 
 ## Wrapping Up
 
-DORA metrics are only useful if you measure them consistently and accurately. By building deployment frequency and lead time tracking into your OpenTelemetry pipeline, you get automated, precise measurement that does not depend on manual data entry or vendor lock-in. The data lives alongside your application traces and infrastructure metrics, giving you a complete picture of both how your software performs and how your team delivers it. Start with these two metrics, and once you have the pipeline in place, adding change failure rate and mean time to recovery is a natural next step.
+DORA metrics are only useful if you measure them consistently and accurately. By building deployment frequency and lead time tracking into your OpenTelemetry pipeline, you get automated, precise measurement that does not depend on manual data entry or vendor lock-in. The data lives alongside your application traces and infrastructure metrics, giving you a complete picture of both how your software performs and how your team delivers it. Start with these two metrics, and once you have the pipeline in place, adding change fail rate, failed deployment recovery time, and deployment rework rate is a natural next step.
