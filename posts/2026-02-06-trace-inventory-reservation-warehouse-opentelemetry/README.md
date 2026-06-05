@@ -123,7 +123,7 @@ async def reserve_single_item(order_id: str, item: dict):
                     timeout=5.0
                 )
 
-            lock_span.set_attribute("http.status_code", response.status_code)
+            lock_span.set_attribute("http.response.status_code", response.status_code)
 
             if response.status_code == 200:
                 result = response.json()
@@ -142,6 +142,7 @@ On the warehouse service, extract the trace context from the incoming request to
 
 ```python
 from flask import Flask, request
+from opentelemetry import trace
 from opentelemetry.propagate import extract
 
 app = Flask(__name__)
@@ -186,6 +187,8 @@ def handle_reserve():
 Reservations that are not converted to orders need to be released. Trace this cleanup process too.
 
 ```python
+import time
+
 def cleanup_expired_reservations():
     """Scheduled job that runs every 5 minutes."""
     with warehouse_tracer.start_as_current_span("warehouse.cleanup_expired") as span:
