@@ -19,12 +19,12 @@ flowchart TD
     Frontend[Frontend - TypeScript] --> Cart[Cart - .NET]
     Frontend --> Catalog[Product Catalog - Go]
     Frontend --> Checkout[Checkout - Go]
-    Checkout --> Payment[Payment - Node.js]
+    Checkout --> Payment[Payment - JavaScript]
     Checkout --> Shipping[Shipping - Rust]
     Checkout --> Email[Email - Ruby]
     Frontend --> Recommendation[Recommendation - Python]
     Recommendation --> Catalog
-    Cart --> Redis[(Redis)]
+    Cart --> Valkey[(Valkey)]
     Catalog --> Postgres[(PostgreSQL)]
 ```
 
@@ -40,20 +40,22 @@ Clone the repository and start the demo with Docker Compose:
 git clone https://github.com/open-telemetry/opentelemetry-demo.git
 cd opentelemetry-demo
 
-# Start all services with Docker Compose
-docker compose up -d
+# Start all services with the repository's Docker Compose wrapper
+make start
 
 # Verify everything is running
-docker compose ps
+docker compose --env-file .env --env-file .env.override \
+  -f compose.yaml -f compose.full.yaml -f compose.observability.yaml -f compose.extras.yaml \
+  ps
 ```
 
 After a few minutes, you will have the following endpoints available:
 
 ```text
 Frontend:           http://localhost:8080
-Grafana:            http://localhost:8080/grafana
-Jaeger:             http://localhost:8080/jaeger
-Load Generator:     http://localhost:8080/loadgen
+Grafana:            http://localhost:8080/grafana/
+Jaeger:             http://localhost:8080/jaeger/ui/
+Load Generator:     http://localhost:8080/loadgen/
 Feature Flags:      http://localhost:8080/feature
 ```
 
@@ -66,28 +68,17 @@ One of the most practical uses of the demo is testing Collector configurations b
 First, locate the Collector config used by the demo:
 
 ```bash
-# The default collector config is in the src directory
-ls src/otelcollector/
+# The default Collector config is in the src directory
+ls src/otel-collector/
 ```
 
-Create a modified configuration to test. For example, if you want to test a tail-sampling configuration:
+Create a modified extras configuration to test. For example, if you want to test a tail-sampling configuration:
 
 ```yaml
 # custom-collector-config.yaml
-# Custom collector config to test with the demo app
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
+# Custom Collector extras config to test with the demo app
 
 processors:
-  batch:
-    timeout: 5s
-
   # Test tail sampling with realistic traffic
   tail_sampling:
     decision_wait: 10s
@@ -109,42 +100,31 @@ processors:
         probabilistic:
           sampling_percentage: 20
 
-exporters:
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-  debug:
-    verbosity: basic
-
 service:
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [tail_sampling, batch]
-      exporters: [otlp/jaeger, debug]
+      processors: [resourcedetection, memory_limiter, transform/sanitize_spans, tail_sampling]
+      exporters: [debug, otlp_grpc/jaeger, span_metrics]
 ```
 
-Mount your custom config into the demo's Collector container by modifying the Docker Compose override:
+Run the Collector with your custom extras file by overriding the extras config path:
 
-```yaml
-# docker-compose.override.yaml
-# Override the Collector configuration for testing
-
-services:
-  otel-col:
-    volumes:
-      - ./custom-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+```bash
+OTEL_COLLECTOR_CONFIG_EXTRAS=./custom-collector-config.yaml \
+  make restart service=otel-collector
 ```
 
 Restart just the Collector to pick up the new configuration:
 
 ```bash
-# Restart only the Collector with the new config
-docker compose restart otel-col
+# Recreate only the Collector with the new config
+OTEL_COLLECTOR_CONFIG_EXTRAS=./custom-collector-config.yaml \
+  make restart service=otel-collector
 
 # Watch the Collector logs for errors
-docker compose logs -f otel-col
+docker compose --env-file .env --env-file .env.override \
+  -f compose.yaml -f compose.full.yaml -f compose.observability.yaml -f compose.extras.yaml \
+  logs -f otel-collector
 ```
 
 The load generator continues sending traffic through the demo services, giving your custom Collector configuration realistic data to process.
@@ -155,8 +135,8 @@ The demo's multi-language architecture makes it ideal for verifying that context
 
 ```bash
 # Open Jaeger UI and search for checkout traces
-# These traces cross Go, Node.js, Rust, and Ruby services
-# URL: http://localhost:8080/jaeger
+# These traces cross Go, JavaScript, Rust, and Ruby services
+# URL: http://localhost:8080/jaeger/ui/
 ```
 
 To programmatically verify context propagation, query the Jaeger API:
@@ -175,7 +155,7 @@ def get_multi_service_traces():
     response = requests.get(
         "http://localhost:8080/jaeger/api/traces",
         params={
-            "service": "checkoutservice",
+            "service": "checkout",
             "limit": 10,
         },
     )
@@ -193,10 +173,10 @@ def verify_trace_completeness(trace_data):
 
     # A complete checkout trace should include these services
     expected_services = {
-        "checkoutservice",
-        "paymentservice",
-        "shippingservice",
-        "emailservice",
+        "checkout",
+        "payment",
+        "shipping",
+        "email",
     }
 
     missing = expected_services - services_seen
@@ -230,20 +210,23 @@ The demo includes a feature flag service that lets you inject failures and test 
 # URL: http://localhost:8080/feature
 
 # Available feature flags include:
-# - productCatalogFailure: Makes product catalog return errors
-# - recommendationCache: Enables caching in the recommendation service
-# - adServiceManualGc: Triggers manual garbage collection
-# - adServiceHighCpu: Simulates high CPU usage
+# - productCatalogFailure: Makes product catalog return errors for a specific product
+# - recommendationCacheFailure: Creates a recommendation service cache leak scenario
+# - adManualGc: Triggers manual garbage collection
+# - adHighCpu: Simulates high CPU usage
 ```
 
 You can also toggle feature flags programmatically:
 
 ```bash
-# Enable the product catalog failure flag via the API
-# This causes random failures in the catalog service
-curl -X PUT http://localhost:8080/feature/productCatalogFailure \
-  -H "Content-Type: application/json" \
-  -d '{"enabled": true}'
+# Enable the product catalog failure flag via the flagd-ui API
+# This causes failures for product ID OLJCESPC7Z
+curl -s http://localhost:8080/feature/api/read \
+  | jq '.flags.productCatalogFailure.defaultVariant = "on" | del(.flags.productCatalogFailure.targeting)' \
+  | jq -c '{data: .}' \
+  | curl -X POST http://localhost:8080/feature/api/write \
+      -H "Content-Type: application/json" \
+      --data-binary @-
 ```
 
 After enabling a failure flag, check Jaeger for error traces. This validates that your error detection, sampling rules, and alerting would catch real failures.
@@ -263,11 +246,11 @@ services:
       dockerfile: Dockerfile
     environment:
       # Point your service at the demo's Collector
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-col:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=my-custom-service
       - OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0
     depends_on:
-      - otel-col
+      - otel-collector
     ports:
       - "8090:8090"
 ```
@@ -342,7 +325,8 @@ While the load test runs, monitor the Collector's metrics to verify it handles t
 
 ```bash
 # Check Collector metrics for dropped spans
-curl -s http://localhost:8888/metrics | grep otelcol_processor_dropped
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query={__name__=~"otelcol_processor_.*dropped.*"}'
 ```
 
 ## Validating End-to-End Observability
@@ -364,7 +348,7 @@ def test_traces_reach_jaeger():
     )
     services = response.json().get("data", [])
 
-    expected = ["frontend", "checkoutservice", "paymentservice"]
+    expected = ["frontend", "checkout", "payment"]
     for svc in expected:
         assert svc in services, f"Service {svc} not found in Jaeger"
     print("All expected services found in Jaeger")
