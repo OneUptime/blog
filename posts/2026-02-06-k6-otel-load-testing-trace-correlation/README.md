@@ -6,19 +6,19 @@ Tags: OpenTelemetry, k6, Load Testing, Distributed Tracing, Performance
 
 Description: Set up k6 load testing with OpenTelemetry output to correlate load test results with distributed traces for deep performance analysis.
 
-k6 is a popular load testing tool, and starting with its experimental OpenTelemetry output, you can send k6 metrics directly to an OpenTelemetry Collector. Even more powerful, you can propagate trace context from k6 into your backend so that every load test request shows up as a distributed trace. This means you can drill down from "P95 latency spiked at 500 virtual users" to the exact trace showing what happened inside your application during that spike.
+k6 is a popular load testing tool, and with its OpenTelemetry output, you can send k6 metrics directly to an OpenTelemetry Collector. Even more powerful, you can propagate trace context from k6 into your backend so that load test requests can show up as distributed traces. This means you can drill down from "P95 latency spiked at 500 virtual users" to the exact trace showing what happened inside your application during that spike.
 
 ## Enabling OpenTelemetry Output in k6
 
-k6 has a built-in experimental OpenTelemetry output. Enable it by setting environment variables:
+k6 has a built-in OpenTelemetry output. Enable it by setting environment variables:
 
 ```bash
 # Run k6 with OTel output enabled
 
 K6_OTEL_GRPC_EXPORTER_INSECURE=true \
 K6_OTEL_METRIC_PREFIX=k6_ \
-K6_OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317 \
-k6 run --out experimental-opentelemetry load-test.js
+K6_OTEL_GRPC_EXPORTER_ENDPOINT=localhost:4317 \
+k6 run --out opentelemetry load-test.js
 ```
 
 ## Writing a Load Test with Trace Propagation
@@ -31,13 +31,16 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 
-// Generate a random hex string for trace IDs
+// Generate a random, non-zero hex string for trace IDs and span IDs
 function randomHex(length) {
-  let result = '';
-  const chars = '0123456789abcdef';
-  for (let i = 0; i < length; i++) {
-    result += chars[Math.floor(Math.random() * 16)];
-  }
+  let result;
+  do {
+    result = '';
+    const chars = '0123456789abcdef';
+    for (let i = 0; i < length; i++) {
+      result += chars[Math.floor(Math.random() * 16)];
+    }
+  } while (/^0+$/.test(result));
   return result;
 }
 
@@ -129,6 +132,7 @@ processors:
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
+    translation_strategy: "UnderscoreEscapingWithoutSuffixes"
   otlp/tempo:
     endpoint: "tempo:4317"
     tls:
@@ -160,7 +164,7 @@ PROMETHEUS_URL = "http://localhost:9090"
 
 def find_slow_traces(start_time, end_time, min_duration_ms=500):
     """Find traces from the load test that exceeded the latency threshold."""
-    query = f'{{resource.service.name="my-api" && span.http.request.header.x_load_test="true" && duration>{min_duration_ms}ms}}'
+    query = f'{{resource.service.name="my-api" && span.http.request.header."x-load-test"="true" && span:duration>{min_duration_ms}ms}}'
     resp = requests.get(f"{TEMPO_URL}/api/search", params={
         "q": query,
         "start": int(start_time.timestamp()),
@@ -172,9 +176,9 @@ def find_slow_traces(start_time, end_time, min_duration_ms=500):
 def get_k6_metrics_at_time(timestamp):
     """Get the k6 virtual user count and request rate at a specific time."""
     queries = {
-        "vus": f'k6_vus{{timestamp="{timestamp}"}}',
-        "req_rate": f'rate(k6_http_reqs_total[1m])',
-        "p95": f'k6_http_req_duration{{quantile="0.95"}}',
+        "vus": 'k6_vus',
+        "req_rate": 'rate(k6_http_reqs[1m])',
+        "p95": 'histogram_quantile(0.95, sum by (le) (rate(k6_http_req_duration_bucket[1m])))',
     }
     results = {}
     for name, query in queries.items():
