@@ -49,7 +49,7 @@ curl -v -H "traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 ## Fix 1: Configure NGINX to Pass Trace Headers
 
-NGINX does not strip custom headers by default, but misconfiguration with `proxy_set_header` can cause issues:
+NGINX does not strip custom headers by default, but misconfiguration can cause issues. If an included proxy configuration disables request headers or rewrites trace headers to an empty value, pass them explicitly:
 
 ```nginx
 server {
@@ -68,17 +68,17 @@ server {
         proxy_set_header X-B3-SpanId $http_x_b3_spanid;
         proxy_set_header X-B3-Sampled $http_x_b3_sampled;
 
-        # Preserve all other headers
+        # Keep forwarding request headers; this is the default
         proxy_pass_request_headers on;
     }
 }
 ```
 
-A common mistake is using `proxy_set_header Host $host;` without including other headers. When you set any `proxy_set_header`, NGINX only passes the headers you explicitly list plus a few defaults. Add trace headers to the list.
+A common mistake is looking only at `proxy_set_header Host $host;`. That directive changes the upstream `Host` header, but it does not by itself remove unrelated request headers. Check for `proxy_pass_request_headers off;` or directives such as `proxy_set_header traceparent "";` that intentionally prevent a header from being passed.
 
 ## Fix 2: Configure HAProxy
 
-HAProxy needs explicit configuration to forward trace headers:
+HAProxy passes HTTP request headers by default. Check for rewrite rules that delete trace headers:
 
 ```text
 frontend http-in
@@ -87,52 +87,49 @@ frontend http-in
 
 backend servers
     # HAProxy passes headers by default, but check for any
-    # reqidel or reqdel rules that might strip them
+    # http-request del-header rules that might strip them
 
     # Do NOT have rules like these:
-    # reqidel ^traceparent:.*
-    # reqidel ^X-B3-.*
+    # http-request del-header traceparent
+    # http-request del-header X-B3-TraceId
 
     server backend1 10.0.0.1:8080 check
 ```
 
-If you are using HAProxy's built-in tracing:
+If you are using HAProxy's tracing or header rewrite features, make sure they do not remove incoming trace context before the request reaches the backend. `option forwardfor` only manages `X-Forwarded-For`; it does not forward or preserve trace context headers:
 
 ```text
-# Make sure the trace context is not consumed by HAProxy
-# without being forwarded
 defaults
     option forwardfor
-    # Do not set 'option dontlognull' if it affects header forwarding
 ```
 
 ## Fix 3: Configure AWS ALB / API Gateway
 
-AWS ALB passes headers through by default. But API Gateway may strip unknown headers depending on the integration type:
+AWS ALB passes valid request headers through to targets unless you configure header modification or invalid-header dropping behavior that affects them. API Gateway may require explicit request header mapping for REST APIs that use non-proxy integrations:
 
-```yaml
+```hcl
 # AWS API Gateway - HTTP API passes all headers by default
-# REST API needs explicit header mapping
+# REST API non-proxy integrations need explicit request header mapping
 
-# In CloudFormation/Terraform for REST API:
-resource "aws_api_gateway_method_response" "response" {
-  response_parameters = {
-    "method.response.header.traceparent" = true
-    "method.response.header.tracestate"  = true
+# In Terraform for REST API:
+resource "aws_api_gateway_method" "method" {
+  request_parameters = {
+    "method.request.header.traceparent" = false
+    "method.request.header.tracestate"  = false
   }
 }
 
-resource "aws_api_gateway_integration_response" "response" {
-  response_parameters = {
-    "method.response.header.traceparent" = "integration.response.header.traceparent"
-    "method.response.header.tracestate"  = "integration.response.header.tracestate"
+resource "aws_api_gateway_integration" "integration" {
+  request_parameters = {
+    "integration.request.header.traceparent" = "method.request.header.traceparent"
+    "integration.request.header.tracestate"  = "method.request.header.tracestate"
   }
 }
 ```
 
 For CloudFront, add trace headers to the origin request policy:
 
-```yaml
+```hcl
 # CloudFront origin request policy
 resource "aws_cloudfront_origin_request_policy" "trace" {
   name = "trace-headers"
@@ -163,16 +160,16 @@ metadata:
 For Traefik:
 
 ```yaml
-# Traefik passes headers by default, but verify with:
-apiVersion: traefik.containo.us/v1alpha1
+# Traefik passes request headers by default. Do not configure
+# the Headers middleware to remove trace context headers:
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: pass-trace-headers
+  name: strip-sensitive-headers
 spec:
   headers:
     customRequestHeaders:
-      # Traefik should not need this, but if headers are being stripped:
-      traceparent: ""  # Empty value means "pass through from client"
+      X-Legacy-Trace-Header: ""  # Empty value removes this header
 ```
 
 ## Fix 5: Instrument the Proxy Itself
@@ -181,15 +178,17 @@ The best approach is to have the proxy participate in the trace rather than just
 
 ```nginx
 # NGINX with OpenTelemetry module
-load_module modules/ngx_http_opentelemetry_module.so;
+load_module modules/ngx_otel_module.so;
 
 http {
-    opentelemetry_config /etc/nginx/otel-nginx.toml;
+    otel_exporter {
+        endpoint otel-collector:4317;
+    }
 
     server {
         location / {
-            opentelemetry on;  # Creates a span for this location
-            opentelemetry_propagate;  # Propagates context downstream
+            otel_trace on;  # Creates a span for this location
+            otel_trace_context propagate;  # Extracts incoming context and injects downstream context
             proxy_pass http://backend:8080;
         }
     }
