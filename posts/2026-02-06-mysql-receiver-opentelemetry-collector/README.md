@@ -12,7 +12,7 @@ The MySQL receiver enables the OpenTelemetry Collector to collect performance me
 
 MySQL monitoring is essential for identifying performance bottlenecks, optimizing resource usage, and preventing downtime. The MySQL receiver collects metrics by querying MySQL's performance schema and status variables, providing real-time visibility into database operations without requiring external tools or log parsing.
 
-Key metrics include query execution rates, connection usage, buffer pool hit ratios, InnoDB statistics, and replication lag. These metrics help you understand database behavior under load and make informed decisions about scaling, query optimization, and configuration tuning.
+Key metrics include query execution rates, connection usage, buffer pool activity, InnoDB statistics, and replication lag. These metrics help you understand database behavior under load and make informed decisions about scaling, query optimization, and configuration tuning.
 
 ```mermaid
 graph TD
@@ -24,8 +24,8 @@ graph TD
     E --> F[OTLP Exporter]
     F --> G[Observability Backend]
 
-    A1[SHOW STATUS] --> B
-    A2[SHOW SLAVE STATUS] --> B
+    A1[SHOW GLOBAL STATUS] --> B
+    A2[SHOW REPLICA STATUS / SHOW SLAVE STATUS] --> B
     A3[InnoDB Metrics] --> B
 ```
 
@@ -44,7 +44,7 @@ receivers:
     username: monitoring_user
     password: ${env:MYSQL_PASSWORD}
 
-    # Database name (optional, for schema-specific metrics)
+    # Database name (optional; omit to collect metrics for all databases)
     database: mysql
 
     # Collection interval (default: 10s)
@@ -61,15 +61,15 @@ processors:
 
 exporters:
   # Export to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     metrics:
       receivers: [mysql]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration connects to a local MySQL instance and collects default metrics every 10 seconds. The password is securely read from an environment variable.
@@ -80,19 +80,18 @@ The receiver collects comprehensive metrics organized by functional area:
 
 ### Connection Metrics
 
-- `mysql.connections`: Current number of open connections
+- `mysql.connection.count`: Number of connection attempts
 - `mysql.connection.errors`: Connection errors by type
-- `mysql.threads.connected`: Number of currently connected threads
-- `mysql.threads.running`: Number of threads executing queries
-- `mysql.connection.max`: Maximum allowed connections
+- `mysql.threads`: Thread counts by state, including connected and running
+- `mysql.max_used_connections`: Maximum number of simultaneous connections since startup
 
 ### Query Performance
 
-- `mysql.queries`: Total queries executed
-- `mysql.statements`: Statement execution counts by type
-- `mysql.slow_queries`: Number of slow queries
-- `mysql.table_locks.immediate`: Table locks acquired immediately
-- `mysql.table_locks.waited`: Table locks that had to wait
+- `mysql.query.count`: Total statements executed
+- `mysql.query.client.count`: Statements sent by clients
+- `mysql.query.slow.count`: Number of slow queries
+- `mysql.commands`: Command execution counts by type
+- `mysql.locks`: Table locks by kind, including immediate and waited
 
 ### Buffer Pool Metrics
 
@@ -100,21 +99,20 @@ The receiver collects comprehensive metrics organized by functional area:
 - `mysql.buffer_pool.data_pages`: Number of data pages
 - `mysql.buffer_pool.operations`: Buffer pool read/write operations
 - `mysql.buffer_pool.page_flushes`: Pages flushed from buffer pool
-- `mysql.buffer_pool.size`: Total buffer pool size
+- `mysql.buffer_pool.limit`: Configured buffer pool size
+- `mysql.buffer_pool.usage`: Buffer pool usage in bytes
 
 ### InnoDB Metrics
 
-- `mysql.innodb.data_reads`: Number of data reads
-- `mysql.innodb.data_writes`: Number of data writes
-- `mysql.innodb.row_locks`: Row lock statistics
-- `mysql.innodb.row_operations`: Row-level operations
-- `mysql.innodb.log_operations`: Log write operations
+- `mysql.operations`: InnoDB read, write, and fsync operations
+- `mysql.row_locks`: Row lock statistics
+- `mysql.row_operations`: Row-level operations
+- `mysql.log_operations`: Log write operations
 
 ### Replication Metrics
 
 - `mysql.replica.time_behind_source`: Seconds behind source server
 - `mysql.replica.sql_delay`: SQL thread delay
-- `mysql.replica.lag`: Replication lag in seconds
 
 ## Advanced Configuration
 
@@ -142,21 +140,19 @@ receivers:
     # Metric configuration
     metrics:
       # Connection metrics
-      mysql.connections:
+      mysql.connection.count:
         enabled: true
       mysql.connection.errors:
         enabled: true
-      mysql.threads.connected:
-        enabled: true
-      mysql.threads.running:
+      mysql.threads:
         enabled: true
 
       # Query metrics
-      mysql.queries:
+      mysql.query.count:
         enabled: true
-      mysql.statements:
+      mysql.query.client.count:
         enabled: true
-      mysql.slow_queries:
+      mysql.query.slow.count:
         enabled: true
 
       # Buffer pool metrics
@@ -168,13 +164,11 @@ receivers:
         enabled: true
 
       # InnoDB metrics
-      mysql.innodb.data_reads:
+      mysql.operations:
         enabled: true
-      mysql.innodb.data_writes:
+      mysql.row_locks:
         enabled: true
-      mysql.innodb.row_locks:
-        enabled: true
-      mysql.innodb.row_operations:
+      mysql.row_operations:
         enabled: true
 
       # Replication metrics
@@ -237,20 +231,14 @@ receivers:
 
     # Enable replication source metrics
     metrics:
-      mysql.connections:
+      mysql.connection.count:
         enabled: true
-      mysql.threads.connected:
+      mysql.threads:
         enabled: true
       mysql.buffer_pool.operations:
         enabled: true
-      mysql.innodb.row_operations:
+      mysql.row_operations:
         enabled: true
-
-    # Add resource attributes
-    resource_attributes:
-      mysql.role:
-        enabled: true
-        value: source
 
   # Replica server monitoring
   mysql/replica:
@@ -265,13 +253,8 @@ receivers:
         enabled: true
       mysql.replica.sql_delay:
         enabled: true
-      mysql.threads.running:
+      mysql.threads:
         enabled: true
-
-    resource_attributes:
-      mysql.role:
-        enabled: true
-        value: replica
 
 processors:
   # Add cluster information
@@ -299,9 +282,9 @@ service:
       exporters: [otlp]
 ```
 
-## Custom Query Metrics
+## Statement and Table Metrics
 
-Collect application-specific metrics using custom queries:
+Collect detailed statement and table metrics using the receiver's supported metric configuration:
 
 ```yaml
 receivers:
@@ -310,65 +293,31 @@ receivers:
     username: otel_monitor
     password: ${env:MYSQL_PASSWORD}
 
-    # Custom SQL queries for application metrics
-    statements:
-      # Monitor table sizes
-      - query: |
-          SELECT
-            table_schema,
-            table_name,
-            table_rows,
-            data_length,
-            index_length,
-            (data_length + index_length) as total_size
-          FROM information_schema.tables
-          WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
-          AND table_type = 'BASE TABLE'
-        metrics:
-          - metric_name: mysql.table.rows
-            value_column: table_rows
-            data_type: gauge
-            attribute_columns:
-              - table_schema
-              - table_name
-          - metric_name: mysql.table.size.data
-            value_column: data_length
-            data_type: gauge
-          - metric_name: mysql.table.size.index
-            value_column: index_length
-            data_type: gauge
-          - metric_name: mysql.table.size.total
-            value_column: total_size
-            data_type: gauge
+    # Configure statement event metrics
+    statement_events:
+      digest_text_limit: 120
+      time_limit: 24h
+      limit: 250
 
-      # Monitor InnoDB buffer pool hit ratio
-      - query: |
-          SELECT
-            (1 - (Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests)) * 100
-            AS buffer_pool_hit_ratio
-          FROM
-            (SELECT variable_value AS Innodb_buffer_pool_reads
-             FROM performance_schema.global_status
-             WHERE variable_name = 'Innodb_buffer_pool_reads') AS reads,
-            (SELECT variable_value AS Innodb_buffer_pool_read_requests
-             FROM performance_schema.global_status
-             WHERE variable_name = 'Innodb_buffer_pool_read_requests') AS requests
-        metrics:
-          - metric_name: mysql.buffer_pool.hit_ratio
-            value_column: buffer_pool_hit_ratio
-            data_type: gauge
+    metrics:
+      # Monitor table sizes and row counts
+      mysql.table.rows:
+        enabled: true
+      mysql.table.size:
+        enabled: true
+      mysql.table.average_row_length:
+        enabled: true
 
-      # Monitor long-running queries
-      - query: |
-          SELECT
-            COUNT(*) as long_queries
-          FROM information_schema.processlist
-          WHERE command != 'Sleep'
-          AND time > 60
-        metrics:
-          - metric_name: mysql.queries.long_running
-            value_column: long_queries
-            data_type: gauge
+      # Monitor summarized statement events
+      mysql.statement_event.count:
+        enabled: true
+      mysql.statement_event.wait.time:
+        enabled: true
+
+    # Monitor active queries as log events
+    events:
+      db.server.query_sample:
+        enabled: true
 ```
 
 ## Production Configuration
@@ -398,23 +347,19 @@ receivers:
 
     # Enable comprehensive metrics
     metrics:
-      mysql.connections:
+      mysql.connection.count:
         enabled: true
       mysql.connection.errors:
         enabled: true
-      mysql.threads.connected:
+      mysql.threads:
         enabled: true
-      mysql.threads.running:
+      mysql.query.count:
         enabled: true
-      mysql.queries:
+      mysql.query.client.count:
         enabled: true
-      mysql.statements:
+      mysql.query.slow.count:
         enabled: true
-      mysql.slow_queries:
-        enabled: true
-      mysql.table_locks.immediate:
-        enabled: true
-      mysql.table_locks.waited:
+      mysql.locks:
         enabled: true
       mysql.buffer_pool.pages:
         enabled: true
@@ -422,13 +367,11 @@ receivers:
         enabled: true
       mysql.buffer_pool.data_pages:
         enabled: true
-      mysql.innodb.data_reads:
+      mysql.operations:
         enabled: true
-      mysql.innodb.data_writes:
+      mysql.row_locks:
         enabled: true
-      mysql.innodb.row_locks:
-        enabled: true
-      mysql.innodb.row_operations:
+      mysql.row_operations:
         enabled: true
       mysql.replica.time_behind_source:
         enabled: true
@@ -460,19 +403,16 @@ processors:
 
   # Filter out test databases
   filter/exclude_test:
-    metrics:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: mysql.database.name
-            value: "test_.*"
+    error_mode: ignore
+    metric_conditions:
+      - 'resource.attributes["mysql.database.name"] != nil and IsMatch(resource.attributes["mysql.database.name"], "^test_.*")'
 
   # Transform metric names
-  metricstransform:
+  metrics_transform:
     transforms:
-      - include: mysql.threads.connected
+      - include: mysql.threads
         action: update
-        new_name: mysql.connections.active
+        new_name: mysql.threads.by_state
 
   # Batch processing
   batch:
@@ -512,7 +452,7 @@ service:
         - resourcedetection
         - resource
         - filter/exclude_test
-        - metricstransform
+        - metrics_transform
         - batch
       exporters: [otlp, prometheus]
 
@@ -521,7 +461,12 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Monitoring MySQL in Kubernetes
@@ -599,7 +544,7 @@ spec:
         # OpenTelemetry Collector sidecar
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:latest
-          command: ["--config=/conf/config.yaml"]
+          args: ["--config=/conf/config.yaml"]
           env:
             - name: MYSQL_PASSWORD
               valueFrom:
@@ -622,35 +567,35 @@ Set up alerts for common MySQL issues:
 
 ### High Connection Usage
 
-Alert when connection pool is near capacity:
+Alert when the number of connected threads exceeds your expected threshold:
 
 ```yaml
 # Prometheus alert rule
 
 - alert: MySQLHighConnectionUsage
   expr: |
-    (mysql.threads.connected / mysql.connection.max) > 0.8
+    mysql_threads{kind="connected"} > 100
   for: 5m
   labels:
     severity: warning
   annotations:
     summary: "MySQL connection usage high on {{ $labels.instance }}"
-    description: "Connection pool is {{ $value | humanizePercentage }} full"
+    description: "Connected threads: {{ $value }}"
 ```
 
-### Low Buffer Pool Hit Ratio
+### High Buffer Pool Reads
 
-Alert on poor buffer pool efficiency:
+Alert on sustained physical reads from the buffer pool:
 
 ```yaml
-- alert: MySQLLowBufferPoolHitRatio
-  expr: mysql.buffer_pool.hit_ratio < 90
+- alert: MySQLHighBufferPoolReads
+  expr: rate(mysql_buffer_pool_operations{operation="reads"}[5m]) > 100
   for: 15m
   labels:
     severity: warning
   annotations:
-    summary: "MySQL buffer pool hit ratio low"
-    description: "Buffer pool hit ratio is {{ $value }}%"
+    summary: "MySQL buffer pool physical reads high"
+    description: "Buffer pool physical reads are {{ $value }} per second"
 ```
 
 ### Replication Lag
@@ -659,7 +604,7 @@ Alert on excessive replication delay:
 
 ```yaml
 - alert: MySQLReplicationLag
-  expr: mysql.replica.time_behind_source > 60
+  expr: mysql_replica_time_behind_source > 60
   for: 5m
   labels:
     severity: critical
@@ -674,7 +619,7 @@ Alert on increasing slow query rate:
 
 ```yaml
 - alert: MySQLHighSlowQueryRate
-  expr: rate(mysql.slow_queries[5m]) > 10
+  expr: rate(mysql_query_slow_count[5m]) > 10
   for: 10m
   labels:
     severity: warning
@@ -690,8 +635,8 @@ Alert on high table lock contention:
 ```yaml
 - alert: MySQLTableLockContention
   expr: |
-    rate(mysql.table_locks.waited[5m]) /
-    rate(mysql.table_locks.immediate[5m]) > 0.1
+    rate(mysql_locks{kind="waited"}[5m]) /
+    rate(mysql_locks{kind="immediate"}[5m]) > 0.1
   for: 10m
   labels:
     severity: warning
@@ -724,7 +669,7 @@ If expected metrics are not appearing:
 If monitoring causes performance issues:
 
 1. Increase collection_interval to reduce query frequency
-2. Disable expensive custom queries
+2. Disable optional high-cardinality statement and table metrics
 3. Ensure indexes exist on queried columns
 4. Review slow query log for monitoring queries
 
@@ -754,6 +699,6 @@ OneUptime automatically creates MySQL dashboards with query performance analytic
 
 The MySQL receiver provides comprehensive database monitoring through the OpenTelemetry Collector. By collecting metrics on connections, queries, buffer pool efficiency, and replication, you gain complete visibility into MySQL performance and health.
 
-Start with basic configuration to establish baseline metrics, then add custom queries, replication monitoring, and advanced filtering as your needs evolve. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy MySQL operations.
+Start with basic configuration to establish baseline metrics, then add statement event metrics, replication monitoring, and advanced filtering as your needs evolve. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy MySQL operations.
 
 For monitoring MySQL in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) for complete infrastructure visibility.
