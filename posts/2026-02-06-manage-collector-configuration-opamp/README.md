@@ -40,10 +40,13 @@ First, create a basic OpAMP server that manages collector configurations:
 package main
 
 import (
+    "bytes"
     "context"
+    "crypto/sha256"
     "crypto/tls"
     "log"
     "net/http"
+    "os"
     "sync"
     "time"
 
@@ -67,7 +70,7 @@ type AgentInfo struct {
     InstanceID         string
     Status             *protobufs.AgentToServer
     LastHeartbeat      time.Time
-    EffectiveConfig    *protobufs.AgentConfigMap
+    EffectiveConfig    *protobufs.EffectiveConfig
     RemoteConfig       *protobufs.AgentRemoteConfig
     RemoteConfigHash   []byte
 }
@@ -81,29 +84,34 @@ func NewOpAMPServer() *OpAMPServer {
 
 // Start initializes and starts the OpAMP server
 func (s *OpAMPServer) Start(addr string) error {
+    var tlsConfig *tls.Config
+    certFile := os.Getenv("OPAMP_TLS_CERT")
+    keyFile := os.Getenv("OPAMP_TLS_KEY")
+    if certFile != "" && keyFile != "" {
+        cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+        if err != nil {
+            return err
+        }
+        tlsConfig = &tls.Config{
+            MinVersion:   tls.VersionTLS12,
+            Certificates: []tls.Certificate{cert},
+        }
+    }
+
     settings := server.StartSettings{
         Settings: server.Settings{
-            Callbacks: server.CallbacksStruct{
-                OnConnectingFunc:         s.onConnecting,
-                OnConnectedFunc:          s.onConnected,
-                OnMessageFunc:            s.onMessage,
-                OnConnectionCloseFunc:    s.onConnectionClose,
+            Callbacks: types.Callbacks{
+                OnConnecting: s.onConnecting,
             },
         },
         ListenEndpoint: addr,
         ListenPath:     "/v1/opamp",
 
-        // TLS configuration for secure communication
-        TLSConfig: &tls.Config{
-            MinVersion: tls.VersionTLS12,
-        },
+        // Set OPAMP_TLS_CERT and OPAMP_TLS_KEY to serve wss://.
+        TLSConfig: tlsConfig,
     }
 
-    var err error
-    s.server, err = server.New(&logger{})
-    if err != nil {
-        return err
-    }
+    s.server = server.New(&logger{})
 
     return s.server.Start(settings)
 }
@@ -121,15 +129,17 @@ func (s *OpAMPServer) onConnecting(request *http.Request) types.ConnectionRespon
 
     return types.ConnectionResponse{
         Accept: true,
-        ConnectionCallbacks: types.ConnectionCallbacksStruct{
-            OnMessageFunc: s.onMessage,
+        ConnectionCallbacks: types.ConnectionCallbacks{
+            OnConnected:        s.onConnected,
+            OnMessage:          s.onMessage,
+            OnConnectionClose:  s.onConnectionClose,
         },
     }
 }
 
 // onConnected is called when an agent successfully connects
 func (s *OpAMPServer) onConnected(ctx context.Context, conn types.Connection) {
-    log.Printf("Agent connected: %s", conn.RemoteAddr())
+    log.Printf("Agent connected: %s", conn.Connection().RemoteAddr())
 }
 
 // onMessage handles messages from connected agents
@@ -139,7 +149,17 @@ func (s *OpAMPServer) onMessage(
     message *protobufs.AgentToServer,
 ) *protobufs.ServerToAgent {
     // Extract agent instance ID
-    instanceID := uuid.UUID(message.InstanceUid).String()
+    agentID, err := uuid.FromBytes(message.InstanceUid)
+    if err != nil {
+        return &protobufs.ServerToAgent{
+            InstanceUid: message.InstanceUid,
+            ErrorResponse: &protobufs.ServerErrorResponse{
+                Type:         protobufs.ServerErrorResponseType_ServerErrorResponseType_BadRequest,
+                ErrorMessage: "instance_uid must be a 16-byte UUID",
+            },
+        }
+    }
+    instanceID := agentID.String()
 
     // Update agent information
     s.updateAgentInfo(instanceID, message)
@@ -147,25 +167,25 @@ func (s *OpAMPServer) onMessage(
     // Build response message
     response := &protobufs.ServerToAgent{
         InstanceUid: message.InstanceUid,
+        Capabilities: uint64(
+            protobufs.ServerCapabilities_ServerCapabilities_AcceptsStatus |
+                protobufs.ServerCapabilities_ServerCapabilities_OffersRemoteConfig |
+                protobufs.ServerCapabilities_ServerCapabilities_AcceptsEffectiveConfig,
+        ),
     }
 
     // Send remote configuration if needed
-    if s.shouldUpdateConfig(instanceID, message) {
+    if hasCapability(message, protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig) &&
+        s.shouldUpdateConfig(instanceID, message) {
         config := s.getConfigForAgent(instanceID, message)
         if config != nil {
             response.RemoteConfig = config
-            response.Flags |= uint64(protobufs.ServerToAgentFlags_ServerToAgentFlags_ReportEffectiveConfig)
         }
     }
 
-    // Request agent description if not provided
-    if message.AgentDescription == nil {
-        response.Flags |= uint64(protobufs.ServerToAgentFlags_ServerToAgentFlags_ReportAgentDescription)
-    }
-
-    // Request health status
-    if message.Health == nil {
-        response.Flags |= uint64(protobufs.ServerToAgentFlags_ServerToAgentFlags_ReportHealth)
+    // Request full state if the agent omitted compressed status fields.
+    if message.AgentDescription == nil || message.Health == nil {
+        response.Flags |= uint64(protobufs.ServerToAgentFlags_ServerToAgentFlags_ReportFullState)
     }
 
     return response
@@ -173,7 +193,7 @@ func (s *OpAMPServer) onMessage(
 
 // onConnectionClose is called when an agent disconnects
 func (s *OpAMPServer) onConnectionClose(conn types.Connection) {
-    log.Printf("Agent disconnected: %s", conn.RemoteAddr())
+    log.Printf("Agent disconnected: %s", conn.Connection().RemoteAddr())
 }
 
 // updateAgentInfo updates stored information about an agent
@@ -237,7 +257,10 @@ func (s *OpAMPServer) getConfigForAgent(
 
     if message.AgentDescription != nil {
         // Extract agent labels/attributes
-        attrs := message.AgentDescription.IdentifyingAttributes
+        attrs := append(
+            message.AgentDescription.IdentifyingAttributes,
+            message.AgentDescription.NonIdentifyingAttributes...,
+        )
 
         // Select configuration based on environment
         env := getAttributeValue(attrs, "environment")
@@ -350,15 +373,7 @@ func main() {
 
 // Helper functions
 func bytesEqual(a, b []byte) bool {
-    if len(a) != len(b) {
-        return false
-    }
-    for i := range a {
-        if a[i] != b[i] {
-            return false
-        }
-    }
-    return true
+    return bytes.Equal(a, b)
 }
 
 func getAttributeValue(attrs []*protobufs.KeyValue, key string) string {
@@ -371,26 +386,29 @@ func getAttributeValue(attrs []*protobufs.KeyValue, key string) string {
 }
 
 func calculateHash(data []byte) []byte {
-    // Implement proper hash calculation (e.g., SHA256)
-    // Simplified for this example
-    return []byte("hash")
+    sum := sha256.Sum256(data)
+    return sum[:]
+}
+
+func hasCapability(message *protobufs.AgentToServer, capability protobufs.AgentCapabilities) bool {
+    return message.Capabilities&uint64(capability) != 0
 }
 
 // logger implements OpAMP logger interface
 type logger struct{}
 
-func (l *logger) Debugf(format string, v ...interface{}) {
+func (l *logger) Debugf(ctx context.Context, format string, v ...interface{}) {
     log.Printf("[DEBUG] "+format, v...)
 }
 
-func (l *logger) Errorf(format string, v ...interface{}) {
+func (l *logger) Errorf(ctx context.Context, format string, v ...interface{}) {
     log.Printf("[ERROR] "+format, v...)
 }
 ```
 
 ## Configuring Collector with OpAMP Client
 
-Configure the OpenTelemetry Collector to connect to the OpAMP server:
+Configure the OpenTelemetry Collector to connect to the OpAMP server. The upstream Collector OpAMP extension currently reports status, health, effective configuration, and available components; it is intended to work with an OpAMP Supervisor or another parent process for applying collector configuration updates:
 
 ```yaml
 # collector-config.yaml
@@ -412,38 +430,26 @@ extensions:
           key_file: /etc/certs/client.key
           ca_file: /etc/certs/ca.crt
 
-    # Agent instance ID (unique identifier)
-    instance_uid: ${INSTANCE_ID}
+    # Agent instance ID (unique identifier).
+    # Omit this to auto-generate an ID, or set a stable UUIDv7 string.
+    # instance_uid: ${INSTANCE_UID}
 
     # Agent identification
     agent_description:
-      identifying_attributes:
-        - key: service.name
-          string_value: otel-collector
-        - key: environment
-          string_value: ${ENVIRONMENT}
-        - key: region
-          string_value: ${REGION}
-        - key: k8s.cluster.name
-          string_value: ${CLUSTER_NAME}
-
       non_identifying_attributes:
-        - key: os.type
-          string_value: linux
-        - key: host.arch
-          string_value: amd64
+        service.name: otel-collector
+        environment: ${ENVIRONMENT}
+        region: ${REGION}
+        k8s.cluster.name: ${CLUSTER_NAME}
+        os.type: linux
+        host.arch: amd64
 
-    # Report effective configuration back to server
+    # Supported upstream Collector OpAMP extension capabilities
     capabilities:
       reports_effective_config: true
       reports_health: true
-      reports_remote_config: true
-      accepts_remote_config: true
+      reports_available_components: true
       accepts_restart_command: true
-      accepts_opamp_connection_settings: true
-
-    # Heartbeat interval
-    heartbeat_interval: 30s
 
 # Initial fallback configuration
 receivers:
@@ -480,6 +486,7 @@ Create a web dashboard to manage collector fleet:
 package main
 
 import (
+    "encoding/hex"
     "encoding/json"
     "html/template"
     "net/http"
@@ -601,8 +608,12 @@ func (d *DashboardServer) getDashboardData() map[string]interface{} {
         env := ""
         region := ""
         if agent.Status != nil && agent.Status.AgentDescription != nil {
-            env = getAttributeValue(agent.Status.AgentDescription.IdentifyingAttributes, "environment")
-            region = getAttributeValue(agent.Status.AgentDescription.IdentifyingAttributes, "region")
+            attrs := append(
+                agent.Status.AgentDescription.IdentifyingAttributes,
+                agent.Status.AgentDescription.NonIdentifyingAttributes...,
+            )
+            env = getAttributeValue(attrs, "environment")
+            region = getAttributeValue(attrs, "region")
         }
 
         agents = append(agents, AgentStatus{
@@ -633,15 +644,16 @@ func (d *DashboardServer) apiUpdateConfigHandler(w http.ResponseWriter, r *http.
     // This would send updated config via OpAMP
     d.opampServer.mu.Lock()
     agent, exists := d.opampServer.agents[instanceID]
-    d.opampServer.mu.Unlock()
 
     if !exists {
+        d.opampServer.mu.Unlock()
         http.Error(w, "Agent not found", http.StatusNotFound)
         return
     }
 
     // Mark config as updated
     agent.RemoteConfigHash = nil
+    d.opampServer.mu.Unlock()
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]string{
@@ -654,7 +666,10 @@ func hashToString(hash []byte) string {
     if len(hash) == 0 {
         return "none"
     }
-    return string(hash[:8]) + "..."
+    if len(hash) > 8 {
+        hash = hash[:8]
+    }
+    return hex.EncodeToString(hash) + "..."
 }
 ```
 
@@ -748,16 +763,13 @@ spec:
         image: otel/opentelemetry-collector-contrib:latest
         args:
           - --config=/etc/otel/config.yaml
+          - --feature-gates=extension.opampextension.RemoteRestarts
         env:
         - name: OPAMP_API_KEY
           valueFrom:
             secretKeyRef:
               name: opamp-secrets
               key: api-key
-        - name: INSTANCE_ID
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.uid
         - name: ENVIRONMENT
           value: "production"
         - name: REGION
