@@ -187,7 +187,6 @@ Python's `asyncio` has its own set of context propagation challenges. The OpenTe
 # Demonstrates where context works and where it breaks in Python async code
 import asyncio
 from opentelemetry import trace
-from opentelemetry.context import get_current
 
 tracer = trace.get_tracer("debug-tracer")
 
@@ -229,7 +228,7 @@ thread_pool = ThreadPoolExecutor(max_workers=4)
 async def handle_request():
     with tracer.start_as_current_span("handle_request"):
         # BAD: context is lost when crossing into the thread pool
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(thread_pool, blocking_io_call)
         return result
 
@@ -269,7 +268,7 @@ async def handle_request():
         # Capture the current context before crossing the async boundary
         ctx = context.get_current()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         # Pass the captured context into the thread pool
         result = await loop.run_in_executor(
             thread_pool,
@@ -286,7 +285,7 @@ def blocking_io_call():
 
 ## Fix 3: Context Propagation in Node.js
 
-Node.js uses `AsyncLocalStorage` under the hood for OpenTelemetry context. Most async patterns work automatically, but certain patterns break context:
+Node.js uses `async_hooks` or `AsyncLocalStorage` under the hood for OpenTelemetry context. Most async patterns work automatically when a context manager is configured, but certain callback patterns can still break context:
 
 ```javascript
 // broken-context.js
@@ -300,17 +299,18 @@ function handleRequest(req, res) {
         // Context works here
         console.log('handler:', trace.getActiveSpan()?.spanContext().traceId);
 
-        // BAD: setTimeout can lose context depending on the setup
-        // If AsyncLocalStorage is not properly initialized, this breaks
+        // Usually OK with a configured context manager, but broken if
+        // OpenTelemetry was initialized without one
         setTimeout(() => {
             console.log('timeout:', trace.getActiveSpan()?.spanContext().traceId);
             // May print undefined if context was lost
         }, 100);
 
-        // BAD: Event emitters can lose context
+        // BAD: Event emitters can lose context when listeners are registered
+        // or invoked from a different async context than the request
         eventEmitter.on('data', (data) => {
             console.log('event:', trace.getActiveSpan()?.spanContext().traceId);
-            // Often undefined because event listeners lose async context
+            // May print undefined because this listener is not bound
         });
 
         span.end();
@@ -318,7 +318,7 @@ function handleRequest(req, res) {
 }
 ```
 
-The fix for Node.js involves making sure you use `context.with()` for any callback-based patterns:
+The fix for Node.js involves making sure a context manager is configured and binding callbacks that run outside the request's async context:
 
 ```javascript
 // fixed-context.js
@@ -367,12 +367,14 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.context.propagation.TextMapSetter;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Headers;
+import java.nio.charset.StandardCharsets;
 
 public class KafkaProducerWithContext {
 
     // TextMapSetter tells the propagator how to write into Kafka headers
     private static final TextMapSetter<Headers> SETTER =
-            (carrier, key, value) -> carrier.add(key, value.getBytes());
+            (carrier, key, value) ->
+                    carrier.add(key, value.getBytes(StandardCharsets.UTF_8));
 
     public void sendMessage(String topic, String key, String value) {
         ProducerRecord<String, String> record =
@@ -402,6 +404,9 @@ import io.opentelemetry.context.propagation.TextMapGetter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public class KafkaConsumerWithContext {
 
@@ -419,8 +424,11 @@ public class KafkaConsumerWithContext {
 
         @Override
         public String get(Headers carrier, String key) {
+            if (carrier == null) {
+                return null;
+            }
             Header header = carrier.lastHeader(key);
-            return header != null ? new String(header.value()) : null;
+            return header != null ? new String(header.value(), StandardCharsets.UTF_8) : null;
         }
     };
 
