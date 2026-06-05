@@ -37,8 +37,6 @@ Docker Compose configuration for RabbitMQ with management UI:
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -283,8 +281,6 @@ Tie all services together in a single Compose file:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -345,8 +341,6 @@ For systems processing millions of events per second, Apache Kafka is the standa
 Docker Compose for a Kafka cluster using KRaft mode (no Zookeeper):
 
 ```yaml
-version: "3.8"
-
 services:
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -358,6 +352,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -385,13 +380,14 @@ Handle failed events with dead letter queues to prevent message loss:
 // Set up a dead letter exchange and queue
 await channel.assertExchange("dlx", "direct", { durable: true });
 await channel.assertQueue("dead-letters", { durable: true });
-await channel.bindQueue("dead-letters", "dlx", "");
+await channel.bindQueue("dead-letters", "dlx", "dead-letter");
 
 // Create the main queue with dead letter configuration
 await channel.assertQueue("email-service", {
   durable: true,
   arguments: {
     "x-dead-letter-exchange": "dlx",
+    "x-dead-letter-routing-key": "dead-letter",
     "x-message-ttl": 300000, // 5 minutes TTL
   },
 });
