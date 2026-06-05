@@ -25,6 +25,7 @@ metrics to an OpenTelemetry Collector.
 
 import subprocess
 import json
+import os
 import time
 import sys
 from opentelemetry import metrics
@@ -40,8 +41,7 @@ resource = Resource.create({
 })
 
 exporter = OTLPMetricExporter(
-    endpoint="localhost:4317",
-    insecure=True,
+    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
 )
 
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=5000)
@@ -83,9 +83,9 @@ def run_plan(workspace: str, directory: str):
     """Run terraform plan and export metrics."""
     start = time.time()
 
-    # Run plan with JSON output for machine parsing
+    # Run a refresh-only plan to detect external drift
     result = subprocess.run(
-        ["terraform", "plan", "-detailed-exitcode", "-json", "-out=tfplan"],
+        ["terraform", "plan", "-refresh-only", "-detailed-exitcode", "-json", "-out=tfplan"],
         capture_output=True,
         text=True,
         cwd=directory,
@@ -97,7 +97,7 @@ def run_plan(workspace: str, directory: str):
     plan_duration.record(duration, attrs)
 
     if result.returncode == 2:
-        # Exit code 2 means changes detected (drift)
+        # Exit code 2 means the refresh-only plan found external changes
         plan_output = subprocess.run(
             ["terraform", "show", "-json", "tfplan"],
             capture_output=True,
@@ -114,7 +114,7 @@ def run_plan(workspace: str, directory: str):
             update_count = sum(1 for c in changes if "update" in c.get("change", {}).get("actions", []))
             delete_count = sum(1 for c in changes if "delete" in c.get("change", {}).get("actions", []))
 
-            drift_total = add_count + update_count + delete_count
+            drift_total = sum(1 for c in changes if c.get("change", {}).get("actions", []) != ["no-op"])
             resource_drift_count.add(drift_total, {**attrs, "drift.type": "total"})
             resources_to_change.record(drift_total, attrs)
 
@@ -145,11 +145,16 @@ Integrate the instrumented wrapper into your CI/CD pipeline:
 # .gitlab-ci.yml
 terraform-drift-check:
   stage: drift-detection
-  image: hashicorp/terraform:1.7
+  image: python:3.12-slim
+  variables:
+    TERRAFORM_VERSION: "1.15.5"
   before_script:
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip
+    - curl -fsSLo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+    - unzip terraform.zip -d /usr/local/bin
     - pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
   script:
-    - terraform init
+    - terraform -chdir=./infrastructure init
     - python3 terraform_instrumented.py production ./infrastructure
   rules:
     # Run drift detection on a schedule
@@ -179,7 +184,7 @@ jobs:
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
         run: |
-          terraform init
+          terraform -chdir=./infrastructure init
           python3 terraform_instrumented.py production ./infrastructure
 ```
 
@@ -223,7 +228,7 @@ Build dashboards with these queries:
 - **Drift trend**: `terraform.drift.resources` over time, broken down by workspace
 - **Plan duration trend**: `terraform.plan.duration` p50, p90, p99
 - **Error rate**: `terraform.plan.errors` rate
-- **Resources managed**: `terraform.plan.resources_changed` histogram
+- **Resources to change**: `terraform.plan.resources_changed` histogram
 
 ## Alerting
 
