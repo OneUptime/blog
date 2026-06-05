@@ -44,26 +44,24 @@ Check if the webhook is registered:
 # Check for the mutating webhook
 kubectl get mutatingwebhookconfiguration | grep opentelemetry
 
-# Check if the webhook service endpoint is ready
-kubectl get endpoints -n opentelemetry-operator-system opentelemetry-operator-webhook-service
+# Check if the webhook service has EndpointSlices
+kubectl get endpointslice -n opentelemetry-operator-system \
+  -l kubernetes.io/service-name=opentelemetry-operator-webhook-service
 ```
 
 ## Fix 1: Add a Dependency on the Operator
 
-Use an init container in your application that waits for the Operator webhook to be ready:
+Use a pre-deploy Job or pipeline step that waits for the Operator webhook before creating your application pods:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: my-app
+  name: wait-for-otel-operator
 spec:
   template:
-    metadata:
-      annotations:
-        instrumentation.opentelemetry.io/inject-java: "true"
     spec:
-      initContainers:
+      containers:
         - name: wait-for-operator
           image: bitnami/kubectl:latest
           command:
@@ -77,26 +75,20 @@ spec:
                 echo "Webhook not found, waiting..."
                 sleep 5
               done
+              kubectl rollout status deployment/opentelemetry-operator-controller-manager \
+                -n opentelemetry-operator-system --timeout=300s
               echo "Operator webhook is registered"
-      containers:
-        - name: my-app
-          image: my-app:latest
+      restartPolicy: OnFailure
 ```
 
 ## Fix 2: Use failurePolicy on the Webhook
 
-Configure the webhook with `failurePolicy: Fail` so that if the webhook is not available, pod creation fails rather than silently proceeding without instrumentation:
+Configure the pod injection webhook with `failurePolicy: Fail` so that if the webhook is not available, pod creation fails rather than silently proceeding without instrumentation. In the OpenTelemetry Operator Helm chart, this is the pod-specific setting:
 
 ```yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: opentelemetry-operator-mutating-webhook-configuration
-webhooks:
-  - name: mpod.kb.io
-    failurePolicy: Fail  # Reject pod creation if webhook is unavailable
-    # This means pods will fail to create until the Operator is ready
-    # which is safer than silently skipping instrumentation
+admissionWebhooks:
+  pods:
+    failurePolicy: Fail  # Reject pod creation if the pod injection webhook is unavailable
 ```
 
 The downside is that all pod creation in annotated namespaces will be blocked until the Operator is up. This is usually acceptable in production but can cause issues during initial cluster bootstrapping.
@@ -151,7 +143,7 @@ kubectl get pod -n my-app-namespace -l app=my-app \
 
 ## Fix 5: Use ArgoCD Sync Waves
 
-If you use ArgoCD for GitOps deployments, use sync waves to enforce ordering:
+If you use ArgoCD for GitOps deployments, use sync waves in a parent application to enforce ordering:
 
 ```yaml
 # Operator deployment - sync wave 0 (deploys first)
