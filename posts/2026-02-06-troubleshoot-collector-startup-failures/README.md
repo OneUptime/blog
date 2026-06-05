@@ -275,7 +275,7 @@ service:
       exporters: [otlp]
 ```
 
-Error message: `error reading configuration: unknown processor type: "betch"`
+Error message: `error reading configuration: 'processors' unknown type: "betch" for id: "betch"`
 
 **Solution**: Correct the component name:
 
@@ -295,12 +295,11 @@ service:
 **Missing required fields**:
 
 ```yaml
-# INCORRECT: Missing required endpoint field
+# INCORRECT: Missing required OTLP protocol
 receivers:
   otlp:
+    # At least one protocol must be enabled
     protocols:
-      grpc:
-        # endpoint field is required but missing
 
 processors:
   batch:
@@ -318,16 +317,16 @@ service:
       exporters: [otlp]
 ```
 
-Error message: `error reading configuration: receivers::otlp: missing required field 'endpoint'`
+Error message: `error reading configuration: receivers::otlp: must specify at least one protocol when using the OTLP receiver`
 
-**Solution**: Add required fields:
+**Solution**: Add at least one protocol:
 
 ```yaml
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317  # Required field added
+        endpoint: 0.0.0.0:4317
 ```
 
 **Component not available in collector distribution**:
@@ -360,7 +359,7 @@ service:
       exporters: [otlp]
 ```
 
-Error message: `error reading configuration: unknown processor type: "transform"`
+Error message: `error reading configuration: 'processors' unknown type: "transform" for id: "transform"`
 
 **Solution**: Use the contrib distribution or replace with available processors:
 
@@ -588,7 +587,7 @@ service:
       exporters: [debug]
 ```
 
-Error message: `error building pipelines: exporter "debug" not found`
+Error message: `error building pipelines: service::pipelines::traces: references exporter "debug" which is not configured`
 
 **Solution**: Ensure all pipeline components are defined:
 
@@ -657,7 +656,7 @@ service:
       exporters: [forward]
 ```
 
-Error message: `error building pipelines: circular pipeline dependency detected`
+Error message: `error building pipelines: cycle detected: connector "forward" (traces to traces)`
 
 **Solution**: Remove circular dependencies:
 
@@ -717,10 +716,6 @@ exporters:
     endpoint: unreachable-backend.example.com:4317
     # Exporter may fail during initialization if backend is down
 
-processors:
-  batch:
-    timeout: 10s
-
 service:
   pipelines:
     traces:
@@ -736,7 +731,7 @@ exporters:
   otlp:
     endpoint: backend.example.com:4317
 
-    # Connection timeout during startup
+    # Timeout for export attempts
     timeout: 10s
 
     # Retry configuration for runtime failures
@@ -856,8 +851,10 @@ When facing startup failures, follow this systematic approach:
 # Run collector with debug logging
 otelcol-contrib --config=config.yaml --set=service.telemetry.logs.level=debug
 
-# For containerized deployments, add environment variable
-docker run -e OTEL_LOG_LEVEL=debug otel/opentelemetry-collector-contrib:latest
+# For containerized deployments, pass the same override as a command argument
+docker run otel/opentelemetry-collector-contrib:latest \
+  --config=/etc/otelcol-contrib/config.yaml \
+  --set=service.telemetry.logs.level=debug
 ```
 
 **Step 2**: Validate configuration file:
