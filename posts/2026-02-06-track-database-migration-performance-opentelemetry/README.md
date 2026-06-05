@@ -39,7 +39,7 @@ gantt
 
 ## Instrumenting Alembic Migrations (Python)
 
-Alembic is the most popular migration tool for Python/SQLAlchemy applications. We can hook into Alembic's event system to create OpenTelemetry spans for each migration.
+Alembic is the most popular migration tool for Python/SQLAlchemy applications. We can wrap Alembic's `upgrade()` and `downgrade()` functions to create OpenTelemetry spans for each migration.
 
 First, install the necessary packages.
 
@@ -54,6 +54,7 @@ Create a tracing helper that wraps migration execution.
 ```python
 # migrations/tracing.py
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -105,7 +106,7 @@ def traced_migration(revision_id, description, direction="upgrade"):
                     span.set_attribute("migration.status", "failed")
                     # Record the error details on the span
                     span.record_exception(e)
-                    span.set_status(trace.StatusCode.ERROR, str(e))
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
         return wrapper
     return decorator
@@ -160,6 +161,7 @@ import os
 import glob
 import importlib
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("migration-runner")
 
@@ -196,7 +198,7 @@ def run_all_migrations(migrations_dir, db_connection):
                 except Exception as e:
                     span.set_attribute("migration.status", "failed")
                     span.record_exception(e)
-                    span.set_status(trace.StatusCode.ERROR, str(e))
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
                     # Record how many succeeded before the failure
                     parent_span.set_attribute("migration.completed_count", completed)
                     parent_span.set_attribute("migration.failed_at", filename)
@@ -212,7 +214,7 @@ For Node.js applications using Knex, you can wrap the migration runner.
 ```javascript
 // run-migrations.js
 const knex = require('./db');
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('knex-migrations');
 
@@ -243,7 +245,7 @@ async function runMigrations() {
             } catch (error) {
               span.setAttribute('migration.status', 'failed');
               span.recordException(error);
-              span.setStatus({ code: trace.SpanStatusCode.ERROR });
+              span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
               throw error;
             } finally {
               span.end();
@@ -256,7 +258,7 @@ async function runMigrations() {
     } catch (error) {
       parentSpan.setAttribute('migration.result', 'failed');
       parentSpan.recordException(error);
-      parentSpan.setStatus({ code: trace.SpanStatusCode.ERROR });
+      parentSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       parentSpan.end();
@@ -278,7 +280,6 @@ One of the biggest risks with migrations is table locking. You can detect this b
 
 ```python
 # lock_monitor.py - Monitor lock contention during migrations
-import psycopg2
 from opentelemetry import trace
 
 tracer = trace.get_tracer("migration-lock-monitor")
@@ -300,13 +301,11 @@ def check_lock_contention(connection, table_name):
         FROM pg_catalog.pg_locks blocked
         JOIN pg_catalog.pg_stat_activity blocked_activity
             ON blocked_activity.pid = blocked.pid
-        JOIN pg_catalog.pg_locks blocking
-            ON blocking.locktype = blocked.locktype
-            AND blocking.relation = blocked.relation
         JOIN pg_catalog.pg_class relation
             ON relation.oid = blocked.relation
         WHERE NOT blocked.granted
             AND relation.relname = %s
+        ORDER BY wait_duration DESC
     """, (table_name,))
 
     blocked_queries = cursor.fetchall()
