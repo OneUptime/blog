@@ -10,7 +10,7 @@ When you have multiple gateway collectors, you need all spans from the same trac
 
 ## Why Not Round-Robin?
 
-Standard Kubernetes services use round-robin load balancing. This means spans from the same trace get scattered across different gateway replicas. If gateway 1 gets the root span and gateway 2 gets the error span, neither has the full picture. Tail sampling on gateway 1 might drop the trace because it never saw the error. The load balancing exporter fixes this by always sending spans with the same trace ID to the same gateway.
+Standard Kubernetes services load-balance traffic across gateway replicas without trace affinity. This means spans from the same trace can get scattered across different gateway replicas. If gateway 1 gets the root span and gateway 2 gets the error span, neither has the full picture. Tail sampling on gateway 1 might drop the trace because it never saw the error. The load balancing exporter fixes this by always sending spans with the same trace ID to the same gateway.
 
 ## How Consistent Hashing Works
 
@@ -38,7 +38,7 @@ processors:
     timeout: 2s
 
 exporters:
-  loadbalancing:
+  load_balancing:
     # Route based on trace ID for trace-aware load balancing
     routing_key: "traceID"
     protocol:
@@ -59,7 +59,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ## The Headless Service
@@ -91,7 +91,7 @@ If you are not using Kubernetes, you can list backends statically:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -111,7 +111,7 @@ For more dynamic discovery, the Kubernetes resolver watches the Kubernetes API d
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -119,12 +119,12 @@ exporters:
           insecure: true
     resolver:
       k8s:
-        service: "otel-gateway-headless"
+        service: "otel-gateway-headless.monitoring"
         ports:
           - 4317
 ```
 
-This is more responsive than DNS because it watches the API for changes rather than polling DNS at an interval.
+This is more responsive than DNS because it watches the API for changes rather than polling DNS at an interval. The collector's service account also needs permission to get, list, and watch EndpointSlice objects in the target namespace.
 
 ## Load Balancing Metrics
 
@@ -132,7 +132,7 @@ The load balancing exporter also routes by `service` for metrics:
 
 ```yaml
 exporters:
-  loadbalancing/traces:
+  load_balancing/traces:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -143,7 +143,7 @@ exporters:
         hostname: "otel-gateway-headless.monitoring.svc.cluster.local"
         port: 4317
 
-  loadbalancing/metrics:
+  load_balancing/metrics:
     routing_key: "service"
     protocol:
       otlp:
@@ -159,12 +159,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing/traces]
+      exporters: [load_balancing/traces]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing/metrics]
+      exporters: [load_balancing/metrics]
 ```
 
 ## Monitoring the Load Balancer
