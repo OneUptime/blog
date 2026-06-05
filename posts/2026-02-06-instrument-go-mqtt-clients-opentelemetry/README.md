@@ -8,7 +8,7 @@ Description: Implement OpenTelemetry instrumentation for MQTT clients to trace m
 
 MQTT (Message Queuing Telemetry Transport) powers millions of IoT devices and messaging applications, but observing message flow through MQTT brokers presents unique challenges. Unlike HTTP requests with clear request-response patterns, MQTT uses asynchronous publish-subscribe messaging where producers and consumers are decoupled.
 
-OpenTelemetry brings distributed tracing to MQTT by propagating trace context through message headers and creating spans that link publishers to subscribers. This visibility helps you understand message latency, identify slow subscribers, and debug delivery issues in complex MQTT topologies.
+OpenTelemetry brings distributed tracing to MQTT by propagating trace context with each message and creating spans that correlate publishers with subscribers. This visibility helps you understand message latency, identify slow subscribers, and debug delivery issues in complex MQTT topologies.
 
 ## MQTT and Distributed Tracing Architecture
 
@@ -21,13 +21,13 @@ graph LR
     B -->|3. Route with Context| D[Subscriber 2]
     B -->|4. Route with Context| E[Subscriber 3]
 
-    F[OpenTelemetry] -.->|Trace Links| A
-    F -.->|Trace Links| C
-    F -.->|Trace Links| D
-    F -.->|Trace Links| E
+    F[OpenTelemetry] -.->|Trace Context| A
+    F -.->|Trace Context| C
+    F -.->|Trace Context| D
+    F -.->|Trace Context| E
 ```
 
-OpenTelemetry creates a span when publishing a message, embeds the trace context in the MQTT message payload or user properties, and creates child spans when subscribers process the message. This creates a complete trace showing message flow from publisher through the broker to all subscribers.
+OpenTelemetry creates a span when publishing a message, embeds the trace context in the MQTT message payload for MQTT 3.1.1 clients or in user properties for MQTT 5 clients, and creates correlated spans when subscribers process the message. This creates a complete trace showing message flow from publisher through the broker to all subscribers.
 
 ## Setting Up MQTT with OpenTelemetry
 
@@ -41,11 +41,14 @@ import (
     "encoding/json"
     "fmt"
     "log"
+    "net/url"
+    "strconv"
     "time"
 
     mqtt "github.com/eclipse/paho.mqtt.golang"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -70,8 +73,8 @@ func initTracer(serviceName string) (*trace.TracerProvider, error) {
             semconv.ServiceName(serviceName),
             semconv.ServiceVersion("1.0.0"),
             attribute.String("messaging.system", "mqtt"),
-            attribute.String("messaging.protocol", "mqtt"),
-            attribute.String("messaging.protocol.version", "3.1.1"),
+            attribute.String("network.protocol.name", "mqtt"),
+            attribute.String("network.protocol.version", "3.1.1"),
         ),
     )
     if err != nil {
@@ -88,6 +91,32 @@ func initTracer(serviceName string) (*trace.TracerProvider, error) {
     otel.SetTextMapPropagator(propagation.TraceContext{})
 
     return tp, nil
+}
+
+func recordSpanError(span oteltrace.Span, err error) {
+    span.RecordError(err)
+    span.SetStatus(codes.Error, err.Error())
+    span.SetAttributes(attribute.String("error.type", "_OTHER"))
+}
+
+func brokerAttributes(brokerURL string) []attribute.KeyValue {
+    parsed, err := url.Parse(brokerURL)
+    if err != nil {
+        return []attribute.KeyValue{attribute.String("mqtt.broker.url", brokerURL)}
+    }
+
+    attrs := []attribute.KeyValue{
+        attribute.String("server.address", parsed.Hostname()),
+    }
+
+    if port := parsed.Port(); port != "" {
+        portNumber, err := strconv.Atoi(port)
+        if err == nil {
+            attrs = append(attrs, attribute.Int("server.port", portNumber))
+        }
+    }
+
+    return attrs
 }
 ```
 
@@ -158,21 +187,22 @@ func (c *InstrumentedMQTTClient) Connect(ctx context.Context) error {
     )
     defer span.End()
 
-    span.SetAttributes(
+    attrs := []attribute.KeyValue{
         attribute.String("messaging.system", "mqtt"),
-        attribute.String("messaging.destination", c.brokerURL),
-        attribute.String("messaging.client_id", c.clientID),
-    )
+        attribute.String("messaging.client.id", c.clientID),
+    }
+    attrs = append(attrs, brokerAttributes(c.brokerURL)...)
+    span.SetAttributes(attrs...)
 
     token := c.client.Connect()
     if !token.WaitTimeout(10 * time.Second) {
         err := fmt.Errorf("connection timeout")
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return err
     }
 
     if err := token.Error(); err != nil {
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return fmt.Errorf("connecting to MQTT broker: %w", err)
     }
 
@@ -187,7 +217,7 @@ func (c *InstrumentedMQTTClient) Disconnect(ctx context.Context) {
 
     span.SetAttributes(
         attribute.String("messaging.system", "mqtt"),
-        attribute.String("messaging.client_id", c.clientID),
+        attribute.String("messaging.client.id", c.clientID),
     )
 
     c.client.Disconnect(250)
@@ -211,15 +241,17 @@ type Message struct {
 
 // Publish sends a message with embedded trace context
 func (c *InstrumentedMQTTClient) Publish(ctx context.Context, topic string, qos byte, retained bool, payload interface{}) error {
-    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("mqtt.publish %s", topic),
+    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("publish %s", topic),
         oteltrace.WithSpanKind(oteltrace.SpanKindProducer),
     )
     defer span.End()
 
     span.SetAttributes(
         attribute.String("messaging.system", "mqtt"),
-        attribute.String("messaging.destination", topic),
-        attribute.String("messaging.operation", "publish"),
+        attribute.String("messaging.destination.name", topic),
+        attribute.String("messaging.operation.name", "publish"),
+        attribute.String("messaging.operation.type", "send"),
+        attribute.String("messaging.client.id", c.clientID),
         attribute.Int("messaging.mqtt.qos", int(qos)),
         attribute.Bool("messaging.mqtt.retained", retained),
     )
@@ -237,30 +269,30 @@ func (c *InstrumentedMQTTClient) Publish(ctx context.Context, topic string, qos 
     c.propagator.Inject(ctx, carrier)
 
     span.SetAttributes(
-        attribute.String("messaging.message_id", message.MessageID),
+        attribute.String("messaging.message.id", message.MessageID),
     )
 
     // Serialize message
     data, err := json.Marshal(message)
     if err != nil {
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return fmt.Errorf("marshaling message: %w", err)
     }
 
     span.SetAttributes(
-        attribute.Int("messaging.message.payload_size_bytes", len(data)),
+        attribute.Int("messaging.message.body.size", len(data)),
     )
 
     // Publish to MQTT broker
     token := c.client.Publish(topic, qos, retained, data)
     if !token.WaitTimeout(5 * time.Second) {
         err := fmt.Errorf("publish timeout")
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return err
     }
 
     if err := token.Error(); err != nil {
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return fmt.Errorf("publishing message: %w", err)
     }
 
@@ -270,23 +302,26 @@ func (c *InstrumentedMQTTClient) Publish(ctx context.Context, topic string, qos 
 
 // PublishBatch publishes multiple messages with tracing
 func (c *InstrumentedMQTTClient) PublishBatch(ctx context.Context, topic string, qos byte, payloads []interface{}) error {
-    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("mqtt.publish.batch %s", topic),
+    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("publish %s", topic),
         oteltrace.WithSpanKind(oteltrace.SpanKindProducer),
     )
     defer span.End()
 
     span.SetAttributes(
         attribute.String("messaging.system", "mqtt"),
-        attribute.String("messaging.destination", topic),
-        attribute.Int("messaging.batch.count", len(payloads)),
+        attribute.String("messaging.destination.name", topic),
+        attribute.String("messaging.operation.name", "publish"),
+        attribute.String("messaging.operation.type", "send"),
+        attribute.String("messaging.client.id", c.clientID),
+        attribute.Int("messaging.batch.message_count", len(payloads)),
     )
 
     successCount := 0
     for i, payload := range payloads {
         if err := c.Publish(ctx, topic, qos, false, payload); err != nil {
+            recordSpanError(span, err)
             span.SetAttributes(
                 attribute.Int("messaging.batch.failed_at", i),
-                attribute.String("error.message", err.Error()),
             )
             return fmt.Errorf("publishing message %d: %w", i, err)
         }
@@ -317,15 +352,16 @@ type MessageHandler func(ctx context.Context, topic string, payload interface{})
 
 // Subscribe subscribes to a topic with traced message handling
 func (c *InstrumentedMQTTClient) Subscribe(ctx context.Context, topic string, qos byte, handler MessageHandler) error {
-    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("mqtt.subscribe %s", topic),
-        oteltrace.WithSpanKind(oteltrace.SpanKindConsumer),
+    ctx, span := c.tracer.Start(ctx, fmt.Sprintf("subscribe %s", topic),
+        oteltrace.WithSpanKind(oteltrace.SpanKindClient),
     )
     defer span.End()
 
     span.SetAttributes(
         attribute.String("messaging.system", "mqtt"),
-        attribute.String("messaging.destination", topic),
-        attribute.String("messaging.operation", "subscribe"),
+        attribute.String("messaging.destination.name", topic),
+        attribute.String("messaging.operation.name", "subscribe"),
+        attribute.String("messaging.client.id", c.clientID),
         attribute.Int("messaging.mqtt.qos", int(qos)),
     )
 
@@ -335,12 +371,12 @@ func (c *InstrumentedMQTTClient) Subscribe(ctx context.Context, topic string, qo
     token := c.client.Subscribe(topic, qos, wrappedHandler)
     if !token.WaitTimeout(5 * time.Second) {
         err := fmt.Errorf("subscribe timeout")
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return err
     }
 
     if err := token.Error(); err != nil {
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return fmt.Errorf("subscribing to topic: %w", err)
     }
 
@@ -365,17 +401,19 @@ func (c *InstrumentedMQTTClient) createTracedHandler(topic string, handler Messa
         ctx := c.propagator.Extract(context.Background(), carrier)
 
         // Create consumer span
-        ctx, span := c.tracer.Start(ctx, fmt.Sprintf("mqtt.process %s", topic),
+        ctx, span := c.tracer.Start(ctx, fmt.Sprintf("process %s", topic),
             oteltrace.WithSpanKind(oteltrace.SpanKindConsumer),
         )
         defer span.End()
 
         span.SetAttributes(
             attribute.String("messaging.system", "mqtt"),
-            attribute.String("messaging.destination", topic),
-            attribute.String("messaging.operation", "process"),
-            attribute.String("messaging.message_id", message.MessageID),
-            attribute.Int("messaging.message.payload_size_bytes", len(msg.Payload())),
+            attribute.String("messaging.destination.name", topic),
+            attribute.String("messaging.operation.name", "process"),
+            attribute.String("messaging.operation.type", "process"),
+            attribute.String("messaging.client.id", c.clientID),
+            attribute.String("messaging.message.id", message.MessageID),
+            attribute.Int("messaging.message.body.size", len(msg.Payload())),
         )
 
         // Calculate message latency
@@ -386,8 +424,8 @@ func (c *InstrumentedMQTTClient) createTracedHandler(topic string, handler Messa
 
         // Call the actual handler
         if err := handler(ctx, topic, message.Payload); err != nil {
+            recordSpanError(span, err)
             span.SetAttributes(
-                attribute.String("error.message", err.Error()),
                 attribute.Bool("messaging.processing.error", true),
             )
             log.Printf("Error handling message: %v", err)
@@ -404,23 +442,27 @@ func (c *InstrumentedMQTTClient) createTracedHandler(topic string, handler Messa
 
 // Unsubscribe unsubscribes from a topic with tracing
 func (c *InstrumentedMQTTClient) Unsubscribe(ctx context.Context, topics ...string) error {
-    ctx, span := c.tracer.Start(ctx, "mqtt.unsubscribe")
+    ctx, span := c.tracer.Start(ctx, "unsubscribe",
+        oteltrace.WithSpanKind(oteltrace.SpanKindClient),
+    )
     defer span.End()
 
     span.SetAttributes(
         attribute.String("messaging.system", "mqtt"),
-        attribute.StringSlice("messaging.destinations", topics),
+        attribute.StringSlice("messaging.destination.names", topics),
+        attribute.String("messaging.operation.name", "unsubscribe"),
+        attribute.String("messaging.client.id", c.clientID),
     )
 
     token := c.client.Unsubscribe(topics...)
     if !token.WaitTimeout(5 * time.Second) {
         err := fmt.Errorf("unsubscribe timeout")
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return err
     }
 
     if err := token.Error(); err != nil {
-        span.SetAttributes(attribute.String("error.message", err.Error()))
+        recordSpanError(span, err)
         return fmt.Errorf("unsubscribing from topics: %w", err)
     }
 
@@ -429,7 +471,7 @@ func (c *InstrumentedMQTTClient) Unsubscribe(ctx context.Context, topics ...stri
 }
 ```
 
-The subscription handler extracts trace context from incoming messages, creating a link between the publisher's span and the subscriber's processing span. This shows the complete message journey through the system.
+The subscription handler extracts trace context from incoming messages, correlating the publisher's span with the subscriber's processing span. This shows the complete message journey through the system.
 
 ## Complete MQTT Application Example
 
@@ -448,17 +490,6 @@ func main() {
         }
     }()
 
-    // Initialize tracer for subscriber
-    tpSubscriber, err := initTracer("mqtt-subscriber")
-    if err != nil {
-        log.Fatalf("Failed to initialize subscriber tracer: %v", err)
-    }
-    defer func() {
-        if err := tpSubscriber.Shutdown(context.Background()); err != nil {
-            log.Printf("Error shutting down subscriber tracer: %v", err)
-        }
-    }()
-
     ctx := context.Background()
 
     // Create publisher client
@@ -474,6 +505,17 @@ func main() {
         log.Fatalf("Failed to connect publisher: %v", err)
     }
     defer publisher.Disconnect(ctx)
+
+    // Initialize tracer for subscriber
+    tpSubscriber, err := initTracer("mqtt-subscriber")
+    if err != nil {
+        log.Fatalf("Failed to initialize subscriber tracer: %v", err)
+    }
+    defer func() {
+        if err := tpSubscriber.Shutdown(context.Background()); err != nil {
+            log.Printf("Error shutting down subscriber tracer: %v", err)
+        }
+    }()
 
     // Create subscriber client
     subscriber, err := NewInstrumentedMQTTClient(MQTTConfig{
