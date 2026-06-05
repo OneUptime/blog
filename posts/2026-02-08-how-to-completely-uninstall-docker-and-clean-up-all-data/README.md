@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Uninstall, Linux, macOS, Window, DevOps, Cleanup, Disk Space, Troubleshooting
+Tags: Docker, Uninstall, Linux, macOS, Windows, DevOps, Cleanup, Disk Space, Troubleshooting
 
 Description: Complete instructions for fully removing Docker Engine, Docker Desktop, and all associated data from Linux, macOS, and Windows systems.
 
@@ -48,10 +48,11 @@ Save your Docker daemon configuration and any Compose files.
 
 ```bash
 # Copy the daemon config
-cp /etc/docker/daemon.json ~/docker-daemon-backup.json
+[ -f /etc/docker/daemon.json ] && cp /etc/docker/daemon.json ~/docker-daemon-backup.json
 
 # List all running containers and their configurations
-docker inspect $(docker ps -q) > ~/running-containers-backup.json
+running_containers=$(docker ps -q)
+[ -n "$running_containers" ] && docker inspect $running_containers > ~/running-containers-backup.json
 ```
 
 ## Uninstalling Docker on Ubuntu / Debian
@@ -60,10 +61,12 @@ docker inspect $(docker ps -q) > ~/running-containers-backup.json
 
 ```bash
 # Stop all running containers
-docker stop $(docker ps -aq)
+running_containers=$(docker ps -q)
+[ -n "$running_containers" ] && docker stop $running_containers
 
 # Remove all containers
-docker rm $(docker ps -aq)
+all_containers=$(docker ps -aq)
+[ -n "$all_containers" ] && docker rm $all_containers
 ```
 
 ### Step 2: Stop the Docker Service
@@ -98,6 +101,7 @@ sudo rm -rf /var/lib/containerd
 
 # Remove Docker configuration
 sudo rm -rf /etc/docker
+sudo rm -f /etc/apt/sources.list.d/docker.sources
 sudo rm -f /etc/apt/sources.list.d/docker.list
 sudo rm -f /etc/apt/keyrings/docker.asc
 
@@ -139,7 +143,8 @@ Both commands should return "not found" or an error.
 
 ```bash
 # Stop all containers and the Docker daemon
-docker stop $(docker ps -aq) 2>/dev/null
+running_containers=$(docker ps -q)
+[ -n "$running_containers" ] && docker stop $running_containers
 sudo systemctl stop docker
 sudo systemctl stop docker.socket
 sudo systemctl stop containerd
@@ -242,13 +247,11 @@ rm -rf ~/Library/Logs/Docker\ Desktop
 rm -rf ~/Library/Preferences/com.electron.docker-frontend.plist
 rm -rf ~/Library/Cookies/com.docker.docker.binarycookies
 
-# Remove Docker CLI and related binaries
+# Remove Docker Desktop CLI symlinks and credential helpers
 sudo rm -f /usr/local/bin/docker
 sudo rm -f /usr/local/bin/docker-compose
 sudo rm -f /usr/local/bin/docker-credential-desktop
-sudo rm -f /usr/local/bin/docker-credential-ecr-login
 sudo rm -f /usr/local/bin/docker-credential-osxkeychain
-sudo rm -f /usr/local/bin/kubectl
 sudo rm -f /usr/local/bin/hub-tool
 sudo rm -f /usr/local/bin/com.docker.cli
 
@@ -289,11 +292,13 @@ Open PowerShell as Administrator:
 
 ```powershell
 # Remove Docker data directories
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Docker"
-Remove-Item -Recurse -Force "$env:APPDATA\Docker"
-Remove-Item -Recurse -Force "$env:APPDATA\Docker Desktop"
-Remove-Item -Recurse -Force "$env:PROGRAMDATA\Docker"
-Remove-Item -Recurse -Force "$env:PROGRAMDATA\DockerDesktop"
+Remove-Item -Path "$env:LOCALAPPDATA\Docker" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:APPDATA\Docker" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:APPDATA\Docker Desktop" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:PROGRAMDATA\Docker" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:PROGRAMDATA\DockerDesktop" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:ProgramFiles\Docker" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:USERPROFILE\.docker" -Recurse -Force -ErrorAction SilentlyContinue
 
 # Remove Docker from PATH (check your System Environment Variables)
 # Open System Properties > Environment Variables and remove Docker entries
