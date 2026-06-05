@@ -10,20 +10,19 @@ Description: Learn how to safely add custom iptables rules alongside Docker with
 
 Docker manages iptables rules automatically. Every time you publish a port or create a network, Docker inserts and removes rules as needed. This creates a challenge: if you add your own firewall rules carelessly, Docker will overwrite them on restart. If you modify Docker's chains directly, you risk breaking container networking.
 
-The solution is the DOCKER-USER chain. Docker created this chain specifically for user-defined rules. It processes packets before Docker's own rules, and Docker never modifies it. This guide shows you how to use DOCKER-USER effectively, along with other techniques for customizing Docker's networking behavior through iptables.
+The solution is the DOCKER-USER chain. Docker created this chain specifically for user-defined rules. It processes packets before Docker's own rules. This guide shows you how to use DOCKER-USER effectively, along with other techniques for customizing Docker's networking behavior through iptables.
 
 ## Understanding Where to Add Rules
 
-Docker's FORWARD chain processes rules in this order:
+Docker's FORWARD chain jumps to Docker's custom chains before rules you append directly to FORWARD. On current Docker Engine releases, the important filter-table chains include:
 
 1. DOCKER-USER (your rules go here)
-2. DOCKER-ISOLATION-STAGE-1 (network isolation)
-3. ACCEPT for established connections
-4. DOCKER (published port rules)
-5. ACCEPT for outbound container traffic
-6. ACCEPT for container-to-container traffic
+2. DOCKER-FORWARD (Docker's first stage for bridge-network forwarding)
+3. DOCKER, DOCKER-BRIDGE, and DOCKER-INTERNAL (published port and bridge rules)
+4. DOCKER-CT (per-bridge connection tracking)
+5. DOCKER-INGRESS (Swarm ingress rules, when used)
 
-Because DOCKER-USER comes first, your rules take priority over everything else in the FORWARD chain.
+Because DOCKER-USER is jumped to before Docker's own forwarding chains, your rules take priority over Docker's bridge-network forwarding rules.
 
 ```bash
 # View the current DOCKER-USER chain
@@ -39,24 +38,23 @@ The most common customization is restricting which IP addresses can reach publis
 
 ```bash
 # Allow only your office IP to access any published Docker port
-sudo iptables -I DOCKER-USER -i eth0 -s 203.0.113.50 -j ACCEPT
-sudo iptables -I DOCKER-USER -i eth0 -s 10.0.0.0/8 -j ACCEPT
+sudo iptables -I DOCKER-USER 1 -i eth0 -s 203.0.113.50 -j ACCEPT
+sudo iptables -I DOCKER-USER 2 -i eth0 -s 10.0.0.0/8 -j ACCEPT
 
 # Drop all other external traffic to Docker containers
-sudo iptables -A DOCKER-USER -i eth0 -j DROP
+sudo iptables -I DOCKER-USER 3 -i eth0 -j DROP
 
-# Keep the RETURN rule at the end for internal traffic
-sudo iptables -A DOCKER-USER -j RETURN
+# Keep the existing RETURN rule at the end for internal traffic
 ```
 
 Important: the `-i eth0` flag limits these rules to traffic arriving from the external interface. Without it, you would also block container-to-container traffic on the bridge interfaces.
 
 ## Port-Specific Restrictions
 
-Lock down specific published ports while leaving others open:
+Lock down specific container destination ports while leaving others open. In DOCKER-USER, packets for published ports have already been DNATed, so `--dport` matches the container port, not necessarily the original host port:
 
 ```bash
-# Block all external access to port 5432 (PostgreSQL)
+# Block all external access to container port 5432 (PostgreSQL)
 sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -j DROP
 
 # Allow only the application server to reach PostgreSQL
@@ -64,6 +62,12 @@ sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -s 10.0.1.5 -j ACCEPT
 ```
 
 Note that the ACCEPT rule must come before the DROP rule. iptables processes rules top-to-bottom and stops at the first match.
+
+If the original published host port differs from the container port, match it with conntrack instead:
+
+```bash
+sudo iptables -I DOCKER-USER -i eth0 -p tcp -m conntrack --ctorigdstport 5432 -j DROP
+```
 
 ```bash
 # Verify rule ordering (ACCEPT should be above DROP for the same port)
@@ -80,7 +84,7 @@ sudo iptables -I DOCKER-USER -p tcp --dport 8080 -m conntrack --ctstate NEW \
   -m limit --limit 25/minute --limit-burst 50 -j ACCEPT
 
 # Drop connections that exceed the rate limit
-sudo iptables -I DOCKER-USER -p tcp --dport 8080 -m conntrack --ctstate NEW -j DROP
+sudo iptables -I DOCKER-USER 2 -p tcp --dport 8080 -m conntrack --ctstate NEW -j DROP
 ```
 
 The `--limit-burst 50` allows an initial burst of 50 connections before the rate limit kicks in. Adjust these values based on your expected traffic patterns.
@@ -111,8 +115,8 @@ ipset lookups are O(1) regardless of the number of entries, making them much fas
 Add logging rules to monitor traffic patterns:
 
 ```bash
-# Log all dropped packets in DOCKER-USER
-sudo iptables -I DOCKER-USER -j LOG \
+# Log packets before a DROP rule in DOCKER-USER
+sudo iptables -I DOCKER-USER 3 -j LOG \
   --log-prefix "DOCKER-USER-DROP: " \
   --log-level 4 \
   -m limit --limit 5/min
@@ -121,6 +125,8 @@ sudo iptables -I DOCKER-USER -j LOG \
 sudo iptables -I DOCKER-USER -p tcp --dport 443 -m conntrack --ctstate NEW \
   -j LOG --log-prefix "DOCKER-NEW-443: " --log-level 4
 ```
+
+Replace `3` with the line number of the DROP rule you want to log before.
 
 View the logs:
 
@@ -134,18 +140,18 @@ sudo journalctl -f -k | grep "DOCKER-USER"
 Restrict access to certain hours:
 
 ```bash
-# Allow access to the admin panel only during business hours (9 AM - 6 PM, Mon-Fri)
+# Allow access to the admin panel only during business hours (9 AM - 6 PM UTC, Mon-Fri)
 sudo iptables -I DOCKER-USER -p tcp --dport 8443 \
   -m time --timestart 09:00 --timestop 18:00 --weekdays Mon,Tue,Wed,Thu,Fri \
   -j ACCEPT
 
 # Block admin panel access outside business hours
-sudo iptables -A DOCKER-USER -p tcp --dport 8443 -j DROP
+sudo iptables -I DOCKER-USER 2 -p tcp --dport 8443 -j DROP
 ```
 
 ## Persisting Custom Rules
 
-Docker does not manage DOCKER-USER rules, so they disappear on reboot. Several options exist to persist them.
+Docker does not persist your custom DOCKER-USER rules across host reboots. Several options exist to persist them.
 
 Using iptables-persistent:
 
@@ -156,6 +162,8 @@ sudo apt-get install iptables-persistent
 # Save current rules (including DOCKER-USER customizations)
 sudo netfilter-persistent save
 ```
+
+If you use iptables-persistent, make sure the saved rules are restored after Docker has created the DOCKER-USER chain. A systemd service ordered after Docker is often easier to reason about.
 
 Using a systemd service:
 
@@ -234,12 +242,12 @@ Always test iptables changes before locking yourself out:
 
 ```bash
 # Test rule: temporarily add a rule and automatically remove it after 60 seconds
-sudo timeout 60 bash -c '
+sudo bash -c '
   iptables -I DOCKER-USER -i eth0 -j DROP
+  cleanup() { iptables -D DOCKER-USER -i eth0 -j DROP; echo "Rule removed."; }
+  trap cleanup EXIT
   echo "Rule active for 60 seconds. Test connectivity now."
   sleep 60
-  iptables -D DOCKER-USER -i eth0 -j DROP
-  echo "Rule removed."
 '
 ```
 
