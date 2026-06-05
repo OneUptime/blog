@@ -40,6 +40,7 @@ OpenTelemetry resource attributes describe the entity producing telemetry. You c
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk._logs import LoggerProvider
 
 # Define resource with runbook URL as an attribute
 
@@ -54,12 +55,13 @@ resource = Resource.create({
     "service.runbook.latency": "https://wiki.internal/runbooks/payment-service/latency",
 })
 
-# Both traces and metrics carry the runbook URL
+# Traces, metrics, and logs carry the runbook URL
 tracer_provider = TracerProvider(resource=resource)
 meter_provider = MeterProvider(resource=resource)
+logger_provider = LoggerProvider(resource=resource)
 ```
 
-When these attributes are converted to Prometheus labels (via `resource_to_telemetry_conversion`), they appear on every metric from that service. Dashboard links and alert annotations can then reference them.
+When these attributes are converted to Prometheus labels (via `resource_to_telemetry_conversion` on the Prometheus exporter), they appear on every metric from that service using Prometheus-safe label names such as `service_runbook_url`. Dashboard links and alert annotations can then reference them.
 
 ## Approach 2: Collector-Level Attribute Injection
 
@@ -67,15 +69,21 @@ If you do not want to modify application code, inject runbook URLs at the collec
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
-  # Add runbook URLs based on service name
+  # Add a default runbook URL
   attributes/runbooks:
     actions:
       - key: runbook.url
         value: "https://wiki.internal/runbooks/default"
         action: insert
 
-  # Use routing to set service-specific runbooks
+  # Use transform rules to set service-specific runbooks
   transform/runbooks:
     metric_statements:
       - context: datapoint
@@ -91,16 +99,27 @@ processors:
         statements:
           - set(attributes["runbook.url"], "https://wiki.internal/runbooks/payment-service")
             where resource.attributes["service.name"] == "payment-service"
+  batch:
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+    resource_to_telemetry_conversion:
+      enabled: true
+  otlp/backend:
+    endpoint: "otel-backend:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [transform/runbooks, batch]
+      processors: [attributes/runbooks, transform/runbooks, batch]
       exporters: [prometheus]
     traces:
       receivers: [otlp]
-      processors: [transform/runbooks, batch]
+      processors: [attributes/runbooks, transform/runbooks, batch]
       exporters: [otlp/backend]
 ```
 
@@ -191,27 +210,42 @@ Configure Alertmanager to include runbook URLs in notifications sent to PagerDut
 
 ```yaml
 # alertmanager-config.yaml
+route:
+  receiver: "pagerduty-payments"
+  routes:
+    - matchers:
+        - team="payments"
+      receiver: "pagerduty-payments"
+      continue: true
+    - matchers:
+        - team="payments"
+      receiver: "slack-payments"
+
 receivers:
   - name: "pagerduty-payments"
     pagerduty_configs:
       - routing_key: "<pagerduty-key>"
-        description: '{{ .CommonAnnotations.summary }}'
+        description: '{{ template "pagerduty.default.description" . }}'
         # Include runbook URL in the PagerDuty incident
         details:
-          runbook: '{{ .CommonAnnotations.runbook_url }}'
-          dashboard: '{{ .CommonAnnotations.dashboard_url }}'
+          runbooks: '{{ range .Alerts.Firing }}{{ .Labels.alertname }}: {{ .Annotations.runbook_url }} {{ end }}'
+          dashboards: '{{ range .Alerts.Firing }}{{ .Labels.alertname }}: {{ .Annotations.dashboard_url }} {{ end }}'
           firing: '{{ .Alerts.Firing | len }}'
 
   - name: "slack-payments"
     slack_configs:
       - channel: "#payments-alerts"
-        title: '{{ .CommonAnnotations.summary }}'
+        api_url: "<slack-webhook-url>"
+        title: '{{ template "slack.default.title" . }}'
         # Runbook link appears directly in the Slack message
         text: >
-          *Severity:* {{ .CommonLabels.severity }}
-          *Runbook:* {{ .CommonAnnotations.runbook_url }}
-          *Dashboard:* {{ .CommonAnnotations.dashboard_url }}
-          {{ .CommonAnnotations.description }}
+          {{ range .Alerts.Firing }}
+          *Alert:* {{ .Labels.alertname }}
+          *Severity:* {{ .Labels.severity }}
+          *Runbook:* {{ .Annotations.runbook_url }}
+          *Dashboard:* {{ .Annotations.dashboard_url }}
+          {{ .Annotations.description }}
+          {{ end }}
 ```
 
 ## Keeping Runbook URLs in Sync
