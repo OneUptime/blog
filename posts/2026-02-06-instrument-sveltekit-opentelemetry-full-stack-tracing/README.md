@@ -58,6 +58,7 @@ npm install @opentelemetry/api \
 For SvelteKit, you'll also want to ensure you're using the Node adapter:
 
 ```bash
+npm install express
 npm install -D @sveltejs/adapter-node
 ```
 
@@ -70,11 +71,15 @@ Create an instrumentation file that initializes OpenTelemetry before SvelteKit l
 // OpenTelemetry initialization for SvelteKit application
 // Must be imported before any application code executes
 
-const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Configure trace exporter to send data to OpenTelemetry collector
 const traceExporter = new OTLPTraceExporter({
@@ -86,11 +91,11 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 // Define resource attributes to identify this service
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'sveltekit-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'sveltekit-app',
+    [ATTR_SERVICE_VERSION]: process.env.OTEL_SERVICE_VERSION || process.env.npm_package_version || '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
     'app.framework': 'sveltekit',
     'app.framework.version': '2.0.0',
   })
@@ -110,7 +115,7 @@ const sdk = new NodeSDK({
         },
         // Add custom attributes to HTTP spans
         requestHook: (span, request) => {
-          span.setAttribute('http.user_agent', request.headers['user-agent'] || 'unknown');
+          span.setAttribute('user_agent.original', request.headers?.['user-agent'] || 'unknown');
         },
       },
       '@opentelemetry/instrumentation-fs': {
@@ -142,11 +147,11 @@ Update your SvelteKit server entry point to load instrumentation before starting
 // SvelteKit server with OpenTelemetry initialization
 // Import instrumentation FIRST before any other code
 
-require('./instrumentation');
+import './instrumentation.js';
 
-const { handler } = require('./build/handler.js');
-const express = require('express');
-const { trace } = require('@opentelemetry/api');
+const { handler } = await import('./build/handler.js');
+const express = (await import('express')).default;
+const { trace } = await import('@opentelemetry/api');
 
 const app = express();
 const tracer = trace.getTracer('sveltekit-server');
@@ -261,7 +266,7 @@ export const load: PageServerLoad = async ({ params, fetch, depends }) => {
         }
       });
 
-      // Fetch reviews in parallel with another custom span
+      // Fetch reviews with another custom span
       const reviews = await tracer.startActiveSpan('fetch.reviews', async (reviewSpan) => {
         reviewSpan.setAttribute('fetch.type', 'api');
         reviewSpan.setAttribute('product.id', productId);
@@ -341,7 +346,7 @@ interface CreateProductRequest {
 export const GET: RequestHandler = async ({ url }) => {
   return await tracer.startActiveSpan('api.products.list', async (span) => {
     try {
-      span.setAttribute('http.method', 'GET');
+      span.setAttribute('http.request.method', 'GET');
       span.setAttribute('api.endpoint', '/api/products');
 
       // Parse query parameters
@@ -353,8 +358,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
       // Fetch products from database with tracing
       const products = await tracer.startActiveSpan('db.query.products', async (dbSpan) => {
-        dbSpan.setAttribute('db.operation', 'SELECT');
-        dbSpan.setAttribute('db.table', 'products');
+        dbSpan.setAttribute('db.operation.name', 'SELECT');
+        dbSpan.setAttribute('db.collection.name', 'products');
         dbSpan.setAttribute('db.page', page);
         dbSpan.setAttribute('db.limit', limit);
 
@@ -395,7 +400,7 @@ export const GET: RequestHandler = async ({ url }) => {
 export const POST: RequestHandler = async ({ request }) => {
   return await tracer.startActiveSpan('api.products.create', async (span) => {
     try {
-      span.setAttribute('http.method', 'POST');
+      span.setAttribute('http.request.method', 'POST');
       span.setAttribute('api.endpoint', '/api/products');
 
       // Parse and validate request body
@@ -425,8 +430,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
       // Insert into database with tracing
       const productId = await tracer.startActiveSpan('db.insert.product', async (dbSpan) => {
-        dbSpan.setAttribute('db.operation', 'INSERT');
-        dbSpan.setAttribute('db.table', 'products');
+        dbSpan.setAttribute('db.operation.name', 'INSERT');
+        dbSpan.setAttribute('db.collection.name', 'products');
 
         try {
           const id = await insertProduct(body);
@@ -481,8 +486,8 @@ SvelteKit hooks allow you to run code for every request. Use the handle hook to 
 // src/hooks.server.ts
 // Global hooks with OpenTelemetry context enrichment
 
-import type { Handle } from '@sveltejs/kit';
-import { trace, context } from '@opentelemetry/api';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
+import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('sveltekit-hooks');
 
@@ -494,7 +499,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       span.setAttribute('sveltekit.route.id', event.route.id || 'unknown');
       span.setAttribute('sveltekit.url.pathname', event.url.pathname);
       span.setAttribute('sveltekit.url.search', event.url.search);
-      span.setAttribute('http.method', event.request.method);
+      span.setAttribute('http.request.method', event.request.method);
 
       // Extract user information if available
       const userId = event.cookies.get('user_id');
@@ -514,7 +519,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       const duration = Date.now() - startTime;
 
       // Add response metadata
-      span.setAttribute('http.status_code', response.status);
+      span.setAttribute('http.response.status_code', response.status);
       span.setAttribute('sveltekit.response.duration_ms', duration);
 
       // Set span status based on response
@@ -538,7 +543,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 };
 
 // HandleError hook for tracing errors
-export const handleError = ({ error, event }) => {
+export const handleError: HandleServerError = ({ error, event }) => {
   const span = trace.getActiveSpan();
   if (span) {
     span.recordException(error as Error);
@@ -573,7 +578,7 @@ export const actions: Actions = {
     return await tracer.startActiveSpan('action.contact.submit', async (span) => {
       try {
         span.setAttribute('action.name', 'contact');
-        span.setAttribute('http.method', 'POST');
+        span.setAttribute('http.request.method', 'POST');
 
         // Parse form data
         const data = await request.formData();
@@ -633,10 +638,11 @@ export const actions: Actions = {
         span.setStatus({ code: 1 });
         return { success: true };
       } catch (err) {
-        if (typeof err === 'object') {
-          span.setAttribute('validation.errors', JSON.stringify(err));
+        if (err && !(err instanceof Error) && typeof err === 'object') {
+          const validationErrors = err as Record<string, string>;
+          span.setAttribute('validation.errors', JSON.stringify(validationErrors));
           span.setStatus({ code: 2, message: 'Validation failed' });
-          return fail(400, { errors: err });
+          return fail(400, { errors: validationErrors });
         }
 
         span.recordException(err as Error);
@@ -676,7 +682,7 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Resource attributes
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,region=us-east-1
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,region=us-east-1
 
 # Application settings
 NODE_ENV=production
