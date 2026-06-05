@@ -10,9 +10,9 @@ The OpenTelemetry Collector provides a load balancing exporter that distributes 
 
 ## Understanding the Load Balancing Exporter
 
-The load balancing exporter acts as a proxy that sits between your collector pipeline and multiple downstream exporters or backend endpoints. It implements various load balancing strategies to distribute traces, metrics, and logs across available backends. The exporter performs health checks on backend endpoints and automatically routes traffic away from unhealthy instances.
+The load balancing exporter acts as a proxy that sits between your collector pipeline and multiple downstream OTLP backend endpoints. It consistently distributes spans and metrics across available backends based on the configured routing key. Logs are exported based on their trace ID when present, or an auto-generated trace ID otherwise.
 
-This exporter is particularly useful when you have multiple instances of the same backend service and want to distribute the load evenly. For example, if you run multiple instances of Jaeger, Prometheus, or a custom observability backend, the load balancing exporter ensures that no single instance becomes a bottleneck.
+This exporter is particularly useful when you have multiple instances of the same OTLP-compatible backend service and want related telemetry to reach the same backend. For example, if you run multiple instances of an OpenTelemetry Collector gateway or another OTLP backend, the load balancing exporter helps avoid sending all traffic to a single instance.
 
 ```mermaid
 graph LR
@@ -26,13 +26,13 @@ graph LR
 
 ## Load Balancing Strategies
 
-The load balancing exporter supports several strategies for distributing telemetry data:
+The load balancing exporter supports several routing keys for distributing telemetry data:
 
-**Round Robin**: Distributes requests evenly across all available backends in a circular order. Each backend receives approximately the same number of requests over time.
-
-**Random**: Randomly selects a backend for each request. This provides good distribution without maintaining state about which backend was last used.
+**Service**: Routes spans and metrics based on the service name. This is useful when downstream processing, such as span-to-metrics aggregation, needs all telemetry from a service on the same backend.
 
 **Trace ID Hashing**: Uses the trace ID to consistently route all spans from the same trace to the same backend. This is critical for distributed tracing systems that need to see complete traces on a single backend instance.
+
+**Metric, Resource, Stream ID, and Attributes**: Routes metrics, or spans and metrics in the case of attributes, using more specific signal data. These keys are useful when service-level routing is too broad for your backend or aggregation model.
 
 ## Basic Configuration
 
@@ -54,13 +54,14 @@ processors:
 
 exporters:
   # Define the load balancing exporter
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         # Timeout for sending data to backends
         timeout: 10s
         # Use insecure connection (for development only)
-        insecure: true
+        tls:
+          insecure: true
     resolver:
       # Static resolver with predefined endpoints
       static:
@@ -76,7 +77,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 In this configuration, the load balancing exporter uses trace ID hashing to ensure that all spans belonging to the same trace are sent to the same backend endpoint. This is important because distributed tracing backends need to assemble complete traces from individual spans.
@@ -87,7 +88,7 @@ For dynamic environments where backend endpoints may change, you can use DNS-bas
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
@@ -108,7 +109,7 @@ exporters:
         interval: 30s
         # Timeout for DNS queries
         timeout: 5s
-    # Use service routing for metrics and logs
+    # Use service routing for spans and metrics
     routing_key: "service"
 
 service:
@@ -116,14 +117,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 The DNS resolver periodically queries the configured hostname and updates the list of available backend endpoints. This works well with Kubernetes services, AWS ELB, or any DNS-based service discovery mechanism. When the DNS records change, the load balancer automatically picks up the new endpoints without requiring a collector restart.
 
 ## Configuring Multiple Pipelines
 
-You can configure different load balancing strategies for different signal types. For example, use trace ID hashing for traces and service-based routing for metrics:
+You can configure different load balancing exporter instances for different signal types. For example, use trace ID hashing for traces and service-based routing for metrics:
 
 ```yaml
 receivers:
@@ -138,11 +139,12 @@ processors:
 
 exporters:
   # Load balancer for traces using trace ID routing
-  loadbalancing/traces:
+  load_balancing/traces:
     protocol:
       otlp:
         timeout: 10s
-        insecure: true
+        tls:
+          insecure: true
     resolver:
       static:
         hostnames:
@@ -151,11 +153,12 @@ exporters:
     routing_key: "traceID"
 
   # Load balancer for metrics using service routing
-  loadbalancing/metrics:
+  load_balancing/metrics:
     protocol:
       otlp:
         timeout: 10s
-        insecure: true
+        tls:
+          insecure: true
     resolver:
       static:
         hostnames:
@@ -168,26 +171,36 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing/traces]
+      exporters: [load_balancing/traces]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing/metrics]
+      exporters: [load_balancing/metrics]
 ```
 
 This configuration creates separate load balancing exporters for traces and metrics, each with its own routing strategy and backend endpoints. The routing key for metrics uses the service name, which ensures that all metrics from the same service go to the same backend, making it easier to correlate metrics per service.
 
-## Health Checking and Failover
+## Resilience and Failover
 
-The load balancing exporter automatically performs health checks on backend endpoints. When a backend becomes unhealthy, the exporter stops routing traffic to it until it recovers:
+The load balancing exporter creates one OTLP exporter per resolved endpoint. Configure retry, queue, timeout, and resolver refresh settings so the exporter can handle temporary endpoint failures and topology changes:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      queue_size: 5000
     protocol:
       otlp:
         timeout: 10s
-        insecure: false
+        tls:
+          insecure: false
         # Configure keepalive for connection health
         keepalive:
           time: 30s
@@ -201,24 +214,16 @@ exporters:
         port: 4317
         interval: 30s
     routing_key: "traceID"
-    # Configure health check behavior
-    health_check:
-      # Enable health checking
-      enabled: true
-      # Interval between health checks
-      interval: 15s
-      # Timeout for health check requests
-      timeout: 5s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
-Health checks ensure that the load balancer only sends data to healthy backends. If a backend fails its health check, it is temporarily removed from the rotation. The load balancer continues checking the unhealthy backend and automatically adds it back when it recovers.
+With DNS or Kubernetes-based discovery, resolver updates eventually change the exporter set as endpoints appear or disappear. Retry and queue settings reduce data loss during transient failures, but the load balancing exporter does not use a round-robin health-check rotation model.
 
 ## Kubernetes Deployment Example
 
@@ -226,11 +231,10 @@ When deploying the OpenTelemetry Collector in Kubernetes with load balancing, yo
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
-        insecure: false
         tls:
           insecure_skip_verify: false
     resolver:
@@ -246,7 +250,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 A Kubernetes headless service returns all pod IPs for the service, allowing the load balancer to distribute traffic directly to individual backend pods rather than going through the Kubernetes service proxy. This reduces latency and provides more control over load distribution.
@@ -255,12 +259,12 @@ A Kubernetes headless service returns all pod IPs for the service, allowing the 
 
 The load balancing exporter exposes metrics that help you monitor its performance and health. You should monitor these key metrics:
 
-- Backend connection status and health check results
-- Request distribution across backends
+- Number of resolved backends
+- Resolver update and resolution results
 - Failed requests per backend
 - Response times per backend
 
-Configure the Prometheus exporter to expose these metrics:
+Configure the Collector's internal telemetry Prometheus endpoint to expose these metrics:
 
 ```yaml
 receivers:
@@ -274,45 +278,46 @@ processors:
     timeout: 10s
 
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
-        insecure: true
+        tls:
+          insecure: true
     resolver:
       static:
         hostnames:
           - backend-1.example.com:4317
           - backend-2.example.com:4317
     routing_key: "traceID"
-
-  # Export collector metrics to Prometheus
-  prometheus:
-    endpoint: "0.0.0.0:8888"
-
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
-  # Enable telemetry pipeline for collector metrics
+      exporters: [load_balancing]
+  # Expose collector internal metrics for Prometheus scraping
   telemetry:
     metrics:
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Best Practices
 
 When configuring the load balancing exporter, follow these best practices:
 
-**Choose the Right Routing Key**: Use trace ID routing for traces to keep traces together, and service or resource routing for metrics and logs to enable easier querying and aggregation.
+**Choose the Right Routing Key**: Use trace ID routing for traces to keep traces together, and service or resource routing for metrics to enable easier querying and aggregation. Logs are routed by trace ID when available.
 
 **Configure Appropriate Timeouts**: Set timeouts that balance responsiveness with reliability. Too short and you may see false failures; too long and you will delay error detection.
 
 **Use DNS Resolution in Dynamic Environments**: For cloud-native deployments where backends scale up and down, use DNS-based resolution to automatically discover new endpoints.
 
-**Enable Health Checks**: Always enable health checks to ensure that the load balancer can detect and route around failed backends.
+**Enable Retry and Queueing**: Configure retry and sending queue settings so transient backend failures do not immediately drop telemetry.
 
 **Monitor Backend Performance**: Track metrics for each backend to identify performance issues or imbalances in load distribution.
 
@@ -320,10 +325,10 @@ When configuring the load balancing exporter, follow these best practices:
 
 ## Integration with Other Exporters
 
-The load balancing exporter works with various protocol exporters including OTLP, Jaeger, and Zipkin. For more information on configuring other exporters, see our related posts on [configuring OTLP exporters](https://oneuptime.com/blog/post/2026-02-06-otlp-grpc-exporter-opentelemetry-collector/view) and [understanding OpenTelemetry Collector pipelines](https://oneuptime.com/blog/post/2026-01-07-opentelemetry-collector-pipelines/view).
+The load balancing exporter uses OTLP for its downstream protocol. For more information on configuring other exporters, see our related posts on [configuring OTLP exporters](https://oneuptime.com/blog/post/2026-02-06-otlp-grpc-exporter-opentelemetry-collector/view) and [understanding OpenTelemetry Collector pipelines](https://oneuptime.com/blog/post/2026-01-07-opentelemetry-collector-pipelines/view).
 
 ## Conclusion
 
-The load balancing exporter is a powerful tool for building resilient and scalable observability pipelines. By distributing telemetry data across multiple backends, you can improve system reliability, prevent backend overload, and ensure continuous data flow even during partial failures. The exporter's support for multiple routing strategies, health checking, and dynamic service discovery makes it suitable for both static and cloud-native deployment environments.
+The load balancing exporter is a powerful tool for building resilient and scalable observability pipelines. By distributing telemetry data across multiple backends, you can improve system reliability, prevent backend overload, and ensure continuous data flow even during partial failures. The exporter's support for multiple routing keys and dynamic service discovery makes it suitable for both static and cloud-native deployment environments.
 
-Configure the load balancing exporter based on your specific needs, choosing appropriate routing keys for different signal types and enabling health checks to maintain system reliability. With proper configuration and monitoring, the load balancing exporter helps you build robust observability infrastructure that scales with your applications.
+Configure the load balancing exporter based on your specific needs, choosing appropriate routing keys for different signal types and enabling retry and queue settings to improve reliability. With proper configuration and monitoring, the load balancing exporter helps you build robust observability infrastructure that scales with your applications.
