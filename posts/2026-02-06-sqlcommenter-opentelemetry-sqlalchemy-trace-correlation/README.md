@@ -19,18 +19,17 @@ Traditional approaches require manual correlation using timestamps, which is err
 SQLCommenter is a specification and set of libraries that augment SQL statements with comments containing metadata about the code that generated them. When combined with OpenTelemetry, these comments include:
 
 - Trace ID and Span ID for exact correlation
-- Service name and version
 - Database driver information
 - Application framework details
-- Custom tags you specify
+- Service name, route, and other application attributes remain available on the correlated OpenTelemetry spans
 
 The resulting SQL looks like this:
 
 ```sql
 SELECT * FROM users WHERE id = 42
 /*traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
-  service='user-service',
-  route='/api/users/:id'*/
+  db_driver='psycopg2',
+  db_framework='sqlalchemy:2.0.0'*/
 ```
 
 ## Installing Dependencies
@@ -41,14 +40,19 @@ Install OpenTelemetry with SQLAlchemy instrumentation and SQLCommenter support.
 pip install opentelemetry-api opentelemetry-sdk \
     opentelemetry-instrumentation-sqlalchemy \
     opentelemetry-exporter-otlp \
-    sqlalchemy \
-    opentelemetry-util-http
+    sqlalchemy
 ```
 
 For database connectivity, install your driver. We'll use PostgreSQL as an example.
 
 ```bash
 pip install psycopg2-binary
+```
+
+For the Flask example later in this guide, also install Flask instrumentation.
+
+```bash
+pip install flask opentelemetry-instrumentation-flask
 ```
 
 ## Basic Configuration
@@ -103,10 +107,9 @@ engine = create_engine(
 # Instrument with SQLCommenter enabled
 SQLAlchemyInstrumentor().instrument(
     engine=engine,
-    service="order-service",
     enable_commenter=True,  # This is the critical parameter
     commenter_options={
-        # Control what metadata to include in comments
+        # These are the documented SQLAlchemy commenter keys
         "db_driver": True,  # Include database driver info
         "db_framework": True,  # Include SQLAlchemy version
         "opentelemetry_values": True,  # Include trace context
@@ -121,10 +124,9 @@ Session = sessionmaker(bind=engine)
 Customize what information appears in SQL comments based on your needs.
 
 ```python
-# Comprehensive configuration with all available options
+# Comprehensive configuration with all available SQLAlchemy commenter options
 SQLAlchemyInstrumentor().instrument(
     engine=engine,
-    service="order-service",
     enable_commenter=True,
     commenter_options={
         # OpenTelemetry trace context
@@ -135,16 +137,6 @@ SQLAlchemyInstrumentor().instrument(
 
         # Framework information (SQLAlchemy version)
         "db_framework": True,
-
-        # Include route information if available
-        # Requires integration with web framework
-        "route": True,
-
-        # Include controller/handler name
-        "controller": True,
-
-        # Include action/method name
-        "action": True,
     }
 )
 ```
@@ -235,7 +227,7 @@ def create_order(customer_email: str, amount: float) -> Order:
 
 ## Web Framework Integration
 
-When integrated with web frameworks, SQLCommenter can include route information automatically.
+When integrated with web frameworks, SQLCommenter carries the `traceparent` value in SQL. Route information is available on the correlated HTTP span in your tracing backend.
 
 ```python
 from flask import Flask, request, jsonify
@@ -250,7 +242,7 @@ FlaskInstrumentor().instrument_app(app)
 def create_order_endpoint():
     """
     Handle order creation via HTTP.
-    SQL comments will include the route '/api/orders'.
+    SQL comments will include trace context that links back to this route's span.
     """
     data = request.get_json()
 
@@ -278,35 +270,33 @@ def create_order_endpoint():
 # INSERT INTO orders (customer_id, total_amount, status, created_at)
 # VALUES (1, 99.99, 'pending', '2026-02-06 10:30:00')
 # /*traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
-#   service='order-service',
-#   route='/api/orders',
 #   db_driver='psycopg2',
-#   db_framework='sqlalchemy'*/
+#   db_framework='sqlalchemy:2.0.0'*/
 ```
 
-## Custom Tags in SQL Comments
+## Custom Tags on Spans
 
-Add custom application-specific metadata to SQL comments.
+Add custom application-specific metadata to spans. These attributes are exported with the trace and can be correlated from the `traceparent` in SQL comments.
 
 ```python
 from opentelemetry.trace import get_current_span
 
 class CustomSQLCommenter:
-    """Add custom tags to SQL comments via span attributes"""
+    """Add custom tags to the current span"""
 
     @staticmethod
     def add_context(tenant_id: str, feature_flag: str = None):
-        """Add custom context that will appear in SQL comments"""
+        """Add custom context that appears on the correlated trace span"""
         span = get_current_span()
         if span:
-            # These attributes can be configured to appear in SQL comments
+            # These attributes are available in the trace, not in SQL comments
             span.set_attribute("tenant.id", tenant_id)
             if feature_flag:
                 span.set_attribute("feature.flag", feature_flag)
 
 def get_orders_for_tenant(tenant_id: str, limit: int = 100) -> List[Order]:
     """
-    Retrieve orders with tenant context in SQL comments.
+    Retrieve orders with tenant context on the active trace.
     This helps correlate database activity to specific tenants.
     """
     with tracer.start_as_current_span("get_orders_for_tenant") as span:
@@ -320,7 +310,7 @@ def get_orders_for_tenant(tenant_id: str, limit: int = 100) -> List[Order]:
 
         session = Session()
         try:
-            # Join query with all context embedded
+            # Join query with trace context embedded in SQL comments
             orders = session.query(Order).join(Customer).filter(
                 Customer.email.endswith(f"@{tenant_id}.com")
             ).limit(limit).all()
@@ -387,9 +377,6 @@ def analyze_slow_query_log(log_entry: str):
 
             print(f"Slow query trace ID: {trace_id}")
             print(f"Slow query span ID: {span_id}")
-            print(f"Service: {metadata.get('service', 'unknown')}")
-            print(f"Route: {metadata.get('route', 'unknown')}")
-
             # Now you can look up this exact trace in your observability backend
             return {
                 "trace_id": trace_id,
@@ -400,9 +387,9 @@ def analyze_slow_query_log(log_entry: str):
     return None
 ```
 
-## Monitoring SQLCommenter Overhead
+## Monitoring Queries with SQLCommenter
 
-SQLCommenter adds minimal overhead, but you should monitor it in high-throughput systems.
+SQLCommenter appends metadata to SQL statements. Monitor query duration and log volume in high-throughput systems.
 
 ```python
 import time
@@ -414,7 +401,7 @@ class SQLCommenterMonitor:
 
     @contextmanager
     def measure_query_with_comments(self, operation: str):
-        """Measure the overhead of SQL comments"""
+        """Measure query duration while SQL comments are enabled"""
         with self.tracer.start_as_current_span(f"db.{operation}") as span:
             start_time = time.perf_counter()
 
@@ -423,11 +410,9 @@ class SQLCommenterMonitor:
             finally:
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 span.set_attribute("db.duration_ms", duration_ms)
+                span.set_attribute("db.comments_enabled", True)
 
-                # SQLCommenter overhead is typically < 1ms
-                # Alert if overhead seems high
-                if duration_ms < 10:
-                    span.set_attribute("db.comments_enabled", True)
+                # Alert separately on query latency or log volume if needed
 
 monitor = SQLCommenterMonitor(tracer)
 
@@ -448,9 +433,9 @@ def benchmark_commented_queries():
 
 ## Best Practices
 
-**Enable in All Environments**: Use SQLCommenter in development, staging, and production. The overhead is minimal and the debugging value is immense.
+**Enable in All Environments**: Use SQLCommenter in development, staging, and production when your database logging and observability backend can handle the extra query text.
 
-**Configure Database Logs**: Ensure your database captures query comments in its logs. PostgreSQL, MySQL, and most databases include comments in their slow query logs by default.
+**Configure Database Logs**: Ensure your database captures query text in its logs. PostgreSQL, MySQL, and many other databases preserve SQL comments in logged statements.
 
 **Create Log Parsers**: Build tools to automatically extract trace IDs from database logs and link to your tracing backend.
 
@@ -458,7 +443,7 @@ def benchmark_commented_queries():
 
 **Use with Connection Pooling**: SQLCommenter works seamlessly with connection pools. Each query gets its own trace context regardless of which pool connection executes it.
 
-**Sanitize Sensitive Data**: Be cautious about what custom attributes you add. Don't include passwords, tokens, or PII in SQL comments.
+**Sanitize Sensitive Data**: Be cautious about query text and trace attributes. Don't include passwords, tokens, or PII in SQL comments or span attributes.
 
 ## Trace Correlation Flow
 
@@ -496,9 +481,9 @@ sequenceDiagram
 
 ## Database-Specific Considerations
 
-**PostgreSQL**: Comments appear in pg_stat_statements and slow query logs. Enable log_statement to capture all queries with comments.
+**PostgreSQL**: Comments appear in logged SQL text when statement logging is configured. Use `log_min_duration_statement` for slow-query logging or `log_statement` when you intentionally need broader statement logging.
 
-**MySQL**: Comments are included in the slow query log when log_slow_extra is enabled.
+**MySQL**: Comments are part of the SQL text recorded by the slow query log when slow-query logging is enabled. The `log_slow_extra` setting adds extra fields to file output.
 
 **SQLite**: SQLite supports comments but has limited logging. Use SQLite extensions or application-level logging to capture queries.
 
