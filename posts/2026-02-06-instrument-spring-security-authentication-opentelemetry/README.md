@@ -14,7 +14,7 @@ Spring Security operates through a chain of filters that process requests before
 
 The key filters in a typical Spring Security setup:
 
-1. **SecurityContextPersistenceFilter** - Restores security context from session
+1. **SecurityContextHolderFilter** - Loads the security context for the request
 2. **UsernamePasswordAuthenticationFilter** - Handles form-based login
 3. **BearerTokenAuthenticationFilter** - Processes JWT tokens
 4. **OAuth2LoginAuthenticationFilter** - Handles OAuth2 authorization code flow
@@ -41,18 +41,43 @@ Start with the OpenTelemetry Java agent and Spring Security dependencies:
         <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
     </dependency>
 
+    <!-- OAuth2 Client for OAuth2 Login -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-oauth2-client</artifactId>
+    </dependency>
+
     <!-- OpenTelemetry API -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.35.0</version>
+        <version>1.63.0</version>
     </dependency>
 
     <!-- OpenTelemetry instrumentation annotations -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-instrumentation-annotations</artifactId>
-        <version>2.1.0</version>
+        <version>2.28.1</version>
+    </dependency>
+
+    <!-- JJWT for the custom JWT validator example -->
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-api</artifactId>
+        <version>0.13.0</version>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-impl</artifactId>
+        <version>0.13.0</version>
+        <scope>runtime</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-jackson</artifactId>
+        <version>0.13.0</version>
+        <scope>runtime</scope>
     </dependency>
 </dependencies>
 ```
@@ -69,7 +94,6 @@ package com.company.security.auth;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -126,7 +150,7 @@ public class TracedAuthenticationProvider implements AuthenticationProvider {
 
             // Create successful authentication token
             return new UsernamePasswordAuthenticationToken(
-                user, password, user.getAuthorities());
+                user, null, user.getAuthorities());
 
         } catch (AuthenticationException e) {
             span.recordException(e);
@@ -219,9 +243,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
-import java.security.Key;
+import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -231,10 +256,10 @@ import java.util.stream.Collectors;
 @Component
 public class TracedJwtTokenValidator {
 
-    private final Key signingKey;
+    private final SecretKey signingKey;
     private final Tracer tracer;
 
-    public TracedJwtTokenValidator(Key signingKey, Tracer tracer) {
+    public TracedJwtTokenValidator(SecretKey signingKey, Tracer tracer) {
         this.signingKey = signingKey;
         this.tracer = tracer;
     }
@@ -258,7 +283,8 @@ public class TracedJwtTokenValidator {
             validateClaimsWithTracing(claims, span);
 
             // Extract authorities from claims
-            List<String> roles = claims.get("roles", List.class);
+            List<String> roles = Optional.ofNullable(claims.get("roles", List.class))
+                .orElse(List.of());
             List<SimpleGrantedAuthority> authorities = roles.stream()
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
@@ -292,11 +318,11 @@ public class TracedJwtTokenValidator {
             .startSpan();
 
         try (Scope scope = span.makeCurrent()) {
-            Claims claims = Jwts.parserBuilder()
-                .setSigningKey(signingKey)
+            Claims claims = Jwts.parser()
+                .verifyWith(signingKey)
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
 
             span.setAttribute("jwt.claims.count", claims.size());
             span.setAttribute("jwt.issuer", claims.getIssuer());
@@ -324,10 +350,12 @@ public class TracedJwtTokenValidator {
         try (Scope scope = span.makeCurrent()) {
             // Validate expiration
             Date expiration = claims.getExpiration();
-            boolean expired = expiration.before(new Date());
+            boolean expired = expiration != null && expiration.before(new Date());
 
             span.setAttribute("jwt.expired", expired);
-            span.setAttribute("jwt.expiration", expiration.toString());
+            if (expiration != null) {
+                span.setAttribute("jwt.expiration", expiration.toString());
+            }
             span.addEvent("jwt.expiration.checked");
 
             if (expired) {
@@ -370,56 +398,59 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
-import org.springframework.security.access.AccessDecisionManager;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.access.ConfigAttribute;
-import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * Custom access decision manager with OpenTelemetry tracing.
+ * Custom authorization manager with OpenTelemetry tracing.
  * Traces authorization decisions for debugging access control issues.
  */
 @Component
-public class TracedAccessDecisionManager implements AccessDecisionManager {
+public class TracedAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
 
     private final Tracer tracer;
+    private final List<String> requiredAuthorities = List.of("ROLE_ADMIN");
 
-    public TracedAccessDecisionManager(Tracer tracer) {
+    public TracedAuthorizationManager(Tracer tracer) {
         this.tracer = tracer;
     }
 
     @Override
-    public void decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes)
-            throws AccessDeniedException, InsufficientAuthenticationException {
+    public AuthorizationResult authorize(
+            Supplier<Authentication> authentication,
+            RequestAuthorizationContext context) {
 
         // Extract resource information
-        String resource = object.toString();
+        String resource = context.getRequest().getRequestURI();
+        Authentication currentAuthentication = authentication.get();
 
         Span span = tracer.spanBuilder("security.authorization.decide")
-            .setAttribute("auth.user", authentication.getName())
-            .setAttribute("auth.authenticated", authentication.isAuthenticated())
+            .setAttribute("auth.user", currentAuthentication != null ? currentAuthentication.getName() : "anonymous")
+            .setAttribute("auth.authenticated", currentAuthentication != null && currentAuthentication.isAuthenticated())
             .setAttribute("auth.resource", resource)
             .startSpan();
 
         try (Scope scope = span.makeCurrent()) {
             // Get user authorities
-            Collection<String> userAuthorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toList());
+            Collection<String> userAuthorities = currentAuthentication != null
+                ? currentAuthentication.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .collect(Collectors.toList())
+                : List.of();
 
             span.setAttribute("auth.user.authorities", String.join(",", userAuthorities));
 
             // Get required authorities
-            Collection<String> requiredAuthorities = configAttributes.stream()
-                .map(ConfigAttribute::getAttribute)
-                .collect(Collectors.toList());
-
             span.setAttribute("auth.required.authorities", String.join(",", requiredAuthorities));
             span.addEvent("authorization.checking");
 
@@ -432,25 +463,16 @@ public class TracedAccessDecisionManager implements AccessDecisionManager {
             if (!hasAccess) {
                 span.setStatus(StatusCode.ERROR, "Access denied");
                 span.addEvent("authorization.denied");
-                throw new AccessDeniedException("Insufficient permissions");
+                return new AuthorizationDecision(false);
             }
 
             span.addEvent("authorization.granted");
             span.setStatus(StatusCode.OK);
+            return new AuthorizationDecision(true);
 
         } finally {
             span.end();
         }
-    }
-
-    @Override
-    public boolean supports(ConfigAttribute attribute) {
-        return true;
-    }
-
-    @Override
-    public boolean supports(Class<?> clazz) {
-        return true;
     }
 }
 ```
@@ -474,9 +496,9 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
@@ -541,6 +563,7 @@ Configure the OAuth2 success handler in your security configuration:
 ```java
 package com.company.security.config;
 
+import com.company.security.authorization.TracedAuthorizationManager;
 import com.company.security.oauth2.TracedOAuth2SuccessHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -551,9 +574,13 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final TracedOAuth2SuccessHandler oauth2SuccessHandler;
+    private final TracedAuthorizationManager tracedAuthorizationManager;
 
-    public SecurityConfig(TracedOAuth2SuccessHandler oauth2SuccessHandler) {
+    public SecurityConfig(
+            TracedOAuth2SuccessHandler oauth2SuccessHandler,
+            TracedAuthorizationManager tracedAuthorizationManager) {
         this.oauth2SuccessHandler = oauth2SuccessHandler;
+        this.tracedAuthorizationManager = tracedAuthorizationManager;
     }
 
     @Bean
@@ -564,6 +591,7 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/public/**").permitAll()
+                .requestMatchers("/admin/**").access(tracedAuthorizationManager)
                 .anyRequest().authenticated()
             );
 
@@ -631,7 +659,7 @@ span.setAttribute("jwt.present", true);
 // Unsafe - logs actual token
 // span.setAttribute("jwt.token", actualToken); // NEVER DO THIS
 
-// Safe - logs username
+// Safe only when usernames are approved for telemetry; otherwise hash or redact them
 span.setAttribute("auth.username", username);
 
 // Safe - logs token type
