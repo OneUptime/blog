@@ -10,18 +10,18 @@ Description: Learn how to trace Azure Service Bus messages with OpenTelemetry fo
 
 Azure Service Bus is a fully managed enterprise message broker that supports queues and publish-subscribe topics. In microservice architectures, Service Bus often sits between services as the glue holding asynchronous workflows together. The challenge is that once a message enters Service Bus, the trace context from the sending service is lost unless you take steps to preserve it. OpenTelemetry provides the instrumentation libraries and propagation mechanisms to maintain that context across the messaging boundary.
 
-This guide covers instrumenting Azure Service Bus with OpenTelemetry in .NET, including automatic instrumentation with the Azure SDK, manual context propagation, and collector configuration for processing the resulting telemetry.
+This guide covers instrumenting Azure Service Bus with OpenTelemetry in .NET, including Azure SDK instrumentation, built-in context propagation, and collector configuration for processing the resulting telemetry.
 
 ## How Azure SDK and OpenTelemetry Work Together
 
-The Azure SDK for .NET has built-in support for distributed tracing through the `System.Diagnostics.Activity` API, which is the .NET foundation that OpenTelemetry builds on. Starting with version 7.x of the `Azure.Messaging.ServiceBus` package, the SDK automatically creates activities (spans) for send and receive operations and propagates trace context through the `Diagnostic-Id` message property.
+The Azure SDK for .NET has built-in support for distributed tracing through the `System.Diagnostics.Activity` API, which is the .NET foundation that OpenTelemetry builds on. Starting with version 7.5.0 of the `Azure.Messaging.ServiceBus` package, the SDK supports OpenTelemetry through the experimental `ActivitySource` path. When that support is enabled, the SDK creates activities (spans) for send and receive operations and propagates trace context through the `Diagnostic-Id` message property.
 
-This means you get basic tracing out of the box. However, to get that telemetry into your OpenTelemetry pipeline and to add custom attributes and business context, you need to configure the OpenTelemetry SDK to listen for those activities.
+This means you get basic tracing from the SDK once ActivitySource support is enabled. However, to get that telemetry into your OpenTelemetry pipeline and to add custom attributes and business context, you need to configure the OpenTelemetry SDK to listen for those activities.
 
 ```mermaid
 graph LR
     A[Sender Service] -->|send message| B[Azure Service Bus]
-    B -->|Diagnostic-Id header| C[Receiver Service]
+    B -->|Diagnostic-Id property| C[Receiver Service]
     A -->|Activity/Span| D[OTel SDK]
     C -->|Activity/Span| D
     D -->|OTLP| E[OTel Collector]
@@ -44,6 +44,9 @@ using OpenTelemetry;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 
+// Enable the Azure SDK's experimental ActivitySource-based tracing.
+AppContext.SetSwitch("Azure.Experimental.EnableActivitySource", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure OpenTelemetry tracing
@@ -59,6 +62,8 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         // Capture Azure SDK activities including Service Bus
         .AddSource("Azure.*")
+        // Capture custom activities created by this application
+        .AddSource("OrderService.*")
         // Capture ASP.NET Core incoming requests
         .AddAspNetCoreInstrumentation()
         // Capture outgoing HTTP calls
@@ -76,7 +81,7 @@ builder.Services.AddSingleton(sp =>
 var app = builder.Build();
 ```
 
-The `.AddSource("Azure.*")` line tells the OpenTelemetry SDK to listen for all activities produced by Azure SDK libraries. This captures Service Bus send, receive, and processing operations automatically.
+The `AppContext.SetSwitch` line enables the Azure SDK's experimental ActivitySource support. The `.AddSource("Azure.*")` line tells the OpenTelemetry SDK to listen for activities produced by Azure SDK libraries, and `.AddSource("OrderService.*")` captures the custom activities created in the examples below. This captures Service Bus send, receive, and processing operations automatically.
 
 ## Sending Messages with Trace Context
 
@@ -85,6 +90,7 @@ When you send a message through Service Bus, the Azure SDK automatically creates
 ```csharp
 // OrderPublisher.cs - Send messages with tracing
 using Azure.Messaging.ServiceBus;
+using OpenTelemetry.Trace;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -254,6 +260,11 @@ Azure Service Bus sessions guarantee ordered processing for messages with the sa
 
 ```csharp
 // SessionProcessor.cs - Process session-based messages with tracing
+using Azure.Messaging.ServiceBus;
+using OpenTelemetry.Trace;
+using System.Diagnostics;
+using System.Text.Json;
+
 public class SessionOrderProcessor
 {
     private readonly ServiceBusSessionProcessor _processor;
@@ -303,6 +314,14 @@ public class SessionOrderProcessor
 
         await ProcessSessionOrderAsync(order, args.Message.SessionId);
         await args.CompleteMessageAsync(args.Message);
+    }
+
+    private Task HandleErrorAsync(ProcessErrorEventArgs args)
+    {
+        Activity.Current?.SetStatus(ActivityStatusCode.Error,
+            args.Exception.Message);
+        Activity.Current?.RecordException(args.Exception);
+        return Task.CompletedTask;
     }
 }
 ```
@@ -361,7 +380,7 @@ The Azure resource detector automatically adds attributes like subscription ID, 
 
 If you see disconnected traces where the sender and receiver spans do not share a trace ID, here are the common causes:
 
-First, verify that the Azure SDK version is 7.x or later. Older versions do not support the `Diagnostic-Id` property for trace propagation.
+First, verify that the Azure SDK version is 7.5.0 or later for OpenTelemetry ActivitySource support, and make sure `Azure.Experimental.EnableActivitySource` or the `AZURE_EXPERIMENTAL_ENABLE_ACTIVITY_SOURCE` environment variable is enabled.
 
 Second, confirm that the OpenTelemetry SDK is configured to capture Azure activities with `.AddSource("Azure.*")`. Without this, the SDK activities are created but not exported.
 
