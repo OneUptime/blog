@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Dramatiq, Python, Task Queue, Background Job, Monitoring
 
 Description: Learn how to implement comprehensive monitoring and distributed tracing for Dramatiq task queues using OpenTelemetry to track job execution, queue performance, and error rates.
 
-Dramatiq is a fast and reliable distributed task processing library for Python that supports RabbitMQ and Redis as message brokers. When running background job systems in production, visibility into task execution, queue depths, retry patterns, and failure rates becomes critical for system reliability. OpenTelemetry provides instrumentation for Dramatiq that automatically traces task enqueueing, execution, retries, and failures.
+Dramatiq is a fast and reliable distributed task processing library for Python that supports RabbitMQ and Redis as message brokers. When running background job systems in production, visibility into task execution, queue depths, retry patterns, and failure rates becomes critical for system reliability. With custom instrumentation, OpenTelemetry can trace task enqueueing, execution, retries, and failures.
 
 ## Why Monitor Dramatiq Task Queues
 
@@ -34,6 +34,9 @@ pip install opentelemetry-exporter-otlp
 
 # Optional: Install APScheduler if using scheduled tasks
 pip install apscheduler
+
+# Optional: Install psutil if collecting worker process metrics
+pip install psutil
 ```
 
 Dramatiq doesn't have official OpenTelemetry instrumentation yet, so we'll implement custom instrumentation using middleware and manual span creation. This gives you complete control over what gets traced.
@@ -96,6 +99,7 @@ Create middleware that traces task execution with context propagation:
 
 ```python
 from dramatiq import Middleware
+from opentelemetry import context as context_api
 from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.propagate import extract, inject
 import time
@@ -106,6 +110,7 @@ class OpenTelemetryMiddleware(Middleware):
     def __init__(self):
         self.tracer = trace.get_tracer(__name__)
         self.propagator = TraceContextTextMapPropagator()
+        self._active_spans = {}
 
     def before_enqueue(self, broker, message, delay):
         """Inject trace context when enqueueing a task"""
@@ -144,16 +149,21 @@ class OpenTelemetryMiddleware(Middleware):
         span.set_attribute("dramatiq.queue_name", message.queue_name)
         span.set_attribute("dramatiq.retries", message.options.get("retries", 0))
 
-        # Store span in message metadata for later access
-        message.options["_otel_span"] = span
-        message.options["_otel_start_time"] = time.time()
+        # Make the processing span current so spans created inside the actor
+        # become children of this task span.
+        span_context = trace.set_span_in_context(span, ctx)
+        token = context_api.attach(span_context)
+
+        # Keep live span objects out of message options, which are serialized
+        # by Dramatiq when messages are retried.
+        self._active_spans[message.message_id] = (span, token, time.time())
 
     def after_process_message(self, broker, message, *, result=None, exception=None):
         """End span after processing completes"""
-        span = message.options.get("_otel_span")
-        start_time = message.options.get("_otel_start_time")
+        span_data = self._active_spans.pop(message.message_id, None)
 
-        if span:
+        if span_data:
+            span, token, start_time = span_data
             # Calculate execution time
             if start_time:
                 execution_time = time.time() - start_time
@@ -169,14 +179,17 @@ class OpenTelemetryMiddleware(Middleware):
                 span.set_attribute("dramatiq.status", "completed")
 
             span.end()
+            context_api.detach(token)
 
     def after_skip_message(self, broker, message):
         """Handle skipped messages"""
-        span = message.options.get("_otel_span")
-        if span:
+        span_data = self._active_spans.pop(message.message_id, None)
+        if span_data:
+            span, token, start_time = span_data
             span.set_attribute("dramatiq.status", "skipped")
             span.set_status(Status(StatusCode.ERROR, "Message skipped"))
             span.end()
+            context_api.detach(token)
 
 # Add middleware to broker
 redis_broker.add_middleware(OpenTelemetryMiddleware())
@@ -450,12 +463,17 @@ Track queue depth and worker performance with custom metrics:
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 # Configure metrics
-metric_reader = PeriodicExportingMetricReader(otlp_exporter)
-meter_provider = MeterProvider(metric_readers=[metric_reader])
+metric_exporter = OTLPMetricExporter(
+    endpoint="localhost:4317",
+    insecure=True
+)
+metric_reader = PeriodicExportingMetricReader(metric_exporter)
+meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
 meter = metrics.get_meter(__name__)
@@ -487,11 +505,8 @@ task_failure_counter = meter.create_counter(
 
 def collect_queue_metrics():
     """Collect queue depth metrics periodically"""
-    import redis
-    r = redis.Redis(host="localhost", port=6379, db=0)
-
     # Get queue depths
-    default_queue_depth = r.llen("dramatiq:default.DQ")
+    default_queue_depth = redis_broker.do_qsize("default")
     queue_depth_gauge.set(default_queue_depth, {"queue": "default"})
 
 # Run metrics collection periodically
