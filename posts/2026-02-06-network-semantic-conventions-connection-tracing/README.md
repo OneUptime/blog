@@ -152,7 +152,7 @@ def make_request_with_network_attrs(host, port, path):
         return response
 ```
 
-This level of detail is not needed for every request. But when you are debugging a connection issue, having DNS resolution time and TCP connection time as separate measurements on the span makes the difference between a quick diagnosis and hours of guessing.
+The timing attributes in this example are custom attributes rather than standard OpenTelemetry semantic convention attributes. This level of detail is not needed for every request. But when you are debugging a connection issue, having DNS resolution time and TCP connection time as separate measurements on the span makes the difference between a quick diagnosis and hours of guessing.
 
 ## Tracing Connection Pool Behavior
 
@@ -220,6 +220,10 @@ class InstrumentedConnectionPool:
                               self._active_count)
             return conn
 
+    def release(self, conn):
+        self._pool.put(conn)
+        self._active_count -= 1
+
     def _create_connection(self, span):
         """Create a new TCP connection with timing."""
         import socket
@@ -244,7 +248,7 @@ When requests queue up waiting for connections, the `pool.wait_duration_ms` attr
 
 DNS resolution is a common source of intermittent latency. By creating dedicated spans for DNS lookups, you can track resolution time and identify slow or failing DNS servers.
 
-This utility function creates a child span for DNS resolution and records the results, including all resolved addresses and the address family. It helps you catch DNS issues that would otherwise be invisible in your traces:
+This utility function creates a child span for DNS resolution and records the results, including all resolved addresses and the resolved address families. It helps you catch DNS issues that would otherwise be invisible in your traces:
 
 ```python
 # DNS resolution with full tracing.
@@ -253,6 +257,7 @@ This utility function creates a child span for DNS resolution and records the re
 import socket
 import time
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("dns-resolver")
 
@@ -282,10 +287,10 @@ def traced_dns_resolve(hostname, port=443):
             span.set_attribute("dns.resolved_addresses",
                               unique_addresses)
 
-            # Determine if IPv4 or IPv6
+            # Determine which address families were returned
             families = set(r[0] for r in results)
             if socket.AF_INET in families:
-                span.set_attribute("network.type", "ipv4")
+                span.set_attribute("dns.has_ipv4", True)
             if socket.AF_INET6 in families:
                 span.set_attribute("dns.has_ipv6", True)
 
@@ -296,10 +301,14 @@ def traced_dns_resolve(hostname, port=443):
             span.set_attribute("dns.lookup_duration_ms",
                               round(duration * 1000, 2))
             span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR,
-                          f"DNS resolution failed: {str(e)}")
+            span.set_status(
+                Status(StatusCode.ERROR,
+                       f"DNS resolution failed: {str(e)}")
+            )
             raise
 ```
+
+The `dns.*` attributes used here are custom attributes for diagnostics. Use a consistent naming scheme for these custom measurements so your backends, alerts, and dashboards can query them reliably.
 
 ## Debugging Network Issues with Traces
 
@@ -339,10 +348,10 @@ Record `network.peer.address` and `network.peer.port` on every outbound connecti
 
 Create separate child spans for DNS resolution and TCP connection when you need to diagnose latency breakdowns. In normal operations, the overhead is negligible, but the diagnostic value during incidents is high.
 
-Track connection pool metrics as span attributes. Pool exhaustion is one of the most common causes of latency in microservices, and it is invisible without explicit instrumentation.
+Track connection pool measurements as span attributes. Pool exhaustion is one of the most common causes of latency in microservices, and it is invisible without explicit instrumentation.
 
-Use the Collector's `resourcedetection` processor to add host-level network information. This provides context that individual applications cannot easily discover about their own network environment.
+Use the Collector's `resourcedetection` processor to add host and environment resource metadata. For host network I/O metrics, use a receiver such as the `hostmetrics` receiver with its network scraper.
 
 ## Conclusion
 
-Network semantic conventions extend your observability from the application layer down to the transport layer. By capturing DNS resolution time, TCP connection details, pool behavior, and peer addresses as standardized span attributes, you eliminate the guesswork from network troubleshooting. When the next latency spike hits, you will be able to pinpoint whether the problem is DNS, connection pooling, the network itself, or the remote server, all from your trace data.
+Network semantic conventions extend your observability from the application layer down to the transport layer. By capturing standardized connection attributes alongside custom DNS timing, TCP connection timing, and pool behavior attributes, you eliminate the guesswork from network troubleshooting. When the next latency spike hits, you will be able to pinpoint whether the problem is DNS, connection pooling, the network itself, or the remote server, all from your trace data.
