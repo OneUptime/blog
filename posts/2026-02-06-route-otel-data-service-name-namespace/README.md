@@ -19,34 +19,32 @@ connectors:
   routing/by-service:
     # Default pipeline for anything that does not match
     default_pipelines: [traces/catchall]
-    match_once: true
     table:
       # Route payment service traces to a PCI-compliant backend
-      - statement: resource.attributes["service.name"] == "payment-service"
+      - condition: attributes["service.name"] == "payment-service"
         pipelines: [traces/pci]
       # Route frontend services to a separate backend
-      - statement: resource.attributes["service.name"] == "web-frontend" or resource.attributes["service.name"] == "mobile-bff"
+      - condition: attributes["service.name"] == "web-frontend" or attributes["service.name"] == "mobile-bff"
         pipelines: [traces/frontend]
 ```
 
 ## Routing by Kubernetes Namespace
 
-If you are running on Kubernetes with the k8s attributes processor, your telemetry will have namespace labels attached. You can route based on those:
+If you are running on Kubernetes with the k8s attributes processor, your telemetry will have namespace attributes attached. You can route based on those:
 
 ```yaml
 connectors:
   routing/by-namespace:
     default_pipelines: [traces/default]
-    match_once: true
     table:
       # Production namespace goes to the production backend
-      - statement: resource.attributes["k8s.namespace.name"] == "production"
+      - condition: attributes["k8s.namespace.name"] == "production"
         pipelines: [traces/prod-backend]
       # Staging namespace goes to a cheaper storage tier
-      - statement: resource.attributes["k8s.namespace.name"] == "staging"
+      - condition: attributes["k8s.namespace.name"] == "staging"
         pipelines: [traces/staging-backend]
       # Dev namespace gets sampled heavily
-      - statement: resource.attributes["k8s.namespace.name"] == "development"
+      - condition: attributes["k8s.namespace.name"] == "development"
         pipelines: [traces/dev-backend]
 ```
 
@@ -77,13 +75,12 @@ processors:
 connectors:
   routing/traces:
     default_pipelines: [traces/general]
-    match_once: true
     table:
-      - statement: resource.attributes["k8s.namespace.name"] == "payments"
+      - condition: attributes["k8s.namespace.name"] == "payments"
         pipelines: [traces/pci-compliant]
-      - statement: resource.attributes["service.name"] == "checkout-api"
+      - condition: attributes["service.name"] == "checkout-api"
         pipelines: [traces/pci-compliant]
-      - statement: resource.attributes["k8s.namespace.name"] == "staging"
+      - condition: attributes["k8s.namespace.name"] == "staging"
         pipelines: [traces/staging]
 
 exporters:
@@ -124,13 +121,12 @@ You can also use OTTL functions for more flexible matching. For example, to rout
 connectors:
   routing/regex:
     default_pipelines: [traces/default]
-    match_once: true
     table:
       # Match any service name starting with "payment-"
-      - statement: IsMatch(resource.attributes["service.name"], "^payment-.*")
+      - condition: IsMatch(attributes["service.name"], "^payment-.*")
         pipelines: [traces/payments]
       # Match multiple namespaces with a pattern
-      - statement: IsMatch(resource.attributes["k8s.namespace.name"], "^(prod|production)-.*")
+      - condition: IsMatch(attributes["k8s.namespace.name"], "^(prod|production)-.*")
         pipelines: [traces/production]
 ```
 
@@ -144,16 +140,14 @@ The routing connector works for all signal types. You can apply the same logic t
 connectors:
   routing/metrics:
     default_pipelines: [metrics/general]
-    match_once: true
     table:
-      - statement: resource.attributes["k8s.namespace.name"] == "payments"
+      - condition: attributes["k8s.namespace.name"] == "payments"
         pipelines: [metrics/pci-compliant]
 
   routing/logs:
     default_pipelines: [logs/general]
-    match_once: true
     table:
-      - statement: resource.attributes["k8s.namespace.name"] == "payments"
+      - condition: attributes["k8s.namespace.name"] == "payments"
         pipelines: [logs/pci-compliant]
 
 service:
@@ -182,10 +176,10 @@ service:
 
 ## Things to Keep in Mind
 
-Order of evaluation matters. The routing connector checks statements from top to bottom and uses the first match when `match_once` is true. If a resource could match multiple rules, put the most specific rules first.
+Order of evaluation matters. The routing connector checks conditions from top to bottom, and the default `move` action removes matched data from later route evaluation. If a resource could match multiple rules, put the most specific rules first.
 
 Resource attributes are set at the SDK or processor level, not per-span. This means all spans from a single resource will be routed together, which is usually what you want for consistency.
 
-If you are not seeing your Kubernetes attributes, make sure the k8s attributes processor has the right RBAC permissions to query the Kubernetes API. Missing permissions will silently skip attribute enrichment, and your routing rules will not match.
+If you are not seeing your Kubernetes attributes, make sure the k8s attributes processor has the right RBAC permissions to query the Kubernetes API. Missing permissions can prevent attribute enrichment, and your routing rules will not match.
 
 This pattern keeps your routing logic centralized in the Collector config and does not require changes to any application code. When you need to add a new service or namespace, you update the Collector config and reload.
