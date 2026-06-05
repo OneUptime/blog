@@ -277,13 +277,13 @@ The Google SRE book recommends multi-window, multi-burn-rate alerting. The idea 
 ```mermaid
 graph TD
     subgraph Alerts["Burn Rate Alert Levels"]
-        A["Critical: Burn Rate > 14x<br/>Budget exhausted in ~2 hours<br/>Page the on-call engineer"]
-        B["Warning: Burn Rate > 6x<br/>Budget exhausted in ~5 hours<br/>Create a ticket"]
+        A["Critical: Burn Rate > 14.4x<br/>Budget exhausted in ~2 days<br/>Page the on-call engineer"]
+        B["Warning: Burn Rate > 6x<br/>Budget exhausted in ~5 days<br/>Create a ticket"]
         C["Notice: Burn Rate > 1x<br/>Budget exhausted before window ends<br/>Monitor closely"]
     end
 ```
 
-A burn rate of 14x means your 30-day error budget will be consumed in roughly 2 hours. That is almost certainly an active incident. A burn rate of 6x gives you about 5 hours, which is urgent but gives you time to investigate. A burn rate just above 1x means you will run out before the end of the window if nothing changes, which is worth monitoring but not an emergency.
+A burn rate of 14.4x means you are consuming 2% of a 30-day error budget in one hour, and the whole budget would be consumed in roughly 2 days if that rate continued. That is almost certainly an active incident. A burn rate of 6x means you are consuming 5% of the budget in 6 hours, and would exhaust the whole budget in about 5 days. A burn rate just above 1x means you will run out before the end of the window if nothing changes, which is worth monitoring but not an emergency.
 
 ---
 
