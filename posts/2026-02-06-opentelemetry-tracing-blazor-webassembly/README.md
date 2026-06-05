@@ -44,16 +44,18 @@ dotnet add package OpenTelemetry
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Extensions.Hosting
+dotnet add package Microsoft.Extensions.Http
 ```
 
 Your project file should include these dependencies:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="OpenTelemetry" Version="1.7.0" />
-  <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
-  <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.0" />
-  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+  <PackageReference Include="OpenTelemetry" Version="1.15.3" />
+  <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+  <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+  <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
 </ItemGroup>
 ```
 
@@ -90,6 +92,7 @@ builder.Services.AddOpenTelemetry()
             ["client.type"] = "webassembly"
         }))
     .WithTracing(tracing => tracing
+        .AddSource("BlazorWasmApp.Client")
         .AddHttpClientInstrumentation(options =>
         {
             // Enrich spans with additional HTTP request data
@@ -115,7 +118,7 @@ builder.Services.AddOpenTelemetry()
         .AddOtlpExporter(options =>
         {
             // Export to your backend API which forwards to collector
-            options.Endpoint = new Uri($"{builder.HostEnvironment.BaseAddress}telemetry");
+            options.Endpoint = new Uri($"{builder.HostEnvironment.BaseAddress}telemetry/v1/traces");
             options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
         }));
 
@@ -199,6 +202,7 @@ Now you can instrument your Blazor components to create custom spans for user in
 ```csharp
 @page "/weather"
 @using System.Diagnostics
+@using System.Net.Http.Json
 @inject HttpClient Http
 @inject ITracingService TracingService
 
@@ -273,7 +277,7 @@ else
 
 ## Backend API Telemetry Forwarding
 
-Since browsers have limited connectivity options, you'll typically send telemetry through your backend API. Create a controller to forward telemetry data to your OpenTelemetry Collector.
+Since browser clients must use browser HTTP and satisfy CORS policies, you'll often send telemetry through your backend API. Create a controller to forward OTLP/HTTP trace data to your OpenTelemetry Collector.
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
@@ -281,7 +285,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BlazorWasmApp.Server.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("telemetry/v1/traces")]
 public class TelemetryController : ControllerBase
 {
     private readonly HttpClient _httpClient;
@@ -337,14 +341,18 @@ builder.Services.AddHttpClient("OtelCollector", client =>
 
 ## Handling Trace Context Propagation
 
-To maintain distributed tracing across the browser and backend, ensure trace context is properly propagated through HTTP headers.
+To maintain distributed tracing across the browser and backend, ensure trace context is properly propagated through HTTP headers. `HttpClient` instrumentation normally injects W3C trace context for instrumented outgoing requests. If you need explicit control, use the OpenTelemetry propagator instead of manually formatting headers:
 
 ```csharp
-using System.Net.Http.Headers;
 using System.Diagnostics;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 
 public class TraceContextHandler : DelegatingHandler
 {
+    private static readonly TextMapPropagator Propagator =
+        Propagators.DefaultTextMapPropagator;
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -354,13 +362,14 @@ public class TraceContextHandler : DelegatingHandler
         if (activity != null)
         {
             // W3C Trace Context propagation
-            request.Headers.Add("traceparent",
-                $"00-{activity.TraceId}-{activity.SpanId}-{activity.ActivityTraceFlags:x2}");
-
-            if (!string.IsNullOrEmpty(activity.TraceStateString))
-            {
-                request.Headers.Add("tracestate", activity.TraceStateString);
-            }
+            Propagator.Inject(
+                new PropagationContext(activity.Context, Baggage.Current),
+                request.Headers,
+                (headers, name, value) =>
+                {
+                    headers.Remove(name);
+                    headers.Add(name, value);
+                });
         }
 
         return await base.SendAsync(request, cancellationToken);
@@ -378,6 +387,9 @@ builder.Services.AddHttpClient("TracedClient", client =>
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 })
 .AddHttpMessageHandler<TraceContextHandler>();
+
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("TracedClient"));
 ```
 
 ## Performance Considerations for WASM
@@ -398,7 +410,7 @@ Blazor WebAssembly applications are sensitive to payload size and runtime perfor
 ```csharp
 .AddOtlpExporter(options =>
 {
-    options.Endpoint = new Uri($"{builder.HostEnvironment.BaseAddress}telemetry");
+    options.Endpoint = new Uri($"{builder.HostEnvironment.BaseAddress}telemetry/v1/traces");
     options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
     options.BatchExportProcessorOptions = new()
     {
