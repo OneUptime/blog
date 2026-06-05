@@ -18,7 +18,6 @@ First, let's define custom metrics that track cart state transitions. We will cr
 
 ```python
 from opentelemetry import metrics, trace
-from opentelemetry.metrics import Observation
 import time
 
 meter = metrics.get_meter("cart.abandonment.monitor")
@@ -39,7 +38,7 @@ cart_stage_duration = meter.create_histogram(
     unit="s"
 )
 
-# Gauge for currently active carts by stage
+# UpDownCounter for currently active carts by stage
 active_carts = meter.create_up_down_counter(
     "cart.active",
     description="Number of active carts by stage"
@@ -48,7 +47,7 @@ active_carts = meter.create_up_down_counter(
 
 ## Instrumenting the Cart Lifecycle
 
-Next, wrap your cart operations so each action produces both a trace span and a metric data point. The key is attaching the same attributes to both, so you can correlate them later.
+Next, wrap your cart operations so each action produces both a trace span and a metric data point. The key is attaching consistent low-cardinality attributes to metrics, while keeping high-cardinality identifiers like `cart.id` and `user.id` on spans for per-cart investigation.
 
 ```python
 class CartService:
@@ -67,8 +66,9 @@ class CartService:
                 "user.segment": self._get_user_segment(user_id)
             })
 
-            active_carts.add(1, {"cart.stage": "active"})
-            self.cart_timestamps[cart_id] = {"active": time.time()}
+            if cart_id not in self.cart_timestamps:
+                active_carts.add(1, {"cart.stage": "active"})
+                self.cart_timestamps[cart_id] = {"active": time.time()}
 
             # Actual business logic here
             self._persist_cart_item(cart_id, product_id)
@@ -98,7 +98,6 @@ Carts do not announce when they are abandoned. You need a background process tha
 
 ```python
 import asyncio
-from opentelemetry import context
 
 ABANDONMENT_THRESHOLD_SECONDS = 1800  # 30 minutes
 
@@ -133,6 +132,8 @@ async def detect_abandoned_carts(cart_store, trace_store):
                     "cart.stage": "abandoned",
                     "cart.last_stage": cart.last_stage
                 })
+                active_stage = "checkout" if cart.last_stage == "checkout" else "active"
+                active_carts.add(-1, {"cart.stage": active_stage})
 
             await cart_store.mark_abandoned(cart.id)
 
@@ -141,25 +142,22 @@ async def detect_abandoned_carts(cart_store, trace_store):
 
 ## Building Correlation Queries
 
-Once data is flowing, the real power comes from querying across traces and metrics together. If you are sending data to an OpenTelemetry-compatible backend, you can write queries that join trace attributes with metric labels.
+Once data is flowing, the real power comes from using metrics for aggregate abandonment rates and traces for per-cart investigation. If you are sending data to a backend that ingests OpenTelemetry and exposes SQL-like trace queries, you can use the shared span attributes to find related operations. The exact query syntax depends on your backend.
 
 For example, to find carts abandoned after a slow shipping calculation:
 
 ```sql
 SELECT
-    t.attributes['cart.id'] as cart_id,
-    t.attributes['cart.total_value'] as cart_value,
-    t.duration_ms as shipping_calc_duration
-FROM traces t
-WHERE t.operation_name = 'shipping.calculate_rates'
-  AND t.duration_ms > 2000
-  AND t.attributes['cart.id'] IN (
-      SELECT attributes['cart.id']
-      FROM metrics
-      WHERE name = 'cart.state.transitions'
-        AND attributes['cart.stage'] = 'abandoned'
-        AND timestamp > NOW() - INTERVAL '24 hours'
-  )
+    shipping.attributes['cart.id'] as cart_id,
+    abandonment.attributes['cart.total_value'] as cart_value,
+    shipping.duration_ms as shipping_calc_duration
+FROM traces shipping
+JOIN traces abandonment
+  ON shipping.attributes['cart.id'] = abandonment.attributes['cart.id']
+WHERE shipping.operation_name = 'shipping.calculate_rates'
+  AND shipping.duration_ms > 2000
+  AND abandonment.operation_name = 'cart.abandonment.detected'
+  AND abandonment.timestamp > NOW() - INTERVAL '24 hours'
 ORDER BY cart_value DESC;
 ```
 
