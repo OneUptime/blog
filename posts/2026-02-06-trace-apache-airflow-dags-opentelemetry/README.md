@@ -33,7 +33,11 @@ Each task runs in its own process (and potentially on a different machine), so t
 
 ## Airflow's Native OpenTelemetry Support
 
-Starting with Airflow 2.7, there's built-in support for OpenTelemetry traces. You can enable it through the Airflow configuration. This is the simplest way to get started.
+Starting with Airflow 2.10, there's built-in support for OpenTelemetry traces. You can enable it through the Airflow configuration. This is the simplest way to get started.
+
+```bash
+pip install 'apache-airflow[otel]'
+```
 
 ```ini
 # airflow.cfg - Enable OpenTelemetry tracing
@@ -41,11 +45,9 @@ Starting with Airflow 2.7, there's built-in support for OpenTelemetry traces. Yo
 [traces]
 otel_on = True
 otel_host = localhost
-otel_port = 4318
+otel_port = 8889
+otel_application = airflow
 otel_ssl_active = False
-otel_debugging_on = False
-
-# Set the exporter protocol (http/protobuf or grpc)
 otel_task_log_event = True
 ```
 
@@ -55,11 +57,13 @@ You can also configure it through environment variables, which is often easier i
 # Environment variables for Airflow OpenTelemetry configuration
 export AIRFLOW__TRACES__OTEL_ON=True
 export AIRFLOW__TRACES__OTEL_HOST=otel-collector.monitoring.svc.cluster.local
-export AIRFLOW__TRACES__OTEL_PORT=4318
+export AIRFLOW__TRACES__OTEL_PORT=8889
 export AIRFLOW__TRACES__OTEL_SSL_ACTIVE=False
 
-# Set the service name for your Airflow instance
+# Standard OpenTelemetry SDK configuration
 export OTEL_SERVICE_NAME=airflow-production
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector.monitoring.svc.cluster.local:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 ```
 
 With this enabled, Airflow automatically creates spans for DAG runs and task executions. Each DAG run gets a parent span, and each task instance gets a child span under it.
@@ -70,22 +74,9 @@ The built-in tracing gives you task-level visibility, but it doesn't trace what 
 
 ```python
 # dags/etl_pipeline.py - ETL DAG with OpenTelemetry instrumentation
-from airflow import DAG
-from airflow.operators.python import PythonOperator
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from datetime import datetime
 
-# Set up the tracer for custom spans inside tasks
-resource = Resource.create({"service.name": "airflow-etl-pipeline"})
-provider = TracerProvider(resource=resource)
-exporter = OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
-provider.add_span_processor(BatchSpanProcessor(exporter))
-trace.set_tracer_provider(provider)
-
+# Reuse the tracer provider configured by Airflow's OpenTelemetry support
 tracer = trace.get_tracer("airflow-etl")
 
 
@@ -155,7 +146,7 @@ def transform_data(**airflow_context):
     )
 
     # Restore the parent context from the serialized carrier
-    parent_context = extract(trace_carrier) if trace_carrier else context.active()
+    parent_context = extract(trace_carrier) if trace_carrier else context.get_current()
 
     with tracer.start_as_current_span(
         "transform_data",
@@ -186,6 +177,7 @@ Manually handling context propagation in every task gets tedious. Here's a decor
 import functools
 from opentelemetry import trace, context as otel_context
 from opentelemetry.propagate import inject, extract
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("airflow-etl")
 
@@ -197,7 +189,7 @@ def traced_task(upstream_task_id=None):
             ti = airflow_context["ti"]
 
             # If there's an upstream task, try to restore its trace context
-            parent_ctx = otel_context.active()
+            parent_ctx = otel_context.get_current()
             if upstream_task_id:
                 carrier = ti.xcom_pull(task_ids=upstream_task_id, key="trace_context")
                 if carrier:
@@ -225,7 +217,7 @@ def traced_task(upstream_task_id=None):
                     return result
                 except Exception as e:
                     span.record_exception(e)
-                    span.set_status(trace.StatusCode.ERROR, str(e))
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
 
         return wrapper
@@ -238,6 +230,7 @@ Now you can use it cleanly in your DAG definition.
 # dags/etl_traced.py - Clean DAG definition using the tracing decorator
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from opentelemetry import trace
 from datetime import datetime
 
 # First task in the pipeline - no upstream context to restore
@@ -317,6 +310,7 @@ If you've built custom Airflow operators, you can add OpenTelemetry tracing dire
 
 ```python
 from airflow.models import BaseOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
 from opentelemetry import trace
 
 tracer = trace.get_tracer("airflow-custom-operators")
@@ -352,16 +346,17 @@ class TracedDatabaseOperator(BaseOperator):
 
 ## Collecting Airflow Metrics with OpenTelemetry
 
-Beyond traces, you should collect Airflow-specific metrics. Airflow 2.7+ supports pushing metrics through OpenTelemetry as well.
+Beyond traces, you should collect Airflow-specific metrics. Airflow 2.6+ supports pushing metrics through OpenTelemetry as well.
 
 ```ini
 # airflow.cfg - Enable OpenTelemetry metrics
 [metrics]
 otel_on = True
 otel_host = localhost
-otel_port = 4318
+otel_port = 8889
 otel_ssl_active = False
 otel_prefix = airflow
+otel_interval_milliseconds = 30000
 ```
 
 This exports metrics like task duration, DAG run duration, scheduler heartbeat, pool usage, and executor slots. Combined with the traces we set up earlier, you get a complete observability picture.
