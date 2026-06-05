@@ -55,20 +55,20 @@ const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { PgInstrumentation } = require('@opentelemetry/instrumentation-pg');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } = require('@opentelemetry/semantic-conventions');
 
 // Initialize the SDK with service-specific resource attributes
 function initTracing(serviceName) {
   const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: serviceName,
       [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
-      [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
     }),
     // Send traces to the OpenTelemetry Collector
     traceExporter: new OTLPTraceExporter({
@@ -119,41 +119,47 @@ async function validateCart(cartId, userId) {
 
       // Fetch cart contents from the database
       const cart = await tracer.startActiveSpan('cart.fetch_contents', async (fetchSpan) => {
-        const result = await db.query('SELECT * FROM cart_items WHERE cart_id = $1', [cartId]);
-        fetchSpan.setAttribute('cart.item_count', result.rows.length);
-        fetchSpan.end();
-        return result.rows;
+        try {
+          const result = await db.query('SELECT * FROM cart_items WHERE cart_id = $1', [cartId]);
+          fetchSpan.setAttribute('cart.item_count', result.rows.length);
+          return result.rows;
+        } finally {
+          fetchSpan.end();
+        }
       });
 
       // Validate each item's price and availability
       await tracer.startActiveSpan('cart.verify_prices', async (priceSpan) => {
-        let staleCount = 0;
-        for (const item of cart) {
-          const currentPrice = await catalogService.getPrice(item.product_id);
-          if (currentPrice !== item.unit_price) {
-            staleCount++;
-            // Add an event to flag the price discrepancy
-            priceSpan.addEvent('price_mismatch', {
-              'product.id': item.product_id,
-              'price.expected': item.unit_price,
-              'price.actual': currentPrice,
-            });
+        try {
+          let staleCount = 0;
+          for (const item of cart) {
+            const currentPrice = await catalogService.getPrice(item.product_id);
+            if (currentPrice !== item.unit_price) {
+              staleCount++;
+              // Add an event to flag the price discrepancy
+              priceSpan.addEvent('price_mismatch', {
+                'product.id': item.product_id,
+                'price.expected': item.unit_price,
+                'price.actual': currentPrice,
+              });
+            }
           }
-        }
-        priceSpan.setAttribute('cart.stale_prices', staleCount);
-        priceSpan.end();
+          priceSpan.setAttribute('cart.stale_prices', staleCount);
 
-        if (staleCount > 0) {
-          throw new Error(`${staleCount} items have outdated prices`);
+          if (staleCount > 0) {
+            throw new Error(`${staleCount} items have outdated prices`);
+          }
+        } finally {
+          priceSpan.end();
         }
       });
 
       // Reserve inventory through the inventory service
-      const reservation = await reserveInventory(cart);
-      span.setAttribute('inventory.reservation_id', reservation.id);
+      const reservations = await reserveInventory(cart);
+      span.setAttribute('inventory.reservations_created', reservations.length);
 
       span.setStatus({ code: SpanStatusCode.OK });
-      return { cart, reservation };
+      return { cart, reservations };
     } catch (error) {
       // Record the error on the span so it shows up in traces
       span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -166,7 +172,7 @@ async function validateCart(cartId, userId) {
 }
 ```
 
-The key details here are the semantic attributes. Recording `cart.id`, `user.id`, and `cart.item_count` means you can later search for traces by customer or filter for large carts that might be slower to validate. The price mismatch events create a detailed audit trail without creating separate spans for every item.
+The key details here are the span attributes. Recording `cart.id`, `user.id`, and `cart.item_count` means you can later search for traces by customer or filter for large carts that might be slower to validate. The price mismatch events create a detailed audit trail without creating separate spans for every item.
 
 ## Instrumenting Inventory Reservation
 
@@ -174,70 +180,78 @@ The inventory service needs to atomically reserve stock so two customers do not 
 
 ```javascript
 // inventory-service/reserve.js
-const { trace, SpanStatusCode, context, propagation } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('inventory-service', '1.0.0');
 
 async function reserveItems(items) {
   return tracer.startActiveSpan('inventory.reserve_batch', async (span) => {
-    span.setAttribute('inventory.item_count', items.length);
-    const reservations = [];
+    try {
+      span.setAttribute('inventory.item_count', items.length);
+      const reservations = [];
 
-    for (const item of items) {
-      // Each item reservation gets its own child span
-      await tracer.startActiveSpan('inventory.reserve_item', async (itemSpan) => {
-        itemSpan.setAttribute('product.id', item.productId);
-        itemSpan.setAttribute('quantity.requested', item.quantity);
+      for (const item of items) {
+        // Each item reservation gets its own child span
+        await tracer.startActiveSpan('inventory.reserve_item', async (itemSpan) => {
+          itemSpan.setAttribute('product.id', item.productId);
+          itemSpan.setAttribute('quantity.requested', item.quantity);
 
-        try {
-          // Use a database transaction with row-level locking
-          const result = await db.transaction(async (tx) => {
-            // SELECT FOR UPDATE locks the row to prevent race conditions
-            const stock = await tx.query(
-              'SELECT available_qty FROM inventory WHERE product_id = $1 FOR UPDATE',
-              [item.productId]
-            );
+          try {
+            // Use a database transaction with row-level locking
+            const result = await db.transaction(async (tx) => {
+              // SELECT FOR UPDATE locks the row to prevent race conditions
+              const stock = await tx.query(
+                'SELECT available_qty FROM inventory WHERE product_id = $1 FOR UPDATE',
+                [item.productId]
+              );
+              const availableQty = stock.rows[0]?.available_qty || 0;
 
-            if (stock.rows[0].available_qty < item.quantity) {
-              // Not enough stock - record this as a span event
-              itemSpan.addEvent('insufficient_stock', {
-                'available': stock.rows[0].available_qty,
-                'requested': item.quantity,
-              });
-              throw new Error(`Insufficient stock for product ${item.productId}`);
-            }
+              if (availableQty < item.quantity) {
+                // Not enough stock - record this as a span event
+                itemSpan.addEvent('insufficient_stock', {
+                  'available': availableQty,
+                  'requested': item.quantity,
+                });
+                throw new Error(`Insufficient stock for product ${item.productId}`);
+              }
 
-            // Decrement available quantity and create reservation record
-            await tx.query(
-              'UPDATE inventory SET available_qty = available_qty - $1 WHERE product_id = $2',
-              [item.quantity, item.productId]
-            );
+              // Decrement available quantity and create reservation record
+              await tx.query(
+                'UPDATE inventory SET available_qty = available_qty - $1 WHERE product_id = $2',
+                [item.quantity, item.productId]
+              );
 
-            const reservation = await tx.query(
-              'INSERT INTO reservations (product_id, quantity, expires_at) VALUES ($1, $2, NOW() + interval \'15 minutes\') RETURNING id',
-              [item.productId, item.quantity]
-            );
+              const reservation = await tx.query(
+                'INSERT INTO reservations (product_id, quantity, expires_at) VALUES ($1, $2, NOW() + interval \'15 minutes\') RETURNING id',
+                [item.productId, item.quantity]
+              );
 
-            return reservation.rows[0];
-          });
+              return reservation.rows[0];
+            });
 
-          itemSpan.setAttribute('reservation.id', result.id);
-          itemSpan.setStatus({ code: SpanStatusCode.OK });
-          reservations.push(result);
-        } catch (error) {
-          itemSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-          itemSpan.recordException(error);
-          throw error;
-        } finally {
-          itemSpan.end();
-        }
-      });
+            itemSpan.setAttribute('reservation.id', result.id);
+            itemSpan.setStatus({ code: SpanStatusCode.OK });
+            reservations.push(result);
+          } catch (error) {
+            itemSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+            itemSpan.recordException(error);
+            throw error;
+          } finally {
+            itemSpan.end();
+          }
+        });
+      }
+
+      span.setAttribute('inventory.reservations_created', reservations.length);
+      span.setStatus({ code: SpanStatusCode.OK });
+      return reservations;
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      span.recordException(error);
+      throw error;
+    } finally {
+      span.end();
     }
-
-    span.setAttribute('inventory.reservations_created', reservations.length);
-    span.setStatus({ code: SpanStatusCode.OK });
-    span.end();
-    return reservations;
   });
 }
 ```
@@ -251,14 +265,17 @@ Payment processing involves an external API call, which introduces unpredictable
 ```javascript
 // payment-service/charge.js
 const { trace, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
-const { SemanticAttributes } = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_SERVER_ADDRESS,
+  ATTR_URL_FULL,
+} = require('@opentelemetry/semantic-conventions');
 
 const tracer = trace.getTracer('payment-service', '1.0.0');
 
-async function processPayment(orderId, amount, currency, paymentMethodId) {
-  // Mark this as a CLIENT span since we are calling an external service
-  return tracer.startActiveSpan('payment.process', { kind: SpanKind.CLIENT }, async (span) => {
-    span.setAttribute('order.id', orderId);
+async function processPayment(checkoutId, amount, currency, paymentMethodId) {
+  return tracer.startActiveSpan('payment.process', async (span) => {
+    span.setAttribute('checkout.id', checkoutId);
     span.setAttribute('payment.amount', amount);
     span.setAttribute('payment.currency', currency);
     // Never log the full payment method ID or card details
@@ -271,12 +288,13 @@ async function processPayment(orderId, amount, currency, paymentMethodId) {
         kind: SpanKind.CLIENT,
         attributes: {
           'peer.service': 'stripe-api',
-          'http.method': 'POST',
-          'http.url': 'https://api.stripe.com/v1/charges',
+          [ATTR_HTTP_REQUEST_METHOD]: 'POST',
+          [ATTR_SERVER_ADDRESS]: 'api.stripe.com',
+          [ATTR_URL_FULL]: 'https://api.stripe.com/v1/payment_intents',
         },
       }, async (gatewaySpan) => {
         try {
-          const response = await stripeClient.charges.create({
+          const response = await stripeClient.paymentIntents.create({
             amount: Math.round(amount * 100),
             currency: currency,
             payment_method: paymentMethodId,
@@ -284,7 +302,7 @@ async function processPayment(orderId, amount, currency, paymentMethodId) {
           });
 
           gatewaySpan.setAttribute('payment.gateway_latency_ms', Date.now() - startTime);
-          gatewaySpan.setAttribute('payment.charge_id', response.id);
+          gatewaySpan.setAttribute('payment.transaction_id', response.id);
           gatewaySpan.setAttribute('payment.status', response.status);
           gatewaySpan.setStatus({ code: SpanStatusCode.OK });
           return response;
@@ -299,7 +317,7 @@ async function processPayment(orderId, amount, currency, paymentMethodId) {
         }
       });
 
-      span.setAttribute('payment.charge_id', result.id);
+      span.setAttribute('payment.transaction_id', result.id);
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
@@ -330,14 +348,20 @@ app.post('/api/checkout', async (req, res) => {
   // We create a child span for the business logic.
   return tracer.startActiveSpan('checkout.process', async (span) => {
     const { cartId, userId, paymentMethodId } = req.body;
+    let currentStep = 'initiated';
+    const setCheckoutStep = (step) => {
+      currentStep = step;
+      span.setAttribute('checkout.step', step);
+    };
+
     span.setAttribute('cart.id', cartId);
     span.setAttribute('user.id', userId);
-    span.setAttribute('checkout.step', 'initiated');
+    setCheckoutStep('initiated');
 
     try {
       // Step 1: Validate cart and reserve inventory
-      span.setAttribute('checkout.step', 'validating_cart');
-      const { cart, reservation } = await cartClient.validateCart(cartId, userId);
+      setCheckoutStep('validating_cart');
+      const { cart, reservations } = await cartClient.validateCart(cartId, userId);
       span.addEvent('cart_validated', { 'cart.item_count': cart.length });
 
       // Step 2: Calculate final total
@@ -346,22 +370,22 @@ app.post('/api/checkout', async (req, res) => {
       span.setAttribute('checkout.item_count', cart.length);
 
       // Step 3: Process payment
-      span.setAttribute('checkout.step', 'processing_payment');
+      setCheckoutStep('processing_payment');
       const payment = await paymentClient.processPayment(
-        reservation.id, total, 'usd', paymentMethodId
+        cartId, total, 'usd', paymentMethodId
       );
-      span.addEvent('payment_processed', { 'payment.charge_id': payment.id });
+      span.addEvent('payment_processed', { 'payment.transaction_id': payment.id });
 
       // Step 4: Create order record
-      span.setAttribute('checkout.step', 'creating_order');
+      setCheckoutStep('creating_order');
       const order = await orderClient.createOrder({
-        userId, cartId, reservationId: reservation.id,
+        userId, cartId, reservationIds: reservations.map((reservation) => reservation.id),
         paymentId: payment.id, total,
       });
       span.addEvent('order_created', { 'order.id': order.id });
 
       // Step 5: Send confirmation (async, do not block the response)
-      span.setAttribute('checkout.step', 'complete');
+      setCheckoutStep('complete');
       notificationClient.sendConfirmation(order.id, userId).catch((err) => {
         // Log but do not fail checkout if notification fails
         console.error('Notification failed:', err);
@@ -373,7 +397,7 @@ app.post('/api/checkout', async (req, res) => {
     } catch (error) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       span.recordException(error);
-      span.setAttribute('checkout.failure_step', span.attributes?.['checkout.step']);
+      span.setAttribute('checkout.failure_step', currentStep);
       res.status(500).json({ error: error.message });
     } finally {
       span.end();
