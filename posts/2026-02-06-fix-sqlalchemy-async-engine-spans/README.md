@@ -13,6 +13,7 @@ The OpenTelemetry SQLAlchemy instrumentation was originally built for synchronou
 ```python
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 # Async engine - instrumentation may not work
 
@@ -28,11 +29,11 @@ async def get_users():
 
 ## Why Async Engines Are Not Instrumented
 
-The `opentelemetry-instrumentation-sqlalchemy` package hooks into SQLAlchemy's synchronous event system (`before_cursor_execute`, `after_cursor_execute`). The async engine uses a different code path that wraps a synchronous engine internally, but the event hooks may not fire correctly in the async context.
+The `opentelemetry-instrumentation-sqlalchemy` package hooks into SQLAlchemy's synchronous event system (`before_cursor_execute`, `after_cursor_execute`). SQLAlchemy's async API wraps the synchronous engine internally, so async calls still pass through the synchronous core where those event hooks run. Missing spans are usually caused by an older instrumentation version, instrumenting after the engine was created without passing the engine explicitly, or instrumenting the `AsyncEngine` instead of the underlying synchronous engine.
 
 ## Fix 1: Update to the Latest Instrumentation Version
 
-Newer versions of `opentelemetry-instrumentation-sqlalchemy` have improved async support:
+Current versions of `opentelemetry-instrumentation-sqlalchemy` support SQLAlchemy's async engine path:
 
 ```bash
 pip install --upgrade opentelemetry-instrumentation-sqlalchemy
@@ -44,7 +45,7 @@ Check the version:
 pip show opentelemetry-instrumentation-sqlalchemy
 ```
 
-Versions 0.42b0 and later have better support for async engines.
+The current documentation shows async usage with `create_async_engine` and `engine.sync_engine`, so upgrade before trying lower-level workarounds.
 
 ## Fix 2: Instrument the Sync Engine Inside the Async Engine
 
@@ -72,6 +73,7 @@ If the instrumentation package does not work with your async engine version, add
 ```python
 from sqlalchemy import event
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("sqlalchemy")
 
@@ -85,30 +87,28 @@ def before_cursor_execute(conn, cursor, statement, parameters, context, executem
             "db.name": conn.engine.url.database,
         },
     )
-    # Store span on the connection for the after hook
-    if not hasattr(conn, '_otel_spans'):
-        conn._otel_spans = []
-    conn._otel_spans.append(span)
+    # Store span on the SQLAlchemy execution context for the after hook
+    context._otel_span = span
 
 @event.listens_for(async_engine.sync_engine, "after_cursor_execute")
 def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-    if hasattr(conn, '_otel_spans') and conn._otel_spans:
-        span = conn._otel_spans.pop()
+    span = getattr(context, "_otel_span", None)
+    if span is not None:
         span.end()
 
 @event.listens_for(async_engine.sync_engine, "handle_error")
 def handle_error(exception_context):
-    conn = exception_context.connection
-    if hasattr(conn, '_otel_spans') and conn._otel_spans:
-        span = conn._otel_spans.pop()
-        span.set_status(trace.StatusCode.ERROR, str(exception_context.original_exception))
+    context = exception_context.execution_context
+    span = getattr(context, "_otel_span", None) if context is not None else None
+    if span is not None:
+        span.set_status(Status(StatusCode.ERROR, str(exception_context.original_exception)))
         span.record_exception(exception_context.original_exception)
         span.end()
 ```
 
-## Fix 4: Use the aiosqlite or asyncpg Instrumentation
+## Fix 4: Use the asyncpg Instrumentation
 
-For specific async drivers, use driver-level instrumentation:
+For specific async drivers, use driver-level instrumentation where available:
 
 ```bash
 # For asyncpg (PostgreSQL)
@@ -142,21 +142,27 @@ trace.set_tracer_provider(provider)
 
 # Instrument asyncpg at the driver level
 AsyncPGInstrumentor().instrument()
+
+# Instrument SQLAlchemy before engines are created
+SQLAlchemyInstrumentor().instrument()
 ```
 
 ```python
 # database.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/db")
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 ```
 
 ```python
 # app.py
 from fastapi import FastAPI, Depends
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import async_session
 
 app = FastAPI()
 
@@ -167,8 +173,8 @@ async def get_db():
 @app.get("/users")
 async def get_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT * FROM users"))
-    return result.mappings().all()
     # Now generates a span for the database query
+    return result.mappings().all()
 ```
 
 ## Verifying the Fix
@@ -176,6 +182,8 @@ async def get_users(db: AsyncSession = Depends(get_db)):
 Use the console exporter to verify spans:
 
 ```python
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+
 provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 ```
 
@@ -188,4 +196,4 @@ db.query SELECT * FROM users  [========] 12ms
   db.statement: SELECT * FROM users
 ```
 
-The async SQLAlchemy instrumentation story is still maturing. Using the driver-level instrumentation (asyncpg, aiosqlite) alongside the SQLAlchemy instrumentation gives you the most reliable coverage for async database operations.
+The async SQLAlchemy instrumentation story is still maturing. Using driver-level instrumentation where available, such as asyncpg, alongside the SQLAlchemy instrumentation gives you the most reliable coverage for async database operations.
