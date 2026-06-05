@@ -60,7 +60,7 @@ docker logs otel-collector
 journalctl -u otel-collector -n 50 --no-pager
 ```
 
-## Crash 1: YAML Configuration Syntax Errors
+## Crash 1: YAML Configuration Syntax and Nesting Errors
 
 YAML is notoriously sensitive to indentation and formatting. A single wrong indent or a misplaced colon can prevent the Collector from starting.
 
@@ -88,10 +88,13 @@ service:
       exporters: [debug]
 ```
 
-The error message will say something like:
+This particular file is valid YAML, but it is not a valid Collector configuration. The Collector will report something like:
 
 ```text
-Error: cannot unmarshal the configuration: yaml: line 9: mapping values are not allowed in this context
+Error: failed to get config: cannot unmarshal the configuration:
+'processors' decoding failed due to the following error(s):
+'[send_batch_size]' expected type 'map[string]interface {}', got unconvertible type 'int'
+'[timeout]' expected type 'map[string]interface {}', got unconvertible type 'string'
 ```
 
 The fix is to correct the indentation:
@@ -154,16 +157,28 @@ dist:
   output_path: ./build
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
   # Add any other receivers you reference in your config
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.96.0
+  - gomod:
+      go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
   # Make sure every exporter in your config is listed here
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.96.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+
+providers:
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 ## Crash 3: Port Already in Use
@@ -207,7 +222,12 @@ service:
   telemetry:
     metrics:
       # Move internal metrics to a different port
-      address: 0.0.0.0:18888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 18888
 ```
 
 ```yaml
@@ -307,21 +327,22 @@ containers:
         cpu: 200m
       limits:
         # Set memory limit high enough for initialization
-        # The collector may need 2-3x its steady-state memory during startup
+        # The collector may need more memory during initialization
         memory: 2Gi
         cpu: "1"
 ```
 
-If the memory usage seems unreasonable for your configuration, check for processors that load large datasets at startup:
+If the process starts but is OOM-killed as soon as traffic arrives, check for processors that buffer or retain data at runtime:
 
 ```yaml
-# These processors can use significant memory at startup:
+# These processors can use significant memory at runtime:
 
-# The groupbyattrs processor buffers data
+# The tail_sampling processor keeps traces in memory until a sampling decision is made
 processors:
-  groupbyattrs:
-    keys: [service.name]
-    # Reduce buffer if memory is tight
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    # Reduce num_traces or decision_wait if memory is tight
 
 # The filter processor with complex regex patterns
   filter:
@@ -339,19 +360,19 @@ processors:
 
 ## Crash 6: Configuration Environment Variable Issues
 
-If your configuration uses environment variables that are not set, the Collector will crash:
+If your configuration uses environment variables that are not set, required fields can resolve to empty values and prevent the Collector from starting:
 
 ```yaml
 # Config referencing env vars
 exporters:
   otlp:
-    endpoint: ${OTEL_BACKEND_ENDPOINT}
+    endpoint: ${env:OTEL_BACKEND_ENDPOINT}
     headers:
-      Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+      Authorization: "Bearer ${env:OTEL_AUTH_TOKEN}"
 ```
 
 ```text
-Error: cannot resolve config: environment variable "OTEL_BACKEND_ENDPOINT" is not set
+Error: exporters::otlp: requires a non-empty "endpoint"
 ```
 
 Verify your environment variables are available:
@@ -364,7 +385,7 @@ kubectl exec -n monitoring otel-collector-0 -- env | grep OTEL
 docker inspect otel-collector | jq '.[0].Config.Env'
 
 # Use default values in the config as a fallback
-# The ${VAR:-default} syntax provides a default if VAR is unset
+# The ${env:VAR:-default} syntax provides a default if VAR is unset
 ```
 
 ```yaml
@@ -372,9 +393,9 @@ docker inspect otel-collector | jq '.[0].Config.Env'
 exporters:
   otlp:
     # Use a default endpoint if the env var is not set
-    endpoint: ${OTEL_BACKEND_ENDPOINT:-localhost:4317}
+    endpoint: ${env:OTEL_BACKEND_ENDPOINT:-localhost:4317}
     headers:
-      Authorization: "Bearer ${OTEL_AUTH_TOKEN:-}"
+      Authorization: "Bearer ${env:OTEL_AUTH_TOKEN:-}"
 ```
 
 ## A Pre-Deployment Checklist
