@@ -70,6 +70,7 @@ class DashboardInstance:
 Here are three essential templates that cover most needs.
 
 The HTTP service health template works for any service using OpenTelemetry HTTP semantic conventions.
+The PromQL examples below assume your metrics backend exposes OpenTelemetry resource attributes as labels and uses the standard OpenTelemetry-to-Prometheus name translation.
 
 ```python
 # dashboard_templates/http_service_health.py
@@ -93,34 +94,36 @@ http_service_health = DashboardTemplate(
             title="Request Rate",
             panel_type="timeseries",
             query_template=(
-                'rate(http_server_request_duration_count'
+                'rate(http_server_request_duration_seconds_count'
                 '{service_name="${service_name}",'
-                'deployment_environment="${environment}"}[5m])'
+                'deployment_environment_name="${environment}"}[5m])'
             ),
             unit="req/s",
             description="HTTP requests per second",
         ),
         PanelDefinition(
-            title="Latency P50 / P95 / P99",
+            title="Latency P99",
             panel_type="timeseries",
             query_template=(
                 'histogram_quantile(0.99, rate('
-                'http_server_request_duration_bucket'
+                'http_server_request_duration_seconds_bucket'
                 '{service_name="${service_name}",'
-                'deployment_environment="${environment}"}[5m]))'
+                'deployment_environment_name="${environment}"}[5m]))'
             ),
-            unit="ms",
-            description="Request latency percentiles",
+            unit="s",
+            description="99th percentile request latency",
         ),
         PanelDefinition(
             title="Error Rate",
             panel_type="timeseries",
             query_template=(
-                'sum(rate(http_server_request_duration_count'
+                'sum(rate(http_server_request_duration_seconds_count'
                 '{service_name="${service_name}",'
+                'deployment_environment_name="${environment}",'
                 'http_response_status_code=~"5.."}[5m])) / '
-                'sum(rate(http_server_request_duration_count'
-                '{service_name="${service_name}"}[5m])) * 100'
+                'sum(rate(http_server_request_duration_seconds_count'
+                '{service_name="${service_name}",'
+                'deployment_environment_name="${environment}"}[5m])) * 100'
             ),
             unit="%",
             description="Percentage of requests returning 5xx",
@@ -135,7 +138,7 @@ http_service_health = DashboardTemplate(
             query_template=(
                 'http_server_active_requests'
                 '{service_name="${service_name}",'
-                'deployment_environment="${environment}"}'
+                'deployment_environment_name="${environment}"}'
             ),
             unit="requests",
             description="Currently in-flight requests",
@@ -206,7 +209,7 @@ class DashboardCatalog:
 
         # Validate all required variables are provided
         for var in template.variables:
-            if var["required"] and var["name"] not in variables:
+            if var.get("required", False) and var["name"] not in variables:
                 raise ValueError(f"Missing required variable: {var['name']}")
 
         # Resolve panel queries with variable values
