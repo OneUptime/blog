@@ -64,12 +64,13 @@ spec:
 
 Simulating a network partition between your collectors and the backend is the most important test. It validates your queue depth, retry logic, and failover configuration all at once.
 
-Here is a Kubernetes NetworkPolicy that blocks egress from collectors to the backend:
+Here is a Kubernetes NetworkPolicy that isolates collector egress and allows traffic to all destinations except the backend subnet:
 
 ```yaml
 # chaos-network-partition.yaml
-# This NetworkPolicy blocks all traffic from otel-collector pods to the
-# backend on port 4317. Apply it, wait 5 minutes, then remove it.
+# This NetworkPolicy isolates egress from otel-collector pods and allows
+# traffic to all destinations except the backend subnet. Apply it, wait
+# 5 minutes, then remove it.
 # Check that queued data is flushed successfully after the partition heals.
 
 apiVersion: networking.k8s.io/v1
@@ -89,9 +90,6 @@ spec:
             cidr: 0.0.0.0/0
             except:
               - 10.0.5.0/24       # backend subnet to block
-      ports:
-        - protocol: TCP
-          port: 4317
 ```
 
 Apply the policy, let it run for a defined period, then remove it:
@@ -127,23 +125,24 @@ OUTPUT_FILE = "chaos_results.csv"
 
 METRICS_TO_TRACK = [
     "otelcol_exporter_queue_size",
-    "otelcol_exporter_send_failed_spans",
-    "otelcol_exporter_send_failed_metric_points",
-    "otelcol_processor_dropped_spans",
-    "otelcol_receiver_refused_spans",
+    "otelcol_exporter_send_failed_spans_total",
+    "otelcol_exporter_send_failed_metric_points_total",
+    "otelcol_exporter_enqueue_failed_spans_total",
+    "otelcol_receiver_refused_spans_total",
 ]
 
 def scrape_metrics():
     resp = requests.get(COLLECTOR_METRICS_URL, timeout=5)
+    resp.raise_for_status()
     results = {}
     for line in resp.text.split('\n'):
-        if line.startswith('#'):
+        if line.startswith('#') or not line.strip():
             continue
         for metric_name in METRICS_TO_TRACK:
-            if line.startswith(metric_name):
-                parts = line.split(' ')
+            if line.startswith(metric_name + ' ') or line.startswith(metric_name + '{'):
+                parts = line.split()
                 if len(parts) >= 2:
-                    results[metric_name] = float(parts[-1])
+                    results[metric_name] = results.get(metric_name, 0) + float(parts[1])
     return results
 
 with open(OUTPUT_FILE, 'w', newline='') as csvfile:
@@ -245,8 +244,8 @@ kubectl delete -f chaos-network-partition.yaml
 sleep 60
 
 # Check results
-DROPPED=$(kubectl exec deploy/otel-collector -- curl -s localhost:8888/metrics | grep "dropped_spans{" | awk '{print $2}')
-if [ "$DROPPED" != "0" ]; then
+DROPPED=$(kubectl exec deploy/otel-collector -- curl -s localhost:8888/metrics | awk '/otelcol_exporter_enqueue_failed_spans_total[{ ]/ {sum += $2} END {print sum + 0}')
+if [ "$DROPPED" -ne 0 ]; then
   echo "FAIL: $DROPPED spans were dropped during chaos test"
   exit 1
 fi
