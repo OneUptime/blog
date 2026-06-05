@@ -16,7 +16,7 @@ Without quotas, resources are first-come, first-served. The team that deploys th
 
 ## Designing the Quota System
 
-Define quotas based on your server resources and team needs. A quota plan specifies the maximum CPU, memory, and storage each team can consume.
+Define quotas based on your server resources and team needs. A quota plan specifies the maximum CPU, memory, and storage each team should consume. The scripts below enforce CPU, memory, and container-count quotas; storage limits require storage-driver support and separate accounting for volumes and writable layers.
 
 Create a quota configuration file:
 
@@ -77,6 +77,8 @@ docker run -d \
   backend-api:latest
 ```
 
+The `--storage-opt size=10G` option only constrains the container writable layer when the Docker storage driver supports it. For example, Docker supports this option for `btrfs`, `overlay2`, `windowsfilter`, and `zfs`; with `overlay2`, the backing filesystem must be XFS mounted with project quotas enabled.
+
 For Docker Compose, include labels in the service definition:
 
 ```yaml
@@ -112,7 +114,7 @@ services:
 
 ## Quota Enforcement Script
 
-This script checks current resource usage per team against the defined quotas and blocks new containers that would exceed limits:
+This script checks current resource allocation per team against the defined quotas and blocks new containers that would exceed limits:
 
 ```bash
 #!/bin/bash
@@ -135,22 +137,22 @@ MAX_CPUS=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['t
 MAX_MEMORY_GB=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['team_quotas']['$TEAM']['max_memory_gb'])")
 MAX_CONTAINERS=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['team_quotas']['$TEAM']['max_containers'])")
 
-# Calculate current usage for this team
+# Calculate current allocation for this team
 CURRENT_CONTAINERS=$(docker ps --filter "label=team=$TEAM" --format "{{.Names}}" | wc -l)
 
 # Sum CPU limits of running containers for this team
 CURRENT_CPUS=$(docker ps --filter "label=team=$TEAM" --format "{{.ID}}" | \
-  xargs -I{} docker inspect --format='{{.HostConfig.NanoCpus}}' {} | \
-  awk '{sum += $1/1000000000} END {print sum}')
+  xargs -r -I{} docker inspect --format='{{.HostConfig.NanoCpus}}' {} 2>/dev/null | \
+  awk '{sum += $1/1000000000} END {printf "%.2f", sum+0}')
 
 # Sum memory limits (in bytes, convert to GB)
 CURRENT_MEMORY_BYTES=$(docker ps --filter "label=team=$TEAM" --format "{{.ID}}" | \
-  xargs -I{} docker inspect --format='{{.HostConfig.Memory}}' {} | \
-  awk '{sum += $1} END {print sum}')
+  xargs -r -I{} docker inspect --format='{{.HostConfig.Memory}}' {} 2>/dev/null | \
+  awk '{sum += $1} END {printf "%.0f", sum+0}')
 CURRENT_MEMORY_GB=$(echo "scale=2; $CURRENT_MEMORY_BYTES / 1073741824" | bc)
 
 echo "Team: $TEAM"
-echo "Current usage: ${CURRENT_CPUS} CPUs, ${CURRENT_MEMORY_GB}GB memory, $CURRENT_CONTAINERS containers"
+echo "Current allocation: ${CURRENT_CPUS} CPUs, ${CURRENT_MEMORY_GB}GB memory, $CURRENT_CONTAINERS containers"
 echo "Quota limits:  ${MAX_CPUS} CPUs, ${MAX_MEMORY_GB}GB memory, $MAX_CONTAINERS containers"
 echo "Requested:     ${REQUESTED_CPUS} CPUs, ${REQUESTED_MEMORY_GB}GB memory"
 
@@ -192,7 +194,7 @@ Create a wrapper script that teams use instead of raw `docker run`:
 TEAM=""
 CPUS=""
 MEMORY=""
-DOCKER_ARGS=""
+DOCKER_ARGS=()
 
 for arg in "$@"; do
     case $arg in
@@ -206,7 +208,7 @@ for arg in "$@"; do
             MEMORY="${arg#*=}"
             ;;
         *)
-            DOCKER_ARGS="$DOCKER_ARGS $arg"
+            DOCKER_ARGS+=("$arg")
             ;;
     esac
 done
@@ -226,6 +228,10 @@ if [ -z "$MEMORY" ]; then
 fi
 
 # Convert memory string to GB for quota check
+if [[ "$MEMORY" != *[gG] ]]; then
+    echo "ERROR: --memory must be specified in gigabytes, for example --memory=2g"
+    exit 1
+fi
 MEMORY_GB=$(echo "$MEMORY" | sed 's/[gG]$//')
 
 # Check quota
@@ -239,56 +245,55 @@ docker run \
   --label "team=$TEAM" \
   --cpus="$CPUS" \
   --memory="$MEMORY" \
-  $DOCKER_ARGS
+  "${DOCKER_ARGS[@]}"
 ```
 
 ## Using Docker Authorization Plugins
 
 For stronger enforcement, use a Docker authorization plugin that intercepts all Docker API calls. This prevents teams from bypassing the quota wrapper.
 
-Create an authorization policy using the Open Policy Agent (OPA):
+Create an authorization policy using the Open Policy Agent (OPA). This minimal policy validates the create request and the requested per-container memory limit; a production policy also needs current team usage data so it can compare the new request plus existing usage against the team quota.
 
 ```rego
 # policy.rego - OPA policy for Docker resource quotas
 package docker.authz
 
-import future.keywords.in
-
 # Default deny all requests
-default allow = false
+default allow := false
 
 # Allow requests that pass quota checks
-allow {
+allow if {
     input.Method == "POST"
-    input.Path == "/containers/create"
+    contains(input.Path, "/containers/create")
     team := input.Body.Labels.team
     team != ""
     within_quota(team, input.Body)
 }
 
 # Allow non-container-creation requests
-allow {
+allow if {
     input.Method != "POST"
 }
-allow {
-    not startswith(input.Path, "/containers/create")
+allow if {
+    not contains(input.Path, "/containers/create")
 }
 
-# Check if the request is within the team's quota
-within_quota(team, body) {
+# Check if the request is within the configured per-container limit
+within_quota(team, body) if {
     quota := data.quotas[team]
     requested_memory := body.HostConfig.Memory
+    requested_memory > 0
     requested_memory <= quota.max_memory_bytes
 }
 ```
 
 ## Monitoring Quota Usage
 
-Build a dashboard script that shows current usage per team:
+Build a dashboard script that shows current allocated limits per team:
 
 ```bash
 #!/bin/bash
-# quota-dashboard.sh - Display resource usage per team
+# quota-dashboard.sh - Display allocated resource limits per team
 # Run this periodically or as a monitoring check
 
 QUOTA_FILE="/etc/docker-quotas/quotas.json"
@@ -304,16 +309,16 @@ for TEAM in $TEAMS; do
     MAX_MEM=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['team_quotas']['$TEAM']['max_memory_gb'])")
     MAX_CONT=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['team_quotas']['$TEAM']['max_containers'])")
 
-    # Get current usage
+    # Get current allocation
     CONT_COUNT=$(docker ps --filter "label=team=$TEAM" --format "{{.Names}}" | wc -l)
 
     CPU_USED=$(docker ps --filter "label=team=$TEAM" --format "{{.ID}}" | \
-      xargs -I{} docker inspect --format='{{.HostConfig.NanoCpus}}' {} 2>/dev/null | \
-      awk '{sum += $1/1000000000} END {printf "%.1f", sum}')
+      xargs -r -I{} docker inspect --format='{{.HostConfig.NanoCpus}}' {} 2>/dev/null | \
+      awk '{sum += $1/1000000000} END {printf "%.1f", sum+0}')
 
     MEM_USED=$(docker ps --filter "label=team=$TEAM" --format "{{.ID}}" | \
-      xargs -I{} docker inspect --format='{{.HostConfig.Memory}}' {} 2>/dev/null | \
-      awk '{sum += $1/1073741824} END {printf "%.1f", sum}')
+      xargs -r -I{} docker inspect --format='{{.HostConfig.Memory}}' {} 2>/dev/null | \
+      awk '{sum += $1/1073741824} END {printf "%.1f", sum+0}')
 
     printf "%-12s %8s %8s %7sG %7sG %10s %10s\n" \
       "$TEAM" "${CPU_USED:-0}" "$MAX_CPUS" "${MEM_USED:-0}" "$MAX_MEM" "${CONT_COUNT:-0}" "$MAX_CONT"
@@ -341,7 +346,7 @@ reserved          0.5        2     2.0G       8G          2          5
 
 ## Alerting on Quota Usage
 
-Send alerts when teams approach their limits:
+Send alerts when teams approach their limits based on allocated memory:
 
 ```bash
 #!/bin/bash
@@ -358,8 +363,8 @@ for TEAM in "${TEAMS[@]}"; do
     MAX_MEM=$(python3 -c "import json; d=json.load(open('$QUOTA_FILE')); print(d['team_quotas']['$TEAM']['max_memory_gb'])")
 
     MEM_USED=$(docker ps --filter "label=team=$TEAM" --format "{{.ID}}" | \
-      xargs -I{} docker inspect --format='{{.HostConfig.Memory}}' {} 2>/dev/null | \
-      awk '{sum += $1/1073741824} END {printf "%.1f", sum}')
+      xargs -r -I{} docker inspect --format='{{.HostConfig.Memory}}' {} 2>/dev/null | \
+      awk '{sum += $1/1073741824} END {printf "%.1f", sum+0}')
 
     MEM_PCT=$(echo "scale=0; ($MEM_USED / $MAX_MEM) * 100" | bc)
 
