@@ -8,7 +8,7 @@ Description: A practical guide to pushing Docker images to GitLab Container Regi
 
 ---
 
-GitLab Container Registry is built into every GitLab project. You do not need to create a separate registry or link accounts. Every project gets its own container registry at a URL derived from the project path. Combined with GitLab CI/CD, this creates a tight loop from code push to image build to deployment, all within one platform.
+GitLab Container Registry is built into GitLab projects when the registry feature is enabled. You do not need to create a separate registry or link accounts. Each project gets its own container registry path derived from the project path. Combined with GitLab CI/CD, this creates a tight loop from code push to image build to deployment, all within one platform.
 
 ## How GitLab Container Registry Works
 
@@ -65,7 +65,7 @@ before_script:
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 ```
 
-The variables `CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD`, and `CI_REGISTRY` are automatically available in every pipeline job.
+The variables `CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD`, and `CI_REGISTRY` are automatically available in pipeline jobs when the container registry is enabled.
 
 ## Building and Pushing Locally
 
@@ -144,7 +144,7 @@ build-mr:
     - if: $CI_MERGE_REQUEST_IID
 ```
 
-### Using Docker BuildKit and Buildx
+### Using Docker BuildKit Caching
 
 For advanced builds with caching:
 
@@ -174,31 +174,40 @@ build:
     - docker push $IMAGE:latest
 ```
 
-### Using Kaniko (No Docker-in-Docker)
+### Using BuildKit Rootless (No Docker-in-Docker)
 
-Kaniko builds images inside a container without needing Docker-in-Docker, which is more secure:
+BuildKit rootless builds images without needing Docker-in-Docker or a privileged Docker daemon:
 
 ```yaml
-# .gitlab-ci.yml - Build with Kaniko (no Docker daemon needed)
+# .gitlab-ci.yml - Build with BuildKit rootless (no Docker daemon needed)
 build:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:v1.19.2-debug
+    name: moby/buildkit:rootless
     entrypoint: [""]
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  before_script:
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > ~/.docker/config.json
   script:
-    - >
-      /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}"
-      --destination "${CI_REGISTRY_IMAGE}:latest"
-      --cache=true
-      --cache-repo="${CI_REGISTRY_IMAGE}/cache"
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --output type=image,name=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA},push=true
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --output type=image,name=${CI_REGISTRY_IMAGE}:latest,push=true
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-Kaniko eliminates the security concerns of running a Docker daemon inside CI. It builds directly from the Dockerfile and pushes to the registry.
+BuildKit rootless eliminates the security concerns of running a Docker daemon inside CI. It builds directly from the Dockerfile and pushes to the registry.
 
 ## Semantic Versioning in CI
 
@@ -233,7 +242,7 @@ Navigate to your project's Deploy > Container Registry. You will see all images 
 ### From the Command Line
 
 ```bash
-# List tags for an image using the GitLab API
+# List registry repositories using the GitLab API
 curl --header "PRIVATE-TOKEN: YOUR_TOKEN" \
   "https://gitlab.com/api/v4/projects/PROJECT_ID/registry/repositories"
 
@@ -249,7 +258,7 @@ Configure automatic cleanup to manage storage:
 1. Go to Settings > Packages and registries > Clean up image tags
 2. Set rules like: keep the latest 10 tags matching `v*`, remove tags older than 90 days
 
-Or configure via `.gitlab-ci.yml`:
+Or run a scheduled cleanup job with the GitLab API:
 
 ```yaml
 # Cleanup job that runs on a schedule
@@ -263,13 +272,12 @@ cleanup:
   script:
     # Remove images tagged with old commit SHAs
     - |
-      TAGS=$(curl -s --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags" \
-        | jq -r '.[10:][].name')
-      for TAG in $TAGS; do
-        curl -s --request DELETE --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-          "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags/$TAG"
-      done
+      curl --request DELETE \
+        --data 'name_regex_delete=[0-9a-f]{40}' \
+        --data 'keep_n=10' \
+        --data 'older_than=90d' \
+        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+        "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags"
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 ```
@@ -289,4 +297,4 @@ docker run -d -p 8080:8080 registry.gitlab.com/mygroup/myproject:latest
 
 Deploy tokens provide read-only access without exposing personal credentials.
 
-GitLab Container Registry requires zero additional setup beyond what GitLab already provides. Every project gets a registry, CI/CD handles authentication automatically, and cleanup policies prevent storage bloat. Combined with Kaniko for secure builds and deploy tokens for production pulls, it forms a complete image lifecycle management system within the GitLab platform.
+GitLab Container Registry requires zero additional setup beyond what GitLab already provides when the registry feature is enabled. Projects get a registry path, CI/CD handles authentication automatically, and cleanup policies prevent storage bloat. Combined with BuildKit rootless for secure builds and deploy tokens for production pulls, it forms a complete image lifecycle management system within the GitLab platform.
