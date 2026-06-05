@@ -15,12 +15,21 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metric_provider = MeterProvider(metric_readers=[metric_reader])
+metrics.set_meter_provider(metric_provider)
 
 tracer = trace.get_tracer("social.graph")
 meter = metrics.get_meter("social.graph")
@@ -47,7 +56,7 @@ def generate_friend_suggestions(user_id: str, limit: int = 20):
             fof_query = """
                 MATCH (u:User {id: $user_id})-[:FOLLOWS]->(friend)-[:FOLLOWS]->(fof:User)
                 WHERE NOT (u)-[:FOLLOWS]->(fof) AND fof.id <> $user_id
-                RETURN fof.id, COUNT(friend) as mutual_count
+                RETURN fof.id AS fof_id, COUNT(friend) as mutual_count
                 ORDER BY mutual_count DESC
                 LIMIT $limit
             """
@@ -75,7 +84,7 @@ def generate_friend_suggestions(user_id: str, limit: int = 20):
         with tracer.start_as_current_span("graph.filter_suggestions") as filter_span:
             filtered = apply_suggestion_filters(user_id, scored_candidates)
             filter_span.set_attribute("filter.input_count", len(scored_candidates))
-            filter_span.set_attribute("filter.output_count", len(filtered))
+            filter_span.set_attribute("filter.output_count", len(filtered.candidates))
             filter_span.set_attribute("filter.removed_blocked", filtered.blocked_removed)
             filter_span.set_attribute("filter.removed_dismissed", filtered.dismissed_removed)
 
@@ -107,9 +116,8 @@ def get_connection_degree(user_a: str, user_b: str, max_depth: int = 3):
         # Run shortest path query up to max_depth
         with tracer.start_as_current_span("graph.shortest_path") as path_span:
             path_query = """
-                MATCH path = shortestPath(
-                    (a:User {id: $user_a})-[:FOLLOWS*..%d]-(b:User {id: $user_b})
-                )
+                MATCH path = SHORTEST 1
+                    (a:User {id: $user_a})-[:FOLLOWS]-{1,%d}(b:User {id: $user_b})
                 RETURN length(path) as degree, nodes(path) as path_nodes
             """ % max_depth
 
