@@ -14,7 +14,7 @@ Chi is a lightweight, composable Go HTTP router built on top of the standard lib
 
 You need:
 
-- Go 1.21+
+- Go 1.25+
 - Docker Engine 20.10+
 - Basic understanding of Go's `net/http` package
 
@@ -122,7 +122,7 @@ This multi-stage Dockerfile compiles Chi and packages the binary:
 ```dockerfile
 # Stage 1: Build
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /app
 
@@ -154,7 +154,7 @@ For teams that need debugging capabilities in production, use Alpine:
 
 ```dockerfile
 # Alternative: Alpine with shell access
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk --no-cache add ca-certificates
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=build /app/server /server
@@ -198,8 +198,6 @@ Expect roughly 8-12MB with `scratch`, 15-20MB with Alpine.
 A complete setup with PostgreSQL:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -351,7 +349,7 @@ Use Air for automatic rebuilding during development:
 
 ```dockerfile
 # Dockerfile.dev
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 WORKDIR /app
 RUN go install github.com/air-verse/air@latest
 COPY go.mod go.sum ./
@@ -363,8 +361,6 @@ CMD ["air"]
 
 ```yaml
 # docker-compose.dev.yml
-version: "3.8"
-
 services:
   api-dev:
     build:
