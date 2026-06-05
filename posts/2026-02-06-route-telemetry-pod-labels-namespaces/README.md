@@ -13,7 +13,7 @@ In Kubernetes, pod labels and namespace annotations carry ownership information.
 The pipeline works in three steps:
 
 1. **Extract**: Use the k8sattributes processor to enrich telemetry with pod labels and namespace metadata.
-2. **Route**: Use the routing processor to send telemetry to different exporters based on those attributes.
+2. **Route**: Use the routing connector to send telemetry to different pipelines based on those attributes.
 3. **Export**: Each route points to a team-specific or tier-specific backend.
 
 ## Step 1: Label Your Pods
@@ -111,26 +111,39 @@ processors:
     send_batch_size: 4096
     timeout: 1s
 
-  # Route based on extracted attributes
-  routing/by_tier:
-    from_attribute: backend.tier
-    attribute_source: resource
+connectors:
+  # Route traces based on extracted namespace annotations
+  routing/traces_by_tier:
+    default_pipelines: [traces/standard]
     table:
-      - value: premium
-        exporters: [otlphttp/premium]
-      - value: standard
-        exporters: [otlphttp/standard]
-    default_exporters: [otlphttp/standard]
+      - context: resource
+        condition: attributes["backend.tier"] == "premium"
+        pipelines: [traces/premium]
+      - context: resource
+        condition: attributes["backend.tier"] == "standard"
+        pipelines: [traces/standard]
 
-  routing/by_team:
-    from_attribute: team.name
-    attribute_source: resource
+  # Route metrics based on extracted pod labels
+  routing/metrics_by_team:
+    default_pipelines: [metrics/shared]
     table:
-      - value: payments
-        exporters: [otlphttp/payments_team]
-      - value: platform
-        exporters: [otlphttp/platform_team]
-    default_exporters: [otlphttp/shared]
+      - context: resource
+        condition: attributes["team.name"] == "payments"
+        pipelines: [metrics/payments_team]
+      - context: resource
+        condition: attributes["team.name"] == "platform"
+        pipelines: [metrics/platform_team]
+
+  # Route logs based on extracted namespace annotations
+  routing/logs_by_tier:
+    default_pipelines: [logs/standard]
+    table:
+      - context: resource
+        condition: attributes["backend.tier"] == "premium"
+        pipelines: [logs/premium]
+      - context: resource
+        condition: attributes["backend.tier"] == "standard"
+        pipelines: [logs/standard]
 
 exporters:
   # Premium backend with higher retention and resources
@@ -160,18 +173,39 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [k8sattributes, batch, routing/by_tier]
-      exporters: [otlphttp/premium, otlphttp/standard]
-    metrics:
+      processors: [k8sattributes, batch]
+      exporters: [routing/traces_by_tier]
+    traces/premium:
+      receivers: [routing/traces_by_tier]
+      exporters: [otlphttp/premium]
+    traces/standard:
+      receivers: [routing/traces_by_tier]
+      exporters: [otlphttp/standard]
+    metrics/in:
       receivers: [otlp]
-      processors: [k8sattributes, batch, routing/by_team]
-      exporters: [otlphttp/payments_team, otlphttp/platform_team, otlphttp/shared]
-    logs:
+      processors: [k8sattributes, batch]
+      exporters: [routing/metrics_by_team]
+    metrics/payments_team:
+      receivers: [routing/metrics_by_team]
+      exporters: [otlphttp/payments_team]
+    metrics/platform_team:
+      receivers: [routing/metrics_by_team]
+      exporters: [otlphttp/platform_team]
+    metrics/shared:
+      receivers: [routing/metrics_by_team]
+      exporters: [otlphttp/shared]
+    logs/in:
       receivers: [otlp]
-      processors: [k8sattributes, batch, routing/by_tier]
-      exporters: [otlphttp/premium, otlphttp/standard]
+      processors: [k8sattributes, batch]
+      exporters: [routing/logs_by_tier]
+    logs/premium:
+      receivers: [routing/logs_by_tier]
+      exporters: [otlphttp/premium]
+    logs/standard:
+      receivers: [routing/logs_by_tier]
+      exporters: [otlphttp/standard]
 ```
 
 ## RBAC for the k8sattributes Processor
@@ -225,6 +259,16 @@ processors:
   # Add a default team for untagged pods
   transform:
     trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["team.name"], "unowned")
+            where attributes["team.name"] == nil
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["team.name"], "unowned")
+            where attributes["team.name"] == nil
+    log_statements:
       - context: resource
         statements:
           - set(attributes["team.name"], "unowned")
