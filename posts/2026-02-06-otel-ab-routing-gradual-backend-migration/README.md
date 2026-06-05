@@ -10,11 +10,11 @@ Migrating from one observability backend to another is nerve-wracking. You canno
 
 ## The Migration Strategy
 
-The idea is borrowed from A/B testing in web development. Instead of routing user traffic, you route telemetry. Start by sending 100% to the old backend and 0% to the new one. Then shift to 90/10, then 80/20, and so on. At each step, verify that the new backend handles the load, returns correct query results, and stays within your cost budget.
+The idea is borrowed from A/B testing in web development. Instead of routing user traffic, you route telemetry. Start by sending 100% to the old backend and 0% to the new one. Then mirror 10% to the new backend while keeping 100% in the old one, then 25%, then 50%, and so on. At each step, verify that the new backend handles the load, returns correct query results, and stays within your cost budget.
 
 ## Using the Probabilistic Sampler for Routing
 
-The trick here is to use two pipelines with complementary sampling rates. The probabilistic sampler in the collector uses trace IDs for consistent hashing, meaning the same trace always goes to the same destination. This is important because you want complete traces in each backend, not random spans split across both.
+The trick here is to use two pipelines: one full-fidelity pipeline for the backend you currently trust, and one sampled pipeline for the backend you are migrating to. The probabilistic sampler in the collector uses trace IDs for consistent hashing, meaning the same trace is consistently included or excluded by a given sampler. This is important because you want complete traces in the sampled backend, not random spans split unpredictably.
 
 ```yaml
 # otel-collector-config.yaml
@@ -35,10 +35,9 @@ processors:
     sampling_percentage: 20
     hash_seed: 42
 
-  # Send 80% of traces to the old backend
-  # Use the same hash_seed and complementary percentage
+  # Keep sending 100% of traces to the old backend
   probabilistic_sampler/old:
-    sampling_percentage: 80
+    sampling_percentage: 100
     hash_seed: 42
 
   batch:
@@ -64,7 +63,7 @@ service:
       processors: []
       exporters: [forward]
 
-    # Old backend gets 80% of traces
+    # Old backend gets 100% of traces
     traces/old:
       receivers: [forward]
       processors: [probabilistic_sampler/old, batch]
@@ -114,12 +113,11 @@ Notice that during the transition, you can send 100% to the old backend while al
 
 ## Automating the Cutover with Config Reloads
 
-You do not want to restart the collector every time you change the ratio. The collector supports configuration reloading via a file watcher:
+You do not want to restart the collector process every time you change the ratio. The collector can reload configuration when it receives a `SIGHUP` signal on Unix-like systems:
 
 ```bash
-# Start the collector with config reload enabled
-otelcol-contrib --config=otel-collector-config.yaml \
-  --feature-gates=telemetry.useOtelForInternalMetrics
+# Start the collector
+otelcol-contrib --config=otel-collector-config.yaml
 ```
 
 Then use a script or CI pipeline to update the config and signal a reload:
@@ -137,7 +135,9 @@ sed -i "s/sampling_percentage: .*/sampling_percentage: ${NEW_PCT}/" \
 sed -i "s/sampling_percentage: .*/sampling_percentage: ${OLD_PCT}/" \
   /etc/otel/old-backend-sampler.yaml
 
-# The collector will pick up the change automatically
+# Ask the collector to reload its configuration
+kill -SIGHUP "$(pidof otelcol-contrib)"
+
 echo "Updated: new=${NEW_PCT}%, old=${OLD_PCT}%"
 ```
 
