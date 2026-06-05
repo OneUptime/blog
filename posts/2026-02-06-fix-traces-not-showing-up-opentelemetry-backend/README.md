@@ -69,11 +69,13 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 // Create provider with console output
-const provider = new NodeTracerProvider();
-
 // SimpleSpanProcessor sends spans immediately (not batched)
 // Use this for debugging only, not production
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    new SimpleSpanProcessor(new ConsoleSpanExporter()),
+  ],
+});
 provider.register();
 
 const tracer = provider.getTracer('debug-tracer');
@@ -121,8 +123,8 @@ receivers:
 Verify connectivity by sending a test request to the collector:
 
 ```bash
-# Test gRPC connectivity to the collector
-grpcurl -plaintext localhost:4317 list
+# Test TCP reachability to the gRPC receiver
+nc -vz localhost 4317
 
 # Test HTTP connectivity to the collector
 curl -v http://localhost:4318/v1/traces \
@@ -265,7 +267,7 @@ from opentelemetry.sdk.trace import TracerProvider
 resource = Resource.create({
     "service.name": "my-api-service",
     "service.version": "1.2.3",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 provider = TracerProvider(resource=resource)
@@ -276,7 +278,7 @@ You can also set the service name via environment variable:
 ```bash
 # Set service name via environment variable
 export OTEL_SERVICE_NAME=my-api-service
-export OTEL_RESOURCE_ATTRIBUTES=service.version=1.2.3,deployment.environment=production
+export OTEL_RESOURCE_ATTRIBUTES=service.version=1.2.3,deployment.environment.name=production
 ```
 
 Check your backend UI for traces filed under "unknown_service" or "OTLPResourceNoServiceName". These names indicate that the SDK did not have a service name configured.
