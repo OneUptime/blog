@@ -15,6 +15,25 @@ Traditional monitoring tools built for HTTP often fall short with gRPC. Request 
 Start by adding the necessary dependencies for gRPC server, client, and OpenTelemetry instrumentation.
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+            <version>2.28.1-alpha</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring Boot -->
     <dependency>
@@ -22,34 +41,37 @@ Start by adding the necessary dependencies for gRPC server, client, and OpenTele
         <artifactId>spring-boot-starter</artifactId>
         <version>3.2.2</version>
     </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+        <version>3.2.2</version>
+    </dependency>
 
     <!-- gRPC dependencies -->
     <dependency>
         <groupId>net.devh</groupId>
         <artifactId>grpc-spring-boot-starter</artifactId>
-        <version>2.15.0.RELEASE</version>
+        <version>3.1.0.RELEASE</version>
     </dependency>
     <dependency>
         <groupId>io.grpc</groupId>
         <artifactId>grpc-protobuf</artifactId>
-        <version>1.61.0</version>
+        <version>1.63.0</version>
     </dependency>
     <dependency>
         <groupId>io.grpc</groupId>
         <artifactId>grpc-stub</artifactId>
-        <version>1.61.0</version>
+        <version>1.63.0</version>
     </dependency>
 
     <!-- OpenTelemetry instrumentation -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-grpc-1.6</artifactId>
-        <version>2.1.0-alpha</version>
     </dependency>
     <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
-        <version>1.35.0</version>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -139,9 +161,8 @@ otel:
     otlp:
       endpoint: http://localhost:4318
   instrumentation:
-    grpc:
-      # Capture detailed gRPC attributes
-      experimental-span-attributes: true
+    micrometer:
+      enabled: true
 ```
 
 ## Instrumenting gRPC Server
@@ -174,7 +195,9 @@ public class GrpcServerConfiguration {
     @Bean
     @GrpcGlobalServerInterceptor
     public ServerInterceptor grpcServerTracingInterceptor() {
-        return GrpcTelemetry.create(openTelemetry)
+        return GrpcTelemetry.builder(openTelemetry)
+            .setCaptureExperimentalSpanAttributes(true)
+            .build()
             .newServerInterceptor();
     }
 }
@@ -188,11 +211,11 @@ package com.oneuptime.service;
 import com.oneuptime.order.*;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
@@ -212,8 +235,8 @@ public class OrderGrpcService extends OrderServiceGrpc.OrderServiceImplBase {
     private final Tracer tracer;
     private final OrderProcessingService processingService;
 
-    public OrderGrpcService(Tracer tracer, OrderProcessingService processingService) {
-        this.tracer = tracer;
+    public OrderGrpcService(OpenTelemetry openTelemetry, OrderProcessingService processingService) {
+        this.tracer = openTelemetry.getTracer("order-grpc-service");
         this.processingService = processingService;
     }
 
@@ -460,7 +483,9 @@ public class GrpcClientConfiguration {
     @Bean
     @GrpcGlobalClientInterceptor
     public ClientInterceptor grpcClientTracingInterceptor() {
-        return GrpcTelemetry.create(openTelemetry)
+        return GrpcTelemetry.builder(openTelemetry)
+            .setCaptureExperimentalSpanAttributes(true)
+            .build()
             .newClientInterceptor();
     }
 }
@@ -474,6 +499,7 @@ package com.oneuptime.client;
 import com.oneuptime.inventory.*;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -499,8 +525,8 @@ public class InventoryClient {
 
     private final Tracer tracer;
 
-    public InventoryClient(Tracer tracer) {
-        this.tracer = tracer;
+    public InventoryClient(OpenTelemetry openTelemetry) {
+        this.tracer = openTelemetry.getTracer("order-grpc-service");
     }
 
     /**
@@ -588,7 +614,7 @@ public class InventoryClient {
                                 io.opentelemetry.api.common.AttributeKey.longKey("attempt"),
                                 (long) attempt
                             ));
-                        Thread.sleep(100 * attempt); // Exponential backoff
+                        Thread.sleep(100 * attempt); // Simple backoff between retries
                     } else {
                         throw e;
                     }
@@ -724,31 +750,30 @@ public class GrpcMetricsConfiguration {
 
 ## Handling Streaming RPC Tracing
 
-Bidirectional streaming requires special attention to span lifecycle management.
+Bidirectional streaming requires special attention to span lifecycle management. Add the streaming method to the same registered service implementation so the application does not register two implementations of the same gRPC service name.
 
 ```java
 package com.oneuptime.service;
 
 import com.oneuptime.order.*;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
-import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
-@GrpcService
 public class StreamingOrderService extends OrderServiceGrpc.OrderServiceImplBase {
 
     private static final Logger logger = LoggerFactory.getLogger(StreamingOrderService.class);
     private final Tracer tracer;
 
-    public StreamingOrderService(Tracer tracer) {
-        this.tracer = tracer;
+    public StreamingOrderService(OpenTelemetry openTelemetry) {
+        this.tracer = openTelemetry.getTracer("order-grpc-service");
     }
 
     /**
