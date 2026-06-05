@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Envoy, Sampling, Production Tuning
 
 Description: Tune Envoy OpenTelemetry tracing settings including sampling rates, max tag length, and custom tags for production traffic volumes.
 
-Running Envoy with OpenTelemetry tracing in production requires careful tuning. Tracing every request generates enormous amounts of data and adds latency to each request. This post covers how to configure sampling rates, tag sizes, and custom tags to get useful trace data without overwhelming your infrastructure.
+Running Envoy with OpenTelemetry tracing requires careful tuning. Envoy's OpenTelemetry tracer is still documented as work-in-progress and not intended for production use, so check the status of the extension for your Envoy version before relying on it for production traffic. Tracing every request generates enormous amounts of data and adds latency to each request. This post covers how to configure sampling rates, tag sizes, and custom tags to get useful trace data without overwhelming your infrastructure.
 
 ## Configuring Sampling Rates
 
@@ -126,7 +126,7 @@ routes:
     route:
       cluster: backend
     tracing:
-      overall_sampling:
+      random_sampling:
         value: 0.1
     decorator:
       operation: health-check
@@ -137,7 +137,7 @@ routes:
     route:
       cluster: payment_service
     tracing:
-      overall_sampling:
+      random_sampling:
         value: 100
     decorator:
       operation: payment-api
@@ -148,7 +148,7 @@ routes:
     route:
       cluster: backend
     tracing:
-      overall_sampling:
+      random_sampling:
         value: 5.0
     decorator:
       operation: general-api
@@ -209,7 +209,8 @@ curl localhost:9901/stats | grep otel_collector
 
 Key metrics to watch:
 - `tracing.opentelemetry.spans_sent`: How many spans were exported
-- `tracing.opentelemetry.timer`: Time spent on tracing operations
+- `tracing.opentelemetry.timer_flushed`: How often the OpenTelemetry tracer flush timer ran
+- `tracing.opentelemetry.spans_dropped`: How many spans were dropped before export
 - `cluster.otel_collector.upstream_rq_time`: Latency of OTLP export calls
 
 If export latency is high, the Collector may be overloaded. Scale the Collector or reduce the sampling rate.
