@@ -8,7 +8,7 @@ Description: Comparing PagerDuty with OneUptime for on-call scheduling, incident
 
 PagerDuty revolutionized on-call management. Before them, incident response was chaos - missed pages, unclear escalations, and exhausted engineers. They built a billion-dollar business solving this problem.
 
-But in 2026, do you really need a separate $35/user/month tool just for on-call? Or can you get incident management bundled with your monitoring, status pages, and observability - all in one open-source platform?
+But in 2026, do you really need a separate $21-$41/user/month tool for incident response? Or can you get incident management bundled with your monitoring, status pages, and observability - all in one open-source platform?
 
 Let's compare PagerDuty and OneUptime.
 
@@ -25,7 +25,7 @@ Let's compare PagerDuty and OneUptime.
 | Phone/SMS Alerts | ✅ | ✅ |
 | Slack/Teams Integration | ✅ | ✅ |
 | Uptime Monitoring | ❌ (need separate tool) | ✅ |
-| Status Pages | ❌ (need separate tool) | ✅ |
+| Status Pages | ✅ (plan/add-on dependent) | ✅ |
 | Log Management | ❌ | ✅ |
 | APM / Traces | ❌ | ✅ |
 | AI Auto-Remediation | ✅ (AIOps add-on) | ✅ (included) |
@@ -71,7 +71,7 @@ The total stack easily hits **$15,000-50,000/year**.
 
 ### 2. Yet Another Tool to Manage
 
-PagerDuty is great at on-call. But it's *only* on-call. Your monitoring alerts go to PagerDuty, which pages your engineer, who then opens your monitoring tool to investigate, updates your status page manually, and closes the incident back in PagerDuty.
+PagerDuty is great at on-call and incident response. But it's not a full observability stack. Your monitoring alerts go to PagerDuty, which pages your engineer, who then opens your monitoring tool to investigate, updates your status page in PagerDuty or another tool, and closes the incident back in PagerDuty.
 
 That's a lot of context switching and manual coordination between tools.
 
@@ -101,22 +101,24 @@ When something breaks in OneUptime:
 5. **Incident resolved** → Status page updates, subscribers notified
 6. **Postmortem created** → Timeline auto-generated
 
-With PagerDuty, steps 1, 3, 4, and parts of 5 require separate tools.
+With PagerDuty, steps 1, 4, and some status page or subscriber workflows depend on your plan, add-ons, or separate tools.
 
 ### 3. Pricing That Makes Sense
 
 OneUptime's usage-based pricing:
 
+- **Growth plan:** ~$22/month
 - **Monitors:** ~$1/monitor/month
 - **Alerts:** $0.10/SMS, $0.10/minute for calls
-- **Everything else:** Included (on-call, status pages, incidents)
+- **Core reliability features:** Included by plan (on-call, status pages, incidents)
 
 For that same 10-person team:
+- Growth plan: ~$22/month
 - 50 monitors: ~$50/month
 - SMS/calls: ~$30/month (assuming 300 alerts)
-- **Total: ~$80/month = ~$960/year**
+- **Total: ~$102/month = ~$1,224/year** before telemetry or AI token usage
 
-**That's 80% less than PagerDuty alone** - and you get monitoring, status pages, logs, and more included.
+**That's about 75% less than PagerDuty Business incident management alone** - and you get monitoring, status pages, logs, and more included.
 
 ### 4. AI That Fixes, Not Just Routes
 
