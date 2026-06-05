@@ -150,7 +150,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-log4j-appender-2.17</artifactId>
-    <version>2.12.0-alpha</version>
+    <version>2.28.1-alpha</version>
 </dependency>
 ```
 
@@ -170,7 +170,8 @@ Configure the appender in your `log4j2.xml`:
         <OpenTelemetry name="OTelAppender"
                        captureExperimentalAttributes="true"
                        captureCodeAttributes="true"
-                       captureMarkerAttribute="true">
+                       captureMarkerAttribute="true"
+                       captureContextDataAttributes="*">
         </OpenTelemetry>
     </Appenders>
 
@@ -195,7 +196,23 @@ Configure the appender in your `log4j2.xml`:
 </Configuration>
 ```
 
-The `captureExperimentalAttributes` flag tells the appender to include extra attributes like thread name and logger name. The `captureCodeAttributes` flag adds source location information (file, line number, method).
+The `captureExperimentalAttributes` flag tells the appender to include extra attributes like thread name and thread ID. The `captureCodeAttributes` flag adds source location information (file, line number, method). The `captureContextDataAttributes` flag captures Log4j2 `ThreadContext` values as log record attributes.
+
+The appender also needs access to your configured OpenTelemetry SDK. Install it during application startup:
+
+```java
+import io.opentelemetry.instrumentation.log4j.appender.v2_17.OpenTelemetryAppender;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+
+public class Application {
+    public static void main(String[] args) {
+        OpenTelemetrySdk openTelemetrySdk = OpenTelemetrySdk.builder().build();
+        OpenTelemetryAppender.install(openTelemetrySdk);
+
+        // ... proceed with application startup
+    }
+}
+```
 
 Your application code does not change at all:
 
@@ -215,7 +232,7 @@ public class OrderService {
         this.tracer = tracer;
     }
 
-    public void processOrder(String orderId) {
+    public void processOrder(String orderId) throws Exception {
         // Start a span
         Span span = tracer.spanBuilder("process-order")
             .setAttribute("order.id", orderId)
@@ -248,8 +265,8 @@ The Log4j2 appender automatically picks up the active span context and attaches 
 Winston is one of the most popular logging libraries for Node.js. You can bridge it to OpenTelemetry using the instrumentation package:
 
 ```bash
-# Install the Winston instrumentation
-npm install @opentelemetry/instrumentation-winston
+# Install the Winston instrumentation and log transport
+npm install @opentelemetry/instrumentation-winston @opentelemetry/winston-transport @opentelemetry/sdk-node @opentelemetry/sdk-logs @opentelemetry/exporter-logs-otlp-grpc
 ```
 
 Set up the instrumentation before creating your Winston logger:
@@ -259,7 +276,6 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { WinstonInstrumentation } = require('@opentelemetry/instrumentation-winston');
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-grpc');
 const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
-const winston = require('winston');
 
 // Initialize the SDK with Winston instrumentation
 // This must happen before creating Winston loggers
@@ -273,16 +289,17 @@ const sdk = new NodeSDK({
             },
         }),
     ],
-    logRecordProcessor: new BatchLogRecordProcessor(
+    logRecordProcessors: [new BatchLogRecordProcessor(
         new OTLPLogExporter({
             url: 'http://localhost:4317',
         })
-    ),
+    )],
 });
 
 sdk.start();
 
 // Create a Winston logger as usual
+const winston = require('winston');
 const logger = winston.createLogger({
     level: 'info',
     format: winston.format.combine(
@@ -296,10 +313,10 @@ const logger = winston.createLogger({
 });
 ```
 
-With the instrumentation active, Winston log records automatically include trace context fields. Your application code stays the same:
+With the instrumentation active, Winston log records automatically include trace context fields. Your logging calls stay the same; just make sure the span is active in the current context when those logs are emitted:
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { context, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('my.service');
 
@@ -307,31 +324,33 @@ async function handleRequest(req, res) {
     // Start a span for this request
     const span = tracer.startSpan('handle-request');
 
-    try {
-        // Winston logs within this span context automatically
-        // get trace_id and span_id injected
-        logger.info('Processing request', {
-            requestId: req.id,
-            path: req.path,
-        });
+    return context.with(trace.setSpan(context.active(), span), async () => {
+        try {
+            // Winston logs within this span context automatically
+            // get trace_id and span_id injected
+            logger.info('Processing request', {
+                requestId: req.id,
+                path: req.path,
+            });
 
-        const result = await processRequest(req);
+            const result = await processRequest(req);
 
-        logger.info('Request completed', {
-            requestId: req.id,
-            duration: result.duration,
-        });
+            logger.info('Request completed', {
+                requestId: req.id,
+                duration: result.duration,
+            });
 
-        return result;
-    } catch (error) {
-        logger.error('Request failed', {
-            requestId: req.id,
-            error: error.message,
-        });
-        throw error;
-    } finally {
-        span.end();
-    }
+            return result;
+        } catch (error) {
+            logger.error('Request failed', {
+                requestId: req.id,
+                error: error.message,
+            });
+            throw error;
+        } finally {
+            span.end();
+        }
+    });
 }
 ```
 
@@ -371,6 +390,7 @@ Once logs are in the OpenTelemetry format, they flow through the same processor/
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import (
     BatchLogRecordProcessor,
+    ConsoleLogRecordExporter,
     SimpleLogRecordProcessor,
 )
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
@@ -394,7 +414,7 @@ log_provider.add_log_record_processor(
 # SimpleLogRecordProcessor sends each record immediately
 # Only use for development or debugging
 # log_provider.add_log_record_processor(
-#     SimpleLogRecordProcessor(ConsoleLogExporter())
+#     SimpleLogRecordProcessor(ConsoleLogRecordExporter())
 # )
 ```
 
