@@ -12,7 +12,7 @@ The OTLP (OpenTelemetry Protocol) gRPC exporter is the standard way to send tele
 
 OTLP (OpenTelemetry Protocol) is the native protocol of OpenTelemetry, designed specifically for transmitting traces, metrics, and logs. It supports two transport mechanisms:
 
-- **OTLP/gRPC**: Uses gRPC for high-performance, bidirectional streaming
+- **OTLP/gRPC**: Uses gRPC with Protocol Buffers for high-performance unary export requests
 - **OTLP/HTTP**: Uses HTTP/1.1 or HTTP/2 for broader compatibility
 
 gRPC offers several advantages:
@@ -35,6 +35,15 @@ exporters:
     # The endpoint of your observability backend
     # Default port for OTLP/gRPC is 4317
     endpoint: backend.example.com:4317
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
 
 service:
   pipelines:
@@ -180,10 +189,6 @@ exporters:
       insecure: false
     # Compression algorithm: gzip, zstd, snappy, or none
     compression: gzip
-
-    # Optional: Compression level (gzip only)
-    # Values: 1-9 (1=fastest, 9=best compression)
-    # Default is usually sufficient
 ```
 
 Compression algorithms comparison:
@@ -243,6 +248,7 @@ Configure the file storage extension:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
 
 service:
@@ -336,29 +342,7 @@ service:
 
 ## Signal-Specific Endpoints
 
-Some backends use different endpoints for different signal types:
-
-```yaml
-# Signal-specific endpoint configuration
-exporters:
-  otlp:
-    # Default endpoint
-    endpoint: backend.example.com:4317
-
-    # Override endpoint for specific signals
-    endpoint_override:
-      traces_endpoint: traces.backend.example.com:4317
-      metrics_endpoint: metrics.backend.example.com:4317
-      logs_endpoint: logs.backend.example.com:4317
-
-    tls:
-      insecure: false
-
-    headers:
-      "api-key": "${env:API_KEY}"
-```
-
-Alternatively, use separate exporters:
+Some backends use different endpoints for different signal types. The OTLP gRPC exporter does not provide signal-specific endpoint override fields, so use separate exporters:
 
 ```yaml
 exporters:
@@ -418,6 +402,7 @@ extensions:
   # Persistent queue storage
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
 
 # Receivers
@@ -474,7 +459,7 @@ processors:
       - context: log
         statements:
           # Add processing timestamp
-          - set(attributes["collector.processed_at"], UnixMicro(time_now()))
+          - set(attributes["collector.processed_at"], UnixMicro(Now()))
 
           # Ensure environment is set
           - set(attributes["environment"], resource.attributes["deployment.environment"]) where attributes["environment"] == nil
@@ -514,7 +499,7 @@ exporters:
     sampling_initial: 5
     sampling_thereafter: 200
 
-  # Prometheus exporter for collector metrics
+  # Prometheus exporter for pipeline metrics
   prometheus:
     endpoint: 0.0.0.0:8889
 
@@ -533,7 +518,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   # Define pipelines
   pipelines:
@@ -592,6 +582,13 @@ Optimize the OTLP exporter for your workload:
 
 ```yaml
 # Optimized for high throughput
+processors:
+  # Aggressive batching
+  batch:
+    timeout: 5s
+    send_batch_size: 2048
+    send_batch_max_size: 4096
+
 exporters:
   otlp:
     endpoint: backend.example.com:4317
@@ -600,12 +597,6 @@ exporters:
 
     # Fast timeout
     timeout: 10s
-
-    # Aggressive batching
-    batch:
-      timeout: 5s
-      send_batch_size: 2048
-      send_batch_max_size: 4096
 
     # Large queue
     sending_queue:
@@ -621,6 +612,12 @@ exporters:
 
 ```yaml
 # Optimized for low latency
+processors:
+  # Small batches for quick sending
+  batch:
+    timeout: 1s
+    send_batch_size: 100
+
 exporters:
   otlp:
     endpoint: backend.example.com:4317
@@ -629,11 +626,6 @@ exporters:
 
     # Short timeout
     timeout: 5s
-
-    # Small batches for quick sending
-    batch:
-      timeout: 1s
-      send_batch_size: 100
 
     # Smaller queue
     sending_queue:
@@ -649,6 +641,12 @@ Resource-Constrained Configuration
 
 ```yaml
 # Optimized for limited resources
+processors:
+  # Moderate batching
+  batch:
+    timeout: 10s
+    send_batch_size: 512
+
 exporters:
   otlp:
     endpoint: backend.example.com:4317
@@ -656,11 +654,6 @@ exporters:
       insecure: false
 
     timeout: 30s
-
-    # Moderate batching
-    batch:
-      timeout: 10s
-      send_batch_size: 512
 
     # Small queue with disk persistence
     sending_queue:
@@ -679,17 +672,16 @@ Monitor your OTLP exporter health:
 
 ```yaml
 # Enable collector self-monitoring
-service:
-  telemetry:
-    logs:
-      level: info
+receivers:
+  otlp:
+    protocols:
+      grpc:
 
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
+processors:
+  batch:
 
 exporters:
-  # Export collector metrics
+  # Expose pipeline metrics
   prometheus:
     endpoint: 0.0.0.0:8889
 
@@ -699,6 +691,19 @@ exporters:
       insecure: false
 
 service:
+  telemetry:
+    logs:
+      level: info
+
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
   pipelines:
     metrics:
       receivers: [otlp]
@@ -727,7 +732,6 @@ exporters:
       insecure: true
     compression: none
 
-exporters:
   debug:
     verbosity: detailed
 
