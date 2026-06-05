@@ -4,38 +4,38 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Interval, Metric, Aggregation, Observability
 
-Description: Learn how to configure the Interval Processor in OpenTelemetry Collector to aggregate and downsample metrics at configurable intervals for reduced cardinality and storage costs.
+Description: Learn how to configure the Interval Processor in OpenTelemetry Collector to aggregate and downsample metrics at configurable intervals for reduced data volume and storage costs.
 
-High-frequency metrics can overwhelm your observability backend and drive up storage costs. The Interval Processor addresses this by aggregating metrics over configurable time windows, reducing cardinality while preserving statistical accuracy. This processor is particularly valuable for high-volume metrics that don't require second-by-second granularity.
+High-frequency metrics can overwhelm your observability backend and drive up storage costs. The Interval Processor addresses this by aggregating metrics over configurable time windows, reducing metric export frequency while preserving the latest cumulative values for supported metric streams. This processor is particularly valuable for high-volume metrics that don't require second-by-second granularity.
 
 ## What Is the Interval Processor?
 
-The Interval Processor aggregates metrics over specified time intervals before exporting them. Instead of forwarding every metric data point as it arrives, the processor buffers metrics and emits aggregated values at regular intervals. This reduces the volume of data sent to backends while maintaining statistical properties like sum, count, min, max, and percentiles.
+The Interval Processor aggregates metrics over specified time intervals before exporting them. Instead of forwarding every aggregatable metric data point as it arrives, the processor buffers the latest data point for each matching metric stream and emits those latest values at regular intervals. Delta metrics and non-monotonic sums are passed through unchanged.
 
 This is useful when:
 
-- You have high-frequency metrics that don't need real-time granularity
+- You have high-frequency cumulative metrics that don't need real-time granularity
 - Your backend charges based on data points or ingestion volume
 - You want to reduce network bandwidth between Collector and backend
-- You need to downsample metrics for long-term retention
+- You need to reduce export frequency for long-term retention
 
 ## Architecture Overview
 
-The Interval Processor sits between receivers and exporters, buffering and aggregating metrics:
+The Interval Processor sits between receivers and exporters, buffering and forwarding the latest aggregatable metrics:
 
 ```mermaid
 graph LR
     A[Services emitting metrics every 1s] -->|High frequency| B[Interval Processor]
-    B -->|Aggregated every 60s| C[Backend]
+    B -->|Latest values every 60s| C[Backend]
 
     style B fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-Metrics arrive at high frequency, get buffered and aggregated, then exported at the configured interval with statistical properties preserved.
+Metrics arrive at high frequency, aggregatable metrics are buffered, and the latest values are exported at the configured interval.
 
 ## Basic Configuration
 
-Here's a minimal Interval Processor configuration that aggregates metrics every 60 seconds:
+Here's a minimal Interval Processor configuration that exports aggregatable metrics every 60 seconds:
 
 ```yaml
 # Configure receivers to accept metrics
@@ -50,23 +50,10 @@ receivers:
 
 # Define the Interval Processor
 processors:
-  # The interval processor aggregates metrics over time windows
+  # The interval processor buffers aggregatable metrics over time windows
   interval:
     # Export aggregated metrics every 60 seconds
-    # All metrics received during this window are aggregated
     interval: 60s
-
-    # Specify which metric types to aggregate
-    # Options: gauge, sum, histogram, exponential_histogram, summary
-    aggregation:
-      # Gauge metrics: emit the last value seen in the interval
-      gauge: last
-
-      # Sum metrics: accumulate all values in the interval
-      sum: cumulative
-
-      # Histogram metrics: merge all histograms in the interval
-      histogram: explicit
 
   # Batch processor for efficient export
   batch:
@@ -92,145 +79,136 @@ service:
 
 ## Understanding Aggregation Modes
 
-The Interval Processor supports different aggregation strategies for different metric types:
+The Interval Processor does not expose per-type aggregation modes such as `min`, `max`, `mean`, or histogram bucket merging. It keeps the newest data point for each metric stream during the interval and forwards those latest values when the interval elapses.
 
 ### Gauge Aggregation
 
-Gauges represent point-in-time values. Common aggregation strategies:
+Gauges represent point-in-time values. By default, the processor forwards the latest gauge data point seen in the interval. If you do not want gauges aggregated, configure pass-through:
 
 ```yaml
 processors:
   interval:
     interval: 60s
-    aggregation:
-      # last: Emit the most recent value (default)
-      # Useful for: temperature, memory usage, queue depth
-      gauge: last
-
-      # first: Emit the first value in the interval
-      # Useful for: configuration values, version numbers
-
-      # min: Emit the minimum value in the interval
-      # Useful for: resource low-water marks
-
-      # max: Emit the maximum value in the interval
-      # Useful for: peak resource usage
-
-      # mean: Emit the average of all values in the interval
-      # Useful for: smoothing noisy sensors
+    pass_through:
+      gauge: true
 ```
 
 ### Sum Aggregation
 
-Sums represent accumulated values. Aggregation strategies:
+Only monotonically increasing cumulative sums are aggregated. Delta sums and non-monotonic sums are passed through unchanged:
 
 ```yaml
 processors:
   interval:
     interval: 60s
-    aggregation:
-      # cumulative: Add all values in the interval (default)
-      # Useful for: request counts, byte counts, error counts
-      sum: cumulative
-
-      # delta: Emit the difference between last and first value
-      # Useful for: converting cumulative counters to rates
 ```
 
 ### Histogram Aggregation
 
-Histograms represent distributions. Aggregation strategies:
+Only cumulative histograms and cumulative exponential histograms are aggregated. Delta histograms are passed through unchanged:
 
 ```yaml
 processors:
   interval:
     interval: 60s
-    aggregation:
-      # explicit: Merge all histogram buckets in the interval
-      # Preserves distribution characteristics
-      histogram: explicit
+```
 
-      # This combines bucket counts across the interval
-      # Resulting histogram represents the full distribution
+Summaries are also aggregated by default. If you do not want summaries aggregated, configure pass-through:
+
+```yaml
+processors:
+  interval:
+    interval: 60s
+    pass_through:
+      summary: true
 ```
 
 ## Advanced Configuration
 
 ### Metric-Specific Intervals
 
-Configure different intervals for different metric patterns:
+The Interval Processor does not have built-in include or exclude filters. To configure different intervals for different metric patterns, use Filter processors in separate pipelines:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
+  # Keep only high-frequency system metrics in this pipeline
+  filter/system:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^system[.].*") and not IsMatch(metric.name, "^process[.].*")'
+
+  # Keep only application metrics in this pipeline
+  filter/application:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^http[.].*") and not IsMatch(metric.name, "^rpc[.].*")'
+
+  # Keep only business metrics in this pipeline
+  filter/business:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^checkout[.].*") and not IsMatch(metric.name, "^payment[.].*")'
+
   # High-frequency system metrics - aggregate aggressively
   interval/system:
     interval: 120s
-    # Match metrics by name pattern
-    include:
-      match_type: regexp
-      metric_names:
-        - "^system\\..*"
-        - "^process\\..*"
-
-    aggregation:
-      gauge: last
-      sum: cumulative
 
   # Application metrics - moderate aggregation
   interval/application:
     interval: 60s
-    include:
-      match_type: regexp
-      metric_names:
-        - "^http\\..*"
-        - "^rpc\\..*"
 
-    aggregation:
-      gauge: last
-      sum: cumulative
-      histogram: explicit
-
-  # Business metrics - minimal aggregation for accuracy
+  # Business metrics - minimal aggregation
   interval/business:
     interval: 30s
-    include:
-      match_type: regexp
-      metric_names:
-        - "^checkout\\..*"
-        - "^payment\\..*"
 
-    aggregation:
-      gauge: last
-      sum: cumulative
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+service:
+  pipelines:
+    metrics/system:
+      receivers: [otlp]
+      processors: [filter/system, interval/system, batch]
+      exporters: [otlphttp]
+
+    metrics/application:
+      receivers: [otlp]
+      processors: [filter/application, interval/application, batch]
+      exporters: [otlphttp]
+
+    metrics/business:
+      receivers: [otlp]
+      processors: [filter/business, interval/business, batch]
+      exporters: [otlphttp]
 ```
 
 Resource-Aware Aggregation
 
-Aggregate metrics while preserving important resource attributes:
+The Interval Processor keeps separate metric streams based on the metric identity, including resource and data point attributes. It does not provide `resource_attributes` or `metric_attributes` settings for choosing which attributes to preserve:
 
 ```yaml
 processors:
   interval:
     interval: 60s
-
-    # Preserve these resource attributes during aggregation
-    # Metrics with different values for these attributes are aggregated separately
-    resource_attributes:
-      - service.name
-      - service.namespace
-      - deployment.environment
-      - k8s.cluster.name
-
-    # Preserve these metric attributes during aggregation
-    metric_attributes:
-      - http.method
-      - http.route
-      - http.status_code
-
-    aggregation:
-      gauge: last
-      sum: cumulative
-      histogram: explicit
+    pass_through:
+      # Optional: forward gauges and summaries immediately instead of aggregating them
+      gauge: false
+      summary: false
 ```
 
 ## Production Configuration Example
@@ -262,85 +240,35 @@ processors:
     limit_mib: 1024
     spike_limit_mib: 256
 
+  # Keep only high-frequency system metrics in this pipeline
+  filter/system:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^system[.]cpu[.].*") and not IsMatch(metric.name, "^system[.]memory[.].*") and not IsMatch(metric.name, "^system[.]disk[.].*") and not IsMatch(metric.name, "^system[.]network[.].*") and not IsMatch(metric.name, "^process[.]cpu[.].*") and not IsMatch(metric.name, "^process[.]memory[.].*")'
+
+  # Keep only application metrics in this pipeline
+  filter/application:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^http[.]server[.].*") and not IsMatch(metric.name, "^http[.]client[.].*") and not IsMatch(metric.name, "^rpc[.]server[.].*") and not IsMatch(metric.name, "^rpc[.]client[.].*") and not IsMatch(metric.name, "^db[.]client[.].*")'
+
+  # Keep only business-critical metrics in this pipeline
+  filter/business:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^checkout[.].*") and not IsMatch(metric.name, "^payment[.].*") and not IsMatch(metric.name, "^order[.].*") and not IsMatch(metric.name, "^revenue[.].*")'
+
   # High-frequency system metrics - aggressive aggregation
   interval/system:
     interval: 120s
-
-    include:
-      match_type: regexp
-      metric_names:
-        - "^system\\.cpu\\..*"
-        - "^system\\.memory\\..*"
-        - "^system\\.disk\\..*"
-        - "^system\\.network\\..*"
-        - "^process\\.cpu\\..*"
-        - "^process\\.memory\\..*"
-
-    # Preserve critical attributes
-    resource_attributes:
-      - service.name
-      - host.name
-      - deployment.environment
-
-    aggregation:
-      # Use last value for gauges
-      gauge: last
-      # Accumulate counters
-      sum: cumulative
 
   # Application metrics - moderate aggregation
   interval/application:
     interval: 60s
 
-    include:
-      match_type: regexp
-      metric_names:
-        - "^http\\.server\\..*"
-        - "^http\\.client\\..*"
-        - "^rpc\\.server\\..*"
-        - "^rpc\\.client\\..*"
-        - "^db\\.client\\..*"
-
-    resource_attributes:
-      - service.name
-      - deployment.environment
-
-    metric_attributes:
-      - http.method
-      - http.route
-      - http.status_code
-      - rpc.method
-      - rpc.service
-
-    aggregation:
-      gauge: last
-      sum: cumulative
-      histogram: explicit
-
   # Business-critical metrics - minimal aggregation
   interval/business:
     interval: 30s
-
-    include:
-      match_type: regexp
-      metric_names:
-        - "^checkout\\..*"
-        - "^payment\\..*"
-        - "^order\\..*"
-        - "^revenue\\..*"
-
-    resource_attributes:
-      - service.name
-      - deployment.environment
-      - customer.tier
-
-    metric_attributes:
-      - payment.method
-      - order.status
-
-    aggregation:
-      gauge: last
-      sum: cumulative
 
   # Add deployment context
   resource:
@@ -369,8 +297,8 @@ exporters:
       max_elapsed_time: 300s
 
   # Debug exporter for troubleshooting
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 50
 
@@ -381,19 +309,19 @@ service:
     # System metrics with aggressive aggregation
     metrics/system:
       receivers: [otlp]
-      processors: [memory_limiter, interval/system, resource, batch]
+      processors: [memory_limiter, filter/system, interval/system, resource, batch]
       exporters: [otlphttp/primary]
 
     # Application metrics with moderate aggregation
     metrics/application:
       receivers: [otlp]
-      processors: [memory_limiter, interval/application, resource, batch]
+      processors: [memory_limiter, filter/application, interval/application, resource, batch]
       exporters: [otlphttp/primary]
 
     # Business metrics with minimal aggregation
     metrics/business:
       receivers: [otlp]
-      processors: [memory_limiter, interval/business, resource, batch]
+      processors: [memory_limiter, filter/business, interval/business, resource, batch]
       exporters: [otlphttp/primary]
 
     # Collector internal metrics without aggregation
@@ -434,32 +362,23 @@ data:
         check_interval: 1s
         limit_mib: 2048
 
+      filter/high_frequency:
+        error_mode: ignore
+        metric_conditions:
+          - 'not IsMatch(metric.name, "^system[.].*") and not IsMatch(metric.name, "^process[.].*") and not IsMatch(metric.name, "^runtime[.].*")'
+
+      filter/standard:
+        error_mode: ignore
+        metric_conditions:
+          - 'IsMatch(metric.name, "^system[.].*") or IsMatch(metric.name, "^process[.].*") or IsMatch(metric.name, "^runtime[.].*")'
+
       # Aggregate high-frequency metrics
       interval/high_frequency:
         interval: 120s
-        include:
-          match_type: regexp
-          metric_names:
-            - "^system\\..*"
-            - "^process\\..*"
-            - "^runtime\\..*"
-        aggregation:
-          gauge: last
-          sum: cumulative
 
       # Standard aggregation for most metrics
       interval/standard:
         interval: 60s
-        exclude:
-          match_type: regexp
-          metric_names:
-            - "^system\\..*"
-            - "^process\\..*"
-            - "^runtime\\..*"
-        aggregation:
-          gauge: last
-          sum: cumulative
-          histogram: explicit
 
       batch:
         timeout: 10s
@@ -471,11 +390,21 @@ data:
         headers:
           x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     service:
+      extensions: [health_check]
       pipelines:
-        metrics:
+        metrics/high_frequency:
           receivers: [otlp]
-          processors: [memory_limiter, interval/high_frequency, interval/standard, batch]
+          processors: [memory_limiter, filter/high_frequency, interval/high_frequency, batch]
+          exporters: [otlphttp]
+
+        metrics/standard:
+          receivers: [otlp]
+          processors: [memory_limiter, filter/standard, interval/standard, batch]
           exporters: [otlphttp]
 ---
 apiVersion: apps/v1
@@ -495,7 +424,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/collector.yaml"
         env:
@@ -505,7 +434,7 @@ spec:
               name: oneuptime-credentials
               key: token
         - name: COLLECTOR_VERSION
-          value: "0.93.0"
+          value: "0.153.0"
         volumeMounts:
         - name: config
           mountPath: /conf
@@ -514,6 +443,8 @@ spec:
           name: otlp-grpc
         - containerPort: 4318
           name: otlp-http
+        - containerPort: 13133
+          name: health-check
         resources:
           requests:
             memory: "2Gi"
@@ -574,7 +505,7 @@ With 60-second aggregation:
 - 100 metrics = 144,000 data points per day
 - At $0.10 per 1M data points = $0.014/day per service
 
-**Savings: 98.4% reduction in data points and costs** while maintaining statistical accuracy for analysis and alerting.
+**Savings: 98.4% reduction in data points and costs** for metrics that can tolerate interval-based latest-value exports.
 
 ## Validating Aggregation Behavior
 
@@ -582,9 +513,9 @@ To verify that the Interval Processor is working correctly:
 
 ```yaml
 exporters:
-  # Add logging exporter to see aggregated metrics
-  logging:
-    loglevel: debug
+  # Add debug exporter to see processed metrics
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -593,20 +524,15 @@ service:
     metrics:
       receivers: [otlp]
       processors: [interval, batch]
-      # Include logging exporter for validation
-      exporters: [otlphttp, logging]
+      # Include debug exporter for validation
+      exporters: [otlphttp, debug]
 ```
 
-Check the Collector logs to verify aggregation intervals:
+Check the Collector logs to verify that metrics are exported at the configured interval. Debug exporter output formats can change between Collector versions, so use it to inspect the emitted metrics rather than relying on exact log messages:
 
 ```bash
 # View Collector logs
-kubectl logs -n observability deployment/otel-collector -f | grep -A 3 "interval"
-
-# Expected output showing aggregated metrics:
-# Aggregated 450 data points into 8 metrics over 60s interval
-# Emitting aggregated metrics: system.cpu.utilization (last=45.2%)
-# Emitting aggregated metrics: http.server.request.count (sum=1250)
+kubectl logs -n observability deployment/otel-collector -f
 ```
 
 ## Common Use Cases
@@ -617,19 +543,13 @@ System metrics often emit at 1-second intervals but don't need that granularity:
 
 ```yaml
 processors:
+  filter/infrastructure:
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^system[.].*") and not IsMatch(metric.name, "^process[.].*") and not IsMatch(metric.name, "^container[.].*")'
+
   interval/infrastructure:
     interval: 300s  # 5-minute aggregation
-
-    include:
-      match_type: regexp
-      metric_names:
-        - "^system\\..*"
-        - "^process\\..*"
-        - "^container\\..*"
-
-    aggregation:
-      gauge: mean  # Use mean for smoothing
-      sum: cumulative
 ```
 
 ### Long-Term Retention with Downsampling
@@ -686,7 +606,7 @@ service:
 
 ## Monitoring Interval Processor
 
-Track Interval Processor metrics to ensure aggregation is working efficiently:
+Track Collector internal telemetry to ensure the processor is working efficiently:
 
 ```yaml
 service:
@@ -695,41 +615,32 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
-
-# Monitor these metrics:
-# - otelcol_processor_interval_metrics_aggregated
-# - otelcol_processor_interval_metrics_emitted
-# - otelcol_processor_interval_buffer_size
-# - otelcol_processor_interval_aggregation_time_seconds
 ```
 
 Create alerts for:
 
-- Buffer size approaching memory limits
-- Aggregation latency exceeding interval duration
+- Collector memory usage approaching memory limits
+- Processor or exporter errors in Collector logs
 - Unexpected drops in emitted metrics
 
 ## Troubleshooting
 
 ### Metrics Not Being Aggregated
 
-If metrics bypass aggregation:
+If metrics bypass aggregation, confirm that the metric type is supported. Delta metrics and non-monotonic sums are passed through unchanged:
 
 ```yaml
 processors:
   interval:
     interval: 60s
+```
 
-    # Check include/exclude filters are correct
-    include:
-      match_type: regexp
-      metric_names:
-        - ".*"  # Match all metrics
+Use the debug exporter to inspect emitted metrics:
 
-    # Enable debug logging
-    debug:
-      enabled: true
+```yaml
+exporters:
+  debug:
+    verbosity: detailed
 ```
 
 ### Memory Usage Growing
@@ -745,15 +656,12 @@ processors:
 
   interval:
     interval: 60s
-
-    # Reduce buffering for high-cardinality metrics
-    max_buffered_metrics: 10000
 ```
 
 ## Best Practices
 
 1. **Match interval to query patterns**: Set aggregation intervals based on how you query metrics (1m for dashboards, 5m for long-term analysis)
-2. **Preserve key attributes**: Always specify resource and metric attributes that are important for filtering and grouping
+2. **Preserve key attributes upstream**: The processor groups metric streams by their existing identity, so manage high-cardinality attributes before interval aggregation
 3. **Start conservative**: Begin with longer intervals (120s) and reduce if you need more granularity
 4. **Monitor memory**: The processor buffers metrics in memory; ensure adequate resources
 5. **Use multiple pipelines**: Create separate pipelines for metrics with different aggregation requirements
@@ -763,7 +671,7 @@ processors:
 The Interval Processor's memory usage scales with:
 
 - Number of unique metric time series
-- Number of preserved attributes
+- Number of resource and data point attributes that define those time series
 - Aggregation interval duration
 
 For high-cardinality environments, consider:
@@ -780,6 +688,6 @@ For high-cardinality environments, consider:
 
 ## Final Thoughts
 
-The Interval Processor is a powerful tool for managing metrics volume and costs without sacrificing observability. By aggregating high-frequency metrics at appropriate intervals, you maintain statistical accuracy for analysis and alerting while dramatically reducing data points sent to your backend.
+The Interval Processor is a useful tool for managing metrics volume and costs when your metrics can tolerate interval-based latest-value exports. By aggregating high-frequency metrics at appropriate intervals, you reduce data points sent to your backend while keeping the latest values for supported metric streams.
 
 Start by identifying metrics that don't require second-by-second granularity, configure appropriate aggregation intervals based on your query patterns, and monitor the processor's performance to ensure it operates efficiently. With the Interval Processor, you gain control over metrics volume while keeping your observability costs predictable and manageable.
