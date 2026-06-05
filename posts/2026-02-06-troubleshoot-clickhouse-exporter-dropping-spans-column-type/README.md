@@ -16,7 +16,7 @@ Expected: UInt8. Got: String
 Or:
 
 ```text
-code: 117, message: Unknown column 'SpanAttributes' in table 'otel.otel_traces'
+code: 47, message: Unknown column 'SpanAttributes' in table 'otel.otel_traces'
 ```
 
 After a schema migration (either from a Collector upgrade or a manual table change), the exporter tries to insert data using a schema that does not match the actual table structure.
@@ -42,8 +42,8 @@ kubectl logs <collector-pod> | grep -i "clickhouse\|error\|failed"
 
 Look for ClickHouse error codes:
 - Code 53: Type mismatch
-- Code 117: Unknown column
-- Code 16: No such column
+- Code 47: Unknown identifier or column
+- Code 16: No such column in table
 
 ### Step 2: Compare Expected vs Actual Schema
 
@@ -81,16 +81,16 @@ Add missing columns or change types using ALTER TABLE:
 ```sql
 -- Add missing columns
 ALTER TABLE otel.otel_traces
-    ADD COLUMN IF NOT EXISTS `StatusMessage` String DEFAULT '' AFTER `StatusCode`;
+    ADD COLUMN IF NOT EXISTS `StatusMessage` String CODEC(ZSTD(1)) AFTER `StatusCode`;
 
 -- Change column type
 ALTER TABLE otel.otel_traces
-    MODIFY COLUMN `StatusCode` String;
+    MODIFY COLUMN `StatusCode` LowCardinality(String) CODEC(ZSTD(1));
 
 -- Add a new Map column
 ALTER TABLE otel.otel_traces
-    ADD COLUMN IF NOT EXISTS `ResourceAttributes` Map(String, String)
-    DEFAULT map() AFTER `ServiceName`;
+    ADD COLUMN IF NOT EXISTS `ResourceAttributes` Map(LowCardinality(String), String)
+    CODEC(ZSTD(1)) AFTER `ServiceName`;
 ```
 
 ## Fix 2: Recreate the Table
@@ -139,7 +139,7 @@ exporters:
     database: otel
     traces_table_name: otel_traces
     logs_table_name: otel_logs
-    create_schema: true    # let the exporter manage the schema
+    create_schema: true    # let the exporter create missing database and tables
     ttl: 72h               # data retention
     timeout: 10s
     retry_on_failure:
@@ -148,7 +148,7 @@ exporters:
       max_interval: 30s
 ```
 
-With `create_schema: true`, the exporter will attempt to create or update the table schema. However, this might not handle all migration cases, especially type changes.
+With `create_schema: true`, the exporter will run DDL to create the database and tables if they do not exist. It does not perform general schema migrations for existing tables, so you still need to add new columns or change types manually when the exporter schema changes.
 
 ## Fix 4: Pin the Exporter Version
 
@@ -181,11 +181,14 @@ When you upgrade, change to `otel_traces_v3`. Old data remains accessible in the
 Check the Collector's export metrics:
 
 ```text
-# Successful exports
+# Successful exports (OTLP/internal metric name)
 otelcol_exporter_sent_spans{exporter="clickhouse"}
 
-# Failed exports
+# Failed exports (OTLP/internal metric name)
 otelcol_exporter_send_failed_spans{exporter="clickhouse"}
+
+# If you scrape the Collector's Prometheus endpoint, counters may have _total suffixes
+otelcol_exporter_send_failed_spans_total{exporter="clickhouse"}
 ```
 
 Set an alert on failed exports:
@@ -199,6 +202,8 @@ Set an alert on failed exports:
   annotations:
     summary: "ClickHouse exporter is failing to export spans"
 ```
+
+If your Prometheus scrape exposes `otelcol_exporter_send_failed_spans_total`, use that suffixed name in the alert expression instead.
 
 ## Checking ClickHouse Server Errors
 
