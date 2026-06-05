@@ -19,19 +19,20 @@ Django's ORM makes database operations convenient but can hide performance issue
 - Transaction deadlocks and lock contention
 - Inefficient query patterns from prefetch or select_related misuse
 
-OpenTelemetry captures detailed information about each query: SQL text, execution time, rows returned, database connection details, and transaction context.
+OpenTelemetry captures detailed information about each query: SQL text or summaries, execution time, database connection details, transaction context, and row counts when available.
 
 ## Automatic Database Instrumentation
 
 The easiest way to start monitoring database queries is with auto-instrumentation. Install the database-specific instrumentation library:
 
 ```bash
-# For PostgreSQL (psycopg2)
+pip install opentelemetry-distro opentelemetry-exporter-otlp
 
+# For PostgreSQL (psycopg2)
 pip install opentelemetry-instrumentation-psycopg2
 
 # For MySQL (mysqlclient)
-pip install opentelemetry-instrumentation-mysql
+pip install opentelemetry-instrumentation-mysqlclient
 
 # For SQLite
 pip install opentelemetry-instrumentation-sqlite3
@@ -58,15 +59,14 @@ opentelemetry-instrument python manage.py runserver
 
 With auto-instrumentation enabled, every database query automatically generates a span with:
 
-- SQL statement text
+- SQL statement text or a summarized statement, depending on instrumentation settings
 - Query execution time
-- Database name and connection details
-- Number of rows affected
-- Query parameters (optional, for security reasons often disabled)
+- Database name and connection attributes
+- Number of rows affected or returned when the driver and instrumentation expose it
 
 ## Manual Database Query Instrumentation
 
-For more control over what gets instrumented, manually instrument your database layer:
+For more control over a specific block of Django database work, use Django's `connection.execute_wrapper()` hook:
 
 ```python
 # myproject/database/tracer.py
@@ -74,78 +74,49 @@ For more control over what gets instrumented, manually instrument your database 
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from django.db import connection
-from django.db.backends.utils import CursorWrapper
 import time
-import functools
 
-class TracedCursorWrapper(CursorWrapper):
-    """Cursor wrapper that traces all database queries."""
+class TracedQueryExecutor:
+    """Callable wrapper that traces Django database query execution."""
 
     tracer = trace.get_tracer(__name__)
 
-    def execute(self, sql, params=None):
-        """Trace single query execution."""
+    def __call__(self, execute, sql, params, many, context):
+        """Trace a query executed inside connection.execute_wrapper()."""
+        db_connection = context["connection"]
+        cursor = context["cursor"]
+        operation = self._get_operation_type(sql)
+
         with self.tracer.start_as_current_span(
-            "db.query",
+            f"db.query.{operation.lower()}",
             kind=SpanKind.CLIENT
         ) as span:
             # Add database attributes
-            span.set_attribute("db.system", connection.vendor)
-            span.set_attribute("db.name", connection.settings_dict['NAME'])
-            span.set_attribute("db.operation", self._get_operation_type(sql))
+            span.set_attribute("db.system", db_connection.vendor)
+            span.set_attribute("db.name", db_connection.settings_dict["NAME"])
+            span.set_attribute("db.operation", operation)
 
             # Add SQL statement (sanitize sensitive data)
             span.set_attribute("db.statement", sql)
-
-            # Add connection pool info
-            if hasattr(connection, 'queries_log'):
-                span.set_attribute("db.connection.id", id(self.cursor))
+            span.set_attribute("db.query.many", many)
+            span.set_attribute("db.connection.alias", db_connection.alias)
 
             start_time = time.time()
 
             try:
-                result = super().execute(sql, params)
+                result = execute(sql, params, many, context)
 
                 # Add timing
                 duration = (time.time() - start_time) * 1000
                 span.set_attribute("db.duration_ms", duration)
 
                 # Add row count if available
-                if self.cursor.rowcount >= 0:
-                    span.set_attribute("db.rows_affected", self.cursor.rowcount)
+                if cursor.rowcount >= 0:
+                    span.set_attribute("db.rows_affected", cursor.rowcount)
 
                 # Mark slow queries
                 if duration > 100:  # 100ms threshold
                     span.set_attribute("db.slow_query", True)
-
-                span.set_status(Status(StatusCode.OK))
-                return result
-
-            except Exception as exc:
-                span.record_exception(exc)
-                span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise
-
-    def executemany(self, sql, param_list):
-        """Trace batch query execution."""
-        with self.tracer.start_as_current_span(
-            "db.query.batch",
-            kind=SpanKind.CLIENT
-        ) as span:
-            span.set_attribute("db.system", connection.vendor)
-            span.set_attribute("db.name", connection.settings_dict['NAME'])
-            span.set_attribute("db.operation", self._get_operation_type(sql))
-            span.set_attribute("db.statement", sql)
-            span.set_attribute("db.batch_size", len(param_list))
-
-            start_time = time.time()
-
-            try:
-                result = super().executemany(sql, param_list)
-
-                duration = (time.time() - start_time) * 1000
-                span.set_attribute("db.duration_ms", duration)
-                span.set_attribute("db.rows_affected", self.cursor.rowcount)
 
                 span.set_status(Status(StatusCode.OK))
                 return result
@@ -168,16 +139,23 @@ class TracedCursorWrapper(CursorWrapper):
             return 'DELETE'
         else:
             return 'OTHER'
+
+
+def run_with_query_tracing(func, *args, **kwargs):
+    """Run a callable while tracing Django database queries in this thread."""
+    with connection.execute_wrapper(TracedQueryExecutor()):
+        return func(*args, **kwargs)
 ```
 
 ## Detecting N+1 Query Problems
 
-N+1 queries are a common Django ORM pitfall. Here's how to detect them:
+N+1 queries are a common Django ORM pitfall. Here's how to add queryset-level context that helps correlate repeated query spans and duplicate query metrics:
 
 ```python
 # myapp/querysets/traced.py
 
 from django.db.models import QuerySet
+from django.db import models
 from opentelemetry import trace
 import time
 
@@ -216,14 +194,14 @@ class TracedQuerySet(QuerySet):
                 qs_span.set_attribute("db.duration_ms", duration)
                 qs_span.set_attribute("db.result_count", len(self._result_cache))
 
-                # Check for potential N+1
+                # Check for queryset evaluations that issued multiple queries
                 if queries_executed > 1 and len(self._result_cache) > 0:
-                    qs_span.set_attribute("db.potential_n_plus_1", True)
-                    qs_span.set_attribute("db.n_plus_1.query_count", queries_executed)
+                    qs_span.set_attribute("db.queryset.multi_query_fetch", True)
+                    qs_span.set_attribute("db.queryset.query_count", queries_executed)
 
                     # Add warning to parent span
                     span.add_event(
-                        "Potential N+1 query detected",
+                        "Multiple queries executed while fetching queryset",
                         attributes={
                             "model": self.model.__name__,
                             "queries": queries_executed,
@@ -272,7 +250,8 @@ class Author(models.Model):
     objects = TracedManager()
 
 
-# This will trigger N+1 detection
+# This causes an N+1 query pattern that appears as repeated query spans
+# and duplicate query metrics at the request level.
 def list_articles_bad():
     """Bad: N+1 queries."""
     articles = Article.objects.all()
@@ -280,7 +259,7 @@ def list_articles_bad():
         print(article.author.name)  # Each access queries the database
 
 
-# This won't trigger N+1 detection
+# This avoids the N+1 query pattern.
 def list_articles_good():
     """Good: Uses select_related."""
     articles = Article.objects.select_related('author').all()
@@ -298,7 +277,6 @@ Create a middleware to analyze query patterns across requests:
 from django.db import connection, reset_queries
 from django.conf import settings
 from opentelemetry import trace, metrics
-import time
 
 class QueryAnalysisMiddleware:
     """Middleware that analyzes database query patterns."""
@@ -328,12 +306,14 @@ class QueryAnalysisMiddleware:
         )
 
     def __call__(self, request):
-        # Enable query logging for this request
-        settings.DEBUG = True  # Required for query logging
+        # connection.queries is a development/debugging aid and is only
+        # populated when DEBUG is True.
+        if not settings.DEBUG:
+            return self.get_response(request)
+
         reset_queries()
 
         span = trace.get_current_span()
-        start_time = time.time()
 
         response = self.get_response(request)
 
@@ -408,7 +388,7 @@ Monitor database transactions for deadlocks and long-running transactions:
 
 from django.db import transaction
 from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 import time
 import functools
 
@@ -422,7 +402,7 @@ def traced_atomic(using=None, savepoint=True, durable=False):
         def wrapper(*args, **kwargs):
             with tracer.start_as_current_span(
                 f"db.transaction.{func.__name__}",
-                kind=trace.SpanKind.CLIENT
+                kind=SpanKind.CLIENT
             ) as span:
                 span.set_attribute("db.transaction.function", func.__name__)
                 span.set_attribute("db.transaction.savepoint", savepoint)
@@ -506,59 +486,50 @@ Track database connection pool health:
 
 from django.db import connections
 from opentelemetry import metrics
-import threading
-import time
+from opentelemetry.metrics import CallbackOptions, Observation
 
 class ConnectionPoolMonitor:
     """Monitor database connection pool metrics."""
 
-    def __init__(self, interval=60):
-        self.interval = interval
-        self.running = False
-        self.thread = None
-
+    def __init__(self):
         # Set up metrics
         meter = metrics.get_meter(__name__)
 
-        self.pool_size = meter.create_up_down_counter(
+        self.pool_size = meter.create_observable_gauge(
             name="db.pool.size",
+            callbacks=[self._observe_pool_size],
             description="Current database connection pool size",
             unit="1"
         )
 
-        self.pool_active = meter.create_up_down_counter(
+        self.pool_active = meter.create_observable_gauge(
             name="db.pool.active",
+            callbacks=[self._observe_pool_active],
             description="Active database connections",
             unit="1"
         )
 
-        self.pool_idle = meter.create_up_down_counter(
+        self.pool_idle = meter.create_observable_gauge(
             name="db.pool.idle",
+            callbacks=[self._observe_pool_idle],
             description="Idle database connections",
             unit="1"
         )
 
-    def start(self):
-        """Start monitoring in background thread."""
-        if not self.running:
-            self.running = True
-            self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
-            self.thread.start()
+    def _observe_pool_size(self, options: CallbackOptions):
+        """Observe current pool size."""
+        yield from self._observe_pool_metric("size")
 
-    def stop(self):
-        """Stop monitoring."""
-        self.running = False
-        if self.thread:
-            self.thread.join()
+    def _observe_pool_active(self, options: CallbackOptions):
+        """Observe active connections."""
+        yield from self._observe_pool_metric("checkedout")
 
-    def _monitor_loop(self):
-        """Main monitoring loop."""
-        while self.running:
-            self._collect_metrics()
-            time.sleep(self.interval)
+    def _observe_pool_idle(self, options: CallbackOptions):
+        """Observe idle connections."""
+        yield from self._observe_pool_metric("idle")
 
-    def _collect_metrics(self):
-        """Collect connection pool metrics."""
+    def _observe_pool_metric(self, method_name):
+        """Collect connection pool metrics from backends that expose them."""
         for alias in connections:
             connection = connections[alias]
 
@@ -571,22 +542,14 @@ class ConnectionPoolMonitor:
             try:
                 if hasattr(connection, 'pool'):
                     pool = connection.pool
-
-                    if hasattr(pool, 'size'):
-                        self.pool_size.add(pool.size(), attributes)
-
-                    if hasattr(pool, 'checkedout'):
-                        self.pool_active.add(pool.checkedout(), attributes)
-
-                    if hasattr(pool, 'idle'):
-                        self.pool_idle.add(pool.idle(), attributes)
+                    if hasattr(pool, method_name):
+                        yield Observation(getattr(pool, method_name)(), attributes)
             except Exception:
                 pass  # Pool stats not available for this backend
 
 
 # Initialize in Django settings or apps.py
 pool_monitor = ConnectionPoolMonitor()
-pool_monitor.start()
 ```
 
 ## Query Execution Flow Visualization
@@ -598,8 +561,8 @@ graph TB
     A[Django View] --> B[ORM Query]
     B --> C[TracedQuerySet._fetch_all]
     C --> D[Create QuerySet Span]
-    D --> E[Check N+1 Pattern]
-    E --> F[TracedCursorWrapper.execute]
+    D --> E[Check Query Pattern]
+    E --> F[TracedQueryExecutor]
     F --> G[Create Query Span]
     G --> H[Add SQL Statement]
     H --> I[Add DB Attributes]
@@ -648,7 +611,7 @@ class ArticleListView(ListView):
                 'comments__user'
             ).only(
                 # Only load needed fields
-                'id', 'title', 'slug', 'published_at',
+                'id', 'title', 'slug', 'published_at', 'author_id', 'category_id',
                 'author__name', 'category__name'
             )
 
@@ -672,7 +635,7 @@ class ArticleListViewUnoptimized(ListView):
 
 ## Database Query Analysis Dashboard
 
-Create a view to analyze query patterns:
+Create a management command to analyze query patterns:
 
 ```python
 # myapp/management/commands/analyze_queries.py
