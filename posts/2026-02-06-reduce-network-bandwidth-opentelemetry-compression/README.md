@@ -53,7 +53,7 @@ The repeated field names (`key`, `value`, `stringValue`), JSON structure, and co
 
 ## Compression Algorithms Comparison
 
-OpenTelemetry supports multiple compression algorithms, each with different characteristics:
+OpenTelemetry's OTLP exporter specification requires `gzip` support. The OpenTelemetry Collector's gRPC client configuration also supports `gzip`, `zstd`, `snappy`, and `none`, but support for algorithms beyond gzip depends on both the sender and receiver.
 
 ### gzip (DEFLATE)
 
@@ -97,15 +97,14 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-        # Enable compression for incoming data
-        # Reduces bandwidth from SDKs to collector
-        compression: gzip
+        # gRPC receivers accept compressed OTLP requests when the client
+        # and server both support the negotiated compressor.
         max_recv_msg_size_mib: 16
 
       http:
         endpoint: 0.0.0.0:4318
-        # HTTP receiver automatically handles compressed requests
-        # based on Content-Encoding header
+        # HTTP receiver handles compressed requests based on Content-Encoding.
+        # Default accepted algorithms include gzip, zstd, zlib, snappy, deflate, and lz4.
         max_request_body_size: 16777216
 
 processors:
@@ -185,7 +184,6 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 ## SDK Configuration with Compression
@@ -296,7 +294,7 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
-import io.grpc.Compression;
+import java.time.Duration;
 
 public class CompressedTracingConfig {
 
@@ -334,13 +332,15 @@ public class CompressedTracingConfig {
 ```javascript
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
+const {
+    OTLPTraceExporter,
+    CompressionAlgorithm,
+} = require('@opentelemetry/exporter-trace-otlp-grpc');
 
 function initCompressedTracer() {
     // Create OTLP exporter with gzip compression
     const exporter = new OTLPTraceExporter({
-        url: 'grpc://collector:4317',
+        url: 'http://collector:4317',
         // Enable gzip compression
         // Reduces bandwidth consumption by 65-75%
         compression: CompressionAlgorithm.GZIP,
@@ -348,17 +348,17 @@ function initCompressedTracer() {
     });
 
     // Create tracer provider
-    const provider = new NodeTracerProvider();
-
-    // Add batch processor with larger batch sizes
-    // Larger batches compress more efficiently
-    provider.addSpanProcessor(
-        new BatchSpanProcessor(exporter, {
-            maxExportBatchSize: 2048,
-            maxQueueSize: 8192,
-            scheduledDelayMillis: 10000, // 10 seconds
-        })
-    );
+    const provider = new NodeTracerProvider({
+        // Add batch processor with larger batch sizes
+        // Larger batches compress more efficiently
+        spanProcessors: [
+            new BatchSpanProcessor(exporter, {
+                maxExportBatchSize: 2048,
+                maxQueueSize: 8192,
+                scheduledDelayMillis: 10000, // 10 seconds
+            }),
+        ],
+    });
 
     provider.register();
     return provider;
@@ -429,25 +429,25 @@ exporters:
     # Default zstd level (usually 3) provides good balance
 
   # Maximum compression (for bandwidth-constrained scenarios)
-  # Note: Not directly configurable in OTLP exporters
-  # Use collector-side compression for more control
+  # Note: zstd compression levels are not directly configurable
+  # in standard OTLP exporter configuration.
 ```
 
-For fine-grained control, implement compression in custom processors:
+For fine-grained control beyond the standard OTLP exporter configuration, implement compression in custom exporters or transport extensions:
 
 ```go
-// Custom processor with configurable compression
-type CompressingProcessor struct {
+// Custom exporter component with configurable compression
+type CompressingExporter struct {
     compressionLevel int
 }
 
-func (p *CompressingProcessor) ProcessTraces(
+func (e *CompressingExporter) ConsumeTraces(
     ctx context.Context,
     td ptrace.Traces,
-) (ptrace.Traces, error) {
+) error {
     // Custom compression logic with specific levels
     // This is advanced usage for special cases
-    return td, nil
+    return nil
 }
 ```
 
@@ -460,7 +460,6 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
     logs:
       level: info
 ```
@@ -468,36 +467,37 @@ service:
 Key metrics to track:
 
 ```text
-# Bytes received (uncompressed)
-otelcol_receiver_accepted_spans * avg_span_size
+# Items received
+otelcol_receiver_accepted_spans
+otelcol_receiver_accepted_metric_points
+otelcol_receiver_accepted_log_records
 
-# Bytes sent (compressed)
-otelcol_exporter_sent_bytes
+# Items sent
+otelcol_exporter_sent_spans
+otelcol_exporter_sent_metric_points
+otelcol_exporter_sent_log_records
 
-# Compression ratio
-compression_ratio = 1 - (sent_bytes / received_bytes)
+# Batch payload sizes before export
+otelcol_processor_batch_send_size_bytes
 
-# Bandwidth saved
-bandwidth_saved = received_bytes - sent_bytes
+# Actual network bytes
+# Use infrastructure metrics from your cloud provider, proxy, service mesh,
+# or network layer to compare compressed versus uncompressed egress.
 ```
 
 Create a dashboard to visualize compression effectiveness:
 
 ```yaml
 # Prometheus query examples
-# Compression ratio
-1 - (
-    rate(otelcol_exporter_sent_bytes[5m])
-    /
-    rate(otelcol_receiver_accepted_bytes[5m])
-)
+# Average batch payload size before export
+rate(otelcol_processor_batch_send_size_bytes_sum[5m])
+/
+rate(otelcol_processor_batch_send_size_bytes_count[5m])
 
-# Bandwidth saved per hour
-(
-    rate(otelcol_receiver_accepted_bytes[1h])
-    -
-    rate(otelcol_exporter_sent_bytes[1h])
-) * 3600
+# Export throughput by signal
+rate(otelcol_exporter_sent_spans[5m])
+rate(otelcol_exporter_sent_metric_points[5m])
+rate(otelcol_exporter_sent_log_records[5m])
 ```
 
 ## Cost Savings Analysis
@@ -578,11 +578,11 @@ print(f"Annual savings: ${savings['annual_net_savings']:,.2f}")
 print(f"ROI: {savings['roi_percentage']:.0f}%")
 
 # Output:
-# Baseline monthly cost: $3,330.00
-# Compressed monthly cost: $999.00
-# Monthly savings: $2,328.12
-# Annual savings: $27,937.44
-# ROI: 8067%
+# Baseline monthly cost: $999.00
+# Compressed monthly cost: $299.70
+# Monthly savings: $696.42
+# Annual savings: $8,357.04
+# ROI: 24181%
 ```
 
 ## Compression Best Practices
@@ -631,7 +631,7 @@ service:
 ## Troubleshooting Compression Issues
 
 **Problem**: High CPU usage after enabling compression
-- **Solution**: Switch from zstd level 9 to level 3, or use gzip
+- **Solution**: Use a faster supported compressor such as snappy, switch to gzip for compatibility, or disable compression on CPU-bound same-region links
 
 **Problem**: Increased latency
 - **Solution**: Reduce batch size or use faster compression (snappy if supported)
