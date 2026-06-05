@@ -10,7 +10,7 @@ You are debugging a production issue and you need to see the actual telemetry fl
 
 ## What Is the Remote Tap Processor?
 
-The remote tap processor is a component for the OpenTelemetry Collector that exposes a WebSocket or gRPC endpoint. When you connect to it, it streams a copy of the telemetry data passing through the processor. It is like running `tcpdump` on your telemetry pipeline. The production data flow continues uninterrupted while you get a tapped copy for debugging.
+The remote tap processor is a component for the OpenTelemetry Collector that exposes a WebSocket endpoint. When you connect to it, it streams a rate-limited copy of the telemetry data passing through the processor. It is like running `tcpdump` on your telemetry pipeline. The production data flow continues uninterrupted while you get a tapped copy for debugging.
 
 ## Setting Up the Remote Tap
 
@@ -30,9 +30,9 @@ processors:
 
   # The remote tap processor sits in the pipeline
   # but only activates when a client connects
-  remote_tap:
+  remotetap:
     endpoint: 0.0.0.0:12001
-    # Limit the number of concurrent tap connections
+    # Limit tapped messages to 3 per second
     limit: 3
 
 exporters:
@@ -43,15 +43,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [remote_tap, batch]
+      processors: [remotetap, batch]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [remote_tap, batch]
+      processors: [remotetap, batch]
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [remote_tap, batch]
+      processors: [remotetap, batch]
       exporters: [otlp]
 ```
 
@@ -60,59 +60,78 @@ service:
 When you need to debug, connect to the tap endpoint from your local machine. You can use a simple client that streams the tapped data:
 
 ```python
-import grpc
 import json
-from opentelemetry.proto.collector.trace.v1 import (
-    trace_service_pb2,
-    trace_service_pb2_grpc,
-)
+import time
+
+import websocket
+
+
+def _attribute_string(attributes, key):
+    for attr in attributes:
+        if attr.get("key") == key:
+            return attr.get("value", {}).get("stringValue")
+    return None
+
+
+def _status_code(status):
+    code = (status or {}).get("code", 0)
+    if isinstance(code, str):
+        return code
+    return {
+        0: "STATUS_CODE_UNSET",
+        1: "STATUS_CODE_OK",
+        2: "STATUS_CODE_ERROR",
+    }.get(code, code)
+
 
 def stream_traces_from_tap(tap_endpoint, duration_seconds=60):
     """
-    Connect to the remote tap and stream trace data
-    for the specified duration.
+    Connect to the remote tap WebSocket and stream trace data
+    for the specified duration. Install the client with:
+    pip install websocket-client
     """
-    channel = grpc.insecure_channel(tap_endpoint)
-    stub = trace_service_pb2_grpc.TraceServiceStub(channel)
+    if "://" not in tap_endpoint:
+        tap_endpoint = f"ws://{tap_endpoint}"
+
+    ws = websocket.create_connection(tap_endpoint, timeout=duration_seconds)
+    deadline = time.time() + duration_seconds
 
     print(f"Connected to tap at {tap_endpoint}")
     print(f"Streaming for {duration_seconds} seconds...")
 
-    request = trace_service_pb2.ExportTraceServiceRequest()
-    stream = stub.Export(iter([request]))
-
-    collected_spans = []
-    start_time = time.time()
-
     try:
-        for response in stream:
-            for resource_spans in response.resource_spans:
-                service_name = "unknown"
-                for attr in resource_spans.resource.attributes:
-                    if attr.key == "service.name":
-                        service_name = attr.value.string_value
+        while time.time() < deadline:
+            ws.settimeout(max(0.1, deadline - time.time()))
+            try:
+                payload = json.loads(ws.recv())
+            except websocket.WebSocketTimeoutException:
+                break
 
-                for scope_spans in resource_spans.scope_spans:
-                    for span in scope_spans.spans:
+            for resource_spans in payload.get("resourceSpans", []):
+                resource = resource_spans.get("resource", {})
+                service_name = (
+                    _attribute_string(resource.get("attributes", []), "service.name")
+                    or "unknown"
+                )
+
+                for scope_spans in resource_spans.get("scopeSpans", []):
+                    for span in scope_spans.get("spans", []):
+                        start_ns = int(span.get("startTimeUnixNano", 0))
+                        end_ns = int(span.get("endTimeUnixNano", 0))
                         span_info = {
                             "service": service_name,
-                            "name": span.name,
-                            "trace_id": span.trace_id.hex(),
-                            "duration_ms": (
-                                span.end_time_unix_nano - span.start_time_unix_nano
-                            ) / 1_000_000,
-                            "status": span.status.code,
+                            "name": span.get("name", ""),
+                            "trace_id": span.get("traceId", ""),
+                            "duration_ms": (end_ns - start_ns) / 1_000_000,
+                            "status": _status_code(span.get("status")),
                         }
-                        collected_spans.append(span_info)
                         print(json.dumps(span_info, indent=2))
-
-            if time.time() - start_time > duration_seconds:
-                break
+                        yield span_info
 
     except KeyboardInterrupt:
         print("Tap disconnected")
-
-    return collected_spans
+    finally:
+        ws.close()
 ```
 
 ## Building a Debug Filter
@@ -142,7 +161,7 @@ def filtered_tap(tap_endpoint, filters):
                 continue
 
         if filters.get("has_error"):
-            if span_info["status"] != 2:  # STATUS_CODE_ERROR
+            if span_info["status"] not in (2, "STATUS_CODE_ERROR"):
                 continue
 
         if filters.get("span_name_contains"):
@@ -169,7 +188,7 @@ You just deployed new instrumentation and want to verify it is working without w
 
 ```bash
 # Quick one-liner to check if spans are flowing
-python tap_client.py --endpoint collector:12001 \
+python tap_client.py --endpoint ws://collector:12001 \
     --filter-service "new-service" \
     --duration 30
 ```
@@ -195,13 +214,15 @@ for group, count in error_groups.most_common(10):
 
 ### Scenario 3: Checking Sampling Behavior
 
-Verify that your sampling configuration is working correctly by comparing the tap output (pre-sampling) with what reaches your backend (post-sampling):
+Verify that your sampling configuration is working correctly by comparing the tap output with what reaches your backend. The tap output is pre-sampling only when the `remotetap` processor is placed before the sampler in the pipeline:
 
 ```python
-tap_count = count_spans_from_tap("collector:12001", duration=60)
-backend_count = query_backend_span_count(last_minutes=1)
+tap_count = sum(
+    1 for _ in stream_traces_from_tap("collector:12001", duration_seconds=60)
+)
+backend_count = query_backend_span_count(last_minutes=1)  # Backend-specific helper
 
-sampling_rate = backend_count / tap_count * 100
+sampling_rate = backend_count / tap_count * 100 if tap_count else 0
 print(f"Effective sampling rate: {sampling_rate:.1f}%")
 ```
 
@@ -211,14 +232,14 @@ The remote tap exposes raw telemetry data, which may contain sensitive informati
 
 ```yaml
 processors:
-  remote_tap:
+  remotetap:
     endpoint: 0.0.0.0:12001
     # Use TLS
     tls:
       cert_file: /certs/tap-server.crt
       key_file: /certs/tap-server.key
       client_ca_file: /certs/ca.crt
-    # Limit connections
+    # Limit tapped messages to 2 per second
     limit: 2
 ```
 
