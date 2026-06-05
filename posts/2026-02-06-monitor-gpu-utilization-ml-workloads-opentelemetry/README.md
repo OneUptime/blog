@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GPU Monitoring, Machine Learning, NVIDIA, Observability, Metric, Infrastructure
 
-Description: Learn how to collect and export GPU utilization metrics for ML workloads using OpenTelemetry, covering NVIDIA SMI integration, custom metric instruments, and Collector receivers.
+Description: Learn how to collect and export GPU utilization metrics for ML workloads using OpenTelemetry, covering NVML integration, custom metric instruments, and Collector receivers.
 
 ---
 
@@ -38,14 +38,14 @@ flowchart TD
 
 For inference workloads, you'll care most about GPU utilization, memory usage, and temperature. For training, add power draw and tensor core utilization to the mix, since long-running training jobs can hit thermal limits that cause throttling.
 
-## Approach 1: Custom Python Metrics with nvidia-smi
+## Approach 1: Custom Python Metrics with NVML
 
-The most straightforward way to collect GPU metrics is by querying NVIDIA's management library (NVML) from Python and recording the values as OpenTelemetry metrics. The `pynvml` library gives you a Python wrapper around NVML.
+The most straightforward way to collect GPU metrics is by querying NVIDIA's management library (NVML) from Python and recording the values as OpenTelemetry metrics. The `nvidia-ml-py` package gives you a Python wrapper around NVML that you import as `pynvml`.
 
 ```bash
 # Install the required packages
 
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp pynvml
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp nvidia-ml-py
 ```
 
 Here's a complete GPU metrics collector that runs as a background thread in your ML application:
@@ -54,8 +54,6 @@ Here's a complete GPU metrics collector that runs as a background thread in your
 # gpu_metrics.py - Collect GPU metrics using pynvml and export via OpenTelemetry
 
 import pynvml
-import threading
-import time
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -78,7 +76,10 @@ class GPUMetricsCollector:
         })
 
         exporter = OTLPMetricExporter(endpoint="http://localhost:4317", insecure=True)
-        reader = PeriodicExportingMetricReader(exporter, export_interval_millis=10000)
+        reader = PeriodicExportingMetricReader(
+            exporter,
+            export_interval_millis=self.interval * 1000,
+        )
         provider = MeterProvider(resource=resource, metric_readers=[reader])
         metrics.set_meter_provider(provider)
 
@@ -168,7 +169,7 @@ class GPUMetricsCollector:
         """Callback that reads GPU temperature."""
         for i in range(self.device_count):
             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+            temp = pynvml.nvmlDeviceGetTemperatureV(handle, pynvml.NVML_TEMPERATURE_GPU)
             yield metrics.Observation(
                 value=temp,
                 attributes={"gpu.index": i},
@@ -252,28 +253,22 @@ def run_inference(input_data):
         return result
 ```
 
-## Approach 2: Using the OpenTelemetry Collector with NVIDIA Receiver
+## Approach 2: Using the OpenTelemetry Collector with DCGM Exporter
 
-For a more infrastructure-oriented approach, you can use the OpenTelemetry Collector with the NVIDIA GPU receiver. This is especially useful if you want to monitor GPU metrics from multiple machines without modifying application code.
+For a more infrastructure-oriented approach, run NVIDIA DCGM exporter and have the OpenTelemetry Collector scrape it with the Prometheus receiver. This is especially useful if you want to monitor GPU metrics from multiple machines without modifying application code.
 
 ```yaml
 # otel-collector-gpu.yaml - Collector configuration with NVIDIA GPU metrics
 
 receivers:
-  # The NVIDIA GPU receiver collects metrics from all available GPUs
-  nvml:
-    collection_interval: 10s
-    metrics:
-      gpu.utilization:
-        enabled: true
-      gpu.memory.bytes_used:
-        enabled: true
-      gpu.temperature:
-        enabled: true
-      gpu.power.draw:
-        enabled: true
-      gpu.memory.bandwidth_utilization:
-        enabled: true
+  # Scrape GPU metrics from DCGM exporter
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: "dcgm-exporter"
+          scrape_interval: 10s
+          static_configs:
+            - targets: ["localhost:9400"]
 
   # Also receive OTLP data from your applications
   otlp:
@@ -302,7 +297,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [nvml, otlp]
+      receivers: [prometheus, otlp]
       processors: [resourcedetection, batch]
       exporters: [otlp]
     traces:
@@ -311,18 +306,27 @@ service:
       exporters: [otlp]
 ```
 
-To run the Collector with NVIDIA GPU support, you need to use the `contrib` distribution which includes the NVML receiver:
+Run DCGM exporter with GPU access, then run the Collector with the config above:
 
 ```bash
-# Run the OpenTelemetry Collector contrib build with the GPU config
-docker run --gpus all \
+# Run DCGM exporter so it exposes GPU metrics on :9400
+DCGM_EXPORTER_VERSION=2.1.4-2.3.1
+docker run -d --rm \
+  --gpus all \
+  --net host \
+  --cap-add SYS_ADMIN \
+  nvcr.io/nvidia/k8s/dcgm-exporter:${DCGM_EXPORTER_VERSION}-ubuntu20.04 \
+  -f /etc/dcgm-exporter/dcp-metrics-included.csv
+
+# Run the OpenTelemetry Collector contrib build with the GPU scrape config
+docker run --rm \
+  --network host \
   -v $(pwd)/otel-collector-gpu.yaml:/etc/otel-collector-config.yaml \
-  -p 4317:4317 \
   otel/opentelemetry-collector-contrib:latest \
   --config=/etc/otel-collector-config.yaml
 ```
 
-The `--gpus all` flag is critical. Without it, the container won't have access to the NVIDIA devices and the NVML receiver will fail to initialize.
+The `--gpus all` flag is critical for DCGM exporter. Without it, the exporter container won't have access to the NVIDIA devices and won't be able to publish GPU metrics.
 
 ## Approach 3: Using DCGM Exporter for Kubernetes
 
@@ -347,7 +351,7 @@ receivers:
               action: keep
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: "$1:9400"
+              replacement: "$$1:9400"
 
 processors:
   batch:
@@ -388,7 +392,7 @@ def inference_with_gpu_context(model, input_tensor, gpu_index: int = 0):
         # Snapshot GPU state at the start of inference
         util = pynvml.nvmlDeviceGetUtilizationRates(handle)
         mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+        temp = pynvml.nvmlDeviceGetTemperatureV(handle, pynvml.NVML_TEMPERATURE_GPU)
 
         span.set_attribute("gpu.index", gpu_index)
         span.set_attribute("gpu.utilization_at_start", util.gpu)
@@ -454,6 +458,6 @@ Here are some things I've learned from monitoring GPU workloads in production:
 
 ## Conclusion
 
-Monitoring GPU utilization through OpenTelemetry gives you a unified view of your ML infrastructure alongside your application telemetry. Whether you choose the application-level approach with pynvml, the Collector-based approach with the NVML receiver, or the Kubernetes-native approach with DCGM, the end result is the same: GPU metrics flowing through your standard observability pipeline.
+Monitoring GPU utilization through OpenTelemetry gives you a unified view of your ML infrastructure alongside your application telemetry. Whether you choose the application-level approach with pynvml, the Collector-based approach with DCGM exporter, or the Kubernetes-native approach with DCGM, the end result is the same: GPU metrics flowing through your standard observability pipeline.
 
 The most impactful thing you can do is correlate GPU state with individual inference requests. When you can look at a slow trace and immediately see that the GPU was at 98% utilization with memory nearly full, you've cut your debugging time from hours to minutes. That's the value of having everything in one place.
