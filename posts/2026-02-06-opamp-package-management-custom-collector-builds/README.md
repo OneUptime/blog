@@ -19,28 +19,35 @@ dist:
   name: otelcol-custom
   description: Custom collector for YourOrg
   output_path: ./build
-  otelcol_version: "0.96.0"
+  otelcol_version: "0.150.0"
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.150.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.150.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.150.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.150.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.150.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.150.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.96.0
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.150.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.150.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 Build it:
 
 ```bash
 # Install the collector builder
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.150.0
 
 # Build the custom collector
 builder --config builder-config.yaml
@@ -126,14 +133,21 @@ func (s *OpAMPServer) offerPackage(
         return fmt.Errorf("read hash: %w", err)
     }
 
-    hash, err := hex.DecodeString(strings.TrimSpace(string(hashBytes)))
+    fileHash, err := hex.DecodeString(strings.TrimSpace(string(hashBytes)))
     if err != nil {
         return fmt.Errorf("decode hash: %w", err)
     }
 
     downloadURL := fmt.Sprintf(
-        "https://artifacts.internal:8090/packages/%s/otelcol-custom",
+        "http://artifacts.internal:8090/packages/%s/otelcol-custom",
         version,
+    )
+    packageHash := computePackageHash(
+        "otelcol-custom",
+        protobufs.PackageType_PackageType_TopLevel,
+        version,
+        downloadURL,
+        fileHash,
     )
 
     msg := &protobufs.ServerToAgent{
@@ -144,11 +158,12 @@ func (s *OpAMPServer) offerPackage(
                     Version: version,
                     File: &protobufs.DownloadableFile{
                         DownloadUrl: downloadURL,
-                        ContentHash: hash,
+                        ContentHash: fileHash,
                     },
+                    Hash: packageHash,
                 },
             },
-            AllPackagesHash: computeAllPackagesHash(version, hash),
+            AllPackagesHash: computeAllPackagesHash("otelcol-custom", packageHash),
         },
     }
 
@@ -162,37 +177,68 @@ Sometimes you need to distribute not just the collector binary but also addition
 
 ```go
 func offerMultiplePackages(conn types.Connection, version string) error {
+    collectorURL := fmt.Sprintf(
+        "http://artifacts.internal:8090/packages/%s/otelcol-custom",
+        version,
+    )
+    parsersURL := fmt.Sprintf(
+        "http://artifacts.internal:8090/packages/%s/parsers.yaml",
+        version,
+    )
+    geoIPURL := "http://artifacts.internal:8090/packages/geoip/GeoLite2-City.mmdb"
+
+    collectorHash := readHash(version, "otelcol-custom")
+    parsersHash := readHash(version, "parsers.yaml")
+    geoIPHash := readHash("geoip", "GeoLite2-City.mmdb")
+
     packages := map[string]*protobufs.PackageAvailable{
         // The main collector binary
         "otelcol-custom": {
             Type:    protobufs.PackageType_PackageType_TopLevel,
             Version: version,
             File: &protobufs.DownloadableFile{
-                DownloadUrl: fmt.Sprintf(
-                    "https://artifacts.internal:8090/packages/%s/otelcol-custom",
-                    version),
-                ContentHash: readHash(version, "otelcol-custom"),
+                DownloadUrl:  collectorURL,
+                ContentHash: collectorHash,
             },
+            Hash: computePackageHash(
+                "otelcol-custom",
+                protobufs.PackageType_PackageType_TopLevel,
+                version,
+                collectorURL,
+                collectorHash,
+            ),
         },
         // Custom parsers configuration
         "parsers-config": {
             Type:    protobufs.PackageType_PackageType_Addon,
             Version: version,
             File: &protobufs.DownloadableFile{
-                DownloadUrl: fmt.Sprintf(
-                    "https://artifacts.internal:8090/packages/%s/parsers.yaml",
-                    version),
-                ContentHash: readHash(version, "parsers.yaml"),
+                DownloadUrl:  parsersURL,
+                ContentHash: parsersHash,
             },
+            Hash: computePackageHash(
+                "parsers-config",
+                protobufs.PackageType_PackageType_Addon,
+                version,
+                parsersURL,
+                parsersHash,
+            ),
         },
         // GeoIP lookup database
         "geoip-db": {
             Type:    protobufs.PackageType_PackageType_Addon,
             Version: "2026-02",
             File: &protobufs.DownloadableFile{
-                DownloadUrl: "https://artifacts.internal:8090/packages/geoip/GeoLite2-City.mmdb",
-                ContentHash: readHash("geoip", "GeoLite2-City.mmdb"),
+                DownloadUrl:  geoIPURL,
+                ContentHash: geoIPHash,
             },
+            Hash: computePackageHash(
+                "geoip-db",
+                protobufs.PackageType_PackageType_Addon,
+                "2026-02",
+                geoIPURL,
+                geoIPHash,
+            ),
         },
     }
 
