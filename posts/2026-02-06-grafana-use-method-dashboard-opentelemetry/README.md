@@ -104,9 +104,9 @@ service:
 
 ```promql
 # CPU utilization as a percentage across all cores per host
-# system.cpu.utilization reports per-state values; we subtract idle from 1
+# system.cpu.utilization is exposed as system_cpu_utilization_ratio by the Prometheus exporter
 100 * (1 - avg by (host_name) (
-  system_cpu_utilization{state="idle"}
+  system_cpu_utilization_ratio{state="idle"}
 ))
 ```
 
@@ -115,9 +115,9 @@ service:
 ```promql
 # CPU saturation: load average (1min) normalized by CPU count
 # Values above 1.0 indicate saturation
-system_cpu_load_average_1m{}
+avg by (host_name) (system_cpu_load_average_1m)
 /
-count by (host_name) (system_cpu_utilization{state="idle"})
+count by (host_name) (system_cpu_utilization_ratio{state="idle"})
 ```
 
 For the Grafana panel, set threshold lines at 0.7 (warning) and 1.0 (critical) to visualize when CPUs are overloaded.
@@ -128,13 +128,13 @@ For the Grafana panel, set threshold lines at 0.7 (warning) and 1.0 (critical) t
 
 ```promql
 # Memory utilization percentage per host
-100 * system_memory_utilization{state="used"}
+100 * system_memory_utilization_ratio{state="used"}
 ```
 
-**Memory Saturation** - swap activity indicates memory pressure. The paging rate (pages swapped in/out per second) is the best saturation signal:
+**Memory Saturation** - swap activity indicates memory pressure. The paging operation rate (pages swapped in/out per second) is a useful saturation signal:
 
 ```promql
-# Memory saturation: page fault rate (swap activity)
+# Memory saturation: page-in/page-out rate
 # High values indicate memory pressure forcing swap usage
 sum by (host_name) (
   rate(system_paging_operations_total[5m])
@@ -145,11 +145,10 @@ Also track the swap utilization as a secondary saturation metric:
 
 ```promql
 # Swap space utilization - high values mean memory is saturated
-100 * (
-  system_paging_usage{state="used"}
-  /
-  (system_paging_usage{state="used"} + system_paging_usage{state="free"})
-)
+100 *
+sum by (host_name, device) (system_paging_usage_bytes{state="used"})
+/
+sum by (host_name, device) (system_paging_usage_bytes{state=~"used|free"})
 ```
 
 ## Step 4: Disk - Utilization, Saturation, Errors
@@ -159,38 +158,35 @@ Also track the swap utilization as a secondary saturation metric:
 ```promql
 # Disk utilization: fraction of time the disk is busy
 # Calculated from I/O time counter
-100 * rate(system_disk_io_time_total[5m])
+100 * rate(system_disk_io_time_seconds_total[5m])
 ```
 
 **Disk Saturation** - the I/O queue depth shows how many operations are waiting:
 
 ```promql
 # Disk saturation: weighted I/O time indicates queue depth
-# Higher values mean more operations waiting in queue
-rate(system_disk_weighted_io_time_total[5m])
+# Higher values mean more operations active or waiting in queue
+rate(system_disk_weighted_io_time_seconds_total[5m])
 ```
 
 **Filesystem capacity** - while not strictly I/O saturation, running out of disk space is a critical resource constraint:
 
 ```promql
 # Filesystem utilization by mount point
-100 * (
-  system_filesystem_usage{state="used"}
-  /
-  (system_filesystem_usage{state="used"} + system_filesystem_usage{state="free"})
-)
+100 *
+sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{state="used"})
+/
+sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{state=~"used|free"})
 ```
 
 ## Step 5: Network - Utilization, Saturation, Errors
 
-**Network Utilization** - bytes transmitted as a fraction of interface capacity:
+**Network Utilization** - bytes transmitted and received per second. Compare this throughput with the interface capacity for a utilization percentage:
 
 ```promql
 # Network throughput per interface (bytes/sec)
 sum by (host_name, device) (
-  rate(system_network_io_total{direction="transmit"}[5m])
-  +
-  rate(system_network_io_total{direction="receive"}[5m])
+  rate(system_network_io_bytes_total[5m])
 )
 ```
 
@@ -249,7 +245,7 @@ Add a `host_name` template variable at the top of the dashboard so operators can
 
 ```promql
 # Template variable query to populate the host selector dropdown
-label_values(system_cpu_utilization, host_name)
+label_values(system_cpu_utilization_ratio, host_name)
 ```
 
 ## Adding Alert Thresholds to the Dashboard
