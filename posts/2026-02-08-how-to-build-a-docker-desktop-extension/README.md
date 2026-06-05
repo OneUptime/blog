@@ -19,13 +19,13 @@ You need Docker Desktop 4.8 or later and the Docker Extensions CLI plugin.
 ```bash
 # Verify Docker Desktop version
 
-docker version --format '{{.Client.Version}}'
+docker desktop version
 
-# Install the Docker Extensions CLI (if not already included)
-docker extension install docker/extensions-sdk
+# Enable Docker Desktop extensions if they are disabled
+docker extension enable
 
 # Verify the extensions CLI is available
-docker extension version
+docker extension ls
 ```
 
 You also need Node.js 18+ for the frontend and optionally Go for a backend service.
@@ -49,7 +49,7 @@ my-docker-extension/
   Dockerfile          # Builds the extension container
   metadata.json       # Extension metadata and configuration
   docker-compose.yaml # Optional backend services
-  ui/                 # React frontend
+  ui/                 # React frontend (some scaffolds call this frontend/)
     src/
     package.json
   backend/            # Optional backend service (Go)
@@ -72,7 +72,6 @@ The `metadata.json` file defines your extension's identity and capabilities.
     }
   },
   "vm": {
-    "image": "${DESKTOP_PLUGIN_IMAGE}",
     "composefile": "docker-compose.yaml"
   },
   "host": {
@@ -96,7 +95,8 @@ The frontend uses React with the Docker Desktop Extension SDK for interacting wi
 ```bash
 # Navigate to the UI directory and install dependencies
 cd ui
-npm install @docker/extension-api-client-types
+npm install @docker/extension-api-client
+npm install --save-dev @docker/extension-api-client-types
 npm install @mui/material @emotion/react @emotion/styled
 ```
 
@@ -218,8 +218,11 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -234,6 +237,11 @@ type ContainerStats struct {
 }
 
 func main() {
+	var socketPath string
+	flag.StringVar(&socketPath, "socket", "/run/guest-services/my-docker-extension.sock", "Unix socket to listen on")
+	flag.Parse()
+	os.RemoveAll(socketPath)
+
 	// Health check endpoint
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -270,8 +278,13 @@ func main() {
 		json.NewEncoder(w).Encode(stats)
 	})
 
-	log.Println("Backend service starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Backend service starting on %s", socketPath)
+	log.Fatal(http.Serve(listener, nil))
 }
 ```
 
@@ -281,14 +294,10 @@ Define the backend service in Docker Compose.
 # docker-compose.yaml - Backend service definition
 services:
   backend:
-    build:
-      context: backend
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    image: ${DESKTOP_PLUGIN_IMAGE}
     volumes:
-      # Mount the Docker socket so the backend can interact with Docker
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the Docker Desktop VM socket so the backend can interact with Docker
+      - /var/run/docker.sock.raw:/var/run/docker.sock
 ```
 
 ## Writing the Extension Dockerfile
@@ -321,6 +330,8 @@ LABEL org.opencontainers.image.title="My Docker Extension" \
       org.opencontainers.image.vendor="Your Name" \
       com.docker.desktop.extension.api.version="0.3.4"
 
+RUN apk add --no-cache docker-cli
+
 # Copy the extension metadata
 COPY metadata.json .
 COPY docker.svg .
@@ -332,7 +343,7 @@ COPY --from=ui-builder /app/dist /ui
 COPY --from=backend-builder /backend /backend
 
 # Start the backend service
-CMD ["/backend"]
+CMD ["/backend", "-socket", "/run/guest-services/my-docker-extension.sock"]
 ```
 
 ## Calling the Backend from the Frontend
@@ -384,11 +395,11 @@ docker extension install my-docker-extension:latest
 # After making changes, update the installed extension
 docker extension update my-docker-extension:latest
 
-# Enable hot-reload for frontend development
-docker extension dev ui-source my-docker-extension:latest http://localhost:3000
-
 # Start the frontend dev server
 cd ui && npm run dev
+
+# Enable hot-reload for frontend development
+docker extension dev ui-source my-docker-extension:latest http://localhost:3000
 ```
 
 With hot-reload enabled, changes to your React code appear immediately in Docker Desktop without rebuilding the image.
@@ -405,8 +416,8 @@ docker extension dev debug my-docker-extension:latest
 For backend debugging, check the logs.
 
 ```bash
-# View backend service logs
-docker extension logs my-docker-extension:latest
+# Find the backend container in Docker Desktop's Containers view, then view its logs
+docker logs <backend-container-id>
 ```
 
 ## Publishing to the Marketplace
