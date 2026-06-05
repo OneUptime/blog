@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Go, Profiling, Flame Graphs
 
 Description: Profile Go applications using OpenTelemetry and correlate flame graph data with distributed traces for precise performance debugging.
 
-Go's built-in `pprof` profiler is excellent, but it runs in isolation. You get a flame graph showing where CPU time is spent, but you have no way to connect it to specific requests or traces. By integrating Go profiling with OpenTelemetry, you bridge that gap. Every profile sample gets tagged with trace context, so you can go from a slow trace directly to the flame graph showing what your code was doing.
+Go's built-in `pprof` profiler is excellent, but it runs in isolation. You get a flame graph showing where CPU time is spent, but you have no way to connect it to specific requests or traces. By combining Go profiling labels with OpenTelemetry trace context, you bridge that gap for CPU profiles. CPU profile samples captured while those labels are active can be tagged with trace context, so you can go from a slow trace directly to the flame graph showing what your code was doing.
 
-## Setting Up Continuous Profiling in Go
+## Setting Up OpenTelemetry Tracing in Go
 
-The approach uses Go's `runtime/pprof` package combined with OpenTelemetry's profiling SDK. Here is how to set up continuous profiling that exports data via OTLP:
+The approach uses OpenTelemetry tracing together with Go's `runtime/pprof` labels. A profiling agent or backend that understands pprof labels can then collect pprof data and correlate it with traces. Here is how to set up OpenTelemetry tracing via OTLP:
 
 ```go
 package main
@@ -20,7 +20,6 @@ import (
     "log"
     "os"
     "os/signal"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -76,7 +75,7 @@ func main() {
 
 ## Adding pprof Labels for Trace Correlation
 
-The key to connecting profiles with traces is Go's `pprof.Labels`. When you set pprof labels on a goroutine, every profile sample captured on that goroutine includes those labels:
+The key to connecting CPU profiles with traces is Go's `pprof.Labels`. When you set pprof labels on a goroutine, CPU profile samples captured on that goroutine include those labels:
 
 ```go
 package main
@@ -116,7 +115,7 @@ func handleListOrders(w http.ResponseWriter, r *http.Request) {
         "span_id", spanID,
         "operation", "listOrders",
     ), func(ctx context.Context) {
-        // All CPU samples captured inside this closure
+        // CPU samples captured inside this closure
         // will be tagged with the trace context
         orders := fetchOrdersFromDB(ctx)
         enrichOrders(ctx, orders)
@@ -131,7 +130,7 @@ func fetchOrdersFromDB(ctx context.Context) []Order {
     defer span.End()
 
     // Simulate database query
-    // Profile samples here will show this function in the stack trace
+    // CPU profile samples here will show this function in the stack trace
     // AND be tagged with the parent trace_id
     var orders []Order
     rows, _ := db.QueryContext(ctx, "SELECT * FROM orders LIMIT 100")
@@ -188,13 +187,18 @@ func ProfilingMiddleware(next http.Handler) http.Handler {
 Use the middleware in your router:
 
 ```go
+import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 func startServer(ctx context.Context) {
     mux := http.NewServeMux()
     mux.HandleFunc("/api/orders", handleListOrders)
     mux.HandleFunc("/api/orders/create", handleCreateOrder)
 
-    // Wrap with profiling middleware
-    handler := middleware.ProfilingMiddleware(mux)
+    // Wrap with tracing first so ProfilingMiddleware can read the active span
+    handler := otelhttp.NewHandler(
+        middleware.ProfilingMiddleware(mux),
+        "http.server",
+    )
 
     server := &http.Server{
         Addr:    ":8080",
@@ -235,7 +239,7 @@ func startDebugServer() {
 }
 ```
 
-An external profiling agent (like the OpenTelemetry eBPF agent or a pprof scraper) can then collect profiles from this endpoint and forward them via OTLP.
+An external profiling agent or a pprof scraper can then collect profiles from this endpoint. If the collector and backend support OpenTelemetry Profiles, that profile data can be converted and forwarded via OTLP.
 
 ## Reading Flame Graphs with Trace Context
 
@@ -251,9 +255,9 @@ go tool pprof -http=:8081 \
 
 The flame graph will show only the CPU samples captured during the execution of that specific trace, giving you a focused view of what your code was doing for that request.
 
-## Allocation Profiling with Trace Context
+## Allocation Profiling Caveat
 
-Memory allocation profiling works the same way. The pprof labels propagate to allocation samples:
+Memory allocation profiling does not work the same way as CPU profiling. Go's `runtime/pprof` labels are used by CPU and goroutine profiles, but not by heap or allocation profiles. You can still collect allocation profiles with pprof, but you should not expect `trace_id` and `span_id` labels to appear on allocation samples:
 
 ```go
 func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -261,28 +265,20 @@ func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
     ctx, span := tracer.Start(ctx, "createOrder")
     defer span.End()
 
-    traceID := span.SpanContext().TraceID().String()
-    spanID := span.SpanContext().SpanID().String()
+    // Allocation-heavy operations will appear in heap or allocs profiles,
+    // but the allocation samples will not carry pprof trace_id/span_id labels.
+    var req OrderRequest
+    json.NewDecoder(r.Body).Decode(&req)
 
-    pprof.Do(ctx, pprof.Labels(
-        "trace_id", traceID,
-        "span_id", spanID,
-    ), func(ctx context.Context) {
-        // Allocation-heavy operations will be tagged
-        // with trace context in the allocation profile
-        var req OrderRequest
-        json.NewDecoder(r.Body).Decode(&req)
+    order := buildOrder(req)
+    saveOrder(ctx, order)
 
-        order := buildOrder(req)
-        saveOrder(ctx, order)
-
-        w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(order)
-    })
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(order)
 }
 ```
 
-When you pull up the allocation flame graph for a specific trace, you can see exactly which functions allocated the most memory during that request. This is invaluable for debugging memory-intensive requests that trigger GC pauses.
+When you pull up the allocation flame graph, you can see which functions allocated the most memory over the profiled interval. This is still useful for debugging memory-intensive code paths that trigger GC pauses, but it is not a per-trace allocation view.
 
 ## Production Tips
 
