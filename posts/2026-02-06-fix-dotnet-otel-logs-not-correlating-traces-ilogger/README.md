@@ -94,7 +94,7 @@ The key options:
 
 - `IncludeScopes`: includes logging scopes as log record attributes
 - `IncludeFormattedMessage`: includes the fully formatted log message
-- `ParseStateValues`: parses structured log parameters into individual attributes
+- `ParseStateValues`: enables parsing for non-standard log state values; standard structured `ILogger` parameters are exported as attributes automatically
 
 ## Verifying Correlation
 
@@ -103,8 +103,8 @@ After configuration, log records sent through OTLP should contain these fields:
 ```json
 {
     "body": "Fetching order ord-12345",
-    "trace_id": "abc123def456...",
-    "span_id": "789ghi...",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902b7",
     "severity_text": "Information",
     "attributes": {
         "OrderId": "ord-12345"
@@ -154,7 +154,7 @@ public class OrderService
         }
         catch (Exception ex)
         {
-            // The exception will be included as a log attribute
+            // The exception is attached to the log record
             _logger.LogError(ex,
                 "Failed to process order {OrderId}", orderId);
             throw;
@@ -193,7 +193,7 @@ With `IncludeScopes = true`, these scope values are included as attributes on ev
 To correlate logs with traces in .NET OpenTelemetry:
 
 1. Add `WithLogging()` or `builder.Logging.AddOpenTelemetry()` to bridge ILogger
-2. Add the same exporter (OTLP) for both traces and logs
-3. Enable `IncludeFormattedMessage` and `ParseStateValues` for better log detail
+2. Send both traces and logs to a backend that supports correlation
+3. Enable `IncludeFormattedMessage` if you need the rendered message body
 4. Use structured logging parameters instead of string interpolation
 5. Verify correlation by checking that log records contain `trace_id` and `span_id`
