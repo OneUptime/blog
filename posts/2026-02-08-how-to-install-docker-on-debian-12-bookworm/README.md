@@ -20,12 +20,12 @@ You will need:
 
 ## Step 1: Remove Older Docker Packages
 
-Debian's default repositories include older Docker packages under different names. Remove them to avoid conflicts.
+Debian's default repositories include Docker-related packages under different names. Remove them to avoid conflicts.
 
 ```bash
 # Remove any legacy Docker packages from the default Debian repos
 
-sudo apt-get remove -y docker docker-engine docker.io containerd runc
+sudo apt-get remove -y docker.io docker-doc docker-compose podman-docker containerd runc
 ```
 
 This command is safe to run even if none of these packages are installed. It will simply report that there is nothing to remove.
@@ -164,7 +164,7 @@ EOF
 sudo systemctl restart docker
 ```
 
-Each container will now keep a maximum of 3 log files, each capped at 10 MB. This prevents runaway log growth from filling your disk.
+New containers will now keep a maximum of 3 log files, each capped at 10 MB. Existing containers do not automatically pick up the new logging configuration. This prevents runaway log growth from filling your disk.
 
 ## Setting Up UFW Firewall Rules
 
@@ -177,7 +177,7 @@ To allow traffic on a specific port through UFW:
 sudo ufw allow 8080/tcp
 ```
 
-For more granular control, you can configure Docker to respect UFW by editing `/etc/docker/daemon.json` and setting `"iptables": false`. However, this means you must manage all container networking rules manually, which is not recommended unless you fully understand iptables.
+For more granular control, you can prevent Docker from creating most of its firewall rules by editing `/etc/docker/daemon.json` and setting `"iptables": false`. However, this is not appropriate for most users, can break container networking, and means you must manage container networking rules manually.
 
 ## Installing Docker Compose (Standalone Binary)
 
@@ -201,18 +201,21 @@ If you want to prevent Docker from being upgraded accidentally during system upd
 
 ```bash
 # Pin Docker packages to their current version
-cat <<'EOF' | sudo tee /etc/apt/preferences.d/docker-pin
+DOCKER_CE_VERSION=$(dpkg-query -W -f='${Version}' docker-ce)
+DOCKER_CE_CLI_VERSION=$(dpkg-query -W -f='${Version}' docker-ce-cli)
+
+cat <<EOF | sudo tee /etc/apt/preferences.d/docker-pin
 Package: docker-ce
-Pin: version 5:27.*
+Pin: version ${DOCKER_CE_VERSION}
 Pin-Priority: 1001
 
 Package: docker-ce-cli
-Pin: version 5:27.*
+Pin: version ${DOCKER_CE_CLI_VERSION}
 Pin-Priority: 1001
 EOF
 ```
 
-Adjust the version number to match whatever version you have installed. This is especially useful in production environments where unexpected upgrades can cause problems.
+This is especially useful in production environments where unexpected upgrades can cause problems.
 
 ## Troubleshooting
 
