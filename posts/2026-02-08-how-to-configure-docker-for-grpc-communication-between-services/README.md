@@ -157,8 +157,6 @@ This Compose file connects a gRPC server, a gRPC client service, and a database:
 
 ```yaml
 # docker-compose.yml - gRPC microservices with proper health checks
-version: "3.8"
-
 services:
   user-service:
     build:
@@ -220,6 +218,7 @@ volumes:
 
 networks:
   grpc-network:
+    name: grpc-network
     driver: bridge
 ```
 
@@ -285,6 +284,7 @@ services:
     volumes:
       - ./certs/server.crt:/certs/server.crt:ro
       - ./certs/server.key:/certs/server.key:ro
+      - ./certs/ca.crt:/certs/ca.crt:ro
     healthcheck:
       # Use -tls flag with grpc_health_probe for TLS connections
       test: [
@@ -303,24 +303,27 @@ First, list available services using reflection:
 
 ```bash
 # List all gRPC services exposed by the server
-docker exec user-service grpcurl -plaintext localhost:50051 list
+docker run --rm --network grpc-network \
+  fullstorydev/grpcurl -plaintext user-service:50051 list
 ```
 
 Call a specific method:
 
 ```bash
 # Call the GetUser RPC with a JSON payload
-docker exec user-service grpcurl -plaintext \
+docker run --rm --network grpc-network \
+  fullstorydev/grpcurl -plaintext \
   -d '{"user_id": "abc-123"}' \
-  localhost:50051 user.UserService/GetUser
+  user-service:50051 user.UserService/GetUser
 ```
 
 Check the health status:
 
 ```bash
 # Query the gRPC health check endpoint
-docker exec user-service grpcurl -plaintext \
-  localhost:50051 grpc.health.v1.Health/Check
+docker run --rm --network grpc-network \
+  fullstorydev/grpcurl -plaintext \
+  user-service:50051 grpc.health.v1.Health/Check
 ```
 
 ## Load Balancing gRPC in Docker
@@ -384,14 +387,14 @@ static_resources:
 When gRPC calls fail between containers, check these common issues:
 
 ```bash
-# Verify the gRPC port is listening inside the container
-docker exec user-service ss -tlnp | grep 50051
+# Check the service health status reported by Docker
+docker compose ps user-service
 
 # Test TCP connectivity from the client container to the server
-docker exec api-gateway nc -zv user-service 50051
+docker run --rm --network grpc-network busybox nc -zv user-service 50051
 
 # Check container logs for gRPC server errors
-docker logs user-service --tail 50
+docker compose logs --tail 50 user-service
 
 # Inspect the network to confirm both containers share a network
 docker network inspect grpc-network
