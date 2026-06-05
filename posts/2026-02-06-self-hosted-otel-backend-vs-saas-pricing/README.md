@@ -35,10 +35,10 @@ Most observability SaaS vendors price on one or more of these axes:
 
 | Pricing Axis | Typical Range | Example Vendors |
 |---|---|---|
-| Per GB ingested | $1.50 - $4.00/GB | Datadog (logs), New Relic |
+| Per GB ingested or retained | $0.10 - $0.50/GB for published raw ingest; higher when indexing, search, or retention are billed separately | Datadog (logs), New Relic |
 | Per host/month | $15 - $35/host | Datadog (infra) |
-| Per million spans | $1.50 - $5.00/M | Lightstep, Honeycomb |
-| Per million metrics | $1.00 - $8.00/M | Datadog (custom metrics) |
+| Per million spans or events | Vendor-specific; often committed-volume or enterprise-priced | Lightstep, Honeycomb |
+| Per custom metric/month | Around $5 per 100 custom metrics/month | Datadog (custom metrics) |
 | Per user/month | $20 - $100/user | Some enterprise tiers |
 
 For this comparison, we will model a mid-size organization with the following telemetry profile:
@@ -66,7 +66,7 @@ daily_telemetry:
 
 ## SaaS Cost Estimate
 
-Using average SaaS pricing across major vendors:
+Using representative blended SaaS rates for ingest, indexing/search, and retention:
 
 ```python
 # saas_cost_estimate.py
@@ -81,7 +81,7 @@ hosts = 200
 # Monthly multiplier
 days = 30
 
-# Pricing (representative mid-range SaaS pricing)
+# Pricing (representative blended SaaS pricing)
 cost_per_million_spans = 2.00
 cost_per_gb_logs = 2.50
 cost_per_million_metrics = 3.00
@@ -103,12 +103,12 @@ print(f"{'':->35}")
 print(f"Total:   ${total_monthly:>12,.2f}/month")
 
 # Output:
-# Spans:   $  30,000.00
-# Logs:    $  22,500.00
-# Metrics: $  18,000.00
-# Hosts:   $   5,000.00
+# Spans:   $   30,000.00
+# Logs:    $   22,500.00
+# Metrics: $   18,000.00
+# Hosts:   $    5,000.00
 # -----------------------------------
-# Total:   $  75,500.00/month
+# Total:   $   75,500.00/month
 ```
 
 ## Self-Hosted Cost Estimate
@@ -119,17 +119,17 @@ A typical self-hosted stack uses the OpenTelemetry Collector as the ingestion la
 # self_hosted_cost_estimate.py
 # Estimate monthly self-hosted observability costs
 
-# Infrastructure (AWS pricing, us-east-1)
+# Infrastructure (AWS on-demand pricing, us-east-1, 730 hours/month)
 # ClickHouse cluster: 3x r6g.2xlarge (8 vCPU, 64 GB RAM)
 clickhouse_nodes = 3
-clickhouse_cost_per_node = 438.00   # Monthly on-demand (reserved: ~280)
+clickhouse_cost_per_node = 294.34
 
 # OTel Collector fleet: 4x c6g.xlarge (4 vCPU, 8 GB RAM)
 collector_nodes = 4
-collector_cost_per_node = 123.00
+collector_cost_per_node = 99.28
 
 # Grafana: 1x t3.medium
-grafana_cost = 30.00
+grafana_cost = 30.37
 
 # Storage: EBS gp3 for ClickHouse (hot), S3 for cold
 # ClickHouse compresses telemetry ~10x, so 17.1 TB raw = ~1.7 TB stored
@@ -176,30 +176,30 @@ print(f"{'':->40}")
 print(f"Total:              ${total_monthly:>10,.2f}/month")
 
 # Output:
-# ClickHouse cluster: $  1,314.00
-# Collector fleet:    $    492.00
-# Grafana:            $     30.00
+# ClickHouse cluster: $    883.02
+# Collector fleet:    $    397.12
+# Grafana:            $     30.37
 # EBS storage:        $    163.84
 # S3 storage:         $    117.76
 # Network:            $    171.00
 # Engineering (0.25): $  3,750.00
 # ----------------------------------------
-# Total:              $  6,038.60/month
+# Total:              $  5,513.11/month
 ```
 
 ## Side-by-Side Comparison
 
 | Cost Category | SaaS | Self-Hosted |
 |---|---|---|
-| Infrastructure | Included | $2,289/mo |
+| Infrastructure | Included | $1,311/mo |
 | Storage | Included | $282/mo |
 | Network | Included | $171/mo |
 | Engineering | $0 (vendor managed) | $3,750/mo |
 | License/subscription | $75,500/mo | $0 (open source) |
-| **Total** | **$75,500/mo** | **$6,039/mo** |
-| **Annual** | **$906,000** | **$72,468** |
+| **Total** | **$75,500/mo** | **$5,513/mo** |
+| **Annual** | **$906,000** | **$66,157** |
 
-The self-hosted option is roughly 12x cheaper at this scale, even after accounting for a quarter of an engineer's time.
+The self-hosted option is roughly 14x cheaper under these assumptions, even after accounting for a quarter of an engineer's time.
 
 ## Where the Break-Even Point Is
 
@@ -211,7 +211,7 @@ At very low volumes, SaaS is cheaper because the engineering cost of self-hostin
 # Self-hosted cost is mostly fixed (engineering) with small variable (infra)
 
 # At what daily GB does self-hosted become cheaper?
-# SaaS: ~$2.50/GB/day * 30 = $75/GB/month
+# SaaS, if modeled as blended ingest/index/search cost: ~$2.50/GB/day * 30 = $75/GB/month
 # Self-hosted fixed: ~$4,000/month (engineering + base infra)
 # Self-hosted variable: ~$0.10/GB/month (storage + network)
 
@@ -228,7 +228,7 @@ print(f"Break-even at approximately {breakeven_gb_per_day:.0f} GB/day")
 # Break-even at approximately 53 GB/day
 ```
 
-If your telemetry exceeds roughly 50 GB per day, self-hosting starts to save money. Below that threshold, the SaaS convenience usually justifies the premium.
+Under this blended-rate model, if your telemetry exceeds roughly 50 GB per day, self-hosting starts to save money. Below that threshold, the SaaS convenience usually justifies the premium.
 
 ## Hidden Costs to Watch For
 
