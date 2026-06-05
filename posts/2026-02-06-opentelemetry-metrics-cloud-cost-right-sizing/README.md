@@ -43,29 +43,29 @@ receivers:
             enabled: true
 
 processors:
-  resource:
-    attributes:
-      - key: cloud.provider
-        from_attribute: cloud.provider
-        action: upsert
-      - key: cloud.instance.type
-        from_attribute: host.type
-        action: upsert
-      - key: cloud.region
-        from_attribute: cloud.region
-        action: upsert
+  resourcedetection:
+    detectors: [env, system, ec2, gcp, azure]
+    timeout: 2s
+    override: false
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
+    translation_strategy: UnderscoreEscapingWithoutSuffixes
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [hostmetrics]
-      processors: [resource]
-      exporters: [prometheusremotewrite]
+      processors: [resourcedetection]
+      exporters: [prometheus_remote_write]
 ```
+
+This assumes Prometheus is started with `--web.enable-remote-write-receiver`, which enables the `/api/v1/write` endpoint.
 
 ## Building an Instance Type Catalog
 
@@ -111,6 +111,7 @@ This function computes the best instance type for each host based on peak utiliz
 
 ```python
 import requests
+from instance_catalog import INSTANCE_CATALOG
 
 PROM_URL = "http://prometheus:9090"
 
@@ -119,17 +120,23 @@ def get_host_resource_profile(instance_id):
     queries = {
         "cpu_peak_cores": f'''
             quantile_over_time(0.95,
-                sum(rate(system_cpu_utilization{{host_id="{instance_id}"}}[5m]))[30d:1h]
-            ) * count(system_cpu_utilization{{host_id="{instance_id}"}})
+                (
+                    sum without (cpu_mode) (
+                        system_cpu_utilization{{host_id="{instance_id}", cpu_mode!="idle"}}
+                    )
+                )[30d:1h]
+            )
         ''',
         "memory_peak_gb": f'''
             quantile_over_time(0.95,
-                system_memory_usage{{host_id="{instance_id}", state="used"}}[30d:1h]
+                system_memory_usage{{host_id="{instance_id}", system_memory_state="used"}}[30d:1h]
             ) / 1073741824
         ''',
         "network_peak_gbps": f'''
             quantile_over_time(0.95,
-                rate(system_network_io_total{{host_id="{instance_id}"}}[5m])[30d:1h]
+                (
+                    sum(rate(system_network_io{{host_id="{instance_id}"}}[5m]))
+                )[30d:1h]
             ) * 8 / 1000000000
         '''
     }
@@ -173,7 +180,7 @@ def generate_rightsizing_report():
     """Scan all monitored instances and recommend right-sizing changes."""
     # Get all monitored hosts
     resp = requests.get(f"{PROM_URL}/api/v1/query", params={
-        "query": 'count by (host_id, cloud_provider, cloud_instance_type) (system_cpu_utilization)'
+        "query": 'count by (host_id, cloud_provider, host_type) (system_cpu_utilization)'
     })
     hosts = resp.json()["data"]["result"]
 
@@ -183,7 +190,7 @@ def generate_rightsizing_report():
     for host in hosts:
         host_id = host["metric"]["host_id"]
         provider = host["metric"].get("cloud_provider", "aws")
-        current_type = host["metric"].get("cloud_instance_type", "unknown")
+        current_type = host["metric"].get("host_type", "unknown")
 
         profile = get_host_resource_profile(host_id)
         optimal = find_optimal_instance(profile, provider)
