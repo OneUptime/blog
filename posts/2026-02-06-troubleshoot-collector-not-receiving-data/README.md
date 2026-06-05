@@ -52,8 +52,12 @@ service:
       level: debug
       # Log to console for easy access
       development: true
-      # Show log source location
+      # Use console output instead of JSON
       encoding: console
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
 
 receivers:
   otlp:
@@ -62,6 +66,10 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
 ```
 
 Check logs for receiver-related errors:
@@ -272,7 +280,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          app: your-application
+          kubernetes.io/metadata.name: application-namespace
     ports:
     - protocol: TCP
       port: 4317
@@ -294,12 +302,11 @@ spec:
       containers:
       - name: app
         env:
-        # Use fully qualified service name for cross-namespace
+        # Use the fully qualified service name for cross-namespace access
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector.observability.svc.cluster.local:4318"
-        # Or use service in same namespace
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector:4318"
+        # If the collector Service is in the same namespace, use:
+        # value: "http://otel-collector:4318"
 ```
 
 ## Common Issue 3: Firewall Blocking Traffic
@@ -401,23 +408,22 @@ receivers:
           cert_file: /etc/otelcol/certs/server.crt
           key_file: /etc/otelcol/certs/server.key
 
-# For development/testing only: disable TLS
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-        # No TLS configuration = insecure
+# For development/testing only, disable TLS by omitting the tls block:
+# receivers:
+#   otlp:
+#     protocols:
+#       grpc:
+#         endpoint: 0.0.0.0:4317
 ```
 
 **Solution 2: Configure authentication**
 
 ```yaml
-# config.yaml - API key authentication
+# config.yaml - Bearer token authentication
 extensions:
   # Bearer token authentication
   bearertokenauth:
-    # Check X-API-Key header
+    # Checks the Authorization: Bearer <token> header
     token: "your-secret-api-key"
 
 receivers:
@@ -429,18 +435,23 @@ receivers:
         auth:
           authenticator: bearertokenauth
 
+exporters:
+  debug:
+    verbosity: detailed
+
 service:
   extensions: [bearertokenauth]
   pipelines:
     traces:
       receivers: [otlp]
+      exporters: [debug]
 ```
 
 **Solution 3: Match application configuration**
 
 ```bash
 # Application must send correct credentials
-export OTEL_EXPORTER_OTLP_HEADERS="x-api-key=your-secret-api-key"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20your-secret-api-key"
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector:4318"
 export OTEL_EXPORTER_OTLP_CERTIFICATE="/path/to/ca.crt"
 ```
@@ -538,7 +549,7 @@ docker stats otel-collector
 curl -s http://localhost:8888/metrics | grep -E "memory|cpu|refused"
 
 # Look for these metrics:
-# otelcol_receiver_refused_spans > 0 = data being refused
+# otelcol_receiver_refused_spans_total > 0 = data being refused in Prometheus
 # otelcol_process_memory_rss approaching limit = memory pressure
 ```
 
@@ -641,7 +652,7 @@ processors:
     timeout: 1s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -650,7 +661,7 @@ service:
     traces:
       receivers: [otlp]  # Must match receiver name
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 **Solution 2: Test with minimal configuration**
@@ -664,14 +675,14 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Test minimal config first, then add complexity:
@@ -825,7 +836,7 @@ groups:
   # Alert when no data received for 5 minutes
   - alert: CollectorNotReceivingData
     expr: |
-      rate(otelcol_receiver_accepted_spans[5m]) == 0
+      rate(otelcol_receiver_accepted_spans_total[5m]) == 0
     for: 5m
     labels:
       severity: warning
@@ -835,20 +846,20 @@ groups:
   # Alert when data is refused
   - alert: CollectorRefusingData
     expr: |
-      rate(otelcol_receiver_refused_spans[1m]) > 0
+      rate(otelcol_receiver_refused_spans_total[1m]) > 0
     labels:
       severity: critical
     annotations:
       summary: "Collector refusing data due to overload"
 
-  # Alert when receiver errors increase
-  - alert: CollectorReceiverErrors
+  # Alert when receiver refusal rate is high
+  - alert: CollectorReceiverRefusedSpansHigh
     expr: |
-      rate(otelcol_receiver_failed_spans[5m]) > 10
+      rate(otelcol_receiver_refused_spans_total[5m]) > 10
     labels:
       severity: warning
     annotations:
-      summary: "High receiver error rate"
+      summary: "High receiver refusal rate"
 ```
 
 ## Conclusion
