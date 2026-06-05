@@ -182,7 +182,9 @@ curl -s http://loki:3100/ready
 # Should return: ready
 
 # Query recent logs
-curl -s "http://loki:3100/loki/api/v1/query?query={service_name=\"my-service\"}&limit=5" | jq .
+curl -G -s "http://loki:3100/loki/api/v1/query" \
+  --data-urlencode 'query={service_name="my-service"}' \
+  --data-urlencode 'limit=5' | jq .
 ```
 
 If logs appear with structured metadata fields, the configuration is working.
