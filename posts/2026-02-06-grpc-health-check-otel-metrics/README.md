@@ -6,7 +6,7 @@ Tags: OpenTelemetry, gRPC, Health Checking, Service Monitoring
 
 Description: Monitor gRPC health checking service status transitions with OpenTelemetry metrics to track service availability and detect flapping.
 
-gRPC has a standard health checking protocol defined in `grpc.health.v1.Health`. Services report their serving status as SERVING, NOT_SERVING, or UNKNOWN. By monitoring these status changes with OpenTelemetry metrics, you can track service availability, detect flapping (rapid status oscillations), and build dashboards that show the health of your entire gRPC fleet.
+gRPC has a standard health checking protocol defined in `grpc.health.v1.Health`. Services report their serving status as SERVING, NOT_SERVING, UNKNOWN, or SERVICE_UNKNOWN. By monitoring these status changes with OpenTelemetry metrics, you can track service availability, detect flapping (rapid status oscillations), and build dashboards that show the health of your entire gRPC fleet.
 
 ## The gRPC Health Check Protocol
 
@@ -21,13 +21,16 @@ package main
 
 import (
     "context"
+    "log"
     "sync"
     "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
+    "google.golang.org/grpc/codes"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/status"
 )
 
 var meter = otel.Meter("grpc.health.monitoring")
@@ -36,7 +39,7 @@ var (
     // Track status transitions
     statusTransitions metric.Int64Counter
 
-    // Current status as a gauge (1 = SERVING, 0 = NOT_SERVING, -1 = UNKNOWN)
+    // Current status as a gauge (1 = SERVING, 0 = NOT_SERVING, -1 = UNKNOWN or SERVICE_UNKNOWN)
     currentStatus metric.Int64ObservableGauge
 
     // Time in current state
@@ -90,12 +93,13 @@ func NewInstrumentedHealthServer() *InstrumentedHealthServer {
         watchers:       make(map[string][]chan healthpb.HealthCheckResponse_ServingStatus),
     }
 
-    // Register observable gauge for current status
-    meter.Int64ObservableGauge(
+    var err error
+    currentStatus, err = meter.Int64ObservableGauge(
         "grpc.health.current_status",
         metric.WithDescription("Current health status per service"),
         metric.WithInt64Callback(s.observeStatuses),
     )
+    check(err)
 
     return s
 }
@@ -138,8 +142,10 @@ func (s *InstrumentedHealthServer) SetServingStatus(
     prevStatus, existed := s.statuses[service]
     s.statuses[service] = status
 
+    changed := !existed || prevStatus != status
+
     // Record the duration in the previous state
-    if existed {
+    if changed && existed {
         if lastChange, ok := s.lastTransition[service]; ok {
             duration := time.Since(lastChange).Seconds()
             statusDuration.Record(context.Background(), duration,
@@ -151,10 +157,12 @@ func (s *InstrumentedHealthServer) SetServingStatus(
         }
     }
 
-    s.lastTransition[service] = time.Now()
+    if changed {
+        s.lastTransition[service] = time.Now()
+    }
 
     // Record the transition
-    if !existed || prevStatus != status {
+    if changed {
         fromStatus := "NONE"
         if existed {
             fromStatus = prevStatus.String()
@@ -170,12 +178,14 @@ func (s *InstrumentedHealthServer) SetServingStatus(
     }
 
     // Notify watchers
-    if watchers, ok := s.watchers[service]; ok {
-        for _, ch := range watchers {
-            select {
-            case ch <- status:
-            default:
-                // Watcher is not keeping up, skip
+    if changed {
+        if watchers, ok := s.watchers[service]; ok {
+            for _, ch := range watchers {
+                select {
+                case ch <- status:
+                default:
+                    // Watcher is not keeping up, skip
+                }
             }
         }
     }
@@ -197,14 +207,14 @@ func (s *InstrumentedHealthServer) Check(
     ))
 
     s.mu.RLock()
-    status, ok := s.statuses[req.Service]
+    servingStatus, ok := s.statuses[req.Service]
     s.mu.RUnlock()
 
     if !ok {
-        return nil, grpc.Errorf(codes.NotFound, "unknown service: %s", req.Service)
+        return nil, status.Errorf(codes.NotFound, "unknown service: %s", req.Service)
     }
 
-    return &healthpb.HealthCheckResponse{Status: status}, nil
+    return &healthpb.HealthCheckResponse{Status: servingStatus}, nil
 }
 
 func (s *InstrumentedHealthServer) Watch(
@@ -220,10 +230,24 @@ func (s *InstrumentedHealthServer) Watch(
 
     s.mu.Lock()
     s.watchers[req.Service] = append(s.watchers[req.Service], ch)
+    defer func() {
+        s.mu.Lock()
+        defer s.mu.Unlock()
+
+        watchers := s.watchers[req.Service]
+        for i, watcher := range watchers {
+            if watcher == ch {
+                s.watchers[req.Service] = append(watchers[:i], watchers[i+1:]...)
+                break
+            }
+        }
+    }()
 
     // Send current status immediately
     if status, ok := s.statuses[req.Service]; ok {
         ch <- status
+    } else {
+        ch <- healthpb.HealthCheckResponse_SERVICE_UNKNOWN
     }
     s.mu.Unlock()
 
