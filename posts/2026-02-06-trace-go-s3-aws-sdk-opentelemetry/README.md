@@ -8,7 +8,7 @@ Description: Learn to instrument AWS SDK for Go with OpenTelemetry to trace S3 o
 
 Applications built on AWS make countless API calls to services like S3, DynamoDB, SQS, and Lambda. These cloud service interactions often become performance bottlenecks, introduce latency, or fail silently. Without proper instrumentation, troubleshooting AWS integration issues requires digging through logs and piecing together scattered information.
 
-OpenTelemetry provides automatic instrumentation for the AWS SDK, capturing every API call as a trace span with rich metadata. You get visibility into operation duration, request parameters, response status, and error conditions. This instrumentation helps identify slow S3 uploads, track DynamoDB throttling, monitor SQS message processing, and understand cross-service dependencies.
+OpenTelemetry provides automatic instrumentation for the AWS SDK, capturing every API call as a trace span with useful metadata. You get visibility into operation duration, AWS service and operation names, AWS region, HTTP status codes, AWS request IDs, selected service-specific attributes, and error conditions. You can add custom spans and attributes for S3 bucket names, object keys, object sizes, and other application-specific context. This instrumentation helps identify slow S3 uploads, track DynamoDB throttling, monitor SQS message processing, and understand cross-service dependencies.
 
 This guide focuses on instrumenting AWS SDK v2 for Go, with detailed examples for S3 operations. The patterns apply equally to other AWS services.
 
@@ -20,13 +20,13 @@ Each span captures:
 
 **Service Information** identifies the AWS service (S3, DynamoDB, etc.) and operation (PutObject, GetItem, etc.)
 
-**Request Details** include bucket names, object keys, table names, and other service-specific parameters
+**Request Details** include selected service-specific attributes such as DynamoDB table names and SQS queue URLs; add custom attributes for S3 bucket names, object keys, and other parameters you need
 
-**Performance Metrics** show request duration, retry attempts, and time spent in various request phases
+**Performance Metrics** show request duration; add custom middleware or span attributes when you need retry counts or detailed request-phase timings
 
 **Error Context** captures SDK errors, HTTP status codes, and detailed error messages
 
-**Distributed Context** propagates trace context across service boundaries for end-to-end visibility
+**Distributed Context** injects trace context into outgoing AWS SDK HTTP requests using the configured OpenTelemetry propagator
 
 ## Setting Up AWS SDK Instrumentation
 
@@ -102,7 +102,6 @@ package awsclient
 import (
     "context"
 
-    "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/service/s3"
     "go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
@@ -293,6 +292,7 @@ Large file uploads use multipart uploads. Trace each part:
 package storage
 
 import (
+    "bytes"
     "context"
     "fmt"
     "io"
@@ -449,8 +449,11 @@ package storage
 
 import (
     "context"
+    "fmt"
     "sync"
 
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/service/s3"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
@@ -610,7 +613,6 @@ package awsclient
 import (
     "context"
 
-    "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/service/s3"
     "go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
@@ -628,7 +630,7 @@ func NewS3ClientWithRetries(ctx context.Context) (*s3.Client, error) {
     }
 
     // Instrument with OpenTelemetry
-    // Retry attempts will appear as events in the span
+    // Retries are included in the SDK call duration and final status
     otelaws.AppendMiddlewares(&cfg.APIOptions)
 
     return s3.NewFromConfig(cfg), nil
@@ -645,7 +647,7 @@ func NewS3ClientWithRetries(ctx context.Context) (*s3.Client, error) {
 
 **Resource Attributes**: Tag traces with environment information (production, staging, region) to filter and aggregate traces effectively.
 
-**Error Handling**: Capture detailed error context including operation parameters to help debug failures. Include retry counts and backoff durations.
+**Error Handling**: Capture detailed error context including operation parameters to help debug failures. Add custom middleware or application-level attributes if you need retry counts and backoff durations in traces.
 
 **Performance Impact**: OpenTelemetry instrumentation adds minimal overhead to AWS SDK calls. Batch exporters reduce network impact by sending traces in groups.
 
