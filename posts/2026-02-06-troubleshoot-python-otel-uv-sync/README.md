@@ -41,6 +41,7 @@ dependencies = [
     "flask>=3.0",
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
+    "opentelemetry-distro>=0.42b0",
     "opentelemetry-exporter-otlp-proto-http>=1.20",
     "opentelemetry-instrumentation-flask>=0.42b0",
     "opentelemetry-instrumentation-requests>=0.42b0",
@@ -61,11 +62,11 @@ All packages are now tracked by uv and will not be removed on subsequent syncs.
 The `opentelemetry-bootstrap` command detects which instrumentation packages you need based on your installed libraries:
 
 ```bash
-# First, install the bootstrap tool
-uv pip install opentelemetry-instrumentation
+# First, add the OpenTelemetry distro and exporter
+uv add opentelemetry-distro opentelemetry-exporter-otlp-proto-http
 
 # List the required instrumentation packages
-opentelemetry-bootstrap --action=requirements
+uv run opentelemetry-bootstrap -a requirements
 ```
 
 This outputs something like:
@@ -103,6 +104,7 @@ Group OpenTelemetry packages as optional dependencies:
 telemetry = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
+    "opentelemetry-distro>=0.42b0",
     "opentelemetry-exporter-otlp-proto-http>=1.20",
     "opentelemetry-instrumentation>=0.42b0",
     "opentelemetry-instrumentation-flask>=0.42b0",
@@ -130,10 +132,10 @@ uv run opentelemetry-instrument --help
 uv run pip list | grep opentelemetry
 
 # Verify bootstrap finds what it needs
-uv run opentelemetry-bootstrap --action=requirements
+uv run opentelemetry-bootstrap -a requirements
 ```
 
-If `opentelemetry-bootstrap --action=requirements` returns an empty list, all needed instrumentations are installed.
+If `opentelemetry-bootstrap -a requirements` returns an empty list, all needed instrumentations are installed.
 
 ## Running with uv
 
@@ -151,6 +153,7 @@ Or set environment variables:
 ```bash
 OTEL_SERVICE_NAME=my-service \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
 uv run opentelemetry-instrument python app.py
 ```
 
@@ -168,6 +171,7 @@ uv sync --extra telemetry
 # Run with auto-instrumentation
 export OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-my-service}
 export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+export OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
 
 uv run opentelemetry-instrument python app.py
 ```
