@@ -6,13 +6,13 @@ Tags: OpenTelemetry, FastAPI, Background Task, Python, Async, Span
 
 Description: Learn how to properly instrument FastAPI background tasks with OpenTelemetry spans to maintain trace context and track async operations that run after response completion.
 
-FastAPI's background tasks are a powerful feature for executing code after returning a response to the client. However, tracing these tasks presents unique challenges because they run asynchronously after the main request span has already ended. Without proper instrumentation, you lose visibility into what happens after the response is sent, making it difficult to debug issues or monitor performance.
+FastAPI's background tasks are a powerful feature for executing code after returning a response to the client. However, tracing these tasks presents unique challenges because they run after the response body has been sent and the HTTP server span may already have ended. Without proper instrumentation, you lose visibility into what happens after the response is sent, making it difficult to debug issues or monitor performance.
 
-The core challenge is maintaining trace context across the boundary between the request handler and the background task. When a background task executes, it runs in a different execution context, and without explicit propagation, the OpenTelemetry context gets lost. This results in orphaned spans that can't be correlated back to the original request.
+The core challenge is maintaining trace context across the boundary between the request handler and the background task. FastAPI uses Starlette's in-process `BackgroundTasks`; synchronous task functions run in AnyIO's worker thread pool, which copies context variables, and async task functions are awaited by Starlette after the response is sent. That means OpenTelemetry context may already be available for native background tasks, but capturing and passing it explicitly makes the parent relationship predictable and is essential if the work later moves to a separately spawned task, queue, or worker.
 
 ## Understanding the Context Problem
 
-When FastAPI executes a background task, it happens after the response has been sent. The request context might have already been cleaned up, and the OpenTelemetry SDK needs explicit help to maintain the trace relationship.
+When FastAPI executes a background task, it happens after the response has been sent. With OpenTelemetry's ASGI/FastAPI instrumentation, the server span is ended when the final response body message is sent, while Starlette can still run the background task before the ASGI app call returns. Capturing the context in the handler gives the background span an explicit parent instead of relying on middleware and framework context behavior.
 
 ```mermaid
 sequenceDiagram
@@ -25,8 +25,8 @@ sequenceDiagram
     FastAPI->>OTel: Start request span
     FastAPI->>Client: HTTP Response
     OTel->>OTel: End request span
-    FastAPI->>BackgroundTask: Execute async task
-    BackgroundTask->>OTel: Start background span (context?)
+    FastAPI->>BackgroundTask: Execute background task
+    BackgroundTask->>OTel: Start background span with captured context
     BackgroundTask->>OTel: End background span
 ```
 
@@ -43,7 +43,7 @@ pip install opentelemetry-api \
     uvicorn
 ```
 
-Basic OpenTelemetry configuration for FastAPI creates automatic instrumentation for HTTP requests, but background tasks require additional work.
+Basic OpenTelemetry configuration for FastAPI creates automatic instrumentation for HTTP requests, but background task work still needs manual spans if you want to see task-specific operations.
 
 ```python
 from opentelemetry import trace
@@ -75,7 +75,7 @@ tracer = trace.get_tracer(__name__)
 
 ## Capturing Context for Background Tasks
 
-The key to tracing background tasks is capturing the current context before the task executes and then attaching that context when the task runs.
+The key to making the relationship explicit is capturing the current context before the task executes and then attaching that context when the task runs.
 
 ```python
 from fastapi import BackgroundTasks
@@ -176,19 +176,21 @@ def traced_background_task(task_name: str):
             try:
                 with tracer.start_as_current_span(
                     task_name,
-                    kind=SpanKind.INTERNAL
+                    kind=SpanKind.INTERNAL,
+                    record_exception=False,
+                    set_status_on_exception=False
                 ) as span:
                     span.set_attribute("task.function", func.__name__)
-                    result = func(*args, **kwargs)
-                    span.set_attribute("task.result", "success")
-                    return result
-            except Exception as e:
-                span = trace.get_current_span()
-                span.set_attribute("task.result", "error")
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_attribute("error.message", str(e))
-                span.record_exception(e)
-                raise
+                    try:
+                        result = func(*args, **kwargs)
+                        span.set_attribute("task.result", "success")
+                        return result
+                    except Exception as e:
+                        span.set_attribute("task.result", "error")
+                        span.set_attribute("error.type", type(e).__name__)
+                        span.set_attribute("error.message", str(e))
+                        span.record_exception(e)
+                        raise
             finally:
                 context.detach(token)
 
@@ -226,7 +228,7 @@ async def notify_user(user_id: str, notification_type: str, background_tasks: Ba
 
 ## Handling Multiple Background Tasks
 
-When you have multiple background tasks triggered by a single request, each should be traced as a separate child span of the original request.
+When you have multiple background tasks triggered by a single request, each should be traced as a separate child span of the original request. Starlette runs multiple background tasks in order; if one task raises an exception, later tasks in the same response are not executed.
 
 ```python
 @traced_background_task("update_analytics")
@@ -280,7 +282,7 @@ async def user_action(user_id: str, action: str, data: dict, background_tasks: B
 
 ## Error Handling and Observability
 
-Background tasks can fail silently if not properly monitored. OpenTelemetry helps by recording exceptions and task status.
+Background task failures do not change the response that was already sent to the client, and in a group of Starlette background tasks an exception prevents later tasks from running. OpenTelemetry helps by recording exceptions and task status.
 
 ```python
 from opentelemetry.trace import Status, StatusCode
@@ -357,7 +359,7 @@ Always capture context before adding background tasks. The context must be captu
 
 Pass context explicitly to background tasks. While there are ways to use context variables, explicit passing is more reliable and easier to debug.
 
-Use meaningful span names and attributes. Background tasks often fail silently, so good observability is critical for debugging.
+Use meaningful span names and attributes. Background task failures are not visible to the already-completed client response, so good observability is critical for debugging.
 
 Handle exceptions properly within background tasks. Record exceptions in spans and set appropriate status codes to make failures visible.
 
@@ -365,4 +367,4 @@ Consider timeout spans for long-running tasks. Add attributes that track expecte
 
 ## Conclusion
 
-Tracing FastAPI background tasks with OpenTelemetry requires explicit context propagation but provides invaluable visibility into async operations. By capturing context before task execution and attaching it when the task runs, you maintain the trace relationship and can debug issues across the request-response boundary. The decorator pattern makes this approach scalable across your application, and proper error handling ensures failures are visible in your observability platform.
+Tracing FastAPI background tasks with OpenTelemetry benefits from explicit context propagation and provides invaluable visibility into post-response operations. By capturing context before task execution and attaching it when the task runs, you maintain a predictable trace relationship and can debug issues across the request-response boundary. The decorator pattern makes this approach scalable across your application, and proper error handling ensures failures are visible in your observability platform.
