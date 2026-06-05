@@ -19,14 +19,13 @@ If you have already implemented HTTP semantic conventions, you might wonder why 
 ```mermaid
 graph LR
     A[RPC Client] -->|gRPC over HTTP/2| B[RPC Server]
-    A --> C[rpc.system: grpc]
-    A --> D[rpc.service: OrderService]
-    A --> E[rpc.method: CreateOrder]
-    A --> F[rpc.grpc.status_code: 0]
+    A --> C[rpc.system.name: grpc]
+    A --> D[rpc.method: OrderService/CreateOrder]
+    A --> E[rpc.response.status_code: OK]
     B --> G[Same attributes on server span]
 ```
 
-A gRPC call actually travels over HTTP/2 under the hood, but the RPC semantic conventions capture the meaningful abstraction: the service and method names as defined in your protobuf or Thrift IDL files.
+A gRPC call actually travels over HTTP/2 under the hood, but the RPC semantic conventions capture the meaningful abstraction: the logical method name, typically including the service name and method as defined in your protobuf or Thrift IDL files.
 
 ## Core RPC Attributes
 
@@ -35,39 +34,44 @@ Every RPC span, regardless of the framework, should include these attributes:
 ```yaml
 # Required for all RPC spans
 
-rpc.system: "grpc"              # The RPC framework (grpc, thrift, etc.)
-rpc.service: "OrderService"     # The full service name from the IDL
-rpc.method: "CreateOrder"       # The method being called
+rpc.system.name: "grpc"              # The RPC framework (grpc, thrift, etc.)
+rpc.method: "OrderService/CreateOrder" # The fully qualified RPC method
 
 # Connection details
 server.address: "order-service.internal"
 server.port: 50051
 
 # System-specific status
-rpc.grpc.status_code: 0        # For gRPC: the numeric status code
+rpc.response.status_code: "OK"        # For gRPC: the string status code
 ```
 
-The span name for RPC operations follows the pattern `{rpc.service}/{rpc.method}`, which gives you names like `OrderService/CreateOrder` or `UserService/GetUser`. This is both descriptive and low-cardinality since the service and method names come from your IDL definitions.
+The span name for RPC operations usually follows the same value as `rpc.method`, which gives you names like `OrderService/CreateOrder` or `UserService/GetUser`. This is both descriptive and low-cardinality when the service and method names come from your IDL definitions. Older instrumentation may still emit pre-stable attributes such as `rpc.system`, `rpc.service`, or `rpc.grpc.status_code`; check whether your library supports `OTEL_SEMCONV_STABILITY_OPT_IN=rpc` or `rpc/dup` before changing dashboards.
 
 ## gRPC Server Instrumentation in Go
 
-Go is one of the most popular languages for gRPC services. The OpenTelemetry gRPC interceptors handle most of the instrumentation automatically, but understanding what they do helps you extend them when needed.
+Go is one of the most popular languages for gRPC services. The OpenTelemetry gRPC stats handlers handle most of the instrumentation automatically, but understanding what they do helps you extend them when needed.
 
 ```go
-// server.go - gRPC server with OpenTelemetry interceptors
+// server.go - gRPC server with OpenTelemetry stats handler
 package main
 
 import (
+    "context"
+    "net"
+
+    pb "example.com/your/module/gen/orders/v1"
     "google.golang.org/grpc"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
+    ctx := context.Background()
+
     // Create an OTLP exporter that sends traces to the collector
     exporter, err := otlptracegrpc.New(ctx,
         otlptracegrpc.WithEndpoint("otel-collector:4317"),
@@ -111,25 +115,26 @@ func main() {
 }
 ```
 
-The `otelgrpc.NewServerHandler()` stats handler intercepts every incoming RPC call and creates a server span with the correct semantic convention attributes. It automatically sets `rpc.system` to `"grpc"`, extracts the service and method names from the request metadata, records the gRPC status code, and propagates the trace context.
+The `otelgrpc.NewServerHandler()` stats handler observes every incoming RPC call and creates a server span with the correct semantic convention attributes. It automatically sets the RPC system to gRPC, extracts the logical method name, records the gRPC status code, and propagates the trace context. Depending on the instrumentation version and semantic convention stability settings, you may see the stable attributes such as `rpc.system.name` and `rpc.response.status_code` or the older experimental attributes.
 
 ## gRPC Client Instrumentation in Go
 
 The client side follows the same pattern. You add the OpenTelemetry stats handler when creating the gRPC client connection.
 
 ```go
-// client.go - gRPC client with OpenTelemetry interceptors
+// client.go - gRPC client with OpenTelemetry stats handler
 package main
 
 import (
+    pb "example.com/your/module/gen/orders/v1"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 func createOrderClient() (pb.OrderServiceClient, error) {
-    // Dial with the OpenTelemetry stats handler for automatic tracing
-    conn, err := grpc.Dial(
+    // Create a client connection with the OpenTelemetry stats handler for automatic tracing
+    conn, err := grpc.NewClient(
         "order-service.internal:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
@@ -141,7 +146,7 @@ func createOrderClient() (pb.OrderServiceClient, error) {
 }
 ```
 
-Every call made through this client connection will automatically generate a CLIENT span with `rpc.system`, `rpc.service`, `rpc.method`, `server.address`, `server.port`, and `rpc.grpc.status_code`. The trace context is propagated through gRPC metadata headers so that the server can continue the same trace.
+Every call made through this client connection will automatically generate a CLIENT span with RPC attributes such as `rpc.system.name`, `rpc.method`, `server.address`, `server.port`, and `rpc.response.status_code`. The trace context is propagated through gRPC metadata headers so that the server can continue the same trace.
 
 ## Adding Custom Attributes to gRPC Spans
 
@@ -153,6 +158,8 @@ package main
 
 import (
     "context"
+
+    pb "example.com/your/module/gen/orders/v1"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
 )
@@ -162,7 +169,7 @@ type orderServer struct {
 }
 
 func (s *orderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
-    // Get the current span created by the gRPC interceptor
+    // Get the current span created by the gRPC stats handler
     span := trace.SpanFromContext(ctx)
 
     // Add business-specific attributes
@@ -199,7 +206,6 @@ Python gRPC services use a similar interceptor pattern. Here is how to set it up
 
 ```python
 # grpc_server.py - Python gRPC server with OpenTelemetry instrumentation
-import grpc
 from opentelemetry import trace
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorServer, GrpcInstrumentorClient
 from opentelemetry.sdk.trace import TracerProvider
@@ -214,7 +220,7 @@ resource = Resource.create({
 })
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True))
 )
 trace.set_tracer_provider(provider)
 
@@ -233,8 +239,7 @@ Apache Thrift is less common than gRPC in new projects but still widely used in 
 
 ```python
 # thrift_tracing.py - Manual Thrift instrumentation with RPC semantic conventions
-from opentelemetry import trace, context
-from opentelemetry.propagate import inject, extract
+from opentelemetry import trace
 
 tracer = trace.get_tracer("analytics-service")
 
@@ -249,14 +254,13 @@ class TracedAnalyticsHandler:
             name="AnalyticsService/AggregateEvents",
             kind=trace.SpanKind.SERVER,
             attributes={
-                "rpc.system": "apache_thrift",
-                "rpc.service": "AnalyticsService",
-                "rpc.method": "AggregateEvents",
+                "rpc.system.name": "thrift",
+                "rpc.method": "AnalyticsService/AggregateEvents",
                 "server.address": "analytics.internal",
                 "server.port": 9090,
                 # Thrift transport and protocol details
-                "rpc.thrift.transport": "TFramedTransport",
-                "rpc.thrift.protocol": "TBinaryProtocol",
+                "app.thrift.transport": "TFramedTransport",
+                "app.thrift.protocol": "TBinaryProtocol",
             },
         ) as span:
             try:
@@ -270,7 +274,7 @@ class TracedAnalyticsHandler:
                 raise
 ```
 
-For Thrift, the `rpc.system` is set to `"apache_thrift"`. You can also add Thrift-specific attributes for the transport type and protocol, which can be helpful when debugging serialization issues.
+For Thrift, the `rpc.system.name` value is a custom value because the current OpenTelemetry RPC conventions do not define a Thrift-specific enum value. Use the same value consistently across your services and document it for your telemetry consumers. You can also add custom attributes for the transport type and protocol, which can be helpful when debugging serialization issues.
 
 The Thrift client side follows the same pattern.
 
@@ -278,6 +282,11 @@ The Thrift client side follows the same pattern.
 # thrift_client.py - Thrift client with RPC semantic conventions
 from thrift.transport import TSocket, TTransport
 from thrift.protocol import TBinaryProtocol
+from thrift.Thrift import TApplicationException
+from opentelemetry import trace
+
+from analytics import AnalyticsService
+from analytics.ttypes import AggregateEventsRequest
 
 tracer = trace.get_tracer("reporting-service")
 
@@ -288,9 +297,8 @@ def call_aggregate_events(event_type: str, time_range: tuple):
         name="AnalyticsService/AggregateEvents",
         kind=trace.SpanKind.CLIENT,
         attributes={
-            "rpc.system": "apache_thrift",
-            "rpc.service": "AnalyticsService",
-            "rpc.method": "AggregateEvents",
+            "rpc.system.name": "thrift",
+            "rpc.method": "AnalyticsService/AggregateEvents",
             "server.address": "analytics.internal",
             "server.port": 9090,
         },
@@ -329,22 +337,25 @@ gRPC has its own set of status codes that are different from HTTP status codes. 
 // status_mapping.go - gRPC status code handling
 package main
 
-// gRPC status codes and their meaning for span status:
+// gRPC response status codes and their meaning for span status:
 //
-// OK (0)              -> Span status UNSET (not an error)
-// CANCELLED (1)       -> Span status ERROR
-// UNKNOWN (2)         -> Span status ERROR
-// INVALID_ARGUMENT (3)-> Span status UNSET for server, ERROR for client
-// DEADLINE_EXCEEDED (4)-> Span status ERROR
-// NOT_FOUND (5)       -> Span status UNSET for server, ERROR for client
-// ALREADY_EXISTS (6)  -> Span status UNSET for server, ERROR for client
-// PERMISSION_DENIED (7)-> Span status ERROR
-// UNAUTHENTICATED (16)-> Span status ERROR
-// INTERNAL (13)       -> Span status ERROR
-// UNAVAILABLE (14)    -> Span status ERROR
+// Client spans:
+// OK                  -> Span status UNSET (not an error)
+// Any non-OK code     -> Span status ERROR
+//
+// Server spans:
+// OK                  -> Span status UNSET (not an error)
+// UNKNOWN             -> Span status ERROR
+// DEADLINE_EXCEEDED   -> Span status ERROR
+// UNIMPLEMENTED       -> Span status ERROR
+// INTERNAL            -> Span status ERROR
+// UNAVAILABLE         -> Span status ERROR
+// DATA_LOSS           -> Span status ERROR
+// Other non-OK codes  -> Span status UNSET unless your instrumentation records
+//                        an application-specific error
 ```
 
-The same asymmetry exists here as with HTTP status codes. A `NOT_FOUND` gRPC response from the server side means the server correctly handled the request. From the client side, it means the expected resource was missing. Auto-instrumentation libraries handle this mapping for you, but knowing the rules helps when you are reviewing traces.
+The same asymmetry exists here as with HTTP status codes. A `NOT_FOUND` gRPC response from the server side often means the server correctly handled the request. From the client side, any non-OK gRPC status is considered an error by the semantic conventions. Auto-instrumentation libraries handle this mapping for you, but knowing the rules helps when you are reviewing traces.
 
 ## Querying RPC Telemetry
 
@@ -353,29 +364,27 @@ With RPC semantic conventions in place across all your services, cross-cutting q
 ```sql
 -- Slowest RPC methods across all services
 SELECT
-    rpc.system,
-    rpc.service,
-    rpc.method,
+    "rpc.method",
+    "rpc.system.name",
     avg(duration_ms) as avg_latency_ms,
     p99(duration_ms) as p99_latency_ms,
     count(*) as call_count
 FROM spans
-WHERE rpc.system IS NOT NULL
+WHERE "rpc.system.name" IS NOT NULL
   AND span.kind = 'SERVER'
-GROUP BY rpc.system, rpc.service, rpc.method
+GROUP BY "rpc.system.name", "rpc.method"
 ORDER BY p99_latency_ms DESC
 LIMIT 20;
 
 -- gRPC error rates by service and method
 SELECT
-    rpc.service,
-    rpc.method,
-    rpc.grpc.status_code,
+    "rpc.method",
+    "rpc.response.status_code",
     count(*) as occurrences
 FROM spans
-WHERE rpc.system = 'grpc'
-  AND rpc.grpc.status_code != 0
-GROUP BY rpc.service, rpc.method, rpc.grpc.status_code
+WHERE "rpc.system.name" = 'grpc'
+  AND "rpc.response.status_code" != 'OK'
+GROUP BY "rpc.method", "rpc.response.status_code"
 ORDER BY occurrences DESC;
 ```
 
@@ -383,6 +392,6 @@ These queries give you a unified view of RPC performance across both gRPC and Th
 
 ## Wrapping Up
 
-RPC semantic conventions capture the application-level details that matter most when debugging microservice communication: which service, which method, and what status code. For gRPC, auto-instrumentation through interceptors or stats handlers covers most use cases out of the box. For Thrift, you will likely need manual instrumentation, but the attribute patterns are the same.
+RPC semantic conventions capture the application-level details that matter most when debugging microservice communication: which logical RPC method was called and what status code was returned. For gRPC, auto-instrumentation through stats handlers covers most use cases out of the box. For Thrift, you will likely need manual instrumentation, but the attribute patterns are the same.
 
-Set `rpc.system`, `rpc.service`, and `rpc.method` on every RPC span. Use the framework-specific status code attributes like `rpc.grpc.status_code`. Add custom business attributes with the `app.` prefix. With these practices in place, your RPC traces become a reliable source of truth for understanding how your services communicate and where the bottlenecks are.
+Set `rpc.system.name` and `rpc.method` on every RPC span. Use the generic RPC status attribute `rpc.response.status_code`. Add custom business attributes with the `app.` prefix. With these practices in place, your RPC traces become a reliable source of truth for understanding how your services communicate and where the bottlenecks are.
