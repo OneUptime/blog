@@ -16,6 +16,8 @@ This guide walks you through setting up a Docker build pipeline with Earthly fro
 
 Earthly is an open-source build automation tool that runs every build in containers. Think of it as a hybrid between Docker and Make. You write build targets in an `Earthfile`, and Earthly executes them in isolated containers. The result is builds that behave identically whether you run them on your laptop or in GitHub Actions.
 
+As of the current official documentation, Earthly is no longer actively maintained, so evaluate that status before adopting it for new long-lived pipelines.
+
 The key advantages over raw Dockerfiles include better caching, the ability to define reusable build targets, and built-in support for multi-platform builds.
 
 ## Installing Earthly
@@ -70,7 +72,7 @@ build:
     COPY tsconfig.json ./
     RUN npm run build
     # Save the build output as an artifact for other targets
-    SAVE ARTIFACT dist /dist
+    SAVE ARTIFACT dist
 
 # Test target runs the test suite
 test:
@@ -85,7 +87,7 @@ docker:
     FROM node:20-alpine
     WORKDIR /app
     COPY package.json package-lock.json ./
-    RUN npm ci --production
+    RUN npm ci --omit=dev
     # Pull in the compiled output from the build target
     COPY +build/dist ./dist
     EXPOSE 3000
@@ -103,8 +105,8 @@ earthly +build
 # Run tests
 earthly +test
 
-# Build the Docker image
-earthly +docker
+# Build and push the Docker image
+earthly --push +docker
 ```
 
 ## Setting Up a Multi-Stage Pipeline
@@ -149,7 +151,7 @@ build:
     COPY src/ ./src/
     COPY tsconfig.json ./
     RUN npm run build
-    SAVE ARTIFACT dist /dist
+    SAVE ARTIFACT dist
 
 # Integration tests run after the build succeeds
 integration-test:
@@ -168,7 +170,7 @@ docker:
     FROM node:20-alpine
     WORKDIR /app
     COPY package.json package-lock.json ./
-    RUN npm ci --production && npm cache clean --force
+    RUN npm ci --omit=dev && npm cache clean --force
     COPY +build/dist ./dist
     EXPOSE 3000
     HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/health || exit 1
@@ -188,8 +190,8 @@ all:
 Run the entire pipeline with a single command.
 
 ```bash
-# Execute the full pipeline
-earthly +all
+# Execute the full pipeline and push images marked with SAVE IMAGE --push
+earthly --push +all
 ```
 
 ## Caching for Faster Builds
@@ -214,14 +216,14 @@ build:
     # Cache the TypeScript compilation output between builds
     RUN --mount=type=cache,target=/app/.tsbuildinfo \
         npm run build
-    SAVE ARTIFACT dist /dist
+    SAVE ARTIFACT dist
 ```
 
 For CI environments, enable remote caching so builds across different runners share cache layers.
 
 ```bash
 # Enable remote caching with an OCI registry
-earthly --ci --remote-cache=registry.example.com/myapp/cache +all
+earthly --ci --push --remote-cache=registry.example.com/myapp/cache +all
 ```
 
 ## Multi-Platform Builds
@@ -233,10 +235,11 @@ VERSION 0.8
 
 # Multi-platform Docker image target
 docker-multiplatform:
+    ARG TARGETPLATFORM
     FROM --platform=$TARGETPLATFORM node:20-alpine
     WORKDIR /app
     COPY package.json package-lock.json ./
-    RUN npm ci --production
+    RUN npm ci --omit=dev
     COPY +build/dist ./dist
     EXPOSE 3000
     CMD ["node", "dist/index.js"]
@@ -250,7 +253,7 @@ all-platforms:
 
 ```bash
 # Build for multiple platforms
-earthly +all-platforms
+earthly --push +all-platforms
 ```
 
 ## Integrating with GitHub Actions
@@ -286,7 +289,7 @@ jobs:
 
       # Run the full pipeline with remote caching enabled
       - name: Run Earthly Pipeline
-        run: earthly --ci --remote-cache=registry.example.com/cache +all
+        run: earthly --ci --push --remote-cache=registry.example.com/cache +all
 ```
 
 ## Passing Arguments and Secrets
@@ -310,9 +313,9 @@ docker:
 
 ```bash
 # Pass arguments when running the build
-earthly --build-arg APP_VERSION=1.2.3 --build-arg REGISTRY=ghcr.io/myorg +docker
+earthly --push +docker --APP_VERSION=1.2.3 --REGISTRY=ghcr.io/myorg
 
-# Pass secrets securely (never baked into the image)
+# Pass secrets securely to targets that consume them with RUN --secret
 earthly --secret NPM_TOKEN=your-token-here +build
 ```
 
@@ -328,7 +331,7 @@ earthly --verbose +build
 earthly --interactive +build
 
 # Output detailed build logs to a file
-earthly --logstream +build 2>&1 | tee build.log
+earthly --verbose +build 2>&1 | tee build.log
 ```
 
 ## Best Practices
