@@ -6,21 +6,21 @@ Tags: OpenTelemetry, HTTP Health Checks, Synthetic Monitoring, Receiver
 
 Description: Configure the OpenTelemetry HTTP Check receiver to continuously monitor endpoint availability and response times from your collector.
 
-Synthetic monitoring tells you whether your services are reachable before your users tell you they are not. The OpenTelemetry Collector's `httpcheck` receiver lets you run HTTP health checks directly from the collector, producing standard OpenTelemetry metrics that feed into your existing dashboards and alerting pipeline.
+Synthetic monitoring tells you whether your services are reachable before your users tell you they are not. The OpenTelemetry Collector's HTTP Check receiver (`http_check`) lets you run HTTP health checks directly from the collector, producing standard OpenTelemetry metrics that feed into your existing dashboards and alerting pipeline.
 
 No extra agents, no third-party synthetic monitoring tools, no separate data pipeline. Just another receiver in your collector config.
 
 ## Installing the HTTP Check Receiver
 
-The `httpcheck` receiver is part of the OpenTelemetry Collector Contrib distribution. If you are using the core distribution, you will need to switch to Contrib or build a custom collector that includes it.
+The HTTP Check receiver is part of the OpenTelemetry Collector Contrib distribution. If you are using the core distribution, you will need to switch to Contrib or build a custom collector that includes it.
 
 Verify the receiver is available in your collector build:
 
 ```bash
-# Check if the httpcheck receiver is included in your collector binary.
+# Check if the HTTP Check receiver is included in your collector binary.
 
 # This lists all supported components.
-otelcol-contrib components | grep httpcheck
+otelcol-contrib components | grep http_check
 ```
 
 ## Basic Configuration
@@ -29,12 +29,12 @@ Here is a straightforward setup that checks three HTTP endpoints every 60 second
 
 ```yaml
 # collector-httpcheck.yaml
-# Configure the httpcheck receiver to probe three endpoints.
+# Configure the HTTP Check receiver to probe three endpoints.
 # Each target produces metrics for response time, status code,
 # and availability that feed into the metrics pipeline.
 
 receivers:
-  httpcheck:
+  http_check:
     targets:
       - endpoint: "https://api.example.com/health"
         method: GET
@@ -48,10 +48,13 @@ exporters:
   otlp:
     endpoint: "backend.example.com:4317"
 
+processors:
+  batch:
+
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [batch]
       exporters: [otlp]
 ```
@@ -64,15 +67,16 @@ Real-world health checks often need authentication headers, custom TLS settings,
 
 ```yaml
 # collector-httpcheck-advanced.yaml
-# Advanced httpcheck configuration with authentication, custom headers,
+# Advanced HTTP Check configuration with authentication, custom headers,
 # TLS verification, and timeout settings per target.
 
 receivers:
-  httpcheck:
+  http_check:
     targets:
       # Public-facing API with bearer token auth
       - endpoint: "https://api.example.com/v2/health"
         method: GET
+        timeout: 5s
         headers:
           Authorization: "Bearer ${env:API_HEALTH_TOKEN}"
           Accept: "application/json"
@@ -80,6 +84,7 @@ receivers:
       # Internal service with mutual TLS
       - endpoint: "https://internal-service.corp:8443/ready"
         method: GET
+        timeout: 10s
         tls:
           ca_file: "/etc/ssl/certs/internal-ca.pem"
           cert_file: "/etc/ssl/certs/client.pem"
@@ -88,6 +93,7 @@ receivers:
       # Service that requires a POST with a body
       - endpoint: "https://graphql.example.com/health"
         method: POST
+        timeout: 10s
         headers:
           Content-Type: "application/json"
         body: '{"query": "{ health { status } }"}'
@@ -115,7 +121,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -124,13 +130,13 @@ Using environment variables for secrets (like `${env:API_HEALTH_TOKEN}`) keeps c
 
 ## Understanding the Metrics
 
-The `httpcheck` receiver produces these metrics:
+The HTTP Check receiver produces these metrics:
 
 - `httpcheck.duration` - response time in milliseconds
-- `httpcheck.status` - HTTP status code returned (as a gauge)
-- `httpcheck.error` - count of check errors (connection refused, timeout, DNS failure)
+- `httpcheck.status` - 1 when the response status code matches the status class for that time series, otherwise 0
+- `httpcheck.error` - records check errors (connection refused, timeout, DNS failure)
 
-Each metric includes attributes like `http.url`, `http.method`, and `http.status_code` that you can use for filtering and grouping.
+The metrics include attributes like `http.url`, and the status metric also includes `http.method`, `http.status_code`, and `http.status_class` for filtering and grouping.
 
 ## Building Alerts on HTTP Check Metrics
 
@@ -146,12 +152,12 @@ groups:
     rules:
       # Alert when an endpoint returns a non-2xx status
       - alert: EndpointUnhealthy
-        expr: httpcheck_status < 200 or httpcheck_status >= 300
+        expr: httpcheck_status{http_status_class!~"2xx"} == 1
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Endpoint {{ $labels.http_url }} returning status {{ $value }}"
+          summary: "Endpoint {{ $labels.http_url }} returning status {{ $labels.http_status_code }}"
 
       # Alert when response time exceeds 2 seconds
       - alert: EndpointSlowResponse
@@ -164,7 +170,7 @@ groups:
 
       # Alert when checks are producing errors (connection failures)
       - alert: EndpointCheckError
-        expr: rate(httpcheck_error_total[5m]) > 0
+        expr: httpcheck_error > 0
         for: 2m
         labels:
           severity: critical
@@ -196,8 +202,8 @@ Then in your dashboards, group by `check.region` to see availability from each v
 
 ## Comparing with Dedicated Synthetic Monitoring
 
-The `httpcheck` receiver is not a replacement for full synthetic monitoring platforms that offer browser-based checks, multi-step transactions, and screenshot capture. It handles straightforward HTTP availability and latency monitoring, which covers the majority of health check use cases.
+The HTTP Check receiver is not a replacement for full synthetic monitoring platforms that offer browser-based checks, multi-step transactions, and screenshot capture. It handles straightforward HTTP availability and latency monitoring, which covers the majority of health check use cases.
 
 The big advantage is integration. Your HTTP check data flows through the same pipeline as your application metrics, traces, and logs. Correlating a spike in endpoint latency with a deployment event or a change in downstream service performance becomes trivial when all the data lives in the same backend.
 
-Start with the `httpcheck` receiver for your critical endpoints. If you find yourself needing browser automation or complex multi-step checks, those are valid reasons to look at dedicated tools. But for "is this endpoint up and responding quickly," the collector has you covered.
+Start with the HTTP Check receiver for your critical endpoints. If you find yourself needing browser automation or complex multi-step checks, those are valid reasons to look at dedicated tools. But for "is this endpoint up and responding quickly," the collector has you covered.
