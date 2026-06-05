@@ -17,10 +17,10 @@ An exemplar is a sample measurement that includes a reference to the trace conte
 By default, exemplar collection is not always turned on. Here is how to enable it in a Java application using the OpenTelemetry SDK:
 
 ```java
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
+import io.opentelemetry.sdk.metrics.ExemplarFilter;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
-import io.opentelemetry.exporter.otlp.metrics.OTLPMetricExporter;
-import io.opentelemetry.sdk.metrics.exemplar.ExemplarFilter;
 
 // Configure the meter provider with exemplar recording enabled
 SdkMeterProvider meterProvider = SdkMeterProvider.builder()
@@ -29,7 +29,7 @@ SdkMeterProvider meterProvider = SdkMeterProvider.builder()
     .setExemplarFilter(ExemplarFilter.traceBased())
     .registerMetricReader(
         PeriodicMetricReader.builder(
-            OTLPMetricExporter.builder()
+            OtlpGrpcMetricExporter.builder()
                 .setEndpoint("http://localhost:4317")
                 .build()
         ).build()
@@ -40,12 +40,11 @@ SdkMeterProvider meterProvider = SdkMeterProvider.builder()
 For Python, the setup looks like this:
 
 ```python
+from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import TraceBasedExemplarFilter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.metrics._internal.exemplar import (
-    TraceBasedExemplarFilter,
-)
 
 # Create meter provider with trace-based exemplar filtering
 
@@ -57,13 +56,16 @@ meter_provider = MeterProvider(
     metric_readers=[reader],
     exemplar_filter=TraceBasedExemplarFilter(),
 )
+metrics.set_meter_provider(meter_provider)
 ```
 
 ## Recording Metrics That Carry Exemplars
 
-Once exemplars are enabled, every metric measurement automatically captures the active trace context. You do not need to do anything special when recording:
+Once exemplars are enabled, metric measurements recorded with an active sampled span can be selected as exemplars and carry the active trace context. You do not need a separate API call when recording:
 
 ```python
+import time
+
 from opentelemetry import metrics, trace
 
 meter = metrics.get_meter("order-service")
@@ -86,7 +88,7 @@ def process_order(order):
         elapsed_ms = (time.monotonic() - start) * 1000
 
         # This histogram record automatically picks up the current
-        # trace_id and span_id as an exemplar
+        # trace_id and span_id if it is selected as an exemplar
         order_duration.record(elapsed_ms, {"order.type": order.type})
         return result
 ```
@@ -97,7 +99,7 @@ Here is the step-by-step workflow when you spot an anomaly:
 
 1. You notice the `order.processing.duration` histogram shows a spike in the 5000ms+ bucket at 14:32 UTC.
 2. Query the histogram for that time window and look at the exemplars attached to that bucket.
-3. Each exemplar contains a `trace_id`. Pick one.
+3. Each trace-linked exemplar contains a `trace_id`. Pick one.
 4. Open that trace in your tracing backend (OneUptime, Jaeger, etc.).
 5. You now see the exact request that took over 5 seconds and can inspect every span in the call chain.
 
@@ -114,7 +116,7 @@ receivers:
 
 processors:
   batch:
-    # Keep batch sizes reasonable to preserve exemplar associations
+    # Control export batch size without changing exemplar contents
     send_batch_size: 1024
     timeout: 5s
 
@@ -142,9 +144,9 @@ The key thing is to make sure both your metrics and traces pipelines export to t
 
 OpenTelemetry offers three exemplar filter strategies:
 
-- **AlwaysOn**: Records exemplars for every measurement. High overhead. Good for development.
-- **AlwaysOff**: Never records exemplars. Use this if you do not want the feature.
-- **TraceBased**: Records exemplars only when the current context contains a sampled span. This is the recommended option for production because it aligns exemplar collection with your existing sampling decisions.
+- **AlwaysOn**: Makes every measurement eligible to become an exemplar. Higher overhead. Good for development.
+- **AlwaysOff**: Makes no measurements eligible to become exemplars. Use this if you do not want the feature.
+- **TraceBased**: Makes measurements eligible only when the current context contains a sampled span. This is the recommended option for production because it aligns exemplar collection with your existing sampling decisions.
 
 ## Practical Tips
 
