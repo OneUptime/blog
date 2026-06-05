@@ -36,7 +36,7 @@ With trace IDs in your logs, you can search your log aggregator for a specific t
 
 ## Python: Using the OpenTelemetry Logging Integration
 
-Python's standard `logging` module is the most common logging framework in the ecosystem. OpenTelemetry provides a log record processor that automatically injects trace context into log records.
+Python's standard `logging` module is the most common logging framework in the ecosystem. OpenTelemetry provides logging instrumentation that can automatically inject trace context into log records.
 
 First, install the required packages:
 
@@ -65,10 +65,10 @@ provider = TracerProvider()
 provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 trace.set_tracer_provider(provider)
 
-# This call patches the logging module to inject
+# This call registers a log record factory to inject
 # otelTraceID, otelSpanID, and otelServiceName
 # into every log record automatically
-LoggingInstrumentor().instrument(set_logging_format=True)
+LoggingInstrumentor().instrument()
 
 # Configure a formatter that includes the trace context fields
 formatter = logging.Formatter(
@@ -91,7 +91,7 @@ with tracer.start_as_current_span("process-order"):
     # This log line will include the active trace_id and span_id
 ```
 
-The `LoggingInstrumentor` works by adding a logging filter that reads the current span context and attaches it to the log record. When there is no active span, the fields will be set to zero values, so your formatter will not break.
+The `LoggingInstrumentor` works by registering a custom log record factory that reads the current span context and attaches it to the log record. When there is no active span, the fields will be set to zero values, so your formatter will not break.
 
 The output will look something like this:
 
@@ -101,9 +101,11 @@ The output will look something like this:
 
 ---
 
-## Java: Using the OpenTelemetry Log4j2 and Logback Appenders
+## Java: Using the OpenTelemetry Log4j2 and Logback Integrations
 
 Java applications typically use Log4j2 or Logback. OpenTelemetry provides MDC (Mapped Diagnostic Context) integration for both frameworks, which is the standard Java mechanism for attaching contextual data to log entries.
+
+In the Java snippets below, replace `OPENTELEMETRY_VERSION` with the latest OpenTelemetry instrumentation release.
 
 ### Log4j2 Setup
 
@@ -114,7 +116,7 @@ Add the dependency to your project:
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-log4j-context-data-2.17-autoconfigure</artifactId>
-    <version>2.11.0-alpha</version>
+    <version>OPENTELEMETRY_VERSION</version>
     <scope>runtime</scope>
 </dependency>
 ```
@@ -139,7 +141,7 @@ Then update your Log4j2 pattern to include the trace context from the MDC:
 </Configuration>
 ```
 
-The OpenTelemetry Java agent automatically populates the MDC with `trace_id`, `span_id`, and `trace_flags` whenever a span is active. If you are using the agent, you do not need to write any code at all. Just add the dependency and update your log pattern.
+The OpenTelemetry Java agent automatically populates the MDC with `trace_id`, `span_id`, and `trace_flags` whenever a span is active. If you are using the agent, you do not need to add this dependency; just update your log pattern.
 
 ### Logback Setup
 
@@ -150,7 +152,7 @@ For Logback, the setup is similar:
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-logback-mdc-1.0</artifactId>
-    <version>2.11.0-alpha</version>
+    <version>OPENTELEMETRY_VERSION</version>
     <scope>runtime</scope>
 </dependency>
 ```
@@ -160,14 +162,20 @@ Update your `logback.xml` to reference the MDC keys:
 ```xml
 <!-- Logback configuration referencing OTel MDC fields -->
 <configuration>
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <!-- %mdc{trace_id} reads the trace ID from the MDC map -->
             <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [trace_id=%mdc{trace_id} span_id=%mdc{span_id}] %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- Wrap the real appender so OpenTelemetry can add MDC fields -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.mdc.v1_0.OpenTelemetryAppender">
+        <appender-ref ref="CONSOLE"/>
+    </appender>
+
     <root level="info">
-        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="OTEL"/>
     </root>
 </configuration>
 ```
@@ -193,7 +201,7 @@ const traceFormat = winston.format((info) => {
     // Attach trace_id and span_id to the log record
     info.trace_id = spanContext.traceId;
     info.span_id = spanContext.spanId;
-    info.trace_flags = spanContext.traceFlags.toString(16);
+    info.trace_flags = spanContext.traceFlags.toString(16).padStart(2, "0");
   }
   return info;
 });
