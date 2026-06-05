@@ -13,13 +13,12 @@ NServiceBus is a mature messaging framework that handles the complexity of build
 NServiceBus added native OpenTelemetry support in version 8.0. The framework creates activities (spans) for:
 
 - Message sending and publishing
-- Handler execution
-- Saga invocation
-- Pipeline behaviors
-- Retries and recoverability
-- Message forwarding and auditing
+- Message processing
+- Handler and saga invocation
+- Delayed message and retry relationships
+- Trace context propagation across endpoints
 
-This built-in instrumentation works out of the box, but enhancing it with custom telemetry gives you deeper insights into your business logic.
+This built-in instrumentation works out of the box in NServiceBus 10 and later, but enhancing it with custom telemetry gives you deeper insights into your business logic.
 
 ## Setting Up NServiceBus with OpenTelemetry
 
@@ -30,6 +29,7 @@ dotnet add package NServiceBus
 dotnet add package NServiceBus.RabbitMQ
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
@@ -54,7 +54,8 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
-        .AddSource("NServiceBus.Core") // NServiceBus activity source
+        .AddSource("NServiceBus.*") // NServiceBus activity sources
+        .AddSource("OrderService") // Custom business activity source
         .AddOtlpExporter(options =>
         {
             options.Endpoint = new Uri("http://localhost:4317");
@@ -68,8 +69,8 @@ var transport = endpointConfiguration.UseTransport<RabbitMQTransport>();
 transport.ConnectionString("host=localhost;username=guest;password=guest");
 transport.UseConventionalRoutingTopology(QueueType.Quorum);
 
-// Enable OpenTelemetry instrumentation
-endpointConfiguration.EnableOpenTelemetry();
+// NServiceBus 10+ enables OpenTelemetry instrumentation by default.
+// For NServiceBus 8 or 9, call endpointConfiguration.EnableOpenTelemetry();
 
 // Configure persistence for sagas
 var persistence = endpointConfiguration.UsePersistence<InMemoryPersistence>();
@@ -78,8 +79,8 @@ var persistence = endpointConfiguration.UsePersistence<InMemoryPersistence>();
 endpointConfiguration.SendFailedMessagesTo("error");
 endpointConfiguration.AuditProcessedMessagesTo("audit");
 
-// Start the endpoint
-builder.Host.UseNServiceBus(context => endpointConfiguration);
+// Register and start the endpoint with the host
+builder.Services.AddNServiceBusEndpoint(endpointConfiguration);
 
 var app = builder.Build();
 app.Run();
@@ -701,7 +702,10 @@ public class TelemetryBehavior : Behavior<IIncomingLogicalMessageContext>
         var messageType = context.Message.MessageType;
 
         activity?.SetTag("messaging.message_type", messageType.Name);
-        activity?.SetTag("messaging.message_id", context.MessageId);
+        activity?.SetTag("messaging.message_id", context.Headers.TryGetValue(
+            NServiceBus.Headers.MessageId, out var messageId)
+            ? messageId
+            : "unknown");
         activity?.SetTag("messaging.conversation_id", context.Headers.TryGetValue(
             NServiceBus.Headers.ConversationId, out var conversationId)
             ? conversationId
@@ -776,26 +780,51 @@ var recoverability = endpointConfiguration.Recoverability();
 recoverability.Immediate(immediate =>
 {
     immediate.NumberOfRetries(3);
+    immediate.OnMessageBeingRetried((retry, cancellationToken) =>
+    {
+        Activity.Current?.AddEvent(new ActivityEvent("MessageImmediateRetry",
+            tags: new ActivityTagsCollection
+            {
+                ["messaging.message_id"] = retry.MessageId,
+                ["exception.type"] = retry.Exception.GetType().Name
+            }));
+
+        return Task.CompletedTask;
+    });
 });
 
 recoverability.Delayed(delayed =>
 {
     delayed.NumberOfRetries(5);
     delayed.TimeIncrease(TimeSpan.FromSeconds(10));
+    delayed.OnMessageBeingRetried((retry, cancellationToken) =>
+    {
+        Activity.Current?.AddEvent(new ActivityEvent("MessageDelayedRetry",
+            tags: new ActivityTagsCollection
+            {
+                ["messaging.message_id"] = retry.MessageId,
+                ["exception.type"] = retry.Exception.GetType().Name
+            }));
+
+        return Task.CompletedTask;
+    });
 });
 
-recoverability.OnMessageSentToErrorQueue(failedMessage =>
+recoverability.Failed(failed =>
 {
-    var activity = Activity.Current;
-    activity?.AddEvent(new ActivityEvent("MessageMovedToErrorQueue",
-        tags: new ActivityTagsCollection
-        {
-            ["error.queue"] = "error",
-            ["exception.type"] = failedMessage.Exception.GetType().Name,
-            ["exception.message"] = failedMessage.Exception.Message
-        }));
+    failed.OnMessageSentToErrorQueue((failedMessage, cancellationToken) =>
+    {
+        var activity = Activity.Current;
+        activity?.AddEvent(new ActivityEvent("MessageMovedToErrorQueue",
+            tags: new ActivityTagsCollection
+            {
+                ["error.queue"] = "error",
+                ["exception.type"] = failedMessage.Exception.GetType().Name,
+                ["exception.message"] = failedMessage.Exception.Message
+            }));
 
-    return Task.CompletedTask;
+        return Task.CompletedTask;
+    });
 });
 ```
 
@@ -807,7 +836,8 @@ Reduce overhead with sampling and batching:
 .WithTracing(tracing => tracing
     .SetSampler(new ParentBasedSampler(
         new TraceIdRatioBasedSampler(0.1))) // Sample 10%
-    .AddSource("NServiceBus.Core")
+    .AddSource("NServiceBus.*")
+    .AddSource("OrderService")
     .AddOtlpExporter(options =>
     {
         options.Endpoint = new Uri("http://localhost:4317");
