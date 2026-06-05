@@ -27,6 +27,7 @@ The primary entry point for an LRS is the xAPI statements endpoint. Here is how 
 from opentelemetry import trace, metrics
 from opentelemetry.trace import SpanKind, StatusCode
 import json
+import time
 
 tracer = trace.get_tracer("lrs.ingestion")
 meter = metrics.get_meter("lrs.ingestion")
@@ -51,6 +52,8 @@ ingestion_latency = meter.create_histogram(
 
 def handle_xapi_statements(request):
     """Handle incoming xAPI statement submissions."""
+    start = time.perf_counter()
+
     with tracer.start_as_current_span(
         "lrs.receive_statements",
         kind=SpanKind.SERVER,
@@ -70,6 +73,7 @@ def handle_xapi_statements(request):
 
         # Validate each statement
         valid_statements = []
+        rejected_count = 0
         for i, stmt in enumerate(statements):
             with tracer.start_as_current_span(
                 "lrs.validate_statement",
@@ -88,6 +92,21 @@ def handle_xapi_statements(request):
                 else:
                     statements_rejected.add(1, {"lrs.reason": validation.error_code})
                     val_span.set_status(StatusCode.ERROR, validation.error_message)
+                    rejected_count += 1
+
+        # xAPI requires rejecting the entire batch if any statement is invalid
+        if rejected_count:
+            span.set_attribute("lrs.valid_count", len(valid_statements))
+            span.set_attribute("lrs.rejected_count", rejected_count)
+            span.set_status(
+                StatusCode.ERROR,
+                "One or more xAPI statements failed validation",
+            )
+            ingestion_latency.record((time.perf_counter() - start) * 1000)
+            return reject_request(
+                400,
+                "The entire xAPI batch was rejected because one or more statements failed validation",
+            )
 
         # Store valid statements
         if valid_statements:
@@ -102,7 +121,8 @@ def handle_xapi_statements(request):
                 store_span.set_attribute("lrs.store_duration_ms", result.duration_ms)
 
         span.set_attribute("lrs.valid_count", len(valid_statements))
-        span.set_attribute("lrs.rejected_count", len(statements) - len(valid_statements))
+        span.set_attribute("lrs.rejected_count", rejected_count)
+        ingestion_latency.record((time.perf_counter() - start) * 1000)
 
         return {"stored": len(valid_statements)}
 ```
@@ -150,11 +170,44 @@ def translate_scorm_to_xapi(scorm_data, course_id, student_id):
                     object_id=course_id,
                 ))
 
+        if "cmi.completion_status" in scorm_data:
+            status = scorm_data["cmi.completion_status"]
+            span.set_attribute("lrs.scorm_completion_status", status)
+
+            verb_map = {
+                "completed": "http://adlnet.gov/expapi/verbs/completed",
+                "incomplete": "http://adlnet.gov/expapi/verbs/progressed",
+            }
+
+            if status in verb_map:
+                statements.append(build_xapi_statement(
+                    actor_id=student_id,
+                    verb=verb_map[status],
+                    object_id=course_id,
+                ))
+
+        if "cmi.success_status" in scorm_data:
+            status = scorm_data["cmi.success_status"]
+            span.set_attribute("lrs.scorm_success_status", status)
+
+            verb_map = {
+                "passed": "http://adlnet.gov/expapi/verbs/passed",
+                "failed": "http://adlnet.gov/expapi/verbs/failed",
+            }
+
+            if status in verb_map:
+                statements.append(build_xapi_statement(
+                    actor_id=student_id,
+                    verb=verb_map[status],
+                    object_id=course_id,
+                ))
+
         # Translate score
-        if "cmi.core.score.raw" in scorm_data:
+        raw_score_value = scorm_data.get("cmi.core.score.raw", scorm_data.get("cmi.score.raw"))
+        if raw_score_value is not None:
             try:
-                raw_score = float(scorm_data["cmi.core.score.raw"])
-                max_score = float(scorm_data.get("cmi.core.score.max", 100))
+                raw_score = float(raw_score_value)
+                max_score = float(scorm_data.get("cmi.core.score.max", scorm_data.get("cmi.score.max", 100)))
                 scaled = raw_score / max_score if max_score > 0 else 0
 
                 span.set_attribute("lrs.scorm_score_raw", raw_score)
@@ -171,8 +224,9 @@ def translate_scorm_to_xapi(scorm_data, course_id, student_id):
                 span.record_exception(e)
 
         # Translate time spent
-        if "cmi.core.session_time" in scorm_data:
-            duration = parse_scorm_timespan(scorm_data["cmi.core.session_time"])
+        session_time = scorm_data.get("cmi.core.session_time", scorm_data.get("cmi.session_time"))
+        if session_time is not None:
+            duration = parse_scorm_timespan(session_time)
             span.set_attribute("lrs.session_duration_seconds", duration)
 
         span.set_attribute("lrs.statements_generated", len(statements))
