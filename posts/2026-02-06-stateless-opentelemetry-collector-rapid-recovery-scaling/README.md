@@ -67,7 +67,7 @@ exporters:
       enabled: true
       initial_interval: 1s
       max_interval: 10s
-      max_elapsed_time: 30s    # give up quickly, let the LB retry elsewhere
+      max_elapsed_time: 30s    # give up quickly; clients retry via the LB
     sending_queue:
       enabled: true
       num_consumers: 5
@@ -110,10 +110,12 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 exporters:
-  loadbalancing:
+  load_balancing:
+    routing_key: traceID
     protocol:
       otlp:
-        endpoint: "tier2-collector-headless.monitoring:4317"
+        tls:
+          insecure: true
     resolver:
       dns:
         hostname: "tier2-collector-headless.monitoring"
@@ -123,7 +125,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ```yaml
@@ -131,6 +133,12 @@ service:
 # Tier 2 collectors perform tail-based sampling. Because Tier 1 routes
 # by trace ID, each Tier 2 instance sees complete traces and can make
 # correct sampling decisions independently.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
 
 processors:
   tail_sampling:
