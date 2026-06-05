@@ -57,15 +57,15 @@ import {
   AlwaysOnSampler,
 } from '@opentelemetry/sdk-trace-base';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'payment-service',
   }),
   traceExporter: new OTLPTraceExporter({
     // Send to Collector, not directly to backend
-    url: 'grpc://otel-collector:4317',
+    url: 'http://otel-collector:4317',
   }),
   // AlwaysOn at the SDK level - let the Collector decide
   sampler: new ParentBasedSampler({
@@ -108,7 +108,7 @@ processors:
       - name: keep-server-errors
         type: numeric_attribute
         numeric_attribute:
-          key: http.status_code
+          key: http.response.status_code
           min_value: 500
           max_value: 599
 
@@ -116,17 +116,17 @@ processors:
       - name: keep-client-errors
         type: numeric_attribute
         numeric_attribute:
-          key: http.status_code
+          key: http.response.status_code
           min_value: 400
           max_value: 499
 
       # Policy 4: Keep traces with exception events
       - name: keep-exceptions
-        type: string_attribute
-        string_attribute:
-          key: exception.type
-          values: [".*"]
-          enabled_regex_matching: true
+        type: ottl_condition
+        ottl_condition:
+          error_mode: ignore
+          spanevent:
+            - 'spanevent.name == "exception"'
 
       # Policy 5: Sample 5% of successful traces as baseline
       - name: baseline-success
@@ -163,15 +163,17 @@ If you do need head sampling for cost reasons, you can build a custom sampler th
 ```typescript
 // biased-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 class ErrorBiasedSampler implements Sampler {
   private normalSampler: TraceIdRatioBasedSampler;
@@ -190,14 +192,14 @@ class ErrorBiasedSampler implements Sampler {
     links: Link[]
   ): SamplingResult {
     // Check attributes available at span creation time
-    const httpStatus = attributes['http.status_code'];
+    const httpStatus = attributes['http.response.status_code'];
     const hasException = attributes['exception.type'] !== undefined;
     const hasError = attributes['error'] === true;
 
     // If we can already tell this is an error, always sample
     if (hasException || hasError) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'error_detected' },
       };
     }
@@ -205,7 +207,7 @@ class ErrorBiasedSampler implements Sampler {
     // HTTP status might be known for some frameworks
     if (typeof httpStatus === 'number' && httpStatus >= 400) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'http_error' },
       };
     }
@@ -272,7 +274,7 @@ exporters:
   otlp:
     # Forward to the gateway Collector that does tail sampling
     endpoint: otel-gateway:4317
-    compression: zstd
+    compression: gzip
 
 service:
   pipelines:
@@ -370,12 +372,12 @@ Here is a realistic example of the cost savings.
 | Metric | Before | After |
 |--------|--------|-------|
 | Total spans/second | 10,000 | 10,000 |
-| Spans exported to backend | 10,000 | 875 |
+| Spans exported to backend | 10,000 | 643 |
 | Error trace coverage | 100% | 100% |
 | Normal trace coverage | 100% | 5% |
-| Backend storage cost | $3,000/month | $262/month |
+| Backend storage cost | $3,000/month | $193/month |
 
-The 875 spans/second comes from: errors (roughly 1.5% of traffic at 100%) = 150, plus 5% of the remaining 9,850 = 492, totaling about 642 spans/second. The actual number will vary based on your error rate and span fan-out.
+The 643 spans/second comes from: errors (roughly 1.5% of traffic at 100%) = 150, plus 5% of the remaining 9,850 = 492.5, totaling about 643 spans/second. The actual number will vary based on your error rate and span fan-out.
 
 ---
 
