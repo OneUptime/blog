@@ -24,8 +24,8 @@ graph LR
     D --> E{Span Attributes}
     E --> F[rpc.service: DynamoDB]
     E --> G[rpc.method: GetItem]
-    E --> H[aws.region: us-east-1]
-    E --> I[http.status_code: 200]
+    E --> H[cloud.region: us-east-1]
+    E --> I[http.status_code or http.response.status_code: 200]
     E --> J[aws.request_id: abc-123]
 ```
 
@@ -42,7 +42,7 @@ Install the OpenTelemetry SDK, the OTLP exporter, and the botocore instrumentati
 ```bash
 # Install core OpenTelemetry packages
 
-pip install opentelemetry-api opentelemetry-sdk
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-distro
 
 # Install the OTLP exporter for sending traces to your backend
 pip install opentelemetry-exporter-otlp-proto-grpc
@@ -86,6 +86,7 @@ After calling `instrument()`, all boto3 and botocore calls are automatically tra
 ```python
 # order_service.py - Business logic with automatically traced AWS calls
 import boto3
+import json
 
 # No tracing code needed here - botocore instrumentation handles it
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
@@ -167,7 +168,7 @@ const sdk = new NodeSDK({
   instrumentations: [
     new AwsInstrumentation({
       suppressInternalInstrumentation: true,  // Avoid duplicate HTTP spans
-      sqsExtractContextPropagation: true,     // Propagate trace context through SQS
+      sqsExtractContextPropagationFromPayload: true,  // Also extract context from SQS payloads
     }),
   ],
   serviceName: "my-node-service",
@@ -222,7 +223,7 @@ async function saveUser(userId, userData) {
 
 ### SQS Context Propagation
 
-A particularly useful feature of the Node.js instrumentation is SQS context propagation. When enabled, the instrumentation injects trace context into SQS message attributes on send and extracts it on receive. This means traces flow across asynchronous queue boundaries.
+A particularly useful feature of the Node.js instrumentation is SQS context propagation. The instrumentation injects trace context into SQS message attributes on send and extracts it on receive. If you also enable `sqsExtractContextPropagationFromPayload`, it can extract context from message payloads when headers are stored there. This means traces flow across asynchronous queue boundaries.
 
 ```mermaid
 sequenceDiagram
@@ -299,12 +300,12 @@ public class TracingConfig {
             .build();
 
         // Create AWS SDK telemetry interceptor
-        AwsSdkTelemetry awsTelemetry = AwsSdkTelemetry.create(openTelemetry);
+        AwsSdkTelemetry awsTelemetry = AwsSdkTelemetry.create(openTelemetry).build();
 
         // Build the DynamoDB client with the tracing interceptor
         return DynamoDbClient.builder()
             .overrideConfiguration(ClientOverrideConfiguration.builder()
-                .addExecutionInterceptor(awsTelemetry.newExecutionInterceptor())
+                .addExecutionInterceptor(awsTelemetry.createExecutionInterceptor())
                 .build())
             .build();
     }
@@ -313,22 +314,22 @@ public class TracingConfig {
 
 ## Span Attributes Reference
 
-Regardless of language, the AWS SDK instrumentation produces spans with a consistent set of attributes following OpenTelemetry semantic conventions.
+Across languages, AWS SDK instrumentation commonly produces attributes like these, with exact names depending on the instrumentation version and semantic convention stability settings.
 
 | Attribute | Example | Description |
 |-----------|---------|-------------|
 | `rpc.system` | `aws-api` | Identifies this as an AWS API call |
 | `rpc.service` | `DynamoDB` | The AWS service being called |
 | `rpc.method` | `GetItem` | The specific API operation |
-| `aws.region` | `us-east-1` | The AWS region of the request |
+| `cloud.region` | `us-east-1` | The AWS region of the request |
 | `aws.request_id` | `ABC123...` | The unique request ID from AWS |
-| `http.status_code` | `200` | The HTTP response status code |
+| `http.status_code` / `http.response.status_code` | `200` | The HTTP response status code |
 | `aws.dynamodb.table_names` | `["users"]` | DynamoDB table (when available) |
 | `aws.s3.bucket` | `my-bucket` | S3 bucket name (when available) |
 
 ## Handling Errors and Retries
 
-The AWS SDK has built-in retry logic. When retries happen, the instrumentation captures them correctly. You will see the overall operation span with child spans for each retry attempt.
+The AWS SDK has built-in retry logic. When retries happen, the instrumentation captures the overall operation span, including the time spent retrying. Depending on the language and whether underlying HTTP instrumentation is enabled or suppressed, individual attempts may appear as HTTP child spans or as events/attributes on the SDK span.
 
 ```mermaid
 graph TD
@@ -341,7 +342,7 @@ graph TD
     style D fill:#51cf66,stroke:#333,color:#fff
 ```
 
-This visibility into retries is invaluable. A single DynamoDB call that looks fast in your application logs might actually be retrying three times due to throttling, and the instrumentation makes that visible.
+This visibility into retries is invaluable. A single DynamoDB call that looks fast in your application logs might actually be spending most of its time retrying due to throttling, and the instrumentation helps make that visible.
 
 ## Summary
 
