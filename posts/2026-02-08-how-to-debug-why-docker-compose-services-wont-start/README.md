@@ -74,7 +74,7 @@ This shows the exact exit code, whether the container was OOM-killed, and the er
 The service cannot start because the image does not exist or cannot be pulled:
 
 ```bash
-# Check if the image exists locally
+# List images used by created containers
 docker compose images
 
 # Try pulling images explicitly
@@ -116,7 +116,7 @@ services:
 
 ## Common Cause 3: Volume Mount Errors
 
-A bind mount references a directory that does not exist on the host:
+A bind mount source is missing, invalid, or unavailable on the host:
 
 ```bash
 # The error looks like:
@@ -126,7 +126,9 @@ A bind mount references a directory that does not exist on the host:
 ls -la ./data
 ```
 
-Fix: Create the directory before starting:
+Note that Compose short syntax creates a missing host directory for bind mounts for backward compatibility. Missing-path errors are more common with file mounts, unavailable host paths, or long syntax bind mounts where `create_host_path` is disabled.
+
+Fix: Create the missing source path before starting:
 
 ```bash
 # Create missing directories
@@ -279,8 +281,8 @@ If DNS resolution fails, the services might be on different networks:
 # List networks
 docker network ls
 
-# Inspect a network to see connected containers
-docker network inspect $(docker compose ps -q api | head -1)
+# Inspect the networks attached to a container
+docker inspect $(docker compose ps -q api) --format '{{json .NetworkSettings.Networks}}' | python3 -m json.tool
 ```
 
 Fix: Make sure all services that need to communicate are on the same network:
@@ -351,10 +353,10 @@ Common syntax problems:
 When nothing else works, start from scratch:
 
 ```bash
-# Stop everything and remove all resources
+# Stop the project and remove containers, project networks, and volumes
 docker compose down -v --remove-orphans
 
-# Remove all cached images for this project
+# Remove images used by services
 docker compose down --rmi all
 
 # Clean up Docker system
@@ -387,8 +389,8 @@ docker compose images
 # 6. Check port conflicts
 docker compose ps --format "table {{.Name}}\t{{.Ports}}"
 
-# 7. Check volume mounts exist
-docker compose config --volumes
+# 7. Review resolved volume mount configuration
+docker compose config
 
 # 8. Check environment variables
 docker compose run --rm <service> env
