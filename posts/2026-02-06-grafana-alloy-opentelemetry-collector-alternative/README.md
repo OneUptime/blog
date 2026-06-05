@@ -37,8 +37,9 @@ Install Alloy using the Grafana APT or RPM repository:
 # Add the Grafana GPG key and repository
 
 sudo mkdir -p /etc/apt/keyrings/
-wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
-echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo wget -O /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+sudo chmod 644 /etc/apt/keyrings/grafana.asc
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
 # Install Alloy
 sudo apt-get update
@@ -73,7 +74,8 @@ docker run -d \
   -p 12345:12345 \
   -v ./config.alloy:/etc/alloy/config.alloy \
   grafana/alloy:latest \
-  run /etc/alloy/config.alloy
+  run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data \
+  /etc/alloy/config.alloy
 ```
 
 ## Alloy Configuration Syntax
@@ -190,7 +192,7 @@ This direct wiring in Alloy makes it easier to build complex pipelines where dat
 
 One area where Alloy really shines is Prometheus scraping. Since it has native Prometheus support, you can scrape Prometheus metrics and convert them to OTLP in one collector.
 
-This config scrapes Prometheus targets and exports the metrics as OTLP:
+This config scrapes Prometheus targets and exports the metrics with Prometheus remote write:
 
 ```hcl
 // Discover Kubernetes pods that have Prometheus annotations
@@ -209,10 +211,10 @@ discovery.relabel "prometheus_pods" {
   }
 
   rule {
-    source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_port"]
+    source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
     target_label  = "__address__"
-    regex         = "(.+)"
-    replacement   = "${1}"
+    regex         = "(.+);(.+)"
+    replacement   = "${1}:${2}"
   }
 }
 
@@ -330,7 +332,7 @@ otelcol.exporter.otlphttp "primary" {
   client {
     endpoint = "https://otlp.oneuptime.com"
     headers = {
-      "x-oneuptime-token" = env("ONEUPTIME_TOKEN"),
+      "x-oneuptime-token" = sys.env("ONEUPTIME_TOKEN"),
     }
   }
 }
