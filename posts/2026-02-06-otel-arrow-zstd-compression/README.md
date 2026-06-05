@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTel Arrow, ZSTD, Compression
 
 Description: Combine OTel Arrow with Zstd compression to achieve maximum telemetry data reduction on the wire.
 
-Zstd (Zstandard) is a compression algorithm developed by Facebook that provides an excellent balance between compression ratio and speed. When combined with OTel Arrow's columnar encoding, Zstd delivers the best overall compression for telemetry data, typically reducing wire size by 70-85% compared to standard OTLP with gzip. This post covers how to configure Zstd properly and tune it for your specific workload.
+Zstd (Zstandard) is a compression algorithm developed by Facebook that provides an excellent balance between compression ratio and speed. When combined with OTel Arrow's columnar encoding, Zstd delivers strong compression for telemetry data. The OTel Arrow maintainers report that an OTel Arrow exporter/receiver pair typically uses about 50% less bandwidth than standard OTLP/gRPC with Zstd compression, batch sizes being equal. This post covers how to configure Zstd properly and tune it for your specific workload.
 
 ## Why Zstd Works Well with Arrow Data
 
@@ -15,11 +15,11 @@ Arrow's columnar format produces output that is highly compressible. Columns of 
 Compared to compressing row-oriented protobuf (where field types alternate constantly), compressing columnar Arrow data gives Zstd much longer match distances and better compression ratios.
 
 ```text
-Compression ratios on typical telemetry data:
-  gzip on protobuf OTLP:    3:1 to 5:1
-  zstd on protobuf OTLP:    4:1 to 6:1
-  gzip on Arrow IPC:         5:1 to 8:1
-  zstd on Arrow IPC:         7:1 to 12:1  <-- best combination
+Compression factors observed in OTel Arrow production traces:
+  OTLP/gRPC with Zstd:       ~12:1
+  OTel Arrow with Zstd:      ~16:1 to 18:1
+
+Results vary by signal type, batch size, attribute cardinality, and payload entropy.
 ```
 
 ## Configuring Zstd in the OTel Arrow Exporter
@@ -35,28 +35,40 @@ exporters:
     arrow:
       num_streams: 4
       max_stream_lifetime: 10m
+      payload_compression: zstd
 ```
 
-That single line, `compression: zstd`, enables Zstd compression on the gRPC transport. The Arrow encoding is always active when using the `otelarrow` exporter.
+That single line, `compression: zstd`, enables Zstd compression on the gRPC transport. Current OTel Arrow exporter defaults already use Zstd for gRPC-level compression, so the setting is explicit rather than required. The `payload_compression: zstd` setting applies Zstd at the Arrow IPC payload level, and is also the current default. Arrow encoding is active when using the `otelarrow` exporter unless you set `arrow.disabled: true`; by default the exporter may fall back to standard OTLP if the receiver does not support Arrow.
 
 ## Zstd Compression Levels
 
-Zstd supports compression levels from 1 to 22. Higher levels produce smaller output but use more CPU:
+The Zstd command-line tool supports regular compression levels from 1 to 19, with ultra levels 20 through 22 available via `--ultra`. The OTel Arrow exporter exposes 10 configurable gRPC Zstd levels under `arrow.zstd.level`; higher levels produce smaller output but use more CPU:
 
 ```text
-Level  | Compression Speed | Ratio  | CPU Usage
--------|-------------------|--------|----------
-  1    | ~500 MB/s         | 2.8:1  | Very low
-  3    | ~350 MB/s         | 3.2:1  | Low (default)
-  5    | ~200 MB/s         | 3.5:1  | Moderate
-  9    | ~80 MB/s          | 3.8:1  | High
-  15   | ~15 MB/s          | 4.0:1  | Very high
-  22   | ~3 MB/s           | 4.1:1  | Extreme
+Level  | Collector meaning
+-------|------------------
+  1    | Fastest OTel Arrow gRPC Zstd level
+  5    | Default OTel Arrow gRPC Zstd level
+  10   | Highest OTel Arrow gRPC Zstd level
 ```
 
-Note that the ratio improvement flattens dramatically above level 5. Going from level 3 to level 5 gives about 10% better compression. Going from level 5 to level 22 gives only another 17% while using 60x more CPU.
+Configure the level under the `arrow.zstd` block:
 
-For telemetry data that is already Arrow-encoded, level 3 is almost always the right choice. The Arrow encoding has already removed structural redundancy, so higher Zstd levels find diminishing returns.
+```yaml
+exporters:
+  otelarrow:
+    endpoint: gateway:4317
+    tls:
+      insecure: true
+    compression: zstd
+    arrow:
+      zstd:
+        level: 5
+```
+
+Note that the ratio improvement usually flattens as compression levels rise, while CPU and memory costs increase.
+
+For telemetry data that is already Arrow-encoded, the default level 5 is a good starting point. The Arrow encoding has already removed structural redundancy, so higher Zstd levels often find diminishing returns.
 
 ## Zstd Dictionary Training
 
@@ -69,12 +81,9 @@ However, if your batch sizes are very small (under 100 records), a pre-trained d
 
 # Capture some sample batches first
 zstd --train /tmp/sample-batches/*.arrow -o /etc/otel/zstd-dict
-
-# Reference the dictionary in your Collector config
-# (Note: dictionary support depends on your Collector build)
 ```
 
-For most deployments, skip dictionary training and rely on larger batch sizes instead.
+The OTel Arrow exporter and receiver configuration does not expose a setting for pre-trained Zstd dictionaries. For most deployments, skip dictionary training and rely on larger batch sizes instead.
 
 ## Receiver-Side Configuration
 
@@ -90,7 +99,7 @@ receivers:
         # gRPC handles it based on the encoding header
 ```
 
-Make sure the receiver's Collector binary is compiled with Zstd support. The `opentelemetry-collector-contrib` distribution includes it by default.
+Make sure the receiver's Collector binary includes the `otelarrow` receiver. The `opentelemetry-collector-contrib` and OpenTelemetry Collector Kubernetes distributions include it.
 
 ## Measuring Zstd Performance
 
@@ -98,25 +107,26 @@ Monitor the compression in action:
 
 ```bash
 # Check the exporter's compression metrics
-curl -s http://collector:8888/metrics | grep compression
+curl -s http://collector:8888/metrics | grep otelcol_exporter_sent
 
 # Example output:
-# otelcol_exporter_otelarrow_compression_ratio 8.5
-# This means 8.5:1 compression ratio (Arrow + Zstd combined)
+# otelcol_exporter_sent 1.7e+10
+# otelcol_exporter_sent_wire 1.0e+09
+# Dividing sent by sent_wire gives a 17:1 compression ratio.
 ```
 
 You can also compare bytes before and after compression:
 
 ```promql
 # Uncompressed bytes (Arrow-encoded but not Zstd-compressed)
-otelcol_exporter_otelarrow_uncompressed_bytes_total
+otelcol_exporter_sent
 
 # Compressed bytes (after Zstd)
-otelcol_exporter_otelarrow_compressed_bytes_total
+otelcol_exporter_sent_wire
 
-# Zstd-specific compression ratio
-otelcol_exporter_otelarrow_uncompressed_bytes_total
-  / otelcol_exporter_otelarrow_compressed_bytes_total
+# On-the-wire compression ratio
+otelcol_exporter_sent
+  / otelcol_exporter_sent_wire
 ```
 
 ## Comparing Zstd with Other Options
@@ -131,6 +141,7 @@ exporters:
     compression: gzip
     arrow:
       num_streams: 4
+      payload_compression: none
 
 # Config B: OTel Arrow + zstd
 exporters:
@@ -139,6 +150,7 @@ exporters:
     compression: zstd
     arrow:
       num_streams: 4
+      payload_compression: zstd
 
 # Config C: OTel Arrow + snappy
 exporters:
@@ -147,28 +159,29 @@ exporters:
     compression: snappy
     arrow:
       num_streams: 4
+      payload_compression: none
 ```
 
-Typical results:
+Typical results will vary by data and batch size. In OpenTelemetry's gRPC compression benchmarks, Zstd had the best compression ratio for the tested payloads, while Snappy compressed much faster with lower compression ratios:
 
 ```text
-Arrow + gzip:   6:1 compression, 15% CPU overhead
-Arrow + zstd:   8:1 compression, 10% CPU overhead
-Arrow + snappy: 4:1 compression, 5% CPU overhead
+Arrow + gzip:   good compression, moderate CPU cost
+Arrow + zstd:   strongest compression in the Collector benchmark set
+Arrow + snappy: fastest compression, lower compression ratio
 ```
 
-Zstd wins on both compression ratio and CPU efficiency compared to gzip. Snappy uses less CPU but compresses significantly less. For most telemetry pipelines, Zstd is the clear winner.
+Zstd wins on compression ratio in the Collector benchmark set. Snappy uses less CPU but compresses significantly less. For bandwidth-sensitive telemetry pipelines, Zstd is usually the best starting point.
 
 ## Memory Considerations
 
-Zstd uses a sliding window for compression. The default window size is 8 MB. For the Collector, this means each Arrow stream's Zstd compressor uses approximately 8 MB of memory. With 4 streams:
+Zstd uses a sliding window for compression. In the OTel Arrow exporter, `arrow.zstd.window_size_mib` controls the gRPC Zstd window size; `0` means the library chooses a size based on the configured level. The receiver also has a decompression memory limit, `arrow.zstd.memory_limit_mib`, which defaults to 128 MiB per stream. With 4 streams, plan for per-stream compression and decompression memory rather than treating Zstd as a single global buffer:
 
 ```text
-Zstd memory per exporter = num_streams * window_size
-                         = 4 * 8 MB
-                         = 32 MB
+Zstd memory scales roughly with configured streams:
+  exporter side: num_streams * compressor working memory
+  receiver side: num_streams * arrow.zstd.memory_limit_mib
 ```
 
-This is modest but worth accounting for in memory-constrained environments like sidecar containers. If memory is tight, reduce `num_streams` or use a lower Zstd level (which uses smaller windows).
+This is worth accounting for in memory-constrained environments like sidecar containers. If memory is tight, reduce `num_streams`, lower the Zstd level, or configure the receiver's Zstd memory limit.
 
 The combination of OTel Arrow's columnar encoding and Zstd's compression algorithm is the most bandwidth-efficient way to transport OpenTelemetry data. For cross-region or high-volume deployments, it can meaningfully reduce your cloud networking costs.
