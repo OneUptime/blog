@@ -26,7 +26,7 @@ graph LR
     C --> E[Grafana - PromQL Queries]
 ```
 
-The Collector translates OpenTelemetry metrics into the Prometheus data model and pushes them to Mimir using the remote write API. This translation happens automatically in the `prometheusremotewrite` exporter. Grafana queries Mimir using standard PromQL, the same query language used by Prometheus.
+The Collector translates OpenTelemetry metrics into the Prometheus data model and pushes them to Mimir using the remote write API. This translation happens automatically in the `prometheus_remote_write` exporter. Grafana queries Mimir using standard PromQL, the same query language used by Prometheus.
 
 ## Configuring the OpenTelemetry Collector
 
@@ -79,7 +79,7 @@ processors:
         action: upsert
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     # Mimir endpoint for Prometheus remote write
     endpoint: http://mimir:9009/api/v1/push
     # Add a tenant header for multi-tenant Mimir deployments
@@ -96,10 +96,10 @@ service:
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, batch, resource]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
-There are a few important details in this configuration. The `resource_to_telemetry_conversion` setting converts OpenTelemetry resource attributes (like `service.name` and `service.version`) into Prometheus labels on the metric. Without this, you would not be able to filter metrics by service name in PromQL. The `X-Scope-OrgID` header enables multi-tenancy in Mimir, which lets different teams send metrics to the same Mimir cluster without interfering with each other.
+There are a few important details in this configuration. The `resource_to_telemetry_conversion` setting converts OpenTelemetry resource attributes (like `service.name` and `service.version`) into Prometheus labels on the metric. Without this, resource attributes are exposed through the `target_info` metric by default, so filtering or grouping by most resource attributes requires a PromQL join. The `X-Scope-OrgID` header enables multi-tenancy in Mimir, which lets different teams send metrics to the same Mimir cluster without interfering with each other.
 
 Also notice that we include a `prometheus` receiver alongside the `otlp` receiver. This is useful during migration periods when some services already expose Prometheus endpoints and others use the OpenTelemetry SDK. The Collector can scrape both and send everything to the same Mimir instance.
 
@@ -237,7 +237,7 @@ meter = metrics.get_meter("order-service.metrics")
 
 # Counter for tracking total orders processed
 orders_counter = meter.create_counter(
-    name="orders.processed.total",
+    name="orders.processed",
     description="Total number of orders processed",
     unit="1",
 )
@@ -246,7 +246,7 @@ orders_counter = meter.create_counter(
 order_duration = meter.create_histogram(
     name="orders.processing.duration",
     description="Time taken to process an order",
-    unit="ms",
+    unit="s",
 )
 
 def process_order(order):
@@ -256,16 +256,16 @@ def process_order(order):
     # Your order processing logic here
     # ...
 
-    duration_ms = (time.time() - start) * 1000
+    duration_seconds = time.time() - start
 
     # Record the counter increment with attributes
     orders_counter.add(1, {"order.type": order.type, "payment.method": order.payment})
 
     # Record the processing duration
-    order_duration.record(duration_ms, {"order.type": order.type})
+    order_duration.record(duration_seconds, {"order.type": order.type})
 ```
 
-Notice that metric names use dots as separators. The Prometheus remote write exporter in the Collector automatically converts these to underscores, since Prometheus does not allow dots in metric names. So `orders.processed.total` becomes `orders_processed_total` in Mimir.
+Notice that metric names use dots as separators. The Prometheus remote write exporter in the Collector automatically converts these to underscores, since Prometheus does not allow dots in metric names. With the default translation strategy, the counter `orders.processed` becomes `orders_processed_total` in Mimir, and the histogram with unit `s` becomes `orders_processing_duration_seconds`.
 
 ## Understanding the OTel to Prometheus Translation
 
@@ -298,7 +298,7 @@ datasources:
     url: http://mimir:9009/prometheus
     isDefault: true
     jsonData:
-      # Set a reasonable timeout for long-range queries
+      # Set the minimum query interval/step
       timeInterval: "15s"
       httpMethod: POST
 ```
@@ -310,7 +310,7 @@ Then you can run queries like these:
 rate(orders_processed_total[5m])
 
 # 95th percentile order processing duration
-histogram_quantile(0.95, rate(orders_processing_duration_bucket[5m]))
+histogram_quantile(0.95, rate(orders_processing_duration_seconds_bucket[5m]))
 
 # Total orders by payment method
 sum by (payment_method) (increase(orders_processed_total[1h]))
@@ -320,20 +320,19 @@ sum by (payment_method) (increase(orders_processed_total[1h]))
 
 One common pitfall is creating metrics with high cardinality labels. If you add a `user_id` label to a metric, you could end up with millions of unique time series. Mimir handles this better than vanilla Prometheus, but it still has limits.
 
-Use the Collector's `metricstransform` processor to drop or aggregate high-cardinality labels before they reach Mimir.
+Use the Collector's `transform` processor to aggregate away high-cardinality labels before they reach Mimir.
 
 ```yaml
 # Add this processor to the Collector config to control cardinality
 processors:
-  metricstransform:
-    transforms:
-      - include: http_server_request_duration_seconds
-        action: update
-        operations:
-          # Remove the URL path label to reduce cardinality
+  transform/drop_url:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Keep bounded labels and aggregate away url.full
           # Use http.route instead, which has bounded values
-          - action: delete_label_value
-            label: url.full
+          - aggregate_on_attributes("sum", ["http.route", "http.request.method", "http.response.status_code"]) where metric.name == "http.server.request.duration"
 ```
 
 ## Scaling for Production
