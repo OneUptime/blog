@@ -42,7 +42,7 @@ flowchart LR
 
 The DaemonSet deployment ensures every node has a collector instance. Pods send telemetry to the local node's collector, keeping network hops minimal.
 
-Here is the collector configuration that receives OTLP data and exports it to a backend. The resource detection processor automatically adds Kubernetes metadata like pod name and namespace.
+Here is the collector configuration that receives OTLP data and exports it to a backend. The Kubernetes attributes processor automatically adds Kubernetes metadata like pod name and namespace.
 
 ```yaml
 # otel-collector-config.yaml
@@ -82,6 +82,11 @@ data:
           - sources:
               - from: resource_attribute
                 name: k8s.pod.ip
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
 
     exporters:
       otlp:
@@ -97,7 +102,7 @@ data:
           exporters: [otlp]
 ```
 
-Now deploy the DaemonSet itself. The collector runs on every node and listens on the host network so pods can reach it at the node's IP address.
+Now deploy the DaemonSet itself. The collector runs on every node and exposes OTLP with host ports so pods can reach it at the node's IP address. The service account and RBAC rules are omitted for brevity, but the `k8sattributes` processor needs permission to list and watch pods.
 
 ```yaml
 # otel-collector-daemonset.yaml
@@ -119,7 +124,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317  # gRPC OTLP receiver
@@ -152,17 +157,17 @@ Each service needs the OpenTelemetry SDK configured to create spans and propagat
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
   // Resource identifies this service in traces
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
   }),
   // Send traces to the collector running on the same node
   traceExporter: new OTLPTraceExporter({
-    url: `grpc://${process.env.NODE_IP}:4317`,
+    url: `http://${process.env.NODE_IP}:4317`,
   }),
   // Auto-instrumentation patches HTTP, gRPC, Express, etc.
   instrumentations: [getNodeAutoInstrumentations()],
@@ -175,8 +180,8 @@ For Python services, the setup follows a similar pattern. The key difference is 
 
 ```python
 # For Python services, install the packages:
-# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
-# pip install opentelemetry-instrumentation-flask opentelemetry-instrumentation-requests
+# pip install opentelemetry-distro opentelemetry-exporter-otlp
+# opentelemetry-bootstrap -a install
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -230,7 +235,7 @@ function onMessage(message) {
   const parentContext = propagation.extract(context.active(), message.headers);
   const tracer = trace.getTracer('message-consumer');
 
-  // Start a new span linked to the producing service's trace
+  // Start a new span parented to the producing service's trace
   context.with(parentContext, () => {
     const span = tracer.startSpan('process-message');
     try {
@@ -266,9 +271,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
-            # Pod metadata for span attributes
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -277,6 +279,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # Pod metadata for span attributes
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.ip=$(POD_IP)"
             - name: OTEL_SERVICE_NAME
               value: "api-service"
 ```
@@ -310,7 +319,7 @@ If spans are showing up but not connected, the most common cause is missing cont
 
 ## Troubleshooting Common Issues
 
-**Spans are not appearing at all.** Check that the collector is running on the node and the pod can reach port 4317. Run `kubectl exec` into the pod and try `curl http://$NODE_IP:4318/v1/traces` to verify connectivity.
+**Spans are not appearing at all.** Check that the collector is running on the node and the pod can reach port 4317. Run `kubectl exec` into the pod and try `curl -v http://$NODE_IP:4318/v1/traces` to verify that the OTLP HTTP port is reachable, even though a GET request will not upload a trace.
 
 **Spans appear but are not linked.** This usually means context propagation is broken. Make sure the W3C TraceContext propagator is configured (it is the default) and that HTTP client libraries are instrumented.
 
