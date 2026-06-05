@@ -113,15 +113,14 @@ processors:
         statements:
           # Tag brute force indicators
           # (the actual counting happens in the metrics pipeline)
-          - set(attributes["ids.detection"], "brute_force_candidate")
-            where attributes["security.event_type"] == "auth.login_failed"
+          - set(log.attributes["ids.detection"], "brute_force_candidate")
+            where log.attributes["security.event_type"] == "auth.login_failed"
 
-          - set(attributes["ids.detection"], "injection_attempt")
-            where attributes["security.attack_pattern"] == "sql_injection"
-            or attributes["security.attack_pattern"] == "xss"
+          - set(log.attributes["ids.detection"], "injection_attempt")
+            where log.attributes["security.attack_pattern"] == "sql_injection" or log.attributes["security.attack_pattern"] == "xss"
 
-          - set(attributes["ids.detection"], "privilege_escalation")
-            where attributes["security.event_type"] == "authz.privilege_escalation"
+          - set(log.attributes["ids.detection"], "privilege_escalation")
+            where log.attributes["security.event_type"] == "authz.privilege_escalation"
 
   # Batch for efficiency
   batch:
@@ -181,15 +180,15 @@ route:
 
   routes:
     # Critical security alerts go to PagerDuty immediately
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'security-pagerduty'
       group_wait: 10s
       repeat_interval: 15m
 
     # High severity goes to Slack security channel
-    - match:
-        severity: high
+    - matchers:
+        - severity="high"
       receiver: 'security-slack'
       group_wait: 30s
 
@@ -200,7 +199,7 @@ receivers:
 
   - name: 'security-pagerduty'
     pagerduty_configs:
-      - service_key: '<your-pagerduty-key>'
+      - routing_key: '<your-pagerduty-routing-key>'
         description: '{{ .CommonAnnotations.summary }}'
         severity: 'critical'
 
@@ -226,7 +225,7 @@ groups:
       - alert: BruteForceAttack
         expr: |
           sum by (security_source_ip) (
-            rate(security_events_total{
+            increase(security_events_total{
               ids_detection="brute_force_candidate"
             }[5m])
           ) > 20
@@ -241,7 +240,7 @@ groups:
       - alert: InjectionAttempt
         expr: |
           sum by (security_source_ip) (
-            rate(security_events_total{
+            increase(security_events_total{
               ids_detection="injection_attempt"
             }[5m])
           ) > 5
@@ -254,7 +253,7 @@ groups:
       # Privilege escalation attempts
       - alert: PrivilegeEscalation
         expr: |
-          rate(security_events_total{
+          increase(security_events_total{
             ids_detection="privilege_escalation"
           }[5m]) > 0
         for: 0m
