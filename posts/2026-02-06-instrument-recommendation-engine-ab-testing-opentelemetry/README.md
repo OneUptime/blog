@@ -56,9 +56,9 @@ def handle_recommendation_request(user_id, content_context):
     try:
         with tracer.start_as_current_span("recommendation.request") as span:
             # Also set as span attributes for easy querying on this span
-            span.setAttribute("experiment.rec_algorithm", rec_variant)
-            span.setAttribute("experiment.ranking_boost", ranking_variant)
-            span.setAttribute("user.id", user_id)
+            span.set_attribute("experiment.rec_algorithm", rec_variant)
+            span.set_attribute("experiment.ranking_boost", ranking_variant)
+            span.set_attribute("user.id", user_id)
 
             recommendations = generate_recommendations(user_id, content_context)
             return recommendations
@@ -82,14 +82,14 @@ def get_user_features(user_id):
         ranking = baggage.get_baggage("experiment.ranking_boost")
 
         if rec_algo:
-            span.setAttribute("experiment.rec_algorithm", rec_algo)
+            span.set_attribute("experiment.rec_algorithm", rec_algo)
         if ranking:
-            span.setAttribute("experiment.ranking_boost", ranking)
+            span.set_attribute("experiment.ranking_boost", ranking)
 
         # Now when you query traces for this service,
         # you can filter by experiment variant
         features = feature_store.query(user_id)
-        span.setAttribute("features.count", len(features))
+        span.set_attribute("features.count", len(features))
         return features
 ```
 
@@ -99,6 +99,7 @@ Beyond traces, your metrics should also carry experiment dimensions so you can c
 
 ```python
 from opentelemetry import metrics
+import time
 
 meter = metrics.get_meter("recommendation.metrics", "1.0.0")
 
@@ -155,6 +156,14 @@ def generate_recommendations(user_id, content_context):
 When a user clicks a recommendation, the frontend sends an event that includes the experiment variant.
 
 ```javascript
+const { metrics, trace } = require("@opentelemetry/api");
+
+const meter = metrics.getMeter("recommendation.frontend", "1.0.0");
+const tracer = trace.getTracer("recommendation.frontend", "1.0.0");
+const clickThroughCounter = meter.createCounter("recommendation.click_through", {
+  description: "Number of recommendations that were clicked",
+});
+
 function trackRecommendationClick(contentId, position, experimentData) {
   // experimentData was passed along with the recommendation response
   const attrs = {
