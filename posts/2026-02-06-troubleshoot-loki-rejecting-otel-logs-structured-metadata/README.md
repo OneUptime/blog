@@ -25,7 +25,7 @@ Loki is rejecting the logs because OpenTelemetry log records include structured 
 
 OpenTelemetry log records contain attributes as key-value pairs alongside the log body. When Loki receives these via OTLP, it stores the attributes as "structured metadata" - a feature introduced in Loki 3.0 that allows querying on metadata fields without using them as labels.
 
-By default, this feature is disabled because it changes how data is stored and indexed.
+In Loki 3.0 and later, this feature is enabled by default, but it can still be disabled in older or custom configurations. It also requires the active schema to use the TSDB index type and schema v13 or later.
 
 ## The Fix: Enable Structured Metadata in Loki
 
@@ -52,7 +52,7 @@ schema_config:
 
 Two things must be configured:
 1. `allow_structured_metadata: true` in `limits_config`
-2. Schema version must be `v13` or later (older schemas do not support it)
+2. The active schema must use `store: tsdb` and schema version `v13` or later (older schemas do not support it)
 
 ### Helm Chart Values
 
@@ -87,7 +87,7 @@ services:
 
 ## Schema Version Requirements
 
-Structured metadata requires schema v13. If you have an older schema, you need to add a new schema config entry:
+Structured metadata requires the TSDB index type and schema v13. If you have an older schema, you need to add a new schema config entry:
 
 ```yaml
 schema_config:
@@ -132,29 +132,9 @@ service:
       exporters: [otlphttp/loki]
 ```
 
-The `/otlp` endpoint is Loki's native OTLP receiver (available in Loki 3.0+).
+The Collector is configured with the `/otlp` base endpoint because the `otlphttp` exporter appends `/v1/logs`. Loki's native OTLP HTTP ingestion route is `/otlp/v1/logs` and is available in Loki 3.0+.
 
-### Option 2: Use the Loki Exporter
-
-```yaml
-exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: false
-      job: true
-      instance: true
-      level: true
-
-service:
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [loki]
-```
-
-The Loki exporter converts OTLP logs to Loki's push format. Structured metadata handling depends on the exporter version.
+The native OTLP endpoint is the recommended way to send OpenTelemetry logs to Loki. The older Loki exporter converted OTLP logs to Loki's push format, but Grafana recommends migrating existing pipelines to the native OTLP endpoint for Loki 3.0 and later.
 
 ## Controlling What Becomes Labels vs Metadata
 
@@ -166,6 +146,7 @@ limits_config:
   allow_structured_metadata: true
   otlp_config:
     resource_attributes:
+      ignore_defaults: true
       attributes_config:
       - action: index_label
         attributes:
@@ -188,7 +169,7 @@ In Grafana Explore, you can query structured metadata using LogQL:
 {service_name="my-service"} | trace_id="abc123"
 
 # Extract structured metadata fields
-{service_name="my-service"} | json | trace_id != ""
+{service_name="my-service"} | trace_id != ""
 ```
 
 ## Verifying the Fix
