@@ -28,7 +28,7 @@ Let's instrument a Python-based SMS gateway that accepts messages over HTTP and 
 # sms_gateway.py
 
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 import time
 import uuid
 
@@ -67,11 +67,11 @@ smpp_connection_errors = meter.create_counter(
 pending_messages = {}
 
 
-def submit_message(sender: str, recipient: str, body: str) -> str:
+def submit_message(sender: str, recipient: str, body: str) -> str | None:
     """Accept an SMS submission from the application layer."""
     message_id = str(uuid.uuid4())
 
-    # Create a root span covering the full message lifecycle
+    # Create a span for the application submission stage
     with tracer.start_as_current_span("sms.submit") as span:
         span.set_attributes({
             "sms.message_id": message_id,
@@ -84,7 +84,7 @@ def submit_message(sender: str, recipient: str, body: str) -> str:
         # Validate the message
         validation_ok = validate_message(sender, recipient, body)
         if not validation_ok:
-            span.set_status(StatusCode.ERROR, "Validation failed")
+            span.set_status(Status(StatusCode.ERROR, "Validation failed"))
             message_counter.add(1, {"status": "validation_failed"})
             return None
 
@@ -128,10 +128,15 @@ def send_via_smpp(message_id: str, message: dict):
             span.set_attribute("smpp.command_status", smpp_response.status)
 
             if smpp_response.status != 0:
-                span.set_status(StatusCode.ERROR,
-                    f"SMPP error: {smpp_response.status}")
+                span.set_status(Status(
+                    StatusCode.ERROR,
+                    f"SMPP error: {smpp_response.status}",
+                ))
                 message_counter.add(1, {"status": "smpp_error"})
             else:
+                # DLRs use the SMSC-assigned message ID from submit_sm_resp.
+                pending_messages[smpp_response.message_id] = pending_messages.pop(message_id)
+                pending_messages[smpp_response.message_id]["gateway_message_id"] = message_id
                 message_counter.add(1, {"status": "submitted_to_smsc"})
 
         except ConnectionError as e:
@@ -139,7 +144,7 @@ def send_via_smpp(message_id: str, message: dict):
                 "smpp.host": smpp_client.host,
             })
             span.record_exception(e)
-            span.set_status(StatusCode.ERROR, "SMPP connection failed")
+            span.set_status(Status(StatusCode.ERROR, "SMPP connection failed"))
             message_counter.add(1, {"status": "connection_error"})
 
 
@@ -168,7 +173,7 @@ def handle_delivery_receipt(dlr):
                 message_counter.add(1, {"status": "delivered"})
             elif dlr["status"] == "UNDELIV":
                 message_counter.add(1, {"status": "undelivered"})
-                span.set_status(StatusCode.ERROR, "Message undelivered")
+                span.set_status(Status(StatusCode.ERROR, "Message undelivered"))
             elif dlr["status"] == "EXPIRED":
                 message_counter.add(1, {"status": "expired"})
 
