@@ -12,13 +12,13 @@ The OpenTelemetry project publishes a JSON schema that describes the full struct
 
 ## Getting the JSON Schema
 
-The schema lives in the OpenTelemetry specification repository. You can download it directly:
+The schema lives in the OpenTelemetry configuration repository. You can download it directly:
 
 ```bash
 # Download the schema for the version you are targeting
 
 curl -o otel-config-schema.json \
-  https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json
+  https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json
 ```
 
 Pin the schema version to match the `file_format` version in your configuration file. If your config uses `file_format: "0.3"`, use the schema that corresponds to that version.
@@ -39,6 +39,7 @@ Then write a validation script:
 # Validates an OpenTelemetry YAML config file against the JSON schema
 
 import json
+import argparse
 import sys
 
 import yaml
@@ -75,18 +76,19 @@ def validate_config(config_path, schema_path):
         return False
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: validate_otel_config.py <config.yaml> <schema.json>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--schema", required=True, help="Path to the JSON schema")
+    parser.add_argument("configs", nargs="+", help="OpenTelemetry YAML config files")
+    args = parser.parse_args()
 
-    success = validate_config(sys.argv[1], sys.argv[2])
+    success = all(validate_config(config, args.schema) for config in args.configs)
     sys.exit(0 if success else 1)
 ```
 
 Run it against your config:
 
 ```bash
-python validate_otel_config.py otel-config.yaml otel-config-schema.json
+python validate_otel_config.py --schema otel-config-schema.json otel-config.yaml
 # OK: otel-config.yaml is valid
 ```
 
@@ -114,7 +116,7 @@ brew install yq
 
 # Convert YAML to JSON and validate
 yq -o json otel-config.yaml > /tmp/otel-config.json
-ajv validate -s otel-config-schema.json -d /tmp/otel-config.json
+ajv validate --spec=draft2020 -s otel-config-schema.json -d /tmp/otel-config.json
 ```
 
 ## Adding Validation to Your CI Pipeline
@@ -148,14 +150,14 @@ jobs:
       - name: Download OTel config schema
         run: |
           curl -o /tmp/otel-schema.json \
-            https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json
+            https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json
 
       - name: Validate all OTel config files
         run: |
           # Find all YAML config files and validate each one
           failed=0
           for config_file in $(find . -name "otel-*.yaml" -not -path "./.github/*"); do
-            python validate_otel_config.py "$config_file" /tmp/otel-schema.json || failed=1
+            python validate_otel_config.py --schema /tmp/otel-schema.json "$config_file" || failed=1
           done
           exit $failed
 ```
@@ -164,7 +166,7 @@ This workflow triggers only when OpenTelemetry config files change, keeping your
 
 ## Handling Environment Variable Placeholders
 
-One tricky part: if your config uses `${ENV_VAR}` substitution syntax, the raw file will not validate because the schema expects actual values, not placeholder strings. You need to substitute the variables before validation.
+One tricky part: if your config uses `${ENV_VAR}` substitution syntax, the raw file may not validate because node types are interpreted after substitution. Substitute the variables before validation so placeholders for booleans, integers, and floating point values are checked as their resolved types.
 
 A simple approach is to use `envsubst` with dummy values:
 
@@ -182,7 +184,7 @@ export SAMPLE_RATIO="0.5"
 
 # Substitute and validate
 envsubst < otel-config.yaml > /tmp/otel-config-resolved.yaml
-python validate_otel_config.py /tmp/otel-config-resolved.yaml otel-config-schema.json
+python validate_otel_config.py --schema otel-config-schema.json /tmp/otel-config-resolved.yaml
 ```
 
 You can also maintain a `.env.validation` file with these dummy values and source it in CI.
