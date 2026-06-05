@@ -12,7 +12,7 @@ This post covers how to set up alert delivery from OpenTelemetry metrics to Micr
 
 ## Architecture
 
-Alertmanager does not have native support for Teams or Discord. The solution is to use Alertmanager's generic webhook receiver to send alerts to a small adapter service that transforms the payload into the format each platform expects.
+Alertmanager has built-in receivers for Microsoft Teams and Discord, but a generic webhook receiver is still useful when you want full control over the payload format. The solution is to send alerts to a small adapter service that transforms the payload into the format each platform expects.
 
 ```mermaid
 flowchart LR
@@ -25,10 +25,10 @@ flowchart LR
 
 ## Step 1: Get Webhook URLs from Teams and Discord
 
-For Microsoft Teams, create an incoming webhook connector on the target channel:
-1. Open the channel, click the three dots menu, select "Connectors"
-2. Find "Incoming Webhook", click "Configure"
-3. Name it "OTel Alerts" and copy the webhook URL
+For Microsoft Teams, create an incoming webhook workflow on the target channel:
+1. Open the channel, click the three dots menu, and select "Workflows"
+2. Choose a webhook alert template such as "Send webhook alerts to a channel"
+3. Name it "OTel Alerts", save the workflow, and copy the webhook URL
 
 For Discord, create a webhook on the target channel:
 1. Open Server Settings, go to Integrations, then Webhooks
@@ -49,7 +49,6 @@ The adapter translates Alertmanager's JSON format into platform-specific message
 
 from flask import Flask, request, jsonify
 import requests
-import json
 
 app = Flask(__name__)
 
@@ -69,7 +68,7 @@ def teams_webhook():
     status = data.get("status", "firing")
     group_labels = data.get("groupLabels", {})
 
-    # Build Teams Adaptive Card payload
+    # Build Teams MessageCard payload
     severity = group_labels.get("severity", "info")
     color = SEVERITY_COLORS.get(severity, "808080")
 
@@ -106,6 +105,7 @@ def teams_webhook():
     # Forward to Teams webhook URL
     teams_url = app.config["TEAMS_WEBHOOK_URL"]
     resp = requests.post(teams_url, json=teams_payload, timeout=10)
+    resp.raise_for_status()
 
     return jsonify({"status": "forwarded", "teams_response": resp.status_code}), 200
 
@@ -157,6 +157,7 @@ def discord_webhook():
     # Forward to Discord webhook URL
     discord_url = app.config["DISCORD_WEBHOOK_URL"]
     resp = requests.post(discord_url, json=discord_payload, timeout=10)
+    resp.raise_for_status()
 
     return jsonify({"status": "forwarded", "discord_response": resp.status_code}), 200
 
@@ -180,7 +181,7 @@ services:
     ports:
       - "5002:5002"
     environment:
-      TEAMS_WEBHOOK_URL: "https://outlook.office.com/webhook/YOUR_TEAMS_WEBHOOK"
+      TEAMS_WEBHOOK_URL: "https://YOUR_WORKFLOW_WEBHOOK_URL"
       DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/YOUR_DISCORD_WEBHOOK"
     restart: unless-stopped
 ```
@@ -260,17 +261,17 @@ route:
 
   routes:
     # Critical alerts go to both Teams and Discord
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: teams-alerts
       continue: true
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: discord-alerts
 
     # Warning alerts go to Discord only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: discord-alerts
 ```
 
