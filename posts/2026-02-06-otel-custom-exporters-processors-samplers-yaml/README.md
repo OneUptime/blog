@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Custom Exporter, Processor, Samplers, YAML
 
 Description: Define custom exporters, processors, and samplers in your OpenTelemetry declarative YAML configuration for advanced use cases.
 
-The built-in OTLP exporter, batch processor, and ratio-based sampler cover most use cases. But production systems often need more. Maybe you need to export traces to multiple backends simultaneously, filter out noisy spans before they leave your application, or implement a custom sampling strategy based on business logic. The declarative configuration format supports all of this.
+The built-in OTLP exporter, batch processor, and ratio-based sampler cover most use cases. But production systems often need more. Maybe you need to export traces to multiple backends simultaneously, load a custom processor plugin, or implement a custom sampling strategy based on business logic. The declarative configuration format supports all of this.
 
 ## Custom Exporters
 
@@ -17,7 +17,7 @@ You can define multiple processors in your trace pipeline, each with its own exp
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 tracer_provider:
   processors:
@@ -26,9 +26,8 @@ tracer_provider:
         schedule_delay: 5000
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://primary-collector:4317"
-            protocol: "grpc"
             compression: "gzip"
 
     # Secondary: send a copy to a data lake for long-term storage
@@ -36,9 +35,8 @@ tracer_provider:
         schedule_delay: 10000
         max_export_batch_size: 1024
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://data-lake-collector:4317"
-            protocol: "grpc"
 
     # Debug: print to console (useful in staging)
     - simple:
@@ -46,11 +44,11 @@ tracer_provider:
           console: {}
 ```
 
-Each processor runs independently. If one exporter is slow or fails, it does not block the others.
+Each processor has its own exporter and buffering behavior. A slow or failing exporter will not prevent another batch processor from having its own export queue, although span processor callbacks still run synchronously when spans start or end.
 
 ### Zipkin Exporter
 
-If you need to send traces in Zipkin format (for example, to a legacy system), configure the Zipkin exporter:
+If you need to send traces in Zipkin format (for example, to a legacy system), configure a custom Zipkin `SpanExporter` plugin. For this to work, the SDK must have a registered `PluginComponentProvider` for a span exporter named `zipkin`:
 
 ```yaml
 tracer_provider:
@@ -91,13 +89,13 @@ logger_provider:
 
 ### Span Processor Chain
 
-Processors execute in the order they are defined. This lets you build a processing chain:
+Custom span processors execute their callbacks in the order they are defined. These are SDK extension plugins rather than Collector pipeline processors, so a custom processor must be registered with the SDK before the configuration can be created:
 
 ```yaml
 tracer_provider:
   processors:
-    # Step 1: Filter out unwanted spans
-    - filter:
+    # Step 1: Run a custom span filter plugin
+    - span_filter:
         spans:
           exclude:
             match_type: "regexp"
@@ -106,8 +104,8 @@ tracer_provider:
               - "^readiness.*"
               - "^GET /favicon.ico$"
 
-    # Step 2: Add custom attributes
-    - attributes:
+    # Step 2: Run a custom span attribute plugin
+    - span_attributes:
         actions:
           - key: "team.name"
             value: "platform"
@@ -120,19 +118,18 @@ tracer_provider:
     - batch:
         schedule_delay: 5000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 ```
 
 ### Attribute Processor
 
-The attribute processor lets you manipulate span attributes before export. This is useful for redacting sensitive data:
+The declarative schema can reference a custom attribute processor plugin to manipulate span attributes before export. This is useful for redacting sensitive data:
 
 ```yaml
 tracer_provider:
   processors:
-    - attributes:
+    - span_attributes:
         actions:
           # Redact credit card numbers from db.statement
           - key: "db.statement"
@@ -151,9 +148,8 @@ tracer_provider:
 
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 ```
 
 ## Custom Samplers
@@ -199,14 +195,14 @@ tracer_provider:
 
 ### Rule-Based Sampling
 
-For more complex scenarios, you can configure rule-based sampling that applies different rates to different operations:
+For more complex scenarios, you can configure the experimental Jaeger remote sampler, which fetches sampling rules from a remote service:
 
 ```yaml
 tracer_provider:
   sampler:
-    jaeger_remote:
+    jaeger_remote/development:
       endpoint: "http://sampling-service:5778/sampling"
-      polling_interval: 60000  # refresh rules every 60s
+      interval: 60000  # refresh rules every 60s
       initial_sampler:
         parent_based:
           root:
@@ -224,9 +220,8 @@ meter_provider:
     - periodic:
         interval: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 
   views:
     # Custom histogram buckets for request duration
@@ -265,15 +260,17 @@ meter_provider:
 
 ## Putting It All Together
 
-Here is a production-grade config that combines custom processors, exporters, and samplers:
+Here is a production-grade config that combines exporters, metric views, and samplers:
 
 ```yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: "service.name"
+      value: "${SERVICE_NAME}"
+    - name: "deployment.environment.name"
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
@@ -281,9 +278,8 @@ tracer_provider:
         schedule_delay: 5000
         max_queue_size: 4096
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
   sampler:
     parent_based:
@@ -296,9 +292,8 @@ meter_provider:
     - periodic:
         interval: 60000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
   views:
     - selector:
         instrument_name: "http.server.request.duration"
@@ -311,14 +306,15 @@ logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Wrapping Up
 
-Declarative configuration gives you the flexibility to define custom exporters, processors, and samplers without writing any code. Multiple exporters let you fan out to different backends. Processor chains let you filter, enrich, and redact telemetry. Custom samplers let you balance data volume against observability coverage. Define it all in YAML, validate it against the schema, and deploy it with confidence.
+Declarative configuration gives you the flexibility to define built-in exporters, processors, and samplers in YAML, and to reference custom exporters, processors, and samplers when the SDK has the matching plugin providers registered. Multiple exporters let you fan out to different backends. Custom processors can filter, enrich, and redact telemetry according to the behavior implemented by those plugins. Custom samplers let you balance data volume against observability coverage. Define it all in YAML, validate it against the schema, and deploy it with confidence.
