@@ -28,7 +28,7 @@ ImportError: cannot import name 'SpanAttributes' from 'opentelemetry.semconv.tra
 
 ## Why This Happens
 
-The OpenTelemetry Python project releases packages in lockstep. The SDK and all instrumentation libraries are released together with matching version numbers. When you install SDK version 1.22 but instrumentation version 0.44, their semantic conventions requirements conflict.
+The OpenTelemetry Python project releases the stable SDK packages and beta instrumentation packages as paired releases. When you install SDK version 1.22 but instrumentation version 0.44, their semantic conventions requirements conflict.
 
 The version mapping follows this pattern:
 
@@ -55,13 +55,13 @@ opentelemetry-instrumentation-requests==0.44b0
 opentelemetry-instrumentation-sqlalchemy==0.44b0
 ```
 
-Use compatible release specifiers to allow patch updates:
+Use compatible release specifiers for stable packages, and exact pins for beta packages:
 
 ```txt
-# Allow patch updates within the same minor version
+# Allow patch updates within the same stable minor version
 opentelemetry-api~=1.23.0
 opentelemetry-sdk~=1.23.0
-opentelemetry-semantic-conventions~=0.44b0
+opentelemetry-semantic-conventions==0.44b0
 ```
 
 ## Fix 2: Use opentelemetry-distro for Version Management
@@ -105,7 +105,7 @@ opentelemetry-instrumentation==0.44b0
 pip install -c otel-constraints.txt opentelemetry-instrumentation-flask
 ```
 
-The constraints file forces pip to use the specified versions regardless of what the packages request.
+The constraints file limits pip to the specified versions. If those versions do not satisfy the packages being installed, pip fails instead of silently choosing an incompatible set.
 
 ## Diagnosing the Conflict
 
@@ -134,10 +134,10 @@ opentelemetry-instrumentation-flask 0.44b0 requires
 dependencies = [
     "opentelemetry-api~=1.23.0",
     "opentelemetry-sdk~=1.23.0",
-    "opentelemetry-semantic-conventions~=0.44b0",
+    "opentelemetry-semantic-conventions==0.44b0",
     "opentelemetry-exporter-otlp-proto-http~=1.23.0",
-    "opentelemetry-instrumentation-flask~=0.44b0",
-    "opentelemetry-instrumentation-requests~=0.44b0",
+    "opentelemetry-instrumentation-flask==0.44b0",
+    "opentelemetry-instrumentation-requests==0.44b0",
 ]
 ```
 
@@ -179,7 +179,7 @@ pip install \
     "opentelemetry-sdk==${OTEL_VERSION}" \
     "opentelemetry-semantic-conventions==${INSTRUMENTATION_VERSION}" \
     "opentelemetry-exporter-otlp-proto-http==${OTEL_VERSION}" \
-    "opentelemetry-instrumentation==${INSTRUMENTATION_VERSION}" \
+    "opentelemetry-instrumentation==${INSTRUMENTATION_VERSION}"
 
 # Install instrumentations
 opentelemetry-bootstrap -a install
@@ -188,4 +188,4 @@ opentelemetry-bootstrap -a install
 pip check | grep opentelemetry
 ```
 
-The rule of thumb is simple: all OpenTelemetry Python packages must be from the same release. Never mix versions from different releases. When updating, update everything together.
+The rule of thumb is simple: keep OpenTelemetry Python SDK packages and instrumentation packages on compatible paired releases. Avoid mixing SDK and instrumentation release sets. When updating, update everything together.
