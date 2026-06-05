@@ -36,13 +36,18 @@ The simplest approach for batch jobs is rate-limited sampling. Instead of sampli
 ```python
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ParentBased
+from opentelemetry.sdk.trace.sampling import (
+    Decision,
+    ParentBased,
+    Sampler,
+    SamplingResult,
+)
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 import threading
 import time
 
-class RateLimitedSampler:
+class RateLimitedSampler(Sampler):
     """Samples up to N traces per second."""
 
     def __init__(self, max_traces_per_second):
@@ -52,7 +57,7 @@ class RateLimitedSampler:
         self.lock = threading.Lock()
 
     def should_sample(self, context, trace_id, name, kind,
-                      attributes, links):
+                      attributes, links, trace_state=None):
         with self.lock:
             now = time.monotonic()
             # Refill tokens based on elapsed time
@@ -65,13 +70,15 @@ class RateLimitedSampler:
 
             if self.token_bucket >= 1.0:
                 self.token_bucket -= 1.0
-                return trace.sampling.SamplingResult(
-                    trace.sampling.Decision.RECORD_AND_SAMPLE,
+                return SamplingResult(
+                    Decision.RECORD_AND_SAMPLE,
                     attributes,
+                    trace_state,
                 )
             else:
-                return trace.sampling.SamplingResult(
-                    trace.sampling.Decision.DROP,
+                return SamplingResult(
+                    Decision.DROP,
+                    trace_state=trace_state,
                 )
 
     def get_description(self):
@@ -79,7 +86,7 @@ class RateLimitedSampler:
 
 # Allow maximum 5 traces per second from batch processing
 
-sampler = RateLimitedSampler(max_traces_per_second=5)
+sampler = ParentBased(RateLimitedSampler(max_traces_per_second=5))
 
 provider = TracerProvider(sampler=sampler)
 exporter = OTLPSpanExporter(endpoint="http://localhost:4317")
@@ -250,7 +257,7 @@ def process_batch_record(record):
         return transform_and_store(record)
 ```
 
-Then in the collector, use a composite policy to apply different rates:
+Then in the collector, use `and` policies to apply different rates:
 
 ```yaml
 processors:
