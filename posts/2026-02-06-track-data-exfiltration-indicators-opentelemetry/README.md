@@ -23,8 +23,7 @@ The three main indicators of data exfiltration are:
 Add middleware that tracks response sizes with enough context for anomaly detection:
 
 ```python
-import time
-from flask import Flask, request, g
+from flask import Flask, request
 from opentelemetry import trace, metrics
 
 app = Flask(__name__)
@@ -75,13 +74,17 @@ class ResponseSizeTracker:
 
         # After the response is fully sent, record metrics
         total_size = response_size[0]
-        for chunk in response:
-            total_size += len(chunk)
-            yield chunk
+        try:
+            for chunk in response:
+                total_size += len(chunk)
+                yield chunk
+        finally:
+            if hasattr(response, "close"):
+                response.close()
 
-        # Record the response size
-        path = environ.get("PATH_INFO", "unknown")
-        self.record_response_size(path, total_size, environ)
+            # Record the response size
+            path = environ.get("PATH_INFO", "unknown")
+            self.record_response_size(path, total_size, environ)
 
     def record_response_size(self, path, size, environ):
         span = trace.get_current_span()
@@ -92,7 +95,7 @@ class ResponseSizeTracker:
 
         response_size_histogram.record(size, {
             "http.route": path,
-            "user.id": user_id,
+            "user_id": user_id,
         })
 
         # Check against threshold
@@ -112,7 +115,7 @@ class ResponseSizeTracker:
 
             large_response_counter.add(1, {
                 "http.route": path,
-                "user.id": user_id,
+                "user_id": user_id,
             })
 
 app.wsgi_app = ResponseSizeTracker(app.wsgi_app)
@@ -123,7 +126,7 @@ app.wsgi_app = ResponseSizeTracker(app.wsgi_app)
 Track the time of day for data access and flag requests that fall outside normal business hours:
 
 ```python
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 
 # Define business hours for your organization
@@ -163,7 +166,7 @@ def check_off_hours_access(endpoint, user_id):
 
         off_hours_counter.add(1, {
             "http.route": endpoint,
-            "user.id": user_id,
+            "user_id": user_id,
             "day_of_week": now.strftime("%A"),
         })
 
@@ -202,7 +205,7 @@ def track_export_access():
     if path in EXPORT_ENDPOINTS:
         export_endpoint_counter.add(1, {
             "http.route": path,
-            "user.id": user_id,
+            "user_id": user_id,
         })
 
         check_off_hours_access(path, user_id)
@@ -228,7 +231,7 @@ def track_export_access():
 
             export_endpoint_counter.add(1, {
                 "http.route": path,
-                "user.id": user_id,
+                "user_id": user_id,
                 "query.type": "high_limit",
             })
 ```
@@ -257,7 +260,7 @@ groups:
       - alert: OffHoursExportAccess
         expr: |
           sum by (user_id) (
-            rate(security_off_hours_access_count_total[30m])
+            increase(security_off_hours_access_count_total[30m])
           ) > 5
         for: 5m
         labels:
