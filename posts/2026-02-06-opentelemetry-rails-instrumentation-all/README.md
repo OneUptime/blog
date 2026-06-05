@@ -72,7 +72,7 @@ OpenTelemetry::SDK.configure do |c|
 
   # Configure the OTLP exporter to send traces to your backend
   # This uses environment variables for endpoint configuration
-  c.use_all('OpenTelemetry::Instrumentation' => { enabled: true })
+  c.use_all
 
   # Add resource attributes for better trace identification
   c.resource = OpenTelemetry::SDK::Resources::Resource.create(
@@ -107,8 +107,8 @@ OTEL_SERVICE_NAME=rails-application
 # Resource attributes
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,service.version=1.0.0
 
-# Enable/disable tracing
-OTEL_TRACES_ENABLED=true
+# Enable the OTLP trace exporter (use "none" to disable trace export)
+OTEL_TRACES_EXPORTER=otlp
 ```
 
 For development environments, you can run a local collector or use a SaaS observability platform. OneUptime, Jaeger, and other OpenTelemetry-compatible backends work seamlessly with this configuration.
@@ -123,19 +123,23 @@ The basic setup works well, but you might want more control over specific instru
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
+require 'socket'
 
 OpenTelemetry::SDK.configure do |c|
-  c.service_name = ENV.fetch('OTEL_SERVICE_NAME', 'rails-application')
+  service_name = ENV.fetch('OTEL_SERVICE_NAME', 'rails-application')
+  c.service_name = service_name
 
   # Use all instrumentations with custom configuration
   c.use_all({
     'OpenTelemetry::Instrumentation::Rails' => {
-      enabled: true,
-      enable_recognize_route: true
+      enabled: true
     },
     'OpenTelemetry::Instrumentation::ActiveRecord' => {
+      enabled: true
+    },
+    'OpenTelemetry::Instrumentation::PG' => {
       enabled: true,
-      enable_sql_obfuscation: true
+      db_statement: :obfuscate
     },
     'OpenTelemetry::Instrumentation::Redis' => {
       enabled: true
@@ -150,7 +154,7 @@ OpenTelemetry::SDK.configure do |c|
 
   # Configure resource attributes
   c.resource = OpenTelemetry::SDK::Resources::Resource.create({
-    'service.name' => c.service_name,
+    'service.name' => service_name,
     'service.version' => ENV.fetch('APP_VERSION', 'unknown'),
     'deployment.environment' => Rails.env,
     'host.name' => Socket.gethostname,
@@ -166,7 +170,7 @@ OpenTelemetry::SDK.configure do |c|
 end
 ```
 
-The `enable_sql_obfuscation` option is particularly important for production environments, as it prevents sensitive data in SQL queries from appearing in your traces.
+The `db_statement: :obfuscate` option is particularly important for production environments, as it prevents sensitive data in SQL queries from appearing in your traces.
 
 ## Verifying the Installation
 
@@ -206,7 +210,7 @@ OpenTelemetry::SDK.configure do |c|
     exporter,
     max_queue_size: 2048,        # Default: 2048
     max_export_batch_size: 512,  # Default: 512
-    export_timeout_millis: 30000 # Default: 30000
+    exporter_timeout: 30000      # Default: 30000
   )
 
   c.add_span_processor(processor)
@@ -220,6 +224,10 @@ The batch processor collects spans in memory and exports them in batches, reduci
 For extremely high-traffic applications, you might want to sample traces rather than recording every single request:
 
 ```ruby
+# Configure sampler before the SDK initializes
+ENV['OTEL_TRACES_SAMPLER'] ||= 'traceidratio'
+ENV['OTEL_TRACES_SAMPLER_ARG'] ||= '0.1'
+
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-application'
   c.use_all
@@ -230,9 +238,6 @@ OpenTelemetry::SDK.configure do |c|
       OpenTelemetry::Exporter::OTLP::Exporter.new
     )
   )
-
-  # Configure sampler
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
 end
 ```
 
@@ -282,4 +287,3 @@ OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=your-api-key
 ```
 
 The `opentelemetry-instrumentation-all` gem provides the fastest path to comprehensive observability in Rails applications. With a single gem and minimal configuration, you get automatic instrumentation across your entire stack, giving you the visibility needed to debug issues and optimize performance in production environments.
-
