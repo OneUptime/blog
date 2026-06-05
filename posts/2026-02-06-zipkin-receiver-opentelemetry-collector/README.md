@@ -30,7 +30,7 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -38,10 +38,10 @@ service:
     traces:
       receivers: [zipkin]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration sets up the Zipkin receiver on the standard port 9411. The collector listens on all network interfaces and forwards received traces through a batch processor to a logging exporter for debugging purposes.
+This configuration sets up the Zipkin receiver on the standard port 9411. The collector listens on all network interfaces and forwards received traces through a batch processor to a debug exporter for troubleshooting purposes.
 
 ## Endpoint Configuration
 
@@ -53,11 +53,11 @@ receivers:
     # Bind address and port
     endpoint: 0.0.0.0:9411
 
-    # Parse string tags as JSON
+    # Parse string tags into primitive non-string values
     parse_string_tags: true
 ```
 
-The `parse_string_tags` option is useful when Zipkin tags contain JSON-encoded data. When enabled, the receiver attempts to parse string tag values as JSON objects.
+The `parse_string_tags` option is useful when Zipkin tags contain values that should be represented as integers, booleans, or floats. When enabled, the receiver attempts to parse string tag values and binary annotations into primitive non-string values.
 
 ## Protocol Support
 
@@ -67,7 +67,7 @@ The Zipkin receiver automatically handles multiple formats based on the Content-
 graph TD
     A[Zipkin Client] -->|POST /api/v2/spans| B[Zipkin Receiver]
     B --> C{Content-Type?}
-    C -->|application/json| D[JSON v2 Parser]
+    C -->|application/json| D[JSON v1/v2 Parser]
     C -->|application/x-protobuf| E[Protobuf Parser]
     D --> F[OTLP Format]
     E --> F
@@ -140,17 +140,9 @@ receivers:
         - "Authorization"
         - "X-Requested-With"
 
-      # Allowed methods
-      allowed_methods:
-        - POST
-        - OPTIONS
-
       # Expose headers to the browser
-      expose_headers:
+      exposed_headers:
         - "Content-Length"
-
-      # Credentials support
-      allow_credentials: true
 
       # Max age for preflight cache (seconds)
       max_age: 7200
@@ -197,7 +189,7 @@ receivers:
   zipkin:
     endpoint: 0.0.0.0:9411
 
-    # Maximum request body size (default: unlimited)
+    # Maximum request body size (default: 20 MiB)
     max_request_body_size: 10485760  # 10 MB
 
     # Include server metadata in responses
@@ -206,28 +198,30 @@ receivers:
 
 ### String Tag Parsing
 
-Enable advanced tag parsing for JSON-encoded string values:
+Enable advanced tag parsing for string values that should become primitive non-string attributes:
 
 ```yaml
 receivers:
   zipkin:
     endpoint: 0.0.0.0:9411
 
-    # Parse string tags as JSON structures
+    # Parse string tags into primitive non-string values
     parse_string_tags: true
 ```
 
-This is useful when applications encode complex data structures as JSON strings in Zipkin tags. For example:
+This is useful when applications encode numeric or boolean values as strings in Zipkin tags. For example:
 
 ```json
 {
   "tags": {
-    "user.details": "{\"id\":123,\"name\":\"John\",\"role\":\"admin\"}"
+    "user.id": "123",
+    "cache.hit": "true",
+    "request.cost": "4.25"
   }
 }
 ```
 
-With `parse_string_tags: true`, this becomes a structured attribute in OpenTelemetry.
+With `parse_string_tags: true`, these become integer, boolean, and floating-point attributes in OpenTelemetry instead of plain strings.
 
 ## Complete Production Configuration
 
@@ -239,10 +233,10 @@ receivers:
     # Listen on all interfaces
     endpoint: 0.0.0.0:9411
 
-    # Enable JSON tag parsing
+    # Enable primitive tag parsing
     parse_string_tags: true
 
-    # Limit request size
+    # Limit request size explicitly
     max_request_body_size: 20971520  # 20 MB
 
     # TLS encryption
@@ -315,10 +309,6 @@ exporters:
     default_service_name: unknown-service
     timeout: 10s
 
-  # Metrics for monitoring
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
 service:
   pipelines:
     traces:
@@ -337,8 +327,13 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Client Configuration Examples
@@ -350,7 +345,9 @@ Configure a Java application using Brave (Zipkin's Java client):
 ```java
 import zipkin2.reporter.AsyncReporter;
 import zipkin2.reporter.urlconnection.URLConnectionSender;
+import zipkin2.Span;
 import brave.Tracing;
+import java.util.concurrent.TimeUnit;
 
 // Configure sender to OpenTelemetry Collector
 URLConnectionSender sender = URLConnectionSender.create(
@@ -432,12 +429,12 @@ Understanding the data flow helps optimize your configuration:
 graph LR
     A[Zipkin Client] -->|HTTP POST| B[Zipkin Receiver]
     B --> C{Parse Format}
-    C -->|JSON v2| D[JSON Parser]
+    C -->|JSON v1/v2| D[JSON Parser]
     C -->|Protobuf| E[Protobuf Parser]
     D --> F[OTLP Converter]
     E --> F
-    F --> G[Batch Processor]
-    G --> H[Memory Limiter]
+    F --> G[Memory Limiter]
+    G --> H[Batch Processor]
     H --> I[Exporters]
 
     style B fill:#f9f,stroke:#333,stroke-width:2px
@@ -457,18 +454,9 @@ receivers:
     endpoint: 0.0.0.0:9411
 
     # HTTP server tuning
-    http_server_settings:
-      # Read timeout
-      read_timeout: 30s
-
-      # Write timeout
-      write_timeout: 30s
-
-      # Idle timeout
-      idle_timeout: 60s
-
-      # Maximum header size
-      max_header_size: 1048576  # 1 MB
+    read_timeout: 30s
+    write_timeout: 30s
+    idle_timeout: 60s
 ```
 
 ### Batch Processing
@@ -518,8 +506,13 @@ Monitor Zipkin receiver metrics:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to monitor:
@@ -527,6 +520,8 @@ Key metrics to monitor:
 - `otelcol_receiver_refused_spans`: Number of spans refused
 - `otelcol_exporter_sent_spans`: Number of spans exported
 - `otelcol_processor_batch_batch_send_size`: Batch sizes
+
+When metrics are scraped through Prometheus, counter and unit suffixes may be added depending on your internal telemetry reader settings.
 
 ### Debug Logging
 
