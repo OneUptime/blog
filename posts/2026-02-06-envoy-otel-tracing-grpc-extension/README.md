@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Envoy Proxy, Tracing, GRPC Extension
 
 Description: Configure Envoy Proxy to export distributed traces using the native envoy.tracers.opentelemetry extension with OTLP gRPC export to the Collector.
 
-Envoy Proxy includes a native OpenTelemetry tracing extension called `envoy.tracers.opentelemetry`. This extension generates spans for every request passing through Envoy and exports them via OTLP gRPC to an OpenTelemetry Collector. It replaces older tracing integrations like Zipkin and Jaeger with a standards-based approach.
+Envoy Proxy includes a native OpenTelemetry tracing extension called `envoy.tracers.opentelemetry`. This extension generates spans for sampled requests passing through Envoy and exports them via OTLP gRPC to an OpenTelemetry Collector. Envoy's documentation currently marks this extension as work-in-progress, so review its production-readiness notes before relying on it for untrusted traffic.
 
 ## Basic Envoy Configuration
 
@@ -14,6 +14,12 @@ Here is an Envoy config that enables OpenTelemetry tracing:
 
 ```yaml
 # envoy.yaml
+
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
 
 static_resources:
   listeners:
@@ -49,7 +55,7 @@ static_resources:
                             prefix: "/"
                           route:
                             cluster: backend_service
-                          # Enable tracing on this route
+                          # Set the operation name on generated spans
                           decorator:
                             operation: backend_operation
                 http_filters:
@@ -97,6 +103,7 @@ The key pieces here are:
 1. The `tracing` block in the HTTP connection manager configures the OpenTelemetry provider
 2. The `opentelemetry_collector` cluster defines the gRPC connection to the Collector
 3. The `http2_protocol_options` is required because OTLP gRPC uses HTTP/2
+4. The route `decorator` sets the span operation name for requests matching that route
 
 ## Collector Configuration
 
@@ -132,8 +139,6 @@ service:
 ## Docker Compose Setup
 
 ```yaml
-version: "3.8"
-
 services:
   envoy:
     image: envoyproxy/envoy:v1.29-latest
@@ -163,7 +168,7 @@ services:
 
 ## Understanding Envoy Trace Spans
 
-Each request through Envoy generates a span with these attributes:
+Each sampled request through Envoy generates a span. The span can include data such as:
 
 ```text
 Span: ingress_http backend_operation
@@ -181,25 +186,13 @@ Attributes:
   zone:                      us-east-1
 ```
 
-The `response_flags` attribute indicates if anything went wrong. Common flags include `UH` (upstream host unhealthy), `UF` (upstream connection failure), and `UT` (upstream request timeout).
+When present, the `response_flags` attribute indicates if anything went wrong. Common flags include `UH` (upstream host unhealthy), `UF` (upstream connection failure), and `UT` (upstream request timeout).
 
 ## Configuring Trace Propagation
 
 Envoy propagates trace context using W3C Trace Context headers by default with the OpenTelemetry tracer. The incoming `traceparent` header is read, a child span is created, and an updated `traceparent` is forwarded to the upstream.
 
-To also propagate B3 headers for backward compatibility:
-
-```yaml
-tracing:
-  provider:
-    name: envoy.tracers.opentelemetry
-    typed_config:
-      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
-      grpc_service:
-        envoy_grpc:
-          cluster_name: opentelemetry_collector
-      service_name: envoy-proxy
-```
+The OpenTelemetry tracer does not currently expose a B3 propagation setting. If you need Envoy to inject both B3 and W3C headers for backward compatibility, use the Zipkin tracer and set its `trace_context_option` to `USE_B3_WITH_W3C_PROPAGATION`; that setting is not part of the OTLP gRPC exporter configuration above.
 
 ## Testing the Setup
 
@@ -218,4 +211,4 @@ Look for `tracing.opentelemetry.spans_sent` in the Envoy stats output.
 
 ## Summary
 
-The `envoy.tracers.opentelemetry` extension provides native OpenTelemetry tracing in Envoy. Configure the tracing provider in the HTTP connection manager, define a cluster for the Collector endpoint, and Envoy generates spans for every request. The extension handles W3C Trace Context propagation automatically, making it easy to include Envoy in your distributed tracing pipeline.
+The `envoy.tracers.opentelemetry` extension provides native OpenTelemetry tracing in Envoy. Configure the tracing provider in the HTTP connection manager, define a cluster for the Collector endpoint, and Envoy generates spans for sampled requests. The extension handles W3C Trace Context propagation automatically, making it easy to include Envoy in your distributed tracing pipeline.
