@@ -8,13 +8,13 @@ Description: A step-by-step guide to migrating from OpenCensus to OpenTelemetry 
 
 ---
 
-OpenCensus was one of the two projects (along with OpenTracing) that merged to form OpenTelemetry. While OpenCensus served the community well, it has been in maintenance mode since 2019 and will not receive new features or security patches going forward. If you still have OpenCensus instrumentation in your codebase, now is the time to migrate.
+OpenCensus was one of the two projects (along with OpenTracing) that merged to form OpenTelemetry. While OpenCensus served the community well, the OpenTelemetry project announced in 2023 that most OpenCensus repositories would be archived after July 31, 2023, with no new features or security patches going forward. If you still have OpenCensus instrumentation in your codebase, now is the time to migrate.
 
 The good news is that the OpenTelemetry project provides official bridge libraries that let you run OpenCensus and OpenTelemetry side by side during the transition. This means you do not have to rewrite all your instrumentation at once. You can migrate incrementally while keeping your existing OpenCensus code working.
 
 ## Understanding the Bridge Approach
 
-The OpenCensus bridge works by redirecting OpenCensus API calls to the OpenTelemetry SDK. When your code calls `opencensus.StartSpan()`, the bridge intercepts that call and creates an OpenTelemetry span instead. From the application code's perspective, nothing changes. But under the hood, all telemetry flows through the OpenTelemetry SDK and its exporters.
+The OpenCensus bridge works by redirecting OpenCensus API calls to the OpenTelemetry SDK. When your Go code calls `trace.StartSpan()`, the bridge creates an OpenTelemetry span instead. From the application code's perspective, nothing changes. But under the hood, all telemetry flows through the OpenTelemetry SDK and its exporters.
 
 ```mermaid
 graph LR
@@ -50,7 +50,7 @@ For Python:
 # Install the OpenTelemetry SDK and bridge for Python
 pip install opentelemetry-api opentelemetry-sdk
 pip install opentelemetry-exporter-otlp
-pip install opentelemetry-opencensus-shim
+pip install opentelemetry-opencensus-shim opencensus
 ```
 
 ## Step 2: Initialize the OpenTelemetry SDK
@@ -62,10 +62,10 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/bridge/opencensus"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -111,12 +111,16 @@ func initOTel(ctx context.Context) (func(), error) {
         return nil, err
     }
 
+    // Create the OpenCensus metric bridge and attach it to the reader
+    metricBridge := opencensus.NewMetricProducer()
+
     // Create the MeterProvider with a periodic reader
     mp := sdkmetric.NewMeterProvider(
         sdkmetric.WithResource(res),
         sdkmetric.WithReader(
             sdkmetric.NewPeriodicReader(metricExporter,
                 sdkmetric.WithInterval(30*time.Second),
+                sdkmetric.WithProducer(metricBridge),
             ),
         ),
     )
@@ -132,7 +136,7 @@ func initOTel(ctx context.Context) (func(), error) {
 }
 ```
 
-This sets up both tracing and metrics with OTLP export. The key requirement is that you have a registered `TracerProvider` and `MeterProvider` before activating the bridge.
+This sets up both tracing and metrics with OTLP export. The metric bridge is attached to the metric reader as a producer, while the trace bridge is installed separately after the SDK is configured.
 
 ## Step 3: Activate the Trace Bridge
 
@@ -142,7 +146,11 @@ Now install the bridge that redirects OpenCensus trace calls to OpenTelemetry:
 package main
 
 import (
+    "context"
+    "log"
+
     octrace "go.opencensus.io/trace"
+    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/bridge/opencensus"
 )
 
@@ -159,8 +167,9 @@ func main() {
     // Install the OpenCensus trace bridge
     // This replaces the default OpenCensus tracer with one that
     // forwards all spans to the OpenTelemetry SDK
-    tracer := opencensus.NewTracer(otel.GetTracerProvider().Tracer("opencensus-bridge"))
-    octrace.DefaultTracer = tracer
+    opencensus.InstallTraceBridge(
+        opencensus.WithTracerProvider(otel.GetTracerProvider()),
+    )
 
     // From this point on, all OpenCensus trace calls produce
     // OpenTelemetry spans. Existing code like this still works:
@@ -177,32 +186,32 @@ func main() {
 }
 ```
 
-The critical line is `octrace.DefaultTracer = tracer`. After this, every `opencensus.StartSpan` call in your entire application (including third-party libraries that use OpenCensus) will produce OpenTelemetry spans. The context propagation works correctly, so OpenCensus spans and OpenTelemetry spans can be parents and children of each other within the same trace.
+The critical call is `opencensus.InstallTraceBridge(...)`. After this, every `trace.StartSpan` call in your entire application (including third-party libraries that use OpenCensus) will produce OpenTelemetry spans. The context propagation works correctly, so OpenCensus spans and OpenTelemetry spans can be parents and children of each other within the same trace.
 
 ## Step 4: Activate the Metrics Bridge
 
-The metrics bridge works similarly. It redirects OpenCensus metric views to the OpenTelemetry SDK:
+The metrics bridge is configured as a metric producer on the OpenTelemetry metric reader. If you did not attach it during SDK initialization, create the bridge before constructing the reader:
 
 ```go
 import (
     "go.opentelemetry.io/otel/bridge/opencensus"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func setupMetricsBridge() {
-    // Install the metric bridge
-    // This makes OpenCensus stats.Record calls flow through
-    // the OpenTelemetry MeterProvider
-    opencensus.InstallNewPipeline(
-        // Pass in any options for metric conversion
+func newReaderWithMetricsBridge(exporter sdkmetric.Exporter) sdkmetric.Reader {
+    metricBridge := opencensus.NewMetricProducer()
+    return sdkmetric.NewPeriodicReader(
+        exporter,
+        sdkmetric.WithProducer(metricBridge),
     )
 }
 ```
 
-After activating the metric bridge, OpenCensus `stats.Record()` calls are converted to OpenTelemetry metric recordings. The bridge maps OpenCensus measures to OpenTelemetry instruments:
+After activating the metric bridge, OpenCensus `stats.Record()` calls are collected from OpenCensus global state and converted into OpenTelemetry metric data. The bridge maps OpenCensus views to OpenTelemetry metric data:
 
-- `stats.Int64Measure` with `view.Count()` aggregation becomes an OTel Counter
-- `stats.Float64Measure` with `view.Distribution()` becomes an OTel Histogram
-- `stats.Int64Measure` with `view.LastValue()` becomes an OTel Gauge
+- Count and sum aggregations are exported as OpenTelemetry sums
+- Distribution aggregations are exported as OpenTelemetry histograms
+- Last value aggregations are exported as OpenTelemetry gauges
 
 ## Step 5: Migrate the Python Bridge
 
@@ -234,7 +243,7 @@ metrics.set_meter_provider(mp)
 from opentelemetry.shim.opencensus import install_shim
 install_shim()
 
-# Now all OpenCensus calls are redirected to OpenTelemetry
+# Now OpenCensus trace calls are redirected to OpenTelemetry
 # Existing code like this still works:
 from opencensus.trace import tracer as oc_tracer
 tracer = oc_tracer.Tracer()
@@ -243,7 +252,7 @@ with tracer.span(name="legacy-operation") as span:
     do_legacy_work()
 ```
 
-The `install_shim()` call patches the OpenCensus library to route everything through OpenTelemetry. It is a single line of code that makes your entire OpenCensus instrumentation work with the new SDK.
+The `install_shim()` call patches the OpenCensus tracing library to route spans through OpenTelemetry. It is a single line of code that makes your existing OpenCensus trace instrumentation work with the new SDK.
 
 ## Step 6: Remove OpenCensus Exporters
 
