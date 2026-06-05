@@ -28,7 +28,7 @@ import time
 
 tracer = trace.get_tracer("cloud-save-service")
 
-def save_player_data(player_id, save_data, client_version, device_id):
+def save_player_data(player_id, save_data, client_version, device_id, base_version=0):
     with tracer.start_as_current_span("cloud_save.save") as span:
         save_size = len(save_data)
         save_hash = hashlib.sha256(save_data).hexdigest()[:16]
@@ -39,6 +39,7 @@ def save_player_data(player_id, save_data, client_version, device_id):
             "save.hash": save_hash,
             "save.device_id": device_id,
             "save.client_version": client_version,
+            "save.base_version": base_version,
         })
 
         # Load the current cloud version to check for conflicts
@@ -56,20 +57,20 @@ def save_player_data(player_id, save_data, client_version, device_id):
         # Check for conflicts
         with tracer.start_as_current_span("cloud_save.conflict_check") as conflict_span:
             has_conflict = False
-            if current and current.device_id != device_id:
-                # Different device wrote since our last sync
+            if current and current.version > base_version and current.device_id != device_id:
+                # Different device wrote after the version this client last synced
                 time_diff = time.time() - current.timestamp
                 conflict_span.set_attributes({
                     "conflict.detected": True,
                     "conflict.time_diff_seconds": round(time_diff, 1),
                     "conflict.other_device": current.device_id,
+                    "conflict.current_version": current.version,
+                    "conflict.base_version": base_version,
                 })
                 has_conflict = True
 
                 # Resolve the conflict
-                save_data = resolve_conflict(
-                    player_id, current.data, save_data, span
-                )
+                save_data = resolve_conflict(player_id, current.data, save_data)
             else:
                 conflict_span.set_attribute("conflict.detected", False)
 
@@ -108,7 +109,7 @@ def save_player_data(player_id, save_data, client_version, device_id):
 Conflict resolution is the most critical and error-prone part. Trace it carefully:
 
 ```python
-def resolve_conflict(player_id, cloud_data, local_data, parent_span):
+def resolve_conflict(player_id, cloud_data, local_data):
     with tracer.start_as_current_span("cloud_save.resolve_conflict") as span:
         span.set_attribute("player.id", player_id)
 
@@ -142,7 +143,7 @@ def resolve_conflict(player_id, cloud_data, local_data, parent_span):
         # Currency: take the higher value (avoids losing earned currency)
         merged.currency = max(cloud_state.currency, local_state.currency)
 
-        # Playtime: sum the deltas since last sync
+        # Playtime: keep the higher total playtime
         merged.total_playtime_hours = max(
             cloud_state.total_playtime_hours,
             local_state.total_playtime_hours
@@ -202,6 +203,8 @@ def sync_on_login(player_id, device_id, local_save_version):
 ## Metrics for Save System Health
 
 ```python
+from opentelemetry import metrics
+
 meter = metrics.get_meter("cloud-save-service")
 
 save_latency = meter.create_histogram(
