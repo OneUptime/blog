@@ -79,7 +79,7 @@ processors:
         action: insert
 
 exporters:
-  otlphttp:
+  otlp_http:
     # Export to the cloud gateway over the VPN link
     endpoint: https://otel-gateway.cloud.internal:4318
     tls:
@@ -107,7 +107,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp, file]
+      exporters: [otlp_http, file]
 ```
 
 ### Cloud Gateway Configuration
@@ -145,7 +145,7 @@ processors:
         action: insert
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
 
 service:
@@ -153,7 +153,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Context Propagation Across Boundaries
@@ -172,11 +172,6 @@ server {
         proxy_pass http://backend-service:8080;
 
         # Preserve OpenTelemetry trace context headers
-        proxy_pass_header traceparent;
-        proxy_pass_header tracestate;
-        proxy_pass_header baggage;
-
-        # Also preserve any vendor-specific headers
         proxy_set_header traceparent $http_traceparent;
         proxy_set_header tracestate $http_tracestate;
         proxy_set_header baggage $http_baggage;
@@ -191,8 +186,14 @@ The link between cloud and on-premise environments is less reliable than local n
 ```yaml
 # Exporters configured for unreliable network links.
 # Retry with exponential backoff and buffer to disk.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://otel-gateway.cloud.internal:4318
     retry_on_failure:
       enabled: true
@@ -210,13 +211,21 @@ exporters:
 extensions:
   file_storage:
     directory: /var/otel/queue
+    create_directory: true
     timeout: 10s
     compaction:
       on_start: true
       directory: /var/otel/queue/compact
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp_http]
 ```
 
-The persistent queue ensures that if the network link goes down for minutes or even hours, the telemetry data is buffered to disk and sent when connectivity is restored. No data is lost.
+The persistent queue helps ensure that if the network link goes down for minutes or even hours, queued telemetry data is buffered to disk and sent when connectivity is restored. Data can still be dropped if the queue fills, the disk is unavailable, or the retry limit is exceeded.
 
 ## On-Premise Deployment Without Kubernetes
 
@@ -258,14 +267,16 @@ Install and manage the collector configuration:
 # Install the collector on a bare-metal server
 #!/bin/bash
 
-VERSION="0.96.0"
+VERSION="0.153.0"
 ARCH="linux_amd64"
 
-# Download the collector binary
-curl -L -o /usr/local/bin/otelcol-contrib \
-  "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${VERSION}/otelcol-contrib_${VERSION}_${ARCH}"
+# Download and extract the collector binary
+curl --proto '=https' --tlsv1.2 -fL -o /tmp/otelcol-contrib.tar.gz \
+  "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${VERSION}/otelcol-contrib_${VERSION}_${ARCH}.tar.gz"
+tar -xzf /tmp/otelcol-contrib.tar.gz -C /tmp otelcol-contrib
+install -o root -g root -m 0755 /tmp/otelcol-contrib /usr/local/bin/otelcol-contrib
 
-chmod +x /usr/local/bin/otelcol-contrib
+rm -f /tmp/otelcol-contrib /tmp/otelcol-contrib.tar.gz
 
 # Create the otel user and directories
 useradd --system --no-create-home otel
