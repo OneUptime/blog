@@ -14,7 +14,7 @@ Traditional observability focuses on request-response patterns, but Go's concurr
 
 - Goroutines operate independently with no inherent parent-child relationship
 - Channel operations are invisible without instrumentation
-- Context switching between goroutines loses trace continuity
+- Trace continuity is lost when `context.Context` is not passed explicitly between goroutines
 - Deadlocks and channel blocking are hard to detect
 - Worker pool utilization isn't directly observable
 
@@ -27,7 +27,6 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -35,7 +34,7 @@ import (
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // Initialize OpenTelemetry with both tracing and metrics
@@ -45,8 +44,8 @@ func initObservability(serviceName string) (*sdktrace.TracerProvider, *metric.Me
     // Create resource with service information
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceNameKey.String(serviceName),
-            semconv.ServiceVersionKey.String("1.0.0"),
+            semconv.ServiceName(serviceName),
+            semconv.ServiceVersion("1.0.0"),
         ),
     )
     if err != nil {
@@ -164,26 +163,34 @@ func (ic *InstrumentedChannel[T]) Send(ctx context.Context, value T) error {
     )
     defer span.End()
 
-    // Record send metric
-    ic.sendCounter.Add(ctx, 1,
-        metric.WithAttributes(attribute.String("channel", ic.name)),
-    )
+    attrs := metric.WithAttributes(attribute.String("channel", ic.name))
+    blocked := false
 
-    // Attempt to send (this will block if channel is full)
+    // Attempt a non-blocking send first so the span reflects whether the operation waited.
     select {
     case ic.ch <- value:
-        span.SetAttributes(attribute.Bool("blocked", false))
-
-        // Update buffer size
-        ic.bufferGauge.Record(ctx, int64(len(ic.ch)),
-            metric.WithAttributes(attribute.String("channel", ic.name)),
-        )
-
-        return nil
+    default:
+        blocked = true
+        select {
+        case ic.ch <- value:
+        case <-ctx.Done():
+            span.SetAttributes(attribute.Bool("blocked", blocked), attribute.Bool("cancelled", true))
+            return ctx.Err()
+        }
     case <-ctx.Done():
-        span.SetAttributes(attribute.Bool("cancelled", true))
+        span.SetAttributes(attribute.Bool("blocked", blocked), attribute.Bool("cancelled", true))
         return ctx.Err()
     }
+
+    span.SetAttributes(attribute.Bool("blocked", blocked))
+
+    // Record successful send metric
+    ic.sendCounter.Add(ctx, 1, attrs)
+
+    // Update buffer size
+    ic.bufferGauge.Record(ctx, int64(len(ic.ch)), attrs)
+
+    return nil
 }
 
 // Receive receives a value with tracing
@@ -196,27 +203,44 @@ func (ic *InstrumentedChannel[T]) Receive(ctx context.Context) (T, error) {
     )
     defer span.End()
 
-    // Attempt to receive (this will block if channel is empty)
+    attrs := metric.WithAttributes(attribute.String("channel", ic.name))
+    blocked := false
+    var value T
+    var ok bool
+
+    // Attempt a non-blocking receive first so the span reflects whether the operation waited.
     select {
-    case value := <-ic.ch:
-        span.SetAttributes(attribute.Bool("blocked", false))
-
-        // Record receive metric
-        ic.receiveCounter.Add(ctx, 1,
-            metric.WithAttributes(attribute.String("channel", ic.name)),
-        )
-
-        // Update buffer size
-        ic.bufferGauge.Record(ctx, int64(len(ic.ch)),
-            metric.WithAttributes(attribute.String("channel", ic.name)),
-        )
-
-        return value, nil
+    case value, ok = <-ic.ch:
+    default:
+        blocked = true
+        select {
+        case value, ok = <-ic.ch:
+        case <-ctx.Done():
+            var zero T
+            span.SetAttributes(attribute.Bool("blocked", blocked), attribute.Bool("cancelled", true))
+            return zero, ctx.Err()
+        }
     case <-ctx.Done():
         var zero T
-        span.SetAttributes(attribute.Bool("cancelled", true))
+        span.SetAttributes(attribute.Bool("blocked", blocked), attribute.Bool("cancelled", true))
         return zero, ctx.Err()
     }
+
+    if !ok {
+        var zero T
+        span.SetAttributes(attribute.Bool("blocked", blocked), attribute.Bool("closed", true))
+        return zero, fmt.Errorf("channel %s is closed", ic.name)
+    }
+
+    span.SetAttributes(attribute.Bool("blocked", blocked))
+
+    // Record receive metric
+    ic.receiveCounter.Add(ctx, 1, attrs)
+
+    // Update buffer size
+    ic.bufferGauge.Record(ctx, int64(len(ic.ch)), attrs)
+
+    return value, nil
 }
 
 // Close closes the channel
@@ -253,6 +277,7 @@ import (
 type Task struct {
     ID      string
     Payload interface{}
+    Context context.Context
 }
 
 // WorkerPool manages a pool of goroutines with observability
@@ -361,8 +386,12 @@ func (wp *WorkerPool) worker(workerID string, handler func(context.Context, Task
 // processTask handles a single task with full instrumentation
 func (wp *WorkerPool) processTask(workerID string, task Task, handler func(context.Context, Task) error) {
     start := time.Now()
+    parentCtx := task.Context
+    if parentCtx == nil {
+        parentCtx = context.Background()
+    }
 
-    ctx, span := wp.tracer.Start(wp.ctx, fmt.Sprintf("pool.%s.task", wp.name),
+    ctx, span := wp.tracer.Start(parentCtx, fmt.Sprintf("pool.%s.task", wp.name),
         trace.WithAttributes(
             attribute.String("pool.name", wp.name),
             attribute.String("worker.id", workerID),
@@ -380,7 +409,6 @@ func (wp *WorkerPool) processTask(workerID string, task Task, handler func(conte
     wp.taskDuration.Record(ctx, duration,
         metric.WithAttributes(
             attribute.String("pool", wp.name),
-            attribute.String("task_id", task.ID),
             attribute.Bool("success", err == nil),
         ),
     )
@@ -400,6 +428,8 @@ func (wp *WorkerPool) Submit(ctx context.Context, task Task) error {
         ),
     )
     defer span.End()
+
+    task.Context = context.WithoutCancel(ctx)
 
     select {
     case wp.tasks <- task:
@@ -470,9 +500,9 @@ import (
 )
 
 // FanOutResult represents a result from a fan-out operation
-type FanOutResult struct {
+type FanOutResult[R any] struct {
     WorkerID int
-    Result   interface{}
+    Result   R
     Error    error
 }
 
@@ -483,6 +513,10 @@ func FanOut[T any, R any](
     numWorkers int,
     processor func(context.Context, T) (R, error),
 ) ([]R, error) {
+    if numWorkers <= 0 {
+        return nil, fmt.Errorf("numWorkers must be greater than zero")
+    }
+
     tracer := otel.Tracer("concurrency")
 
     ctx, span := tracer.Start(ctx, "fan_out",
@@ -495,7 +529,7 @@ func FanOut[T any, R any](
 
     // Create channels for work distribution and result collection
     workChan := make(chan T, len(workItems))
-    resultChan := make(chan FanOutResult, len(workItems))
+    resultChan := make(chan FanOutResult[R], len(workItems))
 
     // Fan-out: Start workers
     var wg sync.WaitGroup
@@ -525,6 +559,10 @@ func FanOut[T any, R any](
                 )
 
                 result, err := processor(itemCtx, work)
+                if err != nil {
+                    itemSpan.RecordError(err)
+                    itemSpan.SetAttributes(attribute.Bool("error", true))
+                }
                 itemSpan.End()
 
                 resultChan <- FanOutResult{
@@ -565,7 +603,7 @@ func FanOut[T any, R any](
         }
 
         if result.Error == nil {
-            results = append(results, result.Result.(R))
+            results = append(results, result.Result)
         }
     }
 
@@ -707,7 +745,6 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
 
@@ -723,8 +760,9 @@ func NewGoroutineMonitor() (*GoroutineMonitor, error) {
     meter := otel.Meter("runtime")
 
     goroutineGauge, err := meter.Int64Gauge(
-        "runtime.goroutines",
+        "go.goroutine.count",
         metric.WithDescription("Number of goroutines currently running"),
+        metric.WithUnit("{goroutine}"),
     )
     if err != nil {
         return nil, err
@@ -745,11 +783,7 @@ func (gm *GoroutineMonitor) Start(interval time.Duration) {
             select {
             case <-gm.ticker.C:
                 count := runtime.NumGoroutine()
-                gm.goroutineGauge.Record(context.Background(), int64(count),
-                    metric.WithAttributes(
-                        attribute.String("runtime", "go"),
-                    ),
-                )
+                gm.goroutineGauge.Record(context.Background(), int64(count))
             case <-gm.done:
                 return
             }
@@ -790,7 +824,10 @@ func main() {
     defer mp.Shutdown(context.Background())
 
     // Start goroutine monitoring
-    monitor, _ := NewGoroutineMonitor()
+    monitor, err := NewGoroutineMonitor()
+    if err != nil {
+        log.Fatal(err)
+    }
     monitor.Start(5 * time.Second)
     defer monitor.Stop()
 
