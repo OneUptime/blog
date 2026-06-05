@@ -29,9 +29,9 @@ amount: 99.99
 currency: USD
 ```
 
-## Using replace_pattern for Extraction
+## Using OTTL for Extraction
 
-OTTL does not have a dedicated "extract" function, but you can use `replace_pattern` combined with `set` to pull values from log bodies:
+OTTL includes `ExtractPatterns` for named regex captures, and `replace_pattern` can also be useful when you need to rewrite matched text before setting fields:
 
 ```yaml
 processors:
@@ -40,16 +40,16 @@ processors:
       - context: log
         statements:
           # Extract severity from log body
-          - set(severity_text, "ERROR") where IsMatch(body, ".*\\bERROR\\b.*")
-          - set(severity_text, "WARN") where IsMatch(body, ".*\\bWARN\\b.*")
-          - set(severity_text, "INFO") where IsMatch(body, ".*\\bINFO\\b.*")
-          - set(severity_text, "DEBUG") where IsMatch(body, ".*\\bDEBUG\\b.*")
+          - set(log.severity_text, "ERROR") where IsString(log.body) and IsMatch(log.body, ".*\\bERROR\\b.*")
+          - set(log.severity_text, "WARN") where IsString(log.body) and IsMatch(log.body, ".*\\bWARN\\b.*")
+          - set(log.severity_text, "INFO") where IsString(log.body) and IsMatch(log.body, ".*\\bINFO\\b.*")
+          - set(log.severity_text, "DEBUG") where IsString(log.body) and IsMatch(log.body, ".*\\bDEBUG\\b.*")
 
           # Map severity text to severity numbers
-          - set(severity_number, 17) where severity_text == "ERROR"
-          - set(severity_number, 13) where severity_text == "WARN"
-          - set(severity_number, 9) where severity_text == "INFO"
-          - set(severity_number, 5) where severity_text == "DEBUG"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_text == "ERROR"
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_text == "WARN"
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_text == "INFO"
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_text == "DEBUG"
 ```
 
 ## Using the Regex Operator for Field Extraction
@@ -67,6 +67,7 @@ receivers:
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<severity>\w+) \[(?P<service>[^\]]+)\] (?P<body>.*)$'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: strptime
           layout: '%Y-%m-%d %H:%M:%S'
         severity:
           parse_from: attributes.severity
@@ -76,13 +77,11 @@ receivers:
         regex: 'RequestID=(?P<request_id>\S+)'
         parse_from: attributes.body
         parse_to: attributes
-        preserve_to: attributes.body
 
       - type: regex_parser
         regex: 'User=(?P<user_id>\S+)'
         parse_from: attributes.body
         parse_to: attributes
-        preserve_to: attributes.body
 ```
 
 ## OTTL-Based Key-Value Extraction
@@ -96,19 +95,16 @@ processors:
       - context: log
         statements:
           # Extract RequestID from body
-          - set(cache, body)
-          - replace_pattern(cache, ".*RequestID=(\\S+).*", "$$1")
-          - set(attributes["request.id"], cache) where cache != body
+          - merge_maps(log.cache, ExtractPatterns(log.body, "RequestID=(?P<request_id>\\S+)"), "upsert") where IsString(log.body)
+          - set(log.attributes["request.id"], log.cache["request_id"])
 
           # Extract numeric values
-          - set(cache, body)
-          - replace_pattern(cache, ".*amount=(\\d+\\.?\\d*).*", "$$1")
-          - set(attributes["payment.amount"], Double(cache)) where cache != body
+          - merge_maps(log.cache, ExtractPatterns(log.body, "amount=(?P<amount>\\d+\\.?\\d*)"), "upsert") where IsString(log.body)
+          - set(log.attributes["payment.amount"], Double(log.cache["amount"])) where log.cache["amount"] != nil
 
           # Extract values in parentheses
-          - set(cache, body)
-          - replace_pattern(cache, ".*currency=(\\w+).*", "$$1")
-          - set(attributes["payment.currency"], cache) where cache != body
+          - merge_maps(log.cache, ExtractPatterns(log.body, "currency=(?P<currency>\\w+)"), "upsert") where IsString(log.body)
+          - set(log.attributes["payment.currency"], log.cache["currency"])
 ```
 
 ## Parsing Apache Access Logs
@@ -123,6 +119,7 @@ receivers:
         regex: '^(?P<remote_addr>[\d.]+) - (?P<remote_user>\S+) \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>[^"]+)" (?P<status>\d+) (?P<bytes>\d+)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: strptime
           layout: '%d/%b/%Y:%H:%M:%S %z'
 
 processors:
@@ -131,20 +128,20 @@ processors:
       - context: log
         statements:
           # Map parsed fields to semantic conventions
-          - set(attributes["http.method"], attributes["method"]) where attributes["method"] != nil
-          - set(attributes["url.path"], attributes["path"]) where attributes["path"] != nil
-          - set(attributes["http.response.status_code"], Int(attributes["status"])) where attributes["status"] != nil
-          - set(attributes["http.response.body.size"], Int(attributes["bytes"])) where attributes["bytes"] != nil
-          - set(attributes["client.address"], attributes["remote_addr"]) where attributes["remote_addr"] != nil
+          - set(log.attributes["http.request.method"], log.attributes["method"]) where log.attributes["method"] != nil
+          - set(log.attributes["url.path"], log.attributes["path"]) where log.attributes["path"] != nil
+          - set(log.attributes["http.response.status_code"], Int(log.attributes["status"])) where log.attributes["status"] != nil
+          - set(log.attributes["http.response.body.size"], Int(log.attributes["bytes"])) where log.attributes["bytes"] != nil
+          - set(log.attributes["client.address"], log.attributes["remote_addr"]) where log.attributes["remote_addr"] != nil
 
           # Clean up intermediate attributes
-          - delete_key(attributes, "method")
-          - delete_key(attributes, "path")
-          - delete_key(attributes, "status")
-          - delete_key(attributes, "bytes")
-          - delete_key(attributes, "remote_addr")
-          - delete_key(attributes, "remote_user")
-          - delete_key(attributes, "protocol")
+          - delete_key(log.attributes, "method")
+          - delete_key(log.attributes, "path")
+          - delete_key(log.attributes, "status")
+          - delete_key(log.attributes, "bytes")
+          - delete_key(log.attributes, "remote_addr")
+          - delete_key(log.attributes, "remote_user")
+          - delete_key(log.attributes, "protocol")
 ```
 
 ## Parsing Syslog Format
@@ -159,6 +156,7 @@ receivers:
         regex: '^(?P<timestamp>\w{3}\s+\d+ \d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<program>[^:\[]+)(?:\[(?P<pid>\d+)\])?: (?P<message>.*)$'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: strptime
           layout: '%b %e %H:%M:%S'
 
 processors:
@@ -166,16 +164,16 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(attributes["host.name"], attributes["hostname"]) where attributes["hostname"] != nil
-          - set(attributes["process.name"], attributes["program"]) where attributes["program"] != nil
-          - set(attributes["process.pid"], Int(attributes["pid"])) where attributes["pid"] != nil
-          - set(body, attributes["message"]) where attributes["message"] != nil
+          - set(log.attributes["host.name"], log.attributes["hostname"]) where log.attributes["hostname"] != nil
+          - set(log.attributes["process.name"], log.attributes["program"]) where log.attributes["program"] != nil
+          - set(log.attributes["process.pid"], Int(log.attributes["pid"])) where log.attributes["pid"] != nil
+          - set(log.body, log.attributes["message"]) where log.attributes["message"] != nil
 
           # Clean up
-          - delete_key(attributes, "hostname")
-          - delete_key(attributes, "program")
-          - delete_key(attributes, "pid")
-          - delete_key(attributes, "message")
+          - delete_key(log.attributes, "hostname")
+          - delete_key(log.attributes, "program")
+          - delete_key(log.attributes, "pid")
+          - delete_key(log.attributes, "message")
 ```
 
 ## Full Pipeline Configuration
@@ -190,6 +188,7 @@ receivers:
         regex: '^(?P<timestamp>\S+ \S+) (?P<level>\w+) \[(?P<service>[^\]]+)\] (?P<body>.*)$'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: strptime
           layout: '%Y-%m-%d %H:%M:%S'
         severity:
           parse_from: attributes.level
@@ -200,13 +199,12 @@ processors:
       - context: log
         statements:
           # Extract key-value pairs from body
-          - set(cache, body)
-          - replace_pattern(cache, ".*RequestID=(\\S+).*", "$$1")
-          - set(attributes["request.id"], cache) where cache != body and IsMatch(body, ".*RequestID=.*")
+          - merge_maps(log.cache, ExtractPatterns(log.body, "RequestID=(?P<request_id>\\S+)"), "upsert") where IsString(log.body)
+          - set(log.attributes["request.id"], log.cache["request_id"])
 
           # Set service name from parsed field
-          - set(resource.attributes["service.name"], attributes["service"]) where attributes["service"] != nil
-          - delete_key(attributes, "service")
+          - set(resource.attributes["service.name"], log.attributes["service"]) where log.attributes["service"] != nil
+          - delete_key(log.attributes, "service")
 
   batch:
     send_batch_size: 1024
