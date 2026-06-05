@@ -4,25 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, ZPages, Debugging, Observability
 
-Description: Learn how to configure and use the zPages extension in the OpenTelemetry Collector for real-time debugging and monitoring of telemetry pipelines with live trace sampling and aggregation views.
+Description: Learn how to configure and use the zPages extension in the OpenTelemetry Collector for real-time debugging and monitoring of Collector components with live diagnostic views.
 
-The zPages extension in the OpenTelemetry Collector provides a powerful debugging interface that allows you to inspect and troubleshoot your telemetry pipelines in real-time. Originally developed as part of the OpenCensus project, zPages offers browser-based views of spans and metrics without requiring external dependencies or backend systems.
+The zPages extension in the OpenTelemetry Collector provides a powerful debugging interface that allows you to inspect and troubleshoot Collector components in real-time. Originally developed as part of the OpenCensus project, zPages offers browser-based diagnostic views without requiring external dependencies or backend systems.
 
 ## What is the zPages Extension?
 
-The zPages extension exposes internal monitoring data from the OpenTelemetry Collector through a web interface. It provides insights into what traces are flowing through your collector, performance characteristics of your pipelines, and helps diagnose issues with trace sampling and processing. This makes it an invaluable tool during development, testing, and production troubleshooting.
+The zPages extension exposes live diagnostic data from the OpenTelemetry Collector through a web interface. It provides insights into the Collector service, configured pipelines, active extensions, feature gates, and instrumented component operations. This makes it an invaluable tool during development, testing, and production troubleshooting.
 
-Unlike traditional observability backends that require data export and storage, zPages operates entirely within the collector process, providing immediate visibility into telemetry data as it flows through the system.
+Unlike traditional observability backends that require data export and storage, zPages operates entirely within the collector process, providing immediate visibility into Collector diagnostics.
 
 ## Key Features of zPages
 
 The zPages extension offers several diagnostic pages:
 
-**TracezZ Page**: Displays aggregated statistics about traces that have passed through the collector, including latency distributions and error counts. It samples traces across different latency buckets, allowing you to quickly identify slow operations.
+**TraceZ Page**: Displays Collector trace operations bucketed by latency, including running span samples and error samples. It helps identify slow operations, deadlocks, instrumentation problems, and errors in instrumented Collector components.
 
-**RpczZ Page**: Shows RPC statistics for services, including request counts, error rates, and latency percentiles. This is particularly useful for monitoring communication between services.
+**ServiceZ, PipelineZ, ExtensionZ, and FeatureZ Pages**: Show the Collector service, configured pipelines, active extensions, and feature gates.
 
-These pages update continuously, providing real-time insights into your telemetry pipeline's behavior and performance characteristics.
+**ExpvarZ Page**: Optionally exposes Go runtime and component state through expvar when the `expvar.enabled` setting is enabled.
+
+These pages update continuously, providing real-time insights into your Collector's behavior and performance characteristics.
 
 ## Architecture Overview
 
@@ -33,13 +35,15 @@ graph LR
     A[Application] -->|Telemetry Data| B[Collector Receiver]
     B --> C[Processor Pipeline]
     C --> D[Exporter]
-    E[zPages Extension] -.->|Monitors| C
+    E[zPages Extension] -.->|Diagnostics| B
+    E -.->|Diagnostics| C
+    E -.->|Diagnostics| D
     F[Browser] -->|HTTP Request| E
     E -->|HTML Response| F
     style E fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-The zPages extension operates as a sidecar monitoring component, observing telemetry data as it flows through the collector's pipeline without interfering with data processing or export operations.
+The zPages extension operates in the collector process as a diagnostic component, exposing live information from instrumented Collector components without interfering with data processing or export operations.
 
 ## Basic Configuration
 
@@ -74,8 +78,8 @@ processors:
 
 # Exporters send telemetry data to backends
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 # Service configuration ties everything together
 service:
@@ -86,7 +90,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 After starting the collector with this configuration, you can access the zPages interface by navigating to `http://localhost:55679/debug/tracez` in your web browser.
@@ -200,9 +204,9 @@ exporters:
       cert_file: /etc/otel/certs/client.crt
       key_file: /etc/otel/certs/client.key
 
-  # Fallback logging exporter for troubleshooting
-  logging:
-    loglevel: info
+  # Fallback debug exporter for troubleshooting
+  debug:
+    verbosity: normal
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -213,20 +217,20 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/backend, logging]
+      exporters: [otlp/backend, debug]
 ```
 
-## Using the TracezZ Interface
+## Using the TraceZ Interface
 
-Once zPages is running, access the TracezZ page at `http://localhost:55679/debug/tracez`. This page displays trace statistics organized by latency buckets:
+Once zPages is running, access the TraceZ page at `http://localhost:55679/debug/tracez`. This page displays Collector trace operations organized by latency buckets:
 
-**Latency Buckets**: Traces are automatically categorized into buckets (0-10ms, 10-100ms, 100ms-1s, 1s-10s, 10s+). This helps identify performance outliers quickly.
+**Latency Buckets**: Spans are automatically categorized into buckets such as 0us, 10us, 100us, 1ms, 10ms, 100ms, 1s, 10s, and 1m. This helps identify performance outliers quickly.
 
-**Sample Traces**: Click on any latency bucket to view sample traces within that range. Each trace shows span names, durations, and attributes.
+**Sample Spans**: Click on any latency bucket to view sample spans within that range. Each sample shows span names, durations, and attributes.
 
-**Error Traces**: A dedicated section shows traces that encountered errors, making it easy to identify and diagnose failures.
+**Error Samples**: A dedicated section shows spans that encountered errors, making it easy to identify and diagnose failures.
 
-**Active Spans**: View spans that are currently being processed by the collector, useful for detecting stuck or long-running operations.
+**Running Spans**: View spans that are currently running inside the collector, useful for detecting stuck or long-running operations.
 
 ## Integration with Kubernetes
 
@@ -290,9 +294,9 @@ kubectl port-forward -n observability svc/otel-collector-zpages 55679:55679
 
 **zPages Not Accessible**: Verify that the endpoint is correctly configured and that no firewall rules block the port. Check collector logs for binding errors.
 
-**No Traces Visible**: Ensure that traces are actually flowing through the collector by checking your receivers and that the pipeline is correctly configured. The TracezZ page only shows data that passes through the collector.
+**No TraceZ Data Visible**: Ensure that the relevant Collector components are instrumented and that internal telemetry tracing is not disabled. The zPages extension is incompatible with `service::telemetry::traces::level` set to `none`.
 
-**High Memory Usage**: zPages samples and stores trace data in memory. If you process high volumes of traces, consider adjusting sampling rates or increasing collector memory limits.
+**High Memory Usage**: zPages stores diagnostic samples in memory. If your collector is handling high volumes of operations, monitor memory usage and increase collector memory limits if needed.
 
 ## Best Practices
 
@@ -309,4 +313,4 @@ For more information about OpenTelemetry Collector extensions, check out these r
 - [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
 - [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-basic-auth-extension-opentelemetry-collector/view)
 
-The zPages extension provides an essential debugging capability for OpenTelemetry Collector deployments. By offering real-time visibility into trace processing and pipeline performance, it helps teams quickly identify and resolve issues without requiring external tools or complex setup procedures.
+The zPages extension provides an essential debugging capability for OpenTelemetry Collector deployments. By offering real-time visibility into instrumented Collector components and pipeline configuration, it helps teams quickly identify and resolve issues without requiring external tools or complex setup procedures.
