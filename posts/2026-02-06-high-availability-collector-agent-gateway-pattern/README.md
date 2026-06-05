@@ -53,7 +53,7 @@ flowchart TD
 
 You might wonder why not just run full collectors on every node. There are several good reasons:
 
-**Resource efficiency**: Agents use minimal CPU and memory. The heavy processors (tail sampling, span-to-metrics conversion, complex routing) run only on the gateway tier, which is a much smaller set of pods.
+**Resource efficiency**: Agents use minimal CPU and memory. The heavy components (tail sampling, span-to-metrics conversion, complex routing) run only on the gateway tier, which is a much smaller set of pods.
 
 **Centralized configuration**: When you need to change a sampling policy or add a new exporter, you update the gateway configuration. You do not have to roll out changes to every node in your cluster.
 
@@ -103,7 +103,17 @@ exporters:
   # This is better than a Kubernetes Service because it can do
   # trace-aware routing (all spans for the same trace go to the
   # same gateway, which is required for tail sampling)
-  loadbalancing:
+  load_balancing:
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
     protocol:
       otlp:
         timeout: 10s
@@ -114,25 +124,31 @@ exporters:
         # This should point to a headless service so we get
         # individual pod IPs, not the ClusterIP
         hostname: otel-gateway-headless.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
+
+extensions:
+  # Health check endpoint for Kubernetes probes
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
-The `loadbalancing` exporter is important here. A regular Kubernetes Service does round-robin load balancing, which means spans from the same trace can end up on different gateways. If you are using tail-based sampling at the gateway tier, you need all spans from a trace on the same gateway. The load-balancing exporter hashes on the trace ID to achieve this.
+The `load_balancing` exporter is important here. A regular Kubernetes Service does round-robin load balancing, which means spans from the same trace can end up on different gateways. If you are using tail-based sampling at the gateway tier, you need all spans from a trace on the same gateway. For traces, the load-balancing exporter hashes on the trace ID by default to achieve this.
 
 ## Gateway Configuration
 
@@ -179,10 +195,10 @@ processors:
         probabilistic:
           sampling_percentage: 10
 
+connectors:
   # Generate RED metrics from span data so you get metrics
   # even for services that do not emit them directly
-  spanmetrics:
-    metrics_exporter: otlp/metrics
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -229,7 +245,7 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel/queue
-    max_file_size_mib: 4096
+    create_directory: true
 
   # Health check endpoint for Kubernetes probes
   health_check:
@@ -242,8 +258,12 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, tail_sampling, batch]
       exporters: [otlp/traces]
-    metrics:
+    traces/spanmetrics:
       receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [span_metrics]
+    metrics:
+      receivers: [otlp, span_metrics]
       processors: [memory_limiter, batch]
       exporters: [otlp/metrics]
     logs:
@@ -276,11 +296,11 @@ spec:
       labels:
         app: otel-agent
     spec:
-      # Use a service account with permissions to read pod metadata
+      # Use a dedicated service account for the agent
       serviceAccountName: otel-agent
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           env:
             # Pass the node name so the agent can stamp it
@@ -298,6 +318,9 @@ spec:
               name: otlp-http
               protocol: TCP
               hostPort: 4318
+            - containerPort: 13133
+              name: health
+              protocol: TCP
           resources:
             requests:
               cpu: 100m
@@ -364,7 +387,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
@@ -464,9 +487,10 @@ sequenceDiagram
 
     Agent->>GW2: Export batch
     GW2-->>Agent: Connection failed
+    Agent->>GW2: Retry while the endpoint remains resolved
     Agent->>DNS: Re-resolve endpoints
     DNS-->>Agent: [GW1, GW3]
-    Agent->>GW1: Re-route failed batch
+    Agent->>GW1: Route future batches after the endpoint update
     Agent->>GW1: Continue exporting
     Agent->>GW3: Continue exporting
 
@@ -481,11 +505,11 @@ The load-balancing exporter periodically re-resolves DNS, so it automatically pi
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     resolver:
       dns:
         hostname: otel-gateway-headless.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
         # How often to re-resolve DNS to discover gateway changes
         interval: 5s
 ```
@@ -562,13 +586,13 @@ kubectl get pods -n observability -l app=otel-agent
 kubectl get pods -n observability -l app=otel-gateway
 
 # Kill a gateway pod and watch it get replaced
-kubectl delete pod -n observability -l app=otel-gateway --field-selector=metadata.name=otel-gateway-0
+kubectl delete pod -n observability "$(kubectl get pod -n observability -l app=otel-gateway -o jsonpath='{.items[0].metadata.name}')"
 
 # Watch the agent logs to see it re-route traffic
 kubectl logs -n observability -l app=otel-agent --tail=50 -f
 
-# Verify no data loss by checking exporter metrics
-kubectl port-forward -n observability svc/otel-gateway 8888:8888
+# Check exporter failure metrics
+kubectl port-forward -n observability deployment/otel-gateway 8888:8888
 # Then query: curl localhost:8888/metrics | grep otelcol_exporter_send_failed
 ```
 
