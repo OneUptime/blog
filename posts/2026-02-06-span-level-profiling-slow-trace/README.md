@@ -16,58 +16,59 @@ Later, when you look at a specific span in your trace UI, you can pull up only t
 
 ## Configuring the SDK for Span-Profile Linking
 
-For Java, the OpenTelemetry Java agent supports this out of the box when paired with a profiling agent like Pyroscope's:
+For Java, use the OpenTelemetry Java agent with the Pyroscope OpenTelemetry Java agent extension:
+
+```bash
+curl -L -o opentelemetry-javaagent.jar \
+  https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
+
+curl -L -o pyroscope-otel.jar \
+  https://github.com/grafana/otel-profiling-java/releases/download/v1.0.4/pyroscope-otel.jar
+
+export PYROSCOPE_APPLICATION_NAME=my-java-service
+export PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
+export OTEL_JAVAAGENT_EXTENSIONS=./pyroscope-otel.jar
+
+java \
+  -javaagent:./opentelemetry-javaagent.jar \
+  -jar app.jar
+```
 
 ```java
-// build.gradle
-dependencies {
-    implementation 'io.pyroscope:otel:0.13.0'
-    implementation 'io.opentelemetry:opentelemetry-api:1.36.0'
+// Your application code can keep using normal OpenTelemetry spans.
+Span span = tracer.spanBuilder("process-order").startSpan();
+try (Scope scope = span.makeCurrent()) {
+    processOrder();
+} finally {
+    span.end();
 }
 ```
 
-```java
-// In your application startup
-import io.pyroscope.otel.SpanProcessor;
-
-// Create a span processor that links profiling samples to spans
-SpanProcessor profilingSpanProcessor = new SpanProcessor();
-
-// Register it with the OpenTelemetry SDK
-SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
-    .addSpanProcessor(profilingSpanProcessor)
-    .build();
-
-OpenTelemetrySdk sdk = OpenTelemetrySdk.builder()
-    .setTracerProvider(tracerProvider)
-    .build();
-```
-
-The `SpanProcessor` hooks into span start and end events. When a span starts, it records the span ID. The profiling agent then tags all samples captured on that thread with the active span ID.
+The extension hooks into span start and end events. When a span starts, it annotates profiling data with the active span ID so Grafana can query for span-specific profiling data. Java span profiles support CPU and wall profile types; for example, set `PYROSCOPE_PROFILER_EVENT=wall` when you want wall-clock profiling instead of CPU profiling.
 
 ## Python Setup
 
-For Python applications using the `py-spy` or `ebpf` profiler:
+For Python applications using the Pyroscope Python profiler:
 
 ```python
 # Install the required packages
 
-# pip install opentelemetry-api opentelemetry-sdk pyroscope-io
+# pip install opentelemetry-api opentelemetry-sdk pyroscope-io pyroscope-otel
 
 import pyroscope
 from opentelemetry import trace
+from pyroscope.otel import PyroscopeSpanProcessor
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
 
-# Configure Pyroscope with span profiling enabled
+# Configure Pyroscope before creating spans
 pyroscope.configure(
     application_name="my-python-service",
     server_address="http://pyroscope:4040",
-    enable_otel_span_profiles=True,  # This is the key setting
 )
 
 # Set up the tracer
 provider = TracerProvider()
+provider.add_span_processor(PyroscopeSpanProcessor())
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("my-service")
 
@@ -120,7 +121,7 @@ This is extremely powerful for debugging. Instead of looking at a system-wide fl
 
 ## Collector Configuration
 
-Make sure your collector handles both traces and profiles and preserves the span-profile link:
+Make sure your collector handles both traces and profiles and preserves the span-profile link. Profile signal support may require a recent collector build and enabling `service.profilesSupport`:
 
 ```yaml
 receivers:
@@ -134,18 +135,25 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope:4040
+  otlp/pyroscope:
+    endpoint: pyroscope:4040
+    tls:
+      insecure: true
 
 service:
+  telemetry:
+    logs:
+      level: info
   pipelines:
     traces:
       receivers: [otlp]
       exporters: [otlp/tempo]
     profiles:
       receivers: [otlp]
-      exporters: [otlphttp/pyroscope]
+      exporters: [otlp/pyroscope]
 ```
+
+If your collector distribution still gates profile pipelines, start it with `--feature-gates=service.profilesSupport`.
 
 ## What to Look For
 
