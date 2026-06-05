@@ -6,11 +6,11 @@ Tags: OpenTelemetry, React, Fetch, XHR, Browser Instrumentation, Frontend
 
 Description: Complete guide to instrumenting Fetch API and XMLHttpRequest calls in React applications using OpenTelemetry for comprehensive network monitoring.
 
-Network requests form the backbone of modern React applications, but tracking their performance and reliability can be challenging. OpenTelemetry provides specialized instrumentation for both Fetch API and XMLHttpRequest (XHR), automatically capturing timing, headers, and errors. This guide demonstrates how to instrument these network calls effectively in your React application.
+Network requests form the backbone of modern React applications, but tracking their performance and reliability can be challenging. OpenTelemetry provides specialized instrumentation for both Fetch API and XMLHttpRequest (XHR), automatically creating spans, recording HTTP attributes, adding resource timing events when the browser exposes them, and propagating trace headers to configured origins. This guide demonstrates how to instrument these network calls effectively in your React application.
 
 ## Why Instrument Network Calls
 
-Network requests are often the slowest part of a web application and the most common source of errors. Instrumenting these calls reveals response times, failure rates, and which endpoints cause user-facing issues. OpenTelemetry's network instrumentation captures detailed timing information, including DNS lookup, connection establishment, and time to first byte.
+Network requests are often the slowest part of a web application and the most common source of errors. Instrumenting these calls reveals response times, failure rates, and which endpoints cause user-facing issues. OpenTelemetry's network instrumentation can add browser resource timing events, including DNS lookup, connection establishment, and time to first byte, when the relevant PerformanceResourceTiming data is available. For cross-origin requests, detailed timing data may require the server to send the `Timing-Allow-Origin` response header.
 
 ## Setting Up Fetch Instrumentation
 
@@ -19,6 +19,8 @@ The Fetch API instrumentation package automatically wraps fetch calls, creating 
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/context-zone \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
@@ -33,27 +35,32 @@ Configure the instrumentation with specific options to control which requests ar
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 
 // Create resource with service information
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-app',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-app',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
 });
-
-// Initialize the tracer provider
-const provider = new WebTracerProvider({ resource });
 
 // Configure the exporter for your observability backend
 const exporter = new OTLPTraceExporter({
   url: 'https://your-collector.com/v1/traces',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
+// Initialize the tracer provider
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
+provider.register({
+  contextManager: new ZoneContextManager(),
+});
 
 // Configure Fetch instrumentation with detailed options
 registerInstrumentations({
@@ -72,29 +79,31 @@ registerInstrumentations({
       clearTimingResources: true,
 
       // Filter which requests to instrument
-      // Return false to skip instrumentation for a request
+      // Matching URLs are skipped
       ignoreUrls: [
         /\/health-check$/,
         /\/metrics$/,
       ],
 
       // Add custom attributes to spans
-      applyCustomAttributesOnSpan: (span, request, response) => {
+      applyCustomAttributesOnSpan: (span, request, result) => {
         // Add request attributes
         if (request.method) {
-          span.setAttribute('http.method', request.method);
+          span.setAttribute('http.request.method', request.method);
         }
 
         // Add response attributes
-        if (response) {
-          span.setAttribute('http.response.size',
-            response.headers.get('content-length') || 0);
+        if (result instanceof Response) {
+          span.setAttribute('http.response.header.content-length',
+            result.headers.get('content-length') || 'unknown');
           span.setAttribute('http.response.content_type',
-            response.headers.get('content-type') || 'unknown');
+            result.headers.get('content-type') || 'unknown');
         }
 
         // Parse and add custom headers
-        const requestId = response?.headers.get('x-request-id');
+        const requestId = result instanceof Response
+          ? result.headers.get('x-request-id')
+          : null;
         if (requestId) {
           span.setAttribute('app.request_id', requestId);
         }
@@ -126,7 +135,7 @@ graph TD
     style F fill:#fff4e1
 ```
 
-Each span includes timing information for these phases, making it easy to identify where requests spend time.
+When browser resource timing data is available, spans include events for these phases, making it easier to identify where requests spend time.
 
 ## Creating a Traced Fetch Wrapper
 
@@ -147,8 +156,8 @@ export async function tracedFetch(url, options = {}) {
   // Create a parent span for the entire fetch operation
   const span = tracer.startSpan('custom.fetch', {
     attributes: {
-      'http.url': url,
-      'http.method': options.method || 'GET',
+      'url.full': url,
+      'http.request.method': options.method || 'GET',
       'fetch.type': 'application-request',
     },
   });
@@ -165,10 +174,10 @@ export async function tracedFetch(url, options = {}) {
 
       // Add response attributes
       span.setAttributes({
-        'http.status_code': response.status,
-        'http.status_text': response.statusText,
-        'http.response_time_ms': duration,
-        'http.ok': response.ok,
+        'http.response.status_code': response.status,
+        'app.http.status_text': response.statusText,
+        'app.http.response_time_ms': duration,
+        'app.http.ok': response.ok,
       });
 
       // Check for error status codes
@@ -285,18 +294,15 @@ registerInstrumentations({
       // Ignore specific URLs
       ignoreUrls: [/\/analytics/],
 
+      // Ask the instrumentation to record outgoing request size
+      measureRequestSize: true,
+
       // Add custom attributes to XHR spans
       applyCustomAttributesOnSpan: (span, xhr) => {
         // Add custom headers from response
         const correlationId = xhr.getResponseHeader('x-correlation-id');
         if (correlationId) {
           span.setAttribute('app.correlation_id', correlationId);
-        }
-
-        // Add request body size if available
-        if (xhr.requestBody) {
-          span.setAttribute('http.request.size',
-            JSON.stringify(xhr.requestBody).length);
         }
       },
     }),
@@ -317,20 +323,26 @@ import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xm
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-app',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-app',
 });
 
-const provider = new WebTracerProvider({ resource });
 const exporter = new OTLPTraceExporter({
   url: 'https://your-collector.com/v1/traces',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
+provider.register({
+  contextManager: new ZoneContextManager(),
+});
 
 // Shared configuration for both instrumentations
 const commonConfig = {
@@ -358,17 +370,18 @@ export default provider;
 
 ## Handling Third-Party Library Requests
 
-Third-party libraries like Axios use XHR under the hood, so XHR instrumentation automatically captures these requests.
+Third-party libraries like Axios typically use XHR in browsers, unless configured to use another adapter, so XHR instrumentation can automatically capture those requests.
 
 ```javascript
 // src/api/axiosClient.js
 
 import axios from 'axios';
 
-// Axios requests are automatically instrumented via XHR instrumentation
+// Axios browser XHR requests are automatically instrumented via XHR instrumentation
 const apiClient = axios.create({
   baseURL: 'https://api.yourapp.com',
   timeout: 10000,
+  adapter: 'xhr',
 });
 
 // Add interceptors for additional context
@@ -401,22 +414,16 @@ Filter requests to avoid instrumenting certain calls, reducing noise and focusin
 ```javascript
 // src/instrumentation/advancedFiltering.js
 
-function shouldInstrumentRequest(url) {
-  // Skip instrumentation for analytics
-  if (url.includes('/analytics')) return false;
-
-  // Skip instrumentation for polling endpoints
-  if (url.includes('/poll') || url.includes('/heartbeat')) return false;
-
-  // Skip instrumentation for images and static assets
-  if (url.match(/\.(jpg|jpeg|png|gif|svg|css|js)$/)) return false;
-
-  // Instrument everything else
-  return true;
-}
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 
 const fetchInstrumentation = new FetchInstrumentation({
-  ignoreUrls: [(url) => !shouldInstrumentRequest(url)],
+  // Matching URLs are skipped
+  ignoreUrls: [
+    /\/analytics/,
+    /\/poll/,
+    /\/heartbeat/,
+    /\.(jpg|jpeg|png|gif|svg|css|js)$/,
+  ],
 });
 ```
 
@@ -453,7 +460,7 @@ export function useTracedAPI(endpoint, options = {}) {
     try {
       const url = new URL(endpoint, 'https://api.yourapp.com');
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
+        url.searchParams.append(key, String(value));
       });
 
       const result = await fetchJSON(url.toString(), options);
@@ -538,7 +545,7 @@ if (window.fetch) {
 Network instrumentation adds minimal overhead, typically less than 1ms per request. The BatchSpanProcessor batches spans before sending them, reducing network overhead. Configure batch size and timing to balance between real-time visibility and resource usage.
 
 ```javascript
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 
 const batchProcessor = new BatchSpanProcessor(exporter, {
   maxQueueSize: 2048,
@@ -547,8 +554,9 @@ const batchProcessor = new BatchSpanProcessor(exporter, {
   exportTimeoutMillis: 30000,
 });
 
-provider.addSpanProcessor(batchProcessor);
+const provider = new WebTracerProvider({
+  spanProcessors: [batchProcessor],
+});
 ```
 
 Instrumenting Fetch and XHR calls in React applications provides deep visibility into network behavior, helping you optimize performance and quickly diagnose issues. With automatic instrumentation and strategic customization, you can build a comprehensive view of how your application interacts with backend services.
-
