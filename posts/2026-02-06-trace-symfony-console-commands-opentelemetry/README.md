@@ -33,10 +33,9 @@ Symfony's console component emits events throughout command execution that we ca
 
 namespace App\EventSubscriber;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
-use OpenTelemetry\Context\Context;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Event\ConsoleTerminateEvent;
@@ -50,11 +49,11 @@ class ConsoleInstrumentationSubscriber implements EventSubscriberInterface
     private array $scopes = [];
 
     public function __construct(
-        TracerProviderInterface $tracerProvider,
+        private bool $enabled = true,
         private bool $captureArguments = true,
         private bool $captureOutput = false
     ) {
-        $this->tracer = $tracerProvider->getTracer('console.command');
+        $this->tracer = Globals::tracerProvider()->getTracer('console.command');
     }
 
     public static function getSubscribedEvents(): array
@@ -68,6 +67,10 @@ class ConsoleInstrumentationSubscriber implements EventSubscriberInterface
 
     public function onCommand(ConsoleCommandEvent $event): void
     {
+        if (!$this->enabled) {
+            return;
+        }
+
         $command = $event->getCommand();
         if (!$command) {
             return;
@@ -197,7 +200,7 @@ Register the subscriber in your services configuration:
 services:
   App\EventSubscriber\ConsoleInstrumentationSubscriber:
     arguments:
-      $tracerProvider: '@opentelemetry.trace.tracer_provider'
+      $enabled: '%env(bool:OTEL_CONSOLE_ENABLED)%'
       $captureArguments: '%env(bool:OTEL_CONSOLE_CAPTURE_ARGUMENTS)%'
       $captureOutput: '%env(bool:OTEL_CONSOLE_CAPTURE_OUTPUT)%'
     tags:
@@ -215,26 +218,27 @@ namespace App\Command;
 
 use App\Repository\OrderRepository;
 use App\Service\OrderProcessor;
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
+use OpenTelemetry\API\Trace\StatusCode;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
+#[AsCommand(name: 'app:process-orders')]
 class ProcessOrdersCommand extends Command
 {
-    protected static $defaultName = 'app:process-orders';
     private $tracer;
 
     public function __construct(
         private OrderRepository $orderRepository,
-        private OrderProcessor $orderProcessor,
-        TracerProviderInterface $tracerProvider
+        private OrderProcessor $orderProcessor
     ) {
         parent::__construct();
-        $this->tracer = $tracerProvider->getTracer('app.commands');
+        $this->tracer = Globals::tracerProvider()->getTracer('app.commands');
     }
 
     protected function configure(): void
@@ -248,7 +252,7 @@ class ProcessOrdersCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $batchSize = (int) $input->getOption('batch-size');
+        $batchSize = max(1, (int) $input->getOption('batch-size'));
         $limit = (int) $input->getOption('limit');
 
         // Create a span for fetching pending orders
@@ -267,6 +271,7 @@ class ProcessOrdersCommand extends Command
 
         } catch (\Throwable $e) {
             $fetchSpan->recordException($e);
+            $fetchSpan->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             $fetchSpan->end();
             $scope->detach();
             throw $e;
@@ -287,6 +292,8 @@ class ProcessOrdersCommand extends Command
         $failedCount = 0;
 
         foreach ($batches as $batchIndex => $batch) {
+            $batchFailedCount = 0;
+
             $batchSpan = $this->tracer->spanBuilder("process-batch-{$batchIndex}")
                 ->setSpanKind(SpanKind::KIND_INTERNAL)
                 ->setAttribute('batch.index', $batchIndex)
@@ -314,7 +321,9 @@ class ProcessOrdersCommand extends Command
 
                     } catch (\Throwable $e) {
                         $failedCount++;
+                        $batchFailedCount++;
                         $orderSpan->recordException($e);
+                        $orderSpan->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
                         $orderSpan->setAttribute('order.status', 'failed');
                         $io->error("Failed to process order {$order->getId()}: {$e->getMessage()}");
 
@@ -325,7 +334,7 @@ class ProcessOrdersCommand extends Command
                 }
 
                 $batchSpan->setAttribute('batch.processed', count($batch));
-                $batchSpan->setAttribute('batch.failed', 0);
+                $batchSpan->setAttribute('batch.failed', $batchFailedCount);
 
             } finally {
                 $batchSpan->end();
@@ -372,23 +381,23 @@ Commands triggered by cron or job queues need special consideration for context 
 namespace App\Command;
 
 use App\Service\ReportGenerator;
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
+#[AsCommand(name: 'app:scheduled-report')]
 class ScheduledReportCommand extends Command
 {
-    protected static $defaultName = 'app:scheduled-report';
     private $tracer;
 
     public function __construct(
-        private ReportGenerator $reportGenerator,
-        TracerProviderInterface $tracerProvider
+        private ReportGenerator $reportGenerator
     ) {
         parent::__construct();
-        $this->tracer = $tracerProvider->getTracer('app.scheduled');
+        $this->tracer = Globals::tracerProvider()->getTracer('app.scheduled');
     }
 
     protected function configure(): void
@@ -467,8 +476,7 @@ Beyond traces, you can emit metrics for command execution to track trends over t
 
 namespace App\Command;
 
-use OpenTelemetry\API\Metrics\MeterProviderInterface;
-use OpenTelemetry\API\Metrics\ObserverInterface;
+use OpenTelemetry\API\Globals;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -480,15 +488,15 @@ abstract class MetricsAwareCommand extends Command
     private $durationHistogram;
     private $startTime;
 
-    public function __construct(MeterProviderInterface $meterProvider)
+    public function __construct()
     {
         parent::__construct();
 
-        $this->meter = $meterProvider->getMeter('console.commands');
+        $this->meter = Globals::meterProvider()->getMeter('console.commands');
 
         $this->executionCounter = $this->meter->createCounter(
             'console.command.executions',
-            'count',
+            '1',
             'Number of command executions'
         );
 
@@ -525,7 +533,7 @@ abstract class MetricsAwareCommand extends Command
         $attributes = [
             'command.name' => $this->getName(),
             'exit_code' => $exitCode,
-            'success' => $exitCode === Command::SUCCESS ? 'true' : 'false',
+            'success' => $exitCode === Command::SUCCESS,
         ];
 
         if ($error) {
@@ -545,17 +553,17 @@ Use this base class for commands that need automatic metrics:
 
 namespace App\Command;
 
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
+#[AsCommand(name: 'app:import-data')]
 class ImportDataCommand extends MetricsAwareCommand
 {
-    protected static $defaultName = 'app:import-data';
-
     protected function doExecute(InputInterface $input, OutputInterface $output): int
     {
         // Your command logic here
-        return Command::SUCCESS;
+        return self::SUCCESS;
     }
 }
 ```
