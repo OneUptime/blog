@@ -10,7 +10,7 @@ The OpenTelemetry Collector processes telemetry data through a pipeline of recei
 
 ## Why Order Matters
 
-Processors run in the order they are listed in the pipeline configuration. If `memory_limiter` is not first, other processors (like `batch`) accumulate data in memory before the limiter gets a chance to apply back-pressure.
+Processors run in the order they are listed in the pipeline configuration. If `memory_limiter` is not first, other processors (like `batch`) can consume additional memory before the limiter gets a chance to apply back-pressure.
 
 ```yaml
 # Bad - memory_limiter runs after batch has already accumulated data
@@ -23,7 +23,7 @@ service:
       exporters: [otlp]
 ```
 
-In this configuration, the batch processor collects spans into batches. If the exporter is slow, those batches pile up. By the time data reaches `memory_limiter`, the memory is already consumed.
+In this configuration, the batch processor collects spans into batches before the memory limiter checks the Collector's current memory usage. By the time data reaches `memory_limiter`, memory may already have been consumed by earlier processors in the pipeline.
 
 ```yaml
 # Good - memory_limiter runs first, before data accumulates
@@ -43,28 +43,28 @@ processors:
     # How often to check memory usage
     check_interval: 1s
 
-    # Hard limit - start refusing data when memory exceeds this
+    # Hard limit - force garbage collection when memory exceeds this
     limit_mib: 512
 
-    # Soft limit - start dropping data when memory exceeds (limit_mib - spike_limit_mib)
+    # Soft limit - start refusing data when memory exceeds (limit_mib - spike_limit_mib)
     # This gives a buffer for in-flight data
     spike_limit_mib: 128
 ```
 
 With these settings:
 - At 384 MiB (512 - 128), the processor starts applying back-pressure by returning errors to receivers
-- At 512 MiB, the processor aggressively drops data to prevent OOM
+- At 512 MiB, the processor additionally forces garbage collection to reduce memory usage
 - Every second, it checks current memory usage
 
 ## How Back-Pressure Works
 
-When `memory_limiter` detects high memory usage, it returns an error to the receiver. The receiver then signals back to the sender (your application's SDK) that data was refused. The SDK's sending queue holds the data and retries later.
+When `memory_limiter` detects high memory usage, it returns a non-permanent error to the preceding component in the pipeline. Receivers are expected to retry the same data and may apply back-pressure to their own data sources. For OTLP receivers, that can mean signaling a retryable failure to the sender; whether your application's SDK queues and retries depends on its configuration and limits.
 
 This creates a graceful degradation chain:
 1. Collector memory is high
 2. `memory_limiter` refuses new data
-3. Receiver returns an error to the SDK
-4. SDK queues the data and retries
+3. Receiver retries the data and may return an error to the sender
+4. Sender queues and retries if it is configured to do so
 5. When Collector memory drops, data flows again
 
 Without `memory_limiter`, the chain breaks at step 1: the Collector crashes and all data is lost.
@@ -124,7 +124,7 @@ service:
 
 ## Choosing the Right Limits
 
-The `limit_mib` value should be set based on your Collector's total available memory, leaving room for the Go runtime overhead:
+The `limit_mib` value should be set based on your Collector's total available memory, leaving room for the Go runtime overhead. In containerized environments, consider using `limit_percentage` so the Collector can derive the limit from the container's available memory:
 
 ```text
 limit_mib = (total_container_memory * 0.8) - go_runtime_overhead
@@ -159,12 +159,12 @@ The Collector exposes metrics about the memory limiter's behavior:
 
 ```bash
 # Number of times data was refused due to memory pressure
-otelcol_processor_refused_spans_total
-otelcol_processor_refused_metric_points_total
-otelcol_processor_refused_log_records_total
+otelcol_processor_refused_spans
+otelcol_processor_refused_metric_points
+otelcol_processor_refused_log_records
 ```
 
-If these metrics are increasing, your Collector is under memory pressure and you should either increase its resources or reduce the incoming telemetry volume.
+If these metrics are increasing for the `memory_limiter` processor, your Collector is under memory pressure and you should either increase its resources or reduce the incoming telemetry volume. Prometheus may expose these counters with a `_total` suffix depending on your internal telemetry exporter configuration.
 
 ## Multiple Pipelines
 
