@@ -29,6 +29,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   transform/redact:
@@ -36,37 +38,37 @@ processors:
       - context: log
         statements:
           # Redact email addresses from the log body
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
               "[EMAIL_REDACTED]")
 
           # Redact credit card numbers (basic pattern for Visa, MC, Amex)
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\\b",
               "[CARD_REDACTED]")
 
           # Redact Bearer tokens in authorization headers
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "Bearer [A-Za-z0-9\\-._~+/]+=*",
               "Bearer [TOKEN_REDACTED]")
 
           # Redact AWS access key IDs
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "AKIA[0-9A-Z]{16}",
               "[AWS_KEY_REDACTED]")
 
           # Redact AWS secret keys (40-char base64 strings after known prefixes)
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "(?i)(aws_secret_access_key|secret_key|secretkey)[\"'\\s:=]+[A-Za-z0-9/+=]{40}",
               "$1=[SECRET_REDACTED]")
 
           # Redact Social Security Numbers
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "\\b\\d{3}-\\d{2}-\\d{4}\\b",
               "[SSN_REDACTED]")
 
           # Redact IP addresses (optional, depends on your compliance needs)
-          - replace_pattern(body,
+          - replace_pattern(log.body,
               "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b",
               "[IP_REDACTED]")
 
@@ -76,12 +78,12 @@ processors:
       - context: log
         statements:
           # Remove attributes that commonly contain sensitive data
-          - delete_key(attributes, "http.request.header.authorization")
-          - delete_key(attributes, "http.request.header.cookie")
-          - delete_key(attributes, "http.request.header.set-cookie")
-          - delete_key(attributes, "user.password")
-          - delete_key(attributes, "db.statement")
-          - delete_key(attributes, "http.request.body")
+          - delete_key(log.attributes, "http.request.header.authorization")
+          - delete_key(log.attributes, "http.request.header.cookie")
+          - delete_key(log.attributes, "http.request.header.set-cookie")
+          - delete_key(log.attributes, "user.password")
+          - delete_key(log.attributes, "db.statement")
+          - delete_key(log.attributes, "http.request.body")
 
   batch:
     timeout: 5s
@@ -105,16 +107,13 @@ The OpenTelemetry Collector Contrib distribution includes a dedicated `redaction
 ```yaml
 processors:
   redaction:
-    # Allow only these attribute keys to pass through
+    # Allow only these span, log, and datapoint attribute keys to pass through
     allowed_keys:
-      - service.name
-      - service.version
-      - k8s.pod.name
-      - k8s.namespace.name
-      - severity
-      - http.method
+      - http.request.method
       - http.route
-      - http.status_code
+      - http.response.status_code
+      - url.path
+      - server.address
     # Block any attribute whose value matches these patterns
     blocked_values:
       - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
@@ -136,7 +135,7 @@ Before deploying to production, test your redaction rules thoroughly. The simple
 ./otelcol-contrib --config redaction-config.yaml
 
 # In another terminal, send a test log with sensitive data
-curl -X POST http://localhost:4317/v1/logs \
+curl -X POST http://localhost:4318/v1/logs \
   -H "Content-Type: application/json" \
   -d '{
     "resourceLogs": [{
@@ -170,17 +169,17 @@ processors:
       - context: log
         statements:
           # For JSON log bodies, redact specific fields
-          - replace_pattern(body["user"]["email"],
+          - replace_pattern(log.body["user"]["email"],
               ".*",
               "[EMAIL_REDACTED]")
-            where body["user"]["email"] != nil
-          - set(body["payment"]["card_number"], "[REDACTED]")
-            where body["payment"]["card_number"] != nil
+            where IsMap(log.body) and IsMap(log.body["user"]) and log.body["user"]["email"] != nil
+          - set(log.body["payment"]["card_number"], "[REDACTED]")
+            where IsMap(log.body) and IsMap(log.body["payment"]) and log.body["payment"]["card_number"] != nil
 ```
 
 ## Performance Impact
 
-Pattern matching with regex adds CPU overhead. In testing, a collector handling 10,000 logs per second saw about a 5-8% increase in CPU usage with 6 redaction patterns applied. To minimize impact:
+Pattern matching with regex adds CPU overhead, and the exact impact depends on log size, pattern complexity, and throughput. To minimize impact:
 
 - Order your regex patterns from most common to least common
 - Use simple patterns where possible (literal string matching is faster than complex regex)
