@@ -8,7 +8,7 @@ Description: Step-by-step guide to containerizing Axum web applications in Rust 
 
 ---
 
-Axum is a web framework from the Tokio team that takes full advantage of Rust's type system and the Tokio async runtime. It uses extractors for request parsing, integrates tightly with Tower middleware, and produces extremely fast, type-safe APIs. Since Axum compiles to a static Rust binary, Docker images built around it are tiny and start almost instantly. This guide covers containerizing an Axum application from project setup through production deployment.
+Axum is a web framework from the Tokio team that takes full advantage of Rust's type system and the Tokio async runtime. It uses extractors for request parsing, integrates tightly with Tower middleware, and produces extremely fast, type-safe APIs. Since Rust applications can be built as static binaries with a musl-based toolchain, Docker images built around Axum can be tiny and start almost instantly. This guide covers containerizing an Axum application from project setup through production deployment.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "compression-gzip"] }
 ```
 
 Create the main application:
@@ -51,7 +51,6 @@ Create the main application:
 // src/main.rs - Axum application
 use axum::{
     extract::Path,
-    http::StatusCode,
     routing::get,
     Json, Router,
 };
@@ -132,8 +131,8 @@ This Dockerfile uses the dependency caching trick and multi-stage builds for an 
 
 FROM rust:1.77-alpine AS build
 
-# Install build dependencies for static linking
-RUN apk add --no-cache musl-dev
+# Install build dependencies for static linking and CA roots for the scratch image
+RUN apk add --no-cache musl-dev ca-certificates
 
 WORKDIR /app
 
@@ -164,7 +163,7 @@ ENTRYPOINT ["/server"]
 
 ## Alpine Production Variant
 
-For debugging and monitoring tools:
+For debugging and monitoring tools, replace the `scratch` production stage with an Alpine stage:
 
 ```dockerfile
 FROM alpine:3.19
@@ -217,8 +216,6 @@ Expect 5-12MB on `scratch`. Axum's minimal dependency footprint keeps the binary
 A production-like setup with PostgreSQL:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -256,6 +253,12 @@ volumes:
 ## State Management with Axum
 
 Axum uses extractors to share state across handlers. This is how you share a database pool:
+
+Add SQLx for PostgreSQL support:
+
+```toml
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "tls-rustls"] }
+```
 
 ```rust
 // src/main.rs - Shared state with database pool
@@ -304,6 +307,7 @@ Axum with Tokio supports graceful shutdown through signal handling:
 
 ```rust
 // src/main.rs - Graceful shutdown
+use axum::{routing::get, Router};
 use tokio::signal;
 
 #[tokio::main]
@@ -340,6 +344,10 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("Shutdown signal received");
+}
+
+async fn root() -> &'static str {
+    "Hello from Axum!"
 }
 ```
 
@@ -387,8 +395,6 @@ CMD ["cargo", "watch", "-x", "run"]
 
 ```yaml
 # docker-compose.dev.yml
-version: "3.8"
-
 services:
   api-dev:
     build:
@@ -413,4 +419,4 @@ Volume caching for the cargo registry and target directory makes subsequent buil
 
 ## Conclusion
 
-Axum produces some of the leanest Docker images possible thanks to Rust's static binary compilation. The framework's tight integration with Tokio and Tower gives you production-grade features like graceful shutdown, request tracing, and timeouts out of the box. Use the dependency caching trick in the Dockerfile to speed up builds, choose between `scratch` and Alpine for your production stage, and leverage Docker Compose for database connectivity. Axum's type-safe extractors and Tower middleware make it easy to build reliable, containerized APIs that perform exceptionally well.
+Axum produces some of the leanest Docker images possible when paired with Rust static binary builds. The framework's tight integration with Tokio and Tower gives you production-grade features like graceful shutdown, request tracing, and timeouts out of the box. Use the dependency caching trick in the Dockerfile to speed up builds, choose between `scratch` and Alpine for your production stage, and leverage Docker Compose for database connectivity. Axum's type-safe extractors and Tower middleware make it easy to build reliable, containerized APIs that perform exceptionally well.
