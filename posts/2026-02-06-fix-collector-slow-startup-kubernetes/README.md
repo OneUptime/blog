@@ -19,7 +19,7 @@ graph TD
     C --> D[Extension Initialization]
     D --> E[Receiver Startup]
     E --> F[Processor Initialization]
-    F --> G[Exporter Connection]
+    F --> G[Exporter Setup]
     G --> H[Pipeline Ready]
     H --> I[Health Check Pass]
 ```
@@ -32,13 +32,13 @@ Each phase can introduce delays. Understanding where your collector spends time 
 
 Large ConfigMaps can take significant time to mount and parse. The collector must validate the entire configuration before starting any components.
 
-### 2. Exporter Connection Timeouts
+### 2. Exporter Connection and Send Timeouts
 
-Exporters try to establish connections during startup. If backend services are slow to respond or unreachable, the collector waits for connection timeouts before proceeding.
+Exporters validate their settings during startup and connect when data is sent. If backend services are slow to respond or unreachable, short timeouts and retry settings help prevent exporter sends from tying up the pipeline.
 
 ### 3. DNS Resolution Delays
 
-In Kubernetes, DNS resolution can be slow, especially for external endpoints. Each exporter endpoint requires DNS resolution during initialization.
+In Kubernetes, DNS resolution can be slow, especially for external endpoints. Exporter endpoints must be resolved before the collector can send telemetry to them.
 
 ### 4. Resource Constraints
 
@@ -178,7 +178,7 @@ spec:
 
 ### 1. Optimize Exporter Connection Handling
 
-Configure exporters to handle connection failures gracefully without blocking startup.
+Configure exporters to handle connection failures gracefully without tying up the pipeline.
 
 ```yaml
 # otel-collector-config.yaml
@@ -187,7 +187,7 @@ exporters:
     # Primary backend endpoint
     endpoint: "otel-backend.observability.svc.cluster.local:4317"
 
-    # Use insecure connection to skip TLS handshake during startup
+    # Use insecure connection to skip TLS when exporting to an internal endpoint
     # Only use in trusted internal networks
     tls:
       insecure: true
@@ -197,7 +197,7 @@ exporters:
 
     # Configure retry behavior for failed sends (not connection)
     sending_queue:
-      # Enable persistent queue to avoid blocking on send failures
+      # Enable the in-memory queue to avoid blocking on send failures
       enabled: true
       # Limit queue size to control memory usage
       num_consumers: 10
@@ -213,10 +213,10 @@ exporters:
       # Give up after 5 minutes
       max_elapsed_time: 300s
 
-  # Logging exporter as fallback during development
-  logging:
-    # Set to info to reduce log volume
-    loglevel: info
+  # Debug exporter as fallback during development
+  debug:
+    # Set to basic to reduce log volume
+    verbosity: basic
     # Sample logs to show pipeline is working
     sampling_initial: 5
     sampling_thereafter: 100
@@ -278,7 +278,7 @@ spec:
         # Limit DNS attempts
         - name: attempts
           value: "2"
-        # Enable DNS caching
+        # Reduce extra search-domain queries for mostly fully qualified names
         - name: ndots
           value: "1"
 
@@ -287,12 +287,9 @@ spec:
         image: otel/opentelemetry-collector-contrib:0.93.0
 
         env:
-        # Set GOMAXPROCS to match CPU limit for optimal performance
+        # Optionally set GOMAXPROCS when CPU limits are not auto-detected
         - name: GOMAXPROCS
           value: "2"
-        # Disable CGO for faster startup
-        - name: CGO_ENABLED
-          value: "0"
 
         ports:
         - name: otlp-grpc
@@ -318,7 +315,7 @@ spec:
 
 ### 3. Optimize Configuration Loading
 
-Split large configurations into smaller, focused collectors or use dynamic configuration loading.
+Split large configurations into smaller, focused collectors or compose configuration from multiple sources.
 
 ```yaml
 # otel-collector-config.yaml
@@ -348,9 +345,9 @@ processors:
   memory_limiter:
     # Check memory every 1 second
     check_interval: 1s
-    # Start refusing data at 80% of limit
+    # Hard memory limit in MiB
     limit_mib: 800
-    # Start dropping data at 90% of limit
+    # Soft limit is limit_mib - spike_limit_mib
     spike_limit_mib: 200
 
 extensions:
@@ -359,11 +356,12 @@ extensions:
     endpoint: 0.0.0.0:13133
     # Optional: specific path for health check
     path: "/"
-    # Response on success
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
+
+exporters:
+  otlp:
+    endpoint: "otel-backend.observability.svc.cluster.local:4317"
+    tls:
+      insecure: true
 
 service:
   # Only include necessary extensions
@@ -397,8 +395,18 @@ spec:
       labels:
         app: otel-collector
     spec:
-      # Share network namespace for DNS cache
-      shareProcessNamespace: true
+      # Override DNS for all containers in the pod to use the local cache
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+        - 127.0.0.1
+        searches:
+        - observability.svc.cluster.local
+        - svc.cluster.local
+        - cluster.local
+        options:
+        - name: ndots
+          value: "2"
 
       containers:
       # DNS cache sidecar using dnsmasq
@@ -409,6 +417,8 @@ spec:
         - --cache-size=1000
         # Set TTL for cached entries
         - --max-cache-ttl=3600
+        # Use only the configured upstream server
+        - --no-resolv
         # Listen on localhost only
         - --listen-address=127.0.0.1
         # Use cluster DNS as upstream
@@ -427,19 +437,6 @@ spec:
 
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:0.93.0
-
-        # Override DNS to use local cache
-        dnsPolicy: None
-        dnsConfig:
-          nameservers:
-          - 127.0.0.1
-          searches:
-          - observability.svc.cluster.local
-          - svc.cluster.local
-          - cluster.local
-          options:
-          - name: ndots
-            value: "2"
 
         volumeMounts:
         - name: config
@@ -473,7 +470,7 @@ resources:
     memory: 512Mi
   limits:
     # Allow higher CPU limit for startup burst
-    # Will throttle to request after startup
+    # Kubernetes enforces this limit whenever the container tries to exceed it
     cpu: 2000m
     # Set memory limit with headroom
     memory: 1Gi
