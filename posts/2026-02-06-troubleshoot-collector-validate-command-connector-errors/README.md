@@ -13,6 +13,18 @@ The Collector's `validate` command is supposed to catch configuration errors bef
 Consider this configuration:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  otlp:
+    endpoint: localhost:4317
+    tls:
+      insecure: true
+
 connectors:
   spanmetrics:
     dimensions:
@@ -29,13 +41,13 @@ service:
       exporters: [otlp]
 ```
 
-Running `otelcol-contrib validate --config config.yaml` might return:
+Running `otelcol-contrib validate --config config.yaml` can still exit successfully:
 
 ```text
-Config validation succeeded.
+<no validation error>
 ```
 
-But at runtime, the connector sends metrics to a traces pipeline, and the data is silently lost or the Collector panics.
+But when the Collector starts and builds the pipelines, it fails because the connector is used as a traces receiver even though `spanmetrics` only supports traces-to-metrics wiring.
 
 ## Why validate Misses This
 
@@ -69,15 +81,30 @@ For the `spanmetrics` connector:
 Correct wiring:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+connectors:
+  spanmetrics:
+    dimensions:
+    - name: http.method
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp]  # spanmetrics as exporter in traces pipeline
+      exporters: [spanmetrics]  # spanmetrics as exporter in traces pipeline
 
     metrics:
       receivers: [spanmetrics]         # spanmetrics as receiver in metrics pipeline
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus]
 ```
 
 ## Common Connector Type Mappings
@@ -85,10 +112,10 @@ service:
 | Connector | Input Pipeline Type | Output Pipeline Type |
 |-----------|-------------------|---------------------|
 | spanmetrics | traces | metrics |
-| count | traces/metrics/logs | metrics |
+| count | traces/metrics/logs/profiles | metrics |
 | servicegraph | traces | metrics |
-| routing | any | same type |
-| forward | any | same type |
+| routing | traces/metrics/logs | same type |
+| forward | traces/metrics/logs/profiles | same type |
 
 ## Automated Validation Script
 
@@ -98,7 +125,7 @@ Write a script that checks connector wiring:
 #!/bin/bash
 # validate-connectors.sh
 
-# Validates that connector pipeline types are correct
+# Basic example that checks spanmetrics connector pipeline types
 
 CONFIG_FILE=$1
 
@@ -114,7 +141,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Built-in validation passed, checking connector wiring..."
+echo "Built-in validation passed, checking spanmetrics connector wiring..."
 
 # Check spanmetrics connector wiring
 if grep -q "spanmetrics" "$CONFIG_FILE"; then
@@ -138,6 +165,8 @@ fi
 echo "Connector validation complete"
 ```
 
+This script is intentionally simple: it is useful as a guardrail for common `spanmetrics` mistakes, but a YAML-aware checker is better for large configs with multiple named pipelines.
+
 ## Integration Test Approach
 
 The most reliable way to validate connector wiring is to run the Collector with test data and verify the output:
@@ -150,7 +179,8 @@ The most reliable way to validate connector wiring is to run the Collector with 
 docker run -d --name test-collector \
   -v $(pwd)/config.yaml:/etc/otelcol/config.yaml \
   -p 4317:4317 -p 8889:8889 \
-  otel/opentelemetry-collector-contrib:0.121.0
+  otel/opentelemetry-collector-contrib:0.121.0 \
+  --config /etc/otelcol/config.yaml
 
 # Wait for startup
 sleep 5
