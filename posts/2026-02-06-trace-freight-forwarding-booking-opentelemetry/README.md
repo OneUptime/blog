@@ -18,7 +18,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
 trace.set_tracer_provider(provider)
 
@@ -86,18 +86,18 @@ async def fetch_carrier_quote(carrier, shipment_details: dict):
 
         # Make the actual API call
         with tracer.start_as_current_span("freight.quote.api_call") as api_span:
-            api_span.set_attribute("http.method", "POST")
-            api_span.set_attribute("http.url", carrier.quote_endpoint)
+            api_span.set_attribute("http.request.method", "POST")
+            api_span.set_attribute("url.full", carrier.quote_endpoint)
 
             response = await carrier.client.post(
                 carrier.quote_endpoint,
                 json=payload,
                 timeout=30
             )
-            api_span.set_attribute("http.status_code", response.status_code)
+            api_span.set_attribute("http.response.status_code", response.status_code)
 
             if response.status_code != 200:
-                api_span.set_attribute("error", True)
+                api_span.set_attribute("error.type", str(response.status_code))
                 raise CarrierAPIError(carrier.name, response.status_code, response.text)
 
         # Normalize the carrier response to our internal format
@@ -132,7 +132,7 @@ def book_shipment(quote_id: str, customer_id: str):
             confirm_span.set_attribute("booking.status", confirmation.status)
 
             if confirmation.status != "confirmed":
-                confirm_span.set_attribute("error", True)
+                confirm_span.set_attribute("error.type", "booking_rejected")
                 span.add_event("booking_rejected", {
                     "reason": confirmation.rejection_reason
                 })
