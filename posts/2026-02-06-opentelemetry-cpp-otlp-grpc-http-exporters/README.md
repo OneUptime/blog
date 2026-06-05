@@ -10,13 +10,13 @@ The OpenTelemetry Protocol (OTLP) defines a standard way to transmit telemetry d
 
 ## Understanding OTLP Exporters
 
-OTLP exporters send traces, metrics, and logs from your application to a collector or backend. The gRPC exporter offers better performance and streaming capabilities, while the HTTP exporter provides broader compatibility and simpler firewall traversal.
+OTLP exporters send traces, metrics, and logs from your application to a collector or backend. The gRPC exporter is often a good fit for high-volume telemetry data because it uses HTTP/2, while the HTTP exporter provides broader compatibility and simpler firewall traversal.
 
-Both exporters serialize data using Protobuf, ensuring efficient transmission. The choice between them often depends on your infrastructure and whether your backend supports both protocols.
+The gRPC exporter serializes data using Protobuf, and the HTTP exporter can use either binary Protobuf or JSON encoding. The choice between them often depends on your infrastructure and whether your backend supports both protocols.
 
 ## Setting Up OTLP gRPC Exporter
 
-The gRPC exporter provides the best performance for high-volume telemetry data. Start by including the necessary headers:
+The gRPC exporter is often a good fit for high-volume telemetry data. Start by including the necessary headers:
 
 ```cpp
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
@@ -36,7 +36,7 @@ Create and configure the gRPC exporter:
 // Configure OTLP gRPC exporter options
 otlp::OtlpGrpcExporterOptions grpc_options;
 
-// Set the endpoint (default is localhost:4317)
+// Set the endpoint (default is http://localhost:4317)
 grpc_options.endpoint = "otel-collector:4317";
 
 // Disable TLS for local development
@@ -59,13 +59,8 @@ otlp::OtlpGrpcExporterOptions secure_options;
 secure_options.endpoint = "otel-collector.production.com:4317";
 secure_options.use_ssl_credentials = true;
 
-// Optionally provide custom SSL credentials
-grpc::SslCredentialsOptions ssl_opts;
-ssl_opts.pem_root_certs = ReadFile("/path/to/ca-cert.pem");
-ssl_opts.pem_private_key = ReadFile("/path/to/client-key.pem");
-ssl_opts.pem_cert_chain = ReadFile("/path/to/client-cert.pem");
-
-secure_options.ssl_credentials = grpc::SslCredentials(ssl_opts);
+// Optionally provide a custom CA certificate
+secure_options.ssl_credentials_cacert_path = "/path/to/ca-cert.pem";
 
 auto secure_exporter = otlp::OtlpGrpcExporterFactory::Create(secure_options);
 ```
@@ -114,9 +109,10 @@ auto processor = trace_sdk::SimpleSpanProcessorFactory::Create(
 auto provider = trace_sdk::TracerProviderFactory::Create(
     std::move(processor)
 );
+std::shared_ptr<trace_api::TracerProvider> api_provider(std::move(provider));
 
 // Set as global tracer provider
-trace_api::Provider::SetTracerProvider(provider);
+trace_api::Provider::SetTracerProvider(api_provider);
 ```
 
 ## Using Batch Span Processor
@@ -142,8 +138,9 @@ auto batch_processor = trace_sdk::BatchSpanProcessorFactory::Create(
 auto provider = trace_sdk::TracerProviderFactory::Create(
     std::move(batch_processor)
 );
+std::shared_ptr<trace_api::TracerProvider> api_provider(std::move(provider));
 
-trace_api::Provider::SetTracerProvider(provider);
+trace_api::Provider::SetTracerProvider(api_provider);
 ```
 
 The batch processor accumulates spans in memory and exports them in batches, reducing network overhead.
@@ -155,10 +152,12 @@ Here's a full example that initializes OpenTelemetry with a gRPC exporter:
 ```cpp
 #include <memory>
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
+#include "opentelemetry/exporters/otlp/otlp_grpc_exporter_options.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
+#include "opentelemetry/sdk/trace/batch_span_processor_options.h"
+#include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/sdk/resource/resource.h"
-#include "opentelemetry/sdk/resource/semantic_conventions.h"
 #include "opentelemetry/trace/provider.h"
 
 namespace trace_api = opentelemetry::trace;
@@ -166,12 +165,12 @@ namespace trace_sdk = opentelemetry::sdk::trace;
 namespace resource = opentelemetry::sdk::resource;
 namespace otlp = opentelemetry::exporter::otlp;
 
-void InitTracer() {
+std::shared_ptr<trace_sdk::TracerProvider> InitTracer() {
     // Create resource attributes
     auto resource_attributes = resource::ResourceAttributes{
-        {resource::SemanticConventions::kServiceName, "my-cpp-service"},
-        {resource::SemanticConventions::kServiceVersion, "1.0.0"},
-        {resource::SemanticConventions::kDeploymentEnvironment, "production"}
+        {"service.name", "my-cpp-service"},
+        {"service.version", "1.0.0"},
+        {"deployment.environment.name", "production"}
     };
     auto resource = resource::Resource::Create(resource_attributes);
 
@@ -195,11 +194,15 @@ void InitTracer() {
         std::move(processor),
         resource
     );
-    trace_api::Provider::SetTracerProvider(provider);
+    std::shared_ptr<trace_sdk::TracerProvider> sdk_provider(std::move(provider));
+    std::shared_ptr<trace_api::TracerProvider> api_provider = sdk_provider;
+    trace_api::Provider::SetTracerProvider(api_provider);
+
+    return sdk_provider;
 }
 
 int main() {
-    InitTracer();
+    auto provider = InitTracer();
 
     // Your application code here
     auto tracer = trace_api::Provider::GetTracerProvider()->GetTracer(
@@ -209,6 +212,7 @@ int main() {
     auto span = tracer->StartSpan("main-operation");
     // Do work
     span->End();
+    provider->ForceFlush();
 
     return 0;
 }
@@ -219,7 +223,11 @@ int main() {
 You can easily switch between gRPC and HTTP exporters based on configuration:
 
 ```cpp
+#include <memory>
+#include <stdexcept>
 #include <string>
+
+#include "opentelemetry/exporters/otlp/otlp_http.h"
 
 std::unique_ptr<trace_sdk::SpanExporter> CreateExporter(
     const std::string& protocol,
@@ -230,10 +238,15 @@ std::unique_ptr<trace_sdk::SpanExporter> CreateExporter(
         options.endpoint = endpoint;
         options.use_ssl_credentials = false;
         return otlp::OtlpGrpcExporterFactory::Create(options);
-    } else if (protocol == "http") {
+    } else if (protocol == "http" || protocol == "http/protobuf") {
         otlp::OtlpHttpExporterOptions options;
         options.url = endpoint;
         options.content_type = otlp::HttpRequestContentType::kBinary;
+        return otlp::OtlpHttpExporterFactory::Create(options);
+    } else if (protocol == "http/json") {
+        otlp::OtlpHttpExporterOptions options;
+        options.url = endpoint;
+        options.content_type = otlp::HttpRequestContentType::kJson;
         return otlp::OtlpHttpExporterFactory::Create(options);
     }
     throw std::runtime_error("Unknown protocol: " + protocol);
@@ -241,13 +254,16 @@ std::unique_ptr<trace_sdk::SpanExporter> CreateExporter(
 
 void InitTracer(const std::string& protocol, const std::string& endpoint) {
     auto exporter = CreateExporter(protocol, endpoint);
+    trace_sdk::BatchSpanProcessorOptions batch_options;
     auto processor = trace_sdk::BatchSpanProcessorFactory::Create(
-        std::move(exporter)
+        std::move(exporter),
+        batch_options
     );
     auto provider = trace_sdk::TracerProviderFactory::Create(
         std::move(processor)
     );
-    trace_api::Provider::SetTracerProvider(provider);
+    std::shared_ptr<trace_api::TracerProvider> api_provider(std::move(provider));
+    trace_api::Provider::SetTracerProvider(api_provider);
 }
 ```
 
@@ -264,23 +280,29 @@ std::string GetEnv(const char* name, const std::string& default_value) {
 }
 
 void InitTracerFromEnv() {
-    std::string endpoint = GetEnv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "localhost:4317"
-    );
     std::string protocol = GetEnv(
         "OTEL_EXPORTER_OTLP_PROTOCOL",
         "grpc"
     );
+    std::string default_endpoint = protocol == "grpc"
+        ? "localhost:4317"
+        : "http://localhost:4318/v1/traces";
+    std::string endpoint = GetEnv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        GetEnv("OTEL_EXPORTER_OTLP_ENDPOINT", default_endpoint)
+    );
 
     auto exporter = CreateExporter(protocol, endpoint);
+    trace_sdk::BatchSpanProcessorOptions batch_options;
     auto processor = trace_sdk::BatchSpanProcessorFactory::Create(
-        std::move(exporter)
+        std::move(exporter),
+        batch_options
     );
     auto provider = trace_sdk::TracerProviderFactory::Create(
         std::move(processor)
     );
-    trace_api::Provider::SetTracerProvider(provider);
+    std::shared_ptr<trace_api::TracerProvider> api_provider(std::move(provider));
+    trace_api::Provider::SetTracerProvider(api_provider);
 }
 ```
 
@@ -304,6 +326,7 @@ Enable SDK logging to troubleshoot connection problems:
 ```cpp
 #include "opentelemetry/sdk/common/global_log_handler.h"
 #include <iostream>
+#include <memory>
 
 class ConsoleLogHandler : public opentelemetry::sdk::common::internal_log::LogHandler {
 public:
