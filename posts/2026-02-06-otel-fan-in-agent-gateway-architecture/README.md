@@ -40,6 +40,7 @@ receivers:
   # Collect host metrics from the node
   hostmetrics:
     collection_interval: 30s
+    root_path: /hostfs
     scrapers:
       cpu:
       memory:
@@ -59,7 +60,7 @@ processors:
     timeout: 2s
 
   # Add node-level resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
     system:
       hostname_sources: ["os"]
@@ -84,23 +85,23 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, resource_detection, batch]
       exporters: [otlp/gateway]
 
     metrics:
       receivers: [otlp, hostmetrics]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, resource_detection, batch]
       exporters: [otlp/gateway]
 
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, resource_detection, batch]
       exporters: [otlp/gateway]
 ```
 
 ## Gateway Collector Configuration
 
-The gateway is where the heavy processing happens: Kubernetes metadata enrichment, sampling, transformations, and export to the backend:
+The gateway is where the heavy processing happens: Kubernetes metadata enrichment, probabilistic sampling, transformations, and export to the backend:
 
 ```yaml
 # gateway-collector-config.yaml
@@ -127,23 +128,19 @@ processors:
         - k8s.namespace.name
         - k8s.deployment.name
         - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+      - sources:
+          - from: connection
 
-  # Tail sampling at the gateway sees complete traces
-  tail_sampling:
-    decision_wait: 30s
-    policies:
-      - name: error-policy
-        type: status_code
-        status_code:
-          status_codes: [ERROR]
-      - name: latency-policy
-        type: latency
-        latency:
-          threshold_ms: 1000
-      - name: probabilistic
-        type: probabilistic
-        probabilistic:
-          sampling_percentage: 10
+  # Stateless sampling works safely across multiple gateway replicas
+  probabilistic_sampler:
+    sampling_percentage: 10
 
   # Large batches for efficient export
   batch:
@@ -168,7 +165,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, k8sattributes, tail_sampling, batch]
+      processors: [memory_limiter, k8sattributes, probabilistic_sampler, batch]
       exporters: [otlp]
 
     metrics:
@@ -206,6 +203,13 @@ spec:
         - name: otel-agent
           image: otel/opentelemetry-collector-contrib:latest
           args: ["--config=/etc/otel/config.yaml"]
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.node.name=$(K8S_NODE_NAME)"
           resources:
             requests:
               cpu: 100m
@@ -216,16 +220,53 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
+            - name: hostfs
+              mountPath: /hostfs
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: otel-agent-config
+        - name: hostfs
+          hostPath:
+            path: /
 ```
 
 Deploy the gateway as a Deployment with a Service:
 
 ```yaml
 # gateway-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-gateway
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-gateway
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-gateway
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: monitoring
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -241,6 +282,7 @@ spec:
       labels:
         app: otel-gateway
     spec:
+      serviceAccountName: otel-gateway
       containers:
         - name: otel-gateway
           image: otel/opentelemetry-collector-contrib:latest
@@ -252,6 +294,13 @@ spec:
             limits:
               cpu: "2"
               memory: 4Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: otel-gateway-config
 ---
 apiVersion: v1
 kind: Service
@@ -274,4 +323,4 @@ spec:
 - **Gateway replicas**: Start with 3, add more when CPU utilization exceeds 60%
 - **Ratio**: Roughly 1 gateway replica per 50-100 agent nodes
 
-The fan-in architecture is the standard pattern for scaling OpenTelemetry collection in Kubernetes. It keeps agents lightweight, centralizes expensive processing at the gateway, and scales each tier independently.
+The fan-in architecture is the standard pattern for scaling OpenTelemetry collection in Kubernetes. It keeps agents lightweight, centralizes expensive processing at the gateway, and scales each tier independently. If you need tail sampling instead of probabilistic sampling, route all spans for the same trace to the same gateway replica, for example with the OpenTelemetry Collector load-balancing exporter.
