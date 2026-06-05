@@ -24,7 +24,7 @@ Any of these scenarios can cause data to diverge across services.
 The key is to maintain trace context as events flow through queues. Here is how to propagate context through a multi-stage event pipeline:
 
 ```python
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
 import json
 import time
@@ -43,11 +43,15 @@ class EventPublisher:
         ) as span:
             # Generate or reuse correlation ID for tracking
             # across the entire event chain
-            if not correlation_id:
-                correlation_id = span.get_span_context().trace_id
+            if correlation_id is None:
+                correlation_id = f"{span.get_span_context().trace_id:032x}"
+            elif isinstance(correlation_id, int):
+                correlation_id = f"{correlation_id:032x}"
+            else:
+                correlation_id = str(correlation_id)
 
             span.set_attribute("event.type", event_type)
-            span.set_attribute("event.correlation_id", format(correlation_id, '032x'))
+            span.set_attribute("event.correlation_id", correlation_id)
 
             # Build the event envelope with trace context
             headers = {}
@@ -57,7 +61,7 @@ class EventPublisher:
                 "type": event_type,
                 "payload": payload,
                 "metadata": {
-                    "correlation_id": format(correlation_id, '032x'),
+                    "correlation_id": correlation_id,
                     "published_at": time.time(),
                     "source_service": "order-service",
                     "trace_context": headers,
@@ -266,4 +270,4 @@ def reconciliation_report(traces, time_window_hours=1):
 
 ## Summary
 
-Data inconsistencies in event-driven systems come from missed events, duplicate processing, or out-of-order delivery. OpenTelemetry trace correlation across queues lets you verify that every event published was consumed by every expected service, that events were processed in the right order, and that the delivery latency was within bounds. Build a correlation ID into your event envelope, propagate trace context through queue headers, and run regular reconciliation checks against your trace data. When inconsistencies arise, the traces give you the exact event, the exact service, and the exact timestamp where things went wrong.
+Data inconsistencies in event-driven systems come from missed events, duplicate processing, or out-of-order delivery. OpenTelemetry trace correlation across queues lets you verify that every event published was consumed by every expected service, that events were processed in the right order, and that the delivery latency was within bounds. Build a correlation ID into your event envelope, propagate trace context through message metadata or queue headers, and run regular reconciliation checks against your trace data. When inconsistencies arise, the traces give you the exact event, the exact service, and the exact timestamp where things went wrong.
