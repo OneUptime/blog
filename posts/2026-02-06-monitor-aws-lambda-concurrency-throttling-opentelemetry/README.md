@@ -48,11 +48,11 @@ service: concurrency-monitor
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   region: us-east-1
   environment:
-    # Point telemetry to your OTLP collector endpoint
-    OTEL_EXPORTER_OTLP_ENDPOINT: https://your-collector:4318
+    # Point telemetry to the local ADOT Collector extension endpoint
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
     # Identify this service in your observability platform
     OTEL_SERVICE_NAME: concurrency-monitor
     # Enable the Lambda wrapper for auto-instrumentation
@@ -65,19 +65,18 @@ functions:
     reservedConcurrency: 50
     layers:
       # OpenTelemetry Lambda layer for Node.js
-      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1
+      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-2:1
 ```
 
 The layer handles trace context propagation and basic span creation. But for concurrency and throttling monitoring, we need custom metrics.
 
 ## Building a Concurrency Tracking Middleware
 
-The key insight here is that each running Lambda instance represents one unit of concurrency. By tracking active invocations with a gauge metric, you can see your real-time concurrency usage across all instances.
+The key insight here is that each active Lambda invocation represents one unit of concurrency. By tracking active invocations with an up-down metric, you can approximate real-time concurrency usage from inside your function and compare it with Lambda's official CloudWatch metrics.
 
 ```javascript
 // concurrency-tracker.js
 const { metrics } = require('@opentelemetry/api');
-const { Resource } = require('@opentelemetry/resources');
 
 // Get a meter instance scoped to our monitoring module
 const meter = metrics.getMeter('lambda-concurrency-monitor', '1.0.0');
@@ -204,28 +203,30 @@ receivers:
   # Scrape Lambda concurrency metrics directly from CloudWatch
   awscloudwatch:
     region: us-east-1
-    # Poll every 60 seconds to match CloudWatch's minimum resolution
-    poll_interval: 60s
     metrics:
-      named:
+      # Poll every 60 seconds to match Lambda's 1-minute metric granularity
+      collection_interval: 60s
+      period: 60s
+      queries:
         # Track concurrent executions across the account
-        lambda_concurrent_executions:
-          namespace: AWS/Lambda
+        - namespace: AWS/Lambda
           metric_name: ConcurrentExecutions
-          period: 60s
-          statistics: [Maximum]
+          stats: [Maximum]
           dimensions:
-            - name: FunctionName
-              value: processOrders
+            FunctionName: processOrders
         # Track throttle events reported by AWS
-        lambda_throttles:
-          namespace: AWS/Lambda
+        - namespace: AWS/Lambda
           metric_name: Throttles
-          period: 60s
-          statistics: [Sum]
+          stats: [Sum]
           dimensions:
-            - name: FunctionName
-              value: processOrders
+            FunctionName: processOrders
+        # Track provisioned concurrency utilization for an alias or version
+        - namespace: AWS/Lambda
+          metric_name: ProvisionedConcurrencyUtilization
+          stats: [Maximum]
+          dimensions:
+            FunctionName: processOrders
+            Resource: processOrders:live
 
 processors:
   # Add resource attributes so these metrics correlate
@@ -297,44 +298,25 @@ The most valuable alert in that list is the concurrency approaching limit warnin
 
 If you use provisioned concurrency to avoid cold starts, you also want to track how efficiently those warm instances are being used. Paying for provisioned concurrency that sits idle wastes money.
 
-```javascript
-// provisioned-utilization.js
-const { metrics } = require('@opentelemetry/api');
-
-const meter = metrics.getMeter('lambda-provisioned-monitor', '1.0.0');
-
-// Track the ratio of used provisioned concurrency to allocated.
-// This helps you right-size your provisioned concurrency setting.
-const provisionedUtilization = meter.createObservableGauge(
-  'lambda.provisioned_concurrency.utilization',
-  {
-    description: 'Ratio of used to allocated provisioned concurrency',
-    unit: '1',
-  }
-);
-
-// Use an observable callback to compute the ratio periodically
-provisionedUtilization.addCallback(async (observableResult) => {
-  const { LambdaClient, GetFunctionConcurrencyCommand } = require('@aws-sdk/client-lambda');
-  const client = new LambdaClient({});
-
-  const response = await client.send(
-    new GetFunctionConcurrencyCommand({
-      FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
-    })
-  );
-
-  // Calculate utilization as a percentage
-  const allocated = response.ReservedConcurrentExecutions || 0;
-  if (allocated > 0) {
-    observableResult.observe(currentActive / allocated, {
-      'faas.name': process.env.AWS_LAMBDA_FUNCTION_NAME,
-    });
-  }
-});
+```yaml
+# Add this CloudWatch query to the awscloudwatch receiver.
+# Lambda publishes this metric for each provisioned version or alias.
+receivers:
+  awscloudwatch:
+    region: us-east-1
+    metrics:
+      collection_interval: 60s
+      period: 60s
+      queries:
+        - namespace: AWS/Lambda
+          metric_name: ProvisionedConcurrencyUtilization
+          stats: [Maximum]
+          dimensions:
+            FunctionName: processOrders
+            Resource: processOrders:live
 ```
 
-When utilization stays consistently below 50%, you are probably over-provisioning and can scale back. When it spikes above 90%, you need more capacity.
+AWS calculates this as `ProvisionedConcurrentExecutions` divided by the total provisioned concurrency configured for the version or alias. When utilization stays consistently below 50%, you are probably over-provisioning and can scale back. When it spikes above 90%, you need more capacity.
 
 ## Visualizing Concurrency Trends
 
