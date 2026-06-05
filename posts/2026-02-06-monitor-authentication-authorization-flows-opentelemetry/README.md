@@ -44,8 +44,9 @@ Each of these stages can fail or be slow for different reasons. Token validation
 Start with the standard OpenTelemetry setup, with both tracing and metrics configured:
 
 ```python
-# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
 
+import time
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -65,13 +66,15 @@ resource = Resource.create({
 
 trace_provider = TracerProvider(resource=resource)
 trace_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="otel-collector:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+    )
 )
 trace.set_tracer_provider(trace_provider)
 
 # Metrics setup
 metric_reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="otel-collector:4317"),
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True),
     export_interval_millis=15000,
 )
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -81,7 +84,7 @@ tracer = trace.get_tracer("auth.service")
 meter = metrics.get_meter("auth.service")
 ```
 
-For auth services specifically, you want to be careful about what you put in span attributes. Never log passwords, tokens, or session IDs as plain text in traces. Use hashed or truncated values when you need to correlate across requests.
+For auth services specifically, you want to be careful about what you put in span attributes. Never log passwords, tokens, or session IDs as plain text in traces. Use a keyed, one-way hash for stable identifiers when you need to correlate across requests, and avoid recording tokens or session IDs even in truncated form.
 
 ---
 
@@ -104,11 +107,12 @@ login_failures = meter.create_counter(
 login_latency = meter.create_histogram(
     name="auth.login.latency",
     description="Login flow latency",
-    unit="ms",
+    unit="s",
 )
 
 def handle_login(credentials, client_info):
     """Handle a login request through all auth stages."""
+    start_time = time.perf_counter()
     with tracer.start_as_current_span(
         "auth.login",
         attributes={
@@ -151,6 +155,11 @@ def handle_login(credentials, client_info):
                 "auth.failure_reason": e.reason,
             })
             raise
+        finally:
+            login_latency.record(time.perf_counter() - start_time, {
+                "auth.method": credentials.method,
+                "auth.client_type": client_info.type,
+            })
 ```
 
 The failure reason attribute is critical for security monitoring. You want to be able to quickly answer questions like "are we seeing a spike in invalid_password failures from a single IP range?" which could indicate a credential stuffing attack.
@@ -241,15 +250,21 @@ mfa_attempts = meter.create_counter(
     description="MFA verification attempts by method",
 )
 
+mfa_failures = meter.create_counter(
+    name="auth.mfa.failures_total",
+    description="Failed MFA verification attempts by method",
+)
+
 mfa_latency = meter.create_histogram(
     name="auth.mfa.latency",
     description="MFA verification latency by method",
-    unit="ms",
+    unit="s",
 )
 
 def verify_mfa(user, credentials):
     """Verify the second authentication factor."""
     mfa_method = user.mfa_method  # totp, sms, push
+    start_time = time.perf_counter()
 
     with tracer.start_as_current_span(
         "auth.mfa.verify",
@@ -260,33 +275,44 @@ def verify_mfa(user, credentials):
     ) as span:
         mfa_attempts.add(1, {"auth.mfa.method": mfa_method})
 
-        if mfa_method == "totp":
-            # TOTP is fast since it is computed locally
-            valid = totp_validator.verify(user.totp_secret, credentials.mfa_code)
-        elif mfa_method == "sms":
-            # SMS verification involves an external provider
-            with tracer.start_as_current_span(
-                "auth.mfa.sms_verify",
-                attributes={"auth.mfa.sms_provider": "twilio"},
-            ):
-                valid = sms_provider.verify_code(
-                    user.phone_number, credentials.mfa_code
-                )
-        elif mfa_method == "push":
-            # Push notification and wait for user approval
-            with tracer.start_as_current_span("auth.mfa.push_verify") as push_span:
-                result = push_provider.send_and_wait(
-                    user.device_id, timeout_seconds=60
-                )
-                push_span.set_attribute(
-                    "auth.mfa.push_response_time_ms", result.response_time_ms
-                )
-                valid = result.approved
+        try:
+            if mfa_method == "totp":
+                # TOTP is fast since it is computed locally
+                valid = totp_validator.verify(user.totp_secret, credentials.mfa_code)
+            elif mfa_method == "sms":
+                # SMS verification involves an external provider
+                with tracer.start_as_current_span(
+                    "auth.mfa.sms_verify",
+                    attributes={"auth.mfa.sms_provider": "twilio"},
+                ):
+                    valid = sms_provider.verify_code(
+                        user.phone_number, credentials.mfa_code
+                    )
+            elif mfa_method == "push":
+                # Push notification and wait for user approval
+                with tracer.start_as_current_span("auth.mfa.push_verify") as push_span:
+                    result = push_provider.send_and_wait(
+                        user.device_id, timeout_seconds=60
+                    )
+                    push_span.set_attribute(
+                        "auth.mfa.push_response_time_s", result.response_time_ms / 1000
+                    )
+                    valid = result.approved
+            else:
+                raise AuthenticationError(reason="unsupported_mfa_method")
 
-        if not valid:
-            raise AuthenticationError(reason="mfa_failed")
+            if not valid:
+                raise AuthenticationError(reason="mfa_failed")
 
-        span.set_attribute("auth.mfa.success", True)
+            span.set_attribute("auth.mfa.success", True)
+        except AuthenticationError:
+            span.set_attribute("auth.mfa.success", False)
+            mfa_failures.add(1, {"auth.mfa.method": mfa_method})
+            raise
+        finally:
+            mfa_latency.record(time.perf_counter() - start_time, {
+                "auth.mfa.method": mfa_method,
+            })
 ```
 
 Push notification MFA is interesting from a monitoring perspective because it depends on the user responding. The response time attribute helps you understand whether users are struggling with the push flow, which could indicate UX issues or notification delivery problems.
@@ -307,17 +333,18 @@ authz_decisions = meter.create_counter(
 authz_latency = meter.create_histogram(
     name="auth.authz.latency",
     description="Authorization decision latency",
-    unit="ms",
+    unit="s",
 )
 
 policy_eval_count = meter.create_histogram(
     name="auth.authz.policies_evaluated",
     description="Number of policies evaluated per decision",
-    unit="policies",
+    unit="{policy}",
 )
 
 def check_authorization(user, resource, action):
     """Check if a user is authorized to perform an action on a resource."""
+    start_time = time.perf_counter()
     with tracer.start_as_current_span(
         "auth.authz.check",
         attributes={
@@ -359,6 +386,11 @@ def check_authorization(user, resource, action):
                 "action": action,
                 "user_role": user.primary_role,
             })
+
+        authz_latency.record(time.perf_counter() - start_time, {
+            "auth.authz.resource_type": resource.type,
+            "auth.authz.action": action,
+        })
 
         return permitted
 ```
