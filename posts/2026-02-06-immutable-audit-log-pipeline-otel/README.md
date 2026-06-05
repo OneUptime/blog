@@ -10,7 +10,7 @@ Audit logs are only useful if you can prove they haven't been tampered with. In 
 
 ## The Architecture
 
-The pipeline has three stages: collection via OpenTelemetry SDK instrumentation, processing through the OTel Collector with integrity hashing, and storage in an append-only backend. We will use Amazon S3 with Object Lock as the append-only store, but the same pattern works with Azure Immutable Blob Storage or GCS retention policies.
+The pipeline has three stages: collection via OpenTelemetry SDK instrumentation with integrity hashing, processing through the OTel Collector, and storage in an append-only backend. We will use Amazon S3 with Object Lock as the append-only store, but the same pattern works with Azure Immutable Blob Storage or GCS retention policies.
 
 ## Instrumenting Audit Events
 
@@ -26,12 +26,15 @@ import time
 from opentelemetry import _logs as logs
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
 # Set up the OTel log provider with OTLP export
-provider = LoggerProvider()
+provider = LoggerProvider(resource=Resource.create({"service.name": "audit.service"}))
 provider.add_log_record_processor(
-    BatchLogRecordProcessor(OTLPLogExporter(endpoint="otel-collector:4317"))
+    BatchLogRecordProcessor(
+        OTLPLogExporter(endpoint="otel-collector:4317", insecure=True)
+    )
 )
 logs.set_logger_provider(provider)
 logger = logs.get_logger("audit.service")
@@ -67,7 +70,7 @@ def emit_audit_event(actor: str, action: str, resource: str, details: dict):
 
 ## Configuring the Collector for Audit Logs
 
-The Collector receives audit logs, adds a chain hash for sequential integrity, and exports to both S3 (immutable) and a searchable backend like Elasticsearch.
+The Collector receives audit logs, adds pipeline metadata, and exports to both S3 (immutable) and a searchable backend like Elasticsearch.
 
 ```yaml
 # otel-collector-audit.yaml
@@ -80,12 +83,9 @@ receivers:
 processors:
   # Filter to only process audit log records
   filter/audit:
-    logs:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: service.name
-            value: "audit.service"
+    error_mode: ignore
+    log_conditions:
+      - resource.attributes["service.name"] != "audit.service"
 
   # Add collector-level metadata for traceability
   attributes/audit-metadata:
@@ -109,7 +109,7 @@ exporters:
       region: us-east-1
       s3_bucket: audit-logs-immutable
       s3_prefix: "otel-audit"
-      s3_partition: "minute"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       file_prefix: "audit"
     marshaler: otlp_json
 
@@ -220,7 +220,7 @@ exporters:
       region: us-east-1
       s3_bucket: audit-logs-immutable
       s3_prefix: "otel-audit"
-      s3_partition: "minute"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
     sending_queue:
       enabled: true
       storage: file_storage
@@ -235,6 +235,9 @@ extensions:
   file_storage:
     directory: /var/otel/audit-queue
     timeout: 10s
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Summary
