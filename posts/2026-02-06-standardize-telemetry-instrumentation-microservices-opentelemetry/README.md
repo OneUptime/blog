@@ -14,13 +14,13 @@ OpenTelemetry provides the standards, but adopting them across a large fleet req
 
 ```mermaid
 flowchart TD
-    A[Resource Attributes<br/>service.name, team, env] --> B[Semantic Conventions<br/>http.*, rpc.*, db.*]
+    A[Resource Attributes<br/>service.name, team, deployment.environment.name] --> B[Semantic Conventions<br/>http.*, rpc.*, db.*]
     B --> C[Standard Metrics<br/>golden signals per service]
     C --> D[Trace Context<br/>propagation across services]
     D --> E[Custom Instrumentation<br/>business-specific spans/metrics]
 ```
 
-Start from the bottom. Resource attributes are the foundation - without consistent `service.name` and `deployment.environment`, you cannot correlate anything. Semantic conventions come next. Standard metrics and trace propagation build on top. Custom instrumentation is the last layer and the most flexible.
+Start from the bottom. Resource attributes are the foundation - without consistent `service.name` and `deployment.environment.name`, you cannot correlate anything. Semantic conventions come next. Standard metrics and trace propagation build on top. Custom instrumentation is the last layer and the most flexible.
 
 ## Defining the Instrumentation Standard
 
@@ -37,7 +37,7 @@ resource_attributes:
   required:
     - service.name        # Must match the service catalog entry
     - service.version     # Semantic version from build metadata
-    - deployment.environment  # staging, production
+    - deployment.environment.name  # staging, production
     - team                # Owning team name
   optional:
     - service.namespace   # Logical grouping
@@ -48,15 +48,16 @@ metrics:
     # Every HTTP service must emit these
     - name: http.server.request.duration
       type: histogram
-      unit: ms
-      attributes: [http.request.method, http.route, http.response.status_code]
+      unit: s
+      attributes: [http.request.method, url.scheme, http.route, http.response.status_code]
     - name: http.server.active_requests
       type: up_down_counter
-      unit: "1"
+      unit: "{request}"
+      attributes: [http.request.method, url.scheme]
   recommended:
-    - name: db.client.query.duration
+    - name: db.client.operation.duration
       type: histogram
-      unit: ms
+      unit: s
       condition: "service uses a database"
 
 traces:
@@ -67,16 +68,20 @@ traces:
     span_attributes:
       http_server:
         - http.request.method
+        - url.path
+        - url.scheme
         - http.route
         - http.response.status_code
         - server.address
       http_client:
         - http.request.method
         - url.full
+        - server.address
+        - server.port
         - http.response.status_code
       database:
-        - db.system
-        - db.statement  # sanitized, no PII
+        - db.system.name
+        - db.query.text  # sanitized, no PII
 
 sdk_versions:
   # Minimum SDK versions to ensure compatibility
@@ -130,7 +135,7 @@ def init(service_version: str = "unknown") -> tuple:
     resource = Resource.create({
         "service.name": os.environ["OTEL_SERVICE_NAME"],
         "service.version": service_version,
-        "deployment.environment": os.environ["DEPLOYMENT_ENV"],
+        "deployment.environment.name": os.environ["DEPLOYMENT_ENV"],
         "team": os.environ["TEAM_NAME"],
     })
 
@@ -252,6 +257,12 @@ class ComplianceChecker:
         """Run compliance checks across all registered services."""
         services = self.metrics.list_services()
         return [self.check_service(s) for s in services]
+
+    def _get_team(self, service_name: str) -> str:
+        """Return the owning team recorded on the service resource."""
+        if hasattr(self.traces, "get_resource_attribute"):
+            return self.traces.get_resource_attribute(service_name, "team") or "unknown"
+        return "unknown"
 ```
 
 ## Compliance Dashboard
