@@ -28,6 +28,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.propagate import inject
 import time
 
 # Tracing setup
@@ -71,10 +72,11 @@ async def ingest_reading(request: Request):
 
     with tracer.start_as_current_span("rpm.reading.ingest") as span:
         device_id = payload.get("device_id", "unknown")
+        device_hash = hash_device_id(device_id)
         reading_type = payload.get("reading_type", "unknown")
         device_timestamp = payload.get("timestamp", 0)
 
-        span.set_attribute("rpm.device_id", device_id)
+        span.set_attribute("rpm.device_hash", device_hash)
         span.set_attribute("rpm.reading_type", reading_type)
         span.set_attribute("rpm.device_model", payload.get("model", "unknown"))
         span.set_attribute("rpm.gateway_type", payload.get("gateway", "cellular"))
@@ -94,7 +96,10 @@ async def ingest_reading(request: Request):
             if last_reading_time:
                 gap_minutes = (time.time() - last_reading_time) / 60
                 gap_span.set_attribute("rpm.reporting_gap_minutes", gap_minutes)
-                device_reporting_gap.record(gap_minutes, {"device_id": device_id})
+                device_reporting_gap.record(gap_minutes, {
+                    "reading_type": reading_type,
+                    "gateway": payload.get("gateway", "cellular"),
+                })
 
                 # Alert if device has not reported in expected interval
                 expected_interval = get_expected_interval(device_id)
@@ -112,8 +117,10 @@ async def ingest_reading(request: Request):
                                   validation.get("reason", "ok"))
 
         if validation["valid"]:
-            # Push to processing queue
-            await enqueue_reading(payload)
+            # Push to processing queue with trace context for the consumer
+            headers = {}
+            inject(headers)
+            await enqueue_reading(payload, headers=headers)
             readings_received.add(1, {
                 "reading_type": reading_type,
                 "status": "accepted",
@@ -132,7 +139,7 @@ async def ingest_reading(request: Request):
 The consumer applies clinical rules to determine if a reading is out of range and needs attention:
 
 ```python
-from opentelemetry.propagate import inject, extract
+from opentelemetry.propagate import extract
 
 async def process_reading(message):
     """Process a reading from the queue and apply clinical rules."""
@@ -142,9 +149,10 @@ async def process_reading(message):
     with tracer.start_as_current_span("rpm.reading.process", context=ctx) as span:
         reading = message.value
         reading_type = reading.get("reading_type", "unknown")
+        device_hash = hash_device_id(reading.get("device_id", ""))
 
         span.set_attribute("rpm.reading_type", reading_type)
-        span.set_attribute("rpm.device_id", reading.get("device_id", ""))
+        span.set_attribute("rpm.device_hash", device_hash)
 
         # Apply clinical thresholds based on reading type
         with tracer.start_as_current_span("rpm.clinical_rules.evaluate") as rules_span:
@@ -163,7 +171,8 @@ async def process_reading(message):
 
         # Store the reading in the time-series database
         with tracer.start_as_current_span("rpm.storage.write") as store_span:
-            store_span.set_attribute("db.system", "timescaledb")
+            store_span.set_attribute("db.system.name", "postgresql")
+            store_span.set_attribute("db.namespace", "rpm_readings")
             await store_reading(reading)
 
         # Route based on clinical assessment
