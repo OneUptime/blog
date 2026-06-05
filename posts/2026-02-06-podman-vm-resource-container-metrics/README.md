@@ -10,7 +10,7 @@ On macOS and Windows, Podman runs containers inside a lightweight Linux VM manag
 
 ## Understanding the Podman Machine Architecture
 
-When you run `podman machine init` and `podman machine start`, Podman creates a Linux VM (typically using QEMU or Apple Virtualization). Containers run inside this VM, so resource consumption happens at two levels: the VM itself consumes host resources, and containers consume VM resources.
+When you run `podman machine init` and `podman machine start`, Podman creates a Linux VM (typically using QEMU or Apple Virtualization on macOS, or WSL/Hyper-V on Windows). Containers run inside this VM, so resource consumption happens at two levels: the VM itself consumes host resources, and containers consume VM resources.
 
 ```bash
 # Check your Podman machine status
@@ -46,7 +46,7 @@ receivers:
         # Filter to only the Podman VM process
         include:
           match_type: regexp
-          names: ["qemu.*", "vfkit.*", "podman.*"]
+          names: ["qemu.*", "vfkit.*", "vmmem.*", "podman.*"]
         metrics:
           process.cpu.utilization:
             enabled: true
@@ -78,24 +78,26 @@ service:
       exporters: [otlp]
 ```
 
-The process scraper filters for QEMU or vfkit processes (the VM hypervisor used by Podman). This tells you how much host CPU and memory the entire Podman VM is consuming.
+The process scraper filters for QEMU, vfkit, or WSL VM processes (the VM providers used by Podman). This tells you how much host CPU and memory the entire Podman VM is consuming.
 
 ## Collecting Per-Container Metrics
 
-For container-level metrics, use the `docker_stats` receiver pointed at the Podman socket. On macOS, you need to forward the socket from the VM:
+For container-level metrics, use the `docker_stats` receiver pointed at the Podman socket. The `docker_stats` receiver is supported by the Linux build of the OpenTelemetry Collector, so run it inside the Podman machine or another Linux environment that can access the Podman socket. On macOS, Docker-compatible clients can use the forwarded machine socket path:
 
 ```bash
-# Set up socket forwarding (macOS)
-# The Podman machine exposes the socket at this path
-export DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock
+# Check the forwarded socket path (macOS)
+podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
+
+# Use that socket with Docker-compatible clients
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
 ```
 
-Then configure the Collector:
+Then configure the Collector to use the socket path that is available where the Collector is running:
 
 ```yaml
 receivers:
   docker_stats:
-    endpoint: unix:///var/run/podman.sock
+    endpoint: unix:///var/run/docker.sock
     collection_interval: 15s
     metrics:
       container.cpu.percent:
@@ -123,7 +125,7 @@ For the most reliable metrics collection, run the Collector inside the Podman ma
 podman machine ssh
 
 # Inside the VM, the socket is at the standard location
-ls -la /run/podman/podman.sock
+ls -la "${XDG_RUNTIME_DIR}/podman/podman.sock"
 ```
 
 Then run the Collector as a Podman container with socket access:
@@ -131,7 +133,9 @@ Then run the Collector as a Podman container with socket access:
 ```bash
 podman run -d \
   --name otel-collector \
-  -v /run/podman/podman.sock:/run/podman/podman.sock:Z \
+  -u 0 \
+  --security-opt label=disable \
+  -v "${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock" \
   -v ./collector-config.yaml:/etc/otelcol-contrib/config.yaml:Z \
   -p 4317:4317 \
   docker.io/otel/opentelemetry-collector-contrib:latest
@@ -153,7 +157,7 @@ receivers:
       filesystem: {}
 
   docker_stats:
-    endpoint: unix:///run/podman/podman.sock
+    endpoint: unix:///var/run/docker.sock
     collection_interval: 15s
     container_labels_to_metric_labels:
       # Map Podman labels to metric attributes
@@ -205,7 +209,7 @@ Notice the two separate metrics pipelines. This keeps VM-level and container-lev
 
 ## Querying Podman Machine Stats Programmatically
 
-You can also query Podman machine stats via the API for custom metrics:
+You can also query Podman machine stats via the CLI for custom metrics:
 
 ```python
 import subprocess
@@ -230,8 +234,8 @@ for machine in machine_info:
 
 Set alerts on these key thresholds:
 
-- **VM CPU**: If the VM is consistently above 85% CPU, increase the allocated CPUs with `podman machine set --cpus 4`.
-- **VM Memory**: If memory pressure is high, increase with `podman machine set --memory 4096`.
+- **VM CPU**: If the VM is consistently above 85% CPU, increase the allocated CPUs with `podman machine set --cpus 4` on QEMU-backed machines.
+- **VM Memory**: If memory pressure is high, increase with `podman machine set --memory 4096` on QEMU-backed machines.
 - **Container memory percent**: If a container hits its memory limit, it will be killed. Alert at 80%.
 - **Disk usage**: Container images and volumes can fill the VM disk. Monitor filesystem usage.
 
