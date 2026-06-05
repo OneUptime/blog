@@ -30,6 +30,7 @@ dotnet add package MassTransit
 dotnet add package MassTransit.RabbitMQ
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
@@ -37,6 +38,8 @@ Configure MassTransit with OpenTelemetry in your application:
 
 ```csharp
 using MassTransit;
+using MassTransit.Logging;
+using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -54,7 +57,8 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
-        .AddSource("MassTransit") // MassTransit's ActivitySource
+        .AddSource(DiagnosticHeaders.DefaultListenerName) // MassTransit's ActivitySource
+        .AddSource("OrderService", "PaymentService") // Custom ActivitySources used below
         .AddOtlpExporter(options =>
         {
             options.Endpoint = new Uri("http://localhost:4317");
@@ -75,18 +79,7 @@ builder.Services.AddMassTransit(x =>
             h.Password("guest");
         });
 
-        // Configure receive endpoints
-        cfg.ReceiveEndpoint("order-submitted", e =>
-        {
-            e.ConfigureConsumer<OrderSubmittedConsumer>(context);
-        });
-
-        cfg.ReceiveEndpoint("payment-processed", e =>
-        {
-            e.ConfigureConsumer<PaymentProcessedConsumer>(context);
-        });
-
-        // Enable OpenTelemetry integration
+        // Configure receive endpoints for registered consumers
         cfg.ConfigureEndpoints(context);
     });
 });
@@ -122,7 +115,7 @@ public class OrderController : ControllerBase
     [HttpPost("orders")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
     {
-        using var activity = ActivitySource.StartActivity("CreateOrder", ActivityKind.Producer);
+        using var activity = ActivitySource.StartActivity("CreateOrder", ActivityKind.Internal);
 
         var orderId = Guid.NewGuid();
         activity?.SetTag("order.id", orderId);
@@ -626,7 +619,7 @@ Each node represents a span with timing information, tags, and potential error d
 
 ## Monitoring Retry Behavior
 
-MassTransit's retry policies are transparent in traces. Configure retry with custom telemetry:
+MassTransit's retry policies are transparent in traces. Configure retry and add custom telemetry from the consumer:
 
 ```csharp
 x.UsingRabbitMq((context, cfg) =>
@@ -644,23 +637,32 @@ x.UsingRabbitMq((context, cfg) =>
 
             r.Handle<HttpRequestException>();
             r.Handle<InvalidOperationException>();
-
-            r.OnRetry(retryContext =>
-            {
-                var activity = Activity.Current;
-                activity?.AddEvent(new ActivityEvent("MessageRetry",
-                    tags: new ActivityTagsCollection
-                    {
-                        ["retry.attempt"] = retryContext.RetryAttempt,
-                        ["retry.delay_ms"] = retryContext.Delay.TotalMilliseconds,
-                        ["exception.type"] = retryContext.Exception.GetType().Name
-                    }));
-            });
         });
 
         e.ConfigureConsumer<OrderSubmittedConsumer>(context);
     });
 });
+```
+
+Then record retry context inside the consumer:
+
+```csharp
+public async Task Consume(ConsumeContext<OrderSubmitted> context)
+{
+    var retryAttempt = context.GetRetryAttempt();
+
+    if (retryAttempt > 0)
+    {
+        Activity.Current?.AddEvent(new ActivityEvent("MessageRetry",
+            tags: new ActivityTagsCollection
+            {
+                ["retry.attempt"] = retryAttempt,
+                ["retry.count"] = context.GetRetryCount()
+            }));
+    }
+
+    // Continue processing the message
+}
 ```
 
 ## Performance Optimization
@@ -671,7 +673,7 @@ Reduce telemetry overhead in high-throughput scenarios:
 .WithTracing(tracing => tracing
     .SetSampler(new ParentBasedSampler(
         new TraceIdRatioBasedSampler(0.1))) // Sample 10% of traces
-    .AddSource("MassTransit")
+    .AddSource(DiagnosticHeaders.DefaultListenerName)
     .AddOtlpExporter(options =>
     {
         options.Endpoint = new Uri("http://localhost:4317");
@@ -685,4 +687,4 @@ Reduce telemetry overhead in high-throughput scenarios:
     }));
 ```
 
-Your MassTransit application now has complete observability. Every message published, consumed, or retried appears in your distributed traces, making it straightforward to diagnose issues, optimize performance, and understand message flow across your entire system.
+Your MassTransit application now has complete observability. Published, consumed, and retried messages can appear in your distributed traces, making it straightforward to diagnose issues, optimize performance, and understand message flow across your entire system. If you enable sampling, only sampled traces are exported.
