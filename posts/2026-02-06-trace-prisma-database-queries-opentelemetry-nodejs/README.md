@@ -18,11 +18,11 @@ Database operations often represent the most significant performance bottleneck 
 - Transaction boundaries and their performance impact
 - Correlation between application logic and database operations
 
-## Understanding Prisma's Middleware System
+## Understanding Prisma's OpenTelemetry Instrumentation
 
-Prisma provides a middleware system that intercepts all database operations before they execute. This middleware layer is the perfect integration point for OpenTelemetry instrumentation. Every query, whether it's a simple findMany or a complex transaction, passes through this middleware pipeline.
+Prisma provides an official OpenTelemetry instrumentation package that emits spans for Prisma Client operations and the underlying query engine work. This instrumentation is the supported integration point for current Prisma versions. Older Prisma Client middleware based on `prisma.$use()` is no longer the recommended path in Prisma ORM v6, and the client middleware API was removed in Prisma ORM v7.
 
-The middleware receives context about the operation including the model being queried, the action type (findMany, create, update, etc.), and the arguments. This rich context translates perfectly into OpenTelemetry span attributes, providing detailed insights into your database operations.
+The instrumentation records operation-level spans such as `prisma:client:operation` and lower-level spans such as `prisma:engine:db_query`. These spans include context about the Prisma operation and query execution path, providing detailed insights into your database operations without wrapping every query manually.
 
 ## Setting Up OpenTelemetry with Prisma
 
@@ -31,10 +31,11 @@ First, install the required dependencies for OpenTelemetry instrumentation:
 ```bash
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
-            @opentelemetry/instrumentation \
+            @opentelemetry/auto-instrumentations-node \
             @opentelemetry/resources \
             @opentelemetry/semantic-conventions \
-            @opentelemetry/exporter-trace-otlp-http
+            @opentelemetry/exporter-trace-otlp-http \
+            @prisma/instrumentation
 ```
 
 Create your OpenTelemetry initialization file that configures the SDK before any application code runs:
@@ -43,24 +44,28 @@ Create your OpenTelemetry initialization file that configures the SDK before any
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { PrismaInstrumentation } = require('@prisma/instrumentation');
 
 // Configure the OTLP exporter to send traces to your backend
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {},
 });
 
 // Initialize the OpenTelemetry SDK with automatic instrumentation
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'prisma-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'prisma-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter,
-  instrumentations: [getNodeAutoInstrumentations()],
+  instrumentations: [
+    getNodeAutoInstrumentations(),
+    new PrismaInstrumentation(),
+  ],
 });
 
 sdk.start();
@@ -74,96 +79,54 @@ process.on('SIGTERM', () => {
 });
 ```
 
-## Implementing Prisma Middleware for Tracing
+## Implementing Prisma Operation Spans
 
-Create a dedicated module for Prisma instrumentation that adds OpenTelemetry spans to all database operations:
+Prisma's instrumentation creates spans for Prisma Client operations and query engine work automatically. If you want a custom span around a service-level operation, create it in your application code and let Prisma's spans attach as children:
 
 ```javascript
-// prisma-instrumentation.js
-const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
+// user-service-tracing.js
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
-const tracer = trace.getTracer('prisma-instrumentation', '1.0.0');
+const tracer = trace.getTracer('user-service', '1.0.0');
 
 /**
- * Creates OpenTelemetry spans for all Prisma operations
- * This middleware captures timing, query details, and errors
+ * Creates OpenTelemetry spans around application-level operations.
+ * Prisma Client spans are emitted by @prisma/instrumentation.
  */
-function createPrismaMiddleware() {
-  return async (params, next) => {
-    const { model, action, args } = params;
-
-    // Create a descriptive span name following semantic conventions
-    const spanName = model ? `prisma.${model}.${action}` : `prisma.${action}`;
-
-    // Start a new span for this database operation
-    return tracer.startActiveSpan(spanName, async (span) => {
-      try {
-        // Add semantic attributes for database operations
-        span.setAttribute('db.system', 'postgresql'); // or your database type
-        span.setAttribute('db.operation', action);
-
-        if (model) {
-          span.setAttribute('db.prisma.model', model);
-        }
-
-        // Add query arguments for debugging (be careful with sensitive data)
-        if (args) {
-          // Only include safe metadata, avoid logging sensitive field values
-          if (args.where) {
-            span.setAttribute('db.prisma.where', JSON.stringify(args.where));
-          }
-          if (args.select) {
-            span.setAttribute('db.prisma.select', JSON.stringify(args.select));
-          }
-          if (args.include) {
-            span.setAttribute('db.prisma.include', JSON.stringify(args.include));
-          }
-        }
-
-        // Execute the actual Prisma operation
-        const result = await next(params);
-
-        // Mark the span as successful
-        span.setStatus({ code: SpanStatusCode.OK });
-
-        return result;
-      } catch (error) {
-        // Record the error in the span
-        span.recordException(error);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error.message,
-        });
-
-        // Re-throw to maintain normal error handling
-        throw error;
-      } finally {
-        // Always end the span
-        span.end();
-      }
-    });
-  };
+async function tracePrismaOperation(name, operation) {
+  return tracer.startActiveSpan(name, async (span) => {
+    try {
+      const result = await operation();
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error.message,
+      });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 
-module.exports = { createPrismaMiddleware };
+module.exports = { tracePrismaOperation };
 ```
 
-## Integrating the Middleware with Prisma Client
+## Integrating the Instrumentation with Prisma Client
 
-Now register the middleware with your Prisma client instance:
+Register `PrismaInstrumentation` in your OpenTelemetry initialization before importing Prisma Client. Your Prisma client instance does not need middleware for tracing:
 
 ```javascript
 // db.js
 const { PrismaClient } = require('@prisma/client');
-const { createPrismaMiddleware } = require('./prisma-instrumentation');
 
 // Create Prisma client instance
 const prisma = new PrismaClient({
   log: ['query', 'error', 'warn'],
 });
-
-// Register the OpenTelemetry middleware
-prisma.$use(createPrismaMiddleware());
 
 module.exports = prisma;
 ```
@@ -174,7 +137,7 @@ For complex operations involving multiple queries or business logic, create cust
 
 ```javascript
 // user-service.js
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const prisma = require('./db');
 
 const tracer = trace.getTracer('user-service', '1.0.0');
@@ -183,11 +146,11 @@ async function createUserWithProfile(userData, profileData) {
   // Create a parent span for the entire operation
   return tracer.startActiveSpan('createUserWithProfile', async (span) => {
     try {
-      span.setAttribute('user.email', userData.email);
+      span.setAttribute('app.operation', 'create_user_with_profile');
 
-      // This transaction will create child spans via Prisma middleware
+      // This transaction will create child spans via @prisma/instrumentation
       const user = await prisma.$transaction(async (tx) => {
-        // These operations are automatically traced
+        // These operations are automatically traced by Prisma instrumentation
         const newUser = await tx.user.create({
           data: userData,
         });
@@ -224,29 +187,28 @@ Prisma's connection pool management is critical for application performance. Add
 ```javascript
 // pool-monitoring.js
 const { metrics } = require('@opentelemetry/api');
-const prisma = require('./db');
 
 const meter = metrics.getMeter('prisma-pool-monitor', '1.0.0');
 
-// Create metrics for connection pool monitoring
-const activeConnectionsGauge = meter.createObservableGauge('db.prisma.pool.active', {
+// Create metrics for connection pool signals collected from your database or pooler
+const activeConnectionsGauge = meter.createObservableGauge('db.client.connections.usage', {
   description: 'Number of active database connections',
 });
 
-const idleConnectionsGauge = meter.createObservableGauge('db.prisma.pool.idle', {
+const idleConnectionsGauge = meter.createObservableGauge('db.client.connections.idle', {
   description: 'Number of idle database connections',
 });
 
 // Register callbacks to collect pool metrics
-async function setupPoolMonitoring() {
-  activeConnectionsGauge.addCallback(async (observableResult) => {
-    const metrics = await prisma.$metrics.json();
-    const activeConnections = metrics.counters.find(
-      c => c.key === 'prisma_client_queries_active'
-    );
-    if (activeConnections) {
-      observableResult.observe(activeConnections.value);
-    }
+function setupPoolMonitoring(poolStatsProvider) {
+  activeConnectionsGauge.addCallback((observableResult) => {
+    const stats = poolStatsProvider();
+    observableResult.observe(stats.active);
+  });
+
+  idleConnectionsGauge.addCallback((observableResult) => {
+    const stats = poolStatsProvider();
+    observableResult.observe(stats.idle);
   });
 }
 
@@ -260,11 +222,11 @@ The trace hierarchy shows how your application components interact:
 ```mermaid
 graph TD
     A[HTTP Request: POST /users] --> B[createUserWithProfile span]
-    B --> C[prisma.$transaction]
-    C --> D[prisma.user.create]
-    C --> E[prisma.profile.create]
-    D --> F[SQL: INSERT INTO users]
-    E --> G[SQL: INSERT INTO profiles]
+    B --> C[prisma:client:transaction]
+    C --> D[prisma:client:operation user.create]
+    C --> E[prisma:client:operation profile.create]
+    D --> F[prisma:engine:db_query INSERT INTO users]
+    E --> G[prisma:engine:db_query INSERT INTO profiles]
     F --> H[Database Response]
     G --> I[Database Response]
 ```
@@ -310,7 +272,7 @@ Instrumentation adds minimal overhead, but there are best practices to follow:
 
 1. **Sampling**: In high-throughput applications, use trace sampling to reduce data volume
 2. **Attribute Limits**: Avoid adding large objects as span attributes
-3. **Batch Operations**: Prisma batch operations create a single span, making them more efficient
+3. **Batch Exporting**: Use the OpenTelemetry batch span processor in production to reduce exporter overhead
 4. **Connection Pooling**: Monitor pool size to prevent connection exhaustion
 
 ## Debugging Common Issues
@@ -337,9 +299,12 @@ Ensure you're using async/await properly and not breaking the context chain:
 // Correct: Maintains context
 async function goodExample() {
   return await tracer.startActiveSpan('operation', async (span) => {
-    const result = await prisma.user.findMany();
-    span.end();
-    return result;
+    try {
+      const result = await prisma.user.findMany();
+      return result;
+    } finally {
+      span.end();
+    }
   });
 }
 
@@ -361,7 +326,7 @@ When deploying to production, configure your exporter endpoint through environme
 ```bash
 # .env
 
-OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-collector:4318/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://your-otel-collector:4318/v1/traces
 OTEL_SERVICE_NAME=production-api
 OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
@@ -384,6 +349,6 @@ app.listen(PORT, () => {
 
 ## Conclusion
 
-Instrumenting Prisma with OpenTelemetry provides deep visibility into your database operations. The middleware-based approach captures every query without modifying your application logic. With proper instrumentation, you can identify performance bottlenecks, debug production issues, and optimize database access patterns. The combination of distributed tracing and Prisma's type-safe API gives you the observability needed for modern application development.
+Instrumenting Prisma with OpenTelemetry provides deep visibility into your database operations. The official Prisma instrumentation captures Prisma Client and query engine spans without modifying your application logic. With proper instrumentation, you can identify performance bottlenecks, debug production issues, and optimize database access patterns. The combination of distributed tracing and Prisma's type-safe API gives you the observability needed for modern application development.
 
 Start with basic instrumentation and gradually add custom spans for business operations. Monitor the overhead in development, adjust sampling rates for production, and use the traces to continuously improve your application's database performance.
