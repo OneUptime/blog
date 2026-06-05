@@ -16,13 +16,13 @@ First, make sure your spans carry deployment information so you can compare diff
 // tracing-setup.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: 'api-service',
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.APP_VERSION || 'unknown',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'api-service',
+    [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || 'unknown',
     // Custom attributes for deployment tracking
     'deployment.id': process.env.DEPLOY_ID || 'unknown',
     'deployment.timestamp': process.env.DEPLOY_TIMESTAMP || new Date().toISOString(),
@@ -44,7 +44,7 @@ Use the OpenTelemetry Collector's Span Metrics Connector to turn traces into his
 # collector-config.yaml
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
@@ -52,6 +52,12 @@ connectors:
       - name: service.version
       - name: deployment.id
       - name: http.route
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
 
 exporters:
   prometheus:
@@ -61,9 +67,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -74,22 +80,22 @@ Once you have deployment-tagged histograms in Prometheus, you can compare percen
 ```promql
 # P95 latency for the current deployment
 histogram_quantile(0.95,
-  sum(rate(duration_milliseconds_bucket{service_version="2.1.0"}[10m])) by (le, http_route)
+  sum(rate(traces_span_metrics_duration_milliseconds_bucket{service_version="2.1.0"}[10m])) by (le, http_route)
 )
 
 # P95 latency for the previous deployment
 histogram_quantile(0.95,
-  sum(rate(duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route)
+  sum(rate(traces_span_metrics_duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route)
 )
 
 # Percentage change in P95 between deployments
 (
-  histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket{service_version="2.1.0"}[10m])) by (le, http_route))
+  histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_milliseconds_bucket{service_version="2.1.0"}[10m])) by (le, http_route))
   -
-  histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route))
+  histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route))
 )
 /
-histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route))
+histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_milliseconds_bucket{service_version="2.0.9"}[10m])) by (le, http_route))
 * 100
 ```
 
@@ -118,10 +124,11 @@ def get_percentile(version, percentile):
     """Query histogram percentile for a specific deployment version."""
     query = (
         f'histogram_quantile({percentile}, '
-        f'sum(rate(duration_milliseconds_bucket{{service_version="{version}"}}[10m])) '
+        f'sum(rate(traces_span_metrics_duration_milliseconds_bucket{{service_version="{version}"}}[10m])) '
         f'by (le, http_route))'
     )
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
+    resp.raise_for_status()
     results = {}
     for r in resp.json().get("data", {}).get("result", []):
         route = r["metric"].get("http_route", "unknown")
@@ -198,13 +205,16 @@ def histogram_to_samples(buckets):
     """Convert histogram bucket counts to approximate sample values."""
     samples = []
     sorted_bounds = sorted(buckets.keys())
+    previous_count = 0
     for i, bound in enumerate(sorted_bounds):
-        count = buckets[bound]
+        cumulative_count = buckets[bound]
+        count = max(0, int(round(cumulative_count - previous_count)))
         if i == 0:
             midpoint = bound / 2
         else:
             midpoint = (sorted_bounds[i - 1] + bound) / 2
         samples.extend([midpoint] * count)
+        previous_count = cumulative_count
     return np.array(samples)
 ```
 
