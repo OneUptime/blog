@@ -91,10 +91,11 @@ def openai_chat(messages: list, model: str = "gpt-4o", **kwargs) -> dict:
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
         # Set provider-specific and standard GenAI attributes
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.temperature", kwargs.get("temperature", 1.0))
-        span.set_attribute("gen_ai.request.max_tokens", kwargs.get("max_tokens", 0))
+        span.set_attribute("gen_ai.request.max_tokens", kwargs.get("max_completion_tokens", kwargs.get("max_tokens", 0)))
 
         try:
             client = openai.OpenAI()
@@ -152,12 +153,13 @@ from opentelemetry import trace
 
 tracer = trace.get_tracer("multi-llm-service")
 
-def anthropic_chat(messages: list, model: str = "claude-sonnet-4-20250514", **kwargs) -> dict:
+def anthropic_chat(messages: list, model: str = "claude-sonnet-4-6", **kwargs) -> dict:
     """Instrumented Anthropic messages API call."""
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
-        # Use "anthropic" as the system identifier
-        span.set_attribute("gen_ai.system", "anthropic")
+        # Use "anthropic" as the provider identifier
+        span.set_attribute("gen_ai.provider.name", "anthropic")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.max_tokens", kwargs.get("max_tokens", 1024))
         span.set_attribute("gen_ai.request.temperature", kwargs.get("temperature", 1.0))
@@ -224,7 +226,8 @@ def openai_chat_stream(messages: list, model: str = "gpt-4o", **kwargs):
     """Instrumented OpenAI streaming chat completion."""
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.stream", True)
 
@@ -274,11 +277,12 @@ def openai_chat_stream(messages: list, model: str = "gpt-4o", **kwargs):
 And here's the Anthropic streaming version:
 
 ```python
-def anthropic_chat_stream(messages: list, model: str = "claude-sonnet-4-20250514", **kwargs):
+def anthropic_chat_stream(messages: list, model: str = "claude-sonnet-4-6", **kwargs):
     """Instrumented Anthropic streaming messages call."""
 
     with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.provider.name", "anthropic")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.stream", True)
 
@@ -329,7 +333,8 @@ class LLMClient:
         provider = self._detect_provider(model)
 
         with self.tracer.start_as_current_span("gen_ai.chat") as span:
-            span.set_attribute("gen_ai.system", provider)
+            span.set_attribute("gen_ai.provider.name", provider)
+            span.set_attribute("gen_ai.operation.name", "chat")
             span.set_attribute("gen_ai.request.model", model)
 
             if provider == "openai":
@@ -361,9 +366,10 @@ class LLMClient:
 
     def _call_anthropic(self, span, messages, model, **kwargs) -> dict:
         """Make an instrumented call to Anthropic."""
+        request_kwargs = {**kwargs}
+        request_kwargs.setdefault("max_tokens", 1024)
         response = self.anthropic_client.messages.create(
-            model=model, messages=messages,
-            max_tokens=kwargs.get("max_tokens", 1024), **kwargs
+            model=model, messages=messages, **request_kwargs
         )
         content = "".join(b.text for b in response.content if b.type == "text")
         span.set_attribute("gen_ai.response.model", response.model)
@@ -388,7 +394,7 @@ result = llm.chat(
 # Call Anthropic with the same interface
 result = llm.chat(
     messages=[{"role": "user", "content": "Explain distributed tracing"}],
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-6",
 )
 ```
 
@@ -407,8 +413,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# Control content logging (disable in production for privacy)
-export OTEL_GENAI_LOG_CONTENT="false"
+# Opt in to the latest experimental GenAI semantic conventions when your instrumentation requires it
+export OTEL_SEMCONV_STABILITY_OPT_IN="gen_ai_latest_experimental"
 ```
 
 ---
@@ -417,4 +423,4 @@ export OTEL_GENAI_LOG_CONTENT="false"
 
 Instrumenting OpenAI and Anthropic calls with OpenTelemetry gives you consistent, comparable observability across providers. The GenAI semantic conventions mean your traces look the same regardless of which model you're calling, which makes dashboarding and alerting much simpler.
 
-The key takeaways are: use `gen_ai.system` to identify the provider, always record token usage for cost tracking, handle streaming by keeping the span open until the stream completes, and use a unified wrapper if you call multiple providers. With these patterns in place, you'll have full visibility into your LLM layer before production issues catch you by surprise.
+The key takeaways are: use `gen_ai.provider.name` to identify the provider, always record token usage for cost tracking, handle streaming by keeping the span open until the stream completes, and use a unified wrapper if you call multiple providers. With these patterns in place, you'll have full visibility into your LLM layer before production issues catch you by surprise.
