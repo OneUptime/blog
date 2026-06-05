@@ -38,7 +38,7 @@ graph LR
 
 Kafka messages have a headers field - a collection of key-value pairs that travel with the message payload. OpenTelemetry uses these headers to carry trace context, the same way it uses HTTP headers for synchronous calls. The producer injects the `traceparent` and `tracestate` values into the message headers, and the consumer extracts them to recreate the span context.
 
-The key difference from HTTP propagation is the span relationship. In HTTP, the downstream service creates a child span. In messaging, the consumer typically creates a "link" to the producer's span rather than a direct parent-child relationship. This is because the consumer might process the message long after the producer's trace has finished, and nesting it as a child span would create a misleadingly long trace duration. That said, you can choose either approach depending on your use case.
+The key difference from HTTP propagation is the span relationship. In HTTP, the downstream service creates a child span. In messaging, OpenTelemetry semantic conventions allow either a parent-child relationship or a "link" to the producer's span, and the exact behavior depends on the instrumentation and configuration. Span links are useful when the consumer might process the message long after the producer's trace has finished, because nesting it as a child span can create a misleadingly long trace duration. That said, you can choose either approach depending on your use case.
 
 ## Java Producer with OpenTelemetry
 
@@ -138,17 +138,24 @@ public class TracedKafkaProducer {
                 orderJson        // value
             );
 
-            // Send the message - trace context is automatically injected into headers
-            producer.send(record, (metadata, exception) -> {
-                if (exception != null) {
-                    span.recordException(exception);
-                    span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR);
-                } else {
-                    span.setAttribute("messaging.kafka.partition", metadata.partition());
-                    span.setAttribute("messaging.kafka.offset", metadata.offset());
-                }
+            try {
+                // Send the message - trace context is automatically injected into headers
+                producer.send(record, (metadata, exception) -> {
+                    if (exception != null) {
+                        span.recordException(exception);
+                        span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR);
+                    } else {
+                        span.setAttribute("messaging.kafka.partition", metadata.partition());
+                        span.setAttribute("messaging.kafka.offset", metadata.offset());
+                    }
+                    span.end();
+                });
+            } catch (Exception e) {
+                span.recordException(e);
+                span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR);
                 span.end();
-            });
+                throw e;
+            }
         }
     }
 }
@@ -156,7 +163,7 @@ public class TracedKafkaProducer {
 
 ## Java Consumer with Context Extraction
 
-On the consumer side, the instrumented wrapper extracts the trace context from message headers and creates spans that link back to the producer's trace.
+On the consumer side, the instrumented wrapper extracts the trace context from message headers. With the default `KafkaTelemetry.create(openTelemetry)` configuration, the per-record consumer processing span uses the extracted context as its parent. If you enable receive instrumentation with the builder, the consumer side starts a new trace and connects it back to the producer trace with a span link.
 
 ```java
 // TracedKafkaConsumer.java
@@ -205,8 +212,8 @@ public class TracedKafkaConsumer {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
 
             for (ConsumerRecord<String, String> record : records) {
-                // The instrumentation creates a span linked to the producer's span
-                // We create a processing span as a child of that
+                // The instrumentation creates a consumer processing span from the extracted context.
+                // We create an application processing span as a child of that active span.
                 Span processSpan = tracer.spanBuilder("process-order-payment")
                     .setAttribute("messaging.system", "kafka")
                     .setAttribute("messaging.destination.name", record.topic())
@@ -341,7 +348,7 @@ def consume_and_process():
     """Consume messages with trace context automatically extracted."""
     for message in consumer:
         # The instrumentation extracts trace context from headers
-        # and creates a span linked to the producer's trace
+        # and creates a consumer span using the extracted context as parent
         with tracer.start_as_current_span(
             "process-order-payment",
             attributes={
@@ -376,8 +383,7 @@ Here's how to do it manually in Python. This gives you full control over the pro
 
 ```python
 # manual_propagation.py
-from opentelemetry import trace, context
-from opentelemetry.context.propagation import get_global_textmap_propagator
+from opentelemetry import propagate, trace
 
 tracer = trace.get_tracer("manual-kafka-tracer")
 
@@ -388,27 +394,27 @@ class KafkaHeaderCarrier:
         # Kafka headers are a list of (key, value) tuples
         self.headers = headers or []
 
-    def get(self, key):
+    def get(self, carrier, key):
         """Extract a header value by key (used during context extraction)."""
-        for k, v in self.headers:
+        for k, v in carrier.headers:
             if k == key:
-                return v.decode("utf-8") if isinstance(v, bytes) else v
-        return None
+                return [v.decode("utf-8") if isinstance(v, bytes) else v]
+        return []
 
-    def set(self, key, value):
+    def set(self, carrier, key, value):
         """Set a header value (used during context injection)."""
-        self.headers.append((key, value.encode("utf-8") if isinstance(value, str) else value))
+        carrier.headers.append((key, value.encode("utf-8") if isinstance(value, str) else value))
 
-    def keys(self):
+    def keys(self, carrier):
         """Return all header keys."""
-        return [k for k, v in self.headers]
+        return [k for k, v in carrier.headers]
 
 def produce_with_context(producer, topic, key, value):
     """Manually inject trace context into Kafka message headers."""
     with tracer.start_as_current_span("produce") as span:
         # Create a carrier and inject the current context into it
         carrier = KafkaHeaderCarrier()
-        get_global_textmap_propagator().inject(carrier.headers, setter=carrier)
+        propagate.inject(carrier, setter=carrier)
 
         # Send the message with the trace context in headers
         producer.send(topic, key=key, value=value, headers=carrier.headers)
@@ -419,7 +425,7 @@ def consume_with_context(message):
     carrier = KafkaHeaderCarrier(message.headers or [])
 
     # Extract the context from the carrier
-    ctx = get_global_textmap_propagator().extract(carrier=carrier, getter=carrier)
+    ctx = propagate.extract(carrier=carrier, getter=carrier)
 
     # Use the extracted context as the parent for the processing span
     with tracer.start_as_current_span("process", context=ctx):
@@ -429,7 +435,7 @@ def consume_with_context(message):
 
 ## Collector Configuration
 
-Set up the OpenTelemetry Collector to receive traces from both producers and consumers.
+Set up the OpenTelemetry Collector to receive traces from both producers and consumers. The `groupbytrace` processor is available in the OpenTelemetry Collector Contrib distribution, not the core-only collector.
 
 ```yaml
 # otel-collector-config.yaml
@@ -463,7 +469,7 @@ service:
 
 ## Span Links vs. Parent-Child Relationships
 
-OpenTelemetry offers two ways to connect producer and consumer spans. The automatic instrumentation typically uses span links, which represent a causal relationship without implying that one span is nested inside the other. This makes sense for messaging because the consumer processes the message independently of the producer's lifecycle.
+OpenTelemetry offers two ways to connect producer and consumer spans. Some automatic instrumentation configurations use span links, which represent a causal relationship without implying that one span is nested inside the other. This makes sense for messaging because the consumer processes the message independently of the producer's lifecycle.
 
 However, if you want a tighter parent-child relationship (maybe for short-lived messages where the consumer processes immediately), you can configure that by extracting the context and using it as the parent context when starting your consumer span.
 
