@@ -8,7 +8,7 @@ Description: Diagnose and resolve common authentication failures in OpenTelemetr
 
 ---
 
-Authentication failures in OpenTelemetry exporters are one of the most frustrating issues to debug because they often manifest as silent data loss. Your application keeps running, spans get created, but nothing shows up in your backend. The exporter quietly fails, retries a few times, and eventually drops the data. This post covers the most common authentication failure modes and how to fix each one.
+Authentication failures in OpenTelemetry exporters are one of the most frustrating issues to debug because they often manifest as silent data loss. Your application keeps running, spans get created, but nothing shows up in your backend. The exporter fails the export, retries only failures it treats as transient, and the data can eventually be dropped by the SDK or Collector pipeline. This post covers the most common authentication failure modes and how to fix each one.
 
 ## How Exporter Authentication Works
 
@@ -28,7 +28,7 @@ sequenceDiagram
     else Auth Failure
         Col-->>Exp: 401/403 / gRPC UNAUTHENTICATED
     end
-    Note over Exp: Retry on failure, eventually drop
+    Note over Exp: Retry transient failures, report or drop permanent failures
 ```
 
 ## Detecting Authentication Failures
@@ -89,8 +89,9 @@ TLS certificate problems are the single most common authentication failure. They
 # Replace with the path to your actual certificate file
 openssl x509 -enddate -noout -in /etc/otel/certs/client.crt
 
-# Check the server certificate directly
-echo | openssl s_client -connect backend.example.com:4317 2>/dev/null | \
+# Check the server certificate directly. -servername sends SNI, which is
+# important when multiple certificates are served from the same address.
+echo | openssl s_client -connect backend.example.com:4317 -servername backend.example.com 2>/dev/null | \
   openssl x509 -noout -dates
 ```
 
@@ -101,7 +102,7 @@ For the OTLP exporter in the Collector, provide the CA certificate:
 ```yaml
 # Collector exporter config with custom CA certificate
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     tls:
       # Path to the CA certificate that signed the backend's cert.
@@ -141,14 +142,16 @@ In Go:
 package main
 
 import (
+    "context"
     "crypto/tls"
     "crypto/x509"
     "os"
     "google.golang.org/grpc/credentials"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 )
 
-func createExporter() (*otlptracegrpc.Exporter, error) {
+func createExporter() (*otlptrace.Exporter, error) {
     // Load the CA certificate
     caCert, err := os.ReadFile("/etc/otel/certs/ca.crt")
     if err != nil {
@@ -193,7 +196,7 @@ As a temporary workaround during development (never in production), you can skip
 # DEVELOPMENT ONLY: Skip TLS verification
 # Never use this in production. It disables all certificate checks.
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     tls:
       insecure_skip_verify: true
@@ -208,7 +211,7 @@ For the Collector, configure authentication headers in the exporter:
 ```yaml
 # Collector exporter with API key authentication
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     headers:
       # The exact header name depends on your backend.
@@ -224,7 +227,7 @@ For the HTTP protocol variant:
 ```yaml
 # OTLP HTTP exporter with API key
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://backend.example.com
     headers:
       # HTTP exporters use the same header format
@@ -272,8 +275,18 @@ export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer $(cat /etc/otel/token | 
 The token has expired. Many backends issue tokens with a TTL. If your Collector has been running for days, the token may have expired:
 
 ```bash
-# Decode a JWT token to check expiry (requires jq)
-echo "your-jwt-token" | cut -d. -f2 | base64 -d 2>/dev/null | jq '.exp | todate'
+# Decode a JWT token to check expiry
+python3 - <<'PY'
+import base64
+import datetime
+import json
+
+token = "your-jwt-token"
+payload = token.split(".")[1]
+payload += "=" * (-len(payload) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload))
+print(datetime.datetime.fromtimestamp(claims["exp"], datetime.timezone.utc).isoformat())
+PY
 ```
 
 ## Fix 3: Protocol Mismatch (gRPC vs HTTP)
@@ -283,14 +296,14 @@ A surprisingly common authentication failure happens when the exporter uses gRPC
 ```yaml
 # Wrong: using gRPC exporter to talk to an HTTP-only endpoint
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: https://backend.example.com/v1/traces  # This is an HTTP URL
     # The OTLP gRPC exporter will try to establish a gRPC connection
     # to this URL and fail with confusing errors
 
-# Right: use otlphttp for HTTP endpoints
+# Right: use otlp_http for HTTP endpoints
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://backend.example.com
     # The HTTP exporter will POST to /v1/traces, /v1/metrics, /v1/logs
 ```
@@ -336,7 +349,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     # Reference the auth extension for this exporter.
     # The extension handles token acquisition and renewal.
@@ -348,7 +361,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 This approach handles token refresh automatically, which eliminates the expired token problem entirely.
@@ -359,8 +372,7 @@ For bearer token authentication with a static token from a file:
 # Collector config with bearer token from file
 extensions:
   bearertokenauth:
-    # Read token from a file. The extension watches the file
-    # for changes and automatically updates the token.
+    # Read token from a file.
     filename: /etc/otel/token
 
 receivers:
@@ -370,7 +382,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     auth:
       authenticator: bearertokenauth
@@ -380,7 +392,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 ## Fix 5: Network and Proxy Issues Masquerading as Auth Failures
@@ -411,7 +423,7 @@ If you are running in Kubernetes with a service mesh like Istio, the mesh's mTLS
 # The exporter should use plaintext to the sidecar,
 # and the sidecar encrypts the connection.
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     tls:
       # Disable TLS because the Istio sidecar handles it
