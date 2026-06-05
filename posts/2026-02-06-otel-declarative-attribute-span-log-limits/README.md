@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Limit, Span Limits, Attribute Limits, Configuration
 
 Description: Configure attribute limits, span limits, and log record limits in a single OpenTelemetry declarative YAML file to protect your pipeline.
 
-Without limits, a single misbehaving service can overwhelm your observability pipeline. A span with 10,000 attributes, a log record with a 5MB body, or a trace with unbounded events can consume your collector's memory, blow up your storage costs, and slow down your queries. OpenTelemetry's declarative configuration lets you define all of these safety limits in one place.
+Without limits, a single misbehaving service can overwhelm your observability pipeline. A span with 10,000 attributes, a log record with a 5MB attribute value, or a trace with unbounded events can consume your collector's memory, blow up your storage costs, and slow down your queries. OpenTelemetry's declarative configuration lets you define these safety limits in one place.
 
 ## Why Limits Matter
 
@@ -16,20 +16,20 @@ Limits prevent this by capping the size of telemetry data at the SDK level befor
 
 ## Attribute Limits
 
-Attribute limits control how many attributes can be attached to any telemetry item (span, metric data point, or log record) and how long each attribute value can be:
+Attribute limits control how many attributes can be attached to spans and log records, and how long each attribute value can be. Span events and links have their own span-specific attribute limits:
 
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
-# General attribute limits (apply to all signals)
+# General attribute limits
 attribute_limits:
   attribute_count_limit: 128         # max attributes per item
   attribute_value_length_limit: 4096 # max string length per attribute value
 ```
 
-When the limit is reached, additional attributes are silently dropped. The SDK does not error or crash. It just stops adding attributes beyond the limit.
+When the count limit is reached, additional attributes are discarded. When the value length limit is reached, long string and byte-array values are truncated. The SDK does not error or crash.
 
 ## Span Limits
 
@@ -71,7 +71,7 @@ logger_provider:
     attribute_value_length_limit: 8192  # logs often need longer values than spans
 ```
 
-Log records tend to have longer attribute values than spans because they sometimes include stack traces, SQL queries, or structured error messages. Setting a higher `attribute_value_length_limit` for logs than spans is reasonable.
+Log records tend to have longer attribute values than spans because log attributes sometimes include stack traces, SQL queries, or structured error messages. Setting a higher `attribute_value_length_limit` for logs than spans is reasonable.
 
 ## A Complete Configuration with All Limits
 
@@ -79,15 +79,18 @@ Here is a production-ready configuration that sets limits across all three signa
 
 ```yaml
 # otel-config.yaml - Production limits configuration
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment.name
+      value: "${DEPLOY_ENV}"
 
-# General attribute limits (baseline for all signals)
+# General attribute limits
 attribute_limits:
   attribute_count_limit: 128
   attribute_value_length_limit: 4096
@@ -100,9 +103,8 @@ tracer_provider:
         max_export_batch_size: 512
         export_timeout: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
 
   sampler:
@@ -126,9 +128,8 @@ meter_provider:
         interval: 60000
         timeout: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
 
   # Metric views can also act as limits by controlling cardinality
@@ -138,9 +139,10 @@ meter_provider:
         instrument_name: "http.server.request.duration"
       stream:
         attribute_keys:
-          - "http.request.method"
-          - "http.response.status_code"
-          - "http.route"
+          included:
+            - "http.request.method"
+            - "http.response.status_code"
+            - "http.route"
           # url.full is deliberately excluded to limit cardinality
 
 logger_provider:
@@ -150,9 +152,8 @@ logger_provider:
         max_queue_size: 2048
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
 
   # Log-specific limits
@@ -161,7 +162,9 @@ logger_provider:
     attribute_value_length_limit: 8192
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 ## Batch Processor Limits as Memory Protection
@@ -220,16 +223,16 @@ limits:
 
 ## Monitoring Your Limits
 
-You want to know when limits are being hit. The OpenTelemetry SDK exposes internal metrics that tell you about dropped attributes and events:
+You want to know when limits are being hit. Exported OTLP spans and log records include dropped-count fields, and SDKs may also emit internal logs when an attribute, event, or link is discarded:
 
 ```bash
-# Look for these metrics in your monitoring:
-# otel.sdk.span.attributes_dropped - number of dropped attributes
-# otel.sdk.span.events_dropped - number of dropped events
-# otel.sdk.span.links_dropped - number of dropped links
+# Look for these fields in exported telemetry or backend metadata:
+# dropped_attributes_count - number of discarded attributes
+# dropped_events_count     - number of discarded span events
+# dropped_links_count      - number of discarded span links
 ```
 
-Set up alerts on these metrics. If attributes are being dropped consistently, it might mean your limits are too tight, or it might mean there is a bug adding too many attributes. Either way, you want to know.
+Set up alerts or dashboards for these dropped-count signals where your backend exposes them. If attributes are being dropped consistently, it might mean your limits are too tight, or it might mean there is a bug adding too many attributes. Either way, you want to know.
 
 ## Wrapping Up
 
