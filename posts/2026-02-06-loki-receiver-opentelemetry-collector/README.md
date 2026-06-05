@@ -8,7 +8,7 @@ Description: Learn how to configure the Loki receiver in OpenTelemetry Collector
 
 ---
 
-The Loki receiver in the OpenTelemetry Collector enables you to accept logs in Grafana Loki's push format, allowing seamless integration with Promtail agents and other Loki-compatible log shippers. This receiver is particularly valuable for organizations using Grafana Loki who want to migrate to OpenTelemetry or consolidate logs from multiple sources into a unified observability pipeline.
+The Loki receiver in the OpenTelemetry Collector enables you to accept logs in Grafana Loki's push format, allowing seamless integration with existing Promtail agents and other Loki-compatible log shippers. This receiver is particularly valuable for organizations using Grafana Loki who want to migrate to OpenTelemetry or consolidate logs from multiple sources into a unified observability pipeline.
 
 By deploying the Loki receiver, you can maintain compatibility with existing Promtail deployments while routing logs to any OpenTelemetry-compatible backend, gaining flexibility in storage options and processing capabilities without changing your log collection infrastructure.
 
@@ -16,7 +16,7 @@ By deploying the Loki receiver, you can maintain compatibility with existing Pro
 
 ## What is the Loki Receiver?
 
-The Loki receiver is an OpenTelemetry Collector component that implements the Grafana Loki push API. Loki is a horizontally scalable, highly available log aggregation system inspired by Prometheus. Promtail is the most common agent for shipping logs to Loki, but other tools like Fluentd, Logstash, and Docker logging drivers can also send logs to Loki-compatible endpoints.
+The Loki receiver is an OpenTelemetry Collector component that implements the Grafana Loki push API. Loki is a horizontally scalable, highly available log aggregation system inspired by Prometheus. Promtail was the most common agent for shipping logs to Loki, but it reached end-of-life on March 2, 2026. For new deployments, use a maintained Loki-compatible shipper such as Grafana Alloy; existing Promtail deployments can still send to the Loki receiver while you migrate.
 
 The OpenTelemetry Collector's Loki receiver accepts log data in Loki's push format and converts it into OpenTelemetry log records, enabling you to:
 
@@ -30,7 +30,7 @@ The OpenTelemetry Collector's Loki receiver accepts log data in Loki's push form
 
 - Loki push API v1 (`/loki/api/v1/push`)
 - Label extraction and mapping to OpenTelemetry attributes
-- Compressed payloads (snappy, gzip)
+- Compressed HTTP payloads supported by the Collector HTTP server configuration, including gzip and snappy
 - Timestamp preservation from log entries
 - Multi-stream log batches
 
@@ -65,8 +65,8 @@ This architecture allows you to maintain Promtail deployments while gaining the 
 
 Before configuring the Loki receiver, ensure you have:
 
-1. **OpenTelemetry Collector** version 0.80.0 or later with the Loki receiver component
-2. **Promtail or other Loki-compatible agents** configured to ship logs
+1. **OpenTelemetry Collector Contrib** version 0.80.0 or later with the Loki receiver component
+2. **Existing Promtail or other Loki-compatible agents** configured to ship logs
 3. **Network connectivity** from log shippers to the Collector endpoint
 4. **Understanding of Loki labels** used in your current configuration
 
@@ -128,20 +128,6 @@ receivers:
     # Preserve timestamps from log entries
     use_incoming_timestamp: true
 
-    # Map Loki labels to OpenTelemetry resource attributes
-    # This preserves label-based organization in the new backend
-    resource_attributes:
-      "service.name":
-        enabled: true
-        # Map from Loki label 'job' to resource attribute 'service.name'
-        from: job
-      "deployment.environment":
-        enabled: true
-        from: env
-      "host.name":
-        enabled: true
-        from: instance
-
 processors:
   # Protect Collector from memory exhaustion
   memory_limiter:
@@ -161,20 +147,30 @@ processors:
         value: loki-promtail
         action: upsert
 
+  # Map selected Loki labels, which arrive as log attributes,
+  # to OpenTelemetry resource attributes
+  transform/labels:
+    error_mode: ignore
+    log_statements:
+      - set(resource.attributes["service.name"], log.attributes["job"]) where log.attributes["job"] != nil
+      - set(resource.attributes["deployment.environment"], log.attributes["env"]) where log.attributes["env"] != nil
+      - set(resource.attributes["host.name"], log.attributes["instance"]) where log.attributes["instance"] != nil
+
   # Extract structured data from log lines
   # Example: Parse JSON logs
   transform:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Parse JSON body if present
-          - merge_maps(cache, ParseJSON(body), "insert") where IsMatch(body, "^\\{")
+          - merge_maps(log.cache, ParseJSON(log.body), "insert") where IsString(log.body) and IsMatch(log.body, "^\\{")
 
           # Extract level from JSON
-          - set(severity_text, cache["level"]) where cache["level"] != nil
+          - set(log.severity_text, log.cache["level"]) where log.cache["level"] != nil
 
           # Extract message from JSON
-          - set(body, cache["message"]) where cache["message"] != nil
+          - set(log.body, log.cache["message"]) where log.cache["message"] != nil
 
 exporters:
   # Export to OneUptime with retry and timeout configuration
@@ -201,7 +197,7 @@ service:
   pipelines:
     logs:
       receivers: [loki]
-      processors: [memory_limiter, resource, transform, batch]
+      processors: [memory_limiter, resource, transform/labels, transform, batch]
       exporters: [otlphttp]
 ```
 
@@ -216,7 +212,7 @@ service:
 
 ## Configuring Promtail to Use the Receiver
 
-After configuring the Loki receiver, point your Promtail agents to the Collector endpoint.
+After configuring the Loki receiver, point your existing Promtail agents to the Collector endpoint. Promtail reached end-of-life on March 2, 2026, so use these examples for migrations or legacy deployments rather than new installations.
 
 **Promtail configuration (promtail.yaml):**
 
@@ -287,7 +283,7 @@ scrape_configs:
 
 ## Understanding Loki Label Mapping
 
-Loki organizes logs using labels, similar to Prometheus metrics. The Loki receiver converts these labels into OpenTelemetry resource and log attributes.
+Loki organizes logs using labels, similar to Prometheus metrics. The Loki receiver converts non-internal stream labels into OpenTelemetry log attributes. You can then use processors to copy selected labels to resource attributes.
 
 **Loki label structure:**
 
@@ -311,17 +307,17 @@ Loki organizes logs using labels, similar to Prometheus metrics. The Loki receiv
 
 **Converted to OpenTelemetry:**
 
-- Labels in `stream` become resource attributes or log attributes
-- `job` typically maps to `service.name`
-- `env` maps to `deployment.environment`
-- `instance` maps to `host.name`
+- Labels in `stream` become log attributes
+- `job` can be copied to `service.name`
+- `env` can be copied to `deployment.environment`
+- `instance` can be copied to `host.name`
 - Additional labels become log attributes
 - Log line becomes the log body
 - Timestamp is preserved
 
 **Customizing label mapping:**
 
-Configure the receiver to control how labels are mapped:
+Use the transform processor to control which labels become resource attributes:
 
 ```yaml
 receivers:
@@ -332,21 +328,14 @@ receivers:
 
     use_incoming_timestamp: true
 
-    # Define which labels become resource attributes
-    # Labels not listed here become log attributes
-    resource_attributes:
-      "service.name":
-        enabled: true
-        from: job
-      "deployment.environment":
-        enabled: true
-        from: env
-      "host.name":
-        enabled: true
-        from: instance
-      "service.namespace":
-        enabled: true
-        from: namespace
+processors:
+  transform/labels:
+    error_mode: ignore
+    log_statements:
+      - set(resource.attributes["service.name"], log.attributes["job"]) where log.attributes["job"] != nil
+      - set(resource.attributes["deployment.environment"], log.attributes["env"]) where log.attributes["env"] != nil
+      - set(resource.attributes["host.name"], log.attributes["instance"]) where log.attributes["instance"] != nil
+      - set(resource.attributes["service.namespace"], log.attributes["namespace"]) where log.attributes["namespace"] != nil
 ```
 
 This mapping ensures your logs follow OpenTelemetry semantic conventions, improving compatibility with observability tools.
@@ -355,7 +344,7 @@ This mapping ensures your logs follow OpenTelemetry semantic conventions, improv
 
 ## Multi-Tenancy Support
 
-Loki supports multi-tenancy through the `X-Scope-OrgID` header. The Loki receiver can preserve this header and use it for routing or filtering.
+Loki supports multi-tenancy through the `X-Scope-OrgID` header. Promtail sets this header when you configure `tenant_id`, and the Collector can route on request metadata when metadata propagation is enabled on the receiver.
 
 **Promtail configuration with tenant ID:**
 
@@ -373,24 +362,19 @@ receivers:
     protocols:
       http:
         endpoint: 0.0.0.0:3100
+        include_metadata: true
 
-processors:
-  # Extract tenant ID from context and add as attribute
-  attributes:
-    actions:
-      - key: tenant.id
-        action: insert
-        from_context: X-Scope-OrgID
-
-  # Route based on tenant ID
+connectors:
+  # Route based on tenant ID from request metadata
   routing:
-    from_attribute: tenant.id
+    default_pipelines: [logs/default]
     table:
-      - value: tenant-a
-        exporters: [otlphttp/tenant_a]
-      - value: tenant-b
-        exporters: [otlphttp/tenant_b]
-    default_exporters: [otlphttp/default]
+      - context: request
+        condition: request["X-Scope-OrgID"] == "tenant-a"
+        pipelines: [logs/tenant_a]
+      - context: request
+        condition: request["X-Scope-OrgID"] == "tenant-b"
+        pipelines: [logs/tenant_b]
 
 exporters:
   otlphttp/tenant_a:
@@ -410,10 +394,18 @@ exporters:
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [loki]
-      processors: [attributes, routing, batch]
-      exporters: [otlphttp/tenant_a, otlphttp/tenant_b, otlphttp/default]
+      exporters: [routing]
+    logs/tenant_a:
+      receivers: [routing]
+      exporters: [otlphttp/tenant_a]
+    logs/tenant_b:
+      receivers: [routing]
+      exporters: [otlphttp/tenant_b]
+    logs/default:
+      receivers: [routing]
+      exporters: [otlphttp/default]
 ```
 
 This configuration demonstrates tenant-based routing, useful for multi-customer SaaS platforms or large organizations with separate observability backends per team.
@@ -430,28 +422,29 @@ Promtail often ships raw log lines, but many applications emit structured logs (
 processors:
   # Parse JSON logs and extract fields
   transform:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Check if body is JSON
-          - merge_maps(cache, ParseJSON(body), "insert") where IsMatch(body, "^\\{")
+          - merge_maps(log.cache, ParseJSON(log.body), "insert") where IsString(log.body) and IsMatch(log.body, "^\\{")
 
           # Extract timestamp if present in JSON
-          - set(time_unix_nano, Time(cache["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")) where cache["timestamp"] != nil
+          - set(log.time_unix_nano, UnixNano(Time(log.cache["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ"))) where log.cache["timestamp"] != nil
 
           # Extract severity
-          - set(severity_text, cache["level"]) where cache["level"] != nil
+          - set(log.severity_text, log.cache["level"]) where log.cache["level"] != nil
 
           # Extract message as body
-          - set(body, cache["message"]) where cache["message"] != nil
+          - set(log.body, log.cache["message"]) where log.cache["message"] != nil
 
           # Extract trace context for correlation
-          - set(trace_id.string, cache["trace_id"]) where cache["trace_id"] != nil
-          - set(span_id.string, cache["span_id"]) where cache["span_id"] != nil
+          - set(log.trace_id.string, log.cache["trace_id"]) where log.cache["trace_id"] != nil
+          - set(log.span_id.string, log.cache["span_id"]) where log.cache["span_id"] != nil
 
           # Promote all other fields to attributes
-          - set(attributes["user_id"], cache["user_id"]) where cache["user_id"] != nil
-          - set(attributes["request_id"], cache["request_id"]) where cache["request_id"] != nil
+          - set(log.attributes["user_id"], log.cache["user_id"]) where log.cache["user_id"] != nil
+          - set(log.attributes["request_id"], log.cache["request_id"]) where log.cache["request_id"] != nil
 ```
 
 **Example structured log:**
@@ -487,41 +480,30 @@ receivers:
 processors:
   # Drop debug logs in production
   filter/severity:
-    logs:
-      exclude:
-        match_type: strict
-        log_records:
-          - severity_text == "DEBUG"
-          - severity_text == "TRACE"
+    error_mode: ignore
+    log_conditions:
+      - log.severity_text == "DEBUG"
+      - log.severity_text == "TRACE"
 
   # Drop noisy health check logs
   filter/healthchecks:
-    logs:
-      exclude:
-        match_type: regexp
-        bodies:
-          - ".*GET /health.*"
-          - ".*GET /readiness.*"
-          - ".*GET /liveness.*"
+    error_mode: ignore
+    log_conditions:
+      - IsString(log.body) and IsMatch(log.body, ".*GET /health.*")
+      - IsString(log.body) and IsMatch(log.body, ".*GET /readiness.*")
+      - IsString(log.body) and IsMatch(log.body, ".*GET /liveness.*")
 
-  # Sample info logs (keep 10%)
-  probabilistic_sampler/info:
+  # Set sampling priority so important logs are always kept
+  transform/sampling_priority:
+    error_mode: ignore
+    log_statements:
+      - set(log.attributes["sampling.priority"], 100) where log.severity_text == "ERROR" or log.severity_text == "WARN" or log.severity_text == "FATAL"
+      - set(log.attributes["sampling.priority"], 10) where log.severity_text == "INFO"
+
+  # Sample remaining logs based on priority or default percentage
+  probabilistic_sampler:
     sampling_percentage: 10
-    # Only sample INFO logs
-    filter:
-      match_type: strict
-      log_records:
-        - severity_text == "INFO"
-
-  # Always keep error and warning logs
-  filter/important:
-    logs:
-      include:
-        match_type: regexp
-        log_records:
-          - severity_text == "ERROR"
-          - severity_text == "WARN"
-          - severity_text == "FATAL"
+    sampling_priority: sampling.priority
 
 exporters:
   otlphttp:
@@ -533,7 +515,7 @@ service:
   pipelines:
     logs:
       receivers: [loki]
-      processors: [filter/severity, filter/healthchecks, probabilistic_sampler/info, batch]
+      processors: [filter/severity, filter/healthchecks, transform/sampling_priority, probabilistic_sampler, batch]
       exporters: [otlphttp]
 ```
 
@@ -595,10 +577,10 @@ receivers:
         endpoint: 0.0.0.0:3100
 
         # Increase maximum request body size for large batches
-        max_recv_msg_size: 10485760  # 10 MB
+        max_request_body_size: 52428800  # 50 MB
 
         # Enable compression support
-        compression: gzip
+        compression_algorithms: ["", "gzip", "snappy"]
 
 processors:
   # Increase memory limit for high-volume processing
@@ -674,15 +656,23 @@ receivers:
         endpoint: 0.0.0.0:3100
 
 processors:
-  # Route based on service (job label)
+  # Copy the Loki job label to service.name before routing
+  transform/labels:
+    error_mode: ignore
+    log_statements:
+      - set(resource.attributes["service.name"], log.attributes["job"]) where log.attributes["job"] != nil
+
+connectors:
+  # Route based on service.name
   routing:
-    from_attribute: service.name
+    default_pipelines: [logs/standard]
     table:
-      - value: critical-service
-        exporters: [otlphttp/high_retention]
-      - value: batch-jobs
-        exporters: [otlphttp/low_retention]
-    default_exporters: [otlphttp/standard]
+      - context: resource
+        condition: attributes["service.name"] == "critical-service"
+        pipelines: [logs/high_retention]
+      - context: resource
+        condition: attributes["service.name"] == "batch-jobs"
+        pipelines: [logs/low_retention]
 
 exporters:
   # High retention for critical services (90 days)
@@ -705,10 +695,22 @@ exporters:
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [loki]
-      processors: [routing, batch]
-      exporters: [otlphttp/high_retention, otlphttp/low_retention, otlphttp/standard]
+      processors: [transform/labels]
+      exporters: [routing]
+    logs/high_retention:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlphttp/high_retention]
+    logs/low_retention:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlphttp/low_retention]
+    logs/standard:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlphttp/standard]
 ```
 
 This configuration demonstrates intelligent routing based on service importance, enabling cost optimization by applying different retention policies.
@@ -722,7 +724,29 @@ Monitor the Loki receiver to ensure healthy operation and identify issues early.
 **Enable Collector metrics:**
 
 ```yaml
+receivers:
+  loki:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:3100
+
+  prometheus/internal:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 10s
+          static_configs:
+            - targets: ["localhost:8888"]
+
+processors:
+  batch:
+
 exporters:
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
   prometheus:
     endpoint: 0.0.0.0:8889
 
@@ -740,7 +764,8 @@ service:
       exporters: [otlphttp]
 
     metrics/internal:
-      receivers: [prometheus]
+      receivers: [prometheus/internal]
+      processors: [batch]
       exporters: [prometheus]
 ```
 
@@ -794,8 +819,8 @@ exporters:
 Labels from Promtail aren't appearing as expected in the backend.
 
 **Solution:**
-- Review `resource_attributes` configuration in the Loki receiver
-- Check that label names match between Promtail and receiver config
+- Review the transform processor rules that map Loki label attributes to resource attributes
+- Check that label names match between Promtail and transform processor config
 - Use the debug exporter to inspect converted log records
 
 **3. High memory usage:**
