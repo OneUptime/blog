@@ -64,9 +64,9 @@ abstract class TracedMiddleware
 
         try {
             // Add request metadata
-            $span->setAttribute('http.method', $request->method());
+            $span->setAttribute('http.request.method', $request->method());
             $span->setAttribute('http.route', $request->route()?->uri() ?? 'unknown');
-            $span->setAttribute('http.url', $request->fullUrl());
+            $span->setAttribute('url.full', $request->fullUrl());
             $span->setAttribute('middleware.name', static::class);
             $span->setAttribute('middleware.parameters', json_encode($parameters));
 
@@ -80,7 +80,7 @@ abstract class TracedMiddleware
             $response = $this->process($request, $next, ...$parameters);
 
             // Add response metadata
-            $span->setAttribute('http.status_code', $response->status());
+            $span->setAttribute('http.response.status_code', $response->getStatusCode());
             $span->setAttribute('middleware.passed', true);
 
             return $response;
@@ -88,7 +88,7 @@ abstract class TracedMiddleware
         } catch (\Throwable $e) {
             // Record exception
             $span->recordException($e);
-            $span->setStatus(StatusCode::ERROR, $e->getMessage());
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             $span->setAttribute('middleware.passed', false);
             $span->setAttribute('middleware.exception', get_class($e));
 
@@ -119,8 +119,10 @@ use Illuminate\Http\Request;
 
 class CheckUserRole extends TracedMiddleware
 {
-    protected function process(Request $request, Closure $next, string $role)
+    protected function process(Request $request, Closure $next, ...$parameters)
     {
+        $role = $parameters[0] ?? null;
+
         // Get current span to add custom attributes
         $span = \OpenTelemetry\API\Trace\Span::getCurrent();
         $span->setAttribute('authorization.required_role', $role);
@@ -182,14 +184,14 @@ class TraceAuthentication extends BaseAuthenticate
             $response = parent::handle($request, $next, ...$guards);
 
             // Authentication successful
-            $user = $request->user();
             $span->setAttribute('auth.success', true);
-            $span->setAttribute('auth.user_id', $user->id);
+            $user = $request->user($guards[0] ?? null);
+            $span->setAttribute('auth.user_id', $user?->id);
             $span->setAttribute('auth.method', $this->detectAuthMethod($request));
 
             $span->addEvent('authentication_successful', [
-                'user_id' => $user->id,
-                'email' => $user->email,
+                'user_id' => $user?->id,
+                'email' => $user?->email,
             ]);
 
             return $response;
@@ -204,13 +206,13 @@ class TraceAuthentication extends BaseAuthenticate
                 'guards' => $e->guards(),
             ]);
 
-            $span->setStatus(StatusCode::ERROR, 'Authentication failed');
+            $span->setStatus(StatusCode::STATUS_ERROR, 'Authentication failed');
 
             throw $e;
 
         } catch (\Throwable $e) {
             $span->recordException($e);
-            $span->setStatus(StatusCode::ERROR, $e->getMessage());
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
 
             throw $e;
 
@@ -229,7 +231,7 @@ class TraceAuthentication extends BaseAuthenticate
             return 'bearer_token';
         }
 
-        if ($request->hasSession() && $request->session()->has('auth')) {
+        if ($request->hasSession() && $request->user()) {
             return 'session';
         }
 
@@ -242,7 +244,20 @@ class TraceAuthentication extends BaseAuthenticate
 }
 ```
 
-Replace Laravel's default authentication middleware in `app/Http/Kernel.php`:
+Replace Laravel's default authentication middleware in `bootstrap/app.php` for Laravel 11 and later:
+
+```php
+use App\Http\Middleware\TraceAuthentication;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'auth' => TraceAuthentication::class,
+    ]);
+})
+```
+
+For Laravel 10 and earlier, register the alias in `app/Http/Kernel.php`:
 
 ```php
 protected $middlewareAliases = [
@@ -280,29 +295,37 @@ class TraceRateLimiting extends ThrottleRequests
 
         $scope = $span->activate();
 
-        try {
-            // Determine rate limit key
-            $key = $this->resolveRequestSignature($request);
+        $attempts = null;
+        $maxAttemptsForAttributes = is_numeric($maxAttempts) ? (int) $maxAttempts : null;
 
-            $span->setAttribute('rate_limit.key', $key);
+        try {
             $span->setAttribute('rate_limit.max_attempts', $maxAttempts);
             $span->setAttribute('rate_limit.decay_minutes', $decayMinutes);
 
-            // Check current usage
-            $attempts = RateLimiter::attempts($key);
-            $remaining = max(0, $maxAttempts - $attempts);
+            if ($maxAttemptsForAttributes !== null) {
+                // Determine rate limit key
+                $key = $this->resolveRequestSignature($request);
 
-            $span->setAttribute('rate_limit.attempts', $attempts);
-            $span->setAttribute('rate_limit.remaining', $remaining);
-            $span->setAttribute('rate_limit.limit_reached', $remaining === 0);
+                $span->setAttribute('rate_limit.key', $key);
 
-            // Add event for high usage
-            if ($remaining < $maxAttempts * 0.2) {
-                $span->addEvent('rate_limit_approaching', [
-                    'remaining' => $remaining,
-                    'max' => $maxAttempts,
-                    'percentage_used' => round(($attempts / $maxAttempts) * 100, 2),
-                ]);
+                // Check current usage
+                $attempts = RateLimiter::attempts($key);
+                $remaining = max(0, $maxAttemptsForAttributes - $attempts);
+
+                $span->setAttribute('rate_limit.attempts', $attempts);
+                $span->setAttribute('rate_limit.remaining', $remaining);
+                $span->setAttribute('rate_limit.limit_reached', $remaining === 0);
+
+                // Add event for high usage
+                if ($remaining < $maxAttemptsForAttributes * 0.2) {
+                    $span->addEvent('rate_limit_approaching', [
+                        'remaining' => $remaining,
+                        'max' => $maxAttemptsForAttributes,
+                        'percentage_used' => round(($attempts / $maxAttemptsForAttributes) * 100, 2),
+                    ]);
+                }
+            } else {
+                $span->setAttribute('rate_limit.name', $maxAttempts);
             }
 
             // Call parent throttle logic
@@ -322,11 +345,11 @@ class TraceRateLimiting extends ThrottleRequests
 
             $span->addEvent('rate_limit_exceeded', [
                 'retry_after_seconds' => $retryAfter,
-                'attempts' => $attempts,
+                'attempts' => $attempts ?? 'unknown',
                 'max_attempts' => $maxAttempts,
             ]);
 
-            $span->setStatus(StatusCode::ERROR, 'Rate limit exceeded');
+            $span->setStatus(StatusCode::STATUS_ERROR, 'Rate limit exceeded');
 
             throw $e;
 
@@ -337,6 +360,21 @@ class TraceRateLimiting extends ThrottleRequests
     }
 }
 ```
+
+Replace Laravel's default throttling middleware alias in `bootstrap/app.php` for Laravel 11 and later:
+
+```php
+use App\Http\Middleware\TraceRateLimiting;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'throttle' => TraceRateLimiting::class,
+    ]);
+})
+```
+
+For Laravel 10 and earlier, register the `throttle` alias in `app/Http/Kernel.php`.
 
 ## Tracing Request Validation Middleware
 
@@ -391,10 +429,10 @@ class TraceValidation
                 $span->setAttribute('validation.failed_fields', array_keys($errors->messages()));
 
                 $span->addEvent('validation_failed', [
-                    'errors' => $errors->toArray(),
+                    'errors' => json_encode($errors->toArray()),
                 ]);
 
-                $span->setStatus(StatusCode::ERROR, 'Validation failed');
+                $span->setStatus(StatusCode::STATUS_ERROR, 'Validation failed');
 
                 return response()->json([
                     'message' => 'Validation failed',
@@ -527,8 +565,6 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use App\Services\FeatureFlagService;
-use OpenTelemetry\API\Globals;
-use OpenTelemetry\API\Trace\StatusCode;
 
 class CheckFeatureFlag extends TracedMiddleware
 {
@@ -539,8 +575,10 @@ class CheckFeatureFlag extends TracedMiddleware
         $this->featureFlags = $featureFlags;
     }
 
-    protected function process(Request $request, Closure $next, string $featureName)
+    protected function process(Request $request, Closure $next, ...$parameters)
     {
+        $featureName = $parameters[0] ?? null;
+
         $span = \OpenTelemetry\API\Trace\Span::getCurrent();
 
         $span->setAttribute('feature_flag.name', $featureName);
@@ -571,6 +609,21 @@ class CheckFeatureFlag extends TracedMiddleware
 
 Use this middleware on routes:
 
+Register the `feature` alias in `bootstrap/app.php` for Laravel 11 and later:
+
+```php
+use App\Http\Middleware\CheckFeatureFlag;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'feature' => CheckFeatureFlag::class,
+    ]);
+})
+```
+
+For Laravel 10 and earlier, register the alias in `app/Http/Kernel.php`.
+
 ```php
 Route::middleware(['auth', 'feature:new-dashboard'])
     ->get('/dashboard/v2', [DashboardController::class, 'index']);
@@ -588,40 +641,67 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\StatusCode;
 
 class MeasureMiddlewarePerformance
 {
-    private static $timings = [];
-
     public function handle(Request $request, Closure $next)
     {
         $startTime = microtime(true);
 
-        $response = $next($request);
-
-        $totalTime = (microtime(true) - $startTime) * 1000;
-
         $tracer = Globals::tracerProvider()->getTracer('laravel-middleware');
         $span = $tracer->spanBuilder('middleware.performance_summary')->startSpan();
 
-        $span->setAttribute('middleware.total_time_ms', $totalTime);
+        $scope = $span->activate();
 
-        // Flag slow middleware processing
-        if ($totalTime > 100) {
-            $span->addEvent('slow_middleware_detected', [
-                'total_time_ms' => $totalTime,
-                'threshold_ms' => 100,
-            ]);
+        try {
+            $response = $next($request);
+
+            $span->setAttribute('http.response.status_code', $response->getStatusCode());
+
+            return $response;
+
+        } catch (\Throwable $e) {
+            $span->recordException($e);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+
+            throw $e;
+
+        } finally {
+            $totalTime = (microtime(true) - $startTime) * 1000;
+            $span->setAttribute('middleware.total_time_ms', $totalTime);
+
+            // Flag slow middleware processing
+            if ($totalTime > 100) {
+                $span->addEvent('slow_middleware_detected', [
+                    'total_time_ms' => $totalTime,
+                    'threshold_ms' => 100,
+                ]);
+            }
+
+            $span->end();
+            $scope->detach();
         }
-
-        $span->end();
-
-        return $response;
     }
 }
 ```
 
-Register this middleware first in your global middleware stack in `app/Http/Kernel.php`:
+Register this middleware first in your global middleware stack in `bootstrap/app.php` for Laravel 11 and later:
+
+```php
+use App\Http\Middleware\MeasureMiddlewarePerformance;
+use App\Http\Middleware\TraceMiddlewarePipeline;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->prepend([
+        MeasureMiddlewarePerformance::class,
+        TraceMiddlewarePipeline::class,
+    ]);
+})
+```
+
+For Laravel 10 and earlier, register it first in `app/Http/Kernel.php`:
 
 ```php
 protected $middleware = [
@@ -661,13 +741,13 @@ class PropagateTraceContext
         $request->attributes->set('otel.context', Context::getCurrent());
 
         try {
-            $span->setAttribute('http.method', $request->method());
+            $span->setAttribute('http.request.method', $request->method());
             $span->setAttribute('http.route', $request->route()?->uri());
-            $span->setAttribute('http.url', $request->fullUrl());
+            $span->setAttribute('url.full', $request->fullUrl());
 
             $response = $next($request);
 
-            $span->setAttribute('http.status_code', $response->status());
+            $span->setAttribute('http.response.status_code', $response->getStatusCode());
 
             return $response;
 
