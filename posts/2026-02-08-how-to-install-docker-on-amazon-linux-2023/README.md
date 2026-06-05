@@ -104,7 +104,7 @@ mkdir -p ~/.docker/cli-plugins
 
 # Download the Docker Compose plugin
 COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
-curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose
+curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose
 
 # Make it executable
 chmod +x ~/.docker/cli-plugins/docker-compose
@@ -182,7 +182,10 @@ If Docker was already running with data on the root volume, stop Docker first, c
 sudo systemctl stop docker
 
 # Copy existing Docker data to the new volume
-sudo rsync -aP /var/lib/docker/ /mnt/new-volume/docker/
+sudo mkdir -p /mnt/new-volume
+sudo mount /dev/xvdf /mnt/new-volume
+sudo rsync -aP /var/lib/docker/ /mnt/new-volume/
+sudo umount /mnt/new-volume
 sudo mount /dev/xvdf /var/lib/docker
 
 # Start Docker again
@@ -253,14 +256,17 @@ EOF
 
 ### Docker version is older than expected
 
-AL2023 packages Docker independently from Docker Inc. The version in the AL2023 repo may lag behind. If you need the latest version, you can install from Docker's official repository.
+AL2023 packages Docker independently from Docker Inc. The version in the AL2023 repo may lag behind. Docker's official RPM repository does not list AL2023 as a supported distribution, but if you choose to test the CentOS repository anyway, follow Docker's RPM repository prerequisites and expect possible package conflicts.
 
 ```bash
-# Add Docker's official CentOS/Fedora repository
+# Install the DNF repository management plugin
+sudo dnf install -y dnf-plugins-core
+
+# Add Docker's official CentOS repository
 sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
 # Install Docker CE (may conflict with the AL2023 package)
-sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io
+sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ### Instance cannot pull images
