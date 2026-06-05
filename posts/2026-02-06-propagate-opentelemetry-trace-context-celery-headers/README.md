@@ -28,7 +28,7 @@ sequenceDiagram
     OTel->>WebApp: Context dict
     WebApp->>Broker: Task message + context headers
     Broker->>Worker: Deliver message
-    Worker->>OTel: Inject context from headers
+    Worker->>OTel: Extract context from headers
     OTel->>Worker: Restored context
     Worker->>OTel: Create task span (linked to request)
     Worker->>OTel: End task span
@@ -42,20 +42,21 @@ Install the required packages for OpenTelemetry and Celery instrumentation.
 ```bash
 pip install celery \
     redis \
+    fastapi \
     opentelemetry-api \
     opentelemetry-sdk \
     opentelemetry-instrumentation-celery \
+    opentelemetry-instrumentation-fastapi \
     opentelemetry-exporter-otlp
 ```
 
-Initialize OpenTelemetry with proper configuration for distributed tracing.
+Initialize OpenTelemetry with proper configuration for distributed tracing. When using Celery's default prefork worker pool, run this tracing setup in each worker child process, such as from Celery's `worker_process_init` signal, so components like `BatchSpanProcessor` are initialized after the worker process starts.
 
 ```python
 from opentelemetry import trace, context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.celery import CeleryInstrumentor
 from opentelemetry.propagate import inject, extract
 from celery import Celery, Task
 from typing import Any, Dict
@@ -111,15 +112,8 @@ class TracedTask(Task):
         Override apply_async to inject OpenTelemetry context into headers.
         This method is called when you use .delay() or .apply_async() on a task.
         """
-        # Get current OpenTelemetry context
-        current_context = context.get_current()
-
         # Prepare headers dict for context injection
-        headers = options.get('headers', {})
-
-        # Inject OpenTelemetry context into headers
-        # This adds traceparent, tracestate, and other W3C headers
-        inject(headers, context=current_context)
+        headers = dict(options.get('headers') or {})
 
         # Update options with modified headers
         options['headers'] = headers
@@ -135,6 +129,10 @@ class TracedTask(Task):
 
             if task_id:
                 span.set_attribute("messaging.message_id", task_id)
+
+            # Inject the current producer span context into headers
+            # This adds traceparent, tracestate, and baggage headers
+            inject(headers)
 
             # Call the original apply_async
             return super().apply_async(
@@ -257,7 +255,7 @@ def send_confirmation_email(self, order_id: str, user_id: str):
 When tasks are triggered from web requests, proper context propagation ensures end-to-end traces.
 
 ```python
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 # Create FastAPI app
