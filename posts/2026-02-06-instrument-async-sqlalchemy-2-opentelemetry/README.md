@@ -6,7 +6,7 @@ Tags: OpenTelemetry, SQLAlchemy, Async, Python, Database, Asyncio
 
 Description: Complete guide to instrumenting async SQLAlchemy 2.0 applications with OpenTelemetry for tracing asynchronous database operations and monitoring performance in modern Python applications.
 
-SQLAlchemy 2.0 introduced first-class support for asyncio, enabling truly asynchronous database operations. Instrumenting these async operations with OpenTelemetry requires understanding both the async execution model and how tracing context propagates through awaited coroutines. This guide shows you how to get complete visibility into your async database layer.
+SQLAlchemy 2.0 provides first-class support for asyncio, enabling truly asynchronous database operations. Instrumenting these async operations with OpenTelemetry requires understanding both the async execution model and how tracing context propagates through awaited coroutines. This guide shows you how to get complete visibility into your async database layer.
 
 ## Why Async SQLAlchemy Matters
 
@@ -23,8 +23,8 @@ pip install 'sqlalchemy[asyncio]>=2.0' \
     opentelemetry-api \
     opentelemetry-sdk \
     opentelemetry-instrumentation-sqlalchemy \
+    opentelemetry-instrumentation-fastapi \
     opentelemetry-exporter-otlp \
-    aiopg \
     asyncpg
 ```
 
@@ -284,34 +284,36 @@ async def get_multiple_users(user_ids: list[int]) -> list[User]:
 
         return valid_users
 
-async def get_user_with_posts(user_id: int) -> dict:
+async def get_user_with_posts(user_id: int) -> Optional[dict]:
     """Fetch user and their posts concurrently"""
     with tracer.start_as_current_span("get_user_with_posts") as span:
         span.set_attribute("user.id", user_id)
 
-        async with async_session_maker() as session:
-            # Create both queries
-            user_stmt = select(User).where(User.id == user_id)
-            posts_stmt = select(Post).where(Post.author_id == user_id)
+        # Each concurrent task needs its own AsyncSession.
+        async def fetch_user():
+            async with async_session_maker() as session:
+                user_stmt = select(User).where(User.id == user_id)
+                result = await session.execute(user_stmt)
+                return result.scalar_one_or_none()
 
-            # Execute concurrently
-            user_result, posts_result = await asyncio.gather(
-                session.execute(user_stmt),
-                session.execute(posts_stmt)
-            )
+        async def fetch_posts():
+            async with async_session_maker() as session:
+                posts_stmt = select(Post).where(Post.author_id == user_id)
+                result = await session.execute(posts_stmt)
+                return result.scalars().all()
 
-            user = user_result.scalar_one_or_none()
-            posts = posts_result.scalars().all()
+        # Execute concurrently with independent sessions
+        user, posts = await asyncio.gather(fetch_user(), fetch_posts())
 
-            if user:
-                span.set_attribute("posts.count", len(posts))
+        if user:
+            span.set_attribute("posts.count", len(posts))
 
-                return {
-                    "user": user,
-                    "posts": posts
-                }
+            return {
+                "user": user,
+                "posts": posts
+            }
 
-            return None
+        return None
 ```
 
 ## Async Transactions with Tracing
@@ -411,8 +413,9 @@ Monitor async connection pool health to detect exhaustion and leaks.
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
-# Set up metrics
+# Get the configured meter provider
 meter_provider = metrics.get_meter_provider()
 meter = meter_provider.get_meter("async.sqlalchemy", "1.0.0")
 
@@ -422,10 +425,10 @@ def observe_pool_metrics(options):
     pool = engine.pool
 
     # These metrics help detect connection leaks
-    yield metrics.Observation(pool.size(), {"pool.metric": "size"})
-    yield metrics.Observation(pool.checked_out_connections, {"pool.metric": "checked_out"})
-    yield metrics.Observation(pool.overflow(), {"pool.metric": "overflow"})
-    yield metrics.Observation(pool.checked_in_connections, {"pool.metric": "checked_in"})
+    yield Observation(pool.size(), {"pool.metric": "size"})
+    yield Observation(pool.checkedout(), {"pool.metric": "checked_out"})
+    yield Observation(pool.overflow(), {"pool.metric": "overflow"})
+    yield Observation(pool.checkedin(), {"pool.metric": "checked_in"})
 
 pool_gauge = meter.create_observable_gauge(
     name="db.pool.connections",
@@ -438,7 +441,7 @@ async def monitored_query():
     with tracer.start_as_current_span("monitored_query") as span:
         # Record pool state before query
         span.set_attribute("pool.size_before", engine.pool.size())
-        span.set_attribute("pool.checked_out_before", engine.pool.checked_out_connections)
+        span.set_attribute("pool.checked_out_before", engine.pool.checkedout())
 
         async with async_session_maker() as session:
             result = await session.execute(select(User))
@@ -446,7 +449,7 @@ async def monitored_query():
 
             # Record pool state after query
             span.set_attribute("pool.size_after", engine.pool.size())
-            span.set_attribute("pool.checked_out_after", engine.pool.checked_out_connections)
+            span.set_attribute("pool.checked_out_after", engine.pool.checkedout())
 
             return users
 ```
@@ -456,9 +459,9 @@ async def monitored_query():
 Combine async SQLAlchemy with FastAPI for fully traced async web applications.
 
 ```python
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 app = FastAPI()
 
@@ -470,12 +473,11 @@ class UserCreate(BaseModel):
     email: str
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: str
     email: str
-
-    class Config:
-        from_attributes = True
 
 @app.post("/users", response_model=UserResponse, status_code=201)
 async def create_user_endpoint(user_data: UserCreate):
@@ -513,7 +515,7 @@ async def list_users_endpoint(limit: int = 100):
             span.set_attribute("users.count", len(users))
 
             return [
-                UserResponse.from_orm(user)
+                UserResponse.model_validate(user)
                 for user in users
             ]
 ```
