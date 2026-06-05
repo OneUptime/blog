@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Security, Secrets Management, Collector, DevOps
 
-Description: Practical guide to securing API keys, tokens, and credentials in your OpenTelemetry Collector configuration files using environment variables, vaults, and providers.
+Description: Practical guide to securing API keys, tokens, and credentials in your OpenTelemetry Collector configuration files using environment variables, secret managers, and providers.
 
 ---
 
@@ -114,7 +114,13 @@ metadata:
   name: otel-collector
   namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: otel-collector
@@ -138,47 +144,36 @@ spec:
                   key: backend-endpoint
 ```
 
-## Method 3: HashiCorp Vault Provider
+## Method 3: Google Secret Manager Provider
 
-For production environments with strict security requirements, the OpenTelemetry Collector supports secret store providers. The HashiCorp Vault provider lets you fetch secrets directly from Vault at Collector startup.
+For production environments with strict security requirements, the OpenTelemetry Collector supports configuration providers. The Google Secret Manager provider lets you fetch secrets directly from Google Secret Manager at Collector startup.
 
 ```mermaid
 sequenceDiagram
     participant C as Collector
-    participant V as HashiCorp Vault
+    participant S as Google Secret Manager
     participant B as Telemetry Backend
-    C->>V: Authenticate with role/token
-    V->>C: Return secrets
+    C->>S: Authenticate with Application Default Credentials
+    S->>C: Return secrets
     C->>C: Resolve config placeholders
     C->>B: Connect with resolved credentials
 ```
 
-First, you need to build or use a Collector distribution that includes the Vault config provider. Then configure it in the Collector's configuration.
+First, you need to build or use a Collector distribution that includes the Google Secret Manager config provider. Then reference the secrets in the Collector's configuration.
 
-This configuration sets up the Vault provider and references secrets stored in Vault paths.
+This configuration references secrets stored in Google Secret Manager.
 
 ```yaml
-# collector-with-vault.yaml
-# Configure the Vault config provider
-config_sources:
-  vault:
-    endpoint: "https://vault.example.com:8200"
-    path: "secret/data/otel-collector"
-    auth:
-      # Use Kubernetes auth method if running in k8s
-      method: "kubernetes"
-      mount_path: "auth/kubernetes"
-      role: "otel-collector"
-
+# collector-with-secret-manager.yaml
 exporters:
   otlp:
-    # Reference secrets stored in Vault using the vault: prefix
-    endpoint: "${vault:secret/data/otel-collector/endpoint}"
+    # Reference secrets stored in Google Secret Manager
+    endpoint: "${googlesecretmanager:projects/my-project/secrets/otel-endpoint/versions/latest}"
     headers:
-      api-key: "${vault:secret/data/otel-collector/api-key}"
+      api-key: "${googlesecretmanager:projects/my-project/secrets/otel-api-key/versions/latest}"
 ```
 
-The Vault approach has several advantages: secrets are centrally managed, access is audited, and secrets can be rotated without redeploying the Collector (depending on cache settings).
+The Google Secret Manager approach has several advantages: secrets are centrally managed, access is audited, and secrets can be rotated in one place. The Collector resolves these values during configuration loading, so restart or reload the Collector when it needs to pick up a rotated value.
 
 ## Method 4: File-Based Secrets with Docker/Podman
 
@@ -188,13 +183,13 @@ This Docker Compose configuration mounts secrets as files inside the Collector c
 
 ```yaml
 # docker-compose.yaml
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
     secrets:
       - otel_api_key
-      - prometheus_token
+      - prometheus_authorization
     volumes:
       - ./collector-config.yaml:/etc/otelcol/config.yaml
 
@@ -202,23 +197,26 @@ services:
 secrets:
   otel_api_key:
     file: ./secrets/otel_api_key.txt
-  prometheus_token:
-    file: ./secrets/prometheus_token.txt
+  prometheus_authorization:
+    file: ./secrets/prometheus_authorization.txt
 ```
 
-Then use a script or the file provider to read those secrets into environment variables before the Collector starts.
+Then use the file provider to read those mounted secret files from the Collector configuration.
 
-This entrypoint script reads file-based secrets into environment variables.
+This Collector configuration reads file-based secrets directly from `/run/secrets`.
 
-```bash
-#!/bin/bash
-# entrypoint.sh
-# Read Docker secrets from mounted files and export as environment variables
-export OTEL_EXPORTER_API_KEY=$(cat /run/secrets/otel_api_key)
-export PROMETHEUS_AUTH_TOKEN=$(cat /run/secrets/prometheus_token)
+```yaml
+# collector-config.yaml
+exporters:
+  otlp:
+    endpoint: "https://backend.example.com:4317"
+    headers:
+      api-key: "${file:/run/secrets/otel_api_key}"
 
-# Start the collector with resolved environment variables
-exec /otelcol --config /etc/otelcol/config.yaml
+  prometheusremotewrite:
+    endpoint: "https://prometheus.example.com/api/v1/write"
+    headers:
+      Authorization: "${file:/run/secrets/prometheus_authorization}"
 ```
 
 ## Method 5: Sealed Secrets for GitOps Workflows
@@ -276,7 +274,7 @@ This pre-commit configuration uses detect-secrets to catch credentials before th
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       # Scan staged files for potential secrets
       - id: detect-secrets
@@ -292,7 +290,7 @@ flowchart TD
     A[Where is the Collector running?] --> B{Kubernetes?}
     B -->|Yes| C{Need central secret management?}
     B -->|No| D{Docker/Containers?}
-    C -->|Yes| E[Use Vault Provider or External Secrets Operator]
+    C -->|Yes| E[Use Google Secret Manager Provider or External Secrets Operator]
     C -->|No| F[Use Kubernetes Secrets]
     D -->|Yes| G[Use Docker Secrets or Env Vars]
     D -->|No| H[Use Environment Variables with Restricted File Permissions]
@@ -300,6 +298,6 @@ flowchart TD
 
 ## Summary
 
-The golden rule is simple: never put secrets directly in your Collector configuration files. Start with environment variable substitution since it works everywhere and requires no additional tooling. As your infrastructure matures, move to Kubernetes Secrets, HashiCorp Vault, or Google Secret Manager for centralized management and audit trails.
+The golden rule is simple: never put secrets directly in your Collector configuration files. Start with environment variable substitution since it works everywhere and requires no additional tooling. As your infrastructure matures, move to Kubernetes Secrets, Google Secret Manager, or another external secrets system for centralized management and audit trails.
 
 Whatever method you choose, combine it with pre-commit hooks and secret scanning in your CI pipeline. Defense in depth matters here because a single leaked API key can compromise your entire telemetry pipeline and potentially the systems it monitors.
