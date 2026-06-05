@@ -61,6 +61,7 @@ The provider layer is the first processing stage. Tracer providers, meter provid
 # Configuring the provider determines how data flows through the system
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # The provider orchestrates the entire flow
@@ -80,7 +81,7 @@ The provider layer attaches resource information to your telemetry. Resource att
 
 ## Stage 3: Processor Layer
 
-Processors sit between data generation and export. They transform, sample, filter, and batch your telemetry before it leaves the application.
+Processors sit between data generation and export. They transform, filter, and batch your telemetry before it leaves the application. Sampling decisions can also happen in the SDK or later in the collector pipeline.
 
 ```python
 # BatchSpanProcessor collects spans and sends them in batches
@@ -102,7 +103,7 @@ Different processor types serve different purposes:
 
 **BatchSpanProcessor** is the production standard. It balances latency with efficiency by batching multiple spans together.
 
-**Sampling processors** make decisions about which traces to keep. They reduce data volume while maintaining statistical accuracy.
+**Samplers and sampling processors** make decisions about which traces to keep. They reduce data volume while maintaining statistical accuracy.
 
 ## Stage 4: Exporter Layer
 
@@ -111,9 +112,9 @@ Exporters handle the actual transmission of data from your application. They ser
 ```go
 // Exporters translate internal telemetry data into wire formats
 import (
+    "context"
+
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/exporters/jaeger"
-    "go.opentelemetry.io/otel/exporters/prometheus"
 )
 
 // OTLP exporter sends data using OpenTelemetry's native protocol
@@ -123,11 +124,11 @@ otlpExporter, err := otlptracegrpc.New(
     otlptracegrpc.WithInsecure(),
 )
 
-// Or export directly to a specific backend
-jaegerExporter, err := jaeger.New(
-    jaeger.WithCollectorEndpoint(
-        jaeger.WithEndpoint("http://jaeger:14268/api/traces"),
-    ),
+// Or export directly to a backend that accepts OTLP, such as Jaeger
+jaegerOTLPExporter, err := otlptracegrpc.New(
+    context.Background(),
+    otlptracegrpc.WithEndpoint("jaeger:4317"),
+    otlptracegrpc.WithInsecure(),
 )
 ```
 
@@ -175,9 +176,11 @@ exporters:
     headers:
       api-key: "${API_KEY}"
 
-  # Fan out to multiple backends
-  jaeger:
-    endpoint: "jaeger:14250"
+  # Fan out to a Jaeger deployment that accepts OTLP
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
 
 # Pipelines tie everything together
 service:
@@ -185,7 +188,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, attributes, probabilistic_sampler]
-      exporters: [otlp, jaeger]
+      exporters: [otlp, otlp/jaeger]
 ```
 
 The collector receives data through its receivers, applies processing through its processor pipeline, and routes data through its exporters. This architecture allows you to:
@@ -235,7 +238,7 @@ Understanding the performance implications of each stage helps you tune your sys
 The data flow pipeline includes multiple failure points. OpenTelemetry includes built-in resilience:
 
 ```python
-# Configure retry behavior for transient failures
+# Configure batching and export timeout behavior
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 processor = BatchSpanProcessor(
@@ -249,10 +252,10 @@ processor = BatchSpanProcessor(
 
 When the exporter fails to send data:
 
-1. The processor retries with exponential backoff
-2. If retries fail, data accumulates in the buffer
-3. If the buffer fills, new spans are dropped
-4. The SDK logs warnings about dropped spans
+1. Protocol-specific exporters, such as OTLP exporters, handle retry behavior for transient errors
+2. The default span processors do not implement retry logic themselves
+3. If an exporter returns a failure for a batch, that batch is dropped
+4. If the processor queue fills while spans wait to be exported, new spans are dropped
 
 The collector provides more sophisticated retry and buffering capabilities:
 
@@ -287,7 +290,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Choosing Your Architecture
