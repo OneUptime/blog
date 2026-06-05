@@ -38,7 +38,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_units: true
+                without_type_suffix: false
   pipelines:
     traces:
       receivers: [otlp]
@@ -70,12 +77,12 @@ sum(rate(otelcol_receiver_accepted_metric_points_total[5m]))
 # Log records per second
 sum(rate(otelcol_receiver_accepted_log_records_total[5m]))
 
-# Total exporter bytes sent per second (if available)
-sum(rate(otelcol_exporter_sent_bytes_total[5m]))
+# Batch payload bytes per second (if available at detailed level)
+sum(rate(otelcol_processor_batch_batch_send_size_bytes_sum[5m]))
 
-# Breakdown by service to find the top producers
+# Breakdown by receiver and transport to find uneven ingress
 topk(10,
-  sum by (service_name) (rate(otelcol_receiver_accepted_spans_total[1h]))
+  sum by (receiver, transport) (rate(otelcol_receiver_accepted_spans_total[1h]))
 )
 ```
 
@@ -102,13 +109,26 @@ def query_range(promql, days=7, step="1h"):
     })
     return resp.json()["data"]["result"]
 
-# Get total spans ingested over the last 7 days
-spans_total = query_range(
+def total_increase(promql, days=7):
+    result = query_range(promql, days=days)
+    if not result:
+        return 0
+    return sum(float(v[1]) for v in result[0]["values"])
+
+# Get total telemetry items ingested over the last 7 days
+total_spans_7d = total_increase(
     'sum(increase(otelcol_receiver_accepted_spans_total[1h]))',
     days=7
 )
-
-total_spans_7d = sum(float(v[1]) for v in spans_total[0]["values"])
+total_metric_points_7d = total_increase(
+    'sum(increase(otelcol_receiver_accepted_metric_points_total[1h]))',
+    days=7
+)
+total_log_records_7d = total_increase(
+    'sum(increase(otelcol_receiver_accepted_log_records_total[1h]))',
+    days=7
+)
+total_items_7d = total_spans_7d + total_metric_points_7d + total_log_records_7d
 
 # Get disk usage growth over the same period (example for Prometheus TSDB)
 disk_start = query_range(
@@ -116,19 +136,19 @@ disk_start = query_range(
     days=7
 )
 
-if disk_start[0]["values"]:
+if disk_start and disk_start[0]["values"]:
     disk_first = float(disk_start[0]["values"][0][1])
     disk_last = float(disk_start[0]["values"][-1][1])
     disk_growth_bytes = disk_last - disk_first
     disk_growth_gb = disk_growth_bytes / (1024 ** 3)
 
-    # Calculate bytes per span (your storage efficiency ratio)
-    bytes_per_span = disk_growth_bytes / total_spans_7d if total_spans_7d > 0 else 0
+    # Calculate bytes per telemetry item (your storage efficiency ratio)
+    bytes_per_item = disk_growth_bytes / total_items_7d if total_items_7d > 0 else 0
 
     print(f"7-day stats:")
-    print(f"  Total spans ingested: {total_spans_7d:,.0f}")
+    print(f"  Total telemetry items ingested: {total_items_7d:,.0f}")
     print(f"  Disk growth: {disk_growth_gb:.2f} GB")
-    print(f"  Average bytes per span: {bytes_per_span:.0f}")
+    print(f"  Average bytes per telemetry item: {bytes_per_item:.0f}")
     print(f"  Daily storage rate: {disk_growth_gb / 7:.2f} GB/day")
 ```
 
@@ -206,11 +226,7 @@ groups:
       # Alert based on linear projection of disk usage
       - alert: StorageExhaustionForecast
         expr: |
-          (
-            node_filesystem_avail_bytes{mountpoint="/data"}
-            /
-            deriv(node_filesystem_avail_bytes{mountpoint="/data"}[7d])
-          ) < 21 * 24 * 3600
+          predict_linear(node_filesystem_avail_bytes{mountpoint="/data"}[7d], 21 * 24 * 3600) < 0
           and
           deriv(node_filesystem_avail_bytes{mountpoint="/data"}[7d]) < 0
         for: 6h
@@ -254,14 +270,13 @@ This processor config drops health check spans and debug-level logs that typical
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/readyz"'
-        - 'name == "health_check"'
-    logs:
-      log_record:
-        - 'severity_number < 9'  # Drop DEBUG and TRACE logs
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/readyz"'
+      - 'span.name == "health_check"'
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'  # Drop DEBUG and TRACE logs
 
   # Tail sampling keeps only a percentage of normal traces
   # but retains all error traces
