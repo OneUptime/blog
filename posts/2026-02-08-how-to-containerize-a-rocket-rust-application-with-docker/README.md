@@ -278,6 +278,7 @@ extern crate rocket;
 
 use rocket::serde::json::Json;
 use rocket_db_pools::{Database, Connection, sqlx};
+use rocket_db_pools::sqlx::Row;
 use serde::Serialize;
 
 #[derive(Database)]
@@ -292,9 +293,17 @@ struct User {
 
 #[get("/users")]
 async fn list_users(mut db: Connection<MyDb>) -> Json<Vec<User>> {
-    let users = sqlx::query_as!(User, "SELECT id, name FROM users")
+    let users = sqlx::query("SELECT id, name FROM users")
         .fetch_all(&mut **db)
         .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| User {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                })
+                .collect()
+        })
         .unwrap_or_default();
 
     Json(users)
@@ -371,8 +380,7 @@ shutdown.mercy = 5
 Or through environment variables:
 
 ```bash
-ROCKET_SHUTDOWN_GRACE=5
-ROCKET_SHUTDOWN_MERCY=5
+ROCKET_SHUTDOWN='{grace=5,mercy=5}'
 ```
 
 ## Development Workflow
