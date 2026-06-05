@@ -29,7 +29,7 @@ def fetch_user(user_id):
 ```python
 def fetch_user(user_id):
     # No instrumentation code needed
-    # The agent automatically creates spans for this function
+    # The agent automatically creates spans for supported library calls
     return database.query(User).get(user_id)
 ```
 
@@ -59,7 +59,7 @@ Run your application with the agent attached:
 java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.service.name=my-service \
      -Dotel.traces.exporter=otlp \
-     -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
+     -Dotel.exporter.otlp.endpoint=http://localhost:4318 \
      -jar my-application.jar
 ```
 
@@ -212,11 +212,11 @@ app.listen(3000);
 
 ## Go Auto-Instrumentation
 
-Go presents unique challenges for auto-instrumentation because it's a compiled language without runtime code modification capabilities. True zero-code instrumentation isn't possible with standard Go.
+Go presents unique challenges for auto-instrumentation because it's a compiled language without JVM-style runtime code modification capabilities. OpenTelemetry's Go zero-code instrumentation is currently work in progress and relies on eBPF.
 
-However, you can achieve near-zero-code instrumentation using:
+You can achieve zero-code or near-zero-code instrumentation using:
 
-**eBPF-based instrumentation**: Tools like Grafana Beyla use eBPF to trace Go applications without code changes. They capture HTTP, gRPC, and database calls at the kernel level.
+**eBPF-based instrumentation**: The OpenTelemetry Go auto-instrumentation project and tools like Grafana Beyla use eBPF to trace Go applications without code changes. They can capture HTTP, gRPC, and database calls.
 
 ```bash
 # Run Beyla to automatically instrument a Go application
@@ -228,7 +228,7 @@ docker run -d --name beyla \
   grafana/beyla:latest
 ```
 
-**Compile-time instrumentation**: Tools like `otel-go-instrumentation` use Go's toolchain to inject instrumentation during compilation.
+**OpenTelemetry Go auto-instrumentation**: The `opentelemetry-go-instrumentation` project provides automatic tracing for Go packages using eBPF rather than compile-time source changes.
 
 **Library-level auto-instrumentation**: Some frameworks provide hooks that instrumentation libraries can use. You still need minimal code changes, but they're standardized:
 
@@ -249,13 +249,13 @@ Go's auto-instrumentation is less mature than Java or Python, but the ecosystem 
 
 Download the .NET instrumentation:
 ```bash
-# On Linux
-wget https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/latest/download/opentelemetry-dotnet-instrumentation-linux-x64.zip
-unzip opentelemetry-dotnet-instrumentation-linux-x64.zip
+# On Linux glibc x64
+wget https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/latest/download/opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
+unzip opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
 
 # On Windows
-Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/latest/download/opentelemetry-dotnet-instrumentation-windows-x64.zip" -OutFile "opentelemetry-dotnet-instrumentation-windows-x64.zip"
-Expand-Archive -Path "opentelemetry-dotnet-instrumentation-windows-x64.zip"
+Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/latest/download/opentelemetry-dotnet-instrumentation-windows.zip" -OutFile "opentelemetry-dotnet-instrumentation-windows.zip"
+Expand-Archive -Path "opentelemetry-dotnet-instrumentation-windows.zip"
 ```
 
 Set environment variables to enable the profiler:
@@ -346,11 +346,11 @@ export OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=flask,django
 **Control span attributes**:
 ```bash
 # Capture HTTP request/response headers
--Dotel.instrumentation.http.capture-headers.client.request=Content-Type,User-Agent
--Dotel.instrumentation.http.capture-headers.server.response=Content-Type
+-Dotel.instrumentation.http.client.capture-request-headers=Content-Type,User-Agent
+-Dotel.instrumentation.http.server.capture-response-headers=Content-Type
 
 # Capture database query statements
--Dotel.instrumentation.jdbc.statement-sanitizer.enabled=true
+-Dotel.instrumentation.common.db-statement-sanitizer.enabled=true
 ```
 
 **Sampling configuration**:
