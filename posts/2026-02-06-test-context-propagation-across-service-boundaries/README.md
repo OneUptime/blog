@@ -31,14 +31,14 @@ sequenceDiagram
     participant B as Service B
     participant C as Service C
 
-    A->>A: Create span (trace-id: abc123, span-id: span-1)
-    A->>B: HTTP request with traceparent: 00-abc123-span-1-01
-    B->>B: Extract context, create child span (trace-id: abc123, span-id: span-2, parent: span-1)
-    B->>C: HTTP request with traceparent: 00-abc123-span-2-01
-    C->>C: Extract context, create child span (trace-id: abc123, span-id: span-3, parent: span-2)
+    A->>A: Create span (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
+    A->>B: HTTP request with traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
+    B->>B: Extract context, create child span (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: 00f067aa0ba902b7, parent: b7ad6b7169203331)
+    B->>C: HTTP request with traceparent: 00-0af7651916cd43dd8448eb211c80319c-00f067aa0ba902b7-01
+    C->>C: Extract context, create child span (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: 4bf92f3577b34da6, parent: 00f067aa0ba902b7)
 ```
 
-All three spans share the same trace ID (`abc123`), forming a complete trace. If any link in this chain breaks, the downstream service starts a new trace with a different trace ID.
+All three spans share the same trace ID (`0af7651916cd43dd8448eb211c80319c`), forming a complete trace. If any link in this chain breaks, the downstream service starts a new trace with a different trace ID.
 
 ## Unit Testing: Verifying Header Injection
 
@@ -48,15 +48,18 @@ The first level of testing checks that your HTTP client correctly injects trace 
 # test_propagation_injection.py
 
 import unittest
-from unittest.mock import patch, MagicMock
-from opentelemetry import trace, context
+from unittest.mock import patch
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.trace.propagation.tracecontext import (
     TraceContextTextMapPropagator,
 )
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from requests import Response
 import requests
 
 
@@ -68,11 +71,11 @@ class TestContextInjection(unittest.TestCase):
         self.provider.add_span_processor(
             SimpleSpanProcessor(self.exporter)
         )
-        trace.set_tracer_provider(self.provider)
 
         # Use W3C Trace Context propagation
         set_global_textmap(TraceContextTextMapPropagator())
-        self.tracer = trace.get_tracer("test-tracer")
+        RequestsInstrumentor().instrument(tracer_provider=self.provider)
+        self.tracer = self.provider.get_tracer("test-tracer")
 
     def test_traceparent_header_is_injected(self):
         """Verify that outgoing HTTP requests include traceparent."""
@@ -82,10 +85,12 @@ class TestContextInjection(unittest.TestCase):
                 span.get_span_context().trace_id, "032x"
             )
 
-            # Mock the requests library to capture headers
-            with patch("requests.Session.send") as mock_send:
-                mock_response = MagicMock()
+            # Mock the HTTP adapter to capture headers without a real network call
+            with patch("requests.adapters.HTTPAdapter.send") as mock_send:
+                mock_response = Response()
                 mock_response.status_code = 200
+                mock_response._content = b"{}"
+                mock_response.url = "http://service-b:8080/api/data"
                 mock_send.return_value = mock_response
 
                 # Make an HTTP request (this should inject headers)
@@ -111,9 +116,11 @@ class TestContextInjection(unittest.TestCase):
     def test_tracestate_header_is_injected(self):
         """Verify tracestate header is present when set."""
         with self.tracer.start_as_current_span("parent-span"):
-            with patch("requests.Session.send") as mock_send:
-                mock_response = MagicMock()
+            with patch("requests.adapters.HTTPAdapter.send") as mock_send:
+                mock_response = Response()
                 mock_response.status_code = 200
+                mock_response._content = b"{}"
+                mock_response.url = "http://service-b:8080/api/data"
                 mock_send.return_value = mock_response
 
                 requests.get("http://service-b:8080/api/data")
@@ -125,6 +132,7 @@ class TestContextInjection(unittest.TestCase):
                 self.assertIsNotNone(traceparent)
 
     def tearDown(self):
+        RequestsInstrumentor().uninstrument()
         self.provider.shutdown()
 ```
 
@@ -140,7 +148,9 @@ import unittest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from opentelemetry.propagate import extract, set_global_textmap
 from opentelemetry.trace.propagation.tracecontext import (
     TraceContextTextMapPropagator,
@@ -154,9 +164,8 @@ class TestContextExtraction(unittest.TestCase):
         self.provider.add_span_processor(
             SimpleSpanProcessor(self.exporter)
         )
-        trace.set_tracer_provider(self.provider)
         set_global_textmap(TraceContextTextMapPropagator())
-        self.tracer = trace.get_tracer("test-tracer")
+        self.tracer = self.provider.get_tracer("test-tracer")
 
     def test_child_span_has_correct_parent(self):
         """Verify that extracted context creates proper parent-child link."""
@@ -329,6 +338,7 @@ Not every service uses W3C Trace Context. Legacy services might use B3 headers (
 # test_b3_propagation.py
 from opentelemetry.propagate import extract
 from opentelemetry.propagators.b3 import B3MultiFormat
+from opentelemetry import trace
 
 
 def test_b3_multi_header_extraction():
@@ -337,10 +347,10 @@ def test_b3_multi_header_extraction():
 
     # B3 uses separate headers for each field
     incoming_headers = {
-        "X-B3-TraceId": "463ac35c9f6413ad48485a3953bb6124",
-        "X-B3-SpanId": "0020000000000001",
-        "X-B3-Sampled": "1",
-        "X-B3-ParentSpanId": "0000000000000000",
+        "x-b3-traceid": "463ac35c9f6413ad48485a3953bb6124",
+        "x-b3-spanid": "0020000000000001",
+        "x-b3-sampled": "1",
+        "x-b3-parentspanid": "0000000000000000",
     }
 
     # Extract using the B3 propagator
@@ -382,8 +392,6 @@ You can run propagation tests as part of your CI pipeline using Docker Compose t
 
 ```yaml
 # docker-compose.test.yaml
-version: "3.8"
-
 services:
   collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -418,7 +426,7 @@ volumes:
   otel-output:
 ```
 
-The test runner service starts after both application services are up, sends requests through the chain, and verifies that the resulting spans form a connected trace. This gives you confidence that propagation works every time you push code.
+The test runner service starts after both application service containers are started, sends requests through the chain, and verifies that the resulting spans form a connected trace. This gives you confidence that propagation works every time you push code.
 
 ## Wrapping Up
 
