@@ -14,7 +14,7 @@ OpenTelemetry gives you the tools to trace messages through RabbitMQ from the mo
 
 ## How RabbitMQ Tracing Works
 
-RabbitMQ itself doesn't natively support OpenTelemetry (unlike some newer messaging systems). The instrumentation happens at the client library level. When your application publishes a message, the OpenTelemetry instrumentation library injects trace context into the AMQP message headers. When another application consumes that message, the instrumentation extracts the context and creates a linked or child span.
+RabbitMQ itself doesn't natively support OpenTelemetry (unlike some newer messaging systems). The instrumentation happens at the client library level. When your application publishes a message, the OpenTelemetry instrumentation library injects trace context into the AMQP message headers. When another application consumes that message, the instrumentation extracts the context and creates a consumer span that either continues the trace or links to the producer context, depending on the instrumentation configuration.
 
 ```mermaid
 graph LR
@@ -26,7 +26,7 @@ graph LR
     E --> F[Tracing Backend]
 ```
 
-The publisher creates a "publish" span, and the consumer creates a "process" span that links back to the publisher's span. Together, they form a connected trace showing the full lifecycle of the message.
+The publisher creates a "publish" span, and the consumer creates a "process" span that connects back to the publisher's span. Together, they form a connected trace showing the full lifecycle of the message.
 
 ## Setting Up OpenTelemetry for Node.js with RabbitMQ
 
@@ -52,11 +52,11 @@ Set up the tracing configuration. This needs to run before any other code so the
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { AmqplibInstrumentation } = require('@opentelemetry/instrumentation-amqplib');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Configure the OpenTelemetry SDK with amqplib instrumentation
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'service.version': '1.0.0',
   }),
@@ -67,7 +67,7 @@ const sdk = new NodeSDK({
     // This patches amqplib to automatically create spans
     // and propagate trace context through message headers
     new AmqplibInstrumentation({
-      // Capture the message payload in span attributes (careful with large payloads)
+      // Add custom message attributes to publish spans
       publishHook: (span, publishInfo) => {
         span.setAttribute('messaging.rabbitmq.routing_key', publishInfo.routingKey);
         span.setAttribute('messaging.destination.name', publishInfo.exchange);
@@ -99,7 +99,7 @@ Now write the publisher code. Because the amqplib instrumentation is active, eve
 require('./tracing'); // Initialize tracing first
 
 const amqp = require('amqplib');
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('order-service');
 
@@ -138,11 +138,11 @@ async function publishOrder(channel, exchange, order) {
         timestamp: Date.now(),
       });
 
-      span.setStatus({ code: 1 }); // OK
+      span.setStatus({ code: SpanStatusCode.OK });
       console.log(`Published order ${order.id}`);
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message }); // ERROR
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -166,14 +166,14 @@ async function publishOrder(channel, exchange, order) {
 
 ## Consuming Messages with Tracing
 
-The consumer side is where the trace context gets extracted. The amqplib instrumentation reads the trace headers from the consumed message and creates a span linked to the producer's span.
+The consumer side is where the trace context gets extracted. By default, the amqplib instrumentation reads the trace headers from the consumed message and creates a consumer span in the same trace. If you enable `useLinksForConsume`, it creates a span link to the producer context instead.
 
 ```javascript
 // consumer.js
 require('./tracing'); // Initialize tracing first
 
 const amqp = require('amqplib');
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-service');
 
@@ -192,41 +192,41 @@ async function startConsumer() {
 
   // Consume messages - the instrumentation automatically:
   // 1. Extracts trace context from message headers
-  // 2. Creates a "deliver" span linked to the producer's "publish" span
+  // 2. Creates a "process" span and makes it active for this callback
   channel.consume(queue, async (msg) => {
     if (!msg) return;
 
-    // Create a processing span as a child of the deliver span
-    const span = tracer.startSpan('process-order-payment', {
+    // Create an application processing span as a child of the active consume span
+    return tracer.startActiveSpan('process-order-payment', {
       attributes: {
         'messaging.system': 'rabbitmq',
         'messaging.operation': 'process',
         'messaging.destination.name': queue,
         'messaging.rabbitmq.delivery_tag': msg.fields.deliveryTag,
       },
+    }, async (span) => {
+      try {
+        const order = JSON.parse(msg.content.toString());
+        span.setAttribute('order.id', order.id);
+        span.setAttribute('order.total', order.total);
+
+        // Simulate payment processing
+        await processPayment(order);
+
+        // Acknowledge the message after successful processing
+        channel.ack(msg);
+        span.setStatus({ code: SpanStatusCode.OK });
+        console.log(`Processed payment for order ${order.id}`);
+      } catch (error) {
+        // Reject and requeue on failure
+        channel.nack(msg, false, true);
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        console.error(`Failed to process order: ${error.message}`);
+      } finally {
+        span.end();
+      }
     });
-
-    try {
-      const order = JSON.parse(msg.content.toString());
-      span.setAttribute('order.id', order.id);
-      span.setAttribute('order.total', order.total);
-
-      // Simulate payment processing
-      await processPayment(order);
-
-      // Acknowledge the message after successful processing
-      channel.ack(msg);
-      span.setStatus({ code: 1 }); // OK
-      console.log(`Processed payment for order ${order.id}`);
-    } catch (error) {
-      // Reject and requeue on failure
-      channel.nack(msg, false, true);
-      span.recordException(error);
-      span.setStatus({ code: 2, message: error.message }); // ERROR
-      console.error(`Failed to process order: ${error.message}`);
-    } finally {
-      span.end();
-    }
   });
 }
 
@@ -342,7 +342,7 @@ connection.close()
 # consumer.py
 import pika
 import json
-from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from tracing_setup import setup_tracing
 
 tracer = setup_tracing("payment-service")
@@ -374,12 +374,12 @@ def on_message(ch, method, properties, body):
             # Process the payment
             process_payment(order)
             ch.basic_ack(delivery_tag=method.delivery_tag)
-            span.set_status(trace.StatusCode.OK)
+            span.set_status(StatusCode.OK)
             print(f"Processed payment for order {order['id']}")
         except Exception as e:
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
             span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(StatusCode.ERROR, str(e))
 
 def process_payment(order):
     """Simulate payment processing."""
@@ -409,15 +409,15 @@ gantt
     Queue transit time     :a3, 30, 80
 
     section Consumer
-    deliver order-processing :a4, 80, 90
+    order-processing process :a4, 80, 90
     process-payment          :a5, 90, 180
 ```
 
-The publisher's `create-order` span is the root. Inside it, there's a `publish` span representing the act of sending the message to RabbitMQ. On the consumer side, there's a `deliver` span (created by the instrumentation when the message is received) and your custom `process-payment` span as a child of that.
+The publisher's `create-order` span is the root. Inside it, there's a `publish` span representing the act of sending the message to RabbitMQ. On the consumer side, there's a consumer `process` span (created by the instrumentation when the message is received) and your custom `process-payment` span as a child of that.
 
 ## Monitoring RabbitMQ Metrics
 
-Beyond tracing, you should also collect metrics from RabbitMQ itself. The OpenTelemetry Collector has a RabbitMQ receiver that scrapes the management API for queue metrics.
+Beyond tracing, you should also collect metrics from RabbitMQ itself. The OpenTelemetry Collector Contrib distribution has a RabbitMQ receiver that reads the management API for RabbitMQ metrics.
 
 ```yaml
 # otel-collector-config.yaml
