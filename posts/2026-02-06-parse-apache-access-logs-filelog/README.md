@@ -34,7 +34,7 @@ receivers:
         regex: '^(?P<remote_host>[^\s]+) (?P<ident>[^\s]+) (?P<remote_user>[^\s]+) \[(?P<timestamp>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
         timestamp:
           parse_from: attributes.timestamp
-          layout: "02/Jan/2006:15:04:05 -0700"
+          layout: "%d/%b/%Y:%H:%M:%S %z"
         severity:
           parse_from: attributes.status
           mapping:
@@ -71,7 +71,7 @@ receivers:
         regex: '^(?P<remote_host>[^\s]+) (?P<ident>[^\s]+) (?P<remote_user>[^\s]+) \[(?P<timestamp>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
         timestamp:
           parse_from: attributes.timestamp
-          layout: "02/Jan/2006:15:04:05 -0700"
+          layout: "%d/%b/%Y:%H:%M:%S %z"
 
       # Step 2: Map to semantic convention attribute names
       - type: move
@@ -161,7 +161,7 @@ operators:
     # Lines that fail parsing still get sent, just without structured attributes
 ```
 
-The `on_error: send` setting ensures that unparseable lines are still forwarded instead of being silently dropped.
+The `on_error: send` setting makes the default behavior explicit: unparseable lines are still forwarded, just without the structured attributes from this parser.
 
 ### Virtual Host Logs
 
