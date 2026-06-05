@@ -103,7 +103,6 @@ opcache.interned_strings_buffer = 16
 opcache.max_accelerated_files = 10000
 opcache.validate_timestamps = 0
 opcache.save_comments = 1
-opcache.fast_shutdown = 1
 
 ; Session settings
 session.save_handler = files
@@ -298,12 +297,10 @@ RUN chown -R www-data:www-data /var/www/html
 
 ## Docker Compose for Development
 
-A development setup with database and debugging tools:
+A development setup with database and optional Xdebug configuration if your development image installs Xdebug:
 
 ```yaml
 # docker-compose.dev.yml - PHP development environment
-version: "3.9"
-
 services:
   app:
     build:
@@ -315,7 +312,7 @@ services:
       # Mount source code for live editing
       - ./:/var/www/html
     environment:
-      - PHP_DISPLAY_ERRORS=On
+      - APP_ENV=development
       - XDEBUG_MODE=debug
       - XDEBUG_CONFIG=client_host=host.docker.internal
     depends_on:
@@ -356,8 +353,6 @@ volumes:
 
 ```yaml
 # docker-compose.prod.yml
-version: "3.9"
-
 services:
   app:
     image: myphpapp:${VERSION:-latest}
