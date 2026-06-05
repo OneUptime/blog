@@ -8,7 +8,7 @@ Description: Configure Docker live restore to keep containers running during Doc
 
 ---
 
-Every Docker daemon restart kills all running containers by default. That means upgrading Docker on a production server causes downtime for every service running on it. Live restore changes this behavior. With live restore enabled, containers keep running even when the Docker daemon stops or restarts. This is essential for production servers where you need to patch and upgrade Docker without disrupting workloads.
+Every Docker daemon restart kills all running containers by default. That means patching Docker on a production server can cause downtime for every service running on it. Live restore changes this behavior. With live restore enabled, containers keep running even when the Docker daemon stops or restarts. This is essential for production servers where you need to patch Docker without disrupting workloads.
 
 ## How Live Restore Works
 
@@ -144,12 +144,12 @@ docker rm -f live-restore-test
 With live restore enabled, here is the sequence of events when the daemon restarts:
 
 1. The daemon receives a stop signal
-2. It saves the state of all running containers
+2. It leaves running containers alive instead of stopping them
 3. It disconnects from containerd without stopping containers
 4. The daemon process exits
 5. Containers continue running under containerd
 6. The new daemon process starts
-7. It reads the saved container state
+7. It reads the existing container metadata
 8. It reconnects to all running containers through containerd
 9. Normal management resumes
 
@@ -157,9 +157,9 @@ During steps 4-7, you cannot run `docker` commands. The CLI will return errors a
 
 ## Handling Network During Live Restore
 
-Container networking mostly survives daemon restarts, but there are some considerations.
+Container networking mostly survives daemon restarts, but Docker documents that networking and user input can be interrupted during live restore, so there are some considerations.
 
-Port mappings continue to work because they are implemented through iptables rules that persist independently of the daemon. Published ports remain accessible throughout the restart.
+Published port mappings usually continue to work because they are implemented through host networking rules that persist independently of the daemon, as long as the daemon's network-related options have not changed.
 
 However, Docker DNS resolution for container names can briefly fail during the restart window. If container A tries to resolve container B by name while the daemon is down, the resolution may fail.
 
@@ -179,24 +179,26 @@ docker run -d \
 
 Live restore has boundaries you need to understand:
 
-**Daemon version changes.** Live restore works when restarting the same version of Docker. If you upgrade Docker to a different version, containers will restart. The daemon detects the version mismatch and recreates containers. This still causes less downtime than a clean restart because the container filesystems are preserved.
+**Daemon version changes.** Live restore can keep containers running across Docker daemon updates, but Docker only supports this for patch releases within the same `YY.MM.x` release line. Major or skipped upgrades may prevent the daemon from reconnecting to the running containers. If the daemon cannot reconnect, it cannot manage those containers and you must stop them manually.
 
-**Swarm mode incompatibility.** Live restore does not work with Docker Swarm mode. If your node is a Swarm manager or worker, enabling live restore causes conflicts. Swarm has its own mechanisms for handling daemon restarts.
+**Swarm services.** Live restore only applies to standalone containers, not Swarm services. Swarm services are managed by Swarm managers. If Swarm managers are unavailable, services can continue running on worker nodes but cannot be managed until enough managers are available to maintain quorum.
 
-**Container configuration changes.** Any changes to daemon-level settings (like default network or DNS configuration) only apply to new containers. Existing containers that survived a live restore keep their original configuration.
+**Daemon configuration changes.** Live restore only works if daemon-level options such as bridge IP addresses and the graph driver have not changed. If those options change while containers are running, the daemon may not reconnect cleanly and you may need to stop the containers manually.
 
-**Long daemon downtime.** If the daemon stays down for an extended period (hours), containers continue running but their state can drift. Logs may not be captured for the period the daemon was absent. Health checks do not execute without the daemon.
+**Long daemon downtime.** If the daemon stays down for an extended period, containers continue running but their log output can fill the FIFO buffer that the daemon normally reads. When that buffer is full, containers are blocked from writing more log data until the daemon restarts and drains the buffer. Health checks do not execute without the daemon.
 
 ## Automating Docker Upgrades with Live Restore
 
-Here is a practical script for upgrading Docker on a production server with minimal disruption:
+Here is a practical script for applying a supported Docker patch release on a production server with minimal disruption:
 
 ```bash
 #!/bin/bash
-# docker-upgrade.sh - Upgrade Docker with live restore
-# Containers stay running throughout the upgrade process
+# docker-upgrade.sh - Apply a Docker patch release with live restore
+# Containers should stay running throughout a supported patch upgrade
 
 set -e
+
+: "${VERSION_STRING:?Set VERSION_STRING to the Docker patch version you want to install. Check available versions with: apt-cache madison docker-ce}"
 
 echo "Current Docker version:"
 docker version --format '{{.Server.Version}}'
@@ -214,9 +216,9 @@ docker ps --format '{{.Names}}' > /tmp/containers-before-upgrade.txt
 echo "Stopping Docker daemon (containers will keep running)..."
 sudo systemctl stop docker
 
-echo "Upgrading Docker packages..."
+echo "Upgrading Docker packages to $VERSION_STRING..."
 sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+sudo apt-get install -y docker-ce="$VERSION_STRING" docker-ce-cli="$VERSION_STRING" containerd.io
 
 echo "Starting Docker daemon..."
 sudo systemctl start docker
@@ -247,7 +249,7 @@ Make the script executable and run it during a maintenance window:
 chmod +x docker-upgrade.sh
 
 # Run the upgrade
-sudo ./docker-upgrade.sh
+sudo env VERSION_STRING=<version> ./docker-upgrade.sh
 ```
 
 ## Monitoring Container Status During Restarts
