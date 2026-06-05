@@ -35,7 +35,7 @@ rate_limit_rejections = meter.create_counter(
     unit="1",
 )
 
-quota_usage_gauge = meter.create_histogram(
+quota_usage_gauge = meter.create_gauge(
     "api.quota.usage_percent",
     description="Current quota usage as a percentage",
     unit="%",
@@ -58,11 +58,17 @@ class TenantRateLimiter:
             limits = self._get_plan_limits(plan)
             key = f"ratelimit:{tenant_id}:{endpoint}"
 
-            # Get current usage from Redis
-            current = self.redis.get(key)
-            current_count = int(current) if current else 0
+            # Increment current usage in Redis and expire the window after 60 seconds
+            current_count = self.redis.incr(key)
+            if current_count == 1:
+                self.redis.expire(key, 60)
 
-            allowed = current_count < limits["requests_per_minute"]
+            ttl = self.redis.ttl(key)
+            if ttl < 0:
+                self.redis.expire(key, 60)
+                ttl = 60
+
+            allowed = current_count <= limits["requests_per_minute"]
             usage_percent = (current_count / limits["requests_per_minute"]) * 100
 
             # Record metrics
@@ -70,7 +76,7 @@ class TenantRateLimiter:
                 "tenant.id": tenant_id,
                 "tenant.plan": plan,
                 "api.endpoint": endpoint,
-                "rate_limit.allowed": str(allowed),
+                "rate_limit.allowed": allowed,
             })
 
             quota_usage_gauge.record(usage_percent, {
@@ -93,7 +99,8 @@ class TenantRateLimiter:
                 "current": current_count,
                 "limit": limits["requests_per_minute"],
                 "remaining": max(0, limits["requests_per_minute"] - current_count),
-                "reset_at": self._get_reset_time(key),
+                "reset_at": int(time.time()) + ttl,
+                "retry_after": ttl,
             }
 
     def _get_plan_limits(self, plan: str) -> dict:
@@ -112,8 +119,11 @@ Wire the rate limiter into your API framework:
 
 ```python
 # rate_limit_middleware.py
-from fastapi import Request, Response
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from rate_limiter import TenantRateLimiter
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, rate_limiter: TenantRateLimiter):
@@ -129,20 +139,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Always add rate limit headers
         if not result["allowed"]:
-            return Response(
-                content='{"error": "Rate limit exceeded"}',
+            return JSONResponse(
+                content={"error": "Rate limit exceeded"},
                 status_code=429,
                 headers={
                     "X-RateLimit-Limit": str(result["limit"]),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(result["reset_at"]),
-                    "Retry-After": str(result["reset_at"]),
+                    "Retry-After": str(result["retry_after"]),
                 },
             )
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(result["limit"])
         response.headers["X-RateLimit-Remaining"] = str(result["remaining"])
+        response.headers["X-RateLimit-Reset"] = str(result["reset_at"])
         return response
 ```
 
@@ -168,11 +179,15 @@ quota_exceeded_counter = meter.create_counter(
     unit="1",
 )
 
-quota_remaining = meter.create_histogram(
+quota_remaining = meter.create_gauge(
     "api.quota.remaining_percent",
     description="Remaining quota as percentage of total",
     unit="%",
 )
+
+def notify_tenant_quota_warning(tenant_id: str, remaining_pct: float):
+    """Send a quota warning notification to the tenant."""
+    pass
 
 def track_quota_usage(tenant_id: str, plan: str, daily_used: int, daily_limit: int):
     """Track daily quota usage for a tenant."""
