@@ -14,7 +14,7 @@ Fastify is a high-performance Node.js web framework built for speed. It handles 
 
 You need:
 
-- Node.js 18+ and npm
+- Node.js 20+ and npm
 - Docker Engine 20.10+
 - Basic familiarity with building APIs
 
@@ -101,7 +101,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY package.json package-lock.json ./
 
 # Install only production dependencies
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Copy application source
 COPY . .
@@ -140,7 +140,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json /app/package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 RUN chown -R appuser:appgroup /app
 USER appuser
@@ -189,8 +189,6 @@ A Compose file is handy for managing the container lifecycle and adding supporti
 This Compose file includes the Fastify app with a Redis cache:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -270,7 +268,7 @@ start();
 
 ## Graceful Shutdown
 
-Fastify has built-in support for graceful shutdown. When Docker sends a SIGTERM signal to stop the container, Fastify closes active connections cleanly.
+Fastify supports graceful shutdown through `fastify.close()`. When Docker sends a SIGTERM signal to stop the container, handle that signal and call `fastify.close()` so Fastify can close active connections cleanly.
 
 Handle shutdown signals in your server:
 
@@ -327,8 +325,6 @@ node server.js | npx pino-pretty
 For local development with file watching:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
