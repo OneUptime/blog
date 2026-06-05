@@ -10,15 +10,15 @@ IoT telemetry has different requirements than typical application observability.
 
 ## Why NATS for IoT Telemetry
 
-NATS uses about 10MB of RAM for the server process. Compare that to a Kafka broker that typically needs several gigabytes. For edge deployments or resource-constrained environments, this difference matters. NATS also supports JetStream for persistence, giving you durable message delivery when you need it.
+The NATS server is a compact single binary with minimal CPU and memory requirements for small deployments. Compare that to a Kafka broker that typically needs a JVM, page cache, and more operational headroom. For edge deployments or resource-constrained environments, this difference matters. NATS also supports JetStream for persistence, giving you durable message delivery when you need it.
 
 ## Architecture
 
 ```text
-IoT Devices -> NATS (JetStream) -> OTel Collector (NATS receiver) -> TimescaleDB
+IoT Devices -> NATS (JetStream) -> NATS Consumer -> TimescaleDB
 ```
 
-Devices publish metrics to NATS subjects. The OpenTelemetry Collector subscribes to those subjects and writes to TimescaleDB.
+Devices publish OTLP JSON metrics to NATS subjects. A small consumer subscribes to those subjects, extracts the metric points, and writes them to TimescaleDB.
 
 ## NATS Server Configuration
 
@@ -43,9 +43,18 @@ jetstream {
 authorization {
   users = [
     { user: "device", password: "$DEVICE_PASSWORD",
-      permissions: { publish: "telemetry.>" } },
+      permissions: {
+        publish: "telemetry.>",
+        subscribe: "_INBOX.>"
+      } },
     { user: "collector", password: "$COLLECTOR_PASSWORD",
-      permissions: { subscribe: "telemetry.>" } }
+      permissions: {
+        publish: [
+          "$JS.API.CONSUMER.>",
+          "$JS.ACK.TELEMETRY.timescaledb-writer.>"
+        ],
+        subscribe: "_INBOX.>"
+      } }
   ]
 }
 
@@ -159,47 +168,101 @@ async def publish_telemetry():
 asyncio.run(publish_telemetry())
 ```
 
-## OpenTelemetry Collector with NATS Receiver
+## NATS-to-TimescaleDB Consumer
 
-Configure the Collector to consume from NATS and write to TimescaleDB:
+The official OpenTelemetry Collector distributions do not currently include a NATS receiver or a PostgreSQL/TimescaleDB metrics exporter. Use a small consumer process to read the OTLP JSON payloads from JetStream and write them to TimescaleDB:
 
-```yaml
-# collector-config.yaml
-receivers:
-  # NATS JetStream receiver
-  nats:
-    url: nats://collector:password@nats:4222
-    subject: "telemetry.>"
-    queue_group: otel-collectors
-    jetstream:
-      stream: TELEMETRY
-      consumer: otel-collector
-      durable: true
-    encoding: otlp_json
+```python
+# nats_to_timescaledb.py
+import asyncio
+import json
+import os
+from datetime import datetime, timezone
 
-exporters:
-  postgresql:
-    endpoint: postgresql://otel:password@timescaledb:5432/telemetry
-    table_name: otel_metrics
+import nats
+import psycopg
+from nats.errors import TimeoutError
 
-processors:
-  batch:
-    send_batch_size: 5000
-    timeout: 5s
+NATS_URL = os.getenv("NATS_URL", "nats://collector:password@nats:4222")
+POSTGRES_DSN = os.getenv(
+    "POSTGRES_DSN",
+    "postgresql://otel:password@timescaledb:5432/telemetry",
+)
 
-  # Add processing timestamp
-  resource:
-    attributes:
-      - key: pipeline.processed_at
-        action: upsert
-        value: "${HOSTNAME}"
 
-service:
-  pipelines:
-    metrics:
-      receivers: [nats]
-      processors: [resource, batch]
-      exporters: [postgresql]
+def otlp_value(attribute):
+    value = attribute.get("value", {})
+    for key in ("stringValue", "intValue", "doubleValue", "boolValue"):
+        if key in value:
+            return value[key]
+    return None
+
+
+def resource_attributes(resource):
+    return {
+        attribute["key"]: otlp_value(attribute)
+        for attribute in resource.get("attributes", [])
+    }
+
+
+def metric_rows(payload):
+    for resource_metric in payload.get("resourceMetrics", []):
+        attributes = resource_attributes(resource_metric.get("resource", {}))
+        device_id = attributes.get("device.id", "unknown")
+        location = attributes.get("device.location", "unknown")
+
+        for scope_metric in resource_metric.get("scopeMetrics", []):
+            for metric in scope_metric.get("metrics", []):
+                points = metric.get("gauge", {}).get("dataPoints", [])
+                for point in points:
+                    value = point.get("asDouble", point.get("asInt"))
+                    timestamp_ns = int(point["timeUnixNano"])
+                    yield (
+                        datetime.fromtimestamp(
+                            timestamp_ns / 1_000_000_000,
+                            tz=timezone.utc,
+                        ),
+                        device_id,
+                        location,
+                        metric["name"],
+                        float(value),
+                        metric.get("unit"),
+                    )
+
+
+async def main():
+    nc = await nats.connect(NATS_URL)
+    js = nc.jetstream()
+    subscription = await js.pull_subscribe(
+        "telemetry.>",
+        durable="timescaledb-writer",
+        stream="TELEMETRY",
+    )
+
+    async with await psycopg.AsyncConnection.connect(POSTGRES_DSN) as conn:
+        while True:
+            try:
+                messages = await subscription.fetch(100, timeout=1)
+            except TimeoutError:
+                continue
+
+            for message in messages:
+                rows = list(metric_rows(json.loads(message.data)))
+                if rows:
+                    async with conn.cursor() as cursor:
+                        await cursor.executemany(
+                            """
+                            INSERT INTO iot_metrics
+                                (time, device_id, location, metric_name, value, unit)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            """,
+                            rows,
+                        )
+                    await conn.commit()
+                await message.ack()
+
+
+asyncio.run(main())
 ```
 
 ## TimescaleDB Schema
