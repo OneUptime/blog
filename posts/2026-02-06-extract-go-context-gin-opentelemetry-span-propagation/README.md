@@ -6,13 +6,13 @@ Tags: OpenTelemetry, Go, Gin, Context, Span Propagation
 
 Description: Master the technique of extracting Go's standard context from Gin's context to properly propagate OpenTelemetry spans across service boundaries and function calls.
 
-When working with OpenTelemetry in Go Gin applications, understanding how to properly extract and use the standard Go context is fundamental to building effective distributed tracing. The Gin framework uses its own `gin.Context` type, which wraps the standard `context.Context` but adds HTTP-specific functionality. Getting this wrong can break span propagation, leading to disconnected traces that make debugging distributed systems nearly impossible.
+When working with OpenTelemetry in Go Gin applications, understanding how to properly extract and use the standard Go context is fundamental to building effective distributed tracing. The Gin framework uses its own `gin.Context` type for HTTP-specific functionality, while the standard `context.Context` for the request is available from `c.Request.Context()`. Getting this wrong can break span propagation, leading to disconnected traces that make debugging distributed systems nearly impossible.
 
 ## Why Context Extraction Matters
 
 OpenTelemetry stores span information in Go's standard `context.Context`. When you make database calls, HTTP requests to other services, or any other instrumented operation, these functions expect a standard `context.Context` that contains the active span. If you pass the wrong context or create a new one, the trace chain breaks.
 
-The Gin framework's `gin.Context` serves a different purpose than the standard library's context. It provides request and response handling methods, parameter extraction, and middleware chaining. However, it also embeds a standard `context.Context` that gets populated by OpenTelemetry middleware like otelgin.
+The Gin framework's `gin.Context` serves a different purpose than the standard library's context. It provides request and response handling methods, parameter extraction, and middleware chaining. The standard `context.Context` lives on the underlying `*http.Request`, and that request context gets populated by OpenTelemetry middleware like otelgin.
 
 ## The Core Problem
 
@@ -26,10 +26,10 @@ func badHandler(c *gin.Context) {
     c.JSON(200, result)
 }
 
-// WRONG - Uses gin.Context where standard context is needed
+// WRONG - Uses gin.Context where the request context is needed
 func alsoWrong(c *gin.Context) {
-    // Most libraries expect context.Context, not gin.Context
-    result := database.Query(c, "SELECT * FROM users") // Compilation error
+    // Some Gin versions make this compile, but it is not the right context source
+    result := database.Query(c, "SELECT * FROM users")
 }
 
 // CORRECT - Extract the standard context from gin.Context
@@ -46,7 +46,6 @@ The proper method to extract the standard context from a Gin context is through 
 
 ```go
 import (
-    "context"
     "net/http"
 
     "github.com/gin-gonic/gin"
@@ -127,7 +126,7 @@ type OrderRepository struct {
 }
 
 func (r *OrderRepository) Save(ctx context.Context, order *Order) (*Order, error) {
-    // The context propagates span information to the database driver
+    // With an instrumented database driver or wrapper, the context links DB spans
     query := "INSERT INTO orders (product_id, quantity) VALUES (?, ?)"
     result, err := r.db.ExecContext(ctx, query, order.ProductID, order.Quantity)
     if err != nil {
@@ -155,7 +154,7 @@ graph TD
     F --> G[Service Layer Function ctx parameter]
     G --> H[Repository Layer Function ctx parameter]
     H --> I[Database Driver ExecContext]
-    I --> J[Child Span Created Automatically]
+    I --> J[Instrumented Driver or Wrapper Creates Child Span]
     J --> K[All Spans Linked in Single Trace]
 ```
 
@@ -165,6 +164,11 @@ Sometimes you need to create additional spans within your business logic to trac
 
 ```go
 import (
+    "context"
+    "fmt"
+    "net/http"
+
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
@@ -195,7 +199,7 @@ func processPayment(ctx context.Context, orderID string, amount float64) error {
         return err
     }
 
-    span.SetStatus(codes.Ok, "Payment successful")
+    span.SetStatus(codes.Ok, "")
     return nil
 }
 
@@ -238,6 +242,8 @@ When you need to perform concurrent operations (like calling multiple microservi
 
 ```go
 import (
+    "net/http"
+
     "golang.org/x/sync/errgroup"
 )
 
@@ -338,6 +344,8 @@ func mistake4(c *gin.Context) {
 When you have multiple middleware functions, each one can extract and enhance the context.
 
 ```go
+type userIDKey struct{}
+
 // authMiddleware extracts context and adds user info
 func authMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
@@ -363,7 +371,7 @@ func authMiddleware() gin.HandlerFunc {
         }
 
         // Add user ID to context for downstream handlers
-        ctx = context.WithValue(ctx, "userID", userID)
+        ctx = context.WithValue(ctx, userIDKey{}, userID)
 
         // Update the request with the enriched context
         c.Request = c.Request.WithContext(ctx)
@@ -377,7 +385,7 @@ func protectedHandler(c *gin.Context) {
     ctx := c.Request.Context()
 
     // Extract user ID that was added by middleware
-    userID, ok := ctx.Value("userID").(string)
+    userID, ok := ctx.Value(userIDKey{}).(string)
     if !ok {
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": "User ID not found in context",
@@ -409,13 +417,15 @@ import (
 
     "github.com/gin-gonic/gin"
     "github.com/stretchr/testify/assert"
+    "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
     "go.opentelemetry.io/otel"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestContextPropagation(t *testing.T) {
     // Set up in-memory span exporter for testing
-    exporter := &inMemoryExporter{}
+    exporter := tracetest.NewInMemoryExporter()
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithSyncer(exporter),
     )
@@ -448,9 +458,16 @@ func TestContextPropagation(t *testing.T) {
     assert.Equal(t, 2, len(spans)) // HTTP span + database span
 
     // Verify parent-child relationship
-    httpSpan := spans[0]
-    dbSpan := spans[1]
-    assert.Equal(t, httpSpan.SpanContext().TraceID(), dbSpan.SpanContext().TraceID())
+    var httpSpan, dbSpan tracetest.SpanStub
+    for _, span := range spans {
+        if span.Name == "database-query" {
+            dbSpan = span
+        } else {
+            httpSpan = span
+        }
+    }
+    assert.Equal(t, httpSpan.SpanContext.TraceID(), dbSpan.SpanContext.TraceID())
+    assert.Equal(t, httpSpan.SpanContext.SpanID(), dbSpan.Parent.SpanID())
 }
 ```
 
@@ -468,7 +485,7 @@ Following these guidelines ensures reliable span propagation throughout your app
 
 **Check Context Cancellation**: Long-running operations should check `ctx.Done()` to respect cancellation.
 
-## Complete Working Example
+## Complete Example
 
 Here's a comprehensive example showing proper context extraction across all layers:
 
@@ -482,7 +499,6 @@ import (
 
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-    "go.opentelemetry.io/otel"
 )
 
 type Product struct {
@@ -551,9 +567,9 @@ func main() {
 }
 
 func initDB() *sql.DB {
-    // Initialize database connection
+    // Initialize database connection with your driver and DSN
     // In production, use an instrumented driver
-    return nil
+    panic("initialize database connection")
 }
 ```
 
