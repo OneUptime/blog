@@ -98,11 +98,16 @@ Voice communication requires tracking a different set of metrics: audio quality,
 package voice
 
 import (
+    "context"
+    "time"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
+    "go.opentelemetry.io/otel/trace"
 )
 
+var tracer = otel.Tracer("voice-server")
 var meter = otel.Meter("voice-server")
 
 var (
@@ -110,6 +115,10 @@ var (
     activeVoiceSessions, _ = meter.Int64ObservableGauge(
         "voice.sessions.active",
         metric.WithDescription("Number of active voice sessions"),
+        metric.WithInt64Callback(func(ctx context.Context, observer metric.Int64Observer) error {
+            observer.Observe(int64(voiceSessionStore.CountActive()))
+            return nil
+        }),
     )
 
     // Audio packet metrics
@@ -167,6 +176,11 @@ func (vs *VoiceServer) ProcessAudioPacket(packet AudioPacket) {
     }
 
     player := channel.GetPlayer(packet.SenderID)
+    if player == nil {
+        span.SetAttributes(attribute.Bool("player.exists", false))
+        return
+    }
+
     if packet.SequenceNum <= player.LastSequenceNum {
         // Late or duplicate packet
         audioPacketsDropped.Add(ctx, 1, metric.WithAttributes(
