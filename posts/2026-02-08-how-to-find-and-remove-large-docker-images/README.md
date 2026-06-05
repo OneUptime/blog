@@ -62,7 +62,7 @@ docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' | sort -k2 -rh | he
 Let us build a more comprehensive view that includes creation dates to help decide what to remove.
 
 ```bash
-# Show the top 10 largest images with creation dates
+# Show images with creation dates
 docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}\t{{.ID}}" | head -20
 ```
 
@@ -142,14 +142,14 @@ The `-f` flag skips the confirmation prompt.
 
 ## Removing All Unused Images
 
-If you want to reclaim maximum space, remove all images not currently used by a running container.
+If you want to reclaim maximum space, remove all images not currently referenced by any container.
 
 ```bash
 # Remove all unused images (not just dangling ones)
 docker image prune -a -f
 ```
 
-Be careful with this command. It removes every image that does not have a running container associated with it. This includes images you might want to use again soon, which will need to be re-pulled.
+Be careful with this command. It removes every image that is not referenced by any container, including stopped containers. This includes images you might want to use again soon, which will need to be re-pulled.
 
 ## A Smarter Cleanup Script
 
@@ -168,12 +168,19 @@ CUTOFF_DATE=$(date -d "-${DAYS} days" +%s 2>/dev/null || date -v-${DAYS}d +%s)
 
 echo "Finding unused images larger than ${MIN_SIZE_MB}MB and older than ${DAYS} days..."
 
-# Get IDs of images used by running containers
-ACTIVE_IMAGES=$(docker ps --format '{{.Image}}' | sort -u)
+# Get image references used by any container
+USED_IMAGES=$(docker ps -a --format '{{.Image}}' | sort -u)
 
 docker images --format '{{.ID}}\t{{.Repository}}:{{.Tag}}\t{{.CreatedAt}}' | while IFS=$'\t' read -r id name created; do
-    # Skip if image is actively used
-    if echo "$ACTIVE_IMAGES" | grep -q "${name}"; then
+    # Skip if image is used by any container
+    if echo "$USED_IMAGES" | grep -Fxq "${name}"; then
+        continue
+    fi
+
+    # Skip if image is newer than the cutoff
+    created_iso=$(docker inspect --format '{{.Created}}' "$id" 2>/dev/null)
+    created_ts=$(date -d "$created_iso" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${created_iso%%.*}" +%s 2>/dev/null)
+    if [ -z "$created_ts" ] || [ "$created_ts" -ge "$CUTOFF_DATE" ]; then
         continue
     fi
 
@@ -242,10 +249,17 @@ Set up a cron job to alert you when Docker disk usage gets high.
 #!/bin/bash
 # check-docker-disk.sh - Alert when Docker images exceed a threshold
 THRESHOLD_GB=20
-CURRENT=$(docker system df --format '{{.Size}}' | head -1 | sed 's/GB//')
+CURRENT_SIZE=$(docker system df --format '{{.Type}}\t{{.Size}}' | awk -F '\t' '$1 == "Images" {print $2}')
+CURRENT_GB=$(echo "$CURRENT_SIZE" | awk '
+    /TB$/ { sub(/TB$/, ""); print $1 * 1024; next }
+    /GB$/ { sub(/GB$/, ""); print $1; next }
+    /MB$/ { sub(/MB$/, ""); print $1 / 1024; next }
+    /kB$/ { sub(/kB$/, ""); print $1 / 1048576; next }
+    /B$/ { sub(/B$/, ""); print $1 / 1073741824; next }
+')
 
-if (( $(echo "$CURRENT > $THRESHOLD_GB" | bc -l) )); then
-    echo "WARNING: Docker images using ${CURRENT}GB (threshold: ${THRESHOLD_GB}GB)"
+if (( $(echo "$CURRENT_GB > $THRESHOLD_GB" | bc -l) )); then
+    echo "WARNING: Docker images using ${CURRENT_SIZE} (threshold: ${THRESHOLD_GB}GB)"
     # Add your notification method here (email, Slack, etc.)
 fi
 ```
