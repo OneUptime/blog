@@ -19,7 +19,7 @@ In Linux, when a process is killed by a signal, its exit code is 128 plus the si
 The three most common sources of SIGKILL for Docker containers:
 
 1. The Linux OOM (Out of Memory) killer
-2. Docker's memory limit enforcement
+2. A container memory limit enforced by the Linux kernel through cgroups
 3. A manual `docker kill` or `docker stop` that timed out
 
 Check the container's exit status:
@@ -37,7 +37,7 @@ If `OOMKilled` is `true`, you have your answer. If it is `false`, keep investiga
 
 ## Cause 1: Docker Memory Limit Exceeded (OOM Kill)
 
-When you set a memory limit on a container and the process exceeds it, Docker's OOM killer terminates the container with SIGKILL.
+When you set a memory limit on a container and the process exceeds it, the Linux kernel enforces the cgroup limit and can terminate a process in the container with SIGKILL.
 
 Check the container's memory limit and usage:
 
@@ -64,7 +64,7 @@ services:
         limits:
           memory: 1G     # Increase from default or previous value
         reservations:
-          memory: 512M   # Minimum guaranteed memory
+          memory: 512M   # Soft reservation used under memory contention
 ```
 
 Or set it at the command line:
@@ -78,7 +78,7 @@ The `--memory-swap` flag sets the total memory + swap. Setting it to twice the m
 
 ## Cause 2: Host OOM Killer (No Docker Memory Limit)
 
-Even without a Docker memory limit, the Linux kernel's OOM killer can kill the container process if the host runs out of memory. In this case, `docker inspect` will show `OOMKilled: false` because Docker's OOM killer was not involved. The host kernel killed it directly.
+Even without a Docker memory limit, the Linux kernel's OOM killer can kill the container process if the host runs out of memory. In this case, `docker inspect` may show `OOMKilled: false` because the kill was a host-level OOM event rather than a container memory-limit event.
 
 Check the kernel logs:
 
@@ -123,8 +123,8 @@ Check if your application handles SIGTERM properly:
 # Stop with a longer timeout to give the app time to shut down
 docker stop --time=60 my-container
 
-# Check if the container exits cleanly with a longer timeout
-echo $?
+# Check the container's exit code after it stops
+docker inspect my-container --format '{{.State.ExitCode}}'
 ```
 
 If the container exits cleanly with a longer timeout, the problem is that your application needs more time to shut down. Fix by increasing the stop timeout:
@@ -207,7 +207,7 @@ services:
 
 ## Cause 5: Container Orchestrator Killing the Container
 
-If you run containers through Kubernetes or Docker Swarm, the orchestrator itself can kill containers that exceed resource limits.
+If you run containers through Kubernetes or Docker Swarm, resource limits configured by the orchestrator can cause the kernel to kill containers that exceed those limits.
 
 For Kubernetes:
 
@@ -225,7 +225,7 @@ Add memory monitoring inside the container:
 
 ```dockerfile
 # Dockerfile with memory monitoring tools
-FROM node:18-alpine
+FROM node:lts-alpine
 
 # Install memory monitoring tools
 RUN apk add --no-cache procps
@@ -271,4 +271,4 @@ services:
 
 ## Summary
 
-Exit code 137 means your container process received SIGKILL (signal 9). The most common cause is the OOM killer, either Docker's (when a memory limit is set) or the host kernel's (when the host runs out of memory). Check `docker inspect` for the `OOMKilled` flag first. If that is false, check `dmesg` for host-level OOM events. If the 137 only happens during `docker stop`, your application is not handling SIGTERM fast enough, so increase the stop timeout or fix the shutdown handler. For memory leaks, monitor `docker stats` over time and set appropriate memory limits with matching application-level heap configuration.
+Exit code 137 means your container process received SIGKILL (signal 9). The most common cause is the OOM killer, either from a container memory limit or from the host kernel running out of memory. Check `docker inspect` for the `OOMKilled` flag first. If that is false, check `dmesg` for host-level OOM events. If the 137 only happens during `docker stop`, your application is not handling SIGTERM fast enough, so increase the stop timeout or fix the shutdown handler. For memory leaks, monitor `docker stats` over time and set appropriate memory limits with matching application-level heap configuration.
