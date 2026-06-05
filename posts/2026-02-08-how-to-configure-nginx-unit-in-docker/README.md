@@ -31,14 +31,14 @@ docker run -d \
   -p 8443:8443 \
   -v $(pwd)/app:/www \
   -v unit_state:/var/lib/unit \
-  unit:1.32.1-python3.12
+  unit:1.34.1-python3.11
 ```
 
 The control socket is inside the container at `/var/run/control.unit.sock`.
 
 ## Docker Compose Setup
 
-A complete configuration with multiple language runtimes.
+A complete configuration with a Python runtime.
 
 ```yaml
 # docker-compose.yml
@@ -46,7 +46,7 @@ version: "3.8"
 
 services:
   unit:
-    image: unit:1.32.1-python3.12
+    image: unit:1.34.1-python3.11
     container_name: nginx-unit
     restart: unless-stopped
     ports:
@@ -70,7 +70,7 @@ volumes:
 
 ## Deploying a Python Application
 
-Create a simple Flask-like ASGI application.
+Create a simple Flask-like WSGI application.
 
 ```python
 # app/wsgi.py
@@ -153,7 +153,7 @@ docker exec nginx-unit curl -X PUT \
 docker exec nginx-unit curl -X PUT \
   --unix-socket /var/run/control.unit.sock \
   -d '"applications/python_app"' \
-  http://localhost/config/listeners/*:8081/pass
+  'http://localhost/config/listeners/*:8081/pass'
 ```
 
 ## Adding Routes and Static File Serving
@@ -184,12 +184,12 @@ docker exec nginx-unit curl -X PUT \
                 "uri": "/static/*"
             },
             "action": {
-                "share": "/www/static/$uri"
+                "share": "/www$uri"
             }
         },
         {
             "action": {
-                "share": "/www/public/$uri",
+                "share": "/www/public$uri",
                 "fallback": {
                     "pass": "applications/python_app"
                 }
@@ -217,14 +217,14 @@ Unit also runs Node.js applications. Use the Node.js variant of the image.
 
 ```dockerfile
 # Dockerfile.node
-FROM unit:1.32.1-node20
+FROM unit:1.34.1-node20
 
 # Copy Node.js application
 COPY node-app /www
 
 # Install dependencies
 WORKDIR /www
-RUN npm install
+RUN npm install && npm link unit-http
 
 # Copy Unit configuration
 COPY config-node.json /docker-entrypoint.d/config.json
@@ -249,7 +249,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Unit manages the server lifecycle
-module.exports = server;
+server.listen();
 ```
 
 ```json
@@ -277,15 +277,18 @@ Unit can run different language applications simultaneously. Use a multi-runtime
 
 ```dockerfile
 # Dockerfile.multi
-FROM unit:1.32.1-python3.12
+FROM unit:1.34.1-python3.11
 
 # Add Node.js runtime
-RUN apt-get update && apt-get install -y nodejs npm && \
-    npm install -g unit-http && \
+RUN apt-get update && apt-get install -y nodejs npm unit-dev && \
+    npm install -g --unsafe-perm unit-http@1.34.1 && \
     apt-get clean
 
 COPY python-app /www/python
 COPY node-app /www/node
+
+WORKDIR /www/node
+RUN npm install && npm link unit-http
 ```
 
 ```json
@@ -346,7 +349,7 @@ docker exec nginx-unit curl -X PUT \
         "certificate": "main"
     }
   }' \
-  http://localhost/config/listeners/*:8443
+  'http://localhost/config/listeners/*:8443'
 ```
 
 ## Monitoring
