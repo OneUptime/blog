@@ -10,7 +10,7 @@ Description: Learn how to build real-time observability for Apache Kafka streami
 
 Apache Kafka sits at the center of many real-time data pipelines, handling millions of events per second for use cases ranging from event sourcing to log aggregation to stream processing. The challenge with Kafka observability is that messages flow asynchronously through topics and partitions, making it difficult to trace a single event from producer to consumer. A message might be produced by one service, processed by a stream processor, and consumed by three different downstream services, all without a direct request-response relationship.
 
-OpenTelemetry solves this by propagating trace context through Kafka message headers. When a producer sends a message, the current trace context gets injected into the message headers. When a consumer picks it up, the context is extracted, and the consumer's processing becomes a linked span in the same trace. This guide covers how to set up that end-to-end observability for a Kafka-based streaming system.
+OpenTelemetry solves this by propagating trace context through Kafka message headers. When a producer sends a message, the current trace context gets injected into the message headers. When a consumer picks it up, the context is extracted, and the consumer's processing becomes correlated with the producer span. This guide covers how to set up that end-to-end observability for a Kafka-based streaming system.
 
 ## Kafka Streaming Architecture
 
@@ -72,7 +72,8 @@ public class OrderProducer {
             .setSpanKind(SpanKind.PRODUCER)
             .setAttribute("messaging.system", "kafka")
             .setAttribute("messaging.destination.name", "orders")
-            .setAttribute("messaging.operation", "publish")
+            .setAttribute("messaging.operation.name", "send")
+            .setAttribute("messaging.operation.type", "send")
             .setAttribute("order.id", order.getId())
             .setAttribute("order.item_count", order.getItems().size())
             .startSpan();
@@ -87,7 +88,7 @@ public class OrderProducer {
             // Inject the current trace context into Kafka message headers
             openTelemetry.getPropagators()
                 .getTextMapPropagator()
-                .inject(Context.current().with(span), record.headers(), HEADER_SETTER);
+                .inject(span.storeInContext(Context.current()), record.headers(), HEADER_SETTER);
 
             // Send the message asynchronously with a callback
             producer.send(record, (metadata, exception) -> {
@@ -97,7 +98,8 @@ public class OrderProducer {
                     span.recordException(exception);
                 } else {
                     // Record the partition and offset for debugging
-                    span.setAttribute("messaging.kafka.partition", metadata.partition());
+                    span.setAttribute("messaging.destination.partition.id",
+                        String.valueOf(metadata.partition()));
                     span.setAttribute("messaging.kafka.offset", metadata.offset());
                     span.setStatus(io.opentelemetry.api.trace.StatusCode.OK);
                 }
@@ -113,11 +115,11 @@ public class OrderProducer {
 }
 ```
 
-The key piece is the `inject` call that writes trace context into the Kafka record's headers. When the consumer reads this message, it can extract that context and continue the same trace. The `messaging.kafka.partition` and `messaging.kafka.offset` attributes are useful for correlating traces with Kafka's internal state when debugging ordering or duplication issues.
+The key piece is the `inject` call that writes trace context into the Kafka record's headers. When the consumer reads this message, it can extract that context and continue the same trace. The `messaging.destination.partition.id` and `messaging.kafka.offset` attributes are useful for correlating traces with Kafka's internal state when debugging ordering or duplication issues.
 
 ## Instrumenting the Kafka Consumer
 
-On the consumer side, you extract the trace context from the incoming message headers and create a new span linked to the producer's span:
+On the consumer side, you extract the trace context from the incoming message headers and create a processing span connected to the producer's span:
 
 ```java
 // OrderConsumer.java
@@ -178,16 +180,18 @@ public class OrderConsumer {
                     .getTextMapPropagator()
                     .extract(Context.current(), record, HEADER_GETTER);
 
-                // Create a CONSUMER span linked to the producer span
-                Span span = tracer.spanBuilder("orders receive")
+                // Create a CONSUMER span connected to the producer span
+                Span span = tracer.spanBuilder("process orders")
                     .setParent(extractedContext)
                     .setSpanKind(SpanKind.CONSUMER)
                     .setAttribute("messaging.system", "kafka")
                     .setAttribute("messaging.destination.name", record.topic())
-                    .setAttribute("messaging.operation", "receive")
-                    .setAttribute("messaging.kafka.partition", record.partition())
+                    .setAttribute("messaging.operation.name", "process")
+                    .setAttribute("messaging.operation.type", "process")
+                    .setAttribute("messaging.destination.partition.id",
+                        String.valueOf(record.partition()))
                     .setAttribute("messaging.kafka.offset", record.offset())
-                    .setAttribute("messaging.kafka.consumer.group", "order-processor")
+                    .setAttribute("messaging.consumer.group.name", "order-processor")
                     .startSpan();
 
                 try (Scope scope = span.makeCurrent()) {
@@ -245,7 +249,6 @@ Traces show you individual message flows, but you also need aggregate metrics to
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.metrics.ObservableGauge;
 
 public class KafkaStreamingMetrics {
     private final LongCounter messagesProduced;
@@ -296,7 +299,7 @@ public class KafkaStreamingMetrics {
     public void recordConsumed(String topic, String consumerGroup, long ageMs) {
         var attrs = io.opentelemetry.api.common.Attributes.builder()
             .put("messaging.destination.name", topic)
-            .put("messaging.kafka.consumer.group", consumerGroup)
+            .put("messaging.consumer.group.name", consumerGroup)
             .build();
 
         messagesConsumed.add(1, attrs);
@@ -324,6 +327,7 @@ If you use Kafka Streams for stream processing, you need to instrument the topol
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.apache.kafka.streams.processor.api.Processor;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
 import org.apache.kafka.streams.processor.api.Record;
@@ -353,12 +357,14 @@ public class TracedProcessor<KIn, VIn, KOut, VOut> implements Processor<KIn, VIn
         Span span = tracer.spanBuilder("streams." + processorName + " process")
             .setSpanKind(SpanKind.CONSUMER)
             .setAttribute("messaging.system", "kafka")
+            .setAttribute("messaging.operation.name", "process")
+            .setAttribute("messaging.operation.type", "process")
             .setAttribute("kafka.streams.processor", processorName)
             .setAttribute("kafka.streams.task.id",
                 context.taskId().toString())
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             delegate.process(record);
             span.setStatus(io.opentelemetry.api.trace.StatusCode.OK);
         } catch (Exception e) {
@@ -387,8 +393,8 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-  # Optionally scrape Kafka broker JMX metrics
-  kafkametrics:
+  # Optionally collect Kafka cluster metrics
+  kafka_metrics:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
@@ -434,12 +440,12 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [otlp]
     metrics:
-      receivers: [otlp, kafkametrics]
+      receivers: [otlp, kafka_metrics]
       processors: [memory_limiter, resource, batch]
       exporters: [otlp]
 ```
 
-The `kafkametrics` receiver scrapes broker-level metrics directly, giving you topic throughput, partition counts, and consumer group offsets alongside your application telemetry. The larger batch sizes and sending queue accommodate the high volume of events typical in streaming applications.
+The `kafka_metrics` receiver collects Kafka broker, topic, partition, and consumer group metrics alongside your application telemetry. The larger batch sizes and sending queue accommodate the high volume of events typical in streaming applications.
 
 ## Tracing Across Multiple Hops
 
@@ -498,9 +504,12 @@ When message processing fails after retries, messages typically go to a dead let
 private void sendToDeadLetterQueue(ConsumerRecord<String, String> record,
                                      Exception error, Span originalSpan) {
     Span dlqSpan = tracer.spanBuilder("dlq.send")
+        .setParent(originalSpan.storeInContext(Context.current()))
         .setSpanKind(SpanKind.PRODUCER)
         .setAttribute("messaging.system", "kafka")
         .setAttribute("messaging.destination.name", record.topic() + ".dlq")
+        .setAttribute("messaging.operation.name", "send")
+        .setAttribute("messaging.operation.type", "send")
         .setAttribute("dlq.original_topic", record.topic())
         .setAttribute("dlq.original_partition", record.partition())
         .setAttribute("dlq.original_offset", record.offset())
@@ -518,7 +527,7 @@ private void sendToDeadLetterQueue(ConsumerRecord<String, String> record,
         // Propagate context to the DLQ message
         openTelemetry.getPropagators()
             .getTextMapPropagator()
-            .inject(Context.current().with(dlqSpan),
+            .inject(dlqSpan.storeInContext(Context.current()),
                 dlqRecord.headers(), HEADER_SETTER);
 
         dlqProducer.send(dlqRecord).get();
