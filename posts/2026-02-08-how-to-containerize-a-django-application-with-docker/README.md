@@ -15,7 +15,7 @@ Django is the most popular Python web framework, powering everything from small 
 You need:
 
 - Python 3.11+
-- Docker Engine 20.10+
+- Docker Engine with Docker Compose v2
 - pip and virtualenv (for local development)
 - An existing Django project or willingness to create one
 
@@ -28,7 +28,7 @@ If you need a fresh project:
 
 python -m venv venv
 source venv/bin/activate
-pip install django gunicorn psycopg2-binary
+pip install django gunicorn "psycopg[binary]"
 
 # Start a new Django project
 django-admin startproject myproject .
@@ -39,7 +39,7 @@ Create a `requirements.txt` file listing your dependencies:
 ```text
 Django>=5.0,<6.0
 gunicorn>=22.0
-psycopg2-binary>=2.9
+psycopg[binary]>=3.1
 ```
 
 Or use pip freeze:
@@ -50,7 +50,7 @@ pip freeze > requirements.txt
 
 ## Understanding Django in Production
 
-Django's built-in development server (`manage.py runserver`) is not suitable for production. It handles one request at a time and lacks proper security features. In production, you need:
+Django's built-in development server (`manage.py runserver`) is not suitable for production. It has not gone through security audits or performance tests. In production, you need:
 
 - Gunicorn (or uWSGI) as the WSGI server
 - A reverse proxy like Nginx for static files and SSL termination
@@ -71,11 +71,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
-
-# Install system dependencies needed for psycopg2 and other packages
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -142,8 +137,6 @@ Django in production needs a real database. Here is a full Compose setup with Po
 This Compose file connects Django to PostgreSQL with proper dependency management:
 
 ```yaml
-version: "3.8"
-
 services:
   web:
     build:
@@ -207,6 +200,12 @@ DATABASES = {
 SECRET_KEY = os.environ.get('SECRET_KEY', 'insecure-dev-key')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
+
+# Static and media files
+STATIC_URL = os.environ.get('STATIC_URL', '/static/')
+STATIC_ROOT = os.environ.get('STATIC_ROOT', os.path.join(BASE_DIR, 'staticfiles'))
+MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
 ```
 
 ## Running Migrations
@@ -226,8 +225,8 @@ Or create an entrypoint script that handles migrations automatically:
 #!/bin/sh
 # entrypoint.sh - Run migrations and start Gunicorn
 
-# Wait for the database to be available
-echo "Waiting for database..."
+# Verify the database is available
+echo "Checking database..."
 python manage.py check --database default
 
 # Run migrations
@@ -239,7 +238,7 @@ echo "Starting Gunicorn..."
 exec gunicorn myproject.wsgi:application --bind 0.0.0.0:8000 --workers 3
 ```
 
-Add it to the Dockerfile:
+Add it to the Dockerfile before the ownership and `USER` lines:
 
 ```dockerfile
 COPY entrypoint.sh .
@@ -255,8 +254,6 @@ Django needs `collectstatic` to gather all static files into one directory. The 
 For serving static files in production, add Nginx as a reverse proxy:
 
 ```yaml
-version: "3.8"
-
 services:
   nginx:
     image: nginx:1.25-alpine
@@ -351,8 +348,6 @@ CMD ["gunicorn", "myproject.wsgi:application", "-c", "gunicorn.conf.py"]
 For development, you want Django's dev server with auto-reload:
 
 ```yaml
-version: "3.8"
-
 services:
   web-dev:
     build:
@@ -385,7 +380,6 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
