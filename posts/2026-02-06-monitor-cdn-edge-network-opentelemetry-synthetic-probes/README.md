@@ -55,12 +55,12 @@ meter = metrics.get_meter("cdn.probe")
 
 # Define metrics for CDN performance
 ttfb_histogram = meter.create_histogram(
-    name="cdn.probe.ttfb_ms",
+    name="cdn.probe.ttfb",
     description="Time to first byte in milliseconds",
     unit="ms",
 )
 total_time_histogram = meter.create_histogram(
-    name="cdn.probe.total_time_ms",
+    name="cdn.probe.total_time",
     description="Total response time in milliseconds",
     unit="ms",
 )
@@ -84,7 +84,7 @@ def probe_endpoint(url, expected_cache_header="X-Cache"):
     start = time.monotonic()
     response = http.request("GET", url, preload_content=False)
     # Read the first chunk to measure TTFB
-    first_byte = response.read(1)
+    response.read(1)
     ttfb = time.monotonic() - start
     # Read the rest
     response.read()
@@ -105,9 +105,17 @@ def probe_endpoint(url, expected_cache_header="X-Cache"):
     ttfb_histogram.record(ttfb * 1000, attributes=attrs)
     total_time_histogram.record(total_time * 1000, attributes=attrs)
 
-    if cache_status in ("HIT", "hit"):
+    normalized_cache_status = cache_status.upper()
+
+    if (
+        "HIT" in normalized_cache_status
+        or normalized_cache_status in ("STALE", "REVALIDATED", "UPDATING")
+    ):
         cache_hit_counter.add(1, attributes=attrs)
-    elif cache_status in ("MISS", "miss", "EXPIRED", "expired"):
+    elif (
+        "MISS" in normalized_cache_status
+        or normalized_cache_status in ("EXPIRED", "BYPASS", "DYNAMIC")
+    ):
         cache_miss_counter.add(1, attributes=attrs)
 
     response.release_conn()
@@ -202,16 +210,17 @@ With the data flowing, here are queries that give you actionable CDN insights:
 
 ```promql
 # Cache hit ratio over the last hour
-sum(cdn_probe_cache_hits_total) /
-(sum(cdn_probe_cache_hits_total) + sum(cdn_probe_cache_misses_total)) * 100
+sum(increase(cdn_probe_cache_hits_total[1h])) /
+(sum(increase(cdn_probe_cache_hits_total[1h])) + sum(increase(cdn_probe_cache_misses_total[1h]))) * 100
 
 # P95 TTFB per edge location
 histogram_quantile(0.95, sum by (le, cdn_edge_location) (
-  rate(cdn_probe_ttfb_ms_bucket[10m])
+  rate(cdn_probe_ttfb_milliseconds_bucket[10m])
 ))
 
 # Average total response time per URL
-avg by (cdn_url) (cdn_probe_total_time_ms_sum / cdn_probe_total_time_ms_count)
+sum by (cdn_url) (rate(cdn_probe_total_time_milliseconds_sum[10m])) /
+sum by (cdn_url) (rate(cdn_probe_total_time_milliseconds_count[10m]))
 ```
 
 ## Wrapping Up
