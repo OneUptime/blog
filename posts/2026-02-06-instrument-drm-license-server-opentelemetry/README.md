@@ -61,13 +61,18 @@ Here is a Python example of a DRM license endpoint with full tracing.
 ```python
 import time
 from flask import Flask, request, jsonify
+from opentelemetry.trace import Status, StatusCode
 
 app = Flask(__name__)
+
+def record_license_latency(start, metric_attrs):
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    license_latency.record(elapsed_ms, metric_attrs)
 
 @app.route("/license", methods=["POST"])
 def handle_license_request():
     with tracer.start_as_current_span("drm.license.request") as span:
-        start = time.time()
+        start = time.perf_counter()
 
         # Parse the incoming license request
         drm_system = request.headers.get("X-DRM-System", "widevine")
@@ -91,16 +96,17 @@ def handle_license_request():
 
             # Step 2: Check user entitlements
             with tracer.start_as_current_span("drm.entitlement_check") as ent_span:
-                ent_start = time.time()
+                ent_start = time.perf_counter()
                 user_token = request.headers.get("Authorization")
                 entitlement = check_entitlement(user_token, content_id)
 
-                ent_elapsed = (time.time() - ent_start) * 1000
+                ent_elapsed = (time.perf_counter() - ent_start) * 1000
                 entitlement_latency.record(ent_elapsed, metric_attrs)
                 ent_span.set_attribute("entitlement.granted", entitlement.granted)
                 ent_span.set_attribute("entitlement.tier", entitlement.tier)
 
                 if not entitlement.granted:
+                    record_license_latency(start, metric_attrs)
                     license_denied.add(1, metric_attrs)
                     span.set_attribute("drm.result", "denied")
                     return jsonify({"error": "not_entitled"}), 403
@@ -122,22 +128,25 @@ def handle_license_request():
                 gen_span.set_attribute("license.size_bytes", len(license_response))
 
             # Record success metrics
-            elapsed_ms = (time.time() - start) * 1000
-            license_latency.record(elapsed_ms, metric_attrs)
+            record_license_latency(start, metric_attrs)
             license_issued.add(1, metric_attrs)
             span.set_attribute("drm.result", "issued")
 
             return license_response, 200, {"Content-Type": "application/octet-stream"}
 
         except EntitlementServiceError as e:
+            record_license_latency(start, metric_attrs)
             license_errors.add(1, {**metric_attrs, "error_type": "entitlement_service"})
             span.set_attribute("drm.result", "error")
+            span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             return jsonify({"error": "entitlement_check_failed"}), 503
 
         except LicenseGenerationError as e:
+            record_license_latency(start, metric_attrs)
             license_errors.add(1, {**metric_attrs, "error_type": "license_generation"})
             span.set_attribute("drm.result", "error")
+            span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             return jsonify({"error": "license_generation_failed"}), 500
 ```
@@ -185,13 +194,13 @@ key_server_latency = meter.create_histogram(
 
 def fetch_content_keys(key_id, drm_system):
     with tracer.start_as_current_span("drm.key_server.fetch") as span:
-        start = time.time()
+        start = time.perf_counter()
         span.set_attribute("key.id", key_id)
         span.set_attribute("drm.system", drm_system)
 
         keys = key_server_client.get_keys(key_id)
 
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         key_server_latency.record(elapsed_ms, {"drm_system": drm_system})
 
         span.set_attribute("keys.count", len(keys))
