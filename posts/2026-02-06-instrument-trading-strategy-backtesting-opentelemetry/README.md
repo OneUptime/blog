@@ -25,14 +25,14 @@ A backtesting engine typically processes data in this order:
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -48,7 +48,7 @@ meter = metrics.get_meter("backtesting-engine")
 
 ## Tracing the Full Backtest Run
 
-Each backtest run gets its own trace, with child spans for each phase.
+Each backtest run is represented by a span, with child spans for each phase.
 
 ```python
 import time
