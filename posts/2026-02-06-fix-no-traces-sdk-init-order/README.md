@@ -28,7 +28,7 @@ Applying instrumentation patch for module express on require hook
 
 **Bad signs:**
 ```text
-Module express has been loaded before @opentelemetry/instrumentation-express
+Module express has been loaded before @opentelemetry/instrumentation-express so it might not work, please initialize it before requiring express
 ```
 
 If you see the "loaded before" warning, the initialization order is your problem.
@@ -48,11 +48,11 @@ The cleanest solution is to separate your tracing setup into its own file and lo
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
   }),
   traceExporter: new OTLPTraceExporter(),
@@ -73,9 +73,9 @@ Update your start command:
 }
 ```
 
-## Fix 2: Dynamic Import in Application Entry Point
+## Fix 2: Require Tracing in Application Entry Point
 
-If you cannot use `--require`, you can use dynamic `require()` to control the order:
+If you cannot use `--require`, you can use `require()` to control the order:
 
 ```javascript
 // index.js
@@ -172,8 +172,8 @@ If spans appear in the console but not in your backend, the issue is with the ex
 
 ## Common Gotchas
 
-- **Jest and testing frameworks** often load modules before your setup code runs. Use `jest.setup.js` to initialize tracing before tests.
-- **Serverless environments** like AWS Lambda need tracing setup in the handler wrapper, not in module scope, because cold starts behave differently.
+- **Jest and testing frameworks** often load modules before your setup code runs. Configure Jest `setupFiles` to initialize tracing before test files load application modules.
+- **Serverless environments** like AWS Lambda need tracing setup in a wrapper that is preloaded before the handler, such as through `NODE_OPTIONS`.
 - **Monorepos with shared packages** sometimes have transitive imports that load libraries before your entry point's tracing setup runs.
 
 The initialization order problem is responsible for more "OpenTelemetry does not work" reports than any other issue. Getting this right solves the majority of missing traces cases.
