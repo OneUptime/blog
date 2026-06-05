@@ -21,9 +21,9 @@ A zero trust monitoring dashboard needs to answer these questions:
 
 Istio already generates telemetry for most of these. The trick is getting that data into the same system as your application-level OpenTelemetry data.
 
-## Configuring Istio to Export via OTLP
+## Configuring Istio to Export Traces via OTLP
 
-Istio 1.20 and later supports exporting telemetry in OpenTelemetry format. Configure this in the Istio mesh config:
+Istio 1.16.1 and later supports exporting traces in OpenTelemetry format. Configure this in the Istio mesh config:
 
 ```yaml
 # istio-mesh-config.yaml
@@ -32,10 +32,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      tracing:
-        openCensusBridge:
-          enabled: false
+    enableTracing: true
     extensionProviders:
       - name: otel-collector
         opentelemetry:
@@ -44,11 +41,9 @@ spec:
     defaultProviders:
       tracing:
         - otel-collector
-      metrics:
-        - otel-collector
 ```
 
-This tells every Envoy sidecar in the mesh to send trace and metric data to your OpenTelemetry Collector.
+This configures Envoy sidecars in the mesh to send trace data to your OpenTelemetry Collector. Istio request metrics are still exposed as Prometheus metrics, so the Collector will scrape them in the next step.
 
 ## Collector Configuration for Mesh Telemetry
 
@@ -79,27 +74,26 @@ receivers:
 processors:
   # Add zero trust classification attributes
   transform:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
           # Tag whether the connection used mTLS
-          - set(attributes["zero_trust.mtls_enabled"],
-              attributes["connection_security_policy"] == "mutual_tls")
+          - set(datapoint.attributes["zero_trust.mtls_enabled"],
+              datapoint.attributes["connection_security_policy"] == "mutual_tls")
 
           # Classify denied requests
-          - set(attributes["zero_trust.access_decision"], "denied")
-            where attributes["response_code"] == "403"
+          - set(datapoint.attributes["zero_trust.access_decision"], "denied")
+            where datapoint.attributes["response_code"] == "403"
 
-          - set(attributes["zero_trust.access_decision"], "allowed")
-            where attributes["response_code"] != "403"
+          - set(datapoint.attributes["zero_trust.access_decision"], "allowed")
+            where datapoint.attributes["response_code"] != "403"
 
     trace_statements:
       - context: span
         statements:
-          - set(attributes["zero_trust.source_principal"],
-              attributes["upstream_peer.spiffe_id"])
-          - set(attributes["zero_trust.destination_principal"],
-              attributes["downstream_peer.spiffe_id"])
+          - set(span.attributes["zero_trust.mesh_span"], true)
+            where span.attributes["component"] == "proxy"
 
 exporters:
   otlp:
@@ -138,8 +132,8 @@ func AuthzMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         span := trace.SpanFromContext(r.Context())
 
-        // Extract the identity from the mTLS certificate
-        // (populated by the service mesh sidecar)
+        // Read the peer identity from XFCC, which is appended by the
+        // service mesh sidecar when XFCC forwarding is configured.
         peerIdentity := r.Header.Get("X-Forwarded-Client-Cert")
         span.SetAttributes(
             attribute.String("zero_trust.peer_identity", peerIdentity),
@@ -179,13 +173,13 @@ func checkAuthorization(identity, path, method string) (bool, string) {
 
 With all this data flowing into your observability backend, you can build a dashboard with these panels:
 
-**mTLS Coverage**: Query for the percentage of connections where `zero_trust.mtls_enabled` is true versus false. Any false values indicate unencrypted service-to-service traffic.
+**mTLS Coverage**: Query for the percentage of destination-reported requests where `connection_security_policy` is `mutual_tls`. Non-mTLS destination-reported values indicate traffic that was not secured with Istio mTLS.
 
 ```promql
 # Percentage of requests using mTLS
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", connection_security_policy="mutual_tls"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 * 100
 ```
 
@@ -195,7 +189,7 @@ sum(rate(istio_requests_total[5m]))
 # Top denied service-to-service pairs
 topk(10,
   sum by (source_workload, destination_workload) (
-    rate(istio_requests_total{response_code="403"}[5m])
+    rate(istio_requests_total{reporter="destination", response_code="403"}[5m])
   )
 )
 ```
