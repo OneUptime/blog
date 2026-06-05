@@ -40,7 +40,7 @@ Start with a simple configuration to watch pod events.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     # Authentication method
     auth_type: serviceAccount
 
@@ -56,7 +56,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       exporters: [debug]
 ```
 
@@ -70,7 +70,7 @@ When running inside Kubernetes, use service account authentication.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     # Use service account token
     auth_type: serviceAccount
 
@@ -133,7 +133,7 @@ When running outside Kubernetes, use kubeconfig authentication.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     # Use kubeconfig file
     auth_type: kubeConfig
 
@@ -156,7 +156,7 @@ Configure which Kubernetes resources to watch.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -180,7 +180,7 @@ Kubernetes events provide information about cluster activity.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -199,7 +199,7 @@ receivers:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -238,16 +238,16 @@ Watch mode streams real-time events as resources change.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
+    # Include a snapshot of current objects before watching for changes
+    include_initial_state: true
+
     auth_type: serviceAccount
 
     objects:
       - name: pods
         # Watch for real-time changes
         mode: watch
-
-        # Interval for resync (re-list all resources)
-        interval: 5m
 ```
 
 ### Pull Mode
@@ -256,7 +256,7 @@ Pull mode periodically fetches the current state of resources.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -278,7 +278,7 @@ Control which namespaces to watch.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -296,7 +296,7 @@ receivers:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -313,7 +313,7 @@ Use processors to exclude specific namespaces.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -326,14 +326,16 @@ processors:
   filter/namespaces:
     logs:
       log_record:
-        - attributes["k8s.namespace.name"] != "kube-system"
-        - attributes["k8s.namespace.name"] != "kube-public"
-        - attributes["k8s.namespace.name"] != "kube-node-lease"
+        - resource.attributes["k8s.namespace.name"] == "kube-system" or resource.attributes["k8s.namespace.name"] == "kube-public" or resource.attributes["k8s.namespace.name"] == "kube-node-lease"
+
+exporters:
+  otlp:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [filter/namespaces]
       exporters: [otlp]
 ```
@@ -346,7 +348,7 @@ Filter resources using Kubernetes selectors.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -366,7 +368,7 @@ receivers:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -389,7 +391,7 @@ Process Kubernetes object events to extract meaningful data.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -403,14 +405,15 @@ processors:
       - context: log
         statements:
           # Extract event details
-          - set(attributes["event.type"], body["type"]) where body["type"] != nil
-          - set(attributes["event.reason"], body["reason"]) where body["reason"] != nil
-          - set(attributes["event.message"], body["message"]) where body["message"] != nil
+          - set(attributes["event.type"], body["object"]["type"]) where body["object"]["type"] != nil
+          - set(attributes["event.reason"], body["object"]["reason"]) where body["object"]["reason"] != nil
+          - set(attributes["event.message"], body["object"]["message"]) where body["object"]["message"] != nil
+          - set(attributes["k8s.watch.type"], body["type"]) where body["type"] != nil
 
           # Extract involved object
-          - set(attributes["k8s.object.kind"], body["involvedObject"]["kind"]) where body["involvedObject"]["kind"] != nil
-          - set(attributes["k8s.object.name"], body["involvedObject"]["name"]) where body["involvedObject"]["name"] != nil
-          - set(attributes["k8s.namespace.name"], body["involvedObject"]["namespace"]) where body["involvedObject"]["namespace"] != nil
+          - set(attributes["k8s.object.kind"], body["object"]["involvedObject"]["kind"]) where body["object"]["involvedObject"]["kind"] != nil
+          - set(attributes["k8s.object.name"], body["object"]["involvedObject"]["name"]) where body["object"]["involvedObject"]["name"] != nil
+          - set(attributes["k8s.namespace.name"], body["object"]["involvedObject"]["namespace"]) where body["object"]["involvedObject"]["namespace"] != nil
 
           # Set severity based on event type
           - set(severity_text, "WARN") where attributes["event.type"] == "Warning"
@@ -426,7 +429,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [transform/pod_events]
       exporters: [otlp]
 ```
@@ -435,7 +438,7 @@ service:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -449,17 +452,17 @@ processors:
       - context: log
         statements:
           # Extract deployment info
-          - set(attributes["k8s.deployment.name"], body["metadata"]["name"]) where body["metadata"]["name"] != nil
-          - set(attributes["k8s.namespace.name"], body["metadata"]["namespace"]) where body["metadata"]["namespace"] != nil
+          - set(attributes["k8s.deployment.name"], body["object"]["metadata"]["name"]) where body["object"]["metadata"]["name"] != nil
+          - set(attributes["k8s.namespace.name"], body["object"]["metadata"]["namespace"]) where body["object"]["metadata"]["namespace"] != nil
 
           # Extract deployment spec
-          - set(attributes["k8s.deployment.replicas"], body["spec"]["replicas"]) where body["spec"]["replicas"] != nil
-          - set(attributes["k8s.deployment.strategy"], body["spec"]["strategy"]["type"]) where body["spec"]["strategy"]["type"] != nil
+          - set(attributes["k8s.deployment.replicas"], body["object"]["spec"]["replicas"]) where body["object"]["spec"]["replicas"] != nil
+          - set(attributes["k8s.deployment.strategy"], body["object"]["spec"]["strategy"]["type"]) where body["object"]["spec"]["strategy"]["type"] != nil
 
           # Extract deployment status
-          - set(attributes["k8s.deployment.available_replicas"], body["status"]["availableReplicas"]) where body["status"]["availableReplicas"] != nil
-          - set(attributes["k8s.deployment.ready_replicas"], body["status"]["readyReplicas"]) where body["status"]["readyReplicas"] != nil
-          - set(attributes["k8s.deployment.updated_replicas"], body["status"]["updatedReplicas"]) where body["status"]["updatedReplicas"] != nil
+          - set(attributes["k8s.deployment.available_replicas"], body["object"]["status"]["availableReplicas"]) where body["object"]["status"]["availableReplicas"] != nil
+          - set(attributes["k8s.deployment.ready_replicas"], body["object"]["status"]["readyReplicas"]) where body["object"]["status"]["readyReplicas"] != nil
+          - set(attributes["k8s.deployment.updated_replicas"], body["object"]["status"]["updatedReplicas"]) where body["object"]["status"]["updatedReplicas"] != nil
 
           # Detect rollout status
           - set(attributes["deployment.rollout_complete"], true) where attributes["k8s.deployment.replicas"] == attributes["k8s.deployment.available_replicas"]
@@ -472,7 +475,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [transform/deployments]
       exporters: [otlp]
 ```
@@ -481,7 +484,7 @@ service:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -494,17 +497,15 @@ processors:
       - context: log
         statements:
           # Extract node info
-          - set(attributes["k8s.node.name"], body["metadata"]["name"]) where body["metadata"]["name"] != nil
+          - set(attributes["k8s.node.name"], body["object"]["metadata"]["name"]) where body["object"]["metadata"]["name"] != nil
 
           # Extract node conditions
-          - set(attributes["node.ready"], true) where body["status"]["conditions"] != nil
-          - set(attributes["node.memory_pressure"], false) where body["status"]["conditions"] != nil
-          - set(attributes["node.disk_pressure"], false) where body["status"]["conditions"] != nil
+          - set(attributes["node.conditions"], body["object"]["status"]["conditions"]) where body["object"]["status"]["conditions"] != nil
 
           # Extract capacity
-          - set(attributes["node.capacity.cpu"], body["status"]["capacity"]["cpu"]) where body["status"]["capacity"]["cpu"] != nil
-          - set(attributes["node.capacity.memory"], body["status"]["capacity"]["memory"]) where body["status"]["capacity"]["memory"] != nil
-          - set(attributes["node.capacity.pods"], body["status"]["capacity"]["pods"]) where body["status"]["capacity"]["pods"] != nil
+          - set(attributes["node.capacity.cpu"], body["object"]["status"]["capacity"]["cpu"]) where body["object"]["status"]["capacity"]["cpu"] != nil
+          - set(attributes["node.capacity.memory"], body["object"]["status"]["capacity"]["memory"]) where body["object"]["status"]["capacity"]["memory"] != nil
+          - set(attributes["node.capacity.pods"], body["object"]["status"]["capacity"]["pods"]) where body["object"]["status"]["capacity"]["pods"] != nil
 
 exporters:
   otlp:
@@ -513,7 +514,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [transform/nodes]
       exporters: [otlp]
 ```
@@ -524,7 +525,7 @@ service:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -533,12 +534,20 @@ receivers:
         mode: watch
 
 processors:
+  # Extract event fields before filtering
+  transform/event_fields:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["event.reason"], body["object"]["reason"]) where body["object"]["reason"] != nil
+          - set(attributes["event.message"], body["object"]["message"]) where body["object"]["message"] != nil
+
   # Filter to pod failures
   filter/pod_failures:
     logs:
       log_record:
         # Only failed, crash loop, or image pull failures
-        - attributes["event.reason"] == "Failed" or attributes["event.reason"] == "BackOff" or attributes["event.reason"] == "ErrImagePull" or attributes["event.reason"] == "ImagePullBackOff"
+        - attributes["event.reason"] != "Failed" and attributes["event.reason"] != "BackOff" and attributes["event.reason"] != "ErrImagePull" and attributes["event.reason"] != "ImagePullBackOff"
 
   transform/pod_failures:
     log_statements:
@@ -554,8 +563,8 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
-      processors: [filter/pod_failures, transform/pod_failures]
+      receivers: [k8s_objects]
+      processors: [transform/event_fields, filter/pod_failures, transform/pod_failures]
       exporters: [otlp]
 ```
 
@@ -563,7 +572,7 @@ service:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -578,10 +587,11 @@ processors:
       - context: log
         statements:
           # Calculate rollout progress
-          - set(attributes["rollout.progress"], attributes["k8s.deployment.updated_replicas"] / attributes["k8s.deployment.replicas"]) where attributes["k8s.deployment.replicas"] != nil and attributes["k8s.deployment.replicas"] > 0
+          - set(attributes["rollout.progress"], body["object"]["status"]["updatedReplicas"] / body["object"]["spec"]["replicas"]) where body["object"]["spec"]["replicas"] != nil and body["object"]["spec"]["replicas"] > 0 and body["object"]["status"]["updatedReplicas"] != nil
 
           # Flag stuck rollouts
-          - set(attributes["rollout.stuck"], true) where attributes["k8s.deployment.updated_replicas"] != attributes["k8s.deployment.replicas"]
+          - set(attributes["rollout.stuck"], true) where body["object"]["status"]["updatedReplicas"] != nil and body["object"]["spec"]["replicas"] != nil and body["object"]["status"]["updatedReplicas"] != body["object"]["spec"]["replicas"]
+          - set(attributes["rollout.stuck"], false) where body["object"]["status"]["updatedReplicas"] != nil and body["object"]["spec"]["replicas"] != nil and body["object"]["status"]["updatedReplicas"] == body["object"]["spec"]["replicas"]
 
           # Set severity for issues
           - set(severity_text, "WARN") where attributes["rollout.stuck"] == true
@@ -594,7 +604,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [transform/rollouts]
       exporters: [otlp]
 ```
@@ -603,7 +613,7 @@ service:
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -611,11 +621,18 @@ receivers:
         mode: watch
 
 processors:
+  transform/event_fields:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["event.reason"], body["object"]["reason"]) where body["object"]["reason"] != nil
+          - set(attributes["event.message"], body["object"]["message"]) where body["object"]["message"] != nil
+
   filter/scheduling:
     logs:
       log_record:
         # Scheduling failures
-        - attributes["event.reason"] == "FailedScheduling" or attributes["event.reason"] == "FailedMount" or attributes["event.reason"] == "FailedAttachVolume"
+        - attributes["event.reason"] != "FailedScheduling" and attributes["event.reason"] != "FailedMount" and attributes["event.reason"] != "FailedAttachVolume"
 
   transform/scheduling:
     log_statements:
@@ -635,8 +652,8 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
-      processors: [filter/scheduling, transform/scheduling]
+      receivers: [k8s_objects]
+      processors: [transform/event_fields, filter/scheduling, transform/scheduling]
       exporters: [otlp]
 ```
 
@@ -646,7 +663,7 @@ Add contextual information to collected logs.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -668,7 +685,7 @@ processors:
         action: upsert
 
   # Detect additional k8s attributes
-  k8sattributes:
+  k8s_attributes:
     auth_type: serviceAccount
     passthrough: false
     extract:
@@ -693,8 +710,8 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
-      processors: [resource/k8s, k8sattributes]
+      receivers: [k8s_objects]
+      processors: [resource/k8s, k8s_attributes]
       exporters: [otlp]
 ```
 
@@ -704,7 +721,7 @@ Full configuration for comprehensive Kubernetes monitoring.
 
 ```yaml
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
 
     objects:
@@ -712,14 +729,12 @@ receivers:
       - name: pods
         mode: watch
         namespaces: [production, staging]
-        interval: 5m
 
       # Watch deployments
       - name: deployments
         mode: watch
         group: apps
         namespaces: [production, staging]
-        interval: 5m
 
       # Watch events
       - name: events
@@ -729,7 +744,6 @@ receivers:
       # Watch nodes
       - name: nodes
         mode: watch
-        interval: 5m
 
 processors:
   # Process pod events
@@ -737,41 +751,42 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(attributes["k8s.object.type"], "pod") where body["kind"] == "Pod"
-          - set(attributes["k8s.pod.name"], body["metadata"]["name"]) where body["kind"] == "Pod" and body["metadata"]["name"] != nil
-          - set(attributes["k8s.namespace.name"], body["metadata"]["namespace"]) where body["kind"] == "Pod" and body["metadata"]["namespace"] != nil
-          - set(attributes["k8s.pod.phase"], body["status"]["phase"]) where body["kind"] == "Pod" and body["status"]["phase"] != nil
+          - set(attributes["k8s.object.type"], "pod") where body["object"]["kind"] == "Pod"
+          - set(attributes["k8s.pod.name"], body["object"]["metadata"]["name"]) where body["object"]["kind"] == "Pod" and body["object"]["metadata"]["name"] != nil
+          - set(attributes["k8s.namespace.name"], body["object"]["metadata"]["namespace"]) where body["object"]["kind"] == "Pod" and body["object"]["metadata"]["namespace"] != nil
+          - set(attributes["k8s.pod.phase"], body["object"]["status"]["phase"]) where body["object"]["kind"] == "Pod" and body["object"]["status"]["phase"] != nil
 
   # Process deployment events
   transform/deployments:
     log_statements:
       - context: log
         statements:
-          - set(attributes["k8s.object.type"], "deployment") where body["kind"] == "Deployment"
-          - set(attributes["k8s.deployment.name"], body["metadata"]["name"]) where body["kind"] == "Deployment" and body["metadata"]["name"] != nil
-          - set(attributes["k8s.deployment.replicas"], body["spec"]["replicas"]) where body["kind"] == "Deployment" and body["spec"]["replicas"] != nil
+          - set(attributes["k8s.object.type"], "deployment") where body["object"]["kind"] == "Deployment"
+          - set(attributes["k8s.deployment.name"], body["object"]["metadata"]["name"]) where body["object"]["kind"] == "Deployment" and body["object"]["metadata"]["name"] != nil
+          - set(attributes["k8s.deployment.replicas"], body["object"]["spec"]["replicas"]) where body["object"]["kind"] == "Deployment" and body["object"]["spec"]["replicas"] != nil
 
   # Process Kubernetes events
   transform/events:
     log_statements:
       - context: log
         statements:
-          - set(attributes["k8s.object.type"], "event") where body["kind"] == "Event"
-          - set(attributes["event.type"], body["type"]) where body["kind"] == "Event" and body["type"] != nil
-          - set(attributes["event.reason"], body["reason"]) where body["kind"] == "Event" and body["reason"] != nil
-          - set(attributes["event.message"], body["message"]) where body["kind"] == "Event" and body["message"] != nil
+          - set(attributes["k8s.object.type"], "event") where body["object"]["kind"] == "Event"
+          - set(attributes["event.type"], body["object"]["type"]) where body["object"]["kind"] == "Event" and body["object"]["type"] != nil
+          - set(attributes["event.reason"], body["object"]["reason"]) where body["object"]["kind"] == "Event" and body["object"]["reason"] != nil
+          - set(attributes["event.message"], body["object"]["message"]) where body["object"]["kind"] == "Event" and body["object"]["message"] != nil
+          - set(attributes["k8s.watch.type"], body["type"]) where body["type"] != nil
 
           # Set severity
           - set(severity_text, "WARN") where attributes["event.type"] == "Warning"
           - set(severity_text, "ERROR") where attributes["event.reason"] == "Failed"
-          - set(severity_text, "INFO") where severity_text == nil
+          - set(severity_text, "INFO") where severity_text == ""
 
   # Filter out noisy events
   filter/events:
     logs:
       log_record:
         # Exclude informational events
-        - attributes["event.reason"] != "Pulling" and attributes["event.reason"] != "Pulled" and attributes["event.reason"] != "Created" and attributes["event.reason"] != "Started"
+        - attributes["event.reason"] == "Pulling" or attributes["event.reason"] == "Pulled" or attributes["event.reason"] == "Created" or attributes["event.reason"] == "Started"
 
   # Add resource attributes
   resource/k8s:
@@ -787,7 +802,7 @@ processors:
         action: upsert
 
   # Enrich with k8s metadata
-  k8sattributes:
+  k8s_attributes:
     auth_type: serviceAccount
     passthrough: false
     extract:
@@ -826,14 +841,14 @@ service:
 
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors:
         - transform/pods
         - transform/deployments
         - transform/events
         - filter/events
         - resource/k8s
-        - k8sattributes
+        - k8s_attributes
         - batch
       exporters: [otlp]
 
