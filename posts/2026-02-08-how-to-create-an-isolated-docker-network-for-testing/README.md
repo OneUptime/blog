@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Networking, Testing, Container, Isolation, DevOps
 
-Description: Learn how to create fully isolated Docker networks for testing, preventing containers from accessing the internet or other networks.
+Description: Learn how to create externally isolated Docker networks for testing, preventing containers from accessing the internet or other networks.
 
 ---
 
@@ -12,7 +12,7 @@ Testing often requires containers that can talk to each other but cannot reach t
 
 ## Creating an Internal Network
 
-The `--internal` flag creates a network with no external connectivity. Containers on this network can communicate with each other, but they cannot reach the internet or any host outside the Docker network.
+The `--internal` flag creates an externally isolated network. Containers on this network can communicate with each other, but they do not get a default route to the internet or other Docker networks. Communication with the network's gateway IP can still be possible.
 
 ```bash
 # Create an isolated internal network
@@ -27,7 +27,7 @@ Test the isolation:
 docker run --rm --network isolated-test alpine ping -c 1 8.8.8.8
 ```
 
-This fails with a "Network unreachable" error. The container cannot reach any external address.
+This fails with a "Network unreachable" error. The container cannot reach an external internet address.
 
 But containers on the same network can still talk to each other:
 
@@ -41,7 +41,7 @@ The ping succeeds because both containers are on the same isolated network.
 
 ## How Internal Networks Work
 
-Docker implements internal networks by not creating a masquerade (NAT) rule for the network's bridge. Normal Docker networks get an iptables rule that masquerades outbound traffic through the host's interface. Internal networks skip this rule, so packets from containers have no route to the outside world.
+Docker implements internal networks by not creating a masquerade (NAT) rule for the network's bridge and by configuring routing and firewall behavior for external isolation. Normal Docker networks get an iptables rule that masquerades outbound traffic through the host's interface. Internal networks skip this rule, so packets from containers have no default route to the outside world.
 
 Compare the iptables rules:
 
@@ -240,10 +240,9 @@ Always verify that your isolated network is actually isolated. Here are several 
 docker run --rm --network isolated-test alpine \
   sh -c "wget -q --timeout=5 -O /dev/null http://google.com && echo 'FAIL: Internet reachable' || echo 'PASS: Internet blocked'"
 
-# Test 2: Cannot reach the Docker host
-HOST_IP=$(ip route | grep default | awk '{print $3}')
+# Test 2: No default route is configured
 docker run --rm --network isolated-test alpine \
-  sh -c "ping -c 1 -W 2 $HOST_IP && echo 'FAIL: Host reachable' || echo 'PASS: Host blocked'"
+  sh -c "ip route | grep -q '^default' && echo 'FAIL: Default route exists' || echo 'PASS: No default route'"
 
 # Test 3: Can reach other containers on the same network
 docker run --rm --network isolated-test alpine \
