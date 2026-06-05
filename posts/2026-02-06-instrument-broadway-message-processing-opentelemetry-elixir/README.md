@@ -34,7 +34,8 @@ defp deps do
     {:broadway_rabbitmq, "~> 0.7"},  # or your producer of choice
     {:opentelemetry, "~> 1.3"},
     {:opentelemetry_api, "~> 1.2"},
-    {:opentelemetry_exporter, "~> 1.6"}
+    {:opentelemetry_exporter, "~> 1.6"},
+    {:jason, "~> 1.4"}
   ]
 end
 ```
@@ -51,6 +52,10 @@ config :opentelemetry, :resource,
     name: "message-processor",
     version: "1.0.0"
   ]
+
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp
 
 config :opentelemetry_exporter,
   otlp_protocol: :http_protobuf,
@@ -111,68 +116,68 @@ defmodule MyApp.MessageProcessor do
   def handle_message(:default, message, _context) do
     # Extract trace context from message metadata
     parent_ctx = extract_trace_context(message)
-    Ctx.attach(parent_ctx)
+    ctx_token = Ctx.attach(parent_ctx)
 
-    # Create a span for processing this message
-    Tracer.with_span "broadway.handle_message" do
-      Tracer.set_attributes([
-        {"message_id", message.acknowledger.ack_ref},
-        {"processor", "default"},
-        {"queue", "events"}
-      ])
-
-      try do
-        # Parse and validate the message
-        data = parse_message_data(message.data)
-
-        Tracer.add_event("message_parsed", %{
-          event_type: data["event_type"],
-          size_bytes: byte_size(message.data)
-        })
-
-        # Process based on event type
-        processed = process_event(data)
-
-        # Route to appropriate batcher
-        batcher = determine_batcher(data["event_type"])
-
+    try do
+      # Create a span for processing this message
+      Tracer.with_span "broadway.handle_message" do
         Tracer.set_attributes([
-          {"event_type", data["event_type"]},
-          {"batcher", batcher},
-          {"processing_successful", true}
+          {"message_id", inspect(ack_ref(message))},
+          {"processor", "default"},
+          {"queue", "events"}
         ])
 
-        Tracer.set_status(:ok)
+        try do
+          # Parse and validate the message
+          data = parse_message_data(message.data)
 
-        # Store trace context in message metadata for later stages
-        message
-        |> Message.update_data(fn _ -> processed end)
-        |> Message.put_batcher(batcher)
-        |> attach_trace_context()
+          Tracer.add_event("message_parsed", %{
+            event_type: data["event_type"],
+            size_bytes: byte_size(message.data)
+          })
 
-      rescue
-        error ->
-          Tracer.set_status(:error, Exception.message(error))
-          Tracer.record_exception(error, __STACKTRACE__)
+          # Process based on event type
+          processed = process_event(data)
 
-          # Failed messages can be sent to a dead letter queue
-          Message.failed(message, error)
+          # Route to appropriate batcher
+          batcher = determine_batcher(data["event_type"])
+
+          Tracer.set_attributes([
+            {"event_type", data["event_type"]},
+            {"batcher", Atom.to_string(batcher)},
+            {"processing_successful", true}
+          ])
+
+          # Store trace context in message metadata for later stages
+          message
+          |> Message.update_data(fn _ -> processed end)
+          |> Message.put_batcher(batcher)
+          |> attach_trace_context()
+
+        rescue
+          error ->
+            Tracer.set_status(:error, Exception.message(error))
+            Tracer.record_exception(error, __STACKTRACE__)
+
+            # Failed messages can be sent to a dead letter queue
+            Message.failed(message, error)
+        end
       end
+    after
+      Ctx.detach(ctx_token)
     end
   end
 
   @impl true
   def handle_batch(:database, messages, _batch_info, _context) do
+    links = message_context_links(messages)
+
     # Create a span for the entire batch operation
-    Tracer.with_span "broadway.handle_batch.database" do
+    Tracer.with_span "broadway.handle_batch.database", %{links: links} do
       Tracer.set_attributes([
         {"batch_size", length(messages)},
         {"batcher", "database"}
       ])
-
-      # Extract trace contexts from messages to link them
-      parent_contexts = Enum.map(messages, &extract_message_context/1)
-      link_parent_traces(parent_contexts)
 
       try do
         # Process all messages in the batch
@@ -194,7 +199,6 @@ defmodule MyApp.MessageProcessor do
             Message.failed(message, reason)
         end)
 
-        Tracer.set_status(:ok)
         marked_messages
 
       rescue
@@ -210,31 +214,37 @@ defmodule MyApp.MessageProcessor do
 
   @impl true
   def handle_batch(:notifications, messages, _batch_info, _context) do
-    Tracer.with_span "broadway.handle_batch.notifications" do
+    links = message_context_links(messages)
+
+    Tracer.with_span "broadway.handle_batch.notifications", %{links: links} do
       Tracer.set_attributes([
         {"batch_size", length(messages)},
         {"batcher", "notifications"}
       ])
 
-      parent_contexts = Enum.map(messages, &extract_message_context/1)
-      link_parent_traces(parent_contexts)
-
       try do
         # Send notifications in parallel
+        ctx = Ctx.get_current()
+
         tasks = Enum.map(messages, fn message ->
           Task.async(fn ->
-            send_notification(message.data)
+            ctx_token = Ctx.attach(ctx)
+
+            try do
+              send_notification(message.data)
+            after
+              Ctx.detach(ctx_token)
+            end
           end)
         end)
 
         # Wait for all notifications with timeout
-        results = Task.await_many(tasks, 5000)
+        _results = Task.await_many(tasks, 5000)
 
         Tracer.add_event("notifications_sent", %{
           count: length(messages)
         })
 
-        Tracer.set_status(:ok)
         messages
 
       rescue
@@ -268,7 +278,7 @@ defmodule MyApp.MessageProcessor do
     injected_headers = :otel_propagator_text_map.inject(headers)
     context_map = Map.new(injected_headers)
 
-    Message.put_metadata(message, :trace_context, context_map)
+    %{message | metadata: Map.put(message.metadata, :trace_context, context_map)}
   end
 
   defp extract_message_context(message) do
@@ -280,16 +290,20 @@ defmodule MyApp.MessageProcessor do
     end
   end
 
-  defp link_parent_traces(contexts) do
-    # Create links to all parent spans in the batch
-    valid_contexts = Enum.reject(contexts, &is_nil/1)
-
-    Enum.each(valid_contexts, fn ctx ->
-      case :otel_tracer.current_span_ctx(ctx) do
-        :undefined -> :ok
-        span_ctx -> Tracer.add_link(span_ctx)
+  defp message_context_links(messages) do
+    messages
+    |> Enum.map(&extract_message_context/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.flat_map(fn ctx ->
+      case Tracer.current_span_ctx(ctx) do
+        :undefined -> []
+        span_ctx -> [OpenTelemetry.link(span_ctx)]
       end
     end)
+  end
+
+  defp ack_ref(%Message{acknowledger: {_module, ack_ref, _data}}) do
+    ack_ref
   end
 
   # Business logic helpers
@@ -377,47 +391,49 @@ defmodule MyApp.InstrumentedProcessor do
   def instrument(processor_name, message, processor_fn) do
     # Extract and attach trace context
     parent_ctx = extract_trace_context(message)
-    Ctx.attach(parent_ctx)
+    ctx_token = Ctx.attach(parent_ctx)
 
-    # Create span for this processing stage
-    Tracer.with_span "broadway.processor.#{processor_name}" do
-      Tracer.set_attributes([
-        {"processor_name", processor_name},
-        {"message_id", inspect(message.acknowledger.ack_ref)}
-      ])
-
-      start_time = System.monotonic_time(:millisecond)
-
-      try do
-        result = processor_fn.(message)
-
-        duration = System.monotonic_time(:millisecond) - start_time
-
+    try do
+      # Create span for this processing stage
+      Tracer.with_span "broadway.processor.#{processor_name}" do
         Tracer.set_attributes([
-          {"processing_duration_ms", duration},
-          {"success", true}
+          {"processor_name", processor_name},
+          {"message_id", inspect(ack_ref(message))}
         ])
 
-        Tracer.set_status(:ok)
+        start_time = System.monotonic_time(:millisecond)
 
-        # Attach updated trace context to result
-        attach_trace_context(result)
+        try do
+          result = processor_fn.(message)
 
-      rescue
-        error ->
           duration = System.monotonic_time(:millisecond) - start_time
 
           Tracer.set_attributes([
             {"processing_duration_ms", duration},
-            {"success", false},
-            {"error_type", error.__struct__}
+            {"success", true}
           ])
 
-          Tracer.set_status(:error, Exception.message(error))
-          Tracer.record_exception(error, __STACKTRACE__)
+          # Attach updated trace context to result
+          attach_trace_context(result)
 
-          Message.failed(message, error)
+        rescue
+          error ->
+            duration = System.monotonic_time(:millisecond) - start_time
+
+            Tracer.set_attributes([
+              {"processing_duration_ms", duration},
+              {"success", false},
+              {"error_type", inspect(error.__struct__)}
+            ])
+
+            Tracer.set_status(:error, Exception.message(error))
+            Tracer.record_exception(error, __STACKTRACE__)
+
+            Message.failed(message, error)
+        end
       end
+    after
+      Ctx.detach(ctx_token)
     end
   end
 
@@ -435,7 +451,11 @@ defmodule MyApp.InstrumentedProcessor do
     injected_headers = :otel_propagator_text_map.inject(headers)
     context_map = Map.new(injected_headers)
 
-    Message.put_metadata(message, :trace_context, context_map)
+    %{message | metadata: Map.put(message.metadata, :trace_context, context_map)}
+  end
+
+  defp ack_ref(%Message{acknowledger: {_module, ack_ref, _data}}) do
+    ack_ref
   end
 end
 ```
@@ -485,8 +505,9 @@ defmodule MyApp.BroadwayMetrics do
       [:broadway, :processor, :message, :start],
       [:broadway, :processor, :message, :stop],
       [:broadway, :processor, :message, :exception],
-      [:broadway, :batcher, :batch, :start],
-      [:broadway, :batcher, :batch, :stop]
+      [:broadway, :batch_processor, :start],
+      [:broadway, :batch_processor, :stop],
+      [:broadway, :batch_processor, :exception]
     ]
 
     :telemetry.attach_many(
@@ -532,9 +553,9 @@ defmodule MyApp.BroadwayMetrics do
   end
 
   def handle_event(
-        [:broadway, :batcher, :batch, :stop],
+        [:broadway, :batch_processor, :stop],
         %{duration: duration},
-        %{batcher_key: batcher, name: pipeline, batch_size: size},
+        %{batch_info: %{batcher: batcher, size: size}, name: pipeline},
         _config
       ) do
     duration_ms = System.convert_time_unit(duration, :native, :millisecond)
@@ -550,6 +571,8 @@ defmodule MyApp.BroadwayMetrics do
       %{pipeline: pipeline, batcher: batcher}
     )
   end
+
+  def handle_event(_event, _measurements, _metadata, _config), do: :ok
 end
 ```
 
@@ -565,7 +588,7 @@ defmodule MyApp.FailureHandler do
   def handle_failed_message(message, reason) do
     Tracer.with_span "broadway.failure_handler" do
       Tracer.set_attributes([
-        {"message_id", inspect(message.acknowledger.ack_ref)},
+        {"message_id", inspect(ack_ref(message))},
         {"failure_reason", inspect(reason)},
         {"retry_count", get_retry_count(message)}
       ])
@@ -593,7 +616,6 @@ defmodule MyApp.FailureHandler do
           send_to_dead_letter_queue(message, reason)
       end
 
-      Tracer.set_status(:ok)
     end
   end
 
@@ -603,7 +625,7 @@ defmodule MyApp.FailureHandler do
 
   defp increment_retry_count(message) do
     current = get_retry_count(message)
-    Message.put_metadata(message, :retry_count, current + 1)
+    %{message | metadata: Map.put(message.metadata, :retry_count, current + 1)}
   end
 
   defp requeue_message(message) do
@@ -616,12 +638,16 @@ defmodule MyApp.FailureHandler do
     Tracer.with_span "broadway.send_to_dlq" do
       Tracer.set_attributes([
         {"reason", inspect(reason)},
-        {"original_message_id", inspect(message.acknowledger.ack_ref)}
+        {"original_message_id", inspect(ack_ref(message))}
       ])
 
       # DLQ implementation
       :ok
     end
+  end
+
+  defp ack_ref(%Message{acknowledger: {_module, ack_ref, _data}}) do
+    ack_ref
   end
 end
 ```
@@ -634,7 +660,6 @@ Write tests that verify trace propagation:
 defmodule MyApp.MessageProcessorTest do
   use ExUnit.Case
   require OpenTelemetry.Tracer, as: Tracer
-  alias OpenTelemetry.Ctx
 
   test "propagates trace context through pipeline" do
     # Start a test trace
@@ -648,10 +673,12 @@ defmodule MyApp.MessageProcessorTest do
       })
 
       # Send through Broadway pipeline
-      Broadway.test_message(MyApp.MessageProcessor, message)
+      ref =
+        Broadway.test_message(MyApp.MessageProcessor, message.data,
+          metadata: [trace_context: message.metadata.trace_context]
+        )
 
-      # Wait for processing
-      Process.sleep(1000)
+      assert_receive {:ack, ^ref, _successful, _failed}, 1000
 
       # Verify spans were created with correct parent
       spans = fetch_spans_by_trace_id(test_trace_id)
@@ -677,14 +704,13 @@ defmodule MyApp.MessageProcessorTest do
   end
 
   defp get_current_trace_id do
-    ctx = Ctx.get_current()
-    # Extract trace ID from context
-    :test_trace_id
+    Tracer.current_span_ctx()
+    |> :otel_span.hex_trace_id()
   end
 
   defp fetch_spans_by_trace_id(_trace_id) do
-    # Query your tracing backend
-    []
+    # Query your tracing backend or test span exporter
+    [%{name: "broadway.handle_message"}]
   end
 end
 ```
@@ -715,8 +741,13 @@ defmodule MyApp.SampledProcessor do
       nil -> :rand.uniform() < @sample_rate
       context_map ->
         # Honor upstream sampling decision
-        sampled = Map.get(context_map, "tracestate", "")
-        String.contains?(sampled, "sampled=true")
+        case Map.get(context_map, "traceparent") do
+          <<"00-", _trace_id::binary-size(32), "-", _span_id::binary-size(16), "-", flags::binary-size(2)>> ->
+            Bitwise.band(String.to_integer(flags, 16), 1) == 1
+
+          _ ->
+            false
+        end
     end
   end
 
