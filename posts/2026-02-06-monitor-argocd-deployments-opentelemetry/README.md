@@ -22,7 +22,7 @@ The key metrics you want to capture include:
 
 - `argocd_app_info` - application metadata including sync status and health
 - `argocd_app_sync_total` - count of sync operations with success/failure status
-- `argocd_app_reconcile_duration` - how long reconciliation takes
+- `argocd_app_reconcile` - how long reconciliation takes
 - `argocd_repo_pending_request_total` - Git repository request queue depth
 - `argocd_cluster_api_resource_objects` - number of resources managed per cluster
 
@@ -39,7 +39,7 @@ graph TB
 
 ## Configuring the OpenTelemetry Collector
 
-The OpenTelemetry Collector's Prometheus receiver can scrape ArgoCD's metrics endpoints directly. Here is a collector configuration that captures all ArgoCD components.
+The OpenTelemetry Collector's Prometheus receiver can scrape ArgoCD's metrics endpoints directly. Here is a collector configuration that captures the main ArgoCD metrics endpoints.
 
 ```yaml
 # OpenTelemetry Collector config for ArgoCD monitoring
@@ -53,7 +53,7 @@ spec:
   mode: deployment
   config:
     receivers:
-      # Scrape Prometheus metrics from all ArgoCD components
+      # Scrape Prometheus metrics from the main ArgoCD components
       prometheus:
         config:
           scrape_configs:
@@ -114,6 +114,25 @@ spec:
                   replacement: $1:8084
                   target_label: __address__
 
+            # Notifications Controller - sends deployment notifications
+            - job_name: 'argocd-notifications-controller'
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names: ['argocd']
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  action: keep
+                  regex: argocd-notifications-controller
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+                - source_labels: [__address__]
+                  action: replace
+                  regex: (.+):.*
+                  replacement: $1:9001
+                  target_label: __address__
+
     processors:
       batch:
         send_batch_size: 1024
@@ -166,15 +185,15 @@ data:
 
   # Trigger on sync status changes
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
       send: [deployment-started]
 
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [deployment-completed]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [deployment-failed]
 
   # Templates define the payload sent to the webhook
@@ -253,11 +272,10 @@ The bridge service receives webhook calls from ArgoCD and converts them into Ope
 from flask import Flask, request, jsonify
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import StatusCode
-import time
 
 app = Flask(__name__)
 
@@ -268,7 +286,7 @@ resource = Resource.create({
 })
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(
+    BatchSpanProcessor(OTLPSpanExporter(
         endpoint="otel-gateway.observability:4317",
         insecure=True,
     ))
@@ -384,7 +402,7 @@ Once your data is flowing, configure alerts for these critical scenarios:
 
 1. **Sync failures** - trigger when `argocd_app_sync_total` with `phase=Error` increments.
 2. **Degraded health** - alert when `argocd_app_info` shows `health_status=Degraded` for more than 5 minutes.
-3. **Reconciliation latency** - fire when `argocd_app_reconcile_duration` exceeds your threshold (e.g., 300 seconds).
+3. **Reconciliation latency** - fire when `argocd_app_reconcile` exceeds your threshold (e.g., 300 seconds).
 4. **Repository connection issues** - watch `argocd_repo_pending_request_total` for sustained high values.
 5. **Out-of-sync applications** - alert when `argocd_app_info` shows `sync_status=OutOfSync` for extended periods.
 
