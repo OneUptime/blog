@@ -95,7 +95,6 @@ import yaml
 import os
 import json
 from pathlib import Path
-from jinja2 import Template
 
 class ObservabilityController:
     def __init__(self, manifests_dir, output_dir):
@@ -239,6 +238,38 @@ class ObservabilityController:
 
         return {"groups": [{"name": name, "rules": rules}]}
 
+    def _service_overview_panels(self, service, y_pos):
+        return [
+            {
+                "id": 1,
+                "title": "Request Rate",
+                "type": "timeseries",
+                "gridPos": {"x": 0, "y": y_pos, "w": 12, "h": 8},
+                "targets": [{
+                    "expr": (
+                        "sum(rate(http_server_request_duration_seconds_count"
+                        f'{{service_name="{service}"}}[5m]))'
+                    ),
+                    "legendFormat": "requests/sec",
+                }],
+            },
+            {
+                "id": 2,
+                "title": "Error Rate",
+                "type": "timeseries",
+                "gridPos": {"x": 12, "y": y_pos, "w": 12, "h": 8},
+                "targets": [{
+                    "expr": (
+                        "sum(rate(http_server_request_duration_seconds_count"
+                        f'{{service_name="{service}",http_response_status_code=~"5.."}}[5m]))'
+                        "/sum(rate(http_server_request_duration_seconds_count"
+                        f'{{service_name="{service}"}}[5m]))'
+                    ),
+                    "legendFormat": "error ratio",
+                }],
+            },
+        ]
+
     def _build_alert_expr(self, service, alert):
         condition = alert["condition"]
         if "error_rate" in condition:
@@ -247,6 +278,17 @@ class ObservabilityController:
                     f'{{service_name="{service}",http_response_status_code=~"5.."}}[5m]))'
                     f'/sum(rate(http_server_request_duration_seconds_count'
                     f'{{service_name="{service}"}}[5m])))*100>{threshold}')
+        if "p99_latency" in condition:
+            threshold = condition.split(">")[1].strip()
+            if threshold.endswith("ms"):
+                threshold_seconds = float(threshold.rstrip("ms")) / 1000
+            elif threshold.endswith("s"):
+                threshold_seconds = float(threshold.rstrip("s"))
+            else:
+                threshold_seconds = float(threshold)
+            return (f'histogram_quantile(0.99, sum by (le) '
+                    f'(rate(http_server_request_duration_seconds_bucket'
+                    f'{{service_name="{service}"}}[5m])))>{threshold_seconds}')
         return condition
 
     def write_output(self, path, content):
