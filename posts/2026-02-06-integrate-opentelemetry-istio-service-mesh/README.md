@@ -68,7 +68,7 @@ spec:
           port: 4317
           # Use the resource detector to add mesh metadata
           resource_detectors:
-            - environment
+            environment: {}
 ```
 
 After applying the operator config, you also need a Telemetry resource to activate the provider for your workloads.
@@ -161,7 +161,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc')
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Create the OTLP exporter pointing to the Collector
 const traceExporter = new OTLPTraceExporter({
@@ -170,7 +170,7 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'service.version': '1.2.0',
     'deployment.environment': 'production',
@@ -216,7 +216,7 @@ resource = Resource.create({
 provider = TracerProvider(resource=resource)
 exporter = OTLPSpanExporter(
     endpoint="otel-collector.observability.svc.cluster.local:4317",
-    insecure=True,  # Within cluster, TLS handled by mTLS from Istio
+    insecure=True,  # Use plaintext to the Collector; add TLS or mesh mTLS for production
 )
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
@@ -265,6 +265,11 @@ const sampler = new ParentBasedSampler({
   // If there's no parent (rare in a mesh), always sample
   root: new AlwaysOnSampler(),
   // If parent says sample, we sample. If parent says don't, we don't.
+});
+
+const sdk = new NodeSDK({
+  sampler,
+  // ...the rest of your SDK configuration
 });
 ```
 
