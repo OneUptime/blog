@@ -49,8 +49,11 @@ Each language SDK provides a semantic conventions package. Always use these inst
 
 ```go
 import (
+    "context"
+
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/sdk/resource"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // Use the semconv package for standard attribute names.
@@ -79,16 +82,18 @@ func createResource() *resource.Resource {
 ### Java
 
 ```java
-import io.opentelemetry.semconv.SemanticAttributes;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.semconv.HttpAttributes;
+import io.opentelemetry.semconv.UrlAttributes;
 
-// Java provides SemanticAttributes as typed constants.
+// Java provides generated semantic convention constants.
 // Using these ensures compile-time validation of attribute names.
 public void addHTTPAttributes(Span span, String method, int statusCode) {
     span.setAllAttributes(Attributes.of(
-        SemanticAttributes.HTTP_REQUEST_METHOD, method,
-        SemanticAttributes.HTTP_RESPONSE_STATUS_CODE, (long) statusCode,
-        SemanticAttributes.URL_SCHEME, "https"
+        HttpAttributes.HTTP_REQUEST_METHOD, method,
+        HttpAttributes.HTTP_RESPONSE_STATUS_CODE, (long) statusCode,
+        UrlAttributes.URL_SCHEME, "https"
     ));
 }
 ```
@@ -176,8 +181,8 @@ rules:
 Span names are just as important as attributes. The semantic conventions specify patterns for span names based on the operation type:
 
 ```text
-HTTP spans:       "HTTP {method}"        -> "HTTP GET", "HTTP POST"
-Database spans:   "{operation} {target}" -> "SELECT users", "INSERT orders"
+HTTP spans:       "{method} {target}"     -> "GET /orders/{id}", "POST /checkout"
+Database spans:   "{query summary}"       -> "SELECT users", "INSERT orders"
 Messaging spans:  "{destination} {op}"   -> "orders.queue send"
 RPC spans:        "{service}/{method}"   -> "UserService/GetUser"
 ```
@@ -193,7 +198,7 @@ processors:
       - context: span
         statements:
           # Normalize HTTP span names to the standard format
-          - replace_pattern(name, "^(GET|POST|PUT|DELETE|PATCH) (.+)", "HTTP $$1")
+          - replace_pattern(name, "^(GET|POST|PUT|DELETE|PATCH) (/[^?]*)\\?.*$", "$$1 $$2")
           # Remove query parameters from HTTP span names
           - replace_pattern(name, "\\?.*$", "")
 ```
@@ -245,7 +250,7 @@ print("All semantic convention checks passed")
 
 ## Handling Convention Version Changes
 
-Semantic conventions evolve over time. Attribute names get renamed (for example, `http.method` became `http.request.method`). The SDKs handle this through a migration period where both old and new names are emitted, but you need a strategy for managing these transitions:
+Semantic conventions evolve over time. Attribute names get renamed (for example, `http.method` became `http.request.method`). Many instrumentations handle this through a migration period where both old and new names can be emitted, but you need a strategy for managing these transitions:
 
 1. Pin a specific semantic convention version across all services
 2. Update the version in your shared configuration when you are ready
