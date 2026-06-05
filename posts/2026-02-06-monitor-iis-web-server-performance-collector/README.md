@@ -39,16 +39,17 @@ Your IIS server should be running on Windows Server 2016 or later. The OpenTelem
 Install the collector as a Windows service so it starts automatically:
 
 ```powershell
-# Download the OpenTelemetry Collector Contrib for Windows
+$Version = "0.153.0"
 
-# Replace the version with the latest available
-Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_windows_amd64.tar.gz" -OutFile otelcol-contrib.tar.gz
+# Download the OpenTelemetry Collector Contrib for Windows
+Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$Version/otelcol-contrib_${Version}_windows_amd64.tar.gz" -OutFile "$env:TEMP\otelcol-contrib.tar.gz"
 
 # Extract and install
-tar -xzf otelcol-contrib.tar.gz
+New-Item -ItemType Directory -Force C:\otelcol
+tar -xzf "$env:TEMP\otelcol-contrib.tar.gz" -C C:\otelcol
 
 # Register as a Windows service
-sc.exe create "OpenTelemetry Collector" binPath= "C:\otelcol\otelcol-contrib.exe --config C:\otelcol\config.yaml" start= auto
+New-Service -Name "otelcol-contrib" -DisplayName "OpenTelemetry Collector Contrib" -BinaryPathName "C:\otelcol\otelcol-contrib.exe --config C:\otelcol\config.yaml" -StartupType Automatic
 ```
 
 ## Configuring the Collector for IIS Metrics
@@ -113,6 +114,12 @@ receivers:
             # Requests rejected because the queue was full
 
 processors:
+  # Detect host.name and other resource attributes from the Windows host
+  resourcedetection/system:
+    detectors: ["system"]
+    system:
+      hostname_sources: ["os"]
+
   # Batch telemetry to reduce export overhead
   batch:
     timeout: 10s
@@ -121,9 +128,6 @@ processors:
   # Add resource attributes identifying this server
   resource:
     attributes:
-      - key: host.name
-        from_attribute: ""
-        action: upsert
       - key: service.name
         value: "iis-web-server"
         action: upsert
@@ -138,7 +142,7 @@ service:
   pipelines:
     metrics:
       receivers: [windowsperfcounters]
-      processors: [batch, resource]
+      processors: [resourcedetection/system, batch, resource]
       exporters: [otlp]
 ```
 
@@ -164,10 +168,11 @@ receivers:
         expr: 'body startsWith "#"'
       - type: regex_parser
         # Parse W3C extended log format
-        regex: '(?P<date>\S+)\s+(?P<time>\S+)\s+(?P<s_ip>\S+)\s+(?P<cs_method>\S+)\s+(?P<cs_uri_stem>\S+)\s+(?P<cs_uri_query>\S+)\s+(?P<s_port>\d+)\s+(?P<cs_username>\S+)\s+(?P<c_ip>\S+)\s+(?P<cs_user_agent>\S+)\s+(?P<cs_referer>\S+)\s+(?P<sc_status>\d+)\s+(?P<sc_substatus>\d+)\s+(?P<sc_win32_status>\d+)\s+(?P<time_taken>\d+)'
+        regex: '(?P<timestamp>\S+\s+\S+)\s+(?P<s_ip>\S+)\s+(?P<cs_method>\S+)\s+(?P<cs_uri_stem>\S+)\s+(?P<cs_uri_query>\S+)\s+(?P<s_port>\d+)\s+(?P<cs_username>\S+)\s+(?P<c_ip>\S+)\s+(?P<cs_user_agent>\S+)\s+(?P<cs_referer>\S+)\s+(?P<sc_status>\d+)\s+(?P<sc_substatus>\d+)\s+(?P<sc_win32_status>\d+)\s+(?P<time_taken>\d+)'
         timestamp:
-          parse_from: attributes.date
-          layout: "%Y-%m-%d"
+          parse_from: attributes.timestamp
+          layout: "%Y-%m-%d %H:%M:%S"
+          location: UTC
 
 service:
   pipelines:
@@ -189,7 +194,7 @@ Not all IIS counters are equally important. Here are the ones that matter most f
 
 **Current Connections** shows how many clients are actively connected. A spike might mean a traffic surge, but it could also mean connections are not being closed properly, which points to a resource leak.
 
-**Error Rate** through the "Errors Total/Sec" counter catches 500-level errors at the application level. Even a small error rate can represent a significant number of failed requests at scale.
+**Error Rate** through the "Errors Total/Sec" counter catches ASP.NET application errors, including parser, compilation, and runtime errors. Even a small error rate can represent a significant number of failed requests at scale.
 
 **Request Execution Time** measures how long requests take to process. This is different from the time-taken field in IIS logs, which includes network transfer time. The execution time counter focuses on server-side processing.
 
