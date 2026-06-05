@@ -18,7 +18,7 @@ Each exporter has different characteristics:
 
 - **OTLP**: The native OpenTelemetry protocol, supporting gRPC and HTTP. Best for modern OpenTelemetry collectors and backends.
 - **Zipkin**: Mature format with wide support. Good for existing Zipkin infrastructure.
-- **Jaeger**: Originally developed by Uber, popular in Kubernetes environments. Supports both Thrift and Protobuf formats.
+- **Jaeger**: Originally developed by Uber, popular in Kubernetes environments. Current Jaeger backends can receive OTLP directly, so prefer the OTLP exporter for Jaeger unless you are maintaining a legacy setup.
 
 You can configure multiple exporters simultaneously, sending traces to multiple backends for redundancy or migration scenarios.
 
@@ -41,9 +41,6 @@ dependencies {
 
     // Zipkin Exporter
     implementation("io.opentelemetry:opentelemetry-exporter-zipkin")
-
-    // Jaeger Exporter
-    implementation("io.opentelemetry:opentelemetry-exporter-jaeger")
 
     // Optional: Logging exporter for debugging
     implementation("io.opentelemetry:opentelemetry-exporter-logging")
@@ -78,11 +75,6 @@ For Maven projects:
         <artifactId>opentelemetry-exporter-zipkin</artifactId>
     </dependency>
 
-    <!-- Jaeger Exporter -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-exporter-jaeger</artifactId>
-    </dependency>
 </dependencies>
 ```
 
@@ -93,55 +85,59 @@ OTLP (OpenTelemetry Protocol) is the recommended exporter for modern deployments
 ```yaml
 # application.yml - OTLP with gRPC
 
-tracing:
-  enabled: true
+otel:
+  traces:
+    exporter: otlp
 
-opentelemetry:
-  service-name: micronaut-otlp-service
+  service:
+    name: micronaut-otlp-service
 
   # Resource attributes
-  resource-attributes:
-    deployment.environment: production
-    service.version: 1.0.0
+  resource:
+    attributes: deployment.environment=production,service.version=1.0.0
 
   # OTLP exporter configuration
   exporter:
     otlp:
-      enabled: true
       # gRPC endpoint (default port 4317)
       endpoint: http://localhost:4317
       # Protocol: grpc or http/protobuf
       protocol: grpc
       # Timeout for exports
-      timeout: 10s
+      timeout: 10000
       # Enable compression to reduce network traffic
       compression: gzip
       # Custom headers for authentication
-      headers:
-        Authorization: "Bearer ${OTEL_AUTH_TOKEN:}"
-        X-Custom-Header: "custom-value"
+      headers: "Authorization=Bearer ${OTEL_AUTH_TOKEN:},X-Custom-Header=custom-value"
 
   # Batch span processor configuration
-  span-processor:
-    batch:
-      schedule-delay: 5000
-      max-queue-size: 2048
-      max-export-batch-size: 512
-      export-timeout: 30000
+  bsp:
+    schedule:
+      delay: 5000
+    max:
+      queue:
+        size: 2048
+      export:
+        batch:
+          size: 512
+    export:
+      timeout: 30000
 ```
 
 For HTTP/protobuf transport (useful when gRPC is not available):
 
 ```yaml
 # application.yml - OTLP with HTTP
-opentelemetry:
+otel:
+  traces:
+    exporter: otlp
+
   exporter:
     otlp:
-      enabled: true
       # HTTP endpoint (default port 4318)
       endpoint: http://localhost:4318/v1/traces
       protocol: http/protobuf
-      timeout: 10s
+      timeout: 10000
       compression: gzip
 ```
 
@@ -151,29 +147,20 @@ Zipkin exporter is ideal when you have existing Zipkin infrastructure or need br
 
 ```yaml
 # application.yml - Zipkin configuration
-tracing:
-  enabled: true
+otel:
+  traces:
+    exporter: zipkin
 
-  # Use Zipkin-compatible tracing
-  zipkin:
-    enabled: true
-    # Zipkin collector endpoint
-    url: http://localhost:9411/api/v2/spans
-    # HTTP connection timeout
-    connect-timeout: 1s
-    # Read timeout for HTTP requests
-    read-timeout: 10s
+  service:
+    name: micronaut-zipkin-service
 
-opentelemetry:
-  service-name: micronaut-zipkin-service
+  resource:
+    attributes: deployment.environment=production
 
-  resource-attributes:
-    deployment.environment: production
-
-  # Disable OTLP if using only Zipkin
   exporter:
-    otlp:
-      enabled: false
+    zipkin:
+      # Zipkin collector endpoint
+      endpoint: http://localhost:9411/api/v2/spans
 ```
 
 For programmatic Zipkin configuration with more control:
@@ -193,8 +180,6 @@ public class ZipkinExporterConfig {
     public SpanExporter zipkinExporter() {
         return ZipkinSpanExporter.builder()
             .setEndpoint("http://localhost:9411/api/v2/spans")
-            // Optional: set custom encoder
-            .setEncoder(/* custom encoder */)
             // Optional: set read timeout
             .setReadTimeout(java.time.Duration.ofSeconds(10))
             .build();
@@ -204,30 +189,25 @@ public class ZipkinExporterConfig {
 
 ## Configuring Jaeger Exporter
 
-Jaeger exporter works with Jaeger agents and collectors. Note that Jaeger now recommends using OTLP instead of the native Jaeger protocol.
+Jaeger can receive OTLP directly, and OpenTelemetry Java's native Jaeger exporter is deprecated. Configure the OTLP exporter to send traces to Jaeger's OTLP endpoint.
 
 ```yaml
 # application.yml - Jaeger configuration
-tracing:
-  enabled: true
+otel:
+  traces:
+    exporter: otlp
 
-  jaeger:
-    enabled: true
-    # Jaeger collector endpoint
-    endpoint: http://localhost:14250
-    # Service name
-    service-name: micronaut-jaeger-service
+  service:
+    name: micronaut-jaeger-service
 
-opentelemetry:
-  service-name: micronaut-jaeger-service
+  resource:
+    attributes: deployment.environment=production
 
-  resource-attributes:
-    deployment.environment: production
-
-  # Disable OTLP if using only Jaeger
   exporter:
     otlp:
-      enabled: false
+      # Jaeger OTLP gRPC endpoint
+      endpoint: http://localhost:4317
+      protocol: grpc
 ```
 
 Programmatic Jaeger configuration for advanced scenarios:
@@ -236,7 +216,7 @@ Programmatic Jaeger configuration for advanced scenarios:
 package com.example.config;
 
 import io.micronaut.context.annotation.Factory;
-import io.opentelemetry.exporter.jaeger.JaegerGrpcSpanExporter;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import jakarta.inject.Singleton;
 
@@ -247,9 +227,9 @@ public class JaegerExporterConfig {
 
     @Singleton
     public SpanExporter jaegerExporter() {
-        return JaegerGrpcSpanExporter.builder()
-            // Jaeger collector gRPC endpoint
-            .setEndpoint("http://localhost:14250")
+        return OtlpGrpcSpanExporter.builder()
+            // Jaeger OTLP gRPC endpoint
+            .setEndpoint("http://localhost:4317")
             // Connection timeout
             .setTimeout(Duration.ofSeconds(10))
             .build();
@@ -266,56 +246,36 @@ package com.example.config;
 
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
+import io.micronaut.tracing.opentelemetry.OpenTelemetryBuilderCustomizer;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.exporter.zipkin.ZipkinSpanExporter;
-import io.opentelemetry.exporter.jaeger.JaegerGrpcSpanExporter;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
-import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import jakarta.inject.Singleton;
 
 import java.time.Duration;
-import java.util.Arrays;
 
 @Factory
 public class MultiExporterConfig {
 
     @Singleton
     @Requires(property = "tracing.multi-exporter.enabled", value = "true")
-    public SdkTracerProvider tracerProvider() {
-        // Create OTLP exporter
-        SpanExporter otlpExporter = OtlpGrpcSpanExporter.builder()
-            .setEndpoint("http://otel-collector:4317")
-            .setTimeout(Duration.ofSeconds(10))
-            .build();
+    public OpenTelemetryBuilderCustomizer multiExporterCustomizer() {
+        return builder -> builder.addSpanExporterCustomizer((configuredExporter, configProperties) -> {
+            // Create Zipkin exporter
+            SpanExporter zipkinExporter = ZipkinSpanExporter.builder()
+                .setEndpoint("http://zipkin:9411/api/v2/spans")
+                .setReadTimeout(Duration.ofSeconds(10))
+                .build();
 
-        // Create Zipkin exporter
-        SpanExporter zipkinExporter = ZipkinSpanExporter.builder()
-            .setEndpoint("http://zipkin:9411/api/v2/spans")
-            .setReadTimeout(Duration.ofSeconds(10))
-            .build();
+            // Create an OTLP exporter that sends directly to Jaeger
+            SpanExporter jaegerOtlpExporter = OtlpGrpcSpanExporter.builder()
+                .setEndpoint("http://jaeger:4317")
+                .setTimeout(Duration.ofSeconds(10))
+                .build();
 
-        // Create Jaeger exporter
-        SpanExporter jaegerExporter = JaegerGrpcSpanExporter.builder()
-            .setEndpoint("http://jaeger:14250")
-            .setTimeout(Duration.ofSeconds(10))
-            .build();
-
-        // Create a composite exporter that sends to all backends
-        SpanExporter multiExporter = SpanExporter.composite(
-            Arrays.asList(otlpExporter, zipkinExporter, jaegerExporter)
-        );
-
-        // Build tracer provider with batch processor
-        return SdkTracerProvider.builder()
-            .addSpanProcessor(
-                BatchSpanProcessor.builder(multiExporter)
-                    .setScheduleDelay(Duration.ofSeconds(5))
-                    .setMaxQueueSize(2048)
-                    .setMaxExportBatchSize(512)
-                    .build()
-            )
-            .build();
+            // Add these exporters to the exporter configured by otel.traces.exporter
+            return SpanExporter.composite(configuredExporter, zipkinExporter, jaegerOtlpExporter);
+        });
     }
 }
 ```
@@ -324,17 +284,24 @@ Configuration for the multi-exporter setup:
 
 ```yaml
 # application.yml - Multi-exporter configuration
+otel:
+  traces:
+    exporter: otlp
+
+  exporter:
+    otlp:
+      endpoint: http://otel-collector:4317
+      protocol: grpc
+
+  service:
+    name: micronaut-multi-backend-service
+
+  resource:
+    attributes: deployment.environment=production,service.version=1.0.0
+
 tracing:
-  enabled: true
   multi-exporter:
     enabled: true
-
-opentelemetry:
-  service-name: micronaut-multi-backend-service
-
-  resource-attributes:
-    deployment.environment: production
-    service.version: 1.0.0
 ```
 
 ## Exporter Selection Strategy
@@ -352,7 +319,7 @@ graph TD
     C -->|Vendor Backend| G{Supports OTLP?}
 
     F -->|Latest| D
-    F -->|Legacy| H[Jaeger Exporter]
+    F -->|Legacy| H[Legacy Jaeger Exporter]
 
     G -->|Yes| D
     G -->|No| I[Vendor-Specific Exporter]
@@ -371,13 +338,11 @@ Create different configurations for development, staging, and production environ
 
 ```yaml
 # application.yml - Common configuration
-tracing:
-  enabled: true
-
-opentelemetry:
-  service-name: ${SERVICE_NAME:micronaut-service}
-  resource-attributes:
-    service.version: ${APP_VERSION:dev}
+otel:
+  service:
+    name: ${SERVICE_NAME:micronaut-service}
+  resource:
+    attributes: service.version=${APP_VERSION:dev}
 
 ---
 # application-dev.yml - Development configuration
@@ -387,70 +352,71 @@ micronaut:
   config-client:
     enabled: true
 
-opentelemetry:
+otel:
+  traces:
+    exporter: otlp
+    sampler: always_on
+
   exporter:
     otlp:
-      enabled: true
       endpoint: http://localhost:4317
       protocol: grpc
 
-  # Full sampling in development
-  sampler:
-    probability: 1.0
-
   # Shorter delays for immediate feedback
-  span-processor:
-    batch:
-      schedule-delay: 1000
+  bsp:
+    schedule:
+      delay: 1000
 
 ---
 # application-staging.yml - Staging configuration
-opentelemetry:
-  resource-attributes:
-    deployment.environment: staging
+otel:
+  traces:
+    exporter: otlp
+    sampler: traceidratio
+    sampler.arg: 0.5
+
+  resource:
+    attributes: deployment.environment=staging
 
   exporter:
     otlp:
-      enabled: true
       endpoint: ${OTEL_COLLECTOR_ENDPOINT:http://otel-collector.staging:4317}
       protocol: grpc
       compression: gzip
 
-  # Moderate sampling
-  sampler:
-    probability: 0.5
-
-  span-processor:
-    batch:
-      schedule-delay: 3000
+  bsp:
+    schedule:
+      delay: 3000
 
 ---
 # application-prod.yml - Production configuration
-opentelemetry:
-  resource-attributes:
-    deployment.environment: production
+otel:
+  traces:
+    exporter: otlp
+    sampler: parentbased_traceidratio
+    sampler.arg: ${TRACE_SAMPLE_RATE:0.1}
+
+  resource:
+    attributes: deployment.environment=production
 
   exporter:
     otlp:
-      enabled: true
       endpoint: ${OTEL_COLLECTOR_ENDPOINT}
       protocol: grpc
       compression: gzip
       # Authentication headers
-      headers:
-        Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
-
-  # Lower sampling for high traffic
-  sampler:
-    type: parentbased_traceidratio
-    probability: ${TRACE_SAMPLE_RATE:0.1}
+      headers: "Authorization=Bearer ${OTEL_AUTH_TOKEN}"
 
   # Optimized batch processing
-  span-processor:
-    batch:
-      schedule-delay: 5000
-      max-queue-size: 2048
-      max-export-batch-size: 512
+  bsp:
+    schedule:
+      delay: 5000
+    max:
+      queue:
+        size: 2048
+      export:
+        batch:
+          size: 512
 ```
 
 ## Custom Exporter Implementation
@@ -467,7 +433,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
-import java.util.concurrent.TimeUnit;
+import java.util.StringJoiner;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Custom exporter that writes spans to a custom backend
@@ -558,27 +525,50 @@ public class CustomSpanExporter implements SpanExporter {
 
     private String convertSpansToCustomFormat(Collection<SpanData> spans) {
         // Convert OpenTelemetry spans to your custom format
-        StringBuilder json = new StringBuilder("[");
+        StringJoiner spanJson = new StringJoiner(",", "[", "]");
 
         for (SpanData span : spans) {
-            json.append("{")
-                .append("\"traceId\":\"").append(span.getTraceId()).append("\",")
-                .append("\"spanId\":\"").append(span.getSpanId()).append("\",")
-                .append("\"name\":\"").append(span.getName()).append("\",")
-                .append("\"startTime\":").append(span.getStartEpochNanos()).append(",")
-                .append("\"endTime\":").append(span.getEndEpochNanos()).append(",")
-                .append("\"attributes\":{");
+            StringJoiner attributesJson = new StringJoiner(",", "{", "}");
 
             span.getAttributes().forEach((key, value) -> {
-                json.append("\"").append(key.getKey()).append("\":\"")
-                    .append(value).append("\",");
+                attributesJson.add("\"" + escapeJson(key.getKey()) + "\":\"" + escapeJson(String.valueOf(value)) + "\"");
             });
 
-            json.append("}},");
+            spanJson.add("{"
+                + "\"traceId\":\"" + span.getTraceId() + "\","
+                + "\"spanId\":\"" + span.getSpanId() + "\","
+                + "\"name\":\"" + escapeJson(span.getName()) + "\","
+                + "\"startTime\":" + span.getStartEpochNanos() + ","
+                + "\"endTime\":" + span.getEndEpochNanos() + ","
+                + "\"attributes\":" + attributesJson
+                + "}");
         }
 
-        json.append("]");
-        return json.toString();
+        return spanJson.toString();
+    }
+
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static final class CustomBackendClient {
+
+        CustomBackendClient(String endpoint) {
+            // Initialize your HTTP or messaging client with the endpoint.
+        }
+
+        CompletableFuture<Void> sendAsync(String payload) {
+            // Send the payload asynchronously in your real implementation.
+            return CompletableFuture.completedFuture(null);
+        }
+
+        void flush() {
+            // Flush buffered data in your real implementation.
+        }
+
+        void close() {
+            // Close network resources in your real implementation.
+        }
     }
 }
 ```
@@ -675,39 +665,51 @@ Optimize exporter performance for production workloads:
 
 ```yaml
 # application-prod.yml - Optimized configuration
-opentelemetry:
+otel:
   # Batch processor settings for optimal throughput
-  span-processor:
-    batch:
+  bsp:
+    schedule:
       # Balance between latency and throughput
-      schedule-delay: 5000
-      # Large queue for traffic bursts
-      max-queue-size: 4096
-      # Optimal batch size for network efficiency
-      max-export-batch-size: 512
+      delay: 5000
+    max:
+      queue:
+        # Large queue for traffic bursts
+        size: 4096
+      export:
+        batch:
+          # Optimal batch size for network efficiency
+          size: 512
+    export:
       # Timeout for slow backends
-      export-timeout: 30000
+      timeout: 30000
 
   # Resource limits to prevent memory issues
-  span-limits:
-    max-attributes: 128
-    max-events: 128
-    max-links: 32
-    max-attribute-length: 512
+  span:
+    attribute:
+      count:
+        limit: 128
+      value:
+        length:
+          limit: 512
+    event:
+      count:
+        limit: 128
+    link:
+      count:
+        limit: 32
 
   # Efficient sampling
-  sampler:
-    type: parentbased_traceidratio
-    probability: 0.1
+  traces:
+    sampler: parentbased_traceidratio
+    sampler.arg: 0.1
 
   exporter:
     otlp:
+      protocol: grpc
       # Use compression
       compression: gzip
       # Reasonable timeout
-      timeout: 10s
-      # Connection pooling (if supported)
-      max-connections: 5
+      timeout: 10000
 ```
 
-Configuring OpenTelemetry exporters in Micronaut gives you flexibility in how and where you send trace data. Start with OTLP for future compatibility, but don't hesitate to use Zipkin or Jaeger exporters if they match your existing infrastructure. The ability to use multiple exporters simultaneously makes migration and redundancy straightforward, while custom exporters handle specialized requirements.
+Configuring OpenTelemetry exporters in Micronaut gives you flexibility in how and where you send trace data. Start with OTLP for future compatibility, but don't hesitate to use Zipkin or OTLP-to-Jaeger if they match your existing infrastructure. The ability to use multiple exporters simultaneously makes migration and redundancy straightforward, while custom exporters handle specialized requirements.
