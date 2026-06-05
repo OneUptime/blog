@@ -23,12 +23,12 @@ graph LR
     C -->|Block Upload| D[Thanos Sidecar]
     D -->|Upload| E[Object Storage S3/GCS]
     F[Thanos Store Gateway] -->|Read| E
-    G[Thanos Query] -->|Aggregate| C
+    G[Thanos Query] -->|Aggregate| D
     G -->|Aggregate| F
     H[Grafana] -->|PromQL| G
 ```
 
-Thanos has several components, but for long-term OpenTelemetry metrics storage, you primarily need four: the Sidecar, the Store Gateway, the Compactor, and the Query frontend.
+Thanos has several components, but for long-term OpenTelemetry metrics storage, you primarily need four: the Sidecar, the Store Gateway, the Compactor, and the Query component.
 
 ## Setting Up Prometheus with Remote Write
 
@@ -51,8 +51,10 @@ processors:
 
 exporters:
   # Prometheus remote write exporter sends metrics to Prometheus
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
     # Resource to telemetry conversion maps OTel resource attributes
     resource_to_telemetry_conversion:
       enabled: true
@@ -67,7 +69,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 On the Prometheus side, you need to enable certain flags for Thanos compatibility. The key settings are enabling the admin API, setting external labels (required by Thanos for deduplication), and configuring appropriate retention.
@@ -84,17 +86,11 @@ global:
     region: "us-east-1"
     replica: "prometheus-0"
 
-# Remote write receiver to accept data from OTel Collector
-# This enables Prometheus to receive metrics via remote write API
-remote_write: []
-
 # Keep local retention short since Thanos handles long-term storage
-# 2 hours is the minimum block duration Prometheus uses
 storage:
   tsdb:
-    retention.time: 48h
-    min-block-duration: 2h
-    max-block-duration: 2h
+    retention:
+      time: 48h
 ```
 
 Launch Prometheus with the flags that Thanos needs.
@@ -102,7 +98,7 @@ Launch Prometheus with the flags that Thanos needs.
 ```bash
 # Start Prometheus with Thanos-compatible settings
 # --storage.tsdb.min-block-duration and max-block-duration must match
-# This ensures consistent block sizes for Thanos upload
+# This disables local compaction so the sidecar uploads uncompacted blocks
 prometheus \
   --config.file=/etc/prometheus/prometheus.yml \
   --storage.tsdb.path=/prometheus \
@@ -113,7 +109,7 @@ prometheus \
   --web.enable-remote-write-receiver
 ```
 
-Setting both min and max block duration to 2 hours is critical. Thanos expects consistent block sizes so it can upload and compact them reliably.
+Setting both min and max block duration to 2 hours is critical when the sidecar uploads blocks and the Thanos Compactor later compacts them. This disables Prometheus local compaction for persisted blocks so the sidecar uploads uncompacted blocks.
 
 ## Deploying the Thanos Sidecar
 
@@ -130,8 +126,8 @@ config:
   bucket: "otel-metrics-longterm"
   endpoint: "s3.us-east-1.amazonaws.com"
   region: "us-east-1"
-  access_key: "${AWS_ACCESS_KEY_ID}"
-  secret_key: "${AWS_SECRET_ACCESS_KEY}"
+  # If access_key and secret_key are omitted, Thanos can read
+  # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from the environment.
   # Use server-side encryption for data at rest
   sse_config:
     type: "SSE-S3"
@@ -189,11 +185,19 @@ thanos compact \
   --wait
 ```
 
-This retention policy keeps raw data for 30 days, 5-minute downsampled data for 180 days, and 1-hour downsampled data for a full year. The storage savings are significant. Raw OpenTelemetry metrics at 15-second intervals generate roughly 6x more data than the 5-minute downsampled equivalent.
+This retention policy keeps raw data for 30 days, 5-minute downsampled data for 180 days, and 1-hour downsampled data for a full year. Downsampling is mainly for faster long-range queries, not immediate storage savings. The storage reduction comes from deleting older raw blocks while keeping coarser-resolution blocks for historical views.
 
-## Configuring the Thanos Query Frontend
+## Configuring the Thanos Query
 
 The Query component fans out queries to both the sidecar (for recent data) and the Store Gateway (for historical data), then merges the results. It deduplicates data from replicated Prometheus instances using the external labels.
+
+```yaml
+# thanos-query-endpoints.yaml
+endpoints:
+  - address: prometheus-sidecar-0:10901
+  - address: prometheus-sidecar-1:10901
+  - address: thanos-store-gateway:10901
+```
 
 ```bash
 # Run Thanos Query to provide unified PromQL interface
@@ -201,9 +205,7 @@ The Query component fans out queries to both the sidecar (for recent data) and t
 thanos query \
   --grpc-address=0.0.0.0:10901 \
   --http-address=0.0.0.0:9090 \
-  --store=prometheus-sidecar-0:10901 \
-  --store=prometheus-sidecar-1:10901 \
-  --store=thanos-store-gateway:10901 \
+  --endpoint.sd-config-file=/etc/thanos/thanos-query-endpoints.yaml \
   --query.replica-label=replica \
   --query.auto-downsampling
 ```
@@ -231,7 +233,7 @@ datasources:
         - name: traceID
           datasourceUid: tempo
       # Increase timeout for long-range historical queries
-      timeout: 120
+      timeout: "120"
 ```
 
 Now your Grafana dashboards can query across the full retention period. Recent metrics come from Prometheus through the sidecar, and historical metrics come from object storage through the Store Gateway. The transition is seamless from the user's perspective.
@@ -243,7 +245,7 @@ Thanos components expose their own Prometheus metrics. You should monitor a few 
 ```promql
 # Check sidecar upload success rate
 # Failed uploads mean blocks are stuck in Prometheus and may be lost
-rate(thanos_shipper_upload_failures_total[5m])
+rate(thanos_objstore_bucket_operation_failures_total{component="sidecar",operation="upload"}[5m])
 
 # Monitor Store Gateway cache hit ratio
 # Low hit ratio means more object storage reads and slower queries
