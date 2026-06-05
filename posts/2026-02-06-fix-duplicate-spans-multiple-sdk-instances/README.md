@@ -10,7 +10,7 @@ You check your tracing backend and notice that every operation produces two or t
 
 ## Why This Happens
 
-The OpenTelemetry SDK uses a global TracerProvider. If your application initializes the SDK more than once, you end up with multiple TracerProviders, each with its own exporter. Every span gets exported once per provider.
+OpenTelemetry applications normally use one global TracerProvider per process. If your application initializes tracing more than once, you can end up with duplicate span processors/exporters, duplicate instrumentation hooks, or attempts to replace the global provider after it has already been set. In the duplicate-export case, every span can be exported once per exporter path.
 
 Common scenarios that cause this:
 
@@ -24,9 +24,10 @@ Common scenarios that cause this:
 ```bash
 # Look at your tracing backend for duplicate span IDs
 
-# Each span should have a unique span_id
-# If you see the same operation with different span_ids but identical timestamps,
-# you have multiple SDK instances
+# Each span in a trace should have a unique span_id
+# If you see the same trace_id and span_id repeated, the same span may be
+# exported more than once. If you see the same operation with different
+# span_ids and identical timestamps, the operation may be instrumented twice.
 
 # In your application, add debug logging to see how many providers exist
 ```
@@ -66,12 +67,16 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-# Only initialize if a real provider is not already set
 _initialized = False
 
 def init_telemetry():
     global _initialized
     if _initialized:
+        return
+
+    current_provider = trace.get_tracer_provider()
+    if isinstance(current_provider, TracerProvider):
+        _initialized = True
         return
 
     provider = TracerProvider()
@@ -152,10 +157,12 @@ When using the Operator's auto-instrumentation alongside your own SDK initializa
 # instrumentation.opentelemetry.io/inject-python: "true"
 
 # Option 2: Use auto-instrumentation and remove manual SDK initialization
-# Add the annotation and remove your SDK init code
-metadata:
-  annotations:
-    instrumentation.opentelemetry.io/inject-python: "true"
+# Add the annotation to the pod template and remove your SDK init code
+spec:
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: "true"
 ```
 
 Pick one approach, not both.
@@ -176,18 +183,15 @@ ORDER BY cnt DESC;
 
 ## Cleanup
 
-If you had multiple providers and need to shut them down cleanly:
+If you need to shut the configured Python provider down cleanly:
 
 ```python
-# Python - shutdown all processors before reinitializing
+# Python - shutdown processors before process exit
 provider = trace.get_tracer_provider()
 if hasattr(provider, 'shutdown'):
     provider.shutdown()
-
-# Now initialize cleanly
-new_provider = TracerProvider()
-# ... configure and set
-trace.set_tracer_provider(new_provider)
 ```
+
+In Python, `trace.set_tracer_provider()` can only set the global provider once. After shutdown, restart the process instead of trying to replace the global provider in the same process.
 
 Duplicate spans double your storage costs and make traces confusing to read. The fix is always the same: ensure exactly one TracerProvider is initialized per process. Audit your initialization code, check for conflicts with auto-instrumentation, and add guards to prevent re-initialization.
