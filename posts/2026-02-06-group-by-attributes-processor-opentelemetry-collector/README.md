@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Attribute, Grouping, Metric, Resource, Cardinality
 
-Description: Learn how to configure the group-by-attributes processor in OpenTelemetry Collector to reorganize telemetry attributes, reduce cardinality, optimize storage costs.
+Description: Learn how to configure the group-by-attributes processor in OpenTelemetry Collector to reorganize telemetry attributes, manage resource grouping, optimize storage costs.
 
 ---
 
-Telemetry data in OpenTelemetry is organized into resource attributes (describing the source, like service name or host) and data point attributes (describing individual measurements, like HTTP method or status code). Sometimes you need to reorganize these attributes - move them from resource to data point level or vice versa - to optimize for storage, querying, or cardinality management.
+Telemetry data in OpenTelemetry is organized into resource attributes (describing the source, like service name or host) and data point attributes (describing individual measurements, like HTTP method or status code). Sometimes you need to reorganize these attributes - for example, move selected record or data point attributes to the resource level - to optimize for storage, querying, or attribute organization.
 
-The group-by-attributes processor (also called groupbyattrs) enables you to group telemetry by specific attribute keys and restructure how attributes are distributed between resource and data point levels. This processor is essential for controlling cardinality, optimizing storage costs, and ensuring your telemetry is structured for efficient querying.
+The group-by-attributes processor (also called groupbyattrs) enables you to group telemetry by specific attribute keys and restructure how selected attributes are represented at the resource level. This processor is useful for controlling resource grouping, optimizing payload shape, and ensuring your telemetry is structured for efficient querying.
 
 ## Understanding Resource vs Data Point Attributes
 
@@ -48,21 +48,21 @@ The group-by-attributes processor moves specified attributes to the resource lev
 
 ## Why You Need This Processor
 
-The group-by-attributes processor solves several critical problems in production observability:
+The group-by-attributes processor solves several practical problems in production observability:
 
-**Cardinality Reduction**: By moving high-cardinality attributes to the resource level, you can aggregate metrics more effectively. Instead of storing one time series per unique combination of all attributes, you group related series together.
+**Attribute Organization**: By moving selected attributes to the resource level, you can make telemetry from the same logical source easier to group and inspect. Avoid grouping on unbounded identifiers, because those values still create many resource groups.
 
-**Storage Optimization**: Backends often charge based on the number of unique time series. Grouping by resource attributes can significantly reduce series count by consolidating related metrics under common resources.
+**Storage Optimization**: Backends often charge based on the number of unique time series or amount of ingested data. Dropping high-cardinality attributes reduces series count, while groupbyattrs can reduce repeated attributes in payloads by moving grouping keys from records to resources.
 
-**Query Performance**: When attributes are organized properly at the resource level, queries filtering by those attributes become much faster because the backend can quickly identify relevant resource groups.
+**Query Performance**: When attributes are organized properly at the resource level, some backends can filter or index those attributes more efficiently. The exact impact depends on the backend's data model.
 
 **Backend Compatibility**: Some backends have specific requirements about attribute organization. This processor ensures your telemetry matches those requirements.
 
 ## Basic Configuration
 
-The processor requires you to specify which attributes should be used for grouping. These attributes are promoted to the resource level.
+The processor requires you to specify which record or metric data point attributes should be used for grouping. These attributes are moved to the resource level when they are present on the processed telemetry.
 
-Here is a basic configuration that groups metrics by service name and deployment environment:
+Here is a basic configuration that groups metrics by service name and deployment environment when those keys are present as metric data point attributes:
 
 ```yaml
 # RECEIVERS: Accept metrics via OTLP
@@ -75,14 +75,15 @@ receivers:
 
 # PROCESSORS: Group metrics by specific attributes
 processors:
-  # Group all metrics by service.name and deployment.environment
+  # Group metrics by service.name and deployment.environment data point attributes
   groupbyattrs:
     keys:
-      - service.name          # Promote service name to resource level
-      - deployment.environment # Promote environment to resource level
+      - service.name          # Move service name to resource level
+      - deployment.environment # Move environment to resource level
 
   # Batch for efficiency
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -102,11 +103,11 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration receives metrics and groups them so that all metrics sharing the same service name and deployment environment are organized under a common resource. If a metric doesn't have these attributes, it remains in its original resource group.
+This configuration receives metrics and groups data points that share the same service name and deployment environment attributes under a common resource. If a metric data point doesn't have any of these attributes, it remains in its original resource group.
 
 ## Reducing Cardinality for Cost Optimization
 
-High-cardinality metrics can explode your observability costs. A single counter with 10 different labels, each with 10 possible values, creates 10^10 potential time series. The group-by-attributes processor helps by consolidating related series.
+High-cardinality metrics can explode your observability costs. A single counter with 10 different labels, each with 10 possible values, creates 10^10 potential label combinations. The group-by-attributes processor can help reorganize the remaining attributes after you remove or normalize unbounded values.
 
 Consider HTTP request metrics with these attributes: service, endpoint, method, status_code, user_id. The user_id creates unbounded cardinality. Here is how to handle it:
 
@@ -130,6 +131,7 @@ processors:
   # Each resource contains metrics with method and status_code as data attributes
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -147,29 +149,25 @@ service:
       exporters: [otlphttp]
 ```
 
-By dropping user_id and grouping by service and endpoint, you reduce cardinality from potentially millions of series (one per user per endpoint) to dozens (one per endpoint), while still maintaining useful metrics about request counts and error rates per endpoint.
+By dropping user_id, you reduce metric cardinality from potentially millions of series (one per user per endpoint) to a bounded set based on endpoint, method, status code, and other remaining attributes, while still maintaining useful metrics about request counts and error rates per endpoint.
 
-## Grouping with Compaction for Maximum Efficiency
+## Grouping to Reduce Redundant Attributes
 
-The processor supports a `compact` mode that goes further: it moves ALL matching attributes from data points to the resource level, reducing redundancy.
+When `groupbyattrs` moves grouping keys from records or metric data points to the resource level, it removes those keys from the records or data points. This reduces redundancy for the selected keys. The processor can also compact data that already has matching resource and scope properties by running with no `keys`.
 
-Here is a configuration using compaction:
+Here is a configuration that groups by region and service attributes:
 
 ```yaml
 processors:
-  # Group by region and availability zone, with compaction
+  # Group by region, availability zone, and service
   groupbyattrs:
     keys:
       - cloud.region
       - cloud.availability_zone
       - service.name
 
-    # IMPORTANT: Enable compaction mode
-    # This moves the grouping keys from ALL data points to resource level
-    # Reduces data size but changes attribute organization
-    compact: true
-
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -187,25 +185,25 @@ service:
       exporters: [otlphttp]
 ```
 
-With `compact: true`, if all data points in a resource group share the same value for a grouping key, that attribute is removed from the data points and exists only at the resource level. This significantly reduces payload size.
+After grouping, the grouping keys are removed from the data points that contained them and are set on the resource instead. This can reduce payload size when those keys were repeated across many data points.
 
-**Without compaction**:
+**Before grouping**:
 - Resource: (empty)
 - Data point 1: service.name=api, region=us-east-1, http.method=GET
 - Data point 2: service.name=api, region=us-east-1, http.method=POST
 - Data point 3: service.name=api, region=us-east-1, http.method=DELETE
 
-**With compaction**:
+**After grouping by service.name and region**:
 - Resource: service.name=api, region=us-east-1
 - Data point 1: http.method=GET
 - Data point 2: http.method=POST
 - Data point 3: http.method=DELETE
 
-The redundant service.name and region attributes are removed from data points, reducing payload size by 30-50% in typical scenarios.
+The redundant service.name and region attributes are removed from data points. The exact payload-size reduction depends on the number of records, the number of repeated attributes, and the exporter encoding.
 
 ## Multi-Level Grouping for Complex Hierarchies
 
-In microservices architectures, you often have hierarchical organization: region → cluster → namespace → service → instance. The group-by-attributes processor can model this hierarchy.
+In microservices architectures, you often have hierarchical organization: region → cluster → namespace → service → instance. The group-by-attributes processor can attach selected infrastructure and application attributes to resources so backends can filter by these levels.
 
 Here is a configuration for Kubernetes environments:
 
@@ -219,9 +217,6 @@ processors:
       - k8s.deployment.name   # Third level: deployment
       - k8s.pod.name          # Fourth level: individual pod
 
-    # Don't compact because we want flexibility in querying
-    compact: false
-
   # Separate grouping for application-level attributes
   groupbyattrs/app:
     keys:
@@ -230,6 +225,7 @@ processors:
       - deployment.environment
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -250,7 +246,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration creates a rich resource hierarchy. Metrics are first organized by Kubernetes infrastructure (cluster, namespace, deployment, pod), then further organized by application identity (service, version, environment). This structure enables efficient queries at any level of the hierarchy.
+This configuration creates resource groups that include both Kubernetes infrastructure attributes (cluster, namespace, deployment, pod) and application identity (service, version, environment). This structure can enable efficient queries at those levels when your backend indexes resource attributes.
 
 ## Selective Grouping with Filtering
 
@@ -260,22 +256,31 @@ This configuration groups only HTTP metrics by endpoint but leaves database metr
 
 ```yaml
 processors:
-  # Filter to select only HTTP metrics
+  # Drop non-HTTP metrics from the HTTP pipeline
   filter/http_only:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - ^http\..*$
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, "^http\\..*$") == false'
+
+  # Drop HTTP metrics from the ungrouped pipeline
+  filter/non_http:
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, "^http\\..*$")'
 
   # Group HTTP metrics by endpoint
   groupbyattrs/http:
     keys:
       - http.target
       - http.method
-    compact: true
 
-  batch:
+  batch/http:
+    send_batch_size: 1024
+    send_batch_max_size: 1024
+    timeout: 10s
+
+  batch/other:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -290,13 +295,13 @@ service:
     # Pipeline for HTTP metrics (grouped)
     metrics/http:
       receivers: [otlp]
-      processors: [filter/http_only, groupbyattrs/http, batch]
+      processors: [filter/http_only, groupbyattrs/http, batch/http]
       exporters: [otlphttp/http]
 
     # Pipeline for all other metrics (not grouped)
     metrics/other:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/non_http, batch/other]
       exporters: [otlphttp/http]
 ```
 
@@ -304,7 +309,7 @@ This pattern is useful when you have heterogeneous metrics with different attrib
 
 ## Combining with Resource Detection
 
-The resource detection processor discovers attributes about the environment (cloud provider, host, Kubernetes metadata). Combine it with group-by-attributes for powerful automatic organization.
+The resource detection processor discovers attributes about the environment (cloud provider, host, Kubernetes metadata). Combine it with group-by-attributes when you also receive flat telemetry where some source-identifying values arrive as record or data point attributes.
 
 Here is a complete configuration for cloud deployments:
 
@@ -316,21 +321,19 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Detect cloud and Kubernetes resource attributes
-  resourcedetection:
-    detectors: [env, system, docker, gcp, ec2, eks]
+  # Detect cloud and host resource attributes
+  resource_detection:
+    detectors: [env, system, docker, gcp, ec2]
     timeout: 5s
 
-  # Group by detected cloud attributes
+  # Group flat metric attributes into resources
   groupbyattrs:
     keys:
-      - cloud.provider        # AWS, GCP, Azure
-      - cloud.region          # us-east-1, europe-west1, etc.
-      - cloud.account.id      # Account/project identifier
-      - service.name          # Application service name
-    compact: true
-
+      - service.name          # Application service name, if present on data points
+      - deployment.environment
+      - http.target           # Endpoint, if present on data points
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -345,13 +348,13 @@ service:
     metrics:
       receivers: [otlp]
       processors:
-        - resourcedetection   # First detect resource attributes
+        - resource_detection  # First detect resource attributes
         - groupbyattrs        # Then group by them
         - batch
       exporters: [otlphttp]
 ```
 
-The resource detection processor automatically populates cloud provider, region, and account attributes. The group-by-attributes processor then organizes metrics by these discovered attributes, creating a natural hierarchy without manual configuration in your applications.
+The resource detection processor automatically populates cloud provider, region, and account attributes when the selected detectors can discover them. The group-by-attributes processor then organizes metrics by matching attributes present on records or data points, complementing the resource attributes detected from the environment.
 
 ## Handling Missing Attributes
 
@@ -361,9 +364,9 @@ This configuration shows explicit handling of missing attributes:
 
 ```yaml
 processors:
-  # Add default values for missing attributes
-  resource/defaults:
-    attributes:
+  # Add default values for missing metric attributes
+  attributes/defaults:
+    actions:
       - key: deployment.environment
         value: "unknown"
         action: insert    # Only insert if not already present
@@ -372,15 +375,18 @@ processors:
         value: "unversioned"
         action: insert
 
-  # Now group with confidence that attributes exist
+      - key: service.name
+        value: "unknown-service"
+        action: insert
+
+  # Now group with confidence that these data point attributes exist
   groupbyattrs:
     keys:
       - service.name
       - deployment.environment
       - service.version
-    compact: true
-
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -389,17 +395,17 @@ service:
     metrics:
       receivers: [otlp]
       processors:
-        - resource/defaults   # First ensure attributes exist
+        - attributes/defaults # First ensure data point attributes exist
         - groupbyattrs        # Then group by them
         - batch
       exporters: [otlphttp]
 ```
 
-By using the resource processor to insert default values for missing attributes, you ensure consistent grouping even when some telemetry sources don't emit all expected attributes.
+By using the attributes processor to insert default values, you ensure consistent grouping even when some telemetry sources don't emit all expected data point attributes.
 
 ## Performance and Memory Considerations
 
-The group-by-attributes processor maintains in-memory state for each unique resource group. In high-cardinality scenarios, this can consume significant memory.
+The group-by-attributes processor can create many resource groups when grouping keys have many distinct values. In high-cardinality scenarios, this can consume additional memory and produce fragmented output.
 
 Here is a production configuration with memory protection:
 
@@ -414,7 +420,7 @@ processors:
   # Limit attribute values before grouping to control cardinality
   attributes/limit_cardinality:
     actions:
-      # Replace high-cardinality IDs with "redacted"
+      # Delete high-cardinality IDs before grouping
       - key: user_id
         action: delete
       - key: session_id
@@ -428,9 +434,8 @@ processors:
       - service.name
       - deployment.environment
       - http.target    # Endpoint - bounded cardinality
-    compact: true
-
   batch:
+    send_batch_size: 2048
     send_batch_max_size: 2048
     timeout: 5s
 
@@ -452,18 +457,19 @@ The memory_limiter processor protects the entire collector. The attributes proce
 
 While the examples above focus on metrics, the group-by-attributes processor works with logs and traces too. The configuration is identical.
 
-Here is a configuration for grouping logs by severity and service:
+Here is a configuration for grouping logs by a log level attribute and service:
 
 ```yaml
 processors:
-  # Group logs by severity level and service
+  # Group logs by service and a log level attribute
   groupbyattrs:
     keys:
       - service.name
-      - severity          # INFO, WARN, ERROR, etc.
+      - log.level         # INFO, WARN, ERROR, etc., if emitted as an attribute
       - deployment.environment
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -481,20 +487,20 @@ service:
       exporters: [otlphttp]
 ```
 
-This groups logs so that all ERROR logs from a particular service in a particular environment are organized under one resource group, making it efficient to query "show me all errors from production checkout service."
+This groups logs so that records with a `log.level` attribute from a particular service in a particular environment are organized under one resource group, making it efficient to query "show me all errors from production checkout service" in backends that index resource attributes.
 
 ## Debugging and Validation
 
-To verify the processor is working correctly, use the logging exporter to inspect how attributes are organized.
+To verify the processor is working correctly, use the debug exporter to inspect how attributes are organized.
 
 Add this to your configuration:
 
 ```yaml
 exporters:
-  logging:
-    loglevel: debug
-    sampling_initial: 100   # Log first 100 items
-    sampling_thereafter: 0  # Then stop logging
+  debug:
+    verbosity: detailed
+    sampling_initial: 100     # Log up to 100 messages per second initially
+    sampling_thereafter: 1000 # Then log every 1000th message
 
 service:
   telemetry:
@@ -505,10 +511,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [groupbyattrs, batch]
-      exporters: [otlphttp, logging]  # Add logging exporter
+      exporters: [otlphttp, debug]  # Add debug exporter
 ```
 
-The logging exporter prints metrics to stdout with full resource and attribute details, allowing you to verify that grouping is happening as expected and attributes are at the correct level.
+The debug exporter prints metrics to stdout with resource and attribute details, allowing you to verify that grouping is happening as expected and attributes are at the correct level.
 
 ## Common Pitfalls and Solutions
 
@@ -518,11 +524,11 @@ The logging exporter prints metrics to stdout with full resource and attribute d
 
 **Problem**: Queries are slower after implementing grouping.
 
-**Solution**: Your backend might not be optimized for resource-level attributes. Check your backend's documentation - some systems perform better with data-point-level attributes for certain query patterns. Consider whether compaction is appropriate for your use case.
+**Solution**: Your backend might not be optimized for resource-level attributes. Check your backend's documentation - some systems perform better with data-point-level attributes for certain query patterns. Consider whether grouping those attributes is appropriate for your use case.
 
 **Problem**: Metrics are missing after adding the processor.
 
-**Solution**: The processor doesn't drop metrics, but it reorganizes them. Verify that your backend and queries are correctly handling the new resource structure. Use the logging exporter to confirm metrics are being processed and exported.
+**Solution**: The processor doesn't drop metrics, but it reorganizes them. Verify that your backend and queries are correctly handling the new resource structure. Use the debug exporter to confirm metrics are being processed and exported.
 
 ## Integration with OneUptime
 
@@ -543,9 +549,10 @@ processors:
   memory_limiter:
     limit_mib: 512
     spike_limit_mib: 128
+    check_interval: 1s
 
-  resourcedetection:
-    detectors: [env, system, docker, gcp, ec2, eks]
+  resource_detection:
+    detectors: [env, system, docker, gcp, ec2]
     timeout: 5s
 
   groupbyattrs:
@@ -553,11 +560,9 @@ processors:
       - service.name
       - service.version
       - deployment.environment
-      - cloud.region
-      - cloud.availability_zone
-    compact: true
-
+      - http.target
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -577,13 +582,13 @@ service:
       receivers: [otlp]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - groupbyattrs
         - batch
       exporters: [otlphttp]
 ```
 
-This configuration automatically detects cloud and infrastructure attributes, groups metrics by service and deployment characteristics, compacts the data for efficient transmission, and exports to OneUptime with retry logic for reliability.
+This configuration automatically detects cloud and infrastructure resource attributes, groups metrics by service and deployment characteristics when matching attributes are present on the metric data points, and exports to OneUptime with retry logic for reliability.
 
 ## Related Resources
 
@@ -596,6 +601,6 @@ For more information on OpenTelemetry Collector processors and attribute managem
 
 ## Conclusion
 
-The group-by-attributes processor is a powerful tool for organizing telemetry in OpenTelemetry. By moving attributes to the resource level and optionally compacting them, you can significantly reduce cardinality, optimize storage costs, and improve query performance.
+The group-by-attributes processor is a powerful tool for organizing telemetry in OpenTelemetry. By moving selected record or data point attributes to the resource level, you can reduce repeated attributes in payloads, optimize telemetry structure, and improve query performance in backends that index resource attributes efficiently.
 
-Configure it thoughtfully: choose grouping keys with bounded cardinality, use compaction when appropriate, combine with resource detection for automatic organization, and always protect against unbounded memory growth. With OneUptime as your backend, you get a platform that efficiently handles resource-level attributes and makes full use of the organization this processor provides.
+Configure it thoughtfully: choose grouping keys with bounded cardinality, use an empty `keys` list only when you want to compact already-fragmented data with matching resources and scopes, combine with resource detection for automatic organization, and always protect against unbounded memory growth. With OneUptime as your backend, you get a platform that efficiently handles resource-level attributes and makes full use of the organization this processor provides.
