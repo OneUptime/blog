@@ -33,6 +33,7 @@ spec:
       labels:
         app: otel-collector
     spec:
+      serviceAccountName: otel-collector
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:latest
@@ -44,11 +45,13 @@ spec:
               hostPort: 4318
               protocol: TCP
           env:
-            - name: GROUNDCOVER_API_KEY
+            - name: GROUNDCOVER_INGESTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: groundcover-credentials
-                  key: api-key
+                  key: ingestion-key
+            - name: GROUNDCOVER_OTLP_ENDPOINT
+              value: "https://<your-groundcover-byoc-endpoint>"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
@@ -69,6 +72,7 @@ metadata:
 spec:
   selector:
     app: otel-collector
+  internalTrafficPolicy: Local
   ports:
     - name: otlp-grpc
       port: 4317
@@ -90,18 +94,16 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # Collect Kubernetes events as logs
-  k8s_events:
-    namespaces: []  # Empty means all namespaces
-
 processors:
   batch:
     send_batch_size: 512
     timeout: 5s
 
   # Enrich telemetry with Kubernetes metadata
-  k8s_attributes:
+  k8sattributes:
     auth_type: serviceAccount
+    filter:
+      node_from_env_var: NODE_NAME
     extract:
       metadata:
         - k8s.pod.name
@@ -114,6 +116,8 @@ processors:
       - sources:
           - from: resource_attribute
             name: k8s.pod.ip
+      - sources:
+          - from: connection
 
   # Add memory limits to prevent OOM in the Collector pod
   memory_limiter:
@@ -122,33 +126,32 @@ processors:
     spike_limit_mib: 128
 
 exporters:
-  otlp/groundcover:
-    endpoint: ingest.groundcover.com:443
+  otlphttp/groundcover:
+    endpoint: ${env:GROUNDCOVER_OTLP_ENDPOINT}
     headers:
-      x-groundcover-api-key: "${GROUNDCOVER_API_KEY}"
-    tls:
-      insecure: false
+      apikey: ${env:GROUNDCOVER_INGESTION_KEY}
     compression: gzip
+    timeout: 30s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, k8s_attributes, batch]
-      exporters: [otlp/groundcover]
+      processors: [memory_limiter, k8sattributes, batch]
+      exporters: [otlphttp/groundcover]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, k8s_attributes, batch]
-      exporters: [otlp/groundcover]
+      processors: [memory_limiter, k8sattributes, batch]
+      exporters: [otlphttp/groundcover]
     logs:
-      receivers: [otlp, k8s_events]
-      processors: [memory_limiter, k8s_attributes, batch]
-      exporters: [otlp/groundcover]
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, batch]
+      exporters: [otlphttp/groundcover]
 ```
 
 ## Instrumenting Your Application
 
-With the Collector running as a DaemonSet, your application pods send telemetry to the Collector on the same node. Configure your OpenTelemetry SDK to point at the node-local Collector:
+With the Collector running as a DaemonSet and the Service using `internalTrafficPolicy: Local`, your application pods send telemetry to the Collector on the same node. Configure your OpenTelemetry SDK to point at the Collector Service:
 
 ```python
 # app.py
@@ -159,7 +162,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
-# Use the node's host IP to reach the DaemonSet Collector
+# Use the Collector Service to reach the node-local DaemonSet Collector
 collector_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.groundcover:4317")
 
 resource = Resource.create({
@@ -182,11 +185,11 @@ tracer = trace.get_tracer("my-service")
 
 Groundcover correlates eBPF-captured network data with OpenTelemetry spans using shared identifiers like pod name, namespace, and node. When a span shows high latency, you can check the eBPF data to see if the cause was network-level (retransmissions, DNS delays) or application-level (slow database queries, CPU contention).
 
-The `k8s_attributes` processor in the Collector adds the Kubernetes metadata that makes this correlation possible. Without it, Groundcover cannot map OTel spans to the correct pod-level eBPF data.
+The `k8sattributes` processor in the Collector adds the Kubernetes metadata that makes this correlation possible. Without it, Groundcover cannot map OTel spans to the correct pod-level eBPF data.
 
 ## RBAC for the Collector
 
-The `k8s_attributes` processor needs permissions to query the Kubernetes API:
+The `k8sattributes` processor needs permissions to query the Kubernetes API:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -195,10 +198,10 @@ metadata:
   name: otel-collector
 rules:
   - apiGroups: [""]
-    resources: ["pods", "namespaces", "nodes"]
+    resources: ["pods", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["replicasets"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -206,4 +209,4 @@ Bind this role to the Collector's service account, and the metadata enrichment w
 
 ## Validating the Setup
 
-Once deployed, verify that both eBPF and OTel data appear in the Groundcover dashboard. You should see spans correlated with network-level metrics for the same pods. If spans appear but lack Kubernetes labels, check the `k8s_attributes` processor configuration and the RBAC permissions.
+Once deployed, verify that both eBPF and OTel data appear in the Groundcover dashboard. You should see spans correlated with network-level metrics for the same pods. If spans appear but lack Kubernetes labels, check the `k8sattributes` processor configuration and the RBAC permissions.
