@@ -12,7 +12,7 @@ OpenTelemetry metrics provide the instrumentation you need to monitor pool healt
 
 ## Connection Pool Metrics Architecture
 
-Modern database drivers expose pool statistics through their stats interfaces. OpenTelemetry can collect these statistics periodically and export them as metrics, giving you time-series data about pool behavior.
+Modern database libraries such as Go's `database/sql` expose pool statistics through their stats interfaces. OpenTelemetry can collect these statistics periodically and export them as metrics, giving you time-series data about pool behavior.
 
 ```mermaid
 graph TB
@@ -26,7 +26,7 @@ graph TB
     G --> H[Active Connections Gauge]
     G --> I[Idle Connections Gauge]
     G --> J[Wait Count Counter]
-    G --> K[Wait Duration Histogram]
+    G --> K[Wait Duration Counter]
 
     H --> L[Metrics Backend]
     I --> L
@@ -57,7 +57,7 @@ import (
     "go.opentelemetry.io/otel/metric"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
 // Initialize OpenTelemetry metrics with OTLP exporter
@@ -186,7 +186,7 @@ func NewPoolMetrics(dbName string) (*PoolMetrics, error) {
     pm.totalWaitDuration, err = meter.Float64Counter(
         "db.pool.wait.duration",
         metric.WithDescription("Total time spent waiting for connections"),
-        metric.WithUnit("ms"),
+        metric.WithUnit("s"),
     )
     if err != nil {
         return nil, fmt.Errorf("creating wait duration counter: %w", err)
@@ -222,9 +222,9 @@ func NewPoolMetrics(dbName string) (*PoolMetrics, error) {
 
     // Create histogram for connection acquisition duration
     pm.acquireDuration, err = meter.Float64Histogram(
-        "db.pool.connection.acquire.duration",
+        "db.client.connection.wait_time",
         metric.WithDescription("Time taken to acquire a connection from the pool"),
-        metric.WithUnit("ms"),
+        metric.WithUnit("s"),
     )
     if err != nil {
         return nil, fmt.Errorf("creating acquire duration histogram: %w", err)
@@ -234,7 +234,7 @@ func NewPoolMetrics(dbName string) (*PoolMetrics, error) {
 }
 ```
 
-Each metric instrument is carefully configured with descriptions and units that follow OpenTelemetry semantic conventions, ensuring consistency across different observability platforms.
+Each metric instrument is configured with clear descriptions and units. The acquisition histogram uses the OpenTelemetry semantic convention name `db.client.connection.wait_time`; the other `db.pool.*` instruments are custom metrics based on fields exposed by `sql.DBStats`.
 
 ## Recording Pool Statistics
 
@@ -302,8 +302,8 @@ func (pm *PoolMonitor) recordMetrics(ctx context.Context) {
 
     // Common attributes for all metrics
     attrs := metric.WithAttributes(
-        attribute.String("db.name", pm.dbName),
-        attribute.String("db.system", "postgresql"),
+        attribute.String("db.client.connection.pool.name", pm.dbName),
+        attribute.String("db.system.name", "postgresql"),
     )
 
     // Record gauge metrics (current state)
@@ -320,7 +320,7 @@ func (pm *PoolMonitor) recordMetrics(ctx context.Context) {
     waitDurationDelta := stats.WaitDuration - pm.lastStats.WaitDuration
     if waitDurationDelta > 0 {
         pm.metrics.totalWaitDuration.Add(ctx,
-            float64(waitDurationDelta.Milliseconds()), attrs)
+            waitDurationDelta.Seconds(), attrs)
     }
 
     closedMaxIdleDelta := stats.MaxIdleClosed - pm.lastStats.MaxIdleClosed
@@ -339,8 +339,15 @@ func (pm *PoolMonitor) recordMetrics(ctx context.Context) {
     }
 
     // Calculate and log utilization metrics
-    utilizationPercent := float64(stats.InUse) / float64(pm.maxOpenConns) * 100
-    idlePercent := float64(stats.Idle) / float64(pm.maxIdleConns) * 100
+    utilizationPercent := 0.0
+    if pm.maxOpenConns > 0 {
+        utilizationPercent = float64(stats.InUse) / float64(pm.maxOpenConns) * 100
+    }
+
+    idlePercent := 0.0
+    if pm.maxIdleConns > 0 {
+        idlePercent = float64(stats.Idle) / float64(pm.maxIdleConns) * 100
+    }
 
     log.Printf("Pool stats - Open: %d, InUse: %d (%.1f%%), Idle: %d (%.1f%%), Wait: %d",
         stats.OpenConnections, stats.InUse, utilizationPercent,
@@ -365,6 +372,45 @@ type InstrumentedDB struct {
     dbName  string
 }
 
+// InstrumentedRows closes the dedicated connection when rows are closed
+type InstrumentedRows struct {
+    *sql.Rows
+    conn *sql.Conn
+}
+
+func (rows *InstrumentedRows) Close() error {
+    rowsErr := rows.Rows.Close()
+    connErr := rows.conn.Close()
+    if rowsErr != nil {
+        return rowsErr
+    }
+    return connErr
+}
+
+// InstrumentedTx closes the dedicated connection when the transaction finishes
+type InstrumentedTx struct {
+    *sql.Tx
+    conn *sql.Conn
+}
+
+func (tx *InstrumentedTx) Commit() error {
+    txErr := tx.Tx.Commit()
+    connErr := tx.conn.Close()
+    if txErr != nil {
+        return txErr
+    }
+    return connErr
+}
+
+func (tx *InstrumentedTx) Rollback() error {
+    txErr := tx.Tx.Rollback()
+    connErr := tx.conn.Close()
+    if txErr != nil {
+        return txErr
+    }
+    return connErr
+}
+
 // NewInstrumentedDB creates a database connection with metrics
 func NewInstrumentedDB(driver, dsn, dbName string, maxOpen, maxIdle int) (*InstrumentedDB, error) {
     db, err := sql.Open(driver, dsn)
@@ -380,6 +426,7 @@ func NewInstrumentedDB(driver, dsn, dbName string, maxOpen, maxIdle int) (*Instr
 
     // Verify connection
     if err := db.Ping(); err != nil {
+        db.Close()
         return nil, fmt.Errorf("pinging database: %w", err)
     }
 
@@ -395,59 +442,68 @@ func NewInstrumentedDB(driver, dsn, dbName string, maxOpen, maxIdle int) (*Instr
     }, nil
 }
 
-// QueryContext executes a query with connection acquisition timing
-func (idb *InstrumentedDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+// Conn acquires a dedicated connection and records acquisition wait time
+func (idb *InstrumentedDB) Conn(ctx context.Context) (*sql.Conn, error) {
     start := time.Now()
 
-    rows, err := idb.DB.QueryContext(ctx, query, args...)
+    conn, err := idb.DB.Conn(ctx)
 
     duration := time.Since(start)
     attrs := metric.WithAttributes(
-        attribute.String("db.name", idb.dbName),
-        attribute.String("db.operation", "query"),
+        attribute.String("db.client.connection.pool.name", idb.dbName),
+        attribute.String("db.system.name", "postgresql"),
     )
 
-    idb.metrics.acquireDuration.Record(ctx, float64(duration.Milliseconds()), attrs)
+    idb.metrics.acquireDuration.Record(ctx, duration.Seconds(), attrs)
 
-    return rows, err
+    return conn, err
 }
 
-// ExecContext executes a statement with connection acquisition timing
+// QueryContext executes a query after measuring connection acquisition time
+func (idb *InstrumentedDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*InstrumentedRows, error) {
+    conn, err := idb.Conn(ctx)
+    if err != nil {
+        return nil, err
+    }
+
+    rows, err := conn.QueryContext(ctx, query, args...)
+    if err != nil {
+        conn.Close()
+        return nil, err
+    }
+
+    return &InstrumentedRows{Rows: rows, conn: conn}, nil
+}
+
+// ExecContext executes a statement after measuring connection acquisition time
 func (idb *InstrumentedDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-    start := time.Now()
+    conn, err := idb.Conn(ctx)
+    if err != nil {
+        return nil, err
+    }
+    defer conn.Close()
 
-    result, err := idb.DB.ExecContext(ctx, query, args...)
-
-    duration := time.Since(start)
-    attrs := metric.WithAttributes(
-        attribute.String("db.name", idb.dbName),
-        attribute.String("db.operation", "exec"),
-    )
-
-    idb.metrics.acquireDuration.Record(ctx, float64(duration.Milliseconds()), attrs)
-
-    return result, err
+    return conn.ExecContext(ctx, query, args...)
 }
 
 // BeginTxContext starts a transaction with metrics
-func (idb *InstrumentedDB) BeginTxContext(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-    start := time.Now()
+func (idb *InstrumentedDB) BeginTxContext(ctx context.Context, opts *sql.TxOptions) (*InstrumentedTx, error) {
+    conn, err := idb.Conn(ctx)
+    if err != nil {
+        return nil, err
+    }
 
-    tx, err := idb.DB.BeginTxContext(ctx, opts)
+    tx, err := conn.BeginTx(ctx, opts)
+    if err != nil {
+        conn.Close()
+        return nil, err
+    }
 
-    duration := time.Since(start)
-    attrs := metric.WithAttributes(
-        attribute.String("db.name", idb.dbName),
-        attribute.String("db.operation", "begin_tx"),
-    )
-
-    idb.metrics.acquireDuration.Record(ctx, float64(duration.Milliseconds()), attrs)
-
-    return tx, err
+    return &InstrumentedTx{Tx: tx, conn: conn}, nil
 }
 ```
 
-The instrumented database wrapper measures how long it takes to acquire a connection from the pool, which includes both the time spent waiting for an available connection and the time to establish a new connection if the pool needs to grow.
+The instrumented database wrapper measures how long `database/sql` takes to return a dedicated connection from the pool. That includes time spent waiting for an available connection and, when needed, time spent opening a new connection.
 
 ## Complete Application Setup
 
@@ -577,9 +633,39 @@ type PoolHealthChecker struct {
     healthCheckFail metric.Int64Counter
 }
 
+func NewPoolHealthChecker(db *sql.DB, metrics *PoolMetrics) (*PoolHealthChecker, error) {
+    meter := otel.Meter("database.connection.pool")
+
+    healthCheckOk, err := meter.Int64Counter(
+        "db.pool.health_check.ok",
+        metric.WithDescription("Successful database health checks"),
+        metric.WithUnit("{check}"),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("creating health check ok counter: %w", err)
+    }
+
+    healthCheckFail, err := meter.Int64Counter(
+        "db.pool.health_check.fail",
+        metric.WithDescription("Failed database health checks"),
+        metric.WithUnit("{check}"),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("creating health check fail counter: %w", err)
+    }
+
+    return &PoolHealthChecker{
+        db:              db,
+        metrics:         metrics,
+        healthCheckOk:   healthCheckOk,
+        healthCheckFail: healthCheckFail,
+    }, nil
+}
+
 func (phc *PoolHealthChecker) RunHealthCheck(ctx context.Context) {
     attrs := metric.WithAttributes(
-        attribute.String("db.name", "primary"),
+        attribute.String("db.client.connection.pool.name", "primary"),
+        attribute.String("db.system.name", "postgresql"),
     )
 
     start := time.Now()
