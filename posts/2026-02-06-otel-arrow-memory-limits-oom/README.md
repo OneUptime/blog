@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTel Arrow, Memory, High-Throughput
 
 Description: Configure OTel Arrow memory limits to prevent out-of-memory crashes in high-throughput Collector deployments.
 
-OTel Arrow improves bandwidth efficiency, but that efficiency comes with a memory trade-off. Arrow record batches are larger in their decoded form than compressed protobuf messages, because Arrow uses a fixed-width columnar layout that pads values for alignment. In high-throughput Collector deployments, this can lead to memory spikes and OOM kills if limits are not configured properly. This post covers every memory-related setting you need to tune.
+OTel Arrow improves bandwidth efficiency, but that efficiency comes with a memory trade-off. Arrow record batches and dictionaries can be much larger in memory than their compressed wire format. In high-throughput Collector deployments, this can lead to memory spikes and OOM kills if limits are not configured properly. This post covers every memory-related setting you need to tune.
 
 ## Where OTel Arrow Uses Memory
 
@@ -32,16 +32,21 @@ receivers:
         endpoint: 0.0.0.0:4317
         # Maximum size of a single gRPC message
         max_recv_msg_size_mib: 16
-        arrow:
-          # Maximum memory for all active Arrow record batches
-          memory_limit_mib: 256
+      arrow:
+        # Maximum memory for active Arrow data buffers
+        memory_limit_mib: 256
+    admission:
+      # Maximum uncompressed request data admitted into the pipeline
+      request_limit_mib: 128
+      # Maximum uncompressed request data waiting for admission
+      waiting_limit_mib: 32
 ```
 
-The `memory_limit_mib` under the `arrow` section caps the total memory used for decoding Arrow batches. When this limit is reached, the receiver applies backpressure: it stops reading from streams until memory is freed. This prevents unbounded memory growth.
+The `memory_limit_mib` under the `protocols.arrow` section caps concurrent memory used by Arrow data buffers. When this limit is reached, the receiver returns `RESOURCE_EXHAUSTED` errors, which OTel Arrow exporters can retry according to their retry configuration. The `admission` limits control how much uncompressed request data is admitted into the pipeline or allowed to wait for admission.
 
 ## Configuring the Memory Limiter Processor
 
-The memory limiter processor is your second line of defense. It monitors the Collector's total memory usage and drops data or applies backpressure when limits are breached:
+The memory limiter processor is your second line of defense. It monitors the Collector's total memory usage and refuses data with non-permanent errors when limits are breached:
 
 ```yaml
 processors:
@@ -76,18 +81,22 @@ On the exporter side, the sending queue is the primary memory consumer. Each que
 exporters:
   otelarrow:
     endpoint: gateway:4317
+    tls:
+      insecure: true
     arrow:
       num_streams: 4
       max_stream_lifetime: 10m
     sending_queue:
       enabled: true
+      sizer: requests
+      block_on_overflow: true
       # Maximum number of batches in the queue
       num_consumers: 4
       queue_size: 200
     timeout: 30s
 ```
 
-The `queue_size` limits how many batches can be queued. If each batch is approximately 2 MB in Arrow format, a queue of 200 batches could use up to 400 MB of memory. Size this based on your available memory and acceptable data loss during backpressure.
+With `sizer: requests`, the `queue_size` limits how many request batches can be queued. If each batch is approximately 2 MB before export, a queue of 200 batches could use up to 400 MB of memory. Size this based on your available memory and acceptable data loss during backpressure.
 
 ## Calculating Memory Requirements
 
@@ -101,11 +110,15 @@ Total memory = Receiver buffers
              + Overhead
 
 Receiver buffers:
-  = num_agents * max_recv_msg_size_mib
-  = 50 agents * 16 MiB = 800 MiB (worst case)
+  = concurrent_messages * max_recv_msg_size_mib
+  = 50 concurrent messages * 16 MiB = 800 MiB (worst case)
+
+Receiver admission:
+  = admission.request_limit_mib + admission.waiting_limit_mib
+  = 128 MiB + 32 MiB = 160 MiB
 
 Arrow batch memory:
-  = arrow.memory_limit_mib
+  = protocols.arrow.memory_limit_mib
   = 256 MiB
 
 Dictionary memory:
@@ -119,7 +132,7 @@ Exporter queue:
 Overhead (GC, goroutines, buffers):
   ~200 MiB
 
-Total estimate: ~1,736 MiB
+Total estimate: ~1,896 MiB
 ```
 
 Set your container memory limit to at least 1.5x this estimate to allow for spikes:
@@ -143,8 +156,12 @@ receivers:
   otelarrow:
     protocols:
       grpc:
-        arrow:
-          memory_limit_mib: 256
+        max_recv_msg_size_mib: 16
+      arrow:
+        memory_limit_mib: 256
+    admission:
+      request_limit_mib: 128
+      waiting_limit_mib: 32
 
 # Layer 2: Memory limiter processor
 processors:
@@ -152,19 +169,18 @@ processors:
     check_interval: 2s    # Check frequently during spikes
     limit_mib: 2048
     spike_limit_mib: 512
+  batch:
+    send_batch_size: 2000
+    send_batch_max_size: 5000  # Cap the maximum batch size
+    timeout: 5s
 
 # Layer 3: Bounded sending queue on the exporter
 exporters:
   otelarrow:
     sending_queue:
+      sizer: requests
+      block_on_overflow: true
       queue_size: 200
-
-# Layer 4: Batch processor limits
-processors:
-  batch:
-    send_batch_size: 2000
-    send_batch_max_size: 5000  # Cap the maximum batch size
-    timeout: 5s
 ```
 
 The `send_batch_max_size` on the batch processor prevents individual batches from growing too large during traffic spikes.
@@ -175,13 +191,16 @@ Set up alerts on Collector memory metrics:
 
 ```promql
 # Current memory usage
-process_resident_memory_bytes{job="otel-collector"}
+otelcol_process_memory_rss{job="otel-collector"}
 
-# Memory limiter refusals (data dropped due to memory pressure)
-rate(otelcol_processor_refused_spans{processor="memory_limiter"}[5m])
+# Receiver refusals, including backpressure from downstream processors
+rate(otelcol_receiver_refused_spans{receiver="otelarrow"}[5m])
 
 # Arrow-specific memory usage
-otelcol_receiver_otelarrow_memory_usage_bytes
+arrow_memory_inuse
+
+# OTel Arrow admission controller usage
+otelcol_otelarrow_admission_in_flight_bytes
 ```
 
 Create an alert that fires before you hit OOM:
@@ -190,8 +209,8 @@ Create an alert that fires before you hit OOM:
 # Alert when memory usage exceeds 80% of the limit
 - alert: CollectorMemoryHigh
   expr: |
-    process_resident_memory_bytes{job="otel-collector"}
-    / on(pod) kube_pod_container_resource_limits{resource="memory"}
+    otelcol_process_memory_rss{job="otel-collector"}
+    / on(pod) kube_pod_container_resource_limits{resource="memory", unit="byte"}
     > 0.8
   for: 2m
   labels:
@@ -202,8 +221,9 @@ Create an alert that fires before you hit OOM:
 
 Low throughput (< 10,000 spans/sec):
 ```yaml
-arrow:
-  memory_limit_mib: 64
+protocols:
+  arrow:
+    memory_limit_mib: 64
 memory_limiter:
   limit_mib: 512
 sending_queue:
@@ -212,8 +232,9 @@ sending_queue:
 
 Medium throughput (10,000 - 100,000 spans/sec):
 ```yaml
-arrow:
-  memory_limit_mib: 256
+protocols:
+  arrow:
+    memory_limit_mib: 256
 memory_limiter:
   limit_mib: 2048
 sending_queue:
@@ -222,8 +243,9 @@ sending_queue:
 
 High throughput (> 100,000 spans/sec):
 ```yaml
-arrow:
-  memory_limit_mib: 512
+protocols:
+  arrow:
+    memory_limit_mib: 512
 memory_limiter:
   limit_mib: 4096
 sending_queue:
