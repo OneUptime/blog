@@ -12,15 +12,29 @@ Proof-of-delivery (POD) is the final confirmation that a package reached its int
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-provider = TracerProvider()
+resource = Resource.create({"service.name": "pod.service"})
+
+provider = TracerProvider(resource=resource)
 provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(
+    resource=resource,
+    metric_readers=[metric_reader]
+))
 
 tracer = trace.get_tracer("pod.service")
 meter = metrics.get_meter("pod.service")
@@ -38,6 +52,8 @@ def process_pod_submission(delivery_id: str, pod_data: dict):
         span.set_attribute("pod.has_signature", "signature" in pod_data)
         span.set_attribute("pod.has_photo", "photo" in pod_data)
         span.set_attribute("pod.has_gps", "gps" in pod_data)
+        sig_result = None
+        photo_result = None
 
         # Validate GPS location against delivery address
         with tracer.start_as_current_span("pod.validate_gps") as gps_span:
