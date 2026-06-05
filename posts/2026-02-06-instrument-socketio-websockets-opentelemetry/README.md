@@ -36,10 +36,13 @@ Set up OpenTelemetry and Socket.io:
 ```bash
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
+            @opentelemetry/auto-instrumentations-node \
             @opentelemetry/instrumentation \
             @opentelemetry/resources \
+            @opentelemetry/sdk-metrics \
             @opentelemetry/semantic-conventions \
             @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/exporter-metrics-otlp-http \
             socket.io \
             express
 ```
@@ -50,22 +53,34 @@ Initialize OpenTelemetry before your application:
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
 // Configure trace exporter
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
+});
+
+const metricExporter = new OTLPMetricExporter({
+  url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
 // Initialize OpenTelemetry SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'socketio-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'socketio-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter,
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+  }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -87,7 +102,7 @@ Build comprehensive instrumentation for Socket.io operations:
 
 ```javascript
 // socketio-instrumentation.js
-const { trace, context, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('socketio-instrumentation', '1.0.0');
 
@@ -175,6 +190,17 @@ function instrumentSocketEvents(socket, connectionSpan) {
 
     // Wrap handler with tracing
     const wrappedHandler = function(...args) {
+      const traceContextIndex = args.findIndex((arg) =>
+        arg && typeof arg === 'object' && arg._traceContext
+      );
+      const traceContext = traceContextIndex >= 0 ? args[traceContextIndex]._traceContext : null;
+      if (traceContextIndex >= 0) {
+        args.splice(traceContextIndex, 1);
+      }
+      const activeContext = traceContext
+        ? propagation.extract(context.active(), traceContext)
+        : context.active();
+
       return tracer.startActiveSpan(
         `socketio.event.${eventName}`,
         {
@@ -185,6 +211,7 @@ function instrumentSocketEvents(socket, connectionSpan) {
             'socketio.event.args_count': args.length,
           },
         },
+        activeContext,
         async (span) => {
           try {
             // Check if last argument is an acknowledgment callback
@@ -649,7 +676,7 @@ Instrument the Socket.io client for end-to-end tracing:
 
 ```javascript
 // public/client.js
-// Client-side OpenTelemetry setup (using web SDK)
+// Client-side OpenTelemetry setup for a bundled client with the web SDK configured
 const { trace, context, propagation } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('socketio-client', '1.0.0');
@@ -675,7 +702,11 @@ socket.emit = function(eventName, ...args) {
     propagation.inject(context.active(), carrier);
 
     // Add trace context to message
-    const enrichedArgs = args.concat([{ _traceContext: carrier }]);
+    const traceContextArg = { _traceContext: carrier };
+    const hasAck = typeof args[args.length - 1] === 'function';
+    const enrichedArgs = hasAck
+      ? [...args.slice(0, -1), traceContextArg, args[args.length - 1]]
+      : [...args, traceContextArg];
 
     const result = originalEmit(eventName, ...enrichedArgs);
     span.end();
