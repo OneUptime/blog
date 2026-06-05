@@ -26,6 +26,7 @@ The upload handler creates the root span that all downstream processing will att
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.propagate import inject, extract
 import time
 
 tracer = trace.get_tracer("audio.pipeline", "1.0.0")
@@ -48,6 +49,16 @@ stage_duration = meter.create_histogram(
     description="Duration of each pipeline stage",
     unit="s",
 )
+
+
+def get_serialized_context():
+    carrier = {}
+    inject(carrier)
+    return carrier
+
+
+def deserialize_context(carrier):
+    return extract(carrier)
 
 
 def handle_upload(request):
