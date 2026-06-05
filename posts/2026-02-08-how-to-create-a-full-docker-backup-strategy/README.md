@@ -110,7 +110,7 @@ mkdir -p "$BACKUP_DIR"
 
 echo "Backing up PostgreSQL database: $DB_NAME"
 
-docker exec -t "$CONTAINER" \
+docker exec "$CONTAINER" \
   pg_dump -U postgres -Fc "$DB_NAME" | \
   gzip > "${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.dump.gz"
 
@@ -131,7 +131,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
-docker exec -t "$CONTAINER" \
+docker exec "$CONTAINER" \
   mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" \
   --single-transaction \
   --routines \
@@ -155,7 +155,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
-docker exec -t "$CONTAINER" \
+docker exec "$CONTAINER" \
   mongodump --archive --gzip | \
   cat > "${BACKUP_DIR}/mongodump_${TIMESTAMP}.archive.gz"
 
@@ -176,10 +176,13 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 mkdir -p "$BACKUP_DIR"
 
 # Trigger a background save
-docker exec -t "$CONTAINER" redis-cli BGSAVE
+LAST_SAVE=$(docker exec "$CONTAINER" redis-cli LASTSAVE)
+docker exec "$CONTAINER" redis-cli BGSAVE
 
 # Wait for save to complete
-sleep 5
+while [ "$(docker exec "$CONTAINER" redis-cli LASTSAVE)" = "$LAST_SAVE" ]; do
+  sleep 1
+done
 
 # Copy the dump file out of the container
 docker cp "${CONTAINER}:/data/dump.rdb" "${BACKUP_DIR}/dump_${TIMESTAMP}.rdb"
@@ -226,7 +229,10 @@ mkdir -p "$BACKUP_DIR"
 
 # Back up Compose project directories
 for PROJECT_DIR in /opt/docker/*; do
-  if [ -f "${PROJECT_DIR}/docker-compose.yml" ]; then
+  if [ -f "${PROJECT_DIR}/compose.yaml" ] || \
+     [ -f "${PROJECT_DIR}/compose.yml" ] || \
+     [ -f "${PROJECT_DIR}/docker-compose.yaml" ] || \
+     [ -f "${PROJECT_DIR}/docker-compose.yml" ]; then
     PROJECT_NAME=$(basename "$PROJECT_DIR")
     echo "Backing up config for: $PROJECT_NAME"
 
@@ -275,16 +281,19 @@ log "Starting full Docker backup"
 log "Phase 1: Database backups"
 mkdir -p "${BACKUP_DIR}/databases"
 
-if docker ps --format '{{.Names}}' | grep -q postgres; then
+if docker ps --format '{{.Names}}' | grep -qx postgres; then
   log "  Backing up PostgreSQL"
-  docker exec -t postgres pg_dumpall -U postgres | \
+  docker exec postgres pg_dumpall -U postgres | \
     gzip > "${BACKUP_DIR}/databases/postgres_all.sql.gz"
 fi
 
-if docker ps --format '{{.Names}}' | grep -q redis; then
+if docker ps --format '{{.Names}}' | grep -qx redis; then
   log "  Backing up Redis"
-  docker exec -t redis redis-cli BGSAVE
-  sleep 3
+  LAST_SAVE=$(docker exec redis redis-cli LASTSAVE)
+  docker exec redis redis-cli BGSAVE
+  while [ "$(docker exec redis redis-cli LASTSAVE)" = "$LAST_SAVE" ]; do
+    sleep 1
+  done
   docker cp redis:/data/dump.rdb "${BACKUP_DIR}/databases/redis.rdb"
 fi
 
@@ -323,7 +332,7 @@ TOTAL_SIZE=$(du -sh "$BACKUP_DIR" | cut -f1)
 log "Backup complete: $BACKUP_DIR ($TOTAL_SIZE)"
 
 # 6. Clean up old backups (keep 7 days)
-find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
+find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
 log "Old backups cleaned up (keeping 7 days)"
 ```
 
