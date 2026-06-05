@@ -31,9 +31,21 @@ Context must flow through all operators and thread switches.
 
 ## Dependencies Configuration
 
-Add WebFlux and OpenTelemetry dependencies to `pom.xml`:
+Add WebFlux and OpenTelemetry dependencies to `pom.xml`. This example uses the OpenTelemetry Spring Boot starter; if you use the OpenTelemetry Java agent instead, attach the agent at runtime and do not add the standalone WebFlux instrumentation artifact as an application dependency.
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Spring WebFlux for reactive web applications -->
     <dependency>
@@ -41,38 +53,37 @@ Add WebFlux and OpenTelemetry dependencies to `pom.xml`:
         <artifactId>spring-boot-starter-webflux</artifactId>
     </dependency>
 
-    <!-- OpenTelemetry Java agent instrumentation -->
+    <!-- OpenTelemetry Spring Boot starter for auto-instrumentation -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
-        <artifactId>opentelemetry-spring-webflux-5.3</artifactId>
-        <version>1.33.0-alpha</version>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
     </dependency>
 
     <!-- OpenTelemetry API for manual instrumentation -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.33.0</version>
     </dependency>
 
     <!-- Reactor context propagation -->
     <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>context-propagation</artifactId>
-        <version>1.1.1</version>
+        <version>1.2.1</version>
     </dependency>
 
-    <!-- WebClient for reactive HTTP clients -->
+    <!-- OpenTelemetry test utilities -->
     <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-webflux</artifactId>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-sdk-testing</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
 
 ## Basic WebFlux Controller with Auto-Instrumentation
 
-WebFlux controllers are automatically instrumented when using the OpenTelemetry Java agent:
+WebFlux controllers are automatically instrumented when using the OpenTelemetry Java agent or the OpenTelemetry Spring Boot starter:
 
 ```java
 package com.example.controller;
@@ -84,7 +95,7 @@ import reactor.core.publisher.Mono;
 
 /**
  * Reactive REST controller automatically instrumented by OpenTelemetry.
- * Each incoming request creates a root span.
+ * Each incoming request creates a server span.
  */
 @RestController
 @RequestMapping("/api/products")
@@ -253,9 +264,10 @@ public class ProductService {
                 .startSpan();
 
             mainSpan.setAttribute("product.name", product.getName());
+            Context spanContext = parentContext.with(mainSpan);
 
             return Mono.just(product)
-                .flatMap(this::validateProduct)
+                .flatMap(p -> validateProduct(p, spanContext))
                 .flatMap(p -> pricingService.calculatePrice(p)
                     .map(price -> {
                         p.setPrice(price);
@@ -275,9 +287,14 @@ public class ProductService {
         });
     }
 
-    private Mono<Product> validateProduct(Product product) {
+    public Flux<Product> search(String query) {
+        return repository.findBySearchTerm(query);
+    }
+
+    private Mono<Product> validateProduct(Product product, Context parentContext) {
         return Mono.defer(() -> {
             Span span = tracer.spanBuilder("validate_product")
+                .setParent(parentContext)
                 .startSpan();
 
             return Mono.fromCallable(() -> {
@@ -406,6 +423,7 @@ package com.example.repository;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.data.relational.core.query.Query;
 import org.springframework.stereotype.Repository;
@@ -437,6 +455,7 @@ public class ProductRepository {
     public Mono<Product> findById(String id) {
         return Mono.defer(() -> {
             Span span = tracer.spanBuilder("ProductRepository.findById")
+                .setParent(Context.current())
                 .setAttribute("db.operation", "select")
                 .setAttribute("db.sql.table", "products")
                 .startSpan();
@@ -468,6 +487,7 @@ public class ProductRepository {
     public Flux<Product> findByCategory(String category) {
         return Flux.defer(() -> {
             Span span = tracer.spanBuilder("ProductRepository.findByCategory")
+                .setParent(Context.current())
                 .setAttribute("db.operation", "select")
                 .setAttribute("db.sql.table", "products")
                 .startSpan();
@@ -490,11 +510,40 @@ public class ProductRepository {
     }
 
     /**
+     * Reactive search returning multiple results.
+     */
+    public Flux<Product> findBySearchTerm(String query) {
+        return Flux.defer(() -> {
+            Span span = tracer.spanBuilder("ProductRepository.findBySearchTerm")
+                .setParent(Context.current())
+                .setAttribute("db.operation", "select")
+                .setAttribute("db.sql.table", "products")
+                .startSpan();
+
+            span.setAttribute("product.search_query", query);
+
+            return template.select(
+                Query.query(where("name").like("%" + query + "%")),
+                Product.class
+            )
+            .doOnComplete(() ->
+                span.setStatus(io.opentelemetry.api.trace.StatusCode.OK)
+            )
+            .doOnError(error -> {
+                span.recordException(error);
+                span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR);
+            })
+            .doFinally(signalType -> span.end());
+        });
+    }
+
+    /**
      * Reactive insert operation.
      */
     public Mono<Product> save(Product product) {
         return Mono.defer(() -> {
             Span span = tracer.spanBuilder("ProductRepository.save")
+                .setParent(Context.current())
                 .setAttribute("db.operation", "insert")
                 .setAttribute("db.sql.table", "products")
                 .startSpan();
@@ -592,13 +641,13 @@ package com.example;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import reactor.core.publisher.Mono;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -633,7 +682,7 @@ class ReactiveTracingTest {
                 assertThat(rootSpan.getName()).contains("GET");
                 assertThat(rootSpan.getAttributes().asMap())
                     .containsEntry(
-                        io.opentelemetry.semconv.SemanticAttributes.HTTP_ROUTE,
+                        AttributeKey.stringKey("http.route"),
                         "/api/products/{id}"
                     );
             });
