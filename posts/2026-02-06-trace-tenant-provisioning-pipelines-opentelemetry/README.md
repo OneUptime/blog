@@ -84,23 +84,27 @@ Each infrastructure step gets its own child span:
             with tracer.start_as_current_span(
                 "tenant.provision.database",
                 attributes={
-                    "db.system": "postgresql",
-                    "db.operation": "create_schema",
+                    "db.system.name": "postgresql",
+                    "db.operation.name": "CREATE SCHEMA",
                 }
             ) as db_span:
                 schema_name = await create_tenant_schema(tenant.id)
-                db_span.set_attribute("db.schema", schema_name)
+                db_span.set_attribute("db.namespace", schema_name)
                 await run_migrations(schema_name)
                 db_span.set_attribute("db.migrations.applied", True)
 
             # Storage bucket provisioning
+            bucket_name = f"tenant-{tenant.id}-assets"
             with tracer.start_as_current_span(
                 "tenant.provision.storage",
-                attributes={"cloud.provider": "aws", "cloud.service": "s3"}
+                attributes={
+                    "cloud.provider": "aws",
+                    "cloud.region": tenant.region,
+                    "aws.s3.bucket": bucket_name,
+                }
             ) as storage_span:
-                bucket_name = f"tenant-{tenant.id}-assets"
                 await create_s3_bucket(bucket_name, tenant.region)
-                storage_span.set_attribute("storage.bucket", bucket_name)
+                storage_span.set_attribute("tenant.storage.bucket", bucket_name)
 
             # DNS configuration
             with tracer.start_as_current_span(
@@ -185,13 +189,13 @@ meter = metrics.get_meter("tenant.provisioning")
 provision_duration = meter.create_histogram(
     "tenant.provision.duration",
     description="Total time to provision a tenant",
-    unit="seconds",
+    unit="s",
 )
 
 provision_step_duration = meter.create_histogram(
     "tenant.provision.step_duration",
     description="Duration of individual provisioning steps",
-    unit="seconds",
+    unit="s",
 )
 
 provision_failures = meter.create_counter(
