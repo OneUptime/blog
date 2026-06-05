@@ -14,13 +14,22 @@ Ad targeting and audience segmentation are the revenue engine of social media pl
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(tracer_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+meter_provider = MeterProvider(metric_readers=[metric_reader])
+metrics.set_meter_provider(meter_provider)
 
 tracer = trace.get_tracer("ads.targeting")
 meter = metrics.get_meter("ads.targeting")
@@ -66,6 +75,11 @@ def serve_ad(user_id: str, placement: str, context: dict):
         # Step 4: Run the bidding auction
         with tracer.start_as_current_span("ads.auction") as auction_span:
             auction_result = run_ad_auction(filtered.ads, user_profile)
+            if auction_result is None:
+                auction_span.set_attribute("auction.no_fill", True)
+                span.set_attribute("ads.ad_served", False)
+                return AdResponse(ad=None, tracking_id=None)
+
             auction_span.set_attribute("auction.participants", len(filtered.ads))
             auction_span.set_attribute("auction.winning_bid_cpm",
                                        auction_result.winning_bid)
@@ -142,6 +156,10 @@ def run_ad_auction(eligible_ads: list, user_profile):
     with tracer.start_as_current_span("ads.auction.execute") as span:
         span.set_attribute("auction.eligible_ads", len(eligible_ads))
 
+        if not eligible_ads:
+            span.set_attribute("auction.no_fill", True)
+            return None
+
         # Calculate effective bid for each ad (bid * predicted CTR)
         bids = []
         for ad in eligible_ads:
@@ -170,7 +188,8 @@ def run_ad_auction(eligible_ads: list, user_profile):
             ad_id=winner["ad"].ad_id,
             advertiser_id=winner["ad"].advertiser_id,
             winning_bid=winner["effective_bid"],
-            second_price=second_price
+            second_price=second_price,
+            tracking_id=f"ad:{winner['ad'].ad_id}"
         )
 ```
 
