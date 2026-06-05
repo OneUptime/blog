@@ -126,6 +126,7 @@ def collect_cdrs_from_switch(switch_id: str, switch_host: str):
 # cdr_mediation.py
 from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode
+import time
 
 tracer = trace.get_tracer("cdr.mediation")
 meter = metrics.get_meter("cdr.mediation")
@@ -246,6 +247,7 @@ def mediate_cdr(raw_cdr: dict, source_id: str):
 ```python
 # cdr_rating.py
 from opentelemetry import trace, metrics
+import time
 
 tracer = trace.get_tracer("cdr.rating")
 meter = metrics.get_meter("cdr.rating")
