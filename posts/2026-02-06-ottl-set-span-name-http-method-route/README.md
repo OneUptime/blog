@@ -28,8 +28,8 @@ processors:
       - context: span
         statements:
           # Set span name from HTTP method + route template
-          # Only for server spans (kind == 2) that have both attributes
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where kind == 2 and attributes["http.method"] != nil and attributes["http.route"] != nil
+          # Only for server spans that have both attributes
+          - set(span.name, Concat([span.attributes["http.request.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 ```
 
 This transforms span names like:
@@ -51,19 +51,19 @@ processors:
       - context: span
         statements:
           # Primary: use http.route if available
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where kind == 2 and attributes["http.method"] != nil and attributes["http.route"] != nil
+          - set(span.name, Concat([span.attributes["http.request.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 
-          # Fallback: use http.url with dynamic segments replaced
+          # Fallback for older instrumentation: use http.url with dynamic segments replaced
           # First normalize the URL
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where attributes["http.url"] != nil
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}") where attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where span.attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "/[0-9]+", "/{id}") where span.attributes["http.url"] != nil
 
           # Strip query params and domain from URL
-          - replace_pattern(attributes["http.url"], "\\?.*$", "") where attributes["http.url"] != nil
-          - replace_pattern(attributes["http.url"], "^https?://[^/]+", "") where attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "\\?.*$$", "") where span.attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "^https?://[^/]+", "") where span.attributes["http.url"] != nil
 
           # Then use it as span name if route is not available
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.url"]], "")) where kind == 2 and attributes["http.method"] != nil and attributes["http.route"] == nil and attributes["http.url"] != nil
+          - set(span.name, Concat([span.attributes["http.method"], " ", span.attributes["http.url"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] == nil and span.attributes["http.method"] != nil and span.attributes["http.route"] == nil and span.attributes["http.url"] != nil
 ```
 
 ## Handling New HTTP Semantic Conventions
@@ -77,10 +77,10 @@ processors:
       - context: span
         statements:
           # New convention: http.request.method + http.route
-          - set(name, Concat([attributes["http.request.method"], " ", attributes["http.route"]], "")) where kind == 2 and attributes["http.request.method"] != nil and attributes["http.route"] != nil
+          - set(span.name, Concat([span.attributes["http.request.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 
           # Old convention fallback: http.method + http.route
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where kind == 2 and attributes["http.request.method"] == nil and attributes["http.method"] != nil and attributes["http.route"] != nil
+          - set(span.name, Concat([span.attributes["http.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] == nil and span.attributes["http.method"] != nil and span.attributes["http.route"] != nil
 ```
 
 ## Naming Database Spans
@@ -93,12 +93,12 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Set database span names from operation and table
+          # Set database span names from operation and collection/table
           # Format: "SELECT users" instead of raw SQL
-          - set(name, Concat([attributes["db.operation"], " ", attributes["db.sql.table"]], "")) where attributes["db.operation"] != nil and attributes["db.sql.table"] != nil
+          - set(span.name, Concat([span.attributes["db.operation.name"], " ", span.attributes["db.collection.name"]], "")) where span.attributes["db.operation.name"] != nil and span.attributes["db.collection.name"] != nil
 
           # Fallback: just the operation
-          - set(name, attributes["db.operation"]) where attributes["db.operation"] != nil and attributes["db.sql.table"] == nil and name == ""
+          - set(span.name, span.attributes["db.operation.name"]) where span.attributes["db.operation.name"] != nil and span.attributes["db.collection.name"] == nil and span.name == ""
 ```
 
 ## Naming gRPC Spans
@@ -110,8 +110,8 @@ processors:
       - context: span
         statements:
           # gRPC spans: use the full method path
-          # rpc.service + rpc.method -> "UserService/GetUser"
-          - set(name, Concat([attributes["rpc.service"], "/", attributes["rpc.method"]], "")) where attributes["rpc.system"] == "grpc" and attributes["rpc.service"] != nil and attributes["rpc.method"] != nil
+          # rpc.method -> "UserService/GetUser"
+          - set(span.name, span.attributes["rpc.method"]) where span.attributes["rpc.system.name"] == "grpc" and span.attributes["rpc.method"] != nil
 ```
 
 ## Comprehensive Span Naming Configuration
@@ -129,26 +129,29 @@ processors:
       - context: span
         statements:
           # HTTP server spans: method + route
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where kind == 2 and attributes["http.method"] != nil and attributes["http.route"] != nil
+          - set(span.name, Concat([span.attributes["http.request.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 
-          # HTTP client spans: method + route (from client perspective)
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where kind == 3 and attributes["http.method"] != nil and attributes["http.route"] != nil
+          # Old HTTP server fallback: method + route
+          - set(span.name, Concat([span.attributes["http.method"], " ", span.attributes["http.route"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] == nil and span.attributes["http.method"] != nil and span.attributes["http.route"] != nil
+
+          # HTTP client spans: method + URL template
+          - set(span.name, Concat([span.attributes["http.request.method"], " ", span.attributes["url.template"]], "")) where span.kind == SPAN_KIND_CLIENT and span.attributes["http.request.method"] != nil and span.attributes["url.template"] != nil
 
           # gRPC spans: service/method
-          - set(name, Concat([attributes["rpc.service"], "/", attributes["rpc.method"]], "")) where attributes["rpc.system"] == "grpc" and attributes["rpc.service"] != nil and attributes["rpc.method"] != nil
+          - set(span.name, span.attributes["rpc.method"]) where span.attributes["rpc.system.name"] == "grpc" and span.attributes["rpc.method"] != nil
 
           # Database spans: operation table
-          - set(name, Concat([attributes["db.operation"], " ", attributes["db.sql.table"]], "")) where attributes["db.system"] != nil and attributes["db.operation"] != nil and attributes["db.sql.table"] != nil
+          - set(span.name, Concat([span.attributes["db.operation.name"], " ", span.attributes["db.collection.name"]], "")) where span.attributes["db.system.name"] != nil and span.attributes["db.operation.name"] != nil and span.attributes["db.collection.name"] != nil
 
           # Messaging spans: operation destination
-          - set(name, Concat([attributes["messaging.operation"], " ", attributes["messaging.destination.name"]], "")) where attributes["messaging.system"] != nil and attributes["messaging.operation"] != nil
+          - set(span.name, Concat([span.attributes["messaging.operation.name"], " ", span.attributes["messaging.destination.name"]], "")) where span.attributes["messaging.system"] != nil and span.attributes["messaging.operation.name"] != nil and span.attributes["messaging.destination.name"] != nil
 
           # Fallback for HTTP spans without route: normalize the URL
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}") where attributes["http.url"] != nil and attributes["http.route"] == nil
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where attributes["http.url"] != nil and attributes["http.route"] == nil
-          - replace_pattern(attributes["http.url"], "\\?.*$", "") where attributes["http.url"] != nil
-          - replace_pattern(attributes["http.url"], "^https?://[^/]+", "") where attributes["http.url"] != nil
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.url"]], "")) where kind == 2 and attributes["http.method"] != nil and attributes["http.route"] == nil and attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where span.attributes["http.url"] != nil and span.attributes["http.route"] == nil
+          - replace_pattern(span.attributes["http.url"], "/[0-9]+", "/{id}") where span.attributes["http.url"] != nil and span.attributes["http.route"] == nil
+          - replace_pattern(span.attributes["http.url"], "\\?.*$$", "") where span.attributes["http.url"] != nil
+          - replace_pattern(span.attributes["http.url"], "^https?://[^/]+", "") where span.attributes["http.url"] != nil
+          - set(span.name, Concat([span.attributes["http.method"], " ", span.attributes["http.url"]], "")) where span.kind == SPAN_KIND_SERVER and span.attributes["http.request.method"] == nil and span.attributes["http.method"] != nil and span.attributes["http.route"] == nil and span.attributes["http.url"] != nil
 
   batch:
     send_batch_size: 512
