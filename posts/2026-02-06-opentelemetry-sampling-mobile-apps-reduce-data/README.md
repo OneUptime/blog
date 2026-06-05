@@ -43,7 +43,7 @@ class MobileTelemetryConfiguration {
 
         // Create a probability sampler
         // This sampler will keep validatedRate percentage of traces
-        let sampler = Samplers.probability(probability: validatedRate)
+        let sampler = Samplers.parentBased(root: Samplers.traceIdRatio(ratio: validatedRate))
 
         // Configure the tracer provider with the sampler
         let tracerProvider = TracerProviderBuilder()
@@ -76,13 +76,18 @@ class MobileTelemetryConfiguration {
 
 ## Implementing Dynamic Sampling Based on Context
 
-Static sampling rates work, but smart sampling adapts to context. Sample more aggressively during normal operation and capture more data when errors occur or for specific user segments.
+Static sampling rates work, but smart sampling adapts to context. Sample conservatively during normal operation and capture more data for spans that are known to be errors at span creation time or for specific user segments.
 
 ```swift
 import OpenTelemetryApi
 import OpenTelemetrySdk
 
 // Custom sampler that adjusts based on multiple factors
+private struct MobileSamplingDecision: Decision {
+    let isSampled: Bool
+    let attributes: [String: AttributeValue]
+}
+
 class AdaptiveMobileSampler: Sampler {
     private let baseSampleRate: Double
     private let errorSampleRate: Double
@@ -105,17 +110,17 @@ class AdaptiveMobileSampler: Sampler {
         kind: SpanKind,
         attributes: [String: AttributeValue],
         parentLinks: [SpanData.Link]
-    ) -> SamplingResult {
-        // Always sample if parent was sampled (preserve trace integrity)
-        if let parent = parentContext, parent.traceFlags.sampled {
-            return SamplingResult(decision: .recordAndSample)
+    ) -> Decision {
+        // Follow the parent decision to preserve trace integrity
+        if let parent = parentContext {
+            return MobileSamplingDecision(isSampled: parent.traceFlags.sampled, attributes: [:])
         }
 
         // Check if this is a debug user
         if let userId = attributes["user.id"],
            case .string(let id) = userId,
            debugUsers.contains(id) {
-            return SamplingResult(decision: .recordAndSample)
+            return MobileSamplingDecision(isSampled: true, attributes: [:])
         }
 
         // Check if this trace involves an error
@@ -124,22 +129,15 @@ class AdaptiveMobileSampler: Sampler {
                      name.lowercased().contains("exception") ||
                      attributes.keys.contains("error")
 
-        let sampleRate = isError ? errorSampleRate : baseSampleRate
+        let sampleRate = min(max(isError ? errorSampleRate : baseSampleRate, 0.0), 1.0)
 
         // Use trace ID for deterministic sampling
         // This ensures all spans in a trace get the same decision
-        let traceIdValue = traceId.rawValue
-        let threshold = UInt64(Double(UInt64.max) * sampleRate)
+        let shouldSample = sampleRate >= 1.0 ||
+            (sampleRate > 0.0 && traceId.rawLowerLong < UInt(Double(UInt.max) * sampleRate))
 
-        // Hash the trace ID to get a deterministic value
-        let hash = traceIdValue.reduce(UInt64(0)) { result, byte in
-            result &* 31 &+ UInt64(byte)
-        }
-
-        let shouldSample = hash < threshold
-
-        return SamplingResult(
-            decision: shouldSample ? .recordAndSample : .drop,
+        return MobileSamplingDecision(
+            isSampled: shouldSample,
             attributes: [
                 "sampling.rate": AttributeValue.double(sampleRate),
                 "sampling.type": AttributeValue.string(isError ? "error" : "base")
@@ -155,9 +153,13 @@ Here's the equivalent adaptive sampling for Android applications:
 
 ```kotlin
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.context.Context
+import io.opentelemetry.sdk.trace.data.LinkData
 import io.opentelemetry.sdk.trace.samplers.Sampler
+import io.opentelemetry.sdk.trace.samplers.SamplingDecision
 import io.opentelemetry.sdk.trace.samplers.SamplingResult
 
 /**
@@ -168,6 +170,7 @@ import io.opentelemetry.sdk.trace.samplers.SamplingResult
  * - Device performance characteristics
  */
 class AdaptiveMobileSampler(
+    private val applicationContext: android.content.Context,
     private val baseSampleRate: Double = 0.1,
     private val errorSampleRate: Double = 0.5,
     private val debugUsers: Set<String> = emptySet(),
@@ -180,16 +183,20 @@ class AdaptiveMobileSampler(
         name: String,
         spanKind: SpanKind,
         attributes: Attributes,
-        parentLinks: List<io.opentelemetry.api.trace.Link>
+        parentLinks: List<LinkData>
     ): SamplingResult {
-        // Check if parent was sampled
-        val parentSpan = io.opentelemetry.api.trace.Span.fromContext(parentContext)
-        if (parentSpan.spanContext.isSampled) {
-            return SamplingResult.recordAndSample()
+        // Follow the parent decision to preserve trace integrity
+        val parentSpanContext = Span.fromContext(parentContext).spanContext
+        if (parentSpanContext.isValid) {
+            return if (parentSpanContext.isSampled) {
+                SamplingResult.recordAndSample()
+            } else {
+                SamplingResult.drop()
+            }
         }
 
         // Check for debug user
-        val userId = attributes.get(io.opentelemetry.semconv.resource.attributes.ResourceAttributes.USER_ID)
+        val userId = attributes.get(AttributeKey.stringKey("user.id"))
         if (userId != null && debugUsers.contains(userId)) {
             return SamplingResult.recordAndSample()
         }
@@ -213,7 +220,7 @@ class AdaptiveMobileSampler(
 
         return if (shouldSample) {
             SamplingResult.create(
-                io.opentelemetry.sdk.trace.samplers.SamplingDecision.RECORD_AND_SAMPLE,
+                SamplingDecision.RECORD_AND_SAMPLE,
                 Attributes.builder()
                     .put("sampling.rate", deviceSampleRate)
                     .put("sampling.type", if (isError) "error" else "base")
@@ -226,15 +233,15 @@ class AdaptiveMobileSampler(
     }
 
     private fun shouldSampleTraceId(traceId: String, rate: Double): Boolean {
-        // Use the first 8 bytes of trace ID for deterministic sampling
-        val traceIdLong = traceId.substring(0, 16).toLongOrNull(16) ?: 0L
-        val threshold = (Long.MAX_VALUE * rate).toLong()
+        // Use the lower 8 bytes of trace ID for deterministic sampling
+        val traceIdLong = java.lang.Long.parseUnsignedLong(traceId.substring(16, 32), 16)
+        val threshold = (Long.MAX_VALUE * rate.coerceIn(0.0, 1.0)).toLong()
         return Math.abs(traceIdLong) < threshold
     }
 
     private fun isLowEndDevice(): Boolean {
         // Check device characteristics
-        val activityManager = android.app.ActivityManager()
+        val activityManager = applicationContext.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         return activityManager.isLowRamDevice ||
                Runtime.getRuntime().availableProcessors() <= 4
     }
@@ -251,6 +258,12 @@ Different user segments may require different sampling rates. Premium users or b
 
 ```swift
 import OpenTelemetryApi
+import OpenTelemetrySdk
+
+private struct TierSamplingDecision: Decision {
+    let isSampled: Bool
+    let attributes: [String: AttributeValue]
+}
 
 class UserTierSampler: Sampler {
     enum UserTier {
@@ -286,26 +299,21 @@ class UserTierSampler: Sampler {
         kind: SpanKind,
         attributes: [String: AttributeValue],
         parentLinks: [SpanData.Link]
-    ) -> SamplingResult {
+    ) -> Decision {
         // Honor parent sampling decision
-        if let parent = parentContext, parent.traceFlags.sampled {
-            return SamplingResult(decision: .recordAndSample)
+        if let parent = parentContext {
+            return TierSamplingDecision(isSampled: parent.traceFlags.sampled, attributes: [:])
         }
 
         let userTier = userTierProvider()
-        let sampleRate = userTier.sampleRate
+        let sampleRate = min(max(userTier.sampleRate, 0.0), 1.0)
 
         // Deterministic sampling based on trace ID
-        let traceIdValue = traceId.rawValue
-        let threshold = UInt64(Double(UInt64.max) * sampleRate)
-        let hash = traceIdValue.reduce(UInt64(0)) { result, byte in
-            result &* 31 &+ UInt64(byte)
-        }
+        let shouldSample = sampleRate >= 1.0 ||
+            (sampleRate > 0.0 && traceId.rawLowerLong < UInt(Double(UInt.max) * sampleRate))
 
-        let shouldSample = hash < threshold
-
-        return SamplingResult(
-            decision: shouldSample ? .recordAndSample : .drop,
+        return TierSamplingDecision(
+            isSampled: shouldSample,
             attributes: [
                 "sampling.rate": AttributeValue.double(sampleRate),
                 "user.tier": AttributeValue.string("\(userTier)")
@@ -317,17 +325,23 @@ class UserTierSampler: Sampler {
 
 ## Rate-Limited Sampling for Cost Control
 
-To strictly control costs, implement rate limiting that caps the maximum number of spans per time window:
+To control costs, implement rate limiting that caps the maximum number of root sampling decisions per time window before falling back to another sampler:
 
 ```kotlin
 import io.opentelemetry.sdk.trace.samplers.Sampler
+import io.opentelemetry.sdk.trace.samplers.SamplingDecision
 import io.opentelemetry.sdk.trace.samplers.SamplingResult
+import io.opentelemetry.sdk.trace.data.LinkData
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
+import io.opentelemetry.context.Context
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Rate-limiting sampler that ensures no more than maxSpansPerSecond
- * are sampled, providing strict cost control for mobile telemetry.
+ * Rate-limiting sampler that samples up to maxSpansPerSecond
+ * root spans before delegating to a fallback sampler.
  */
 class RateLimitingSampler(
     private val maxSpansPerSecond: Int,
@@ -343,22 +357,24 @@ class RateLimitingSampler(
         name: String,
         spanKind: SpanKind,
         attributes: Attributes,
-        parentLinks: List<io.opentelemetry.api.trace.Link>
+        parentLinks: List<LinkData>
     ): SamplingResult {
         // Honor parent sampling decisions
-        val parentSpan = io.opentelemetry.api.trace.Span.fromContext(parentContext)
-        if (parentSpan.spanContext.isSampled) {
-            return SamplingResult.recordAndSample()
+        val parentSpanContext = Span.fromContext(parentContext).spanContext
+        if (parentSpanContext.isValid) {
+            return if (parentSpanContext.isSampled) {
+                SamplingResult.recordAndSample()
+            } else {
+                SamplingResult.drop()
+            }
         }
 
         // Check current time window
         val now = System.currentTimeMillis() / 1000
 
         // Reset counter if we're in a new second
-        if (currentSecond.compareAndSet(currentSecond.get(), now)) {
-            // We're still in the same second
-        } else {
-            // New second, reset counter
+        val previousSecond = currentSecond.get()
+        if (previousSecond != now && currentSecond.compareAndSet(previousSecond, now)) {
             spansThisSecond.set(0)
         }
 
@@ -367,7 +383,7 @@ class RateLimitingSampler(
         if (currentCount <= maxSpansPerSecond) {
             // Under limit, sample this span
             return SamplingResult.create(
-                io.opentelemetry.sdk.trace.samplers.SamplingDecision.RECORD_AND_SAMPLE,
+                SamplingDecision.RECORD_AND_SAMPLE,
                 Attributes.builder()
                     .put("sampling.type", "rate_limited")
                     .put("sampling.rate_limit", maxSpansPerSecond)
@@ -425,7 +441,7 @@ When configuring sampling for mobile apps, start with these baseline rates and a
 
 **Beta testers**: 50-100% sampling helps identify issues before general release.
 
-**Error traces**: Always sample at higher rates (50-100%) for traces containing errors. These are your most valuable signals for reliability.
+**Error traces**: Always sample at higher rates (50-100%) when error information is available at span creation. For errors that are only known after a span completes, use tail-based sampling in the OpenTelemetry Collector or another backend component.
 
 **Critical operations**: Payment flows, authentication, and other critical paths should be sampled at 100% or close to it. The cost is justified by the business impact.
 
