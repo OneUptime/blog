@@ -66,7 +66,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_SERVICE_NAME=my-api
     depends_on:
       - otel-collector
@@ -87,11 +88,15 @@ services:
     image: kubeshop/tracetest:latest
     ports:
       - "11633:11633"
+    command: --provisioning-file /app/provisioning.yaml
     environment:
       TRACETEST_DEV: "true"
     volumes:
       - ./tracetest-config.yaml:/app/tracetest.yaml
       - ./tracetest-provision.yaml:/app/provisioning.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:11633"]
       interval: 5s
@@ -103,7 +108,13 @@ services:
     image: postgres:15
     environment:
       POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
       POSTGRES_DB: tracetest
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 ```
 
 Tracetest configuration:
@@ -218,7 +229,7 @@ curl -L https://raw.githubusercontent.com/kubeshop/tracetest/main/install-cli.sh
 tracetest configure --server-url http://localhost:11633
 
 # Run the test
-tracetest run test --file tests/test-create-order.yaml --wait-for-result
+tracetest run test --file tests/test-create-order.yaml
 ```
 
 The output looks like this:
@@ -274,7 +285,7 @@ jobs:
           # Run all test files in the tests directory
           for test_file in tests/test-*.yaml; do
             echo "Running $test_file"
-            tracetest run test --file "$test_file" --wait-for-result
+            tracetest run test --file "$test_file"
           done
 
       - name: Collect logs on failure
