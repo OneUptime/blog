@@ -38,7 +38,7 @@ The file uses standard JSON format.
 }
 ```
 
-Every change to `daemon.json` requires a Docker restart to take effect.
+Most changes to `daemon.json` require a Docker restart to take effect.
 
 ```bash
 # Apply changes by reloading systemd and restarting Docker
@@ -53,7 +53,7 @@ Some options support live reload (without restarting). Trigger a live reload wit
 sudo kill -SIGHUP $(pidof dockerd)
 ```
 
-Options that support live reload include `debug`, `labels`, and `shutdown-timeout`. Most other options require a full restart.
+Options that support live reload include `debug`, `labels`, `live-restore`, `default-runtime`, `runtimes`, `insecure-registries`, `registry-mirrors`, and `shutdown-timeout`. Most other options require a full restart.
 
 ## Log Configuration
 
@@ -128,16 +128,15 @@ For centralized logging with Fluentd:
 
 The storage driver controls how Docker stores image layers and container data.
 
-### Overlay2 (Recommended for Most Systems)
+### Overlay2 (Classic Storage Driver)
 
 ```json
 {
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
+  "storage-driver": "overlay2"
 }
 ```
+
+For Docker Engine 29.0 and later, fresh installations use the containerd image store by default. `overlay2` remains the classic storage driver for upgraded installations and systems that explicitly use classic storage drivers.
 
 ### Btrfs (For Btrfs Filesystems)
 
@@ -156,6 +155,8 @@ Move Docker's data to a different disk or partition.
   "data-root": "/mnt/docker-data"
 }
 ```
+
+For Docker Engine 29.0 and later installations using the containerd image store, `data-root` does not move image contents and container snapshots stored under containerd's root.
 
 Before changing this, stop Docker and move existing data.
 
@@ -439,7 +440,7 @@ Here is a comprehensive `daemon.json` for production servers.
   ],
   "dns": ["8.8.8.8", "1.1.1.1"],
   "metrics-addr": "127.0.0.1:9323",
-  "experimental": false,
+  "experimental": true,
   "icc": false
 }
 ```
