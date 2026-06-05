@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Lightstep, ServiceNow Cloud Observability, OTLP
 
 Description: Configure OpenTelemetry to send traces and metrics to Lightstep (ServiceNow Cloud Observability) using OTLP with access token authentication.
 
-Lightstep, now part of ServiceNow Cloud Observability, was one of the earliest adopters of OpenTelemetry. It accepts OTLP data directly at its public satellites. All you need is an access token and the correct endpoint. No proprietary SDKs required.
+Lightstep, now part of ServiceNow Cloud Observability, was one of the earliest adopters of OpenTelemetry. For active Lightstep or Cloud Observability projects, it accepts OTLP data directly at its public satellites. All you need is an access token and the correct endpoint. No proprietary SDKs required.
 
 ## The Lightstep OTLP Endpoint
 
-Lightstep's public OTLP endpoint is `ingest.lightstep.com:443` for gRPC and `ingest.lightstep.com/traces/otlp/v0.9` for HTTP. Authentication uses the `lightstep-access-token` header.
+Lightstep's public OTLP endpoint is `ingest.lightstep.com:443` for gRPC. For HTTP, use `https://ingest.lightstep.com:443/traces/otlp/v0.9` for traces and `https://ingest.lightstep.com:443/metrics/otlp/v0.9` for metrics. Authentication uses the `lightstep-access-token` header.
 
 ## Go Configuration
 
@@ -19,7 +19,6 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -141,10 +140,10 @@ metrics.set_meter_provider(meter_provider)
 const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-grpc");
 const { BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { Resource } = require("@opentelemetry/resources");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
 const grpc = require("@grpc/grpc-js");
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "frontend-service",
   "service.version": "3.0.0",
 });
@@ -153,13 +152,15 @@ const metadata = new grpc.Metadata();
 metadata.set("lightstep-access-token", process.env.LIGHTSTEP_ACCESS_TOKEN);
 
 const exporter = new OTLPTraceExporter({
-  url: "grpc://ingest.lightstep.com:443",
+  url: "https://ingest.lightstep.com:443",
   credentials: grpc.credentials.createSsl(),
   metadata: metadata,
 });
 
-const provider = new NodeTracerProvider({ resource });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 provider.register();
 ```
 
@@ -190,4 +191,4 @@ print("Test span sent to Lightstep. Check the Explorer view.")
 
 In the Lightstep UI, navigate to the Explorer and filter by `service.name` to find your traces. If nothing appears, check that your access token has the correct permissions and that the endpoint is reachable from your network.
 
-Lightstep's full OTLP support means you can switch to it (or away from it) without changing any application code. The only configuration that changes is the endpoint and the authentication header.
+Lightstep's full OTLP support means active Lightstep or Cloud Observability projects can switch to it (or away from it) without changing any application code. The only configuration that changes is the endpoint and the authentication header.
