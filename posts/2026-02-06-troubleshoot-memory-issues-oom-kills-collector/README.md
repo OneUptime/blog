@@ -70,14 +70,13 @@ processors:
     # Check memory usage every second
     check_interval: 1s
 
-    # Hard limit at 80% of available memory
+    # Hard limit at 75% of available memory
     # When this is exceeded, the collector forces garbage collection
     # and refuses new data
     limit_mib: 1536
 
-    # Soft limit at 70% of available memory
-    # When exceeded, the collector begins refusing data
-    # This prevents reaching the hard limit
+    # Spike allowance. The soft limit is limit_mib - spike_limit_mib.
+    # When the soft limit is exceeded, the collector begins refusing data.
     spike_limit_mib: 512
 
 receivers:
@@ -103,7 +102,7 @@ service:
 
 The memory limiter must appear first in the processor list. This ensures it can apply backpressure before other processors consume memory.
 
-Calculate appropriate limits based on your deployment environment. For a container with 2GB memory allocation, set `limit_mib` to 1536 (75% of 2048MB) and `spike_limit_mib` to 512 (25% headroom).
+Calculate appropriate limits based on your deployment environment. For a container with 2GB memory allocation, set `limit_mib` to 1536 (75% of 2048MB) and `spike_limit_mib` to 512, which makes the soft limit 1024 MiB.
 
 ## Configuring Memory Limits by Environment
 
@@ -135,9 +134,9 @@ spec:
             cpu: "2000m"
         env:
         - name: GOMEMLIMIT
-          # Set Go memory limit to 90% of container limit
+          # Set Go memory limit to 80% of container limit
           # This helps garbage collector tune its behavior
-          value: "3600MiB"
+          value: "3277MiB"
 ---
 # ConfigMap with memory limiter configuration
 apiVersion: v1
@@ -151,7 +150,7 @@ data:
         check_interval: 1s
         # Set to 75% of container memory limit (4Gi)
         limit_mib: 3072
-        # Allow 25% spike headroom
+        # Soft limit is 2048 MiB; hard limit is 3072 MiB
         spike_limit_mib: 1024
 
     receivers:
@@ -189,12 +188,12 @@ services:
       - "4317:4317"
       - "4318:4318"
     environment:
-      - GOMEMLIMIT=1800MiB
+      - GOMEMLIMIT=1600MiB
     # Docker memory limits
     mem_limit: 2g
     mem_reservation: 1g
-    # Prevent OOM killer from terminating the container
-    # Instead, processes inside will be killed if they exceed limits
+    # Leave the kernel OOM killer enabled so the container can be terminated
+    # if the process still exceeds its cgroup memory limit
     oom_kill_disable: false
 ```
 
@@ -219,8 +218,8 @@ processors:
     # Smaller batches use less memory but increase network overhead
     send_batch_size: 1024
 
-    # Maximum batch size in bytes
-    # This prevents a small number of large items from consuming excessive memory
+    # Maximum batch size in number of spans/metrics/logs
+    # This splits larger batches before sending to the next component
     send_batch_max_size: 2048
 
 receivers:
@@ -273,9 +272,10 @@ exporters:
       # More consumers = faster sending but higher memory usage
       num_consumers: 10
 
-      # Maximum queue size in number of batches
+      # Maximum queue size in units defined by sizer
       # This is the critical parameter for memory management
       # Lower values reduce memory but may cause data loss during backend outages
+      sizer: requests
       queue_size: 1000
 
 processors:
@@ -302,7 +302,7 @@ service:
       exporters: [otlp]
 ```
 
-The `queue_size` parameter directly impacts memory usage. Each queued batch consumes memory proportional to its size. Calculate total queue memory as: `queue_size * send_batch_size * average_item_size`.
+The `queue_size` parameter directly impacts memory usage. With the default `requests` sizer, each queued request consumes memory proportional to its payload. Estimate total queue memory as: `queue_size * average_request_size`.
 
 ## Handling High-Cardinality Data
 
@@ -334,12 +334,12 @@ processors:
 
   # Filter processor to drop unnecessary data
   filter:
-    traces:
-      span:
-        # Drop health check spans that add volume without value
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/readiness"'
-        - 'attributes["http.target"] == "/liveness"'
+    error_mode: ignore
+    trace_conditions:
+      # Drop health check spans that add volume without value
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/readiness"'
+      - 'span.attributes["http.target"] == "/liveness"'
 
   batch:
     timeout: 10s
@@ -435,14 +435,21 @@ service:
     # Enable collector internal metrics
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to monitor for memory issues:
 
 - `otelcol_process_memory_rss`: Resident set size (physical memory used)
-- `otelcol_processor_refused_spans`: Spans refused by memory limiter
-- `otelcol_exporter_queue_size`: Current queue size for exporters
+- `otelcol_processor_refused_spans`: Deprecated counter for spans rejected by the next component in the pipeline
+- `otelcol_exporter_queue_size`: Current queue size for exporters when queue metrics are enabled
 - `otelcol_processor_batch_batch_size_trigger_send`: Batch sizes being sent
 
 For detailed guidance on using pprof for memory profiling, see https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
