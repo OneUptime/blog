@@ -22,7 +22,7 @@ Trace context provides explicit correlation. Every operation in a distributed tr
 
 ## What Trace Context Contains
 
-Trace context is lightweight metadata that travels with each request. The W3C Trace Context specification defines two required fields and one optional field.
+Trace context is lightweight metadata that travels with each request. The W3C Trace Context specification defines the `traceparent` header for core trace identity and the optional `tracestate` header for vendor-specific context. The `traceparent` header contains four fields.
 
 ### Trace ID
 
@@ -32,7 +32,7 @@ A unique 16-byte identifier for the entire distributed trace. Every span in the 
 trace-id: 4bf92f3577b34da6a3ce929d0e0e4736
 ```
 
-The trace ID is globally unique. Two different user requests will never have the same trace ID. This uniqueness enables correlation across any number of services.
+The trace ID should be globally unique. Well-implemented tracing systems generate trace IDs with enough randomness that two different user requests are extremely unlikely to have the same trace ID. This uniqueness enables correlation across any number of services.
 
 ### Span ID
 
@@ -53,7 +53,7 @@ trace-flags: 01  (sampled)
 trace-flags: 00  (not sampled)
 ```
 
-When a trace is sampled, all services record their spans. When not sampled, services may skip recording to reduce overhead. The sampling decision propagates with the trace context so all services make consistent decisions.
+When a trace is sampled, downstream services should treat that as a recording recommendation and usually record their spans. When not sampled, services may skip recording to reduce overhead. The sampling decision propagates with the trace context so services can make consistent decisions, but each service can still apply its own sampling policy.
 
 ## How Trace Context Propagates
 
@@ -78,7 +78,7 @@ version-trace_id-parent_span_id-trace_flags
 ```
 
 Breaking this down:
-- `00`: Version (currently always 00)
+- `00`: Version (the current W3C format uses 00; ff is invalid)
 - `4bf92f3577b34da6a3ce929d0e0e4736`: Trace ID
 - `00f067aa0ba902b7`: Parent span ID (the span that made this request)
 - `01`: Trace flags (sampled)
@@ -87,8 +87,10 @@ The receiving service extracts this context, creates a new span with the same tr
 
 ```python
 from opentelemetry import trace
-from opentelemetry.propagate import extract
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 import requests
+
+RequestsInstrumentor().instrument()
 
 def call_payment_service(amount, currency):
     # Get the current trace context
@@ -165,7 +167,7 @@ func callPaymentService(ctx context.Context, amount float64) error {
     ctx = metadata.NewOutgoingContext(ctx, md)
 
     // Make gRPC call with context
-    resp, err := paymentClient.Charge(ctx, &PaymentRequest{
+    _, err := paymentClient.Charge(ctx, &PaymentRequest{
         Amount: amount,
     })
 
@@ -203,43 +205,47 @@ func (s *PaymentServer) Charge(ctx context.Context, req *PaymentRequest) (*Payme
 Asynchronous message queues require storing trace context in message headers or body.
 
 ```javascript
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 const amqp = require('amqplib');
 
 async function publishOrderEvent(order) {
-  const span = trace.getTracer('order-service').startSpan('publish_order_event');
+  const tracer = trace.getTracer('order-service');
+  const span = tracer.startSpan('publish_order_event');
+  const ctx = trace.setSpan(context.active(), span);
 
-  try {
-    // Create message with order data
-    const message = {
-      orderId: order.id,
-      userId: order.userId,
-      total: order.total,
-      timestamp: Date.now()
-    };
+  return await context.with(ctx, async () => {
+    try {
+      // Create message with order data
+      const message = {
+        orderId: order.id,
+        userId: order.userId,
+        total: order.total,
+        timestamp: Date.now()
+      };
 
-    // Create carrier object for trace context
-    const carrier = {};
+      // Create carrier object for trace context
+      const carrier = {};
 
-    // Inject trace context into carrier
-    propagation.inject(context.active(), carrier);
+      // Inject trace context into carrier
+      propagation.inject(context.active(), carrier);
 
-    // Add trace context to message headers
-    const messageBuffer = Buffer.from(JSON.stringify(message));
+      // Add trace context to message headers
+      const messageBuffer = Buffer.from(JSON.stringify(message));
 
-    await channel.publish('orders', 'order.created', messageBuffer, {
-      headers: carrier,
-      persistent: true
-    });
+      await channel.publish('orders', 'order.created', messageBuffer, {
+        headers: carrier,
+        persistent: true
+      });
 
-    span.setStatus({ code: trace.SpanStatusCode.OK });
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: trace.SpanStatusCode.ERROR });
-    throw error;
-  } finally {
-    span.end();
-  }
+      span.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 ```
 
@@ -256,25 +262,28 @@ async function consumeOrderEvents() {
 
     // Start span with extracted context
     const span = tracer.startSpan('process_order_event', undefined, ctx);
+    const spanContext = trace.setSpan(ctx, span);
 
-    try {
-      const order = JSON.parse(msg.content.toString());
+    await context.with(spanContext, async () => {
+      try {
+        const order = JSON.parse(msg.content.toString());
 
-      span.setAttribute('order.id', order.orderId);
-      span.setAttribute('order.total', order.total);
+        span.setAttribute('order.id', order.orderId);
+        span.setAttribute('order.total', order.total);
 
-      // Process the order
-      await processOrder(order);
+        // Process the order
+        await processOrder(order);
 
-      channel.ack(msg);
-      span.setStatus({ code: trace.SpanStatusCode.OK });
-    } catch (error) {
-      span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
-      channel.nack(msg);
-    } finally {
-      span.end();
-    }
+        channel.ack(msg);
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        channel.nack(msg);
+      } finally {
+        span.end();
+      }
+    });
   });
 }
 ```
@@ -377,11 +386,16 @@ OpenTelemetry maintains an implicit "current span" that child spans reference au
 Go requires explicitly passing context through the call chain.
 
 ```go
+import (
+    "context"
+    "go.opentelemetry.io/otel/attribute"
+)
+
 func processOrder(ctx context.Context, orderID string, items []Item) error {
     ctx, span := tracer.Start(ctx, "process_order")
     defer span.End()
 
-    span.SetAttribute("order.id", orderID)
+    span.SetAttributes(attribute.String("order.id", orderID))
 
     // Pass context to child functions
     if err := validateOrderItems(ctx, items); err != nil {
@@ -404,7 +418,7 @@ func validateOrderItems(ctx context.Context, items []Item) error {
     ctx, span := tracer.Start(ctx, "validate_order_items")
     defer span.End()
 
-    span.SetAttribute("item_count", len(items))
+    span.SetAttributes(attribute.Int("item_count", len(items)))
 
     for _, item := range items {
         if err := validateItem(ctx, item); err != nil {
@@ -475,7 +489,7 @@ The `makeCurrent()` method stores the span in thread-local storage. Subsequent o
 JavaScript's async nature requires special context handling.
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
 
 async function processOrder(orderId, items) {
   const tracer = trace.getTracer('order-service');
@@ -491,10 +505,10 @@ async function processOrder(orderId, items) {
       await chargePayment(orderId);
       await reserveInventory(items);
 
-      span.setStatus({ code: trace.SpanStatusCode.OK });
+      span.setStatus({ code: SpanStatusCode.OK });
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
     } finally {
       span.end();
@@ -515,7 +529,7 @@ async function validateOrderItems(items) {
       await validateItem(item);
     }
 
-    span.setStatus({ code: trace.SpanStatusCode.OK });
+    span.setStatus({ code: SpanStatusCode.OK });
   } finally {
     span.end();
   }
@@ -561,13 +575,25 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 baggage: user.id=user-123,user.tier=premium
 ```
 
-Use baggage sparingly. Each baggage entry increases the size of every request. Too much baggage impacts performance. Use it for lightweight, important context like user ID, tenant ID, or feature flags.
+Use baggage sparingly. Each baggage entry increases the size of every request. Too much baggage impacts performance. Use it for lightweight, important context like non-sensitive user or tenant identifiers, or feature flags.
 
 ## Trace Context Without OpenTelemetry
 
 The W3C Trace Context standard works independently of OpenTelemetry. You can implement it manually if needed.
 
 ```javascript
+function randomHex(bytes) {
+  let hex;
+
+  do {
+    const array = new Uint8Array(bytes);
+    crypto.getRandomValues(array);
+    hex = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  } while (/^0+$/.test(hex));
+
+  return hex;
+}
+
 // Manually generate trace context
 function generateTraceContext() {
   const traceId = randomHex(16); // 16 bytes = 32 hex chars
@@ -603,17 +629,17 @@ function extractTraceContext(headers) {
     return null;
   }
 
-  const parts = traceparent.split('-');
+  const match = traceparent.match(/^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/);
 
-  if (parts.length !== 4 || parts[0] !== '00') {
+  if (!match || match[1] === 'ff' || /^0+$/.test(match[2]) || /^0+$/.test(match[3])) {
     return null;
   }
 
   return {
-    version: parts[0],
-    traceId: parts[1],
-    parentSpanId: parts[2],
-    flags: parts[3]
+    version: match[1],
+    traceId: match[2],
+    parentSpanId: match[3],
+    flags: match[4]
   };
 }
 ```
@@ -729,11 +755,11 @@ If logs from different services show the same trace ID, propagation works. If th
 Use tools to inspect HTTP headers and verify traceparent is present.
 
 ```bash
-# Use curl with verbose output to see headers
-curl -v https://api.example.com/endpoint
+# Use curl with verbose output to send and see trace context headers
+curl -v -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' https://api.example.com/endpoint
 
-# Look for traceparent header in response
-# < traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+# Look for traceparent header in the request
+# > traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 
 ### Test with Simple HTTP Servers
