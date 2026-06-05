@@ -15,7 +15,7 @@ There are several ways to get secrets from Vault into the Collector:
 1. **Environment variables** injected by Vault Agent
 2. **File-based templates** rendered by Vault Agent
 3. **Kubernetes Vault sidecar injector**
-4. **Direct Vault config source** in the Collector (contrib feature)
+4. **Custom Collector config providers** in a custom Collector distribution
 
 We will cover the most common and production-ready approaches.
 
@@ -44,8 +44,10 @@ auto_auth {
 template {
   source      = "/vault/templates/collector-config.yaml.tpl"
   destination = "/vault/secrets/collector-config.yaml"
-  # Send SIGHUP to the Collector when the config changes
-  command     = "kill -HUP $(cat /tmp/collector.pid) 2>/dev/null || true"
+  # Run a reload or restart hook when the rendered config changes.
+  exec {
+    command = ["sh", "-c", "kill -HUP $(cat /tmp/collector.pid) 2>/dev/null || true"]
+  }
 }
 ```
 
@@ -109,30 +111,40 @@ spec:
         # Vault sidecar injector annotations
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "otel-collector"
-        vault.hashicorp.com/agent-inject-secret-config.yaml: "secret/data/otel/collector-config"
-        vault.hashicorp.com/agent-inject-template-config.yaml: |
-          {{- with secret "secret/data/otel/backend-auth" -}}
-          OTLP_API_KEY={{ .Data.data.api_key }}
+        vault.hashicorp.com/agent-inject-secret-collector-config.yaml: "secret/data/otel/backend-auth"
+        vault.hashicorp.com/agent-inject-template-collector-config.yaml: |
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: "0.0.0.0:4317"
+
+          processors:
+            batch:
+
+          exporters:
+            otlp/backend:
+              endpoint: "backend.example.com:4317"
+              headers:
+          {{- with secret "secret/data/otel/backend-auth" }}
+                Authorization: "Bearer {{ .Data.data.api_key }}"
           {{- end }}
+
+          service:
+            pipelines:
+              traces:
+                receivers: [otlp]
+                processors: [batch]
+                exporters: [otlp/backend]
+        vault.hashicorp.com/template-static-secret-render-interval: "5m"
+        vault.hashicorp.com/error-on-missing-key-collector-config.yaml: "true"
+        vault.hashicorp.com/agent-init-first: "true"
     spec:
       serviceAccountName: otel-collector
       containers:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:0.96.0
-          args: ["--config=/etc/otel/collector-config.yaml"]
-          env:
-            - name: OTLP_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: otel-vault-secrets
-                  key: api-key
-          volumeMounts:
-            - name: config
-              mountPath: /etc/otel
-      volumes:
-        - name: config
-          configMap:
-            name: otel-collector-config
+          args: ["--config=/vault/secrets/collector-config.yaml"]
 ```
 
 ## Approach 2: Environment Variable Injection
@@ -220,7 +232,7 @@ vault write auth/kubernetes/role/otel-collector \
 
 ## Secret Rotation
 
-When secrets are rotated in Vault, the Vault Agent sidecar detects the change and re-renders the template. If you configured the `command` option in the Vault Agent template, it sends a signal to the Collector to reload its configuration.
+When secrets are rotated in Vault, the Vault Agent sidecar re-renders the template. For static KV v2 secrets, Vault Agent checks for updates on the `static_secret_render_interval`, which defaults to 5 minutes. If you configured the `exec` option in the Vault Agent template or the `agent-inject-command` annotation in Kubernetes, it can run your reload or restart hook after the rendered file changes.
 
 For zero-downtime rotation, ensure the old key remains valid during the transition period.
 
