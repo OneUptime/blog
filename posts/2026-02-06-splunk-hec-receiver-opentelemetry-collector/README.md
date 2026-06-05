@@ -28,7 +28,7 @@ The OpenTelemetry Collector's Splunk HEC receiver accepts HEC-formatted data and
 
 **Supported HEC endpoints:**
 
-- `/services/collector/event` - Raw events (JSON)
+- `/services/collector/event` - JSON HEC events
 - `/services/collector/raw` - Raw text logs
 - `/services/collector/health` - Health check endpoint
 
@@ -63,7 +63,7 @@ This architecture allows you to maintain Splunk HEC compatibility while routing 
 
 Before configuring the Splunk HEC receiver, ensure you have:
 
-1. **OpenTelemetry Collector** version 0.80.0 or later with the Splunk HEC receiver component
+1. **OpenTelemetry Collector Contrib** or a custom Collector build that includes the Splunk HEC receiver component
 2. **Log sources configured to send HEC-formatted data** (Splunk forwarders, applications with HEC libraries)
 3. **HEC tokens** for authentication (generated from your source configuration or created specifically for the Collector)
 4. **Network connectivity** from log sources to the Collector endpoint
@@ -72,7 +72,7 @@ Before configuring the Splunk HEC receiver, ensure you have:
 
 ## Basic Configuration
 
-The Splunk HEC receiver requires configuring an HTTP endpoint and specifying authentication. Here's a minimal working configuration:
+The Splunk HEC receiver requires configuring an HTTP endpoint. Here's a minimal working configuration:
 
 ```yaml
 # RECEIVERS: Define how telemetry enters the Collector
@@ -83,7 +83,7 @@ receivers:
     # HTTP endpoint for receiving HEC data
     endpoint: 0.0.0.0:8088
 
-    # Access token for HEC authentication (matches token in forwarder config)
+    # Preserve the incoming HEC token as resource metadata
     access_token_passthrough: true
 
 # EXPORTERS: Define where logs are sent
@@ -106,13 +106,13 @@ service:
 **Configuration breakdown:**
 
 - `endpoint`: The address and port where the receiver listens for HEC requests (Splunk's default HEC port is 8088)
-- `access_token_passthrough`: When true, the receiver accepts any HEC token without validation (useful during migration; disable in production)
+- `access_token_passthrough`: When true, the receiver preserves the incoming `Authorization: Splunk <token>` value as the `com.splunk.hec.access_token` resource attribute. It does not validate tokens.
 
 ---
 
 ## Production Configuration with Authentication
 
-For production deployments, configure explicit token validation to ensure only authorized sources can send data:
+For production deployments, keep token validation at a reverse proxy, load balancer, or Collector authenticator layer, because the Splunk HEC receiver itself does not maintain a token whitelist:
 
 ```yaml
 receivers:
@@ -120,11 +120,10 @@ receivers:
     # Listen on all interfaces on port 8088
     endpoint: 0.0.0.0:8088
 
-    # Disable token passthrough for security
+    # Do not propagate HEC tokens into telemetry attributes
     access_token_passthrough: false
 
-    # Configure valid HEC tokens
-    # Each token can be associated with metadata
+    # Map HEC metadata into OpenTelemetry attributes
     hec_metadata_to_otel_attrs:
       source: "com.splunk.source"
       sourcetype: "com.splunk.sourcetype"
@@ -181,7 +180,13 @@ service:
     logs:
       level: info
     metrics:
-      address: localhost:8888
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 
   pipelines:
     logs:
@@ -192,7 +197,7 @@ service:
 
 **Key security features:**
 
-1. **Token validation:** Disable `access_token_passthrough` and validate tokens against a whitelist
+1. **Token validation:** Validate tokens before traffic reaches the receiver, such as at a reverse proxy, load balancer, or Collector authenticator layer
 2. **Metadata mapping:** Extract Splunk HEC metadata fields (source, sourcetype, index, host) as OpenTelemetry attributes
 3. **Resource attributes:** Add identifying information to all logs for better querying and filtering
 
@@ -208,7 +213,7 @@ Authorization: Splunk <token>
 
 **Configuring token validation:**
 
-When `access_token_passthrough` is false, configure the receiver to validate specific tokens. Currently, the receiver validates that a token is present but doesn't enforce a whitelist in the configuration file. For production deployments, implement token validation at the reverse proxy or load balancer layer.
+The Splunk HEC receiver does not validate HEC tokens by itself. The `access_token_passthrough` setting only controls whether the token is preserved as telemetry metadata. For production deployments, implement token validation at the reverse proxy, load balancer, or authenticator layer.
 
 **Using a reverse proxy (Nginx example):**
 
@@ -375,7 +380,7 @@ The raw format sends plain text logs:
 2026-02-06 10:30:45 INFO User login successful user_id=user123 ip=192.0.2.1
 ```
 
-The receiver automatically detects the format and parses accordingly. For raw format, the entire text becomes the log body, and metadata is extracted from URL parameters or headers.
+The receiver accepts JSON HEC events on non-raw paths and treats requests sent to `raw_path` (default `/services/collector/raw`) as raw log data. For raw format, the entire text becomes the log body, and metadata is extracted from URL parameters or headers.
 
 **Field mapping to OpenTelemetry:**
 
@@ -392,7 +397,7 @@ The receiver maps HEC fields to OpenTelemetry log attributes:
 
 ## Advanced Configuration with Routing
 
-You can route logs to different backends based on HEC metadata using the routing processor:
+You can route logs to different backends based on HEC metadata using the routing connector:
 
 ```yaml
 receivers:
@@ -401,17 +406,22 @@ receivers:
     access_token_passthrough: false
 
 processors:
+  batch:
+
+connectors:
   # Route based on sourcetype
   routing:
-    from_attribute: com.splunk.sourcetype
+    default_pipelines: [logs/default]
     table:
-      - value: security-logs
-        exporters: [otlphttp/security]
-      - value: application-logs
-        exporters: [otlphttp/app]
-      - value: infrastructure-logs
-        exporters: [otlphttp/infra]
-    default_exporters: [otlphttp/default]
+      - context: log
+        condition: attributes["com.splunk.sourcetype"] == "security-logs"
+        pipelines: [logs/security]
+      - context: log
+        condition: attributes["com.splunk.sourcetype"] == "application-logs"
+        pipelines: [logs/app]
+      - context: log
+        condition: attributes["com.splunk.sourcetype"] == "infrastructure-logs"
+        pipelines: [logs/infra]
 
 exporters:
   # Security logs to SIEM
@@ -440,10 +450,22 @@ exporters:
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [splunk_hec]
-      processors: [routing, batch]
-      exporters: [otlphttp/security, otlphttp/app, otlphttp/infra, otlphttp/default]
+      processors: [batch]
+      exporters: [routing]
+    logs/security:
+      receivers: [routing]
+      exporters: [otlphttp/security]
+    logs/app:
+      receivers: [routing]
+      exporters: [otlphttp/app]
+    logs/infra:
+      receivers: [routing]
+      exporters: [otlphttp/infra]
+    logs/default:
+      receivers: [routing]
+      exporters: [otlphttp/default]
 ```
 
 This configuration demonstrates intelligent routing based on log type, enabling cost optimization by sending different log categories to appropriate storage tiers.
@@ -460,37 +482,28 @@ receivers:
     endpoint: 0.0.0.0:8088
 
 processors:
-  # Drop debug-level logs in production
-  filter/severity:
-    logs:
-      exclude:
-        match_type: strict
-        log_records:
-          - severity_text == "DEBUG"
-
-  # Drop noisy health check logs
-  filter/healthchecks:
-    logs:
-      exclude:
-        match_type: regexp
-        bodies:
-          - ".*health.*check.*"
-          - ".*heartbeat.*"
+  # Drop debug-level logs, noisy health checks, and errors from the sampled pipeline
+  filter/sampled:
+    error_mode: ignore
+    log_conditions:
+      - log.severity_text == "DEBUG"
+      - IsMatch(String(log.body), ".*health.*check.*")
+      - IsMatch(String(log.body), ".*heartbeat.*")
+      - log.severity_text == "ERROR" or log.severity_text == "FATAL" or IsMatch(String(log.body), ".*ERROR.*") or IsMatch(String(log.body), ".*FATAL.*") or IsMatch(String(log.body), ".*exception.*")
 
   # Sample high-volume log sources (keep 10%)
   probabilistic_sampler:
     sampling_percentage: 10
     hash_seed: 42
+    attribute_source: record
+    from_attribute: com.splunk.source
+    fail_closed: false
 
   # Always keep error logs regardless of sampling
   filter/errors:
-    logs:
-      include:
-        match_type: regexp
-        bodies:
-          - ".*ERROR.*"
-          - ".*FATAL.*"
-          - ".*exception.*"
+    error_mode: ignore
+    log_conditions:
+      - not (log.severity_text == "ERROR" or log.severity_text == "FATAL" or IsMatch(String(log.body), ".*ERROR.*") or IsMatch(String(log.body), ".*FATAL.*") or IsMatch(String(log.body), ".*exception.*"))
 
 exporters:
   otlphttp:
@@ -503,7 +516,7 @@ service:
     # Sampled logs pipeline (excludes errors)
     logs/sampled:
       receivers: [splunk_hec]
-      processors: [filter/severity, filter/healthchecks, probabilistic_sampler, batch]
+      processors: [filter/sampled, probabilistic_sampler, batch]
       exporters: [otlphttp]
 
     # Error logs pipeline (always kept)
@@ -524,28 +537,21 @@ When migrating from Splunk Enterprise to an OpenTelemetry-based stack, the HEC r
 **Migration strategy:**
 
 1. **Deploy the OpenTelemetry Collector** with the Splunk HEC receiver configured
-2. **Enable dual forwarding** from Splunk Universal Forwarders (send to both Splunk and Collector)
+2. **Plan a validation period** by mirroring HEC traffic at a proxy/load balancer layer or dual-writing from application clients that support multiple HEC destinations
 3. **Validate data quality** in your new backend
 4. **Gradually shift sources** by updating forwarder configurations
 5. **Decommission Splunk** once all sources are migrated
 
-**Dual forwarding configuration (outputs.conf):**
+**Cutover configuration (outputs.conf):**
 
 ```ini
-# outputs.conf - Send to both Splunk and OpenTelemetry Collector
-[httpout:splunk]
-httpEventCollectorToken = splunk-token
-uri = https://splunk.example.com:8088
-
-[httpout:otel]
+# outputs.conf - Send HTTP output to the OpenTelemetry Collector
+[httpout]
 httpEventCollectorToken = otel-token
 uri = https://otel-collector.example.com:8088
-
-[tcpout]
-defaultGroup = splunk,otel
 ```
 
-This configuration sends data to both destinations, allowing you to compare results and ensure completeness before fully cutting over.
+Universal Forwarder `httpout` is configured as a single HTTP output. If you need a temporary dual-write period for HEC traffic, use an HTTP proxy or load balancer layer that can mirror requests, or dual-write from the original application clients where they support multiple HEC destinations.
 
 ---
 
@@ -638,26 +644,20 @@ Monitor the Splunk HEC receiver to ensure healthy operation and identify issues 
 **Enable Collector metrics:**
 
 ```yaml
-exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
 service:
   telemetry:
     logs:
       level: info
     metrics:
-      address: localhost:8888
-
-  pipelines:
-    logs:
-      receivers: [splunk_hec]
-      processors: [batch]
-      exporters: [otlphttp]
-
-    metrics/internal:
-      receivers: [prometheus]
-      exporters: [prometheus]
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 **Key metrics to monitor:**
@@ -678,7 +678,7 @@ curl http://otel-collector.example.com:8088/services/collector/health
 # Expected response: 200 OK with JSON body
 {
   "text": "HEC is healthy",
-  "code": 200
+  "code": 17
 }
 ```
 
@@ -690,12 +690,12 @@ Use this endpoint for load balancer health checks and monitoring systems.
 
 **1. 401 Unauthorized errors:**
 
-Clients receive 401 responses when tokens don't match or are missing.
+Clients receive 401 responses when tokens don't match or are missing at the reverse proxy, load balancer, or authenticator layer.
 
 **Solution:**
-- Verify the token in the client configuration matches the receiver configuration
+- Verify the token in the client configuration matches the proxy, load balancer, or authenticator configuration
 - Ensure the `Authorization` header format is correct: `Splunk <token>`
-- Check Collector logs for authentication errors
+- Check proxy or authenticator logs for authentication errors
 
 **2. Logs not appearing in backend:**
 
