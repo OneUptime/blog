@@ -16,7 +16,7 @@ The trial lifecycle has distinct stages that need tracking:
 # trial_metrics.py
 
 from opentelemetry import metrics, trace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 meter = metrics.get_meter("business.trial")
 tracer = trace.get_tracer("business.trial")
@@ -50,7 +50,7 @@ trial_extended = meter.create_counter(
 days_to_convert = meter.create_histogram(
     "trial.days_to_convert",
     description="Number of days from trial start to conversion",
-    unit="days",
+    unit="d",
 )
 
 # Track feature engagement during trial
@@ -77,11 +77,12 @@ class TrialService:
                 "trial.duration_days": 14,
             }
         ) as span:
+            now = datetime.now(timezone.utc)
             trial = create_trial_record(
                 user_id=user_id,
                 plan=plan,
-                starts_at=datetime.utcnow(),
-                expires_at=datetime.utcnow() + timedelta(days=14),
+                starts_at=now,
+                expires_at=now + timedelta(days=14),
             )
 
             trial_started.add(1, {
@@ -106,7 +107,7 @@ This is where the real insight lives. Users who engage deeply with core features
         if not trial:
             return
 
-        days_into_trial = (datetime.utcnow() - trial.starts_at).days
+        days_into_trial = (datetime.now(timezone.utc) - trial.starts_at).days
 
         with tracer.start_as_current_span(
             "trial.feature_engagement",
@@ -166,7 +167,7 @@ When a trial user decides to upgrade, trace the entire conversion flow:
                 "conversion.selected_plan": selected_plan,
             }
         ) as span:
-            days_in_trial = (datetime.utcnow() - trial.starts_at).days
+            days_in_trial = (datetime.now(timezone.utc) - trial.starts_at).days
             span.set_attribute("trial.days_used", days_in_trial)
 
             # Capture engagement data at conversion time
