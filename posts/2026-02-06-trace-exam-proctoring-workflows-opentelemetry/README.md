@@ -26,7 +26,7 @@ The identity verification step happens before the exam starts and usually involv
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 tracer = trace.get_tracer("proctoring.identity")
 
@@ -47,7 +47,7 @@ def verify_student_identity(student_id, exam_id, webcam_frame, stored_photo):
             face_span.set_attribute("proctor.face_confidence", face_result.confidence)
 
             if not face_result.found:
-                span.set_status(StatusCode.ERROR, "No face detected in webcam frame")
+                span.set_status(Status(StatusCode.ERROR, "No face detected in webcam frame"))
                 return {"verified": False, "reason": "no_face_detected"}
 
         # Step 2: Compare against stored photo
