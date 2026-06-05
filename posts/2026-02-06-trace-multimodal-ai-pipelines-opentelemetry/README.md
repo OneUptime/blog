@@ -85,8 +85,8 @@ class TextPipeline:
         # Load the text classification model once
         self.classifier = hf_pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
 
-    def process(self, text: str, parent_context=None) -> dict:
-        # Create a span for the entire text pipeline, linked to the parent trace
+    def process(self, text: str) -> dict:
+        # Create a span for the entire text pipeline, linked to the current trace
         with tracer.start_as_current_span("text_pipeline.process") as span:
             span.set_attribute("modality", "text")
             span.set_attribute("input.char_count", len(text))
@@ -118,7 +118,8 @@ Image processing usually involves resizing, normalization, model inference, and 
 
 from opentelemetry import trace
 from PIL import Image
-from torchvision import transforms, models
+from torchvision import models
+from torchvision.models import ResNet50_Weights
 import torch
 
 tracer = trace.get_tracer("multimodal.image")
@@ -126,16 +127,12 @@ tracer = trace.get_tracer("multimodal.image")
 class ImagePipeline:
     def __init__(self):
         # Load a pre-trained ResNet model for image classification
-        self.model = models.resnet50(pretrained=True)
+        weights = ResNet50_Weights.DEFAULT
+        self.model = models.resnet50(weights=weights)
         self.model.eval()
 
-        # Standard ImageNet preprocessing transform
-        self.preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        # Use the preprocessing transform that matches the selected weights
+        self.preprocess = weights.transforms()
 
     def process(self, image_path: str) -> dict:
         with tracer.start_as_current_span("image_pipeline.process") as span:
@@ -310,7 +307,7 @@ import concurrent.futures
 
 tracer = trace.get_tracer("multimodal.parallel")
 
-def process_in_parallel(text=None, image_path=None, audio_path=None):
+def process_in_parallel(text_pipeline, image_pipeline, audio_pipeline, text=None, image_path=None, audio_path=None):
     with tracer.start_as_current_span("multimodal.parallel_process") as root_span:
         # Capture the current context so we can propagate it to worker threads
         ctx = context.get_current()
@@ -329,22 +326,26 @@ def process_in_parallel(text=None, image_path=None, audio_path=None):
 
             if text:
                 # Submit text processing with propagated context
-                futures["text"] = executor.submit(
+                future = executor.submit(
                     run_with_context, text_pipeline.process, text
                 )
+                futures[future] = "text"
             if image_path:
                 # Submit image processing with propagated context
-                futures["image"] = executor.submit(
+                future = executor.submit(
                     run_with_context, image_pipeline.process, image_path
                 )
+                futures[future] = "image"
             if audio_path:
                 # Submit audio processing with propagated context
-                futures["audio"] = executor.submit(
+                future = executor.submit(
                     run_with_context, audio_pipeline.process, audio_path
                 )
+                futures[future] = "audio"
 
             # Collect results as they complete
-            for key, future in futures.items():
+            for future in concurrent.futures.as_completed(futures):
+                key = futures[future]
                 results[key] = future.result()
 
         return results
