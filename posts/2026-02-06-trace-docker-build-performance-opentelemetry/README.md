@@ -25,16 +25,22 @@ Without tracing, you see total build time and log output. With tracing, you see 
 
 ## BuildKit Native OpenTelemetry Support
 
-Docker BuildKit has built-in support for exporting OpenTelemetry traces. This is the simplest path if you are using a recent version of Docker (23.0 or later).
+Docker BuildKit has built-in support for exporting OpenTelemetry traces. This is the simplest path if you are using a recent version of Docker (23.0 or later, where `docker build` uses Buildx and BuildKit by default).
 
-To enable it, set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable before running your build:
+To enable it for a Docker-managed Buildx builder, create a `docker-container` builder and pass the OTLP environment variables to the builder process:
 
 ```bash
-# Enable BuildKit OTLP export by setting the standard OTel environment variables
+# Enable BuildKit OTLP export by passing the standard OTel environment variables
+# to the Buildx builder container.
+docker buildx create --use \
+  --name otel-builder \
+  --driver docker-container \
+  --driver-opt "network=host" \
+  --driver-opt "env.OTEL_TRACES_EXPORTER=otlp" \
+  --driver-opt "env.OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317" \
+  --driver-opt "env.OTEL_EXPORTER_OTLP_PROTOCOL=grpc"
 
-export DOCKER_BUILDKIT=1
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
-export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+docker buildx inspect --bootstrap
 
 # Run the build as usual; BuildKit will emit spans automatically
 docker build -t myapp:latest .
@@ -82,12 +88,9 @@ processors:
 
   # Filter out internal BuildKit spans that add noise
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        attributes:
-          - key: "name"
-            value: "^moby\\.buildkit\\.v1\\.frontend\\."
+    error_mode: ignore
+    trace_conditions:
+      - IsMatch(span.name, "^moby\\.buildkit\\.v1\\.frontend\\.")
 
 exporters:
   otlp:
@@ -117,6 +120,7 @@ import time
 import sys
 import os
 
+from opentelemetry.propagate import extract
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -161,7 +165,10 @@ def parse_dockerfile(dockerfile_path):
 
 def run_build_with_progress(image_tag, dockerfile_path, context_path, tracer):
     """Run docker build and create spans from build progress output."""
-    with tracer.start_as_current_span("docker-build") as root_span:
+    traceparent = os.environ.get("TRACEPARENT")
+    parent_context = extract({"traceparent": traceparent}) if traceparent else None
+
+    with tracer.start_as_current_span("docker-build", context=parent_context) as root_span:
         root_span.set_attribute("docker.image.tag", image_tag)
         root_span.set_attribute("docker.dockerfile", dockerfile_path)
         root_span.set_attribute("docker.context", context_path)
@@ -337,11 +344,11 @@ Once you have traces flowing, here are the patterns to look for:
 
 ## Integration with CI Pipelines
 
-Combine Docker build tracing with your CI pipeline tracing (covered in a companion post) to see the full picture. The Docker build span becomes a child of the CI pipeline span, so you can see how much of your total pipeline time is spent building images:
+Combine Docker build tracing with your CI pipeline tracing (covered in a companion post) to see the full picture. If your wrapper extracts the W3C `traceparent` value from the CI environment and uses it as the parent context, the Docker build span becomes a child of the CI pipeline span, so you can see how much of your total pipeline time is spent building images:
 
 ```bash
-# In your CI pipeline, set the traceparent before building
-# This links the Docker build trace to the parent pipeline trace
+# In your CI pipeline, pass the traceparent value before building.
+# The wrapper must extract this value and use it as the parent context.
 export TRACEPARENT="00-${TRACE_ID}-${SPAN_ID}-01"
 
 # Run the instrumented build
