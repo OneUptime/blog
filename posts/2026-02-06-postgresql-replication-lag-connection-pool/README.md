@@ -16,7 +16,7 @@ receivers:
     endpoint: "postgres:5432"
     transport: tcp
     username: monitoring
-    password: "${POSTGRES_PASSWORD}"
+    password: "${env:POSTGRES_PASSWORD}"
     databases:
       - myapp
     collection_interval: 15s
@@ -41,9 +41,9 @@ receivers:
         enabled: true
       postgresql.temp_files:
         enabled: true
-      postgresql.blocks_read:
+      postgresql.blks_read:
         enabled: true
-      postgresql.blocks_hit:
+      postgresql.blks_hit:
         enabled: true
 
 processors:
@@ -107,10 +107,10 @@ FROM pg_stat_replication;
 ### Active Connections
 
 ```text
-postgresql.backends - Number of active backend connections
+postgresql.backends - Number of current backend connections
 ```
 
-Compare this to `max_connections`:
+Compare the total number of backends to `postgresql.connection.max` or `max_connections`:
 
 ```sql
 SHOW max_connections;
@@ -135,7 +135,7 @@ Connections stuck in `idle in transaction` are holding locks and preventing vacu
 
 ### Connection Pool Metrics (PgBouncer)
 
-If you use PgBouncer, collect its metrics too:
+If you use PgBouncer, collect metrics from a PgBouncer Prometheus exporter too:
 
 ```yaml
 receivers:
@@ -150,10 +150,10 @@ receivers:
 
 Key PgBouncer metrics:
 ```text
-pgbouncer_pools_server_active   - Active server connections
-pgbouncer_pools_server_idle     - Idle server connections
-pgbouncer_pools_client_active   - Active client connections
-pgbouncer_pools_client_waiting  - Clients waiting for a connection
+pgbouncer_pools_server_active_connections   - Active server connections
+pgbouncer_pools_server_idle_connections     - Idle server connections
+pgbouncer_pools_client_active_connections   - Active client connections
+pgbouncer_pools_client_waiting_connections  - Clients waiting for a connection
 ```
 
 ## Monitoring Lock Contention
@@ -173,21 +173,17 @@ Query for active lock waits:
 
 ```sql
 SELECT
-    blocked_locks.pid AS blocked_pid,
-    blocked_activity.usename AS blocked_user,
-    blocking_locks.pid AS blocking_pid,
-    blocking_activity.usename AS blocking_user,
-    blocked_activity.query AS blocked_query,
-    blocking_activity.query AS blocking_query
-FROM pg_catalog.pg_locks blocked_locks
-JOIN pg_catalog.pg_stat_activity blocked_activity
-    ON blocked_activity.pid = blocked_locks.pid
-JOIN pg_catalog.pg_locks blocking_locks
-    ON blocking_locks.locktype = blocked_locks.locktype
-    AND blocking_locks.relation = blocked_locks.relation
-JOIN pg_catalog.pg_stat_activity blocking_activity
-    ON blocking_activity.pid = blocking_locks.pid
-WHERE NOT blocked_locks.granted;
+    blocked.pid AS blocked_pid,
+    blocked.usename AS blocked_user,
+    blocking.pid AS blocking_pid,
+    blocking.usename AS blocking_user,
+    blocked.query AS blocked_query,
+    blocking.query AS blocking_query
+FROM pg_catalog.pg_stat_activity blocked
+JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS blockers(blocking_pid)
+    ON true
+JOIN pg_catalog.pg_stat_activity blocking
+    ON blocking.pid = blockers.blocking_pid;
 ```
 
 ## Creating a Monitoring User
@@ -214,10 +210,10 @@ The `pg_monitor` role gives read access to system statistics views.
 
 # Connection pool near capacity
 - alert: PostgreSQLConnectionsHigh
-  condition: postgresql.backends > 80
+  condition: sum(postgresql.backends) / postgresql.connection.max > 0.8
   for: 5m
   severity: warning
-  message: "{{ value }} active connections out of max_connections (100)"
+  message: "PostgreSQL connections are above 80% of max_connections"
 
 # Deadlocks occurring
 - alert: PostgreSQLDeadlocks
@@ -227,7 +223,7 @@ The `pg_monitor` role gives read access to system statistics views.
 
 # Cache hit ratio low
 - alert: PostgreSQLLowCacheHitRatio
-  condition: postgresql.blocks_hit / (postgresql.blocks_hit + postgresql.blocks_read) < 0.95
+  condition: postgresql.blks_hit / (postgresql.blks_hit + postgresql.blks_read) < 0.95
   for: 15m
   severity: warning
   message: "Cache hit ratio is {{ value }}. Consider increasing shared_buffers."
@@ -242,8 +238,6 @@ The `pg_monitor` role gives read access to system statistics views.
 ## Docker Compose Example
 
 ```yaml
-version: "3.8"
-
 services:
   postgres-primary:
     image: postgres:16
