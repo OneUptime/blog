@@ -52,8 +52,7 @@ Check the HTTP headers being sent between services:
 ```python
 from opentelemetry import propagate
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.propagators.b3 import B3MultiFormat
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 # Configure both propagators
@@ -93,6 +92,7 @@ import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
 
 OpenTelemetrySdk.builder()
     .setPropagators(ContextPropagators.create(
@@ -121,6 +121,8 @@ const sdk = new NodeSDK({
     ],
   }),
 });
+
+sdk.start();
 ```
 
 ### Via Environment Variable
@@ -132,7 +134,7 @@ The simplest approach across all SDKs:
 export OTEL_PROPAGATORS="tracecontext,baggage"
 ```
 
-This works with most OpenTelemetry SDKs and is the recommended approach when using auto-instrumentation.
+This works with most OpenTelemetry SDKs and is the recommended approach when using auto-instrumentation. Many SDK configurations default to `tracecontext,baggage`, but setting this explicitly is useful when your deployment has overridden the propagator list.
 
 ## Using Baggage
 
@@ -144,6 +146,13 @@ from opentelemetry import baggage, context
 # Service A: Set baggage
 ctx = baggage.set_baggage("user.id", "12345")
 ctx = baggage.set_baggage("tenant.name", "acme-corp", context=ctx)
+token = context.attach(ctx)
+
+try:
+    # Make the downstream request here so auto-instrumentation injects the active context.
+    pass
+finally:
+    context.detach(token)
 
 # The baggage will be propagated via the 'baggage' HTTP header
 # Header: baggage: user.id=12345,tenant.name=acme-corp
@@ -176,7 +185,7 @@ The sending service needs the propagator to inject the `baggage` header. The rec
 
 ### Collector Does Not Need Baggage Configuration
 
-The Collector passes through HTTP headers transparently. You do not need to configure the Collector for baggage propagation. Baggage is handled entirely by the SDKs in your application services.
+The Collector is not normally in the service-to-service request path. You do not need to configure the Collector for baggage propagation between services. Baggage propagation is handled by the SDKs in your application services.
 
 ## Verifying Propagation
 
@@ -190,4 +199,4 @@ The Collector passes through HTTP headers transparently. You do not need to conf
 # baggage: user.id=12345,tenant.name=acme-corp
 ```
 
-Baggage propagation is a powerful feature for passing contextual information across service boundaries, but it requires explicit configuration. Always set `OTEL_PROPAGATORS="tracecontext,baggage"` on all services that need to send or receive baggage.
+Baggage propagation is a powerful feature for passing contextual information across service boundaries, but it depends on the baggage propagator being enabled. If your propagator list is configured explicitly, set `OTEL_PROPAGATORS="tracecontext,baggage"` on all services that need to send or receive baggage.
