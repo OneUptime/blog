@@ -94,6 +94,8 @@ telemetrygen logs \
 
 You should see the trace, metric, and log data printed in the Collector's console output. If you do, your setup is working.
 
+If you are still using the first minimal config, only the trace command will print telemetry because that config only has a traces pipeline. Add the metrics and logs pipelines from the next example before testing metrics or logs.
+
 ## Adding HTTP Support
 
 Some SDKs and tools send telemetry over HTTP instead of gRPC. Adding the HTTP protocol to the OTLP receiver costs one extra line.
@@ -150,7 +152,7 @@ exporters:
   # File output for persistent records
   file:
     # Write telemetry data to a JSON file
-    path: /tmp/otel-output.json
+    path: /otel-output/otel-output.json
 
 service:
   pipelines:
@@ -166,17 +168,29 @@ service:
       exporters: [debug, file]
 ```
 
-Now telemetry shows up in the console and gets written to `/tmp/otel-output.json`. You can use `jq` to parse and filter the file output, which is handy for verifying specific attributes or checking that your instrumentation produces the expected data.
+Now telemetry shows up in the console and gets written to `/otel-output/otel-output.json`. If you are running the Collector in Docker, mount a writable host directory for that path because the official Collector image does not provide a writable filesystem by default.
+
+```bash
+docker run --rm -it \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -v $(pwd)/minimal-with-file.yaml:/etc/otelcol/config.yaml \
+  -v $(pwd)/otel-output:/otel-output \
+  otel/opentelemetry-collector-contrib:latest \
+  --config /etc/otelcol/config.yaml
+```
+
+You can use `jq` to parse and filter the file output, which is handy for verifying specific attributes or checking that your instrumentation produces the expected data.
 
 ```bash
 # Pretty-print the output file
-jq '.' /tmp/otel-output.json
+jq '.' otel-output/otel-output.json
 
 # Extract just span names from the trace data
-jq '.resourceSpans[].scopeSpans[].spans[].name' /tmp/otel-output.json
+jq 'select(.resourceSpans) | .resourceSpans[].scopeSpans[].spans[].name' otel-output/otel-output.json
 
 # Filter for spans longer than 100ms
-jq '.resourceSpans[].scopeSpans[].spans[] | select(.endTimeUnixNano - .startTimeUnixNano > 100000000)' /tmp/otel-output.json
+jq 'select(.resourceSpans) | .resourceSpans[].scopeSpans[].spans[] | select((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber) > 100000000)' otel-output/otel-output.json
 ```
 
 ## The Local Development Architecture
@@ -188,7 +202,7 @@ graph LR
     A[Your Application with OTel SDK] -->|OTLP gRPC :4317| C[Collector]
     B[telemetrygen] -->|OTLP gRPC :4317| C
     C -->|debug exporter| D[Console Output]
-    C -->|file exporter| E[/tmp/otel-output.json]
+    C -->|file exporter| E[/otel-output/otel-output.json]
 ```
 
 Your application sends telemetry to the Collector. The Collector writes it to the console and a file. You read the console for real-time feedback and the file for detailed inspection.
@@ -208,16 +222,13 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Add environment info to all telemetry
+  # Add environment info to telemetry attributes
   attributes:
     actions:
-      # Insert a static attribute on every span/metric/log
+      # Insert a static attribute on spans, metric datapoints, and log records
       - key: deployment.environment
         value: local-dev
         action: insert
-      # Delete attributes you do not want to see
-      - key: host.name
-        action: delete
 
   # Resource processor modifies resource-level attributes
   resource:
@@ -225,6 +236,9 @@ processors:
       - key: service.namespace
         value: local-testing
         action: upsert
+      # Delete resource attributes you do not want to see
+      - key: host.name
+        action: delete
 
 exporters:
   debug:
@@ -236,9 +250,17 @@ service:
       receivers: [otlp]
       processors: [attributes, resource]
       exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [attributes, resource]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [attributes, resource]
+      exporters: [debug]
 ```
 
-This config adds `deployment.environment: local-dev` to every piece of telemetry and removes the `host.name` attribute. It is a quick way to test how processors transform your data without building a full pipeline.
+This config adds `deployment.environment: local-dev` to telemetry attributes, adds `service.namespace: local-testing` as a resource attribute, and removes the `host.name` resource attribute. It is a quick way to test how processors transform your data without building a full pipeline.
 
 ## Docker Compose for Multi-Service Testing
 
@@ -259,7 +281,6 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
-      - "55679:55679" # zPages for debugging
 
   # Your application service
   app:
@@ -267,6 +288,7 @@ services:
     environment:
       # Point the OTel SDK at the Collector
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=my-app
       - OTEL_TRACES_EXPORTER=otlp
     depends_on:
@@ -295,13 +317,15 @@ configs/
 docker run --rm -it \
   -p 4317:4317 \
   -v $(pwd)/configs/minimal.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector-contrib:latest
+  otel/opentelemetry-collector-contrib:latest \
+  --config /etc/otelcol/config.yaml
 
 # Test with processing
 docker run --rm -it \
   -p 4317:4317 \
   -v $(pwd)/configs/with-processing.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector-contrib:latest
+  otel/opentelemetry-collector-contrib:latest \
+  --config /etc/otelcol/config.yaml
 ```
 
 This approach lets you test specific aspects of your Collector configuration in isolation. When you need to debug a processing rule, load the processing config. When you just want to verify instrumentation, load the minimal config.
@@ -321,7 +345,7 @@ Use the `--set` flag to override config values from the command line without edi
 ```bash
 # Override the debug exporter verbosity from the command line
 otelcol --config minimal.yaml \
-  --set "exporters.debug.verbosity=basic"
+  --set "exporters::debug::verbosity=basic"
 ```
 
 ## Wrapping Up
