@@ -74,7 +74,7 @@ opentelemetry-bootstrap -a install
 opentelemetry-instrument \
     --service_name order-service \
     --traces_exporter otlp \
-    --metrics_exporter otlp \
+    --metrics_exporter none \
     --exporter_otlp_endpoint http://otel-collector:4317 \
     python app.py
 ```
@@ -136,6 +136,10 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, tail_sampling, batch]
       exporters: [otlphttp]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]
 ```
 
 At this stage, also start collecting metrics from the instrumented services. Metrics are cheaper to store than traces and give you aggregate visibility.
@@ -171,7 +175,7 @@ def rollout_progress():
     print(f"Metric coverage: {metriced}/{total} ({100*metriced//total}%)")
 ```
 
-Scale the collector infrastructure to handle the increased load. Switch from a single collector to a collector pool behind a load balancer:
+Scale the collector infrastructure to handle the increased load. Switch from a single collector to a collector pool behind a load balancer. If you keep tail sampling, make sure all spans for the same trace reach the same collector instance, or perform tail sampling after a trace-aware aggregation tier:
 
 ```yaml
 # phase3-collector-deployment.yaml
@@ -186,10 +190,13 @@ spec:
     matchLabels:
       app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               cpu: "1"
@@ -222,7 +229,7 @@ service:
 
 Not every team will be enthusiastic. Common objections and practical responses:
 
-**"It will slow down our service."** Show benchmarks from Phase 1. OpenTelemetry auto-instrumentation typically adds less than 3% overhead. Provide actual numbers from your pilot.
+**"It will slow down our service."** Show benchmarks from Phase 1. OpenTelemetry auto-instrumentation overhead depends on the language, libraries, traffic pattern, exporters, and sampling settings. Provide actual numbers from your pilot.
 
 **"We do not have time."** If you have a shared instrumentation library, onboarding takes less than an hour. Offer to pair with the team for the first setup.
 
