@@ -23,7 +23,7 @@ Before diving into configuration changes, it helps to understand how Fluentd and
 | Output plugins | Exporters | Both define where data goes |
 | Buffer | Exporter queue + batch processor | Buffering and batching are handled differently |
 | Tag/label routing | Pipelines + connectors | OTel uses named pipelines instead of tag-based routing |
-| Parser plugins | Receiver-level parsing or transform processor | Parsing is typically done at the receiver level |
+| Parser plugins | Receiver-level parsing or transform processor | Parsing is typically done with filelog operators at the receiver level |
 
 ```mermaid
 graph TD
@@ -78,29 +78,26 @@ The equivalent OpenTelemetry Collector configuration:
 # OpenTelemetry Collector configuration for Kubernetes log collection
 receivers:
   filelog:
-    # Tail all container log files, same path as Fluent Bit
+    # Tail pod log files written by the Kubernetes container runtime
     include:
-      - /var/log/containers/*.log
+      - /var/log/pods/*/*/*.log
     # Exclude collector's own logs to prevent feedback loops
     exclude:
-      - /var/log/containers/*otel-collector*.log
+      - /var/log/pods/*/otel-collector/*.log
     # Start reading from the end of existing files on first run
     start_at: end
+    # Make log.file.path available so the container parser can extract Kubernetes metadata
+    include_file_path: true
+    include_file_name: false
     # Checkpoint file for tracking read positions across restarts
     storage: file_storage
-    # Parse the container runtime log format (containerd or CRI-O)
+    # Parse the container runtime log format (Docker, containerd, or CRI-O)
     operators:
       # First operator parses the container runtime log wrapper
       - type: container
         id: container-parser
-      # Move Kubernetes metadata from filename into resource attributes
-      - type: regex_parser
-        id: filename-parser
-        regex: '^/var/log/containers/(?P<pod_name>[^_]+)_(?P<namespace>[^_]+)_(?P<container_name>[^-]+)-.*\.log$'
-        parse_from: attributes["log.file.name"]
-        parse_to: resource
 
-  # Use the k8s_attributes processor instead for richer metadata enrichment
+  # Use the k8sattributes processor below for richer metadata enrichment
 
 processors:
   # Enrich logs with Kubernetes metadata from the API server
@@ -110,6 +107,7 @@ processors:
     extract:
       metadata:
         - k8s.pod.name
+        - k8s.pod.uid
         - k8s.namespace.name
         - k8s.deployment.name
         - k8s.node.name
@@ -121,7 +119,12 @@ processors:
     pod_association:
       - sources:
           - from: resource_attribute
+            name: k8s.pod.uid
+      - sources:
+          - from: resource_attribute
             name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
 
   batch:
     timeout: 5s
@@ -210,13 +213,11 @@ processors:
   # Transform processor for more complex field manipulation
   transform:
     log_statements:
-      - context: log
-        statements:
-          # Move the parsed severity field to the log record's severity
-          - set(severity_text, attributes["level"]) where attributes["level"] != nil
+      # Move the parsed severity field to the log record's severity
+      - set(log.severity_text, log.attributes["level"]) where log.attributes["level"] != nil
 ```
 
-The `resource` processor adds static metadata to every log record, similar to Fluentd's record_transformer. For more complex transformations, the `transform` processor uses the OpenTelemetry Transformation Language (OTTL), which gives you SQL-like expressions for modifying log records.
+The `resource` processor adds static metadata to every log record, similar to Fluentd's record_transformer. For more complex transformations, the `transform` processor uses the OpenTelemetry Transformation Language (OTTL), which gives you functions, paths, and conditions for modifying log records.
 
 ## Step 3: Handle Log Parsing and Multiline Logs
 
@@ -249,7 +250,7 @@ This configuration first combines multiline entries (like stack traces that span
 
 ## Step 4: Migrate Tag-Based Routing
 
-Fluentd uses tags extensively for routing logs to different outputs. In OpenTelemetry Collector, you achieve this through multiple pipelines and the routing processor.
+Fluentd uses tags extensively for routing logs to different outputs. In OpenTelemetry Collector, you achieve this through multiple pipelines and the routing connector.
 
 Fluentd routing:
 
@@ -269,22 +270,20 @@ Fluentd routing:
 OpenTelemetry Collector routing:
 
 ```yaml
-# Route logs to different exporters based on attributes
-processors:
+# Route logs to different pipelines based on attributes
+connectors:
   routing:
-    # Route based on a resource attribute value
-    from_attribute: log_type
-    attribute_source: resource
-    # Default route for logs that do not match any specific table
-    default_exporters:
-      - elasticsearch/default
+    default_pipelines:
+      - logs/default
     table:
-      - value: access
-        exporters:
-          - elasticsearch/access
-      - value: error
-        exporters:
-          - elasticsearch/errors
+      - context: resource
+        condition: attributes["log_type"] == "access"
+        pipelines:
+          - logs/access
+      - context: resource
+        condition: attributes["log_type"] == "error"
+        pipelines:
+          - logs/errors
 
 exporters:
   elasticsearch/access:
@@ -299,10 +298,18 @@ exporters:
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [filelog]
-      processors: [routing]
-      exporters: [elasticsearch/access, elasticsearch/errors, elasticsearch/default]
+      exporters: [routing]
+    logs/access:
+      receivers: [routing]
+      exporters: [elasticsearch/access]
+    logs/errors:
+      receivers: [routing]
+      exporters: [elasticsearch/errors]
+    logs/default:
+      receivers: [routing]
+      exporters: [elasticsearch/default]
 ```
 
 ## Step 5: Deploy with a Parallel Run Strategy
@@ -333,4 +340,4 @@ During the parallel run, compare log volumes between the two pipelines. Check th
 
 ## Wrapping Up
 
-Moving from Fluentd or Fluent Bit to OpenTelemetry log collection consolidates your observability pipeline into a single agent. Start with the filelog receiver for basic log tailing, add the k8sattributes processor for Kubernetes metadata, and use the routing processor to replicate tag-based routing. Run both systems in parallel until you are confident the OpenTelemetry pipeline captures everything your Fluentd setup did, then retire the old system.
+Moving from Fluentd or Fluent Bit to OpenTelemetry log collection consolidates your observability pipeline into a single agent. Start with the filelog receiver for basic log tailing, add the k8sattributes processor for Kubernetes metadata, and use the routing connector to replicate tag-based routing. Run both systems in parallel until you are confident the OpenTelemetry pipeline captures everything your Fluentd setup did, then retire the old system.
