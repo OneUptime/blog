@@ -14,7 +14,7 @@ This guide provides practical configuration examples for the Nginx receiver, fro
 
 ## Understanding the Nginx Receiver
 
-The Nginx receiver collects metrics from the Nginx `stub_status` module or the more advanced Nginx Plus API. It scrapes metrics at regular intervals and converts them into OpenTelemetry metrics that flow through your Collector pipeline.
+The Nginx receiver collects metrics from the Nginx `stub_status` module. It scrapes metrics at regular intervals and converts them into OpenTelemetry metrics that flow through your Collector pipeline.
 
 Key metrics collected include:
 
@@ -23,7 +23,6 @@ Key metrics collected include:
 - Total requests processed
 - Reading, writing, and waiting connection states
 - Request rate and connection rate
-- Upstream server health (Nginx Plus)
 
 These metrics help you understand load patterns, identify bottlenecks, detect anomalies, and optimize performance.
 
@@ -43,7 +42,7 @@ server {
     # Status endpoint for monitoring
     # Restrict access to localhost or monitoring networks
     location /nginx_status {
-        stub_status on;
+        stub_status;
         # Security: Only allow access from localhost
         allow 127.0.0.1;
         # Or allow from your monitoring network
@@ -90,10 +89,8 @@ The following diagram illustrates how metrics flow from Nginx through the Collec
 
 ```mermaid
 graph LR
-    A[Nginx Server] -->|/nginx_status| B[OTel Collector
-    Nginx Receiver]
-    B --> C[Processors
-    Transform/Filter]
+    A[Nginx Server] -->|/nginx_status| B[OTel Collector<br/>Nginx Receiver]
+    B --> C[Processors<br/>Transform/Filter]
     C --> D[Exporters]
     D --> E[(OneUptime)]
     D --> F[(Prometheus)]
@@ -207,7 +204,7 @@ processors:
   #     include:
   #       match_type: strict
   #       metric_names:
-  #         - nginx.connections_active
+  #         - nginx.connections_current
   #         - nginx.requests
 
 exporters:
@@ -359,11 +356,6 @@ This approach allows different collection intervals and tagging strategies per i
 
 The Nginx receiver exposes these critical metrics:
 
-**nginx.connections_active**
-- Current number of active client connections
-- High values indicate heavy load or slow processing
-- Alert when consistently above 80% of worker_connections
-
 **nginx.connections_accepted**
 - Total connections accepted since Nginx started
 - Calculate connection rate as derivative
@@ -379,18 +371,12 @@ The Nginx receiver exposes these critical metrics:
 - Calculate request rate as derivative
 - Primary metric for traffic patterns
 
-**nginx.connections_reading**
-- Connections currently reading request headers
-- High values may indicate slow clients
-
-**nginx.connections_writing**
-- Connections currently writing responses
-- High values may indicate slow clients or large responses
-
-**nginx.connections_waiting**
-- Idle keepalive connections
-- High values with low active connections is normal
-- Optimize keepalive_timeout based on this metric
+**nginx.connections_current**
+- Current number of Nginx connections by `state`
+- `state=active` includes waiting connections and shows overall connection load
+- `state=reading` shows connections where Nginx is reading request headers
+- `state=writing` shows connections where Nginx is writing responses
+- `state=waiting` shows idle keepalive connections waiting for a request
 
 ## Deployment Patterns
 
@@ -465,7 +451,7 @@ Never expose Nginx status publicly. Use IP allowlisting:
 
 ```nginx
 location /nginx_status {
-    stub_status on;
+    stub_status;
     # Only allow from monitoring network
     allow 10.0.0.0/8;
     allow 172.16.0.0/12;
@@ -477,7 +463,7 @@ Or add authentication:
 
 ```nginx
 location /nginx_status {
-    stub_status on;
+    stub_status;
     auth_basic "Monitoring";
     auth_basic_user_file /etc/nginx/.htpasswd;
 }
@@ -552,17 +538,17 @@ curl -H "Authorization: Basic YOUR_TOKEN" http://nginx.example.com/nginx_status
 
 ## Advanced Configuration: Nginx Plus
 
-If you're using Nginx Plus, you can collect more detailed metrics from the API:
+The OpenTelemetry Collector Nginx receiver reads the `stub_status` endpoint. It does not collect the Nginx Plus API directly. If you're using Nginx Plus, enable `stub_status` for this receiver:
 
 ```yaml
 receivers:
   nginx:
-    # Nginx Plus API endpoint (not stub_status)
-    endpoint: http://nginx-plus.example.com:8080/api/9/nginx
+    # Nginx stub_status endpoint
+    endpoint: http://nginx-plus.example.com/nginx_status
     collection_interval: 10s
 ```
 
-Nginx Plus provides:
+Nginx Plus provides additional data through its separate API, including:
 
 - Per-upstream server metrics
 - Cache statistics
@@ -571,7 +557,7 @@ Nginx Plus provides:
 - SSL/TLS metrics
 - Stream (TCP/UDP) metrics
 
-These require Nginx Plus with the API enabled:
+Those Nginx Plus API metrics require a separate integration or custom collection path. The Nginx Plus API is enabled with configuration like:
 
 ```nginx
 server {
