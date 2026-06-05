@@ -29,6 +29,8 @@ dotnet add package Hangfire.SqlServer
 dotnet add package Hangfire.AspNetCore
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
+dotnet add package OpenTelemetry.Instrumentation.SqlClient
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
@@ -86,6 +88,7 @@ builder.Services.AddHangfire(configuration => configuration
         }));
 
 builder.Services.AddHangfireServer();
+builder.Services.AddScoped<IOrderProcessingJobs, OrderProcessingJobs>();
 
 var app = builder.Build();
 
@@ -106,6 +109,7 @@ using Hangfire.Common;
 using Hangfire.Server;
 using Hangfire.States;
 using Hangfire.Storage;
+using OpenTelemetry.Trace;
 
 public class OpenTelemetryJobFilter :
     IClientFilter,
@@ -167,7 +171,11 @@ public class OpenTelemetryJobFilter :
 
         activity?.SetTag("job.type", context.Job.Type.Name);
         activity?.SetTag("job.method", context.Job.Method.Name);
-        activity?.SetTag("job.queue", context.InitialState?.Name ?? "default");
+        var queue = context.InitialState is EnqueuedState enqueuedState
+            ? enqueuedState.Queue
+            : context.Job.Queue ?? EnqueuedState.DefaultQueue;
+
+        activity?.SetTag("job.queue", queue);
 
         context.Items["activity"] = activity;
     }
@@ -272,20 +280,28 @@ public class OpenTelemetryJobFilter :
     {
         var activity = Activity.Current;
 
-        if (activity != null && context.NewState is FailedState failedState)
+        if (context.NewState is ScheduledState &&
+            context.NewState.Reason?.StartsWith("Retry attempt", StringComparison.OrdinalIgnoreCase) == true)
         {
-            var retryAttempt = context.GetJobParameter<int>("RetryCount") + 1;
-            context.SetJobParameter("RetryCount", retryAttempt);
+            var retryAttempt = context.GetJobParameter<int>("RetryCount");
 
             _retryAttempts.Record(retryAttempt, new KeyValuePair<string, object?>(
                 "job.type", context.BackgroundJob.Job.Type.Name));
 
+            activity?.AddEvent(new ActivityEvent("JobRetryScheduled",
+                tags: new ActivityTagsCollection
+                {
+                    ["retry.attempt"] = retryAttempt
+                }));
+        }
+
+        if (activity != null && context.NewState is FailedState failedState)
+        {
             activity.AddEvent(new ActivityEvent("JobFailed",
                 tags: new ActivityTagsCollection
                 {
                     ["exception.type"] = failedState.Exception.GetType().Name,
-                    ["exception.message"] = failedState.Exception.Message,
-                    ["retry.attempt"] = retryAttempt
+                    ["exception.message"] = failedState.Exception.Message
                 }));
         }
     }
@@ -310,12 +326,14 @@ Now create jobs that add custom telemetry for business logic:
 ```csharp
 using System.Diagnostics;
 using Hangfire;
+using OpenTelemetry.Trace;
 
 public interface IOrderProcessingJobs
 {
     Task ProcessOrderAsync(Guid orderId);
     Task SendOrderConfirmationAsync(Guid orderId, string email);
     Task GenerateMonthlyReportAsync(DateTime reportMonth);
+    Task GeneratePreviousMonthReportAsync();
 }
 
 public class OrderProcessingJobs : IOrderProcessingJobs
@@ -520,6 +538,11 @@ public class OrderProcessingJobs : IOrderProcessingJobs
         }
     }
 
+    public Task GeneratePreviousMonthReportAsync()
+    {
+        return GenerateMonthlyReportAsync(DateTime.UtcNow.AddMonths(-1));
+    }
+
     private async Task<bool> ValidateOrderAsync(Guid orderId)
     {
         await Task.Delay(100); // Simulate validation
@@ -648,7 +671,7 @@ public class OrdersController : ControllerBase
         // Schedule recurring job (runs on first day of each month at 2 AM)
         RecurringJob.AddOrUpdate<IOrderProcessingJobs>(
             "monthly-report",
-            x => x.GenerateMonthlyReportAsync(DateTime.UtcNow.AddMonths(-1)),
+            x => x.GeneratePreviousMonthReportAsync(),
             "0 2 1 * *");
 
         activity?.SetTag("recurring.job.id", "monthly-report");
