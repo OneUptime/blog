@@ -17,7 +17,7 @@ Here is a typical long-polling endpoint:
 ```typescript
 // long-polling-endpoint.ts
 import express from 'express';
-import { trace, metrics, SpanKind } from '@opentelemetry/api';
+import { trace, metrics, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('long-polling');
 const meter = metrics.getMeter('long-polling');
@@ -29,13 +29,18 @@ const pollDuration = meter.createHistogram('api.long_poll.duration_ms', {
   description: 'Total duration of long-poll requests',
   unit: 'ms',
   advice: {
-    // Custom buckets for long-polling (seconds, not milliseconds)
+    // Custom buckets for long-polling in milliseconds
     explicitBucketBoundaries: [100, 500, 1000, 5000, 10000, 15000, 20000, 25000, 30000],
   },
 });
 
+const checkDurationHistogram = meter.createHistogram('api.long_poll.check_duration_ms', {
+  description: 'Time spent checking for immediately available data',
+  unit: 'ms',
+});
+
 const pollOutcome = meter.createCounter('api.long_poll.outcome', {
-  description: 'Long-poll outcomes: data_available, timeout, or error',
+  description: 'Long-poll outcomes: immediate, data_available, timeout, or error',
 });
 
 const waitDuration = meter.createHistogram('api.long_poll.wait_duration_ms', {
@@ -64,7 +69,11 @@ app.get('/api/notifications/poll', async (req, res) => {
 
   try {
     // First, check if there is already data available (no waiting needed)
+    const checkStart = Date.now();
     const immediateData = await checkForNewData(lastEventId);
+    const checkDuration = Date.now() - checkStart;
+    span.setAttribute('long_poll.check_duration_ms', checkDuration);
+    checkDurationHistogram.record(checkDuration);
 
     if (immediateData.length > 0) {
       const duration = Date.now() - startTime;
@@ -78,8 +87,6 @@ app.get('/api/notifications/poll', async (req, res) => {
       pollDuration.record(duration);
 
       res.json({ data: immediateData, hasMore: false });
-      span.end();
-      activePollsGauge.add(-1);
       return;
     }
 
@@ -118,6 +125,7 @@ app.get('/api/notifications/poll', async (req, res) => {
 
     span.setAttribute('long_poll.outcome', 'error');
     span.recordException(error);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
     pollOutcome.add(1, { outcome: 'error' });
     pollDuration.record(duration);
@@ -186,6 +194,7 @@ const checkStart = Date.now();
 const immediateData = await checkForNewData(lastEventId);
 const checkDuration = Date.now() - checkStart;
 span.setAttribute('long_poll.check_duration_ms', checkDuration);
+checkDurationHistogram.record(checkDuration);
 
 // Phase 2: Wait for data (intentionally slow)
 const waitStart = Date.now();
@@ -210,7 +219,7 @@ Standard latency alerts do not apply. Instead, alert on these conditions:
 - alert: LongPollCheckSlow
   expr: |
     histogram_quantile(0.99,
-      rate(api_long_poll_check_duration_ms_bucket[5m])
+      sum by (le) (rate(api_long_poll_check_duration_ms_bucket[5m]))
     ) > 500
   annotations:
     summary: "Long-poll data availability check is slow"
