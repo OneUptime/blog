@@ -35,7 +35,7 @@ otel-configs/
     cardinality-limits.rego
   scripts/
     validate.sh
-    merge-configs.py
+    merge_configs.py
   .github/
     workflows/
       validate.yaml
@@ -95,7 +95,7 @@ processors:
         value: true
         action: upsert
       - key: collector.version
-        from_attribute: ""
+        value: "${env:OTEL_COLLECTOR_VERSION:-unknown}"
         action: upsert
 ```
 
@@ -104,9 +104,9 @@ processors:
 # Backend exporters - endpoint values are overridden per environment.
 exporters:
   otlp/backend:
-    endpoint: "${OTEL_BACKEND_ENDPOINT}"
+    endpoint: "${env:OTEL_BACKEND_ENDPOINT}"
     headers:
-      Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+      Authorization: "Bearer ${env:OTEL_AUTH_TOKEN}"
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -168,15 +168,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, tail_sampling, batch]
+      processors: [memory_limiter, resource/standard, tail_sampling, batch]
       exporters: [otlp/backend]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/standard, batch]
       exporters: [otlp/backend]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/standard, batch]
       exporters: [otlp/backend]
 ```
 
@@ -260,8 +260,11 @@ jobs:
         run: |
           pip install pyyaml
           # Install the OTel Collector for config validation
-          wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz
-          tar xzf otelcol-contrib_0.96.0_linux_amd64.tar.gz
+          wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_linux_amd64.tar.gz
+          tar xzf otelcol-contrib_0.153.0_linux_amd64.tar.gz
+          # Install OPA for policy validation
+          wget -q -O opa https://openpolicyagent.org/downloads/v1.17.0/opa_linux_amd64_static
+          chmod +x opa
 
       - name: Merge and validate staging config
         run: |
@@ -275,7 +278,7 @@ jobs:
 
       - name: Check naming conventions
         run: |
-          python scripts/check_naming.py /tmp/production-config.yaml
+          ./opa eval --fail-defined --input /tmp/production-config.yaml --data policies/naming-conventions.rego 'data.otel.naming.deny[_]'
 
       - name: Diff against current deployed config
         run: |
@@ -345,10 +348,10 @@ Use Open Policy Agent to enforce organizational rules on configurations.
 # Enforce that all custom processors follow naming conventions.
 package otel.naming
 
-deny[msg] {
+deny contains msg if {
     some processor_name
     input.processors[processor_name]
-    # Custom processors must use team prefix
+    # Custom processors must use approved component prefixes
     not startswith(processor_name, "filter/")
     not startswith(processor_name, "attributes/")
     not startswith(processor_name, "resource/")
@@ -357,7 +360,7 @@ deny[msg] {
     msg := sprintf("Processor '%s' does not follow naming convention", [processor_name])
 }
 
-deny[msg] {
+deny contains msg if {
     some pipeline_name
     input.service.pipelines[pipeline_name]
     pipeline := input.service.pipelines[pipeline_name]
