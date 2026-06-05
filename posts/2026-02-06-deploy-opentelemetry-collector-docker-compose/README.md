@@ -10,7 +10,7 @@ Docker and Docker Compose provide a straightforward way to deploy OpenTelemetry 
 
 ## Understanding Collector Docker Images
 
-The OpenTelemetry project provides official Docker images through GitHub Container Registry:
+The OpenTelemetry project provides official Docker images through Docker Hub and GitHub Container Registry:
 
 **Core Collector** (`otel/opentelemetry-collector`): Contains essential receivers, processors, and exporters. Lightweight and suitable for basic use cases.
 
@@ -19,16 +19,17 @@ The OpenTelemetry project provides official Docker images through GitHub Contain
 Images are tagged with version numbers and architecture variants:
 
 ```bash
-# Latest stable version
+# Specific release version
 
-otel/opentelemetry-collector-contrib:0.93.0
+otel/opentelemetry-collector-contrib:0.153.0
+ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
 
 # Latest release (not recommended for production)
 otel/opentelemetry-collector-contrib:latest
 
 # Specific architecture
-otel/opentelemetry-collector-contrib:0.93.0-amd64
-otel/opentelemetry-collector-contrib:0.93.0-arm64
+otel/opentelemetry-collector-contrib:0.153.0-amd64
+otel/opentelemetry-collector-contrib:0.153.0-arm64
 ```
 
 ## Running a Basic Collector with Docker
@@ -51,7 +52,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -59,15 +60,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 EOF
 
 # Run the collector
@@ -77,12 +78,12 @@ docker run -d \
   -p 4318:4318 \
   -p 8888:8888 \
   -v $(pwd)/collector-config.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector-contrib:0.93.0
+  otel/opentelemetry-collector-contrib:0.153.0
 
 # View logs
 docker logs -f otel-collector
 
-# Check collector health
+# Check collector metrics
 curl http://localhost:8888/metrics
 
 # Stop and remove
@@ -105,19 +106,22 @@ Docker Compose enables multi-container deployments with dependencies and network
 # docker-compose.yaml
 # Complete observability stack with collector, backends, and applications
 
-version: '3.8'
-
 services:
   # OpenTelemetry Collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: otel-collector
     command: ["--config=/etc/otelcol/config.yaml"]
+    # Needed for the local docker_stats receiver example. Prefer group_add
+    # with the host docker group ID or a Docker socket proxy in production.
+    user: "0"
     volumes:
       # Mount configuration file
       - ./collector-config.yaml:/etc/otelcol/config.yaml
       # Persistent storage for queues and file storage
       - collector-data:/data
+      # Docker daemon socket for docker_stats receiver
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       # OTLP gRPC receiver
       - "4317:4317"
@@ -127,6 +131,8 @@ services:
       - "8888:8888"
       # Health check endpoint
       - "13133:13133"
+      # pprof endpoint
+      - "1777:1777"
     environment:
       # Environment variables for configuration
       - OTEL_LOG_LEVEL=info
@@ -134,7 +140,7 @@ services:
       - observability
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -177,7 +183,7 @@ services:
 
   # Loki for logs
   loki:
-    image: grafana/loki:2.9.3
+    image: grafana/loki:3.5.0
     container_name: loki
     ports:
       - "3100:3100"
@@ -212,7 +218,7 @@ services:
 
   # Sample application for testing
   sample-app:
-    image: otel/opentelemetry-demo-frontend:latest
+    image: ghcr.io/open-telemetry/demo:2.2.0-frontend
     container_name: sample-app
     environment:
       # Send telemetry to collector
@@ -345,14 +351,14 @@ exporters:
     tls:
       insecure: true
 
-  # Export to Loki for logs
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  # Export to Loki for logs using Loki's native OTLP endpoint
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
     tls:
       insecure: true
 
   # Debug exporter for troubleshooting
-  logging:
+  debug:
     verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 200
@@ -374,42 +380,44 @@ extensions:
   pprof:
     endpoint: 0.0.0.0:1777
 
-  # Memory ballast for stable memory usage
-  memory_ballast:
-    size_mib: 165
-
   # File storage for persistent queues
   file_storage:
     directory: /data/storage
+    create_directory: true
     timeout: 10s
 
 service:
-  extensions: [health_check, pprof, memory_ballast, file_storage]
+  extensions: [health_check, pprof, file_storage]
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/jaeger, logging]
+      exporters: [otlp/jaeger, debug]
 
     metrics:
       receivers: [otlp, prometheus, docker_stats]
       processors: [memory_limiter, filter/drop_internal, metricstransform, resource, batch]
-      exporters: [prometheusremotewrite, file, logging]
+      exporters: [prometheusremotewrite, file, debug]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki, logging]
+      exporters: [otlphttp/loki, debug]
 
   telemetry:
     logs:
-      level: info
+      level: ${env:OTEL_LOG_LEVEL}
       development: false
       encoding: json
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Create supporting configuration files:
@@ -454,15 +462,16 @@ common:
 
 schema_config:
   configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
+    - from: 2024-04-01
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 limits_config:
+  allow_structured_metadata: true
   reject_old_samples: true
   reject_old_samples_max_age: 168h
   ingestion_rate_mb: 10
@@ -499,16 +508,16 @@ Deploy the stack:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs from all services
-docker-compose logs -f
+docker compose logs -f
 
 # View collector logs only
-docker-compose logs -f otel-collector
+docker compose logs -f otel-collector
 
 # Check service health
-docker-compose ps
+docker compose ps
 
 # Access services:
 # - Grafana: http://localhost:3000
@@ -517,10 +526,10 @@ docker-compose ps
 # - Sample App: http://localhost:8080
 
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (clears all data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Docker Compose for Two-Tier Architecture
@@ -531,12 +540,10 @@ Implement agent and gateway collectors:
 # docker-compose-two-tier.yaml
 # Two-tier collector architecture with agents and gateways
 
-version: '3.8'
-
 services:
   # Gateway collector
   gateway-collector:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: gateway-collector
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
@@ -551,7 +558,7 @@ services:
 
   # Agent collector 1
   agent-collector-1:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: agent-collector-1
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
@@ -570,7 +577,7 @@ services:
 
   # Agent collector 2
   agent-collector-2:
-    image: otel/opentelemetry-collector-contrib:0.93.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: agent-collector-2
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
@@ -589,7 +596,7 @@ services:
 
   # Application 1 sends to agent-1
   app-1:
-    image: otel/opentelemetry-demo-frontend:latest
+    image: ghcr.io/open-telemetry/demo:2.2.0-frontend
     container_name: app-1
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://agent-collector-1:4318
@@ -603,7 +610,7 @@ services:
 
   # Application 2 sends to agent-2
   app-2:
-    image: otel/opentelemetry-demo-frontend:latest
+    image: ghcr.io/open-telemetry/demo:2.2.0-frontend
     container_name: app-2
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://agent-collector-2:4318
@@ -644,6 +651,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 256
   batch:
     timeout: 5s
@@ -653,12 +661,12 @@ processors:
         value: agent
         action: insert
       - key: agent.id
-        value: ${AGENT_ID}
+        value: ${env:AGENT_ID}
         action: insert
 
 exporters:
   otlp:
-    endpoint: ${GATEWAY_ENDPOINT}
+    endpoint: ${env:GATEWAY_ENDPOINT}
     tls:
       insecure: true
 
@@ -692,6 +700,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 1024
   batch:
     timeout: 10s
@@ -707,6 +716,8 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
@@ -717,11 +728,11 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/jaeger]
+      exporters: [debug]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/jaeger]
+      exporters: [debug]
 ```
 
 ## Using Docker Networks for Service Discovery
@@ -772,6 +783,7 @@ To collect Docker container metrics, mount the Docker socket:
 ```yaml
 services:
   otel-collector:
+    user: "0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     # Note: This grants the collector access to Docker daemon
@@ -802,11 +814,11 @@ services:
 # In collector-config.yaml
 exporters:
   otlp:
-    endpoint: ${BACKEND_ENDPOINT}
+    endpoint: ${env:BACKEND_ENDPOINT}
 
 processors:
   probabilistic_sampler:
-    sampling_percentage: ${SAMPLING_RATE}
+    sampling_percentage: ${env:SAMPLING_RATE}
 ```
 
 Use `.env` file for sensitive values:
@@ -829,13 +841,13 @@ services:
 
 ## Health Checks and Dependencies
 
-Configure health checks for reliable startup:
+Configure health checks for reliable startup. The official Collector image does not include `wget`, `curl`, or a shell, so this example uses the Collector binary to validate the mounted configuration:
 
 ```yaml
 services:
   otel-collector:
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -883,22 +895,21 @@ Common issues and solutions:
 
 ```bash
 # Check collector logs
-docker-compose logs otel-collector
+docker compose logs otel-collector
 
 # Verify network connectivity
-docker-compose exec otel-collector wget -O- http://jaeger:16686
+curl http://localhost:16686
 
 # Test OTLP endpoint
-docker-compose exec otel-collector \
-  curl -X POST http://localhost:4318/v1/traces \
+curl -X POST http://localhost:4318/v1/traces \
   -H "Content-Type: application/json" \
   -d '{"resourceSpans":[]}'
 
 # Check metrics endpoint
-docker-compose exec otel-collector curl http://localhost:8888/metrics
+curl http://localhost:8888/metrics
 
 # Validate configuration
-docker-compose exec otel-collector \
+docker compose exec otel-collector \
   /otelcol-contrib validate --config=/etc/otelcol/config.yaml
 
 # Inspect container
