@@ -29,7 +29,7 @@ With these fields present, your observability backend can build the links in bot
 
 ## Python: Injecting Trace Context with the logging Module
 
-The OpenTelemetry Python SDK provides a log handler that automatically injects trace context:
+The OpenTelemetry Python logging instrumentation can automatically inject trace context into standard library log records:
 
 ```python
 # app.py
@@ -55,7 +55,7 @@ class JsonFormatter(logging.Formatter):
             # These fields are injected by LoggingInstrumentor
             "trace_id": getattr(record, "otelTraceID", "0" * 32),
             "span_id": getattr(record, "otelSpanID", "0" * 16),
-            "trace_flags": getattr(record, "otelTraceFlagss", "00"),
+            "trace_sampled": getattr(record, "otelTraceSampled", False),
         }
 
         # Include exception info if present
@@ -108,19 +108,11 @@ For Java applications using SLF4J with Logback, the OpenTelemetry Java agent aut
 </configuration>
 ```
 
-If you are using the Java agent, enable MDC injection in your declarative config:
+If you have disabled the Logback MDC instrumentation, re-enable it in the Java agent properties file:
 
-```yaml
-# otel-config.yaml
-instrumentation:
-  java:
-    logging:
-      # Inject trace context into SLF4J MDC
-      mdc:
-        enabled: true
-        trace_id_key: "trace_id"
-        span_id_key: "span_id"
-        trace_flags_key: "trace_flags"
+```properties
+# otel-javaagent.properties
+otel.instrumentation.logback-mdc.enabled=true
 ```
 
 Your application code does not need to change at all:
@@ -225,9 +217,11 @@ type TraceHandler struct {
 func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
     span := trace.SpanFromContext(ctx)
     if span.SpanContext().IsValid() {
+        spanContext := span.SpanContext()
         r.AddAttrs(
-            slog.String("trace_id", span.SpanContext().TraceID().String()),
-            slog.String("span_id", span.SpanContext().SpanID().String()),
+            slog.String("trace_id", spanContext.TraceID().String()),
+            slog.String("span_id", spanContext.SpanID().String()),
+            slog.String("trace_flags", spanContext.TraceFlags().String()),
         )
     }
     return h.Handler.Handle(ctx, r)
