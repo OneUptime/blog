@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Express.js, Node.js, Instrumentation
 
 Description: Resolve Express.js instrumentation failures by ensuring OpenTelemetry hooks are registered before Express is imported.
 
-Express.js is one of the most popular Node.js frameworks, and OpenTelemetry provides instrumentation for it. But the instrumentation only works if the Express module is loaded after OpenTelemetry sets up its hooks. If Express is imported first, you get zero HTTP spans from your Express routes, and there is no error message to tell you why.
+Express.js is one of the most popular Node.js frameworks, and OpenTelemetry provides instrumentation for it. But the instrumentation only works if the Express module is loaded after OpenTelemetry sets up its hooks. If Express is imported first, you get no Express middleware or route-handler spans, and there is no error message to tell you why.
 
 ## The Failure Pattern
 
@@ -26,7 +26,7 @@ app.get('/api/users', (req, res) => {
   res.json([{ id: 1, name: 'Alice' }]);
 });
 app.listen(3000);
-// No HTTP or Express spans will be generated
+// No Express middleware or route-handler spans will be generated
 ```
 
 ## Why Express Instrumentation Needs to Load First
@@ -42,11 +42,11 @@ The wrapping happens when Express is first loaded via `require('express')`. If E
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'express-api',
   }),
   traceExporter: new OTLPTraceExporter(),
