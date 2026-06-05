@@ -43,7 +43,7 @@ In Python, the warning appears when you use `opentelemetry-api` without configur
 ```python
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # Step 1: Create an exporter that sends spans to your backend.
@@ -55,9 +55,9 @@ exporter = OTLPSpanExporter(
 )
 
 # Step 2: Create a TracerProvider and add the exporter.
-# BatchSpanExporter batches spans for efficient export.
+# BatchSpanProcessor batches spans for efficient export.
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanExporter(exporter))
+provider.add_span_processor(BatchSpanProcessor(exporter))
 
 # Step 3: Register the provider as the global TracerProvider.
 # This is the critical step that most people miss.
@@ -69,19 +69,20 @@ with tracer.start_as_current_span("my-operation"):
     print("This span will be exported!")
 ```
 
-The most common mistake in Python is calling `trace.get_tracer()` before `trace.set_tracer_provider()`. The order matters. If you get a tracer before the provider is set, that tracer is bound to the NoopTracerProvider and will remain a noop even after you register the real provider.
+The safest pattern in Python is calling `trace.set_tracer_provider()` before application code or instrumentation starts creating spans. Recent OpenTelemetry Python versions return proxy tracers before the provider is configured, but initializing the provider first still avoids surprises with older versions and with instrumentation that starts work during import.
 
 ```python
-# Wrong order: tracer is created before provider is registered
-tracer = trace.get_tracer("my-service")  # Gets a NoopTracer!
-trace.set_tracer_provider(provider)       # Too late for the tracer above
+# Risky order: application or instrumentation may start work
+# before the provider is registered.
+tracer = trace.get_tracer("my-service")
+trace.set_tracer_provider(provider)
 
-# Right order: register provider first
+# Preferred order: register provider first
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("my-service")  # Gets a real Tracer
 ```
 
-Actually, this was fixed in recent versions of the Python SDK. In newer versions, `get_tracer()` returns a proxy that delegates to whatever provider is registered at the time of use. But if you are on an older version, the order matters. Check your version:
+If you are on an older version, the order can matter more. Check your version:
 
 ```bash
 # Check your opentelemetry-api version
@@ -239,13 +240,12 @@ For manual instrumentation without the agent:
 
 ```java
 import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.semconv.ResourceAttributes;
 
 public class TracingConfig {
     public static OpenTelemetry initTracing() {
@@ -258,7 +258,7 @@ public class TracingConfig {
         SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
             .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
             .setResource(Resource.getDefault().toBuilder()
-                .put(ResourceAttributes.SERVICE_NAME, "my-service")
+                .put(AttributeKey.stringKey("service.name"), "my-service")
                 .build())
             .build();
 
@@ -365,7 +365,7 @@ export OTEL_SERVICE_NAME="my-service"
 env | grep OTEL
 ```
 
-**Shutdown before flush.** If your application exits before the BatchSpanExporter has a chance to flush, spans are lost. Always call shutdown or flush:
+**Shutdown before flush.** If your application exits before the BatchSpanProcessor has a chance to flush, spans are lost. Always call shutdown or flush:
 
 ```python
 from opentelemetry import trace
@@ -386,7 +386,7 @@ After configuring the TracerProvider, verify that traces are actually flowing. T
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
-    BatchSpanExporter,
+    BatchSpanProcessor,
     ConsoleSpanExporter,
     SimpleSpanProcessor,
 )
@@ -400,7 +400,7 @@ provider = TracerProvider()
 provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
 # Add the real OTLP exporter for production use
-provider.add_span_processor(BatchSpanExporter(
+provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
 ))
 
