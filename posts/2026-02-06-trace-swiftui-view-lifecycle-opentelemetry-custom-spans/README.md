@@ -228,17 +228,18 @@ class NavigationTracker: ObservableObject {
 
 struct NavigationTrackedView<Content: View>: View {
     let viewName: String
+    let navigationId: String?
     let content: Content
 
     @EnvironmentObject var navigationTracker: NavigationTracker
-    @State private var navigationId: String?
 
     init(
         name: String,
-        from source: String? = nil,
+        navigationId: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.viewName = name
+        self.navigationId = navigationId
         self.content = content()
     }
 
@@ -256,6 +257,7 @@ struct NavigationTrackedView<Content: View>: View {
 struct TrackedNavigationLink<Destination: View>: View {
     let title: String
     let source: String
+    let destinationName: String
     let destination: Destination
 
     @EnvironmentObject var navigationTracker: NavigationTracker
@@ -264,25 +266,30 @@ struct TrackedNavigationLink<Destination: View>: View {
     init(
         _ title: String,
         source: String,
+        destinationName: String,
         @ViewBuilder destination: () -> Destination
     ) {
         self.title = title
         self.source = source
+        self.destinationName = destinationName
         self.destination = destination()
     }
 
     var body: some View {
-        NavigationLink(destination: destination) {
+        NavigationLink(
+            destination: destination.onAppear {
+                if let id = navigationId {
+                    navigationTracker.completeNavigation(id: id)
+                    navigationId = nil
+                }
+            }
+        ) {
             Text(title)
-        }
-        .onTapGesture {
-            // This won't actually trigger due to NavigationLink handling the tap
-            // but demonstrates where you'd track the navigation start
         }
         .simultaneousGesture(TapGesture().onEnded {
             navigationId = navigationTracker.trackNavigation(
                 from: source,
-                to: title
+                to: destinationName
             )
         })
     }
@@ -480,7 +487,7 @@ import OpenTelemetryApi
 
 class ViewHierarchyTracer: ObservableObject {
     private let tracer: Tracer
-    private var spanStack: [Span] = []
+    private var activeSpans: [String: Span] = [:]
 
     init() {
         self.tracer = OpenTelemetry.instance.tracerProvider.get(
@@ -489,28 +496,33 @@ class ViewHierarchyTracer: ObservableObject {
         )
     }
 
-    func startView(name: String) -> UUID {
-        let spanId = UUID()
+    func startView(name: String, parent: String? = nil) {
+        guard activeSpans[name] == nil else { return }
+
+        if let parent, activeSpans[parent] == nil {
+            startView(name: parent)
+        }
 
         let span = tracer.spanBuilder(spanName: name)
             .setSpanKind(spanKind: .internal)
 
-        // If there's a parent span, set it
-        if let parent = spanStack.last {
-            span.setParent(parent)
+        // If there's a parent span, set it explicitly.
+        if let parent, let parentSpan = activeSpans[parent] {
+            span.setParent(parentSpan)
         }
 
         let startedSpan = span.startSpan()
         startedSpan.setAttribute(key: "view.name", value: name)
-        startedSpan.setAttribute(key: "view.level", value: spanStack.count)
+        if let parent {
+            startedSpan.setAttribute(key: "view.parent", value: parent)
+        }
 
-        spanStack.append(startedSpan)
-
-        return spanId
+        activeSpans[name] = startedSpan
     }
 
-    func endView() {
-        spanStack.popLast()?.end()
+    func endView(name: String) {
+        activeSpans[name]?.end()
+        activeSpans.removeValue(forKey: name)
     }
 }
 
@@ -521,16 +533,16 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: 20) {
                 HeaderSection()
-                    .onAppear { hierarchyTracer.startView(name: "HeaderSection") }
-                    .onDisappear { hierarchyTracer.endView() }
+                    .onAppear { hierarchyTracer.startView(name: "HeaderSection", parent: "DashboardView") }
+                    .onDisappear { hierarchyTracer.endView(name: "HeaderSection") }
 
                 StatsSection()
-                    .onAppear { hierarchyTracer.startView(name: "StatsSection") }
-                    .onDisappear { hierarchyTracer.endView() }
+                    .onAppear { hierarchyTracer.startView(name: "StatsSection", parent: "DashboardView") }
+                    .onDisappear { hierarchyTracer.endView(name: "StatsSection") }
 
                 RecentActivitySection()
-                    .onAppear { hierarchyTracer.startView(name: "RecentActivitySection") }
-                    .onDisappear { hierarchyTracer.endView() }
+                    .onAppear { hierarchyTracer.startView(name: "RecentActivitySection", parent: "DashboardView") }
+                    .onDisappear { hierarchyTracer.endView(name: "RecentActivitySection") }
             }
         }
         .traced(name: "DashboardView")
@@ -538,7 +550,7 @@ struct DashboardView: View {
             hierarchyTracer.startView(name: "DashboardView")
         }
         .onDisappear {
-            hierarchyTracer.endView()
+            hierarchyTracer.endView(name: "DashboardView")
         }
     }
 }
@@ -600,8 +612,6 @@ graph TD
     A[DashboardView] --> B[HeaderSection]
     A --> C[StatsSection]
     A --> D[RecentActivitySection]
-    C --> E[StatCard: Users]
-    C --> F[StatCard: Revenue]
 ```
 
 ## Tracing User Interactions
@@ -652,7 +662,7 @@ struct LoginView: View {
         VStack(spacing: 20) {
             TextField("Username", text: $username)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .onChange(of: username) { _ in
+                .onChange(of: username) {
                     interactionTracer.recordInteraction(
                         type: "text_input",
                         target: "username_field"
@@ -661,7 +671,7 @@ struct LoginView: View {
 
             SecureField("Password", text: $password)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .onChange(of: password) { _ in
+                .onChange(of: password) {
                     interactionTracer.recordInteraction(
                         type: "text_input",
                         target: "password_field"
