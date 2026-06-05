@@ -94,6 +94,11 @@ docker-secure  /opt/docker-encrypted.img  /root/docker-volume.key  luks
 
 And add the mount point to `/etc/fstab` so it mounts automatically:
 
+```bash
+# Create the mount point used by /etc/fstab
+sudo mkdir -p /mnt/docker-encrypted
+```
+
 ```text
 # /etc/fstab - auto-mount the encrypted volume
 /dev/mapper/docker-secure  /mnt/docker-encrypted  ext4  defaults  0  2
@@ -137,7 +142,7 @@ dd if=/dev/urandom of="$KEYFILE" bs=256 count=1
 chmod 400 "$KEYFILE"
 
 # Format with LUKS and open
-cryptsetup luksFormat "$IMG_PATH" "$KEYFILE" --batch-mode
+cryptsetup --batch-mode luksFormat "$IMG_PATH" "$KEYFILE"
 cryptsetup luksOpen "$IMG_PATH" "enc-${VOLUME_NAME}" --key-file "$KEYFILE"
 
 # Create filesystem and mount
@@ -200,8 +205,6 @@ Here is how to reference pre-created encrypted volumes in your compose file:
 
 ```yaml
 # docker-compose.yml - using pre-created encrypted volumes
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -214,13 +217,17 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass "$${REDIS_PASSWORD}"
+    command: sh -c 'redis-server --requirepass "$$(cat /run/secrets/redis_password)"'
     volumes:
       - encrypted_redis:/data
+    secrets:
+      - redis_password
 
 secrets:
   db_password:
     file: ./secrets/db_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
 
 volumes:
   encrypted_pgdata:
