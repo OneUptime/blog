@@ -44,16 +44,18 @@ apiVersion: v2
 name: otel-collector
 description: OpenTelemetry Collector Helm chart
 version: 1.0.0
-appVersion: "0.96.0"
+appVersion: "0.152.1"
 ```
 
 ```yaml
 # charts/otel-collector/values.yaml
 image:
   repository: otel/opentelemetry-collector-contrib
-  tag: "0.96.0"
+  tag: "0.152.1"
 
-mode: daemonset  # or deployment for gateway
+mode: daemonset
+
+env: []
 
 resources:
   limits:
@@ -143,6 +145,10 @@ spec:
               name: otlp-http
           resources:
 {{ toYaml .Values.resources | indent 12 }}
+{{- with .Values.env }}
+          env:
+{{ toYaml . | indent 12 }}
+{{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/otel
@@ -158,7 +164,14 @@ spec:
 ```yaml
 # environments/production/values.yaml
 image:
-  tag: "0.96.0"
+  tag: "0.152.1"
+
+env:
+  - name: OTEL_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: otel-collector-auth
+        key: token
 
 resources:
   limits:
@@ -182,7 +195,7 @@ config:
     otlphttp:
       endpoint: https://prod-backend.internal:4318
       headers:
-        Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+        Authorization: "Bearer ${env:OTEL_AUTH_TOKEN}"
   service:
     pipelines:
       traces:
@@ -194,7 +207,7 @@ config:
 ```yaml
 # environments/staging/values.yaml
 image:
-  tag: "0.97.0-rc1"  # Test new versions in staging first
+  tag: "0.153.0"  # Test new versions in staging first
 
 resources:
   limits:
