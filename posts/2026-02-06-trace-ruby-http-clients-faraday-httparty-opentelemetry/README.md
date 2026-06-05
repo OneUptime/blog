@@ -18,7 +18,7 @@ HTTP clients are integration points where your application depends on external s
 - Configuration errors (wrong endpoints, missing credentials)
 - SSL/TLS certificate issues
 
-Without tracing, you only see symptoms (slow responses, errors) without understanding which external service caused the problem. OpenTelemetry captures every HTTP request with timing, headers, status codes, and error details.
+Without tracing, you only see symptoms (slow responses, errors) without understanding which external service caused the problem. OpenTelemetry captures HTTP request spans with timing, status codes, and error details.
 
 ## Setting Up OpenTelemetry for HTTP Clients
 
@@ -30,10 +30,11 @@ Add the required gems to your Gemfile:
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
 gem 'opentelemetry-instrumentation-faraday'
-gem 'opentelemetry-instrumentation-net-http'
+gem 'opentelemetry-instrumentation-net_http'
+gem 'opentelemetry-instrumentation-concurrent_ruby'
 ```
 
-Note that HTTParty uses Net::HTTP under the hood, so the net-http instrumentation covers it automatically.
+Note that HTTParty uses Net::HTTP under the hood, so the `opentelemetry-instrumentation-net_http` instrumentation covers it automatically.
 
 Install dependencies:
 
@@ -55,12 +56,13 @@ OpenTelemetry::SDK.configure do |c|
 
   c.use_all({
     'OpenTelemetry::Instrumentation::Faraday' => {},
-    'OpenTelemetry::Instrumentation::NetHTTP' => {},
+    'OpenTelemetry::Instrumentation::Net::HTTP' => {},
+    'OpenTelemetry::Instrumentation::ConcurrentRuby' => {},
   })
 end
 ```
 
-This automatically instruments all HTTP calls made through Faraday and Net::HTTP (which HTTParty uses).
+This automatically instruments HTTP calls made through Faraday and Net::HTTP (which HTTParty uses), and preserves context across `Concurrent::Future` work.
 
 ## Tracing Faraday HTTP Requests
 
@@ -94,15 +96,15 @@ class PaymentService
 end
 ```
 
-When `charge` is called, OpenTelemetry automatically creates a span with attributes:
+When `charge` is called, OpenTelemetry automatically creates a span. Depending on the semantic convention mode used by your installed instrumentation, common attributes include:
 
-- `http.method`: POST
-- `http.url`: https://api.payment-provider.com/v1/charges
-- `http.status_code`: 200, 400, 500, etc.
+- `http.request.method` or `http.method`: POST
+- `url.full` or `http.url`: https://api.payment-provider.com/v1/charges
+- `http.response.status_code` or `http.status_code`: 200, 400, 500, etc.
 - `http.request.body.size`: Size of request payload
 - `http.response.body.size`: Size of response payload
-- `net.peer.name`: api.payment-provider.com
-- `net.peer.port`: 443
+- `server.address` or `net.peer.name`: api.payment-provider.com
+- `server.port` or `net.peer.port`: 443
 
 ## Adding Custom Context to HTTP Traces
 
@@ -112,24 +114,29 @@ Enhance traces with business context specific to your application:
 # app/services/user_service.rb
 require 'faraday'
 
+class UserAPIError < StandardError; end
+
 class UserService
   def initialize
     @tracer = OpenTelemetry.tracer_provider.tracer('user-service')
-    @client = Faraday.new(url: 'https://api.users.internal')
+    @client = Faraday.new(url: 'https://api.users.internal') do |f|
+      f.response :json
+      f.adapter Faraday.default_adapter
+    end
   end
 
   def fetch_user(user_id)
     @tracer.in_span('fetch_user_from_api',
                     attributes: {
                       'user.id' => user_id,
-                      'service.name' => 'user-api'
+                      'peer.service' => 'user-api'
                     }) do |span|
 
       response = @client.get("/users/#{user_id}") do |req|
         req.headers['X-Request-ID'] = OpenTelemetry::Trace.current_span.context.trace_id.unpack1('H*')
       end
 
-      span.set_attribute('http.response_content_length', response.body.to_json.bytesize)
+      span.set_attribute('http.response.body.size', response.body.to_s.bytesize)
       span.set_attribute('user.found', response.status == 200)
 
       if response.status == 404
@@ -141,7 +148,7 @@ class UserService
       end
 
       user_data = response.body
-      span.set_attribute('user.email', user_data['email'])
+      span.set_attribute('user.email_present', user_data.key?('email'))
       span.set_attribute('user.account_type', user_data['account_type'])
 
       user_data
@@ -175,9 +182,11 @@ class WeatherService
       }
 
       begin
+        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         response = self.class.get('/data/2.5/weather', options)
+        duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(2)
 
-        span.set_attribute('http.response_time_ms', response.time * 1000)
+        span.set_attribute('http.duration_ms', duration_ms)
         span.set_attribute('weather.temp', response['main']['temp'])
         span.set_attribute('weather.condition', response['weather'][0]['main'])
 
@@ -218,7 +227,16 @@ class ResilientAPIClient
         max: MAX_RETRIES,
         interval: 0.5,
         backoff_factor: 2,
-        retry_statuses: [500, 502, 503, 504]
+        retry_statuses: [500, 502, 503, 504],
+        retry_block: ->(env:, options:, retry_count:, exception:, will_retry_in:) {
+          OpenTelemetry::Trace.current_span.add_event(
+            'request_retry',
+            attributes: {
+              'attempt.number' => retry_count + 1,
+              'retry.delay_ms' => (will_retry_in * 1000).round
+            }
+          )
+        }
 
       f.adapter Faraday.default_adapter
     end
@@ -231,19 +249,16 @@ class ResilientAPIClient
                       'client.max_retries' => MAX_RETRIES
                     }) do |span|
 
-      attempt = 0
-
       begin
-        attempt += 1
         span.add_event('request_attempt',
-                       attributes: { 'attempt.number' => attempt })
+                       attributes: { 'attempt.number' => 1 })
 
         response = @client.get("/resources/#{resource_id}") do |req|
           req.options.timeout = 10
           req.options.open_timeout = 5
         end
 
-        span.set_attribute('request.attempts', attempt)
+        span.set_attribute('request.max_retries', MAX_RETRIES)
         span.set_attribute('request.succeeded', true)
 
         response.body
@@ -251,20 +266,9 @@ class ResilientAPIClient
       rescue Faraday::TimeoutError => e
         span.record_exception(e)
         span.set_attribute('error.timeout', true)
-        span.set_attribute('request.attempts', attempt)
+        span.set_attribute('request.max_retries', MAX_RETRIES)
         span.status = OpenTelemetry::Trace::Status.error('Request timeout')
         raise
-
-      rescue Faraday::ServerError => e
-        span.record_exception(e)
-        span.set_attribute('request.attempts', attempt)
-
-        if attempt >= MAX_RETRIES
-          span.status = OpenTelemetry::Trace::Status.error('Max retries exceeded')
-          raise
-        end
-
-        retry
       end
     end
   end
@@ -302,10 +306,10 @@ class AggregatorService
       results = futures.transform_values(&:value)
 
       # Track which requests succeeded
-      span.set_attribute('profile.loaded', results[:profile].present?)
-      span.set_attribute('orders.loaded', results[:orders].present?)
-      span.set_attribute('recommendations.loaded', results[:recommendations].present?)
-      span.set_attribute('notifications.loaded', results[:notifications].present?)
+      span.set_attribute('profile.loaded', !results[:profile].nil?)
+      span.set_attribute('orders.loaded', !results[:orders].nil?)
+      span.set_attribute('recommendations.loaded', !results[:recommendations].nil?)
+      span.set_attribute('notifications.loaded', !results[:notifications].nil?)
 
       results
     end
@@ -386,55 +390,38 @@ Prevent sensitive information from appearing in traces:
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'ruby-http-client'
 
-  # Add span processor to filter sensitive data
-  c.add_span_processor(SensitiveDataFilter.new)
-
   c.use_all({
     'OpenTelemetry::Instrumentation::Faraday' => {},
-    'OpenTelemetry::Instrumentation::NetHTTP' => {}
+    'OpenTelemetry::Instrumentation::Net::HTTP' => {}
   })
 end
 
-# lib/sensitive_data_filter.rb
-class SensitiveDataFilter < OpenTelemetry::SDK::Trace::SpanProcessor
-  SENSITIVE_HEADERS = %w[authorization api-key x-api-key cookie].freeze
+# lib/url_sanitizer.rb
+require 'uri'
 
-  def on_start(span, parent_context)
-    # Filter is applied when span ends
-  end
+# Prefer to avoid recording secrets in the first place. Do not add API keys,
+# tokens, cookies, or raw user PII as span attributes. If a URL includes
+# sensitive query parameters, sanitize it before adding any custom attribute.
+def sanitized_url(url)
+  uri = URI(url)
+  return url unless uri.query
 
-  def on_finish(span)
-    # Remove sensitive headers from attributes
-    attributes = span.attributes.dup
-
-    attributes.each do |key, value|
-      if key.to_s.downcase.include?('authorization') ||
-         key.to_s.downcase.include?('api') && key.to_s.downcase.include?('key')
-        attributes[key] = '[REDACTED]'
-      end
-
-      # Redact sensitive query parameters
-      if key == 'http.url' && value.include?('token=')
-        attributes[key] = value.gsub(/token=([^&]+)/, 'token=[REDACTED]')
-      end
+  params = URI.decode_www_form(uri.query).map do |key, value|
+    if %w[token access_token api_key].include?(key.downcase)
+      [key, '[REDACTED]']
+    else
+      [key, value]
     end
-
-    span.instance_variable_set(:@attributes, attributes)
   end
 
-  def shutdown(timeout: nil)
-    # Cleanup if needed
-  end
-
-  def force_flush(timeout: nil)
-    # Flush if needed
-  end
+  uri.query = URI.encode_www_form(params)
+  uri.to_s
 end
 ```
 
 ## Monitoring HTTP Client Performance
 
-Track aggregate metrics across all HTTP calls:
+Track aggregate metrics across all HTTP calls. Ruby metrics support is still in development, so configure `opentelemetry-metrics-sdk` and a metric reader/exporter if you want these measurements exported:
 
 ```ruby
 # app/services/monitored_http_client.rb
@@ -472,14 +459,14 @@ class MonitoredHTTPClient
 
         # Record metrics
         @request_counter.add(1, attributes: {
-          'http.method' => 'GET',
-          'http.status_code' => response.status,
-          'http.host' => @client.url_prefix.host
+          'http.request.method' => 'GET',
+          'http.response.status_code' => response.status,
+          'server.address' => @client.url_prefix.host
         })
 
         @duration_histogram.record(duration_ms, attributes: {
-          'http.method' => 'GET',
-          'http.status_code' => response.status
+          'http.request.method' => 'GET',
+          'http.response.status_code' => response.status
         })
 
         span.set_attribute('http.duration_ms', duration_ms)
@@ -488,8 +475,7 @@ class MonitoredHTTPClient
 
       rescue StandardError => e
         @request_counter.add(1, attributes: {
-          'http.method' => 'GET',
-          'http.status_code' => 'error',
+          'http.request.method' => 'GET',
           'error.type' => e.class.name
         })
 
