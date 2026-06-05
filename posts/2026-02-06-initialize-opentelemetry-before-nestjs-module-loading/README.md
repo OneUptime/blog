@@ -41,13 +41,13 @@ Create a dedicated entry file that initializes OpenTelemetry before importing an
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 // Create resource that identifies this service
-const resource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'nestjs-api',
-  [SEMRESATTRS_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'nestjs-api',
+  [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
 });
 
 // Configure OTLP exporter
@@ -280,7 +280,7 @@ The automatic HTTP instrumentation creates parent spans, while your custom spans
 
 ## Tracing Database Operations
 
-Database operations benefit from automatic instrumentation when OpenTelemetry loads early:
+Database operations benefit from automatic driver instrumentation when OpenTelemetry loads early:
 
 ```typescript
 // src/users/users.service.ts
@@ -300,7 +300,7 @@ export class UsersService {
   ) {}
 
   async findAll(): Promise<User[]> {
-    // TypeORM queries are automatically instrumented
+    // Queries made through instrumented database drivers are automatically traced
     // Add custom spans for additional context
     return await this.tracer.startActiveSpan('service.findAll', async (span) => {
       const users = await this.usersRepository.find({
@@ -347,7 +347,7 @@ export class UsersService {
 }
 ```
 
-The TypeORM instrumentation creates database spans that nest within your service spans.
+The database driver instrumentation creates database spans that nest within your service spans.
 
 ## Tracing Middleware and Interceptors
 
@@ -527,8 +527,8 @@ Configure OpenTelemetry differently for development, staging, and production:
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_DEPLOYMENT_ENVIRONMENT } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 
 // Enable debug logging in development
@@ -536,9 +536,9 @@ if (process.env.NODE_ENV === 'development') {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 }
 
-const resource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'nestjs-api',
-  [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'nestjs-api',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 // Use different exporters based on environment
@@ -574,8 +574,9 @@ When calling other services, propagate trace context:
 
 ```typescript
 // src/external/external.service.ts
-import { Injectable, HttpService } from '@nestjs/common';
-import { trace, context, propagation } from '@opentelemetry/api';
+import { Injectable } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { trace, context, propagation, SpanStatusCode } from '@opentelemetry/api';
 import { lastValueFrom } from 'rxjs';
 
 @Injectable()
@@ -603,7 +604,7 @@ export class ExternalService {
         return response.data;
       } catch (error) {
         span.recordException(error as Error);
-        span.setStatus({ code: 2, message: (error as Error).message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
         span.end();
         throw error;
       }
@@ -631,8 +632,9 @@ describe('OpenTelemetry Instrumentation', () => {
 
   beforeEach(() => {
     exporter = new InMemorySpanExporter();
-    provider = new NodeTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
     provider.register();
   });
 
