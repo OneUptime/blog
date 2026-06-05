@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Python, ThreadPool, Context Propagation
 
 Description: Fix OpenTelemetry trace context loss when dispatching work to ThreadPoolExecutor threads in Python applications.
 
-Python's `ThreadPoolExecutor` runs tasks in a pool of threads. OpenTelemetry stores trace context in `contextvars`, which are thread-local in some configurations. When a task runs in a different thread, the trace context from the submitting thread is not available, causing spans to be orphaned.
+Python's `ThreadPoolExecutor` runs tasks in a pool of threads. OpenTelemetry stores trace context in `contextvars`, and each thread has its own context stack. When a task runs in a different thread, the trace context from the submitting thread is not available, causing spans to be orphaned.
 
 ## The Problem
 
@@ -99,12 +99,16 @@ import contextvars
 
 def handle_batch(items):
     with tracer.start_as_current_span("handle_batch"):
-        ctx = contextvars.copy_context()
+        work_items = [
+            (contextvars.copy_context(), item)
+            for item in items
+        ]
 
-        def traced_process(item):
+        def traced_process(work_item):
+            ctx, item = work_item
             return ctx.run(process_item, item)
 
-        results = list(executor.map(traced_process, items))
+        results = list(executor.map(traced_process, work_items))
         return results
 ```
 
@@ -159,6 +163,7 @@ def process_endpoint():
 Use the console exporter to check parent-child relationships:
 
 ```python
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
 provider = TracerProvider()
