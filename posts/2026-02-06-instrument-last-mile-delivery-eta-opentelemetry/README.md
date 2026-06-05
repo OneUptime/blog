@@ -39,7 +39,7 @@ def process_delivery_update(delivery_id: str, driver_id: str, lat: float, lon: f
         # Recalculate ETA based on current position
         with tracer.start_as_current_span("delivery.eta_recalculation"):
             new_eta = recalculate_eta(delivery_id, lat, lon)
-            span.set_attribute("delivery.eta_minutes", new_eta.minutes_remaining)
+            span.set_attribute("delivery.eta_minutes", new_eta.minutes)
 
         # Notify customer if ETA changed significantly
         with tracer.start_as_current_span("delivery.notify_customer") as notify_span:
@@ -71,7 +71,11 @@ def recalculate_eta(delivery_id: str, current_lat: float, current_lon: float):
             traffic_span.set_attribute("traffic.segments_fetched", len(traffic_data))
             traffic_span.set_attribute("traffic.provider", "here_maps")
             # Record the average congestion level
-            avg_congestion = sum(t.congestion for t in traffic_data) / len(traffic_data)
+            avg_congestion = (
+                sum(t.congestion for t in traffic_data) / len(traffic_data)
+                if traffic_data
+                else 0
+            )
             traffic_span.set_attribute("traffic.avg_congestion", round(avg_congestion, 2))
 
         # Fetch historical driver performance data
