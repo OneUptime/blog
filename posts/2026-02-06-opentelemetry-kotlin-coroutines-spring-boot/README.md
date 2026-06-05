@@ -22,79 +22,65 @@ First, add the necessary dependencies to your build.gradle.kts file:
 
 ```kotlin
 // Core OpenTelemetry dependencies
-implementation("io.opentelemetry:opentelemetry-api:1.34.1")
-implementation("io.opentelemetry:opentelemetry-sdk:1.34.1")
-implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.0.0")
+implementation(platform("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.28.1"))
+implementation("io.opentelemetry:opentelemetry-api")
+implementation("io.opentelemetry:opentelemetry-sdk")
+implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
 
 // Kotlin coroutines support
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.8.0")
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.11.0")
 
 // OpenTelemetry context propagation for coroutines
-implementation("io.opentelemetry:opentelemetry-extension-kotlin:1.34.1")
+implementation("io.opentelemetry:opentelemetry-extension-kotlin")
+
+// Testing support
+testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 ```
 
 The opentelemetry-extension-kotlin library provides the critical bridge between OpenTelemetry's Context and Kotlin's CoroutineContext.
 
-## Creating a Custom CoroutineContext Element
+## Creating a CoroutineContext Element
 
-To propagate OpenTelemetry context through coroutines, create a custom CoroutineContext element:
+To propagate OpenTelemetry context through coroutines, use the CoroutineContext element provided by opentelemetry-extension-kotlin:
 
 ```kotlin
 import io.opentelemetry.context.Context
-import kotlin.coroutines.CoroutineContext
+import io.opentelemetry.extension.kotlin.asContextElement
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 // This element wraps OpenTelemetry Context in a CoroutineContext element
-class OpenTelemetryContext(
-    val context: Context = Context.current()
-) : CoroutineContext.Element {
-    companion object Key : CoroutineContext.Key<OpenTelemetryContext>
-
-    override val key: CoroutineContext.Key<*>
-        get() = Key
+fun CoroutineScope.launchWithCurrentTrace(block: suspend () -> Unit) {
+    launch(Context.current().asContextElement()) {
+        block()
+    }
 }
 ```
 
-This class allows OpenTelemetry context to travel with coroutine execution, ensuring spans remain connected even when coroutines switch threads.
+This official context element allows OpenTelemetry context to travel with coroutine execution, ensuring spans remain connected even when coroutines switch threads.
 
-## Implementing Context Propagation Interceptor
+## Applying Context Propagation
 
-Create a coroutine context interceptor that automatically propagates OpenTelemetry context:
+Use the OpenTelemetry Kotlin extension to install and restore context when a coroutine resumes and suspends:
 
 ```kotlin
-import io.opentelemetry.api.trace.Span
 import io.opentelemetry.context.Context
-import kotlinx.coroutines.ThreadContextElement
-import kotlin.coroutines.CoroutineContext
+import io.opentelemetry.extension.kotlin.asContextElement
+import kotlinx.coroutines.withContext
 
-// This interceptor ensures OpenTelemetry context is set when coroutine resumes
-class OpenTelemetryContextElement(
-    private val context: Context = Context.current()
-) : ThreadContextElement<Context> {
-
-    companion object Key : CoroutineContext.Key<OpenTelemetryContextElement>
-
-    override val key: CoroutineContext.Key<*> = Key
-
-    // Save current context and install our context when coroutine starts/resumes
-    override fun updateThreadContext(context: CoroutineContext): Context {
-        val oldContext = Context.current()
-        this.context.makeCurrent()
-        return oldContext
-    }
-
-    // Restore previous context when coroutine suspends
-    override fun restoreThreadContext(context: CoroutineContext, oldState: Context) {
-        oldState.makeCurrent()
+suspend fun <T> withOpenTelemetryContext(block: suspend () -> T): T {
+    return withContext(Context.current().asContextElement()) {
+        block()
     }
 }
 ```
 
-This interceptor handles the context switching that occurs when coroutines suspend and resume.
+This context element handles the context switching that occurs when coroutines suspend and resume.
 
 ## Configuring Spring Boot Application
 
-Configure your Spring Boot application to automatically include OpenTelemetry context in coroutine scopes:
+Configure your Spring Boot application to provide an application-owned coroutine scope, and add OpenTelemetry context when launching work into it:
 
 ```kotlin
 import io.opentelemetry.api.OpenTelemetry
@@ -115,16 +101,16 @@ class OpenTelemetryCoroutineConfig {
 
     @Bean
     fun coroutineScope(): CoroutineScope {
-        // Create a dispatcher with context propagation
+        // Create a dispatcher for application-owned coroutines
         val dispatcher = Executors.newFixedThreadPool(10)
             .asCoroutineDispatcher()
 
-        return CoroutineScope(dispatcher + OpenTelemetryContextElement())
+        return CoroutineScope(dispatcher)
     }
 }
 ```
 
-This configuration ensures that all coroutines launched from this scope automatically carry OpenTelemetry context.
+When you launch application-owned coroutines from this scope, add the current OpenTelemetry context at launch time with `Context.current().asContextElement()`.
 
 ## Creating a Tracing Extension Function
 
@@ -135,19 +121,22 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import io.opentelemetry.extension.kotlin.asContextElement
+import kotlinx.coroutines.withContext
 
 // Extension function to trace suspend functions
 suspend fun <T> Tracer.traceSuspend(
     spanName: String,
     block: suspend (Span) -> T
 ): T {
+    val parentContext = Context.current()
     val span = this.spanBuilder(spanName)
-        .setParent(Context.current())
+        .setParent(parentContext)
         .startSpan()
 
     return try {
-        // Make span current for the duration of the block
-        Context.current().with(span).makeCurrent().use {
+        // Make span current for the duration of the suspend block
+        withContext(parentContext.with(span).asContextElement()) {
             val result = block(span)
             span.setStatus(StatusCode.OK)
             result
@@ -208,7 +197,7 @@ class UserService(
             val user = findUser(userId)
             span.setAttribute("user.email", user.email)
 
-            // Process orders in parallel
+            // Fetch orders
             val orders = fetchOrders(userId)
             span.setAttribute("order.count", orders.size)
 
@@ -267,6 +256,8 @@ When launching multiple coroutines in parallel, ensure context propagation:
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import io.opentelemetry.api.trace.Tracer
 import org.springframework.stereotype.Service
 
 @Service
@@ -346,9 +337,10 @@ Each span maintains parent-child relationships despite coroutines potentially ex
 Verify context propagation with a test:
 
 ```kotlin
-import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
@@ -374,12 +366,14 @@ class CoroutineTracingTest {
         }
 
         val spans = otelTesting.spans
-        assert(spans.size == 2)
+        assertEquals(2, spans.size)
 
         val parentSpan = spans.find { it.name == "parent-operation" }
         val childSpan = spans.find { it.name == "child-operation" }
 
-        assert(childSpan?.parentSpanId == parentSpan?.spanId)
+        assertNotNull(parentSpan)
+        assertNotNull(childSpan)
+        assertEquals(parentSpan?.spanId, childSpan?.parentSpanId)
     }
 }
 ```
@@ -394,7 +388,7 @@ GlobalScope doesn't inherit coroutine context. Always use structured concurrency
 
 **Pitfall 2: Forgetting Context Element**
 
-When creating custom dispatchers, always include OpenTelemetryContextElement in the context.
+When creating custom dispatchers or launching application-owned coroutines, include the current context with `Context.current().asContextElement()`.
 
 **Pitfall 3: Blocking Calls in Coroutines**
 
@@ -402,10 +396,10 @@ Blocking calls can hold threads and prevent proper context switching. Use withCo
 
 ## Performance Considerations
 
-Context propagation adds minimal overhead. The OpenTelemetry context is lightweight, and the coroutine interceptor only activates during thread switches. In typical applications, the performance impact is negligible compared to the benefits of distributed tracing.
+Context propagation adds minimal overhead. The OpenTelemetry context is lightweight, and the coroutine context element is applied when coroutines resume and suspend. In typical applications, the performance impact is negligible compared to the benefits of distributed tracing.
 
 ## Conclusion
 
-Integrating OpenTelemetry with Kotlin coroutines in Spring Boot requires explicit context propagation configuration. By creating custom context elements and interceptors, you ensure trace continuity across asynchronous boundaries. The traceSuspend extension function provides a clean API for instrumenting suspend functions, while coroutineScope ensures parallel operations maintain proper parent-child relationships.
+Integrating OpenTelemetry with Kotlin coroutines in Spring Boot requires explicit context propagation configuration. By using the OpenTelemetry Kotlin extension's coroutine context element, you ensure trace continuity across asynchronous boundaries. The traceSuspend extension function provides a clean API for instrumenting suspend functions, while coroutineScope ensures parallel operations maintain proper parent-child relationships.
 
 With this setup, your Kotlin coroutine-based application gains full observability without sacrificing the elegance and performance benefits that coroutines provide.
