@@ -45,7 +45,8 @@ Create a `composer.json` file in your WordPress root directory:
     "require": {
         "open-telemetry/sdk": "^1.0",
         "open-telemetry/exporter-otlp": "^1.0",
-        "open-telemetry/opentelemetry-auto-wordpress": "^0.0.1"
+        "open-telemetry/sem-conv": "^1.32",
+        "guzzlehttp/guzzle": "^7.0"
     },
     "config": {
         "vendor-dir": "wp-content/vendor"
@@ -76,17 +77,23 @@ require_once ABSPATH . 'wp-content/vendor/autoload.php';
 use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
-use OpenTelemetry\SDK\Trace\TracerProvider;
-use OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
+use OpenTelemetry\SDK\Common\Attribute\Attributes;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
-use OpenTelemetry\SDK\Common\Attribute\Attributes;
-use OpenTelemetry\SemConv\ResourceAttributes;
+use OpenTelemetry\SDK\Sdk;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
+use OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor;
+use OpenTelemetry\SDK\Trace\TracerProvider;
+use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
+use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
 
 class WordPressOTelInstrumentation {
     private $tracer;
     private $rootSpan;
+    private $rootScope;
 
     public function __construct() {
         $this->initializeTracer();
@@ -97,28 +104,36 @@ class WordPressOTelInstrumentation {
         // Configure resource attributes to identify this WordPress instance
         $resource = ResourceInfoFactory::defaultResource()->merge(
             ResourceInfo::create(Attributes::create([
-                ResourceAttributes::SERVICE_NAME => 'wordpress',
-                ResourceAttributes::SERVICE_VERSION => get_bloginfo('version'),
-                ResourceAttributes::DEPLOYMENT_ENVIRONMENT => wp_get_environment_type(),
+                ServiceAttributes::SERVICE_NAME => getenv('OTEL_SERVICE_NAME') ?: 'wordpress',
+                ServiceAttributes::SERVICE_VERSION => get_bloginfo('version'),
+                DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME => wp_get_environment_type(),
                 'wordpress.site.url' => get_site_url(),
             ]))
         );
 
         // Set up the OTLP exporter to send traces to your collector
         $exporter = new SpanExporter(
-            \OpenTelemetry\Contrib\Otlp\HttpTransportFactory::create(
+            (new OtlpHttpTransportFactory())->create(
                 getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://localhost:4318/v1/traces',
                 'application/json'
             )
         );
 
+        $sampleRate = (float) (getenv('OTEL_TRACES_SAMPLER_ARG') ?: 1.0);
+        $sampleRate = max(0.0, min(1.0, $sampleRate));
+
         // Create tracer provider with the exporter
         $tracerProvider = TracerProvider::builder()
             ->addSpanProcessor(new SimpleSpanProcessor($exporter))
             ->setResource($resource)
+            ->setSampler(new ParentBased(new TraceIdRatioBasedSampler($sampleRate)))
             ->build();
 
-        Globals::registerInitializer(fn() => $tracerProvider);
+        Sdk::builder()
+            ->setTracerProvider($tracerProvider)
+            ->setAutoShutdown(true)
+            ->buildAndRegisterGlobal();
+
         $this->tracer = $tracerProvider->getTracer('wordpress-instrumentation');
     }
 
@@ -126,11 +141,11 @@ class WordPressOTelInstrumentation {
         // Create root span for the entire request
         add_action('muplugins_loaded', [$this, 'startRootSpan'], 1);
 
-        // Track plugin loading performance
+        // Record plugin load events
         add_action('plugin_loaded', [$this, 'trackPluginLoad']);
 
         // Track database queries
-        add_filter('query', [$this, 'trackDatabaseQuery']);
+        add_filter('log_query_custom_data', [$this, 'trackDatabaseQuery'], 10, 5);
 
         // Track theme rendering
         add_action('template_redirect', [$this, 'startTemplateSpan']);
@@ -140,7 +155,7 @@ class WordPressOTelInstrumentation {
 
         // Track WP_Query performance
         add_action('pre_get_posts', [$this, 'startQuerySpan']);
-        add_action('the_posts', [$this, 'endQuerySpan'], 10, 2);
+        add_filter('the_posts', [$this, 'endQuerySpan'], 10, 2);
 
         // End root span when request completes
         add_action('shutdown', [$this, 'endRootSpan'], 999);
@@ -151,52 +166,43 @@ class WordPressOTelInstrumentation {
             ->spanBuilder($_SERVER['REQUEST_METHOD'] . ' ' . $_SERVER['REQUEST_URI'])
             ->setSpanKind(SpanKind::KIND_SERVER)
             ->setAttribute('http.method', $_SERVER['REQUEST_METHOD'])
-            ->setAttribute('http.url', $_SERVER['REQUEST_URI'])
+            ->setAttribute('http.url', home_url($_SERVER['REQUEST_URI']))
             ->setAttribute('http.scheme', is_ssl() ? 'https' : 'http')
             ->setAttribute('http.host', $_SERVER['HTTP_HOST'])
             ->setAttribute('http.user_agent', $_SERVER['HTTP_USER_AGENT'] ?? 'unknown')
             ->startSpan();
 
-        $scope = $this->rootSpan->activate();
+        $this->rootScope = $this->rootSpan->activate();
     }
 
     public function trackPluginLoad($plugin) {
-        // This creates a span for each plugin that loads
+        // WordPress fires plugin_loaded after the plugin file has loaded.
         $span = $this->tracer
             ->spanBuilder('plugin.load')
             ->setAttribute('plugin.name', $plugin)
             ->startSpan();
 
-        // Plugin already loaded, so we end immediately
         $span->end();
     }
 
-    public function trackDatabaseQuery($query) {
-        global $wpdb;
+    public function trackDatabaseQuery($queryData, $query, $queryTime, $queryCallstack, $queryStart) {
+        $startNanos = (int) round($queryStart * 1_000_000_000);
+        $endNanos = (int) round(($queryStart + $queryTime) * 1_000_000_000);
 
-        // Start a span before the query executes
         $span = $this->tracer
             ->spanBuilder('db.query')
             ->setSpanKind(SpanKind::KIND_CLIENT)
+            ->setStartTimestamp($startNanos)
             ->setAttribute('db.system', 'mysql')
             ->setAttribute('db.name', DB_NAME)
             ->setAttribute('db.statement', $query)
             ->setAttribute('db.operation', $this->extractOperation($query))
+            ->setAttribute('wordpress.query.callstack', $queryCallstack)
             ->startSpan();
 
-        // Store span to end it after query completes
-        $GLOBALS['otel_db_span'] = $span;
+        $span->end($endNanos);
 
-        // Hook to end span after query
-        add_filter('posts_results', function($results) {
-            if (isset($GLOBALS['otel_db_span'])) {
-                $GLOBALS['otel_db_span']->end();
-                unset($GLOBALS['otel_db_span']);
-            }
-            return $results;
-        });
-
-        return $query;
+        return $queryData;
     }
 
     private function extractOperation($query) {
@@ -220,6 +226,7 @@ class WordPressOTelInstrumentation {
         add_action('wp_footer', function() {
             if (isset($GLOBALS['otel_template_span'])) {
                 $GLOBALS['otel_template_span']->end();
+                unset($GLOBALS['otel_template_span']);
             }
         }, 999);
     }
@@ -253,6 +260,7 @@ class WordPressOTelInstrumentation {
                 $GLOBALS['otel_rest_span']
                     ->setAttribute('http.status_code', $response->get_status())
                     ->end();
+                unset($GLOBALS['otel_rest_span']);
             }
             return $response;
         }, 999);
@@ -286,6 +294,16 @@ class WordPressOTelInstrumentation {
     }
 
     public function endRootSpan() {
+        if (isset($GLOBALS['otel_template_span'])) {
+            $GLOBALS['otel_template_span']->end();
+            unset($GLOBALS['otel_template_span']);
+        }
+
+        if (isset($GLOBALS['otel_rest_span'])) {
+            $GLOBALS['otel_rest_span']->end();
+            unset($GLOBALS['otel_rest_span']);
+        }
+
         if ($this->rootSpan) {
             $this->rootSpan
                 ->setAttribute('http.status_code', http_response_code())
@@ -293,6 +311,10 @@ class WordPressOTelInstrumentation {
                 ->setAttribute('wordpress.queries', get_num_queries())
                 ->setStatus(StatusCode::STATUS_OK)
                 ->end();
+
+            if ($this->rootScope) {
+                $this->rootScope->detach();
+            }
         }
     }
 }
@@ -309,8 +331,8 @@ Set environment variables in your `wp-config.php` file or server configuration:
 // Add to wp-config.php before the database constants
 putenv('OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces');
 putenv('OTEL_SERVICE_NAME=wordpress');
-putenv('OTEL_TRACES_SAMPLER=parentbased_traceidratio');
 putenv('OTEL_TRACES_SAMPLER_ARG=0.1'); // Sample 10% of traces
+define('SAVEQUERIES', true); // Required for timed database query spans
 ```
 
 ## Monitoring Specific Plugins
@@ -339,7 +361,7 @@ add_action('woocommerce_checkout_order_processed', function($order_id) {
 Once instrumentation is active, you'll see traces showing:
 
 - Total request duration broken down by WordPress lifecycle stages
-- Individual plugin load times and their hooks
+- Individual plugin load events
 - Database query performance with full SQL statements
 - Template rendering time
 - REST API endpoint performance
