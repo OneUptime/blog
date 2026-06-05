@@ -19,9 +19,9 @@ spans:
   - name: "POST /api/orders"
     kind: SERVER
     required_attributes:
-      - key: http.method
+      - key: http.request.method
         type: string
-      - key: http.status_code
+      - key: http.response.status_code
         type: int
       - key: http.route
         type: string
@@ -35,13 +35,13 @@ spans:
   - name: "INSERT orders"
     kind: CLIENT
     required_attributes:
-      - key: db.system
+      - key: db.system.name
         type: string
         value: "postgresql"
-      - key: db.operation
+      - key: db.operation.name
         type: string
         value: "INSERT"
-      - key: db.name
+      - key: db.namespace
         type: string
     status: OK
 
@@ -51,7 +51,10 @@ spans:
       - key: messaging.system
         type: string
         value: "kafka"
-      - key: messaging.destination
+      - key: messaging.operation.name
+        type: string
+        value: "publish"
+      - key: messaging.destination.name
         type: string
         value: "order.created"
     status: OK
@@ -66,15 +69,27 @@ Write a test that exercises your API, collects the spans via an in-memory export
 import yaml
 import pytest
 from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 # Load the telemetry specification
 with open("telemetry-spec.yaml") as f:
     SPEC = yaml.safe_load(f)
 
 exporter = InMemorySpanExporter()
+
+ATTRIBUTE_TYPE_CHECKS = {
+    "string": lambda value: isinstance(value, str),
+    "int": lambda value: isinstance(value, int) and not isinstance(value, bool),
+}
+
+STATUS_CODES = {
+    "OK": StatusCode.OK,
+    "ERROR": StatusCode.ERROR,
+    "UNSET": StatusCode.UNSET,
+}
 
 @pytest.fixture(autouse=True, scope="module")
 def setup_tracing():
@@ -119,6 +134,11 @@ class TestTelemetryRegression:
             assert matching, f"Span '{spec_span['name']}' not found"
 
             actual_span = matching[0]
+            assert actual_span.kind.name == spec_span["kind"], (
+                f"Span '{spec_span['name']}' expected kind "
+                f"'{spec_span['kind']}' but got '{actual_span.kind.name}'"
+            )
+
             for attr_spec in spec_span["required_attributes"]:
                 key = attr_spec["key"]
                 assert key in actual_span.attributes, (
@@ -126,9 +146,16 @@ class TestTelemetryRegression:
                     f"Available attributes: {list(actual_span.attributes.keys())}"
                 )
 
+                actual_value = actual_span.attributes[key]
+                expected_type = attr_spec["type"]
+                assert ATTRIBUTE_TYPE_CHECKS[expected_type](actual_value), (
+                    f"Span '{spec_span['name']}' attribute '{key}' "
+                    f"expected type '{expected_type}' but got "
+                    f"'{type(actual_value).__name__}'"
+                )
+
                 # If a specific value is expected, check it
                 if "value" in attr_spec:
-                    actual_value = actual_span.attributes[key]
                     expected_value = attr_spec["value"]
                     assert actual_value == expected_value, (
                         f"Span '{spec_span['name']}' attribute '{key}' "
@@ -147,11 +174,10 @@ class TestTelemetryRegression:
             actual_span = matching[0]
             expected_status = spec_span.get("status", "OK")
 
-            if expected_status == "OK":
-                assert actual_span.status.is_ok, (
-                    f"Span '{spec_span['name']}' expected OK status "
-                    f"but got {actual_span.status.status_code}"
-                )
+            assert actual_span.status.status_code == STATUS_CODES[expected_status], (
+                f"Span '{spec_span['name']}' expected {expected_status} status "
+                f"but got {actual_span.status.status_code.name}"
+            )
 ```
 
 ## Snapshot Testing for Spans
@@ -162,6 +188,9 @@ An alternative to a YAML spec is snapshot testing. Capture the current telemetry
 # test_telemetry_snapshot.py
 import json
 import os
+import pytest
+
+from test_telemetry_regression import exercise_api, exporter
 
 SNAPSHOT_DIR = "tests/snapshots"
 
