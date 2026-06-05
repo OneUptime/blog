@@ -102,7 +102,7 @@ def transcode_with_ffmpeg(input_path, output_path, codec, resolution):
 
     try:
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
         )
 
         # Parse FFmpeg progress output for speed metrics
@@ -159,7 +159,7 @@ def check_mediaconvert_job(job_id):
         transcode_duration.record(duration_seconds, attributes)
         jobs_completed.add(1, attributes)
 
-        # Record output file sizes for bandwidth planning
+        # Record output media durations for speed calculations
         for output_group in job.get("OutputGroupDetails", []):
             for detail in output_group.get("OutputDetails", []):
                 duration_ms = detail.get("DurationInMs", 0)
