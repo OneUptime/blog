@@ -57,7 +57,7 @@ exporters:
     # Your Logz.io logs shipping token
     account_token: "${LOGZIO_LOGS_TOKEN}"
     # Region-specific endpoint
-    # Options: us, eu, au, ca, uk, wa
+    # Options: us, eu, au, ca, uk
     region: "us"
 
   logzio/traces:
@@ -98,7 +98,7 @@ exporters:
   # Custom endpoint (if using a dedicated cluster)
   logzio/custom:
     account_token: "${LOGZIO_TOKEN}"
-    custom_endpoint: "https://custom-listener.logz.io:8071"
+    endpoint: "https://custom-listener.logz.io:8071"
 ```
 
 ## Enriching Logs Before Export
@@ -145,8 +145,9 @@ Configure your application to send logs to the Collector via OTLP:
 
 ```python
 import logging
-from opentelemetry import _logs
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
@@ -161,11 +162,11 @@ log_exporter = OTLPLogExporter(endpoint="localhost:4317", insecure=True)
 
 logger_provider = LoggerProvider(resource=resource)
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-_logs.set_logger_provider(logger_provider)
+set_logger_provider(logger_provider)
 
 # Bridge standard Python logging
-handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
-logging.getLogger().addHandler(handler)
+LoggingInstrumentor().instrument(log_handler_level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
 # Now use standard Python logging
 logger = logging.getLogger("order-processor")
