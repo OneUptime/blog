@@ -40,9 +40,11 @@ Logs give you:
 
 ## What OpenTelemetry Provides
 
-OpenTelemetry takes a different approach. Instead of unstructured text, it captures structured telemetry across three signal types: traces, metrics, and logs.
+OpenTelemetry takes a different approach. Instead of unstructured text, it captures structured telemetry across primary signal types such as traces, metrics, and logs.
 
 ```python
+import time
+
 from opentelemetry import trace, metrics
 from opentelemetry.trace import Status, StatusCode
 
@@ -146,9 +148,12 @@ Imagine debugging a slow checkout process. Logs from each service show their ind
 ```go
 // OpenTelemetry automatically captures detailed timing information
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
 )
+
+var tracer = otel.Tracer("checkout-service")
 
 func processOrder(ctx context.Context, orderID string) error {
     ctx, span := tracer.Start(ctx, "processOrder")
@@ -187,13 +192,13 @@ request_duration = meter.create_histogram(
     description="HTTP request duration"
 )
 
-# Automatically calculate percentiles: p50, p95, p99
+# Backends can use histogram data to calculate percentile views: p50, p95, p99
 request_duration.record(
     duration,
     attributes={
-        "http.method": request.method,
-        "http.route": request.route,
-        "http.status_code": response.status_code
+        "http.request.method": request.method,
+        "url.scheme": request.scheme,
+        "http.response.status_code": response.status_code
     }
 )
 ```
@@ -208,6 +213,7 @@ You don't have to choose exclusively. Many teams use both logging and OpenTeleme
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 import logging
 
 tracer = trace.get_tracer(__name__)
@@ -276,6 +282,7 @@ You can manage OpenTelemetry costs through sampling:
 ```python
 # Sample only 1% of traces in production
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.sdk.trace import TracerProvider
 
 sampler = TraceIdRatioBased(0.01)  # 1% sampling rate
 
