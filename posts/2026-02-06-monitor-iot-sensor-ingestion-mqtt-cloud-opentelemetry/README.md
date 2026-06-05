@@ -8,7 +8,7 @@ Description: Learn how to instrument and monitor industrial IoT sensor data inge
 
 Industrial IoT deployments often involve thousands of sensors pushing data through MQTT brokers, then into cloud platforms for storage and analytics. When something breaks in that pipeline, finding the root cause can be painful. A sensor might be publishing data, but if that data never reaches your cloud database, where did it get lost? Was it the broker? The bridge service? The cloud ingestion layer?
 
-OpenTelemetry gives you a way to trace every message from sensor publish to cloud write, and collect metrics at each stage so you can spot bottlenecks before they become outages.
+OpenTelemetry gives you a way to trace every message from bridge receipt to cloud write, and collect metrics at each stage so you can spot bottlenecks before they become outages.
 
 ## Architecture Overview
 
@@ -30,6 +30,7 @@ import paho.mqtt.client as mqtt
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -39,14 +40,14 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="otel-collector:4317", insecure=True))
 )
 trace.set_tracer_provider(trace_provider)
 tracer = trace.get_tracer("iot-mqtt-bridge")
 
 # Initialize metrics
 metric_reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="http://otel-collector:4317"),
+    OTLPMetricExporter(endpoint="otel-collector:4317", insecure=True),
     export_interval_millis=10000
 )
 meter_provider = MeterProvider(metric_readers=[metric_reader])
@@ -74,6 +75,7 @@ def on_message(client, userdata, msg):
         topic_parts = msg.topic.split("/")
         # Extract sensor metadata from topic structure like sensors/factory-1/temp/sensor-42
         factory = topic_parts[1] if len(topic_parts) > 1 else "unknown"
+        sensor_type = topic_parts[2] if len(topic_parts) > 2 else "unknown"
         sensor_id = topic_parts[3] if len(topic_parts) > 3 else "unknown"
 
         span.set_attribute("mqtt.topic", msg.topic)
@@ -81,7 +83,7 @@ def on_message(client, userdata, msg):
         span.set_attribute("sensor.id", sensor_id)
         span.set_attribute("message.size_bytes", len(msg.payload))
 
-        messages_received.add(1, {"factory": factory, "sensor.type": topic_parts[2]})
+        messages_received.add(1, {"factory": factory, "sensor.type": sensor_type})
 
         try:
             payload = json.loads(msg.payload)
@@ -89,7 +91,7 @@ def on_message(client, userdata, msg):
             forward_to_cloud(payload, factory, sensor_id)
             messages_forwarded.add(1, {"factory": factory})
         except json.JSONDecodeError:
-            span.set_attribute("error", True)
+            span.set_status(Status(StatusCode.ERROR, "invalid_json"))
             span.set_attribute("error.type", "invalid_json")
 ```
 
@@ -129,8 +131,9 @@ def forward_to_cloud(payload, factory, sensor_id):
 
         span.set_attribute("http.status_code", response.status_code)
         if response.status_code != 200:
-            span.set_attribute("error", True)
+            span.set_status(Status(StatusCode.ERROR, "cloud_write_failed"))
             span.set_attribute("error.message", response.text[:200])
+            response.raise_for_status()
 ```
 
 ## Configuring the OpenTelemetry Collector
@@ -148,30 +151,30 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 1024
-  # Filter out high-frequency heartbeat messages to reduce noise
   filter:
-    metrics:
-      exclude:
-        match_type: strict
-        metric_names:
-          - mqtt.heartbeat.count
+    error_mode: ignore
+    # Filter out high-frequency heartbeat messages to reduce noise
+    metric_conditions:
+      - metric.name == "mqtt.heartbeat.count"
 
 exporters:
-  otlp:
+  otlp_http/oneuptime:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      Content-Type: "application/json"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlp_http/oneuptime]
     metrics:
       receivers: [otlp]
       processors: [batch, filter]
-      exporters: [otlp]
+      exporters: [otlp_http/oneuptime]
 ```
 
 ## Key Metrics to Watch
