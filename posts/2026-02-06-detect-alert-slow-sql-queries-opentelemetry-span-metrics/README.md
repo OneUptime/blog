@@ -19,7 +19,7 @@ Before diving into configuration, it helps to understand the concept. When your 
 ```mermaid
 flowchart LR
     A[Application] -->|Traces with DB spans| B[OTel Collector]
-    B -->|Span Metrics Processor| C[Metrics Pipeline]
+    B -->|Span Metrics Connector| C[Metrics Pipeline]
     C -->|Export| D[Metrics Backend]
     D -->|Threshold Breach| E[Alert Manager]
     E -->|Notification| F[On-Call Engineer]
@@ -68,13 +68,15 @@ SQLAlchemyInstrumentor().instrument(
 )
 ```
 
-With this setup, every query executed through SQLAlchemy will produce a span. The span includes `db.statement` (the SQL text), `db.system` (e.g., "postgresql"), and the duration of the operation.
+With this setup, every query executed through SQLAlchemy will produce a span. The span includes database attributes such as `db.statement` or `db.query.text`, a database system attribute such as `db.system` or `db.system.name`, and the duration of the operation. The exact attribute names depend on the instrumentation version and semantic-convention mode.
 
 ## Step 2: Configure the Span Metrics Connector in the Collector
 
-The OpenTelemetry Collector has a component called the `spanmetrics` connector that reads spans from the traces pipeline and generates metrics for the metrics pipeline. This is where the magic happens.
+The OpenTelemetry Collector has a component called the `span_metrics` connector that reads spans from the traces pipeline and generates metrics for the metrics pipeline. This is where the magic happens.
 
 Here is a collector configuration that derives latency histograms from database spans.
+
+This example uses the legacy database attributes commonly emitted by existing SQLAlchemy instrumentation (`db.system`, `db.name`, `db.operation`, and `db.statement`). If your instrumentation emits the stable database semantic convention attributes instead, use `db.system.name`, `db.namespace`, `db.operation.name`, and `db.query.text` in the connector dimensions and update the Prometheus label names in the alert rules accordingly.
 
 ```yaml
 # otel-collector-config.yaml
@@ -87,11 +89,12 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 connectors:
-  spanmetrics:
+  span_metrics:
     # Define histogram buckets in milliseconds
     # These buckets are tuned for database queries:
     # fast queries (< 50ms), moderate (50-500ms), slow (500ms-5s), very slow (5s+)
     histogram:
+      unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     # Include these span attributes as metric dimensions
@@ -102,19 +105,19 @@ connectors:
       - name: db.operation
       - name: db.statement
         default: "unknown"
-    # Only process spans that are database client calls
-    dimensions_cache_size: 1000
+    # Limit the number of unique dimension combinations
+    aggregation_cardinality_limit: 1000
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
 
 processors:
   # Filter to only process database-related spans
   filter/db_spans:
-    spans:
-      include:
-        match_type: strict
-        attributes:
-          - key: db.system
-            # This filter ensures we only generate metrics for DB spans
+    error_mode: ignore
+    traces:
+      span:
+        # Drop non-client spans and client spans that do not carry database attributes.
+        - 'span.kind != SPAN_KIND_CLIENT'
+        - 'span.attributes["db.system"] == nil and span.attributes["db.system.name"] == nil'
   batch:
     timeout: 10s
     send_batch_size: 1024
@@ -131,27 +134,32 @@ exporters:
 
 service:
   pipelines:
-    # Traces come in, get processed, exported, AND fed into spanmetrics connector
+    # Traces come in, get processed, and are exported to the trace backend
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/traces, spanmetrics]
-    # Spanmetrics connector outputs metrics into this pipeline
+      exporters: [otlp/traces]
+    # A second traces pipeline feeds only database client spans into span_metrics
+    traces/db_span_metrics:
+      receivers: [otlp]
+      processors: [filter/db_spans, batch]
+      exporters: [span_metrics]
+    # The span_metrics connector outputs metrics into this pipeline
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
 
-The key piece is the `spanmetrics` connector. It sits at the junction of the traces and metrics pipelines. Traces flow in, and histogram metrics flow out. The `dimensions` list controls which span attributes become metric labels.
+The key piece is the `span_metrics` connector. It sits at the junction of the traces and metrics pipelines. Traces flow in, and histogram metrics flow out. The `dimensions` list controls which span attributes become metric labels.
 
 ## Step 3: Understanding the Generated Metrics
 
-The spanmetrics connector generates several metrics automatically. The most useful ones for slow query detection are:
+The span metrics connector generates several metrics automatically. When exported to Prometheus with the default namespace and millisecond duration unit, the most useful ones for slow query detection are:
 
-- `duration_milliseconds_bucket` - A histogram of span durations, broken down by the buckets you defined
-- `duration_milliseconds_sum` - The total time spent across all spans
-- `duration_milliseconds_count` - The count of spans observed
+- `traces_span_metrics_duration_milliseconds_bucket` - A histogram of span durations, broken down by the buckets you defined
+- `traces_span_metrics_duration_milliseconds_sum` - The total time spent across all spans
+- `traces_span_metrics_duration_milliseconds_count` - The count of spans observed
 
 With these metrics, you can compute percentiles. For example, the p99 latency tells you the worst-case experience for 99% of your queries.
 
@@ -168,7 +176,7 @@ groups:
       - alert: SlowSQLQueryP95
         expr: |
           histogram_quantile(0.95,
-            sum(rate(duration_milliseconds_bucket{
+            sum(rate(traces_span_metrics_duration_milliseconds_bucket{
               db_system=~"postgresql|mysql",
               span_kind="SPAN_KIND_CLIENT"
             }[5m])) by (le, db_name, db_operation)
@@ -187,7 +195,7 @@ groups:
       - alert: CriticalSlowSQLQuery
         expr: |
           histogram_quantile(0.99,
-            sum(rate(duration_milliseconds_bucket{
+            sum(rate(traces_span_metrics_duration_milliseconds_bucket{
               db_system=~"postgresql|mysql",
               span_kind="SPAN_KIND_CLIENT"
             }[5m])) by (le, db_name, db_operation, db_statement)
@@ -205,11 +213,11 @@ groups:
       # Alert on sudden increase in query volume (possible N+1 query problem)
       - alert: SQLQueryVolumeSpike
         expr: |
-          sum(rate(duration_milliseconds_count{
+          sum(rate(traces_span_metrics_duration_milliseconds_count{
             db_system=~"postgresql|mysql"
           }[5m])) by (db_name, db_operation)
           /
-          sum(rate(duration_milliseconds_count{
+          sum(rate(traces_span_metrics_duration_milliseconds_count{
             db_system=~"postgresql|mysql"
           }[1h])) by (db_name, db_operation)
           > 3
@@ -247,7 +255,7 @@ def execute_user_query(user_id: str):
         return result
 ```
 
-These extra attributes flow through the span metrics pipeline and become available as labels in your alert queries.
+These extra attributes make the parent application span easier to find when you jump from an alert to a trace. If you also need them as labels in span metrics alert queries, add the attributes to the database span itself or copy them onto database spans in the Collector, then list them under the `span_metrics` connector's `dimensions`.
 
 ## Performance Considerations
 
@@ -255,9 +263,9 @@ There are a few things to keep in mind when running this setup in production.
 
 The `db.statement` dimension can create high cardinality if your queries use different literal values. Many instrumentation libraries normalize queries by replacing values with placeholders (e.g., `SELECT * FROM users WHERE id = ?`), but verify this is happening in your setup. High cardinality will increase memory usage in the collector and your metrics backend.
 
-Set the `dimensions_cache_size` in the spanmetrics connector appropriately. Too small and you lose dimensions. Too large and you consume excessive memory.
+Set the `aggregation_cardinality_limit` in the span metrics connector appropriately. Too small and excess dimension combinations are grouped under an overflow series. Too large and you consume excessive memory.
 
-Consider sampling your traces if you have very high throughput, but be aware that sampling affects the accuracy of your span-derived metrics. For alerting on slow queries specifically, you might want to use tail-based sampling that always keeps slow spans.
+Consider sampling your traces if you have very high throughput, but be aware that sampling affects the accuracy of your span-derived metrics when sampling happens before the `span_metrics` connector. For alerting on slow queries specifically, you might want to use tail-based sampling that always keeps slow spans.
 
 ```yaml
 # Tail-based sampling that preserves slow database spans
