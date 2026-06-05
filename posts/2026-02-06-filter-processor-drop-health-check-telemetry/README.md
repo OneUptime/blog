@@ -8,13 +8,13 @@ Description: Configure the OpenTelemetry Collector filter processor to drop heal
 
 Health check endpoints are the single noisiest source of telemetry in most systems. Kubernetes liveness probes hit `/healthz` every 10 seconds. Load balancers ping `/health` constantly. Uptime monitors poll `/ping` from multiple regions. Each of these generates traces, metrics, and log entries that nobody ever queries.
 
-In a cluster with 100 pods, each receiving health checks every 10 seconds, that is 864,000 health check spans per day - per pod. Multiply across your fleet and you are looking at tens of millions of useless spans drowning out the data you actually care about.
+In a cluster with 100 pods, each receiving health checks every 10 seconds, that is 864,000 health check spans per day across the cluster. Multiply across your fleet and you are looking at tens of millions of useless spans drowning out the data you actually care about.
 
 The OpenTelemetry Collector's filter processor lets you drop this noise before it reaches your backend.
 
 ## The Filter Processor Basics
 
-The filter processor evaluates telemetry against conditions you define. Data matching the conditions is either included or excluded from the pipeline. It uses the OpenTelemetry Transformation Language (OTTL) for expressing conditions.
+The filter processor evaluates telemetry against conditions you define. Data matching any condition is dropped from the pipeline. It uses the OpenTelemetry Transformation Language (OTTL) for expressing conditions.
 
 To use the filter processor, add it to your Collector config in the `processors` section and reference it in your pipeline.
 
@@ -37,19 +37,22 @@ processors:
   # Drop spans that match health check patterns
   filter/health_traces:
     error_mode: ignore
-    traces:
-      span:
-        # Drop spans where the HTTP route is a known health check path
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/readyz"'
-        - 'attributes["http.route"] == "/ping"'
-        - 'attributes["http.route"] == "/livez"'
-        # Also match URL-based attributes (some instrumentations use http.url)
-        - 'IsMatch(attributes["http.url"], ".*/health(z)?$")'
-        - 'IsMatch(attributes["http.url"], ".*/ready(z)?$")'
-        - 'IsMatch(attributes["http.url"], ".*/ping$")'
+    trace_conditions:
+      # Drop spans where the HTTP route is a known health check path
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/readyz"'
+      - 'span.attributes["http.route"] == "/ping"'
+      - 'span.attributes["http.route"] == "/livez"'
+      # Also match URL-based attributes
+      - 'IsMatch(span.attributes["url.full"], ".*/health(z)?$")'
+      - 'IsMatch(span.attributes["url.full"], ".*/ready(z)?$")'
+      - 'IsMatch(span.attributes["url.full"], ".*/ping$")'
+      # Older instrumentations may still use http.url
+      - 'IsMatch(span.attributes["http.url"], ".*/health(z)?$")'
+      - 'IsMatch(span.attributes["http.url"], ".*/ready(z)?$")'
+      - 'IsMatch(span.attributes["http.url"], ".*/ping$")'
 
   batch:
     timeout: 10s
@@ -67,7 +70,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The `error_mode: ignore` setting tells the processor to skip (pass through) any spans that cause evaluation errors rather than dropping the entire batch. This is important because not every span will have an `http.route` attribute.
+The `error_mode: ignore` setting tells the processor to ignore condition evaluation errors, continue to the next condition, and preserve the span if no other condition matches. This is important because not every span will have every HTTP attribute.
 
 ## Filtering Health Check Metrics
 
@@ -79,15 +82,14 @@ This processor filters out metrics data points tagged with health check routes:
 processors:
   filter/health_metrics:
     error_mode: ignore
-    metrics:
-      datapoint:
-        # Drop metric data points from health check endpoints
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/readyz"'
-        - 'attributes["http.route"] == "/ping"'
-        - 'attributes["http.route"] == "/livez"'
+    metric_conditions:
+      # Drop metric data points from health check endpoints
+      - 'datapoint.attributes["http.route"] == "/health"'
+      - 'datapoint.attributes["http.route"] == "/healthz"'
+      - 'datapoint.attributes["http.route"] == "/ready"'
+      - 'datapoint.attributes["http.route"] == "/readyz"'
+      - 'datapoint.attributes["http.route"] == "/ping"'
+      - 'datapoint.attributes["http.route"] == "/livez"'
 ```
 
 ## Filtering Health Check Logs
@@ -100,16 +102,15 @@ This processor drops log entries that contain health check paths in their body o
 processors:
   filter/health_logs:
     error_mode: ignore
-    logs:
-      log_record:
-        # Drop logs from health check endpoints based on attributes
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/ping"'
-        # Also catch unstructured logs that mention health check paths
-        - 'IsMatch(body, ".*GET /health.*")'
-        - 'IsMatch(body, ".*GET /ping.*")'
+    log_conditions:
+      # Drop logs from health check endpoints based on attributes
+      - 'log.attributes["http.route"] == "/health"'
+      - 'log.attributes["http.route"] == "/healthz"'
+      - 'log.attributes["http.route"] == "/ready"'
+      - 'log.attributes["http.route"] == "/ping"'
+      # Also catch unstructured logs that mention health check paths
+      - 'IsMatch(log.body, ".*GET /health.*")'
+      - 'IsMatch(log.body, ".*GET /ping.*")'
 ```
 
 ## Complete Pipeline Configuration
@@ -134,32 +135,29 @@ processors:
 
   filter/health_traces:
     error_mode: ignore
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/readyz"'
-        - 'attributes["http.route"] == "/ping"'
-        - 'attributes["http.route"] == "/livez"'
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/readyz"'
+      - 'span.attributes["http.route"] == "/ping"'
+      - 'span.attributes["http.route"] == "/livez"'
 
   filter/health_metrics:
     error_mode: ignore
-    metrics:
-      datapoint:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/readyz"'
-        - 'attributes["http.route"] == "/ping"'
+    metric_conditions:
+      - 'datapoint.attributes["http.route"] == "/health"'
+      - 'datapoint.attributes["http.route"] == "/healthz"'
+      - 'datapoint.attributes["http.route"] == "/ready"'
+      - 'datapoint.attributes["http.route"] == "/readyz"'
+      - 'datapoint.attributes["http.route"] == "/ping"'
 
   filter/health_logs:
     error_mode: ignore
-    logs:
-      log_record:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'IsMatch(body, ".*GET /health(z)?\\s.*")'
+    log_conditions:
+      - 'log.attributes["http.route"] == "/health"'
+      - 'log.attributes["http.route"] == "/healthz"'
+      - 'IsMatch(log.body, ".*GET /health(z)?\\s.*")'
 
   batch:
     timeout: 10s
@@ -189,17 +187,17 @@ service:
 
 After deploying the filter, verify it is dropping the expected data. The Collector exposes internal metrics that show processor activity.
 
-Check these Prometheus metrics from the Collector's telemetry endpoint (default port 8888):
+Check these internal metrics from the Collector's telemetry endpoint (default port 8888). Older Prometheus compatibility output may render the `.filtered` suffix as `_filtered`.
 
 ```text
 # Number of spans dropped by the filter processor
-otelcol_processor_filter_spans_filtered
+otelcol_processor_filter_spans.filtered
 
 # Number of metric data points dropped
-otelcol_processor_filter_datapoints_filtered
+otelcol_processor_filter_datapoints.filtered
 
 # Number of log records dropped
-otelcol_processor_filter_logs_filtered
+otelcol_processor_filter_logs.filtered
 ```
 
 You can also compare before and after volumes in your backend. Run a query counting spans by route before enabling the filter, then check again after:
@@ -232,10 +230,9 @@ A pragmatic approach is to filter health checks by default but provide a mechani
 processors:
   filter/health_traces:
     error_mode: ignore
-    traces:
-      span:
-        # Drop health checks UNLESS the service has opted out of filtering
-        - 'attributes["http.route"] == "/health" and resource.attributes["otel.health_filter.enabled"] != "false"'
+    trace_conditions:
+      # Drop health checks UNLESS the service has opted out of filtering
+      - 'span.attributes["http.route"] == "/health" and resource.attributes["otel.health_filter.enabled"] != "false"'
 ```
 
 Services that need their health check telemetry can set the `otel.health_filter.enabled` resource attribute to `false` to bypass the filter.
