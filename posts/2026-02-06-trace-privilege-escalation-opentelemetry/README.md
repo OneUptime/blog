@@ -20,7 +20,6 @@ Every authorization check should be recorded as span attributes:
 # authz_tracing.py
 
 from opentelemetry import trace
-from opentelemetry.trace import StatusCode
 
 tracer = trace.get_tracer("security.authorization")
 
@@ -88,21 +87,27 @@ from opentelemetry import context, baggage
 
 def set_authz_context(user_id: str, roles: list, permissions: list,
                        original_scope: str):
-    """Set authorization context that propagates across service boundaries."""
+    """Set telemetry context that propagates across service boundaries."""
     ctx = context.get_current()
     ctx = baggage.set_baggage("authz.user_id", user_id, context=ctx)
     ctx = baggage.set_baggage("authz.roles", ",".join(roles), context=ctx)
+    ctx = baggage.set_baggage("authz.permissions", ",".join(permissions), context=ctx)
     ctx = baggage.set_baggage("authz.scope", original_scope, context=ctx)
-    context.attach(ctx)
+    return context.attach(ctx)
 
 def get_authz_context() -> dict:
     """Retrieve authorization context from propagated baggage."""
+    roles = baggage.get_baggage("authz.roles")
+    permissions = baggage.get_baggage("authz.permissions")
     return {
         "user_id": baggage.get_baggage("authz.user_id") or "unknown",
-        "roles": (baggage.get_baggage("authz.roles") or "").split(","),
+        "roles": roles.split(",") if roles else [],
+        "permissions": permissions.split(",") if permissions else [],
         "scope": baggage.get_baggage("authz.scope") or "unknown",
     }
 ```
+
+Baggage is useful for telemetry correlation, but it should not be the source of truth for authorization. It is propagated in request headers and has no built-in integrity checks, so services should validate a signed token or another trusted internal authorization context before enforcing decisions.
 
 ## Cross-Service Escalation Detection
 
@@ -130,9 +135,13 @@ authz_denials = meter.create_counter(
 class CrossServiceEscalationDetector:
     def check_inter_service_request(self, calling_service: str,
                                       target_service: str,
-                                      target_action: str):
+                                      target_action: str,
+                                      validated_authz_context: dict):
         """Detect if an inter-service call exceeds the original user's permissions."""
-        authz_ctx = get_authz_context()
+        # Use trusted authorization data for enforcement. Baggage is only a
+        # telemetry hint because propagated baggage can be forged or modified.
+        authz_ctx = validated_authz_context
+        baggage_ctx = get_authz_context()
 
         with tracer.start_as_current_span(
             "authz.cross_service_check",
@@ -143,6 +152,7 @@ class CrossServiceEscalationDetector:
                 "authz.original_user": authz_ctx["user_id"],
                 "authz.original_roles": ",".join(authz_ctx["roles"]),
                 "authz.original_scope": authz_ctx["scope"],
+                "authz.baggage_user": baggage_ctx["user_id"],
             }
         ) as span:
             # Check if the target action is within the original scope
@@ -215,10 +225,12 @@ async def authorization_middleware(request, call_next):
 
     if calling_service:
         action = determine_action(request.method, request.url.path)
+        validated_authz_context = validate_authorization_context(request)
         allowed = detector.check_inter_service_request(
             calling_service=calling_service,
             target_service="current-service",
             target_action=action,
+            validated_authz_context=validated_authz_context,
         )
 
         if not allowed:
