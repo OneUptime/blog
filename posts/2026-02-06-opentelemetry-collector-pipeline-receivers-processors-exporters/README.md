@@ -125,19 +125,14 @@ receivers:
       - type: json_parser
         parse_from: body
 
-      # Extract timestamp
-      - type: time_parser
-        parse_from: attributes.timestamp
-        layout: '%Y-%m-%d %H:%M:%S'
+        # Extract timestamp
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%d %H:%M:%S'
 
-      # Extract severity
-      - type: severity_parser
-        parse_from: attributes.level
-        mapping:
-          error: [error, err, fatal]
-          warn: [warning, warn]
-          info: [info]
-          debug: [debug, trace]
+        # Extract severity
+        severity:
+          parse_from: attributes.level
 ```
 
 The filelog receiver can parse structured logs, extract timestamps, and map severity levels to standard values.
@@ -422,7 +417,7 @@ The load balancing exporter distributes data across multiple backend instances, 
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 1s
@@ -702,13 +697,13 @@ Each Collector instance processes independently. The load balancer distributes i
 
 When pipelines don't work as expected, systematic debugging helps identify issues.
 
-### Enable Logging Exporter
+### Enable Debug Exporter
 
-Add a logging exporter to see what data flows through pipelines.
+Add a debug exporter to see what data flows through pipelines.
 
 ```yaml
 exporters:
-  logging:
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
@@ -718,10 +713,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/backend, logging]
+      exporters: [otlp/backend, debug]
 ```
 
-The logging exporter prints sample data to stdout, letting you verify processors work correctly.
+The debug exporter prints sample data to stdout, letting you verify processors work correctly.
 
 ### Check Collector Metrics
 
@@ -731,7 +726,12 @@ The Collector exposes metrics about its own operation.
 service:
   telemetry:
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Query `http://localhost:8888/metrics` to see receiver data rates, processor throughput, exporter success rates, and error counts.
