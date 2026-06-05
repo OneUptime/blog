@@ -31,7 +31,7 @@ Start by downloading and installing the collector binary:
 ```bash
 # Set version and architecture
 
-OTEL_VERSION="0.93.0"
+OTEL_VERSION="0.153.0"
 ARCH="amd64"  # or arm64, arm, etc.
 
 # Download the collector binary
@@ -57,6 +57,7 @@ sudo useradd -r -s /bin/false -M -d /var/lib/otelcol otelcol
 # Create required directories
 sudo mkdir -p /etc/otelcol
 sudo mkdir -p /var/lib/otelcol
+sudo mkdir -p /var/lib/otelcol/storage
 sudo mkdir -p /var/log/otelcol
 
 # Set ownership
@@ -166,10 +167,10 @@ processors:
         value: production
         action: insert
       - key: host.name
-        value: ${HOST_NAME}
+        value: ${env:HOST_NAME}
         action: insert
       - key: host.id
-        value: ${HOST_ID}
+        value: ${env:HOST_ID}
         action: insert
       - key: collector.deployment
         value: systemd
@@ -198,22 +199,12 @@ processors:
           - "^scrape_.*"
           - "^up$"
 
-  # Transform attribute names
-  attributes:
-    actions:
-      - key: http.method
-        action: update
-        value: ${http.request.method}
-      - key: http.status_code
-        action: update
-        value: ${http.response.status_code}
-
 exporters:
   # Export to Prometheus Remote Write
   prometheusremotewrite:
     endpoint: https://prometheus.example.com/api/v1/write
     headers:
-      Authorization: Bearer ${PROM_BEARER_TOKEN}
+      Authorization: Bearer ${env:PROM_BEARER_TOKEN}
     tls:
       insecure: false
       ca_file: /etc/ssl/certs/ca-bundle.crt
@@ -226,6 +217,7 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
+      storage: file_storage
 
   # Export traces via OTLP
   otlp:
@@ -235,15 +227,21 @@ exporters:
       ca_file: /etc/ssl/certs/ca-bundle.crt
     retry_on_failure:
       enabled: true
+    sending_queue:
+      enabled: true
+      storage: file_storage
 
-  # Export logs to Loki
-  loki:
-    endpoint: https://loki.example.com/loki/api/v1/push
+  # Export logs to Loki using OTLP/HTTP
+  otlphttp/loki:
+    endpoint: https://loki.example.com/otlp
     tls:
       insecure: false
       ca_file: /etc/ssl/certs/ca-bundle.crt
     headers:
       X-Scope-OrgID: "default"
+    sending_queue:
+      enabled: true
+      storage: file_storage
 
   # File exporter for local persistence
   file:
@@ -253,8 +251,8 @@ exporters:
       max_days: 7
       max_backups: 10
 
-  # Logging exporter for debugging
-  logging:
+  # Debug exporter for troubleshooting
+  debug:
     verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 200
@@ -269,10 +267,6 @@ extensions:
   pprof:
     endpoint: localhost:1777
 
-  # Memory ballast for stable memory usage
-  memory_ballast:
-    size_mib: 128
-
   # File storage for persistent queues
   file_storage:
     directory: /var/lib/otelcol/storage
@@ -283,23 +277,23 @@ extensions:
       directory: /var/lib/otelcol/storage
 
 service:
-  extensions: [health_check, pprof, memory_ballast, file_storage]
+  extensions: [health_check, pprof, file_storage]
 
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, attributes, batch]
-      exporters: [otlp, file, logging]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp, file, debug]
 
     metrics:
       receivers: [otlp, hostmetrics, prometheus]
       processors: [memory_limiter, filter/metrics, resourcedetection, resource, batch]
-      exporters: [prometheusremotewrite, file, logging]
+      exporters: [prometheusremotewrite, file, debug]
 
     logs:
       receivers: [otlp, filelog]
       processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [loki, file, logging]
+      exporters: [otlphttp/loki, file, debug]
 
   telemetry:
     logs:
@@ -314,7 +308,12 @@ service:
         - stderr
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Set proper permissions:
@@ -341,6 +340,8 @@ Description=OpenTelemetry Collector
 Documentation=https://opentelemetry.io/docs/collector/
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=60s
 
 [Service]
 Type=simple
@@ -350,12 +351,11 @@ Group=otelcol
 # Restart policy
 Restart=on-failure
 RestartSec=5s
-StartLimitBurst=3
-StartLimitIntervalSec=60s
 
 # Environment variables
 Environment="HOST_NAME=%H"
 Environment="HOST_ID=%m"
+Environment="GOMEMLIMIT=1600MiB"
 EnvironmentFile=-/etc/default/otelcol
 
 # Execute collector
@@ -451,8 +451,8 @@ sudo systemctl stop otelcol
 # Restart the service
 sudo systemctl restart otelcol
 
-# Reload configuration without restart (if supported)
-sudo systemctl reload otelcol
+# Restart after configuration changes
+sudo systemctl restart otelcol
 ```
 
 ## Implementing Service Monitoring
@@ -533,10 +533,7 @@ Configure log rotation for collector logs:
     missingok
     notifempty
     create 0640 otelcol otelcol
-    sharedscripts
-    postrotate
-        systemctl reload otelcol > /dev/null 2>&1 || true
-    endscript
+    copytruncate
 }
 ```
 
@@ -694,7 +691,7 @@ Perform safe upgrades with minimal downtime:
 
 set -e
 
-NEW_VERSION="0.94.0"
+NEW_VERSION="0.153.0"
 ARCH="amd64"
 BACKUP_DIR="/var/backups/otelcol"
 
@@ -704,7 +701,8 @@ echo "Upgrading OpenTelemetry Collector to version $NEW_VERSION"
 sudo mkdir -p "$BACKUP_DIR"
 
 # Backup current binary
-sudo cp /usr/local/bin/otelcol "$BACKUP_DIR/otelcol-$(date +%Y%m%d-%H%M%S)"
+BACKUP_BINARY="$BACKUP_DIR/otelcol-$(date +%Y%m%d-%H%M%S)"
+sudo cp /usr/local/bin/otelcol "$BACKUP_BINARY"
 
 # Backup configuration
 sudo cp /etc/otelcol/config.yaml "$BACKUP_DIR/config-$(date +%Y%m%d-%H%M%S).yaml"
@@ -745,7 +743,7 @@ if sudo systemctl is-active --quiet otelcol; then
     otelcol --version
 else
     echo "ERROR: Service failed to start. Rolling back..."
-    sudo cp "$BACKUP_DIR/otelcol-"* /usr/local/bin/otelcol
+    sudo cp "$BACKUP_BINARY" /usr/local/bin/otelcol
     sudo systemctl start otelcol
     exit 1
 fi
@@ -842,7 +840,7 @@ receivers:
 
 exporters:
   zipkin:
-    endpoint: http://zipkin.istio-system.svc.cluster.local:9411
+    endpoint: http://zipkin.istio-system.svc.cluster.local:9411/api/v2/spans
 
 service:
   pipelines:
