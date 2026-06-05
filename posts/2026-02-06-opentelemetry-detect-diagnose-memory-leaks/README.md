@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Memory Leak, Debugging, Performance, Metric, Profiling, Node.js, Python, Go
 
-Description: Learn how to use OpenTelemetry metrics and traces to detect memory leaks in production, identify the leaking code path, and fix it before it causes an outage.
+Description: Learn how to use OpenTelemetry metrics and traces to detect memory leaks in production, narrow down the leaking code path, and fix it before it causes an outage.
 
 ---
 
-> Memory leaks are among the most insidious production issues. They do not cause an immediate failure. Instead, your service slowly consumes more and more memory over hours or days until it hits the limit and crashes. OpenTelemetry gives you the metrics and traces to catch leaks early and pinpoint the code responsible.
+> Memory leaks are among the most insidious production issues. They do not cause an immediate failure. Instead, your service slowly consumes more and more memory over hours or days until it hits the limit and crashes. OpenTelemetry gives you the metrics and traces to catch leaks early and narrow down the code responsible.
 
 The classic memory leak debugging experience involves waiting for a service to crash, taking a heap dump, and spending hours analyzing it. By the time you find the leak, your service has already been restarted (or crashed) multiple times. With OpenTelemetry, you can detect the upward memory trend long before it becomes critical, and correlate it with specific request patterns to narrow down the cause.
 
-This guide covers how to instrument your application for memory leak detection, set up alerts on memory growth, and use traces to identify the leaking code path.
+This guide covers how to instrument your application for memory leak detection, set up alerts on memory growth, and use traces to narrow down the leaking code path.
 
 ---
 
@@ -63,15 +63,15 @@ const heapUsed = meter.createObservableGauge('process.runtime.nodejs.memory.heap
   unit: 'By',
 });
 
-// RSS (Resident Set Size) - total memory allocated by the OS
-// Includes heap, stack, and code segments
+// RSS (Resident Set Size) - physical memory currently used by the process
+// Includes JavaScript objects, C++ objects, and code
 const rss = meter.createObservableGauge('process.runtime.nodejs.memory.rss', {
   description: 'Resident set size in bytes',
   unit: 'By',
 });
 
 // External memory - buffers allocated outside the V8 heap
-// Leaks in native addons or Buffer allocations show up here
+// Native addon memory and Buffer/ArrayBuffer allocations can show up here
 const external = meter.createObservableGauge('process.runtime.nodejs.memory.external', {
   description: 'Memory used by C++ objects bound to JavaScript objects',
   unit: 'By',
@@ -287,7 +287,7 @@ groups:
           description: >
             Heap memory has been growing at {{ $value | humanize }}B/s
             for the last 2 hours. Current heap: {{ with query
-            "process_runtime_nodejs_memory_heap_used" }}{{ . | first | value | humanize }}B{{ end }}
+            (printf "process_runtime_nodejs_memory_heap_used{service_name=%q}" $labels.service_name) }}{{ . | first | value | humanize }}B{{ end }}
 
       # Alert when memory exceeds 80% of the container limit
       # This is the "we need to act soon" alert
@@ -421,7 +421,7 @@ def find_growth_inflection(series):
 
 ## Using Request-Scoped Memory Tracking
 
-For a more precise approach, you can track memory allocation within individual request spans. This is more expensive but directly identifies which requests allocate the most memory:
+For a more precise approach, you can track Python memory allocation within individual request spans. This is more expensive but directly identifies which requests allocate the most traced Python memory:
 
 ```python
 # request_memory_tracking.py
@@ -434,7 +434,7 @@ tracer = trace.get_tracer("memory-tracking")
 
 class MemoryTrackingMiddleware:
     """
-    WSGI/ASGI middleware that measures memory allocated during each request.
+    WSGI middleware that measures memory allocated during each request.
     Enable this temporarily when investigating a suspected leak.
     WARNING: tracemalloc adds significant overhead. Use only for debugging.
     """
@@ -450,29 +450,36 @@ class MemoryTrackingMiddleware:
         snapshot_before = tracemalloc.take_snapshot()
         before_size = sum(stat.size for stat in snapshot_before.statistics("filename"))
 
-        # Process the request
-        response = self.app(environ, start_response)
+        try:
+            # Process the request and force the response iterable to run before
+            # taking the second snapshot.
+            response_iter = self.app(environ, start_response)
+            try:
+                response = list(response_iter)
+            finally:
+                if hasattr(response_iter, "close"):
+                    response_iter.close()
+        finally:
+            # Take a snapshot after the request
+            snapshot_after = tracemalloc.take_snapshot()
+            after_size = sum(stat.size for stat in snapshot_after.statistics("filename"))
 
-        # Take a snapshot after the request
-        snapshot_after = tracemalloc.take_snapshot()
-        after_size = sum(stat.size for stat in snapshot_after.statistics("filename"))
+            # Record the memory delta on the span
+            memory_delta = after_size - before_size
+            span.set_attribute("memory.allocated_bytes", memory_delta)
 
-        # Record the memory delta on the span
-        memory_delta = after_size - before_size
-        span.set_attribute("memory.allocated_bytes", memory_delta)
-
-        # If the delta is large, record the top allocating files
-        if memory_delta > 1_000_000:  # More than 1MB allocated
-            top_stats = snapshot_after.compare_to(snapshot_before, "filename")
-            for i, stat in enumerate(top_stats[:5]):
-                span.set_attribute(
-                    f"memory.top_allocator.{i}.file",
-                    str(stat.traceback),
-                )
-                span.set_attribute(
-                    f"memory.top_allocator.{i}.size_bytes",
-                    stat.size_diff,
-                )
+            # If the delta is large, record the top allocating files
+            if memory_delta > 1_000_000:  # More than 1MB allocated
+                top_stats = snapshot_after.compare_to(snapshot_before, "filename")
+                for i, stat in enumerate(top_stats[:5]):
+                    span.set_attribute(
+                        f"memory.top_allocator.{i}.file",
+                        str(stat.traceback),
+                    )
+                    span.set_attribute(
+                        f"memory.top_allocator.{i}.size_bytes",
+                        stat.size_diff,
+                    )
 
         return response
 ```
@@ -497,6 +504,6 @@ graph TD
     I --> J[Verify memory baseline<br/>stops growing]
 ```
 
-The metrics give you early warning. The traces tell you which requests are involved. The request-scoped memory tracking tells you which code is allocating. Together, they turn a days-long investigation into a focused, systematic debugging session.
+The metrics give you early warning. The traces tell you which requests are involved. The request-scoped memory tracking tells you which code is allocating traced Python memory. Together, they turn a days-long investigation into a focused, systematic debugging session.
 
 Start by deploying memory metrics for all your services. Set up the growth-rate alert. When it fires, use traces and per-request memory tracking to narrow down the cause. The earlier you catch a leak, the easier it is to fix, because you have fewer code changes to review as potential causes.
