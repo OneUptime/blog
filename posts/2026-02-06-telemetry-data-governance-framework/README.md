@@ -115,14 +115,21 @@ FORBIDDEN_KEYS = {
 
 class DataGovernanceProcessor(SpanProcessor):
     """Span processor that enforces data governance rules by redacting
-    restricted data from span attributes and events."""
+    restricted data from span attributes."""
 
     def on_start(self, span, parent_context=None):
-        pass
+        if not span.is_recording():
+            return
+
+        for key, value in dict(span.attributes or {}).items():
+            if self._should_redact_key(key):
+                span.set_attribute(key, "[REDACTED]")
+            else:
+                span.set_attribute(key, self._redact_value(value))
 
     def on_end(self, span):
-        # This processor works on the read-only span copy
-        # For write access, use on_start instead
+        # on_end receives a read-only span. Redaction must happen in on_start
+        # or before attributes are attached to the span.
         pass
 
     def _should_redact_key(self, key):
@@ -144,15 +151,14 @@ class DataGovernanceProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
-A better approach is to use a wrapping span processor that modifies attributes before they are finalized:
+A better approach is to wrap tracer creation so attributes are redacted before spans are created:
 
 ```python
 # Wrapper that redacts attributes at span creation time.
 # This ensures restricted data never reaches the exporter.
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 class RedactingTracerProvider(TracerProvider):
@@ -172,6 +178,12 @@ class RedactingTracer:
             kwargs["attributes"] = self._redact_attributes(kwargs["attributes"])
         return self._tracer.start_span(name, **kwargs)
 
+    def start_as_current_span(self, name, **kwargs):
+        # Redact attributes before creating the span
+        if "attributes" in kwargs and kwargs["attributes"]:
+            kwargs["attributes"] = self._redact_attributes(kwargs["attributes"])
+        return self._tracer.start_as_current_span(name, **kwargs)
+
     def _redact_attributes(self, attributes):
         redacted = {}
         for key, value in attributes.items():
@@ -182,6 +194,17 @@ class RedactingTracer:
             else:
                 redacted[key] = value
         return redacted
+
+    def _is_forbidden_key(self, key):
+        key_lower = key.lower()
+        return any(forbidden in key_lower for forbidden in FORBIDDEN_KEYS)
+
+    def _redact_patterns(self, value):
+        redacted = value
+        for name, pattern in RESTRICTED_PATTERNS.items():
+            redacted = pattern.sub(f"[REDACTED:{name}]", redacted)
+        return redacted
+
 ```
 
 ## Collector-Level Governance
@@ -191,6 +214,12 @@ The collector provides a centralized enforcement point. Even if an application a
 ```yaml
 # Collector configuration for data governance enforcement.
 # This acts as a safety net for data that bypasses SDK-level controls.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   # Remove attributes that should never be in telemetry
   attributes/strip-restricted:
@@ -209,6 +238,7 @@ processors:
 
   # Hash confidential attributes for pseudonymization
   transform/pseudonymize:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -224,19 +254,26 @@ processors:
 
   # Redact patterns from all string attributes
   redaction:
-    # Block list of attribute keys that must be removed entirely
-    blocked_keys:
-      - password
-      - secret
-      - token
-      - authorization
-      - cookie
+    allow_all_keys: true
+    # Attribute key patterns whose values must be masked
+    blocked_key_patterns:
+      - ".*password.*"
+      - ".*secret.*"
+      - ".*token.*"
+      - ".*authorization.*"
+      - ".*cookie.*"
     # Patterns to redact from attribute values
     blocked_values:
       # Credit card numbers
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
       # Email addresses
       - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+
+  batch:
+
+exporters:
+  otlphttp:
+    endpoint: https://backend.com/otlp
 
 service:
   pipelines:
@@ -265,20 +302,24 @@ function initTelemetry() {
     return;
   }
 
-  // User has consented. Initialize with appropriate data controls.
-  const provider = new WebTracerProvider({
-    resource: new Resource({
-      [ATTR_SERVICE_NAME]: 'frontend-web',
-    }),
-  });
+  // Configure processors based on consent level
+  const spanProcessors = [new BatchSpanProcessor(exporter)];
 
-  // Configure attribute limits based on consent level
   if (consent.level === 'minimal') {
     // Only collect technical data, no user identifiers
-    provider.addSpanProcessor(new MinimalDataProcessor());
-  } else if (consent.level === 'full') {
-    // Collect full telemetry including user interactions
-    provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+    spanProcessors.unshift(new MinimalDataProcessor());
+  }
+
+  // User has consented. Initialize with appropriate data controls.
+  const provider = new WebTracerProvider({
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'frontend-web',
+    }),
+    spanProcessors,
+  });
+
+  if (consent.level === 'minimal') {
+    registerMinimalInstrumentations();
   }
 
   provider.register();
@@ -313,15 +354,23 @@ Implement retention at the collector level by routing data to different backends
 
 ```yaml
 # Route data to different storage tiers based on retention needs.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 connectors:
   routing:
+    error_mode: ignore
+    default_pipelines: [traces/default-retention]
     table:
-      - statement: route() where attributes["data.classification"] == "restricted"
+      - context: span
+        statement: route() where attributes["data.classification"] == "restricted"
         pipelines: [traces/short-retention]
-      - statement: route() where IsMatch(name, ".*error.*")
+      - context: span
+        statement: route() where IsMatch(name, ".*error.*")
         pipelines: [traces/long-retention]
-      - statement: route()
-        pipelines: [traces/default-retention]
 
 exporters:
   otlphttp/short:
@@ -338,6 +387,21 @@ exporters:
     endpoint: https://backend.com/otlp
     headers:
       X-Retention-Days: "90"
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/short-retention:
+      receivers: [routing]
+      exporters: [otlphttp/short]
+    traces/default-retention:
+      receivers: [routing]
+      exporters: [otlphttp/default]
+    traces/long-retention:
+      receivers: [routing]
+      exporters: [otlphttp/long]
 ```
 
 ## Compliance Auditing
