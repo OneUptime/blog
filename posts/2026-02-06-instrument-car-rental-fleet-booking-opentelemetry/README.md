@@ -21,6 +21,7 @@ Car rental availability is more complex than hotel or flight inventory because:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.trace import SpanKind
 import time
 
@@ -195,28 +196,45 @@ def create_booking(customer_id, vehicle_id, pickup_location, return_location,
 Track fleet utilization metrics to help the business optimize fleet size and mix:
 
 ```python
+def collect_fleet_metrics(location_id):
+    """Periodic collection of fleet status metrics."""
+    fleet = get_fleet_at_location(location_id)
+    utilization = (fleet.rented / fleet.total) * 100 if fleet.total > 0 else 0
+
+    return {
+        "utilization": utilization,
+        "maintenance": fleet.maintenance,
+        "on_lot": fleet.on_lot,
+    }
+
+def fleet_utilization_callback(options: CallbackOptions):
+    for location_id in get_all_locations():
+        metrics = collect_fleet_metrics(location_id)
+        yield Observation(
+            metrics["utilization"],
+            {"carrental.location_id": location_id},
+        )
+
+def vehicles_in_maintenance_callback(options: CallbackOptions):
+    for location_id in get_all_locations():
+        metrics = collect_fleet_metrics(location_id)
+        yield Observation(
+            metrics["maintenance"],
+            {"carrental.location_id": location_id},
+        )
+
 fleet_utilization = meter.create_observable_gauge(
     "carrental.fleet_utilization_percent",
+    callbacks=[fleet_utilization_callback],
     description="Percentage of fleet currently rented out",
     unit="%",
 )
 
 vehicles_in_maintenance = meter.create_observable_gauge(
     "carrental.vehicles_in_maintenance",
+    callbacks=[vehicles_in_maintenance_callback],
     description="Number of vehicles currently in maintenance",
 )
-
-def collect_fleet_metrics(location_id):
-    """Periodic collection of fleet status metrics."""
-    fleet = get_fleet_at_location(location_id)
-    utilization = (fleet.rented / fleet.total) * 100 if fleet.total > 0 else 0
-
-    # These are recorded by the observable gauge callbacks
-    return {
-        "utilization": utilization,
-        "maintenance": fleet.maintenance,
-        "on_lot": fleet.on_lot,
-    }
 ```
 
 ## Conclusion
