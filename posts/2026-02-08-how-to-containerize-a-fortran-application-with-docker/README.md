@@ -16,28 +16,21 @@ Docker must be installed. Basic Fortran knowledge helps. We will use gfortran (G
 
 ## Creating a Sample Fortran Application
 
-Let's build a numerical computation service that solves a system of linear equations.
+Let's build a numerical computation program that solves a system of linear equations.
 
 Create the main program:
 
 ```fortran
-! server.f90 - simple HTTP-like server using Fortran
+! server.f90 - simple numerical program using Fortran
 ! Performs matrix operations and outputs results
 program docker_demo
     implicit none
 
     integer, parameter :: n = 100
-    real(8), dimension(n, n) :: A
-    real(8), dimension(n) :: b, x
+    real(8), dimension(n, n) :: A, A_original
+    real(8), dimension(n) :: b, b_original, x
     real(8) :: start_time, end_time
-    integer :: i, j
-    character(len=256) :: port_str
-    integer :: port
-
-    ! Get port from environment (for future use)
-    call get_environment_variable('PORT', port_str)
-    if (len_trim(port_str) == 0) port_str = '8080'
-    read(port_str, *) port
+    integer :: i
 
     print *, 'Fortran application starting...'
     print *, 'Matrix size: ', n, 'x', n
@@ -51,6 +44,8 @@ program docker_demo
     do i = 1, n
         A(i, i) = A(i, i) + real(n, 8)
     end do
+    A_original = A
+    b_original = b
 
     ! Time the computation
     call cpu_time(start_time)
@@ -66,7 +61,7 @@ program docker_demo
     print '(A, F10.6)', ' Solution x(n) = ', x(n)
 
     ! Verify: compute residual ||Ax - b||
-    call verify_solution(A, b, x, n)
+    call verify_solution(A_original, b_original, x, n)
 
     print *, 'Computation complete.'
 
@@ -169,7 +164,6 @@ COPY server.f90 ./
 
 # Compile with optimization flags
 # -O3: aggressive optimization
-# -march=native: optimize for the build machine's CPU
 # -o: output file name
 RUN gfortran -O3 -o app server.f90
 
@@ -194,7 +188,7 @@ FROM ubuntu:22.04 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    gfortran libc6-dev \
+    gfortran libc6-dev file \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -270,8 +264,8 @@ program mpi_demo
     implicit none
 
     integer :: ierr, rank, nprocs
-    integer :: i, local_n
-    real(8) :: local_sum, global_sum, pi_approx
+    integer :: i, local_start, local_end
+    real(8) :: local_sum, global_sum
     integer, parameter :: total_n = 100000000
 
     call MPI_Init(ierr)
@@ -283,9 +277,10 @@ program mpi_demo
     end if
 
     ! Each process computes its portion
-    local_n = total_n / nprocs
+    local_start = rank * total_n / nprocs + 1
+    local_end = (rank + 1) * total_n / nprocs
     local_sum = 0.0d0
-    do i = rank * local_n + 1, (rank + 1) * local_n
+    do i = local_start, local_end
         local_sum = local_sum + 4.0d0 / (1.0d0 + ((dble(i) - 0.5d0) / dble(total_n))**2)
     end do
     local_sum = local_sum / dble(total_n)
@@ -358,7 +353,6 @@ output/
 
 ```yaml
 # docker-compose.yml - scientific computing workflow
-version: "3.8"
 services:
   compute:
     build:
