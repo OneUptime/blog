@@ -8,14 +8,14 @@ Description: A complete guide to containerizing Elysia applications running on t
 
 ---
 
-Elysia is a TypeScript web framework designed specifically for the Bun runtime. It leverages Bun's speed and native TypeScript support to deliver exceptional performance. Elysia brings end-to-end type safety, a plugin system, and a developer experience that rivals the best Node.js frameworks. Containerizing an Elysia app with Docker gives you portable deployments while preserving Bun's performance advantages. This guide covers everything from a basic Dockerfile to production optimization.
+Elysia is a TypeScript web framework optimized for the Bun runtime. It leverages Bun's speed and native TypeScript support to deliver exceptional performance. Elysia brings end-to-end type safety, a plugin system, and a developer experience that rivals the best Node.js frameworks. Containerizing an Elysia app with Docker gives you portable deployments while preserving Bun's performance advantages. This guide covers everything from a basic Dockerfile to production optimization.
 
 ## Prerequisites
 
 You need:
 
-- Bun 1.0+ installed locally (for project setup)
-- Docker Engine 20.10+
+- Bun 1.2+ installed locally (for project setup)
+- Docker Engine 20.10+ and Docker Compose v2
 - Basic familiarity with TypeScript and REST APIs
 
 ## Creating an Elysia Project
@@ -57,7 +57,7 @@ Bun executes TypeScript directly without a compilation step. This simplifies the
 
 ## Writing the Dockerfile
 
-Elysia runs exclusively on Bun, so you use the official Bun Docker image.
+For a Bun deployment, use the official Bun Docker image.
 
 This Dockerfile creates a production-ready Elysia container:
 
@@ -71,7 +71,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy dependency files first for layer caching
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Install production dependencies only
 RUN bun install --frozen-lockfile --production
@@ -95,7 +95,7 @@ CMD ["bun", "run", "src/index.ts"]
 
 ## Binding to the Correct Host
 
-By default, Elysia binds to `localhost`, which is unreachable from outside the container. You must bind to `0.0.0.0`.
+Elysia's default serve hostname is `0.0.0.0`, but setting it explicitly makes the Docker behavior clear and avoids surprises if your project configuration changes. The container must listen on `0.0.0.0`, not only `localhost`, for Docker port publishing to work.
 
 Update your Elysia server to listen on all interfaces:
 
@@ -116,7 +116,7 @@ const app = new Elysia()
 console.log(`Elysia is running at http://0.0.0.0:${port}`);
 ```
 
-This is a common stumbling point. If your container starts but you cannot reach it from the host, the hostname binding is almost always the problem.
+This is a common stumbling point in containerized web apps. If your container starts but you cannot reach it from the host, check the hostname binding early.
 
 ## The .dockerignore File
 
@@ -155,8 +155,6 @@ Most real applications need a database. Here is a Compose setup with PostgreSQL.
 This Compose file defines the Elysia app alongside PostgreSQL:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -198,12 +196,12 @@ volumes:
 
 ## Using Elysia Plugins
 
-Elysia has a growing plugin ecosystem. Here is an example with Swagger documentation and CORS, both useful in containerized API deployments.
+Elysia has a growing plugin ecosystem. Here is an example with OpenAPI documentation and CORS, both useful in containerized API deployments.
 
 Install the plugins:
 
 ```bash
-bun add @elysiajs/cors @elysiajs/swagger
+bun add @elysia/cors @elysia/openapi
 ```
 
 Register them in your application:
@@ -211,16 +209,16 @@ Register them in your application:
 ```typescript
 // src/index.ts - Elysia with plugins
 import { Elysia } from 'elysia';
-import { cors } from '@elysiajs/cors';
-import { swagger } from '@elysiajs/swagger';
+import { cors } from '@elysia/cors';
+import { openapi } from '@elysia/openapi';
 
 const app = new Elysia()
   // Enable CORS with configurable origins
   .use(cors({
     origin: process.env.CORS_ORIGIN || '*',
   }))
-  // Enable Swagger UI at /swagger
-  .use(swagger({
+  // Enable OpenAPI UI at /openapi
+  .use(openapi({
     documentation: {
       info: {
         title: 'My Elysia API',
@@ -238,7 +236,7 @@ const app = new Elysia()
   .listen({ port: 3000, hostname: '0.0.0.0' });
 ```
 
-With Swagger enabled, visit `http://localhost:3000/swagger` to see your API documentation.
+With OpenAPI enabled, visit `http://localhost:3000/openapi` to see your API documentation.
 
 ## Development Workflow
 
@@ -251,7 +249,7 @@ FROM oven/bun:1-alpine
 
 WORKDIR /app
 
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 COPY . .
@@ -259,14 +257,12 @@ COPY . .
 EXPOSE 3000
 
 # Use Bun's built-in hot reload
-CMD ["bun", "run", "--hot", "src/index.ts"]
+CMD ["bun", "--hot", "src/index.ts"]
 ```
 
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
@@ -282,7 +278,7 @@ services:
       - PORT=3000
 ```
 
-The `--hot` flag enables Bun's hot module replacement. When you save a file, the server updates without a full restart.
+The `--hot` flag enables Bun's hot reloading. When you save a file, the server updates without a full restart.
 
 ## Environment Variables
 
@@ -314,22 +310,22 @@ Handle shutdown signals for clean container stops:
 
 ```typescript
 // Graceful shutdown for Elysia
+import { Elysia } from 'elysia';
+
 const app = new Elysia()
   .get('/', () => 'Hello')
   .listen({ port: 3000, hostname: '0.0.0.0' });
 
-// Handle SIGTERM from Docker stop
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down');
-  app.stop();
+const shutdown = async (signal: string) => {
+  console.log(`Received ${signal}, shutting down`);
+  await app.stop();
   process.exit(0);
-});
+};
 
-process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down');
-  app.stop();
-  process.exit(0);
-});
+// Handle SIGTERM from Docker stop
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
 ```
 
 ## Image Size
