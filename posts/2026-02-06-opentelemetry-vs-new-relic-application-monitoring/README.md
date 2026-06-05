@@ -18,7 +18,7 @@ Both approaches get you application monitoring. The question is which set of tra
 
 New Relic uses language-specific agents that you install alongside your application. The agent automatically instruments common frameworks and libraries, collects performance data, and sends it to New Relic's cloud platform. The agent handles everything from bytecode injection in Java to monkey-patching in Python.
 
-OpenTelemetry provides SDK libraries and auto-instrumentation packages that generate telemetry data in a standard format. The data flows through the OpenTelemetry Collector, which routes it to any compatible backend.
+OpenTelemetry provides SDK libraries and auto-instrumentation packages that generate telemetry data in a standard format. The data can flow through the OpenTelemetry Collector, which routes it to any compatible backend.
 
 ```mermaid
 flowchart LR
@@ -108,6 +108,8 @@ app.get('/api/users/:id', async (req, res) => {
 app.listen(3000);
 ```
 
+Run the app with the tracing setup loaded first, such as `node --require ./tracing.js app.js`, so the SDK initializes before Express and other instrumented modules are loaded.
+
 The OpenTelemetry approach separates tracing setup from application code. You can enable or disable instrumentation for specific libraries without touching your business logic.
 
 ---
@@ -127,19 +129,20 @@ async function processOrder(orderId) {
     return newrelic.startBackgroundTransaction('process-order', async () => {
         const transaction = newrelic.getTransaction();
 
-        // Add custom attributes to the transaction
-        newrelic.addCustomAttributes({
-            'order.id': orderId,
-            'order.source': 'web',
-        });
+        try {
+            // Add custom attributes to the transaction
+            newrelic.addCustomAttributes({
+                'order.id': orderId,
+                'order.source': 'web',
+            });
 
-        // Create a custom segment within the transaction
-        const result = await newrelic.startSegment('validate-inventory', true, async () => {
-            return await checkInventory(orderId);
-        });
-
-        transaction.end();
-        return result;
+            // Create a custom segment within the transaction
+            return await newrelic.startSegment('validate-inventory', true, async () => {
+                return await checkInventory(orderId);
+            });
+        } finally {
+            transaction.end();
+        }
     });
 }
 ```
@@ -155,19 +158,22 @@ const tracer = trace.getTracer('order-service');
 async function processOrder(orderId) {
     // Create a custom span
     return tracer.startActiveSpan('process-order', async (span) => {
-        // Add attributes using semantic conventions
-        span.setAttribute('order.id', orderId);
-        span.setAttribute('order.source', 'web');
+        try {
+            // Add domain-specific attributes
+            span.setAttribute('order.id', orderId);
+            span.setAttribute('order.source', 'web');
 
-        // Create a child span for a sub-operation
-        const result = await tracer.startActiveSpan('validate-inventory', async (childSpan) => {
-            const inventoryResult = await checkInventory(orderId);
-            childSpan.end();
-            return inventoryResult;
-        });
-
-        span.end();
-        return result;
+            // Create a child span for a sub-operation
+            return await tracer.startActiveSpan('validate-inventory', async (childSpan) => {
+                try {
+                    return await checkInventory(orderId);
+                } finally {
+                    childSpan.end();
+                }
+            });
+        } finally {
+            span.end();
+        }
     });
 }
 ```
@@ -178,7 +184,7 @@ The OpenTelemetry API is arguably cleaner. The `startActiveSpan` pattern with ca
 
 ## Pricing Model Differences
 
-New Relic moved to a usage-based pricing model centered on two dimensions: users and data ingest. You get a free tier with 100 GB of data per month and one full-platform user. Beyond that, each full-platform user costs roughly $49/month (standard) or $349/month (pro), and additional data costs $0.30/GB (standard) or $0.50/GB (Data Plus).
+New Relic moved to a usage-based pricing model centered on two dimensions: users and data ingest. You get a free tier with 100 GB of data per month and one full-platform user. Beyond that, each full-platform user costs roughly $99/month (standard) or $349/month (pro, annual upfront billing), and additional data costs $0.40/GB (New Relic Data) or $0.60/GB (Data Plus), based on current list prices.
 
 This pricing model is friendlier than Datadog's per-host model for some use cases, but it can still get expensive for large teams. A team of 20 engineers on Pro with 500 GB of monthly ingest would pay around $7,000 to $10,000 per month.
 
@@ -186,8 +192,8 @@ OpenTelemetry has no licensing cost. Your expenses come from the backend you cho
 
 | Factor | New Relic | OpenTelemetry + Open Backend |
 |---|---|---|
-| Per-user cost | $49 - $349/month | None (backend dependent) |
-| Data ingest | $0.30 - $0.50/GB | Infrastructure cost only |
+| Per-user cost | $99 - $349/month | None (backend dependent) |
+| Data ingest | $0.40 - $0.60/GB | Infrastructure cost only |
 | Free tier | 100 GB/month, 1 user | N/A (self-hosted is free) |
 | 20-person team estimate | $7,000 - $10,000/month | $500 - $3,000/month |
 
@@ -200,11 +206,20 @@ It is worth noting that New Relic has embraced OpenTelemetry as a data source. Y
 ```yaml
 # OTel Collector config to send data to New Relic
 
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+      http: {}
+
+processors:
+  batch:
+
 exporters:
   otlphttp:
     endpoint: https://otlp.nr-data.net
     headers:
-      api-key: ${NEW_RELIC_LICENSE_KEY}
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
 
 service:
   pipelines:
