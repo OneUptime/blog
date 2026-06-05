@@ -97,11 +97,11 @@ sudo sysctl -p /etc/sysctl.d/docker-tuning.conf
 
 ### Disable CPU Throttling
 
-Docker's default CPU CFS (Completely Fair Scheduler) bandwidth control can throttle containers even when the host has spare CPU capacity:
+Docker containers have unlimited access to CPU cycles by default, but CPU quotas set with `--cpus` or `--cpu-quota` can throttle containers even when the host has spare CPU capacity:
 
 ```bash
-# Run without CPU throttling
-docker run -d --cpu-period=0 --name fast-app myapp:latest
+# Run without CPU quota throttling
+docker run -d --name fast-app myapp:latest
 
 # Or set generous limits that accommodate burst traffic
 docker run -d --cpus=4.0 --cpu-shares=2048 --name fast-app myapp:latest
@@ -117,7 +117,7 @@ docker run -d --cpuset-cpus="0-3" --name fast-app myapp:latest
 
 # Pin interrupts for the network card to different cores (4-5)
 # This prevents network interrupts from preempting application threads
-sudo sh -c 'echo 4 > /proc/irq/$(cat /proc/interrupts | grep eth0 | head -1 | awk -F: "{print \$1}" | tr -d " ")/smp_affinity_list'
+sudo sh -c 'echo 4-5 > /proc/irq/$(cat /proc/interrupts | grep eth0 | head -1 | awk -F: "{print \$1}" | tr -d " ")/smp_affinity_list'
 ```
 
 ### NUMA-Aware Container Placement
@@ -148,10 +148,10 @@ docker run -d \
 
 ### Use Direct I/O for Data Paths
 
-For applications that manage their own caching (databases, message queues), bypass the page cache with O_DIRECT. This requires a volume mount, not overlay2:
+For applications that manage their own caching (databases, message queues), configure the application to use O_DIRECT where supported. Keep data paths on a bind mount or Docker volume so heavy write paths avoid the container's writable overlay layer:
 
 ```bash
-# Use a volume for the data directory
+# Use a bind mount for the data directory
 docker run -d \
   -v /data/kafka:/var/lib/kafka/data \
   --name kafka bitnami/kafka:latest
@@ -243,8 +243,6 @@ services:
           cpus: "2.0"
     tmpfs:
       - /tmp:size=512M,noexec,nosuid
-    sysctls:
-      - net.core.somaxconn=65535
     read_only: true
 
   redis:
@@ -266,8 +264,6 @@ services:
           memory: 3G
     volumes:
       - redis-data:/data
-    sysctls:
-      - net.core.somaxconn=65535
 
 volumes:
   redis-data:
