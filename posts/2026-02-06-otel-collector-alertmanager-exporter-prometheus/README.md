@@ -6,16 +6,16 @@ Tags: OpenTelemetry, Alertmanager, Prometheus, Collector Exporter
 
 Description: Configure the OpenTelemetry Collector to send alerts directly to Prometheus Alertmanager without running a separate Prometheus server for rule evaluation.
 
-The standard alerting flow with OpenTelemetry metrics goes through Prometheus for rule evaluation and then to Alertmanager. But there are situations where you want the Collector itself to push alerts directly to Alertmanager, skipping the Prometheus server entirely. This is useful when you already have metric evaluation logic in the Collector pipeline or when you want to alert on conditions detected during data processing (like dropped spans or pipeline errors).
+The standard alerting flow with OpenTelemetry metrics goes through Prometheus for rule evaluation and then to Alertmanager. But there are situations where you want the Collector itself to push alerts directly to Alertmanager, skipping the Prometheus server entirely. This is useful when your applications or Collector pipelines already emit event-style logs or span events for conditions detected during data processing (like dropped spans or pipeline errors).
 
-This post covers how to configure the OpenTelemetry Collector to send alerts to Prometheus Alertmanager using the alertmanager exporter from the contrib distribution.
+This post covers how to configure the OpenTelemetry Collector to send alerts to Prometheus Alertmanager using the alertmanager exporter from the contrib repository.
 
 ## When to Use This Approach
 
 The Alertmanager exporter makes sense when:
 
 - You want to alert on Collector-level events (pipeline failures, buffer overflows, data drops)
-- You are using the Collector's routing or filtering processors and want to alert when specific conditions trigger
+- You are using the Collector's routing or filtering processors to isolate event records that should become alerts
 - You want a lightweight alerting path without deploying a full Prometheus instance
 - You need to convert OpenTelemetry log events into Alertmanager alerts
 
@@ -34,7 +34,7 @@ graph LR
 
 ## Installing the Collector with Alertmanager Exporter
 
-The alertmanager exporter is available in the `otelcol-contrib` distribution. If you are building a custom Collector, add it to your builder manifest:
+The alertmanager exporter is not included in the standard `otelcol-contrib` binary. Build a custom Collector and add it to your builder manifest:
 
 ```yaml
 # builder-config.yaml
@@ -46,15 +46,16 @@ dist:
   output_path: ./dist
 
 exporters:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alertmanagerexporter v0.96.0
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alertmanagerexporter v0.153.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.153.0
 ```
 
 Build the custom Collector:
@@ -67,7 +68,7 @@ builder --config builder-config.yaml
 
 ## Basic Alertmanager Exporter Configuration
 
-The alertmanager exporter converts OpenTelemetry log records into Alertmanager alerts. Each log record becomes an alert, with log attributes mapped to alert labels and annotations.
+The alertmanager exporter converts OpenTelemetry span events and log records into Alertmanager alerts. Each log record becomes an alert. Log attributes are added as annotations, while the `event.name` attribute becomes the `event_name` label and selected attributes listed in `event_labels` become additional labels.
 
 ```yaml
 # otel-collector-config.yaml
@@ -78,12 +79,14 @@ exporters:
     # Alertmanager HTTP endpoint
     endpoint: http://alertmanager:9093
 
-    # How to extract alert fields from log records
-    # The exporter looks for specific attributes on log records
-    # to construct Alertmanager-compatible alerts
-
     # Default severity if not specified in the log record
-    default_severity: "warning"
+    severity: "warning"
+
+    # Optional: prefer this log attribute over severity_text
+    severity_attribute: "severity"
+
+    # Optional: copy these log attributes into Alertmanager labels
+    event_labels: ["service", "db.system"]
 
     # Timeout for HTTP requests to Alertmanager
     timeout: 10s
@@ -94,7 +97,7 @@ exporters:
 
 ## Creating Alerts from Log Records
 
-The alertmanager exporter expects log records with specific attributes that map to Alertmanager alert fields. You can use the transform processor to shape your data into the expected format.
+The alertmanager exporter uses `event.name` as the Alertmanager `event_name` label. You can use the transform processor to add routing labels that are listed in the exporter's `event_labels` setting.
 
 Here is a complete pipeline that watches for specific error conditions and creates alerts:
 
@@ -111,28 +114,20 @@ receivers:
 processors:
   # Filter to only pass through severe log records
   filter/alerts-only:
+    error_mode: ignore
     logs:
       log_record:
         # Only forward logs with severity ERROR or higher
-        - 'severity_number >= 17'
+        - 'severity_number < SEVERITY_NUMBER_ERROR'
 
   # Transform log records into the format expected by the alertmanager exporter
   transform/alert-format:
     log_statements:
       - context: log
         statements:
-          # Set the alertname label from the log event name
-          - set(attributes["alertname"], attributes["event.name"])
-            where attributes["event.name"] != nil
-
-          # Set severity from the log severity text
-          - set(attributes["severity"], severity_text)
-
-          # Add service context
+          # Add service context as a log attribute so event_labels can promote it to a label
           - set(attributes["service"], resource.attributes["service.name"])
-
-          # Set alert description from log body
-          - set(attributes["description"], body)
+            where resource.attributes["service.name"] != nil
 
   batch:
     send_batch_size: 1
@@ -141,7 +136,9 @@ processors:
 exporters:
   alertmanager:
     endpoint: http://alertmanager:9093
-    default_severity: "critical"
+    severity: "critical"
+    severity_attribute: "severity"
+    event_labels: ["service", "db.system"]
     timeout: 10s
 
   # Normal export path for all telemetry
@@ -178,33 +175,40 @@ To trigger an alert from your application, emit a structured log record with the
 # alert_from_app.py
 # Emit a structured log record that the Collector will convert to an Alertmanager alert
 
-import logging
 from opentelemetry import _logs
+from opentelemetry._logs import SeverityNumber
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
 # Set up the OTel log provider
-provider = LoggerProvider()
+provider = LoggerProvider(
+    resource=Resource.create({"service.name": "payment-api"})
+)
 provider.add_log_record_processor(
-    BatchLogRecordProcessor(OTLPLogExporter(endpoint="localhost:4317", insecure=True))
+    BatchLogRecordProcessor(OTLPLogExporter(endpoint="http://localhost:4317", insecure=True))
 )
 _logs.set_logger_provider(provider)
 
-logger = logging.getLogger("alert-emitter")
+logger = _logs.get_logger("alert-emitter")
 
 # Emit an alert-worthy log record
 # The Collector's filter and transform processors will pick this up
 # and forward it to Alertmanager
-logger.error(
-    "Database connection pool exhausted",
-    extra={
+logger.emit(
+    severity_number=SeverityNumber.ERROR,
+    severity_text="critical",
+    body="Database connection pool exhausted",
+    attributes={
         "event.name": "DatabasePoolExhausted",
         "db.system": "postgresql",
         "db.connection_pool.max": 50,
         "db.connection_pool.active": 50,
-    }
+    },
 )
+
+provider.shutdown()
 ```
 
 ## Alertmanager Configuration for Collector Alerts
@@ -217,20 +221,20 @@ Configure Alertmanager to route alerts from the Collector to the appropriate cha
 
 route:
   receiver: default-slack
-  group_by: [alertname, service]
+  group_by: [event_name, service]
   group_wait: 10s
   group_interval: 5m
   repeat_interval: 1h
 
   routes:
     # Database alerts go to the DBA team
-    - match_re:
-        alertname: "Database.*"
+    - matchers:
+        - event_name=~"Database.*"
       receiver: dba-pagerduty
 
     # All other critical alerts go to the platform team
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: platform-pagerduty
 
 receivers:
@@ -238,8 +242,8 @@ receivers:
     slack_configs:
       - api_url: "https://hooks.slack.com/services/YOUR/WEBHOOK"
         channel: "#collector-alerts"
-        title: '{{ .CommonLabels.alertname }}'
-        text: '{{ .CommonAnnotations.description }}'
+        title: '{{ .CommonLabels.event_name }}'
+        text: '{{ .CommonAnnotations.Body }}'
 
   - name: dba-pagerduty
     pagerduty_configs:
@@ -271,7 +275,7 @@ Set up a separate alert (via Prometheus, not the Collector) for failed alert del
 The alertmanager exporter works well for event-driven alerts, but it has limitations:
 
 - It does not evaluate metric thresholds. For "error rate > 5% for 5 minutes" style alerts, use Prometheus.
-- Alert resolution depends on receiving a corresponding "resolved" log record. If your application does not emit one, the alert stays firing until Alertmanager's resolve timeout kicks in.
+- The exporter does not set `endsAt`, so Alertmanager resolves alerts after its `resolve_timeout` if they are not refreshed.
 - Each log record maps to one alert. There is no built-in aggregation or deduplication at the Collector level (Alertmanager handles deduplication on its end).
 
 For most teams, the best approach is to use both paths: Prometheus for metric-threshold alerting and the Collector's alertmanager exporter for event-driven alerting. They complement each other and both feed into the same Alertmanager instance for unified routing.
