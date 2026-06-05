@@ -31,21 +31,21 @@ The processor operates with two thresholds and a periodic check interval:
 graph TD
     A[Incoming Telemetry] --> B{Check Interval}
     B --> C{Current Memory}
-    C -->|< limit_mib| D[Accept & Process]
-    C -->|>= limit_mib but < limit + spike| E[Accept with Warning]
-    C -->|>= limit_mib + spike_limit_mib| F[Reject & Drop]
+    C -->|< limit_mib - spike_limit_mib| D[Accept & Process]
+    C -->|>= limit_mib - spike_limit_mib| E[Refuse & Signal Back-Pressure]
+    C -->|>= limit_mib| F[Refuse & Force GC]
     D --> G[Next Processor]
     E --> G
-    F --> H[Dropped Items Metric]
+    F --> H[Refused Items Metric]
 ```
 
 **Key concepts**:
 
-1. **limit_mib**: Soft limit triggering back-pressure and warnings
-2. **spike_limit_mib**: Headroom above limit before hard drops
+1. **limit_mib**: Hard heap memory target for the collector process
+2. **spike_limit_mib**: Expected memory spike between checks, subtracted from `limit_mib` to calculate the soft limit
 3. **check_interval**: How frequently memory usage is evaluated
 
-When memory exceeds `limit_mib`, the processor stops accepting new data temporarily. When memory exceeds `limit_mib + spike_limit_mib`, the processor starts dropping data to protect system stability.
+When memory exceeds `limit_mib - spike_limit_mib`, the processor stops accepting new data temporarily and returns retryable errors to the previous component. When memory exceeds `limit_mib`, the processor also forces garbage collection to reduce memory pressure.
 
 ## Basic Configuration
 
@@ -86,18 +86,19 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration protects a collector with a 512 MiB soft limit and allows spikes up to 640 MiB (512 + 128) before dropping data.
+This configuration protects a collector with a 512 MiB hard heap target and a 384 MiB soft limit (512 - 128) where it begins refusing data.
 
 ## Core Configuration Parameters
 
 ### limit_mib
 
-The soft memory limit in mebibytes (MiB). When exceeded, the processor applies back-pressure by refusing new data temporarily.
+The hard heap memory target in mebibytes (MiB). The processor calculates the soft limit by subtracting `spike_limit_mib` from this value. When the soft limit is exceeded, the processor applies back-pressure by refusing new data temporarily; when the hard limit is exceeded, it also forces garbage collection.
 
 ```yaml
 processors:
   memory_limiter:
-    limit_mib: 1024  # 1 GiB soft limit
+    check_interval: 1s
+    limit_mib: 1024  # 1 GiB hard heap target
 ```
 
 **Sizing guidance**:
@@ -105,7 +106,7 @@ processors:
 Calculate limit as a percentage of available memory:
 
 ```text
-limit_mib = (container_memory_limit × 0.8) - baseline_overhead
+limit_mib = (container_memory_limit × 0.8) - safety_margin
 ```
 
 For example, with a 2 GiB container:
@@ -114,22 +115,23 @@ For example, with a 2 GiB container:
 limit_mib = (2048 × 0.8) - 200 = 1438 MiB
 ```
 
-The 0.8 factor provides safety margin, and baseline_overhead accounts for Go runtime and other fixed costs (typically 100-200 MiB).
+The 0.8 factor provides safety margin, and the additional margin accounts for memory outside the Go heap. OpenTelemetry's documentation notes that total process memory is typically about 50 MiB higher than `limit_mib`, so keep extra room for your workload and deployment environment.
 
 ### spike_limit_mib
 
-Additional headroom above `limit_mib` before the processor starts dropping data.
+Expected memory growth between checks. The processor subtracts this value from `limit_mib` to calculate the soft limit where it starts refusing data.
 
 ```yaml
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 1024
-    spike_limit_mib: 256  # Drop data above 1280 MiB (1024 + 256)
+    spike_limit_mib: 256  # Start refusing data above 768 MiB (1024 - 256)
 ```
 
 **Spike limit purpose**:
 
-Traffic doesn't arrive perfectly smoothly. Short bursts can push memory usage temporarily higher. The spike limit accommodates these bursts without dropping data, as long as memory returns below `limit_mib` quickly.
+Traffic doesn't arrive perfectly smoothly. Short bursts can push memory usage temporarily higher between checks. The spike limit reserves room for those bursts before the collector reaches the hard `limit_mib` target.
 
 **Typical values**:
 - **20-25% of limit_mib**: Standard recommendation for most workloads
@@ -150,7 +152,7 @@ processors:
 
 - **Shorter interval (100ms-500ms)**: Faster reaction to memory spikes, more CPU overhead
 - **Longer interval (2s-5s)**: Lower CPU overhead, slower reaction time
-- **Default (1s)**: Balanced for most scenarios
+- **Recommended (1s)**: Balanced for most scenarios
 
 In practice, 1 second works well. Memory exhaustion doesn't happen instantly; collectors typically have seconds of warning. Checking more frequently adds CPU cost with minimal benefit.
 
@@ -175,7 +177,12 @@ exporters:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -193,7 +200,7 @@ ps aux | grep otelcol
 kubectl top pod <collector-pod>
 
 # Or query Prometheus if scraping collector metrics
-# Look for: process_runtime_go_mem_heap_alloc_bytes
+# Look for: otelcol_process_runtime_heap_alloc_bytes
 curl http://localhost:8888/metrics | grep heap_alloc
 ```
 
@@ -244,7 +251,7 @@ Corresponding memory limiter configuration:
 processors:
   memory_limiter:
     check_interval: 1s
-    # 80% of 2048 MiB = 1638, minus 200 MiB overhead = 1438
+    # 80% of 2048 MiB = 1638, minus 200 MiB safety margin = 1438
     limit_mib: 1438
     # 20% of 1438 = 287
     spike_limit_mib: 287
@@ -278,8 +285,8 @@ processors:
 processors:
   memory_limiter:
     check_interval: 1s
-    limit_mib: 4096  # 4 GiB soft limit
-    spike_limit_mib: 1024  # 1 GiB spike room
+    limit_mib: 4096  # 4 GiB hard heap target
+    spike_limit_mib: 1024  # Start refusing above 3 GiB
 ```
 
 ## Advanced Configuration Scenarios
@@ -391,12 +398,13 @@ The memory limiter exposes critical metrics for understanding its operation:
 
 ```bash
 # Query collector metrics endpoint
-curl http://localhost:8888/metrics | grep memory_limiter
+curl http://localhost:8888/metrics | grep -E "processor_refused|receiver_refused|process_runtime_heap_alloc"
 
 # Important metrics:
-# - otelcol_processor_refused_spans: How many spans were refused
-# - otelcol_processor_refused_metric_points: How many metrics were refused
-# - otelcol_processor_refused_log_records: How many logs were refused
+# - otelcol_processor_refused_spans: How many spans were refused by processors such as memory_limiter
+# - otelcol_processor_refused_metric_points: How many metrics were refused by processors such as memory_limiter
+# - otelcol_processor_refused_log_records: How many logs were refused by processors such as memory_limiter
+# - otelcol_receiver_refused_*: How many items receivers could not push into the pipeline
 ```
 
 ### Healthy vs. Unhealthy Patterns
@@ -406,7 +414,7 @@ curl http://localhost:8888/metrics | grep memory_limiter
 ```text
 otelcol_processor_refused_spans: 0
 otelcol_processor_refused_metric_points: 0
-process_runtime_go_mem_heap_alloc_bytes: ~70% of limit_mib
+otelcol_process_runtime_heap_alloc_bytes: well below limit_mib
 ```
 
 Memory stays well below limits, no refusals occur. System is stable.
@@ -415,7 +423,7 @@ Memory stays well below limits, no refusals occur. System is stable.
 
 ```text
 otelcol_processor_refused_spans: increasing
-process_runtime_go_mem_heap_alloc_bytes: consistently near limit_mib
+otelcol_process_runtime_heap_alloc_bytes: consistently near the soft limit
 ```
 
 The limiter is actively refusing data. This indicates:
@@ -432,7 +440,7 @@ Container restarted: OOMKilled
 
 Memory limiter couldn't protect against exhaustion. Either:
 - Limits exceed container resources
-- Traffic spike exceeded spike_limit_mib too quickly
+- Traffic spike exceeded the reserved `spike_limit_mib` headroom too quickly
 - Memory leak in collector or processor
 
 ## Troubleshooting Common Issues
@@ -449,11 +457,13 @@ Memory limiter couldn't protect against exhaustion. Either:
 # BAD: limit_mib (2048) exceeds container limit (1024 MiB)
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 2048
 
 # GOOD: limit_mib stays well below container limit
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 768  # 75% of 1024 MiB container limit
 ```
 
@@ -471,20 +481,22 @@ processors:
     check_interval: 1s
 ```
 
-**Cause 3**: Spike limit too generous
+**Cause 3**: Spike limit too small for bursty traffic
 
 ```yaml
-# BAD: spike_limit allows exceeding container limit
+# BAD: only 20 MiB reserved between the soft and hard limits
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 768
-    spike_limit_mib: 512  # 768 + 512 = 1280, exceeds container
+    spike_limit_mib: 20  # Soft limit is 748 MiB
 
-# GOOD: spike_limit keeps total below container limit
+# GOOD: reserve enough room for memory growth between checks
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 768
-    spike_limit_mib: 150  # 768 + 150 = 918, safe margin
+    spike_limit_mib: 150  # Soft limit is 618 MiB
 ```
 
 ### Issue 2: Excessive Refused Telemetry
@@ -511,6 +523,7 @@ curl http://localhost:8888/metrics | grep heap_alloc
 ```yaml
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 2048  # Was: 1024
     spike_limit_mib: 512  # Was: 256
 ```
@@ -532,6 +545,7 @@ spec:
 ```yaml
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 1024
 
   # Filter out noisy telemetry early
@@ -587,7 +601,7 @@ Before deploying a memory limiter to production:
 - [ ] Container memory limit set in orchestration platform
 - [ ] `limit_mib` configured to 70-80% of container memory
 - [ ] `spike_limit_mib` set to 20-25% of `limit_mib`
-- [ ] Total of `limit_mib + spike_limit_mib` stays below container memory
+- [ ] `limit_mib` leaves room below the container limit for memory outside the Go heap
 - [ ] `check_interval` set to 1 second (standard recommendation)
 - [ ] Memory limiter placed as first processor in all pipelines
 - [ ] Collector metrics endpoint exposed and monitored
@@ -623,19 +637,24 @@ exporters:
     endpoint: https://oneuptime.com/otlp
     timeout: 60s  # Artificially slow
 
-  logging:
+  debug:
     verbosity: basic
 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
 ```
 
 Generate load and observe behavior:
@@ -650,7 +669,7 @@ watch -n 1 'curl -s http://localhost:8888/metrics | grep -E "(heap_alloc|refused
 # Expected behavior:
 # 1. Memory climbs toward limit_mib
 # 2. Refused spans start incrementing as limit is hit
-# 3. Memory stays below limit_mib + spike_limit_mib
+# 3. Memory stays near or below limit_mib
 # 4. Collector remains stable (doesn't crash)
 ```
 
@@ -665,6 +684,7 @@ The most critical pairing. Memory limiter must come first:
 ```yaml
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 1024
     spike_limit_mib: 256
 
@@ -688,6 +708,7 @@ Tail sampling processors hold traces in memory for decision windows. Size limits
 ```yaml
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 4096  # Generous for tail sampling
     spike_limit_mib: 1024
 
@@ -697,6 +718,8 @@ processors:
     policies:
       - name: errors
         type: status_code
+        status_code:
+          status_codes: [ERROR]
 
   batch:
     timeout: 5s
