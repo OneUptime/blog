@@ -40,63 +40,60 @@ OpenTelemetry profiling builds on the pprof format that many developers already 
 - **Profile**: A collection of stack trace samples taken over a period of time
 - **Sample**: A single snapshot of the call stack at a point in time, with associated values like CPU time or memory allocation
 - **Location**: A specific point in the code, identified by function name, file, and line number
-- **Link**: A reference connecting a profile to a specific trace span
+- **Trace correlation**: Sample attributes can carry a trace ID and span ID so profiles can be correlated with traces when the profiler and backend support it
 
 The profiling signal supports multiple profile types including CPU profiles, heap allocation profiles, mutex contention profiles, and goroutine profiles (in Go).
 
 ---
 
-## Setting Up the OpenTelemetry Profiling SDK
+## Setting Up Profile Collection for a Go Application
 
-Let's start with a Go application since Go has the most mature profiling support in OpenTelemetry. First, install the required packages:
+Let's start with a Go application since Go already exposes runtime profiles in the pprof format. As of the OpenTelemetry Profiles Alpha, there is not a stable Go profiling SDK package that you add with `go get`. The supported OpenTelemetry path is to collect pprof data with the OpenTelemetry Collector contrib `pprof` receiver or use the OpenTelemetry eBPF profiler on Linux.
 
-```bash
-# Install the OpenTelemetry profiling SDK and OTLP exporter
-
-# These packages are still in alpha, so pin your versions carefully
-go get go.opentelemetry.io/contrib/profiling@latest
-go get go.opentelemetry.io/otel/exporters/otlp/otlpprofile/otlpprofilegrpc@latest
-```
-
-Now configure the profiling provider in your application's initialization code. This sets up a continuous CPU profiler that samples at 100Hz and exports profiles every 10 seconds:
+First, expose the standard Go pprof endpoints in your application:
 
 ```go
 package main
 
 import (
-    "context"
     "log"
-    "time"
-
-    "go.opentelemetry.io/contrib/profiling"
-    "go.opentelemetry.io/otel/exporters/otlp/otlpprofile/otlpprofilegrpc"
+    "net/http"
+    _ "net/http/pprof"
 )
 
-func initProfiling(ctx context.Context) (*profiling.Provider, error) {
-    // Create an OTLP exporter that sends profiles to your backend
-    // This uses the same endpoint as your traces and metrics
-    exporter, err := otlpprofilegrpc.New(ctx,
-        otlpprofilegrpc.WithEndpoint("otel-collector:4317"),
-        otlpprofilegrpc.WithInsecure(),
-    )
-    if err != nil {
-        return nil, err
-    }
+func main() {
+    go func() {
+        // Expose /debug/pprof/profile, /debug/pprof/heap, and related endpoints.
+        log.Println(http.ListenAndServe("localhost:6060", nil))
+    }()
 
-    // Configure the profiling provider with CPU and memory profiling enabled
-    // SampleRate of 100 means 100 samples per second, which is a good balance
-    // between overhead and granularity
-    provider := profiling.NewProvider(
-        profiling.WithExporter(exporter),
-        profiling.WithCPUProfiling(true),
-        profiling.WithMemoryProfiling(true),
-        profiling.WithSampleRate(100),
-        profiling.WithExportInterval(10 * time.Second),
-    )
-
-    return provider, nil
+    runApplication()
 }
 ```
+
+Now configure the Collector contrib `pprof` receiver to poll the CPU profile endpoint and export the result through an OpenTelemetry profiles pipeline:
+
+```yaml
+receivers:
+  pprof:
+    remote:
+      endpoint: http://my-go-service:6060/debug/pprof/profile?seconds=10
+      collection_interval: 30s
+
+exporters:
+  otlp/profiles:
+    endpoint: profiles-backend.example.com:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    profiles:
+      receivers: [pprof]
+      exporters: [otlp/profiles]
+```
+
+Because profiles support is still Alpha in the Collector, run the Collector with the profiles feature gate enabled, for example `otelcol-contrib --feature-gates=+service.profilesSupport --config=otel-collector-config.yaml`.
 
 ---
 
@@ -104,34 +101,27 @@ func initProfiling(ctx context.Context) (*profiling.Provider, error) {
 
 The real power of continuous profiling comes from correlating profiles with distributed traces. When you can click on a slow span and immediately see the CPU profile for that exact time window, debugging becomes dramatically faster.
 
-To enable this correlation, you need to ensure your profiling SDK knows about the current trace context. Here is how you link them together:
+The OpenTelemetry Profiles data model supports adding `trace_id` and `span_id` attributes to profile samples. Whether you get span-level correlation automatically depends on the profiler and language runtime. The pprof receiver example above captures process-level profiles from Go's pprof endpoints; it can still be correlated by service, instance, and time window, but it does not automatically tag every sample with the active span.
 
 ```go
 func processOrder(ctx context.Context, order Order) error {
     // Start a new span for this operation
-    // The profiling SDK automatically picks up the trace context
     ctx, span := tracer.Start(ctx, "processOrder")
     defer span.End()
 
-    // Attach a profiling scope to this span
-    // This tells the profiler to tag samples collected during this span
-    // with the span's trace ID and span ID
-    profCtx := profiling.WithSpanContext(ctx)
-
-    // Your business logic runs normally
-    // Any CPU or memory samples collected during this block
-    // will be linked to the trace span above
-    result, err := calculateTotals(profCtx, order)
+    // Your business logic runs normally. Profiles collected for this process
+    // can be compared with this span by service identity and timestamp.
+    result, err := calculateTotals(ctx, order)
     if err != nil {
         span.RecordError(err)
         return err
     }
 
-    return chargePayment(profCtx, result)
+    return chargePayment(ctx, result)
 }
 ```
 
-When you view this in your observability backend, you will see the trace span annotated with profiling data. This means you can drill down from a slow span directly into the function-level breakdown.
+When you view this in your observability backend, the exact workflow depends on backend support. Some systems let you drill from a slow span into profiles collected over the same time range and resource; span-level sample links require a profiler that records trace and span identifiers with samples.
 
 ---
 
@@ -166,7 +156,7 @@ processors:
 
 exporters:
   # Send profiles to your observability backend via OTLP
-  otlp/profiles:
+  otlphttp/profiles:
     endpoint: https://oneuptime.com/otlp
     headers:
       Authorization: "Bearer your-api-key"
@@ -177,50 +167,35 @@ service:
     profiles:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp/profiles]
+      exporters: [otlphttp/profiles]
 ```
+
+Profiles pipelines are currently Alpha in the Collector. Start the Collector with `--feature-gates=+service.profilesSupport` when using a build where profile pipelines are still gated.
 
 ---
 
 ## Continuous Profiling in Python Applications
 
-Python support for OpenTelemetry profiling uses the built-in `sys.setprofile` and sampling-based approaches. Here is how to set it up:
+The official OpenTelemetry Python API and SDK currently cover traces, metrics, and logs; there is not an official `opentelemetry.profiling` package with a `ContinuousProfiler` API. For Python services on Linux, the current OpenTelemetry-native option is the eBPF profiler, which profiles Python and other runtimes without modifying application code.
 
-```python
-from opentelemetry import trace
-from opentelemetry.profiling import ContinuousProfiler, OTLPProfileExporter
+```yaml
+receivers:
+  profiling:
 
-# Create the profile exporter pointing to your collector
-# The exporter batches profiles and sends them periodically
-exporter = OTLPProfileExporter(
-    endpoint="http://otel-collector:4317",
-    insecure=True,
-)
+exporters:
+  otlp/profiles:
+    endpoint: profiles-backend.example.com:4317
+    tls:
+      insecure: true
 
-# Initialize the continuous profiler
-# sample_rate=100 means we sample the call stack 100 times per second
-# This adds roughly 1-2% CPU overhead, which is acceptable for production
-profiler = ContinuousProfiler(
-    exporter=exporter,
-    sample_rate=100,
-    profile_types=["cpu", "wall", "alloc"],
-)
-
-# Start profiling - this runs in a background thread
-profiler.start()
-
-# Your application code works normally
-# The profiler samples the call stack in the background
-# and correlates samples with active spans automatically
-tracer = trace.get_tracer("my-service")
-
-def handle_request(request):
-    with tracer.start_as_current_span("handle_request") as span:
-        # Profile data collected during this span
-        # will be linked to it via trace context
-        result = expensive_computation(request.data)
-        return format_response(result)
+service:
+  pipelines:
+    profiles:
+      receivers: [profiling]
+      exporters: [otlp/profiles]
 ```
+
+The eBPF profiler is Linux-only and requires elevated privileges or Linux capabilities such as access to eBPF/perf events and `/proc`. Start the profiling Collector with the profiles feature gate enabled, for example `sudo ./otelcol-ebpf-profiler --feature-gates=+service.profilesSupport --config=otel-collector-config.yaml`.
 
 ---
 
@@ -228,31 +203,23 @@ def handle_request(request):
 
 Continuous profiling in production requires careful attention to overhead. The goal is to collect enough data to be useful without impacting your application's performance. Here are the key tuning parameters:
 
-```go
-// Production-safe profiling configuration
-// These settings keep overhead under 2% CPU and 50MB memory
-provider := profiling.NewProvider(
-    profiling.WithExporter(exporter),
-    profiling.WithCPUProfiling(true),
-    profiling.WithMemoryProfiling(true),
+```yaml
+receivers:
+  pprof:
+    remote:
+      # Ask the Go runtime for a 10-second CPU profile.
+      endpoint: http://my-go-service:6060/debug/pprof/profile?seconds=10
 
-    // Sample at 100Hz - the sweet spot for most applications
-    // Lower values miss short-lived functions
-    // Higher values increase CPU overhead linearly
-    profiling.WithSampleRate(100),
+      # Poll every 30 seconds to balance freshness and overhead.
+      collection_interval: 30s
 
-    // Export every 30 seconds to reduce network overhead
-    // Shorter intervals give faster feedback but more traffic
-    profiling.WithExportInterval(30 * time.Second),
-
-    // Limit the maximum profile size to prevent memory issues
-    // This caps the number of unique stack traces per export
-    profiling.WithMaxStackDepth(128),
-    profiling.WithMaxSamplesPerExport(10000),
-)
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
 ```
 
-In practice, a sample rate of 100Hz adds roughly 1-2% CPU overhead in Go applications and 2-3% in Python. For most production workloads, this is well within acceptable bounds. If you are running extremely latency-sensitive services, consider dropping to 50Hz or even 19Hz (a prime number that avoids aliasing with periodic tasks).
+In practice, overhead depends heavily on the profiler, language runtime, workload, kernel, and sampling interval. The OpenTelemetry eBPF profiler project targets low overhead and documents 1% CPU and 250MB memory as upper limits in its testing, but you should measure this in your own environment. If you are running extremely latency-sensitive services, use longer collection intervals or shorter profile windows and validate the impact under production-like load.
 
 ---
 
