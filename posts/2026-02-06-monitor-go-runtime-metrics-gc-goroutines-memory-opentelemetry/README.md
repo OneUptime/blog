@@ -8,7 +8,7 @@ Description: Learn how to capture and monitor Go runtime metrics including garba
 
 Go applications have unique runtime characteristics that require careful monitoring. The Go runtime provides rich metrics about garbage collection cycles, goroutine lifecycle, memory allocation patterns, and scheduler behavior. Understanding these metrics helps you identify performance bottlenecks, memory leaks, and concurrency issues before they impact production systems.
 
-OpenTelemetry provides a standardized way to collect and export these runtime metrics. The Go SDK includes built-in instrumentation for runtime metrics that automatically captures critical data points without manual intervention. This guide walks through setting up runtime metrics collection, understanding what each metric means, and using this data to optimize your applications.
+OpenTelemetry provides a standardized way to collect and export these runtime metrics. The OpenTelemetry Go contrib instrumentation includes runtime metrics collection that automatically captures critical data points without manual intervention. This guide walks through setting up runtime metrics collection, understanding what each metric means, and using this data to optimize your applications.
 
 ## Understanding Go Runtime Metrics
 
@@ -80,6 +80,7 @@ func InitializeRuntimeMetrics(ctx context.Context, serviceName string) (*metric.
         metric.WithReader(
             metric.NewPeriodicReader(exporter,
                 metric.WithInterval(15*time.Second),
+                metric.WithProducer(runtime.NewProducer()),
             ),
         ),
     )
@@ -88,7 +89,7 @@ func InitializeRuntimeMetrics(ctx context.Context, serviceName string) (*metric.
     otel.SetMeterProvider(meterProvider)
 
     // Start runtime metrics collection
-    // This automatically captures GC, memory, and goroutine metrics
+    // This automatically captures memory, goroutine, and scheduler metrics
     err = runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second))
     if err != nil {
         return nil, err
@@ -138,17 +139,17 @@ func main() {
 
 The runtime instrumentation automatically collects these critical metrics:
 
-**process.runtime.go.mem.heap_alloc** measures the current heap allocation in bytes. Steadily increasing values without corresponding decreases suggest a memory leak.
+**go.memory.used** measures memory used by the Go runtime in bytes, broken down by memory type. Steadily increasing heap object memory without corresponding decreases can suggest a memory leak.
 
-**process.runtime.go.mem.heap_sys** shows total heap memory obtained from the OS. This represents the virtual address space reserved for the heap.
+**go.memory.allocated** tracks cumulative heap memory allocated by the application. A high rate of increase suggests high allocation volume.
 
-**process.runtime.go.mem.heap_idle** tracks heap memory waiting to be returned to the OS. High idle memory indicates the application had high memory usage that has since decreased.
+**go.memory.allocations** counts heap allocations made by the application. This helps identify allocation-heavy code paths.
 
-**process.runtime.go.goroutines** counts active goroutines. Unexpected growth indicates goroutine leaks where goroutines are created but never terminate.
+**go.goroutine.count** counts live goroutines. Unexpected growth indicates goroutine leaks where goroutines are created but never terminate.
 
-**process.runtime.go.gc.count** increments with each garbage collection cycle. Frequent GC cycles impact performance and suggest high allocation rates.
+**go.memory.gc.goal** shows the heap size target for the end of the GC cycle. Comparing this with heap usage helps you understand GC pressure.
 
-**process.runtime.go.gc.pause_ns** records GC stop-the-world pause durations. High pause times directly impact application latency.
+**go.schedule.duration** records how long goroutines spend runnable before the scheduler runs them. High scheduler latency can indicate CPU saturation or scheduling pressure.
 
 ## Creating Custom Runtime Metrics
 
@@ -160,7 +161,6 @@ package monitoring
 import (
     "context"
     "runtime"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
@@ -273,8 +273,17 @@ type GCMonitor struct {
 func NewGCMonitor() (*GCMonitor, error) {
     meter := otel.Meter("gc-monitor")
 
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
+
+    lastGCTime := time.Now()
+    if m.LastGC > 0 {
+        lastGCTime = time.Unix(0, int64(m.LastGC))
+    }
+
     gcm := &GCMonitor{
-        lastGCTime: time.Now(),
+        lastNumGC:  m.NumGC,
+        lastGCTime: lastGCTime,
     }
     var err error
 
@@ -322,19 +331,23 @@ func (g *GCMonitor) CollectGCMetrics(ctx context.Context) {
 
     // Check if new GC cycles occurred
     if m.NumGC > g.lastNumGC {
-        // Calculate time since last GC
-        timeSinceLastGC := time.Since(g.lastGCTime).Seconds()
-        g.gcFrequency.Record(ctx, timeSinceLastGC)
-        g.lastGCTime = time.Now()
-
         // Record pause times for recent GC cycles
         numNew := m.NumGC - g.lastNumGC
         if numNew > 256 {
             numNew = 256 // PauseNs ring buffer size
         }
 
-        for i := uint32(0); i < numNew; i++ {
-            idx := (m.NumGC - i - 1) % 256
+        for i := numNew; i > 0; i-- {
+            idx := (m.NumGC - i) % 256
+            pauseEndNs := m.PauseEnd[idx]
+            if pauseEndNs > 0 {
+                pauseEnd := time.Unix(0, int64(pauseEndNs))
+                if !g.lastGCTime.IsZero() {
+                    g.gcFrequency.Record(ctx, pauseEnd.Sub(g.lastGCTime).Seconds())
+                }
+                g.lastGCTime = pauseEnd
+            }
+
             pauseNs := int64(m.PauseNs[idx])
             g.gcPauseMax.Record(ctx, pauseNs)
             g.gcPauseTotal.Add(ctx, pauseNs)
@@ -367,6 +380,7 @@ type MemoryLeakDetector struct {
     heapGrowthRate     metric.Float64Histogram
     allocationRate     metric.Int64Counter
     previousHeapAlloc  uint64
+    previousTotalAlloc uint64
     previousMeasure    time.Time
 }
 
@@ -394,6 +408,7 @@ func NewMemoryLeakDetector() *MemoryLeakDetector {
         heapGrowthRate:    heapGrowth,
         allocationRate:    allocRate,
         previousHeapAlloc: m.HeapAlloc,
+        previousTotalAlloc: m.TotalAlloc,
         previousMeasure:   time.Now(),
     }
 }
@@ -422,11 +437,15 @@ func (d *MemoryLeakDetector) CheckMemoryGrowth(ctx context.Context) {
 
         d.heapGrowthRate.Record(ctx, growthRate, metric.WithAttributes(attrs...))
 
-        // Track allocation rate
-        d.allocationRate.Add(ctx, heapDelta)
+        // Track allocation volume using TotalAlloc, which only increases
+        allocationDelta := int64(m.TotalAlloc - d.previousTotalAlloc)
+        if allocationDelta > 0 {
+            d.allocationRate.Add(ctx, allocationDelta)
+        }
     }
 
     d.previousHeapAlloc = m.HeapAlloc
+    d.previousTotalAlloc = m.TotalAlloc
     d.previousMeasure = now
 }
 ```
