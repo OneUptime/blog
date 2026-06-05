@@ -6,13 +6,13 @@ Tags: OpenTelemetry, Go, Auto-Instrumentation, eBPF
 
 Description: Troubleshoot Go auto-instrumentation issues caused by OTEL_GO_AUTO_TARGET_EXE pointing to the wrong binary or path.
 
-OpenTelemetry Go auto-instrumentation (based on eBPF) is a powerful way to get tracing without modifying your application code. But it has a critical configuration requirement: the `OTEL_GO_AUTO_TARGET_EXE` environment variable must point to the exact binary that is running. If it does not match, the instrumentation agent silently does nothing.
+OpenTelemetry Go auto-instrumentation (based on eBPF) is a powerful way to get tracing without modifying your application code. But it has a critical configuration requirement: the `OTEL_GO_AUTO_TARGET_EXE` environment variable must point to the exact binary that is running. If it does not match, the instrumentation agent cannot attach to the intended process.
 
 ## How Go Auto-Instrumentation Works
 
 Unlike Java or Python auto-instrumentation that uses runtime hooks, Go auto-instrumentation uses eBPF to attach to the running process at the kernel level. The agent needs to know which binary to instrument. It uses `OTEL_GO_AUTO_TARGET_EXE` to find the target process.
 
-The agent matches the value against the `/proc/<pid>/exe` symlink of running processes. If there is no match, the agent has nothing to attach to.
+The agent uses the executable path to locate the target process. If there is no match, the agent has nothing to attach to.
 
 ## Common Misconfiguration Scenarios
 
@@ -96,23 +96,19 @@ The auto-instrumentation agent logs to stdout. Look for messages about target pr
 kubectl logs <pod> -c opentelemetry-auto-instrumentation
 ```
 
-You should see either:
-- `target process found: pid=1 exe=/app/server` (working)
-- `no matching process found for target exe` (broken)
+For Operator-injected pods, use the injected Go auto-instrumentation sidecar name if it differs in your cluster. Look for messages about startup, target process discovery, or attach errors.
 
 ### Step 3: Verify eBPF Capabilities
 
-The agent needs specific Linux capabilities to use eBPF. Check that your pod has them:
+The agent needs elevated privileges to use eBPF. If you use the OTel Operator, it injects the Go sidecar with the required security context. If you run the sidecar manually, configure it to run as root and privileged:
 
 ```yaml
 securityContext:
-  capabilities:
-    add:
-    - SYS_PTRACE   # needed to attach to the process
-  privileged: false
+  runAsUser: 0
+  privileged: true
 ```
 
-Without `SYS_PTRACE`, the agent cannot attach even if it finds the process.
+Without those permissions, the agent cannot attach even if it finds the process.
 
 ## Full Working Configuration
 
@@ -131,6 +127,7 @@ spec:
         instrumentation.opentelemetry.io/inject-go: "true"
         instrumentation.opentelemetry.io/otel-go-auto-target-exe: "/app/server"
     spec:
+      # Go auto-instrumentation must be enabled in the OTel Operator feature gates
       containers:
       - name: app
         image: myregistry/my-go-service:latest
@@ -140,11 +137,12 @@ spec:
 If you are running the agent manually (not via the Operator):
 
 ```yaml
+shareProcessNamespace: true
 containers:
 - name: app
   image: myregistry/my-go-service:latest
 - name: otel-agent
-  image: otel/autoinstrumentation-go:v0.18.0
+  image: otel/autoinstrumentation-go:v0.24.0
   env:
   - name: OTEL_GO_AUTO_TARGET_EXE
     value: "/app/server"
@@ -153,11 +151,8 @@ containers:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
     value: "http://otel-collector:4318"
   securityContext:
-    capabilities:
-      add:
-      - SYS_PTRACE
-  # Share the process namespace so the agent can see the app process
-  shareProcessNamespace: true
+    runAsUser: 0
+    privileged: true
 ```
 
 The `shareProcessNamespace: true` is critical. Without it, the agent container cannot see processes in the app container.
@@ -167,7 +162,7 @@ The `shareProcessNamespace: true` is critical. Without it, the agent container c
 1. Verify the binary path with `readlink /proc/<pid>/exe`
 2. Set `OTEL_GO_AUTO_TARGET_EXE` to that exact path
 3. Ensure `shareProcessNamespace: true` is set on the pod
-4. Ensure the agent has `SYS_PTRACE` capability
+4. Ensure the agent runs as root with `privileged: true`
 5. Check agent logs for process discovery messages
 
 Getting the binary path right is the most common fix. Everything else follows from there.
