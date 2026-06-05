@@ -63,6 +63,10 @@ processors:
     timeout: 5s
     override: false
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 exporters:
   # Send traces to X-Ray
   awsxray:
@@ -81,6 +85,7 @@ exporters:
     log_stream_name: "{TaskId}"
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
@@ -90,6 +95,10 @@ service:
       receivers: [otlp]
       processors: [resourcedetection, memory_limiter, batch]
       exporters: [awsemf]
+    logs:
+      receivers: [otlp]
+      processors: [resourcedetection, memory_limiter, batch]
+      exporters: [awscloudwatchlogs]
 ```
 
 Notice the `resourcedetection` processor with the `ecs` detector. This automatically adds ECS-specific resource attributes like task ARN, cluster name, and container name to your telemetry. These attributes are extremely useful for filtering and grouping data in your backend.
@@ -125,10 +134,25 @@ The collector sidecar needs permissions to write to X-Ray, CloudWatch, and Cloud
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:DescribeLogStreams",
-        "cloudwatch:PutMetricData",
-        "ssm:GetParameter"
+        "logs:DescribeLogGroups",
+        "cloudwatch:PutMetricData"
       ],
       "Resource": "*"
+    }
+  ]
+}
+```
+
+Because the collector config is injected from Parameter Store through the task definition's `secrets` field, the task execution role also needs permission to read that parameter:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameters",
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/otel/collector-config"
     }
   ]
 }
@@ -148,11 +172,17 @@ aws iam create-role \
     }]
   }'
 
-# Attach the policy with X-Ray, CloudWatch, and SSM permissions
+# Attach the policy with X-Ray and CloudWatch permissions
 aws iam put-role-policy \
   --role-name ecs-otel-task-role \
   --policy-name otel-collector-policy \
   --policy-document file://task-role-policy.json
+
+# Attach the SSM parameter read permission to the ECS task execution role
+aws iam put-role-policy \
+  --role-name ecsTaskExecutionRole \
+  --policy-name otel-collector-config-ssm-policy \
+  --policy-document file://execution-role-ssm-policy.json
 ```
 
 ## Step 3: Define the ECS Task Definition
@@ -196,7 +226,7 @@ Here is a complete task definition that includes your application container and 
       "dependsOn": [
         {
           "containerName": "otel-collector",
-          "condition": "START"
+          "condition": "HEALTHY"
         }
       ],
       "logConfiguration": {
@@ -214,12 +244,9 @@ Here is a complete task definition that includes your application container and 
       "essential": false,
       "cpu": 256,
       "memory": 256,
-      "command": [
-        "--config", "env:COLLECTOR_CONFIG"
-      ],
       "secrets": [
         {
-          "name": "COLLECTOR_CONFIG",
+          "name": "AOT_CONFIG_CONTENT",
           "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/otel/collector-config"
         }
       ],
@@ -242,7 +269,7 @@ Here is a complete task definition that includes your application container and 
         }
       },
       "healthCheck": {
-        "command": ["CMD-SHELL", "wget -qO- http://localhost:13133/health || exit 1"],
+        "command": ["CMD-SHELL", "wget -qO- http://localhost:13133/ || exit 1"],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
@@ -255,12 +282,12 @@ Here is a complete task definition that includes your application container and 
 
 A few things to note in this task definition:
 
-- The app container has `dependsOn` set to wait for the collector to start. This prevents the app from trying to send telemetry before the collector is ready.
+- The app container has `dependsOn` set to wait for the collector health check to pass. This prevents the app from trying to send telemetry before the collector is ready.
 - The collector is marked as `essential: false` so that if it crashes, the application container keeps running. You lose telemetry but not availability.
-- The collector config is pulled from SSM Parameter Store using the `secrets` field. This lets you update the config without rebuilding the collector image.
+- The collector config is pulled from SSM Parameter Store using the `secrets` field and the ADOT Collector's `AOT_CONFIG_CONTENT` environment variable. This lets you update the config without rebuilding the collector image.
 - The health check uses the health extension endpoint at port 13133.
 
-To enable the health check endpoint, add this to your collector config:
+If you did not include the health check extension in the earlier collector config, add this:
 
 ```yaml
 # Add to the collector config to enable the health check endpoint
