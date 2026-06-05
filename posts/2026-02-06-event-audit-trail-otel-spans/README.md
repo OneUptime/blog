@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Audit Trail, Event State Transitions, Compliance
 
 Description: Build a complete event audit trail using OpenTelemetry spans that record every state transition for compliance and debugging.
 
-Audit trails are critical for compliance, debugging, and understanding how entities change over time. Instead of building a separate audit logging system, you can use OpenTelemetry spans to record every state transition. Each span captures the who, what, when, and why of a state change, and your tracing backend becomes your audit store.
+Audit trails are critical for compliance, debugging, and understanding how entities change over time. Instead of building a separate audit logging system, you can use OpenTelemetry spans to record every state transition. Each span captures the who, what, when, and why of a state change, and your tracing backend can act as your audit store when it is configured with appropriate sampling, retention, and access controls.
 
 ## Designing the Audit Span Schema
 
@@ -14,7 +14,7 @@ Define a consistent set of attributes for audit spans:
 
 ```python
 from opentelemetry import trace
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 tracer = trace.get_tracer("audit.trail")
@@ -56,11 +56,11 @@ class AuditTrail:
                 AUDIT_ACTION: action,
                 AUDIT_ACTOR_ID: str(actor_id),
                 AUDIT_ACTOR_TYPE: actor_type,
-                AUDIT_STATE_BEFORE: json.dumps(before_state) if before_state else "null",
-                AUDIT_STATE_AFTER: json.dumps(after_state) if after_state else "null",
+                AUDIT_STATE_BEFORE: json.dumps(before_state) if before_state is not None else "null",
+                AUDIT_STATE_AFTER: json.dumps(after_state) if after_state is not None else "null",
                 AUDIT_TRANSITION: transition_label,
                 AUDIT_REASON: reason,
-                "audit.timestamp": datetime.utcnow().isoformat(),
+                "audit.timestamp": datetime.now(timezone.utc).isoformat(),
             }
         ) as span:
             # Record individual field changes as span events
@@ -139,7 +139,7 @@ class OrderService:
         updated = self.db.update("orders", order_id, {
             "status": "approved",
             "approved_by": approver_id,
-            "approved_at": datetime.utcnow().isoformat(),
+            "approved_at": datetime.now(timezone.utc).isoformat(),
         })
 
         order_audit.record_transition(
@@ -160,7 +160,7 @@ class OrderService:
         updated = self.db.update("orders", order_id, {
             "status": "cancelled",
             "cancelled_by": user_id,
-            "cancelled_at": datetime.utcnow().isoformat(),
+            "cancelled_at": datetime.now(timezone.utc).isoformat(),
             "cancellation_reason": cancellation_reason,
         })
 
@@ -175,14 +175,11 @@ class OrderService:
         return updated
 ```
 
-## Chaining Audit Spans for Full Lifecycle
+## Linking Audit Spans for Full Lifecycle
 
-To connect all audit spans for a single entity into a trace, use a consistent trace context:
+To associate all audit spans for a single entity, store the previous span context and add it as a span link on the next transition:
 
 ```python
-from opentelemetry import context
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
-
 class LifecycleAuditTrail(AuditTrail):
     """An audit trail that links all transitions for an entity."""
 
@@ -207,7 +204,12 @@ class LifecycleAuditTrail(AuditTrail):
                 AUDIT_ENTITY_ID: str(entity_id),
                 AUDIT_ACTION: action,
                 AUDIT_ACTOR_ID: str(actor_id),
+                AUDIT_ACTOR_TYPE: actor_type,
+                AUDIT_STATE_BEFORE: json.dumps(before_state) if before_state is not None else "null",
+                AUDIT_STATE_AFTER: json.dumps(after_state) if after_state is not None else "null",
                 AUDIT_TRANSITION: self._compute_transition(before_state, after_state),
+                AUDIT_REASON: reason,
+                "audit.timestamp": datetime.now(timezone.utc).isoformat(),
             }
         ) as span:
             # Store this span context for future linking
@@ -223,6 +225,8 @@ class LifecycleAuditTrail(AuditTrail):
                     "audit.field.old_value": str(change["old"]),
                     "audit.field.new_value": str(change["new"]),
                 })
+
+            return span.get_span_context()
 ```
 
 ## Querying the Audit Trail
