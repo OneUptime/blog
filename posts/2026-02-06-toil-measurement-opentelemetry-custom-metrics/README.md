@@ -112,7 +112,8 @@ Teams are more likely to track toil if it is easy to log. A simple CLI wrapper m
 ```python
 # toil_cli.py - Quick CLI for logging toil from the terminal
 import argparse
-import time
+
+from toil_metrics import provider, toil_duration_histogram, toil_event_counter
 
 def main():
     parser = argparse.ArgumentParser(description="Record a toil event")
@@ -141,6 +142,9 @@ def main():
         "toil.task": args.task,
         "service.name": args.service,
     })
+
+    # Flush before the short-lived CLI process exits.
+    provider.force_flush(timeout_millis=5000)
 
     print(f"Recorded {args.duration_minutes}m of toil: {args.task}")
 
@@ -173,6 +177,12 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  # Drop non-toil metrics from this dedicated pipeline
+  filter/toil:
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, "^toil\\.") == false'
+
   # Batch toil metrics for efficient export
   batch:
     send_batch_size: 100
@@ -194,7 +204,7 @@ service:
   pipelines:
     metrics/toil:
       receivers: [otlp]
-      processors: [attributes, batch]
+      processors: [filter/toil, attributes, batch]
       exporters: [otlp/backend]
 ```
 
