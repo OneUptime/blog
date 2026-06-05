@@ -93,7 +93,7 @@ Use environment variables for flexible configuration:
 ```yaml
 exporters:
   file:
-    path: ${OTEL_LOG_DIR}/telemetry-${HOSTNAME}.json
+    path: ${env:OTEL_LOG_DIR}/telemetry-${env:HOSTNAME}.json
 ```
 
 Set variables before starting the Collector:
@@ -156,7 +156,7 @@ exporters:
 Example output:
 
 ```json
-{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"payment-api"}}]},"scopeSpans":[{"scope":{"name":"opentelemetry.instrumentation.fastapi"},"spans":[{"traceId":"a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6","spanId":"y5z6a7b8c9d0e1f2","name":"POST /api/payment","kind":"SPAN_KIND_SERVER","startTimeUnixNano":"1675689330123456000","endTimeUnixNano":"1675689330234567000","attributes":[{"key":"http.method","value":{"stringValue":"POST"}},{"key":"http.status_code","value":{"intValue":"200"}}],"status":{"code":"STATUS_CODE_OK"}}]}]}]}
+{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"payment-api"}}]},"scopeSpans":[{"scope":{"name":"opentelemetry.instrumentation.fastapi"},"spans":[{"traceId":"a1b2c3d4e5f60718293a4b5c6d7e8f90","spanId":"1a2b3c4d5e6f7890","name":"POST /api/payment","kind":"SPAN_KIND_SERVER","startTimeUnixNano":"1675689330123456000","endTimeUnixNano":"1675689330234567000","attributes":[{"key":"http.method","value":{"stringValue":"POST"}},{"key":"http.status_code","value":{"intValue":"200"}}],"status":{"code":"STATUS_CODE_OK"}}]}]}]}
 ```
 
 JSON format is best for:
@@ -179,9 +179,9 @@ Protobuf format is best for:
 - Minimal disk space usage (50-70% smaller than JSON)
 - High-throughput scenarios
 - Processing with protobuf-aware tools
-- Preserving exact wire format for replay
+- Preserving OTLP binary protobuf payloads for replay
 
-To read protobuf files, use the OpenTelemetry protobuf definitions or tools like `protoc`.
+To read protobuf files, read the 4-byte length prefix before each encoded object, then decode the object with the OpenTelemetry protobuf definitions or tools like `protoc`.
 
 ---
 
@@ -216,24 +216,24 @@ With this configuration:
 4. After 10 rotations, the oldest file is deleted
 5. Files older than 30 days are deleted regardless of count
 
-### Time-Based Rotation
+### Age-Based Rotation and Retention
 
-Rotate at regular intervals (daily, hourly, etc.):
+Rotate when the active file reaches a configured age, and remove older rotated files based on that same age setting:
 
 ```yaml
 exporters:
   file:
     path: /var/log/otel/telemetry.json
 
-    # Rotate daily at midnight
+    # Rotate the active file after 7 days and delete rotated files older than 7 days
     rotation:
-      max_days: 1  # Rotate every day
-      max_backups: 30  # Keep 30 days of history
+      max_days: 7
+      max_backups: 30
 ```
 
 ### Compression
 
-Compress rotated files to save disk space:
+Compress output to save disk space:
 
 ```yaml
 exporters:
@@ -244,11 +244,11 @@ exporters:
       max_megabytes: 100
       max_backups: 10
 
-      # Compress rotated files with gzip
-      compress: true
+    # Compress telemetry with zstd
+    compression: zstd
 ```
 
-Rotated files will be named like `telemetry-2026-02-06T10-15-30.json.gz`. Compression typically reduces file size by 80-90% for text formats.
+Compressed output uses zstd. Compression typically reduces file size significantly for text formats.
 
 ---
 
@@ -269,9 +269,9 @@ The `flush_interval` determines how often buffered data is written to disk:
 
 - **Short interval (1s)**: More durable (less data loss on crash), slightly lower throughput
 - **Long interval (30s)**: Higher throughput, more data at risk if Collector crashes
-- **No interval (0s)**: Flush after every write (lowest throughput, maximum durability)
+- **Default interval (1s)**: Used when `flush_interval` is omitted; values without a unit are parsed as nanoseconds
 
-For most use cases, 5-10 seconds provides a good balance.
+For most use cases, 5-10 seconds provides a good balance. When `rotation` is enabled, `flush_interval` is ignored and writes are not buffered.
 
 ---
 
@@ -300,7 +300,7 @@ processors:
   resource:
     attributes:
       - key: collector.hostname
-        value: ${HOSTNAME}
+        value: ${env:HOSTNAME}
         action: upsert
       - key: collector.environment
         value: production
@@ -316,7 +316,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
   # File archival exporter (separate files per signal)
   file/traces:
@@ -326,7 +326,7 @@ exporters:
       max_megabytes: 500     # 500 MB per file
       max_backups: 20        # Keep 20 rotated files
       max_days: 7            # Delete after 7 days
-      compress: true         # Compress rotated files
+    compression: zstd        # Compress telemetry
 
   file/metrics:
     path: /var/log/otel/metrics.json
@@ -335,7 +335,7 @@ exporters:
       max_megabytes: 100
       max_backups: 30
       max_days: 30
-      compress: true
+    compression: zstd
 
   file/logs:
     path: /var/log/otel/logs.json
@@ -344,7 +344,7 @@ exporters:
       max_megabytes: 200
       max_backups: 15
       max_days: 14
-      compress: true
+    compression: zstd
 
 # Service configuration
 service:
@@ -431,7 +431,7 @@ processors:
           sampling_percentage: 10
 
 exporters:
-  # Send everything to backend
+  # Send sampled traces to backend
   otlphttp:
     endpoint: https://oneuptime.com/otlp
 
@@ -441,7 +441,7 @@ exporters:
     rotation:
       max_megabytes: 100
       max_backups: 10
-      compress: true
+    compression: zstd
 
 service:
   pipelines:
@@ -451,7 +451,7 @@ service:
       exporters: [otlphttp, file/sampled]
 ```
 
-This reduces file storage by 90% while preserving all errors and a representative sample of success traces.
+This reduces file storage and backend volume while preserving all error traces and a representative sample of success traces.
 
 ---
 
@@ -466,7 +466,13 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: otel-collector
@@ -500,10 +506,17 @@ kind: DaemonSet
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:latest
           volumeMounts:
             - name: otel-logs
               mountPath: /var/log/otel
@@ -528,7 +541,7 @@ Once telemetry is written to files, you can process it with standard Unix tools 
 cat traces.json | jq -r '.resourceSpans[].scopeSpans[].spans[].name'
 
 # Find slow traces (>1 second)
-cat traces.json | jq 'select(.resourceSpans[].scopeSpans[].spans[].endTimeUnixNano - .resourceSpans[].scopeSpans[].spans[].startTimeUnixNano > 1000000000)'
+cat traces.json | jq 'select(.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) > 1000000000)'
 
 # Count spans by service
 cat traces.json | jq -r '.resourceSpans[].resource.attributes[] | select(.key=="service.name") | .value.stringValue' | sort | uniq -c
@@ -541,7 +554,7 @@ cat traces.json | jq -r '.resourceSpans[].resource.attributes[] | select(.key=="
 watch -n 5 'ls -lh /var/log/otel/*.json'
 
 # Alert if file exceeds threshold
-SIZE=$(stat -f%z /var/log/otel/traces.json)
+SIZE=$(stat -c%s /var/log/otel/traces.json)
 if [ $SIZE -gt 1000000000 ]; then
   echo "Traces file exceeds 1GB, rotation may not be working"
 fi
@@ -551,15 +564,15 @@ fi
 
 ```bash
 # Upload rotated files to S3 and delete local copies
-find /var/log/otel -name "*.json.gz" -mtime +1 -exec sh -c '
+find /var/log/otel -name "*.json*" -mtime +1 -exec sh -c '
   aws s3 cp "$1" s3://my-bucket/otel-archive/ && rm "$1"
 ' sh {} \;
 ```
 
-### Import into Clickhouse for Analysis
+### Import into ClickHouse for Analysis
 
 ```bash
-# Bulk import JSON telemetry into Clickhouse
+# Bulk import JSON telemetry into ClickHouse
 cat traces.json | clickhouse-client --query="INSERT INTO traces FORMAT JSONEachRow"
 ```
 
@@ -581,7 +594,7 @@ exporters:
 
   # Incident capture (enable manually during issues)
   file/incident:
-    path: /var/log/otel/incident-${INCIDENT_ID}.json
+    path: /var/log/otel/incident-${env:INCIDENT_ID}.json
     format: json
     flush_interval: 1s  # Flush frequently for quick access
 
@@ -666,7 +679,7 @@ rotation:
   max_megabytes: 100
   max_backups: 10
   max_days: 7
-  compress: true
+compression: zstd
 ```
 
 - Monitor disk usage with alerts
@@ -697,7 +710,7 @@ otel-user hard nofile 65536
 
 **Solution**:
 - Use shorter `flush_interval` (1-5s) for more frequent writes
-- Enable compression (compressed files are less likely to be corrupted)
+- Enable compression to reduce disk usage
 - Implement external monitoring to detect crashes and mark files as suspect
 - Consider using the File exporter with a persistent queue for better durability
 
@@ -711,7 +724,7 @@ File I/O can impact Collector performance. Follow these guidelines:
 
 **Choose appropriate rotation size**: Smaller files rotate more frequently (more I/O overhead). Larger files may cause longer pauses during rotation. 100-500 MB is a good balance.
 
-**Enable compression**: Compression happens asynchronously during rotation, not during active writes, so it has minimal impact on throughput.
+**Enable compression**: The File exporter supports zstd compression, which can reduce disk usage for telemetry files.
 
 **Use SSDs**: File exporter benefits significantly from SSD storage. Avoid slow network-attached storage.
 
@@ -740,13 +753,13 @@ The File exporter provides durable local storage for OpenTelemetry telemetry dat
 
 - Use it for archival, compliance, backup, and debugging
 - Configure rotation to manage disk space (size, count, age limits)
-- Enable compression to reduce storage by 80-90%
+- Enable zstd compression to reduce storage
 - Separate files per signal type for easier processing
 - Combine with primary exporters for dual shipping
 - Use persistent volumes in Kubernetes deployments
 - Monitor disk space and file descriptor usage
 - Process files with standard tools (jq, grep, awk) or custom scripts
 
-The File exporter is production-ready and reliable. It provides peace of mind knowing you have durable local copies of critical telemetry data, even if network backends are unavailable.
+The File exporter is useful for production scenarios that need local telemetry copies, but it is still classified as alpha for traces, metrics, and logs in the Collector component stability table.
 
 For a fully managed observability solution that eliminates the need for local archival and provides built-in retention policies, check out [OneUptime](https://oneuptime.com).
