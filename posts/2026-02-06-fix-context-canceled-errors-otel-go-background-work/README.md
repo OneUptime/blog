@@ -12,11 +12,11 @@ If you have been running OpenTelemetry in a Go service for any length of time, y
 error: context canceled
 ```
 
-This happens when you pass an HTTP request's `context.Context` to a background goroutine. The request finishes, the context gets canceled, and your OpenTelemetry spans fail to export. The span data is lost, and you end up with gaps in your traces.
+This happens when you pass an HTTP request's `context.Context` to a background goroutine. The request finishes, the context gets canceled, and context-aware work in the goroutine can fail immediately. That can leave you with incomplete background work and gaps or errors in your traces.
 
 ## Why This Happens
 
-In Go, the `context.Context` tied to an HTTP request has a lifecycle bound to that request. When the response is written and the handler returns, the server cancels the context. If you spawned a goroutine that is still using that context to create spans or export telemetry, the cancellation propagates and kills your in-flight operations.
+In Go, the `context.Context` tied to an HTTP request has a lifecycle bound to that request. When the response is written and the handler returns, the server cancels the context. If you spawned a goroutine that is still using that context for context-aware work, the cancellation propagates and can stop your in-flight operations.
 
 Here is a typical example that causes the problem:
 
@@ -42,25 +42,19 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-The `sendConfirmationEmail` function receives `ctx`, which is the request context. Once `handleOrder` returns and the HTTP response is sent, the context is canceled. Any span started inside `sendConfirmationEmail` will fail with "context canceled."
+The `sendConfirmationEmail` function receives `ctx`, which is the request context. Once `handleOrder` returns and the HTTP response is sent, the context is canceled. Any operation inside `sendConfirmationEmail` that checks that context, such as an HTTP call, database call, or explicit telemetry flush, can fail with "context canceled."
 
 ## The Fix: Detach the Context
 
-The solution is to create a new context that carries the span information but is not tied to the request lifecycle. You need to extract the span context and attach it to a fresh `context.Background()`.
+The solution is to create a new context that carries the span information but is not tied to the request lifecycle. In Go 1.21 and later, `context.WithoutCancel` does exactly that: it keeps the context values, including the current OpenTelemetry span, but removes the parent context's cancellation and deadline.
 
 ```go
-import (
-    "context"
-    "go.opentelemetry.io/otel/trace"
-)
+import "context"
 
-// detachContext creates a new context that carries the span context
-// but is not subject to the parent context's cancellation.
+// detachContext creates a new context that carries values such as
+// the active span but is not canceled with the request context.
 func detachContext(ctx context.Context) context.Context {
-    // Extract the span context from the original context
-    spanCtx := trace.SpanContextFromContext(ctx)
-    // Create a fresh context with the span context attached
-    return trace.ContextWithSpanContext(context.Background(), spanCtx)
+    return context.WithoutCancel(ctx)
 }
 ```
 
@@ -87,20 +81,20 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-The `bgCtx` is a brand new context rooted in `context.Background()`. It will not be canceled when the request finishes. But it still carries the trace ID and span ID from the parent, so the spans created in `sendConfirmationEmail` will be linked to the same trace.
+The `bgCtx` will not be canceled when the request finishes. But it still carries the active span from the parent context, so the spans created in `sendConfirmationEmail` will be children in the same trace.
 
 ## Important Details
 
-There is a subtle point here. When you use `trace.ContextWithSpanContext`, you are attaching a remote span context. This means new spans created in the background goroutine will treat the parent as a remote parent. This is actually fine for most use cases because the trace continuity is preserved.
+There is a subtle point here. `context.WithoutCancel` keeps the active span in the context, so new spans created in the background goroutine will still use the handler span as their parent. The parent is not marked as remote just because the context was detached.
 
-If you want the background span to appear as a direct child of the handler span (not a remote child), you can use `trace.ContextWithRemoteSpanContext` explicitly, or you can link the spans:
+If you are on an older Go version and manually rebuild the context, use `trace.ContextWithSpanContext` for a local parent. Use `trace.ContextWithRemoteSpanContext` only when you explicitly want the parent span context to be marked as remote. For long-running asynchronous work where a parent-child relationship is not the right model, you can link the spans instead:
 
 ```go
 func sendConfirmationEmail(ctx context.Context, order Order) {
-    // Start a new span that links back to the original trace
-    ctx, span := tracer.Start(ctx, "sendConfirmationEmail",
-        trace.WithLinks(trace.LinkFromContext(ctx)),
-    )
+    link := trace.LinkFromContext(ctx)
+
+    // Start a new span that links back to the original span
+    _, span := tracer.Start(context.Background(), "sendConfirmationEmail", trace.WithLinks(link))
     defer span.End()
 
     // Do the actual work
@@ -150,4 +144,4 @@ After deploying this change, check your traces in your backend (Jaeger, Tempo, o
 2. The `sendConfirmationEmail` span appears as part of the same trace
 3. No more "context canceled" errors in your application logs
 
-The key takeaway is simple: never pass a request-scoped context to background work. Always detach the span context into a fresh context first. This pattern is not specific to OpenTelemetry, but it becomes especially visible when you are tracing because lost contexts mean lost spans.
+The key takeaway is simple: never pass a request-scoped context to background work that can outlive the request. Detach the context first. This pattern is not specific to OpenTelemetry, but it becomes especially visible when you are tracing because canceled contexts can produce incomplete spans and noisy errors.
