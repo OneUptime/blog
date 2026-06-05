@@ -8,7 +8,7 @@ Description: Comprehensive guide to configuring and using the core OpenTelemetry
 
 The OpenTelemetry SDK is the engine that creates, processes, and exports telemetry data from your Ruby applications. While instrumentation libraries handle automatic tracing for frameworks and libraries, the SDK provides the foundation they all build on. Understanding the SDK means you can customize every aspect of how your application generates and exports traces.
 
-The OTLP (OpenTelemetry Protocol) exporter is the standard way to send telemetry data from your application to collectors and backends. It supports both HTTP and gRPC transports, handles batching and retries, and works with any OTLP-compatible backend. Together, these gems give you complete control over observability in your Ruby applications.
+The OTLP (OpenTelemetry Protocol) exporter is the standard way to send telemetry data from your application to collectors and backends. The `opentelemetry-exporter-otlp` gem sends traces over HTTP/protobuf, while the separate `opentelemetry-exporter-otlp-grpc` gem sends traces over gRPC. Together, these gems give you complete control over observability in your Ruby applications.
 
 ## Core Concepts of the SDK
 
@@ -119,7 +119,7 @@ require 'opentelemetry/exporter/otlp'
 
 # Create exporter with full configuration
 exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
-  # Endpoint URL (include path for HTTP, omit for gRPC)
+  # Endpoint URL for the HTTP/protobuf trace exporter
   endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
 
   # Headers for authentication or metadata
@@ -150,7 +150,7 @@ end
 
 ## HTTP vs gRPC Transport
 
-The OTLP exporter supports both HTTP and gRPC transports. The endpoint format determines which is used:
+Ruby provides separate OTLP exporter gems for HTTP/protobuf and gRPC transports:
 
 **HTTP/Protobuf** (default):
 ```ruby
@@ -168,9 +168,8 @@ gem 'opentelemetry-exporter-otlp-grpc'
 
 require 'opentelemetry/exporter/otlp/grpc'
 
-exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
-  endpoint: 'grpc://collector:4317',  # gRPC uses port 4317 by default
-  insecure: false  # Use TLS
+exporter = OpenTelemetry::Exporter::OTLP::GRPC::TraceExporter.new(
+  endpoint: 'http://collector:4317'  # gRPC uses port 4317 by default
 )
 ```
 
@@ -182,6 +181,8 @@ Resources describe the entity producing telemetry. They include service name, ve
 
 ```ruby
 # config/telemetry.rb
+
+require 'socket'
 
 OpenTelemetry::SDK.configure do |c|
   # Simple service name
@@ -261,10 +262,12 @@ Batch processing reduces overhead and network traffic. Simple processing helps d
 
 ## Implementing Custom Span Processors
 
-You can create custom processors for special requirements like filtering, sampling, or enrichment:
+You can create custom processors for special requirements like monitoring or enrichment:
 
 ```ruby
 # lib/custom_span_processor.rb
+
+require 'socket'
 
 class CustomSpanProcessor
   def initialize
@@ -278,17 +281,15 @@ class CustomSpanProcessor
     span.set_attribute('processor.custom', true)
   end
 
+  # Called while a span is ending, before it becomes immutable
+  def on_finishing(span)
+    # Enrich span with additional data
+    enrich_span(span)
+  end
+
   # Called when a span ends
   def on_finish(span)
     @processed_count += 1
-
-    # Filter spans based on attributes
-    if should_drop_span?(span)
-      return  # Don't export this span
-    end
-
-    # Enrich span with additional data
-    enrich_span(span)
 
     # Log every 1000th span for monitoring
     if @processed_count % 1000 == 0
@@ -307,11 +308,6 @@ class CustomSpanProcessor
   end
 
   private
-
-  def should_drop_span?(span)
-    # Drop health check spans
-    span.name == '/health' || span.name == '/metrics'
-  end
 
   def enrich_span(span)
     # Add server information
@@ -337,7 +333,7 @@ OpenTelemetry::SDK.configure do |c|
 end
 ```
 
-Processors run in the order they're added. Your custom processor can modify spans before they reach the exporter.
+Processors run in the order they're added. Use `on_finishing` for modifications that must be applied before spans become immutable and reach the exporter.
 
 ## Implementing Sampling Strategies
 
@@ -346,13 +342,12 @@ Sampling reduces the volume of traces while maintaining statistical significance
 ```ruby
 # config/telemetry.rb
 
+# Sample 10% of traces
+ENV['OTEL_TRACES_SAMPLER'] = 'traceidratio'
+ENV['OTEL_TRACES_SAMPLER_ARG'] = '0.1'
+
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'high-traffic-api'
-
-  # Sample 10% of traces
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
-
-  # Rest of configuration...
 end
 ```
 
@@ -363,24 +358,26 @@ More sophisticated sampling strategies:
 
 class AdaptiveSampler
   # Samples based on span attributes
-  def should_sample?(trace_id:, parent_context:, links:, name:, kind:, attributes:, config:)
+  def should_sample?(trace_id:, parent_context:, links:, name:, kind:, attributes:)
+    tracestate = OpenTelemetry::Trace.current_span(parent_context).context.tracestate
+
     # Always sample errors
-    if attributes['error'] == true
-      return OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE
+    if attributes&.fetch('error', nil) == true
+      return sampling_result(OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE, tracestate)
     end
 
     # Always sample slow operations
-    if attributes['operation.slow'] == true
-      return OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE
+    if attributes&.fetch('operation.slow', nil) == true
+      return sampling_result(OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE, tracestate)
     end
 
     # Sample health checks at 1%
     if name.include?('health')
-      return should_sample_with_ratio?(trace_id, 0.01)
+      return should_sample_with_ratio?(trace_id, 0.01, tracestate)
     end
 
     # Default 10% sampling
-    should_sample_with_ratio?(trace_id, 0.1)
+    should_sample_with_ratio?(trace_id, 0.1, tracestate)
   end
 
   def description
@@ -389,13 +386,20 @@ class AdaptiveSampler
 
   private
 
-  def should_sample_with_ratio?(trace_id, ratio)
+  def should_sample_with_ratio?(trace_id, ratio, tracestate)
     # Use trace ID to make consistent sampling decisions
-    if trace_id.unpack1('Q>') < (ratio * 2**64)
-      OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE
+    if trace_id[8, 8].unpack1('Q>') < (ratio * 2**64)
+      sampling_result(OpenTelemetry::SDK::Trace::Samplers::Decision::RECORD_AND_SAMPLE, tracestate)
     else
-      OpenTelemetry::SDK::Trace::Samplers::Decision::DROP
+      sampling_result(OpenTelemetry::SDK::Trace::Samplers::Decision::DROP, tracestate)
     end
+  end
+
+  def sampling_result(decision, tracestate)
+    OpenTelemetry::SDK::Trace::Samplers::Result.new(
+      decision: decision,
+      tracestate: tracestate
+    )
   end
 end
 ```
@@ -403,12 +407,16 @@ end
 Use parent-based sampling to maintain trace continuity:
 
 ```ruby
-OpenTelemetry::SDK.configure do |c|
-  # Respects parent span's sampling decision
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::ParentBased.new(
-    root: AdaptiveSampler.new  # Only applies to root spans
-  )
-end
+# Respects parent span's sampling decision
+sampler = OpenTelemetry::SDK::Trace::Samplers.parent_based(
+  root: AdaptiveSampler.new  # Only applies to root spans
+)
+
+provider = OpenTelemetry::SDK::Trace::TracerProvider.new(sampler: sampler)
+provider.add_span_processor(
+  OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(exporter)
+)
+OpenTelemetry.tracer_provider = provider
 ```
 
 ## Creating Tracers and Spans Manually
@@ -419,6 +427,7 @@ While instrumentation libraries handle most tracing automatically, you need manu
 # lib/payment_processor.rb
 
 require 'opentelemetry'
+require 'securerandom'
 
 class PaymentProcessor
   def initialize
