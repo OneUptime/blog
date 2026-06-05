@@ -31,16 +31,17 @@ When a new service is created, capture the metadata that OpenTelemetry needs. Th
 # platform_api/service_registry.py
 
 from dataclasses import dataclass
-from typing import Optional
-import json
 import requests
+
+from platform_api.collector import register_collector_pipeline
+from platform_api.telemetry_generator import generate_telemetry_config
 
 @dataclass
 class ServiceRegistration:
     """Metadata collected when a new service is registered."""
     service_name: str
     team_name: str
-    language: str          # python, go, java, node
+    language: str          # python, go, java, nodejs
     framework: str         # flask, gin, spring, express
     tier: str              # critical, standard, experimental
     owner_email: str
@@ -116,7 +117,7 @@ def generate_telemetry_config(reg):
     """Pick the right template and fill in service-specific values."""
     templates = {
         ("python", "flask"): PYTHON_FLASK_CONFIG,
-        ("node", "express"): NODE_EXPRESS_CONFIG,
+        ("nodejs", "express"): NODE_EXPRESS_CONFIG,
     }
 
     key = (reg.language, reg.framework)
@@ -133,7 +134,7 @@ def generate_telemetry_config(reg):
 
 ## Step 3: Configure the Collector Pipeline
 
-Each new service needs a routing entry in your OpenTelemetry Collector so its telemetry flows to the right backend with the right processing rules. Use the Collector's routing processor to direct traffic based on service tier.
+Each new service needs a processing entry in your OpenTelemetry Collector so its telemetry flows to the right backend with the right processing rules. Use Collector processors such as the attributes processor and tail sampling processor to apply service-tier-specific handling.
 
 ```yaml
 # collector-config/generated/order-service.yaml
@@ -149,7 +150,7 @@ processors:
         value: "2026-02-06"
         action: upsert
 
-  # Critical services get lower sampling thresholds
+  # Critical services keep errors, slow traces, and a higher baseline sample
   tail_sampling/order-service:
     policies:
       - name: error-policy
@@ -170,6 +171,8 @@ Do not make teams build dashboards from scratch. When a service is onboarded, ge
 ```python
 # platform_api/dashboard_provisioner.py
 
+import requests
+
 def provision_default_dashboard(service_name: str, team_name: str) -> str:
     """
     Create a default observability dashboard for the newly registered service.
@@ -181,17 +184,17 @@ def provision_default_dashboard(service_name: str, team_name: str) -> str:
         "panels": [
             {
                 "title": "Request Rate",
-                "query": f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service_name}"}}[5m]))',
+                "query": f'sum(rate(http_server_request_duration_seconds_count{{job="{service_name}"}}[5m]))',
                 "type": "timeseries",
             },
             {
                 "title": "Error Rate",
-                "query": f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service_name}",http_status_code=~"5.."}}[5m]))',
+                "query": f'sum(rate(http_server_request_duration_seconds_count{{job="{service_name}",http_response_status_code=~"5.."}}[5m]))',
                 "type": "timeseries",
             },
             {
                 "title": "p99 Latency",
-                "query": f'histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket{{service_name="{service_name}"}}[5m]))',
+                "query": f'histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{{job="{service_name}"}}[5m])))',
                 "type": "timeseries",
             },
             {
@@ -212,7 +215,7 @@ def provision_default_dashboard(service_name: str, team_name: str) -> str:
 
 ## Step 5: Kubernetes Auto-Injection
 
-For teams running on Kubernetes, skip the code-level setup entirely by using the OpenTelemetry Operator. Add an annotation to the pod spec during onboarding, and the operator injects the instrumentation sidecar automatically.
+For teams running on Kubernetes, skip the code-level setup entirely by using the OpenTelemetry Operator. Add an annotation to the pod spec during onboarding, and the operator injects auto-instrumentation automatically. Use the Operator's language names for the annotation suffix, such as `python`, `java`, `nodejs`, or `go`. For most supported languages this uses an init container; Go auto-instrumentation uses a sidecar and also requires the target executable path.
 
 ```yaml
 # k8s/base/deployment-template.yaml
@@ -228,7 +231,9 @@ spec:
     metadata:
       annotations:
         # Triggers the OTel Operator to inject instrumentation
-        instrumentation.opentelemetry.io/inject-{{ language }}: "true"
+        instrumentation.opentelemetry.io/inject-{{ otel_language }}: "true"
+        # Required when otel_language is "go"
+        instrumentation.opentelemetry.io/otel-go-auto-target-exe: "{{ go_target_exe }}"
         # Custom annotation for internal tracking
         platform.internal/telemetry-onboarded: "2026-02-06"
         platform.internal/telemetry-tier: "{{ tier }}"
