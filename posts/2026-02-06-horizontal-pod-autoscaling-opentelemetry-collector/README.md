@@ -34,7 +34,7 @@ For the OpenTelemetry Collector, you can scale based on:
 
 ## Prerequisites
 
-Your cluster needs the Kubernetes Metrics Server installed. Most managed Kubernetes services (EKS, GKE, AKS) include it by default. If you are running a self-managed cluster, install it first.
+Your cluster needs the Kubernetes Metrics Server installed. Some managed Kubernetes services, such as GKE and AKS, commonly include it by default, but EKS does not. If your cluster does not already have it, install it first.
 
 ```bash
 # Install the Metrics Server (skip if already present in your cluster)
@@ -98,10 +98,15 @@ spec:
           initial_interval: 5s
           max_interval: 30s
     service:
-      # Enable telemetry so the collector exposes its own metrics
+      # Expose internal metrics on all interfaces so Prometheus can scrape them
       telemetry:
         metrics:
-          address: 0.0.0.0:8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: "0.0.0.0"
+                    port: 8888
       pipelines:
         traces:
           receivers: [otlp]
@@ -221,7 +226,7 @@ spec:
 
 ## Scaling Based on Custom Metrics
 
-CPU and memory work fine for many cases, but sometimes you want to scale based on collector-specific signals. For example, the number of items in the exporter's sending queue is a direct indicator of whether the collector is keeping up with incoming telemetry.
+CPU and memory work fine for many cases, but sometimes you want to scale based on collector-specific signals. For example, the number of batches in the exporter's sending queue is a direct indicator of whether the collector is keeping up with incoming telemetry.
 
 The collector exposes its internal metrics on the telemetry endpoint (port 8888 by default). To use these as HPA metrics, you need Prometheus to scrape them and a Prometheus adapter to expose them to the Kubernetes metrics API.
 
@@ -293,7 +298,7 @@ spec:
           name: otelcol_exporter_queue_size
         target:
           type: AverageValue
-          # Scale up when average queue size exceeds 1000 items per pod
+          # Scale up when average queue size exceeds 1000 batches per pod
           averageValue: "1000"
 ```
 
@@ -315,8 +320,8 @@ kubectl describe hpa gateway-collector-hpa -n monitoring
 You should see output like this when the HPA is functioning:
 
 ```text
-NAME                      REFERENCE                          TARGETS         MINPODS   MAXPODS   REPLICAS
-gateway-collector-hpa     OpenTelemetryCollector/gateway      45%/70%         2         10        3
+NAME                      REFERENCE                                  TARGETS         MINPODS   MAXPODS   REPLICAS
+gateway-collector-hpa     OpenTelemetryCollector/gateway-collector   45%/70%         2         10        3
 ```
 
 The `TARGETS` column shows `current/target`. If you see `<unknown>/70%`, the metrics server is not returning data for your pods. Check that resource requests are set and that the metrics server is healthy.
