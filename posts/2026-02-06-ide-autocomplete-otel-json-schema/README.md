@@ -18,11 +18,11 @@ code --install-extension redhat.vscode-yaml
 
 Then configure the schema association in your workspace or user settings:
 
-```json
+```jsonc
 // .vscode/settings.json
 {
   "yaml.schemas": {
-    "https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json": [
+    "https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json": [
       "otel-config.yaml",
       "otel-*.yaml",
       "**/otel/**/*.yaml"
@@ -57,12 +57,12 @@ If you want to pin the schema version or use it offline, download the schema and
 
 mkdir -p .schemas
 curl -o .schemas/otel-config-schema.json \
-  https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json
+  https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json
 ```
 
 Update your settings to reference the local file:
 
-```json
+```jsonc
 // .vscode/settings.json
 {
   "yaml.schemas": {
@@ -79,21 +79,21 @@ Update your settings to reference the local file:
 You can also associate the schema directly in your YAML file using a modeline comment. This works regardless of project settings:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json
 
-file_format: "0.3"
+file_format: "1.1"
 
 resource:
   attributes:
-    service.name: "my-service"
+    - name: service.name
+      value: "my-service"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://localhost:4317"
-            protocol: "grpc"
 ```
 
 The `yaml-language-server` directive on the first line tells any compatible editor to use that schema. This is portable across IDEs and team members.
@@ -104,14 +104,14 @@ JetBrains IDEs have built-in YAML schema support. Configure it through settings:
 
 1. Open **Settings/Preferences** > **Languages & Frameworks** > **Schemas and DTDs** > **JSON Schema Mappings**
 2. Click the **+** button to add a new mapping
-3. Set the schema URL: `https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json`
+3. Set the schema URL: `https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json`
 4. Add file path patterns: `otel-*.yaml`
 
 Alternatively, add it to your shared project configuration:
 
 ```xml
-<!-- .idea/jsonSchemas.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- .idea/jsonSchemas.xml -->
 <project version="4">
   <component name="JsonSchemaMappingsProjectConfiguration">
     <state>
@@ -121,7 +121,7 @@ Alternatively, add it to your shared project configuration:
             <SchemaInfo>
               <option name="name" value="OpenTelemetry Config" />
               <option name="relativePathReference"
-                value="https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json" />
+                value="https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json" />
               <option name="patterns">
                 <list>
                   <Item>
@@ -150,7 +150,7 @@ lspconfig.yamlls.setup({
   settings = {
     yaml = {
       schemas = {
-        ["https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/schema/opentelemetry_configuration.json"] = {
+        ["https://raw.githubusercontent.com/open-telemetry/opentelemetry-configuration/main/opentelemetry_configuration.json"] = {
           "otel-*.yaml",
           "**/otel/**/*.yaml",
         },
@@ -165,13 +165,13 @@ lspconfig.yamlls.setup({
 
 ## SchemaStore Integration
 
-The JSON Schema Store (schemastore.org) aggregates schemas for hundreds of file formats. Once the OpenTelemetry configuration schema is added there (contributions are welcome), editors that use SchemaStore will automatically detect and apply the schema for matching files without any manual configuration.
+The JSON Schema Store (schemastore.org) aggregates schemas for hundreds of file formats. The OpenTelemetry Declarative Configuration schema is listed there, so editors that use SchemaStore can automatically detect and apply the schema for matching files without any manual configuration.
 
 Check if it is available:
 
-```json
-// If available in SchemaStore, the YAML extension auto-detects it
-// and you do not need any of the above manual configuration
+```jsonc
+// The YAML extension can auto-detect the OpenTelemetry schema
+// from SchemaStore for matching file names
 {
   "yaml.schemaStore.enable": true
 }
@@ -183,14 +183,22 @@ One common issue: the `${ENV_VAR}` substitution syntax causes schema validation 
 
 ```yaml
 # This will show a warning because the schema expects a number
-sampler:
-  parent_based:
-    root:
-      trace_id_ratio_based:
-        ratio: ${SAMPLE_RATIO:-0.1}  # warning: expected number, got string
+file_format: "1.1"
+
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: "http://localhost:4318/v1/traces"
+  sampler:
+    parent_based:
+      root:
+        trace_id_ratio_based:
+          ratio: ${SAMPLE_RATIO:-0.1}  # warning: expected number, got string
 ```
 
-Option 1: Use the YAML comment to suppress the warning for that line (if your extension supports it).
+Option 1: Use `# yaml-language-server-disable` on the line immediately before the warning to suppress it (if your extension supports it).
 
 Option 2: Keep defaults as literal values and only override with env vars at deployment time.
 
