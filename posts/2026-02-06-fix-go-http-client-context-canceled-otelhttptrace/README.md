@@ -1,12 +1,12 @@
-# How to Fix Go HTTP Client Spans Showing 'context canceled' Due to otelhttptrace
+# How to Fix Go HTTP Client Spans Showing 'context canceled' When Using otelhttptrace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Go, HTTP Client, Race Condition
 
-Description: Resolve race conditions in Go HTTP client instrumentation where otelhttptrace causes context canceled errors on timeouts.
+Description: Resolve timeout-related Go HTTP client instrumentation errors where response body reads are recorded as context canceled or deadline exceeded.
 
-If you are using `otelhttptrace` to instrument your Go HTTP client and you have timeouts configured, you might see spans with a "context canceled" status even though the HTTP request completed successfully. This is a race condition between the HTTP client timeout mechanism and the trace instrumentation.
+If you are using `otelhttp` with `otelhttptrace` to instrument your Go HTTP client and you have timeouts configured, you might see spans with a "context canceled" or "context deadline exceeded" status when the timeout interrupts the response body read. This is a race between the HTTP client timeout mechanism and response processing.
 
 ## The Problem Setup
 
@@ -14,7 +14,11 @@ A typical instrumented HTTP client looks like this:
 
 ```go
 import (
+    "context"
     "net/http"
+    "net/http/httptrace"
+    "time"
+
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 )
@@ -32,19 +36,19 @@ func newHTTPClient() *http.Client {
 }
 ```
 
-When a request takes close to the 5-second timeout, you may see the span recorded with an error status of "context canceled" even though the response body was fully read and processed.
+When a request takes close to the 5-second timeout, you may see the span recorded with an error status if the timeout fires while the response body is still being read.
 
 ## Why the Race Condition Occurs
 
-The `http.Client.Timeout` works by creating a context with a deadline internally. When the deadline hits, Go cancels the context. The `otelhttptrace` hooks listen for context cancellation to record span events. Here is what happens in the race window:
+The `http.Client.Timeout` covers the whole request, including connection setup, redirects, and reading the response body. The timer keeps running after `Get`, `Post`, or `Do` returns and can interrupt later reads from `Response.Body`. `otelhttp` ends the client span when the response body is closed or a read returns `io.EOF`, and it records read errors on that span. Here is what happens in the race window:
 
 1. The HTTP response headers arrive just before the timeout
 2. The response body starts being read
 3. The timeout fires and cancels the context
-4. `otelhttptrace` sees the cancellation and marks the span as errored
-5. Meanwhile, the body read actually completed successfully
+4. A response body read returns a context cancellation or deadline error
+5. `otelhttp` records that read error on the client span
 
-The span ends up with both a successful HTTP status code and a "context canceled" error, which is confusing.
+The span can end up with an HTTP status code from the response headers and an error from the failed body read, which is confusing if you only look at the status code.
 
 ## Fix Option 1: Use Transport-Level Timeouts Instead
 
@@ -75,11 +79,11 @@ func newHTTPClient() *http.Client {
 }
 ```
 
-This way, timeouts are enforced at specific stages (dial, TLS, headers) rather than canceling the entire context.
+This way, timeouts are enforced at specific stages (dial, TLS, headers) rather than canceling the request while the response body is being read. If you still need a maximum time for reading the body, enforce that separately and treat a body read timeout as a real failed request.
 
 ## Fix Option 2: Use Request-Level Context Timeouts
 
-Instead of client-level timeout, set the timeout on each request's context. This gives you more control:
+Instead of client-level timeout, set the timeout on each request's context with a client that does not also set `Timeout`. This gives you more control over each request's budget, but the request context still covers the entire lifetime of the request and response, including reading the body. Make sure the deadline includes enough time to read the body:
 
 ```go
 func fetchData(ctx context.Context, client *http.Client, url string) ([]byte, error) {
@@ -98,7 +102,6 @@ func fetchData(ctx context.Context, client *http.Client, url string) ([]byte, er
     }
     defer resp.Body.Close()
 
-    // Read the body before the context can be canceled
     body, err := io.ReadAll(resp.Body)
     if err != nil {
         return nil, err
@@ -108,31 +111,20 @@ func fetchData(ctx context.Context, client *http.Client, url string) ([]byte, er
 }
 ```
 
-## Fix Option 3: Filter Out Context Canceled Errors in a Custom Span Handler
+## Fix Option 3: Avoid Per-Phase Sub-Spans
 
-If you cannot change the timeout mechanism, you can filter the false positives by wrapping the transport:
+If the confusing error is on an `otelhttptrace` per-phase sub-span rather than the main `otelhttp` client span, you can configure `otelhttptrace` to record HTTP trace data as events and attributes on the parent span instead of separate sub-spans:
 
 ```go
-// filterTransport wraps otelhttp transport and filters out
-// false context canceled errors when the response was actually received.
-type filterTransport struct {
-    base http.RoundTripper
-}
-
-func (t *filterTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-    resp, err := t.base.RoundTrip(req)
-
-    // If we got a response but also a context error,
-    // the response is what matters
-    if resp != nil && err != nil && req.Context().Err() == context.Canceled {
-        // Clear the error since the response was received
-        // The span should reflect success, not cancellation
-        return resp, nil
-    }
-
-    return resp, err
-}
+Transport: otelhttp.NewTransport(
+    transport,
+    otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+        return otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans())
+    }),
+),
 ```
+
+Do not clear context cancellation errors in a `RoundTripper` wrapper. In Go's HTTP client, a non-nil response with a non-nil error is not the normal shape for a context timeout, and the OpenTelemetry span may already have recorded the error by the time the wrapper returns.
 
 ## Validating the Fix
 
@@ -158,7 +150,11 @@ func TestHTTPClientTimeout_NoFalseCancel(t *testing.T) {
     if err != nil {
         t.Fatalf("request failed: %v", err)
     }
+    _, err = io.ReadAll(resp.Body)
     resp.Body.Close()
+    if err != nil {
+        t.Fatalf("read response body: %v", err)
+    }
 
     tp.ForceFlush(ctx)
 
@@ -173,4 +169,4 @@ func TestHTTPClientTimeout_NoFalseCancel(t *testing.T) {
 
 ## Summary
 
-The race condition between `http.Client.Timeout` and `otelhttptrace` is a known issue in the Go OpenTelemetry ecosystem. The cleanest fix is to avoid client-level timeouts and use transport-level or request-level timeouts instead. This eliminates the window where context cancellation races with successful response handling.
+The confusing interaction between `http.Client.Timeout` and OpenTelemetry HTTP client spans comes from the fact that the client timeout includes response body reads. The cleanest fix is to avoid client-level timeouts when you only need dial, TLS, or response-header limits, and use transport-level timeouts instead. Request-level context timeouts are still useful, but they must include enough time for the full response body because they also cancel body reads.
