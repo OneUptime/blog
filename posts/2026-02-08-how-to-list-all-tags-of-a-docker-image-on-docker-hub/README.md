@@ -14,7 +14,7 @@ The Docker CLI does not include a built-in command to list remote tags. You need
 
 ## Using the Docker Hub API v2
 
-The Docker Registry HTTP API v2 provides endpoints for listing tags. For official images on Docker Hub, you need to handle authentication first.
+The Docker Registry HTTP API v2 provides endpoints for listing tags. For Docker Hub images, you need to handle authentication first.
 
 ```bash
 # List tags for an official image (e.g., nginx)
@@ -81,8 +81,8 @@ Docker Hub also has its own REST API that returns richer metadata including tag 
 
 ```bash
 # Fetch tags with metadata from the Docker Hub API
-# This endpoint returns creation dates, sizes, and more
-curl -s "https://hub.docker.com/v2/repositories/library/nginx/tags?page_size=100" | jq '.results[] | {name: .name, last_updated: .last_updated, full_size: .full_size}'
+# This endpoint returns update dates, sizes, and more
+curl -s "https://hub.docker.com/v2/namespaces/library/repositories/nginx/tags?page_size=100" | jq '.results[] | {name: .name, last_updated: .last_updated, full_size: .full_size}'
 ```
 
 This returns useful details per tag:
@@ -108,7 +108,9 @@ To paginate through all results:
 # Usage: ./list-tags-hub-api.sh library/nginx
 
 REPO=$1
-URL="https://hub.docker.com/v2/repositories/${REPO}/tags?page_size=100"
+NAMESPACE=${REPO%%/*}
+REPOSITORY=${REPO#*/}
+URL="https://hub.docker.com/v2/namespaces/${NAMESPACE}/repositories/${REPOSITORY}/tags?page_size=100"
 
 while [ "$URL" != "null" ] && [ -n "$URL" ]; do
     RESPONSE=$(curl -s "$URL")
@@ -195,7 +197,7 @@ docker-tags() {
 
     local token=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image}:pull" | jq -r .token)
 
-    curl -s -H "Authorization: Bearer $TOKEN" \
+    curl -s -H "Authorization: Bearer $token" \
       "https://registry-1.docker.io/v2/${image}/tags/list" | jq -r '.tags[]' | sort -V
 }
 ```
