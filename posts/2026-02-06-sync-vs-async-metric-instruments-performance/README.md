@@ -58,6 +58,7 @@ Here is a typical example with a Counter and Histogram:
 # Python - Synchronous instruments for request tracking
 
 from opentelemetry import metrics
+import time
 
 meter = metrics.get_meter("my-service")
 
@@ -112,6 +113,7 @@ These are not events. There is no discrete moment when "CPU utilization happens.
 ```python
 # Python - Asynchronous instruments for system state observation
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 import psutil
 
 meter = metrics.get_meter("my-service")
@@ -122,19 +124,23 @@ def observe_cpu(options):
     # psutil.cpu_percent() is only called once per collection interval
     # instead of being called on every request
     usage = psutil.cpu_percent(interval=None)
-    options.observe(usage, {"cpu.state": "user"})
+    return [Observation(usage, {"cpu.state": "total"})]
 
 def observe_memory(options):
     """Callback for current memory usage in bytes."""
     mem = psutil.virtual_memory()
-    options.observe(mem.used, {"memory.type": "used"})
-    options.observe(mem.available, {"memory.type": "available"})
+    return [
+        Observation(mem.used, {"memory.type": "used"}),
+        Observation(mem.available, {"memory.type": "available"}),
+    ]
 
 def observe_connections(options):
     """Callback for current connection pool state."""
     pool = get_connection_pool()
-    options.observe(pool.active_count, {"pool.state": "active"})
-    options.observe(pool.idle_count, {"pool.state": "idle"})
+    return [
+        Observation(pool.active_count, {"pool.state": "active"}),
+        Observation(pool.idle_count, {"pool.state": "idle"}),
+    ]
 
 # Register the observable gauges with their callbacks
 # The SDK will call these functions at each collection interval (default 60s)
@@ -164,7 +170,7 @@ The performance advantages of async instruments for state observation are signif
 
 - **Zero cost on the hot path**: The callback is only invoked at collection time (once per export interval), not on every request.
 - **Controlled frequency**: If your export interval is 60 seconds, the callback runs once per minute regardless of traffic volume.
-- **No aggregation overhead**: The SDK does not need to aggregate multiple values because there is only one observation per interval.
+- **Lower aggregation overhead**: The SDK processes the observations produced at collection time instead of processing repeated hot-path recordings.
 
 ## The Performance Difference in Practice
 
@@ -179,7 +185,7 @@ gauge = meter.create_gauge("db.connections.active")
 
 def handle_request(request):
     # This runs on the hot path for every request
-    gauge.set(pool.active_count, {"pool.name": "primary"})
+    gauge.record(pool.active_count, {"pool.name": "primary"})
     return process(request)
 ```
 
@@ -190,8 +196,10 @@ This calls `pool.active_count` 10,000 times per second and makes 10,000 SDK call
 ```python
 # GOOD: Pool size is observed only at collection time
 # At a 60-second collection interval, this runs once per minute
+from opentelemetry.metrics import Observation
+
 def observe_pool(options):
-    options.observe(pool.active_count, {"pool.name": "primary"})
+    return [Observation(pool.active_count, {"pool.name": "primary"})]
 
 observable_gauge = meter.create_observable_gauge(
     "db.connections.active",
@@ -199,7 +207,7 @@ observable_gauge = meter.create_observable_gauge(
 )
 ```
 
-This makes exactly one call per collection interval. If your interval is 60 seconds, you go from 10,000 calls per second to one call per 60 seconds. That is a 600,000x reduction in overhead.
+This makes one callback invocation per collection interval for each metric reader. If your interval is 60 seconds and you have one metric reader, you go from 10,000 calls per second to one call per 60 seconds. That is a 600,000x reduction in hot-path overhead.
 
 ```mermaid
 graph LR
@@ -237,11 +245,13 @@ There is also a special case worth mentioning. The `ObservableCounter` is useful
 
 ```python
 # Wrapping an existing cumulative counter from a third-party library
-# The callback reads the current total, and the SDK computes the delta
+# The callback reads the current absolute total
+from opentelemetry.metrics import Observation
+
 def observe_library_requests(options):
     # third_party_lib already tracks this internally
     # We just read its value at collection time
-    options.observe(third_party_lib.get_total_requests(), {})
+    return [Observation(third_party_lib.get_total_requests(), {})]
 
 meter.create_observable_counter(
     "third_party.requests.total",
@@ -258,6 +268,8 @@ Keep callbacks fast. If you need to fetch data from a slow source, do it in a ba
 
 ```python
 import threading
+import time
+from opentelemetry.metrics import Observation
 
 # Cache expensive values in a background thread
 _cached_pool_stats = {"active": 0, "idle": 0}
@@ -277,8 +289,10 @@ threading.Thread(target=update_pool_stats_background, daemon=True).start()
 
 def observe_pool(options):
     # Fast: just reads from the cache dictionary
-    options.observe(_cached_pool_stats["active"], {"state": "active"})
-    options.observe(_cached_pool_stats["idle"], {"state": "idle"})
+    return [
+        Observation(_cached_pool_stats["active"], {"state": "active"}),
+        Observation(_cached_pool_stats["idle"], {"state": "idle"}),
+    ]
 ```
 
 ## Wrapping Up
