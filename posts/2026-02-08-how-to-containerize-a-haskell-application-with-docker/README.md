@@ -54,7 +54,7 @@ main = do
 The package definition:
 
 ```yaml
-# package.yaml (for Stack) or as cabal file
+# package.yaml (Hpack format used by Stack; Cabal users would write an equivalent .cabal file)
 
 name: my-haskell-app
 version: 0.1.0.0
@@ -79,13 +79,13 @@ executables:
 
 ## Dockerfile with Stack
 
-Stack is the most popular Haskell build tool. It manages GHC versions and dependencies through curated package sets (Stackage).
+Stack is a popular Haskell build tool. It manages GHC versions and dependencies through curated package sets (Stackage).
 
 ```dockerfile
 # Dockerfile.stack - Haskell application built with Stack
 
 # === Build Stage ===
-# Use the official Stack image which includes GHC
+# Use a Stack build image which includes GHC
 FROM fpco/stack-build:lts-22.4 AS builder
 
 WORKDIR /build
@@ -138,7 +138,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
   CMD curl -f http://localhost:8080/health || exit 1
 
-# RTS options: -N uses all available cores, -T enables runtime statistics
+# RTS options: -N uses available capabilities, -T enables runtime statistics
 ENTRYPOINT ["./my-haskell-app", "+RTS", "-N", "-T", "-RTS"]
 ```
 
@@ -165,7 +165,7 @@ curl http://localhost:8080/health
 
 ## Dockerfile with Cabal
 
-Cabal is Haskell's built-in build tool. It is lighter weight than Stack and uses Hackage directly.
+Cabal is Haskell's standard build and packaging system. It is lighter weight than Stack and uses Hackage directly.
 
 ```dockerfile
 # Dockerfile.cabal - Haskell application built with Cabal
@@ -179,10 +179,11 @@ WORKDIR /build
 RUN cabal update
 
 # Copy the cabal file first for dependency caching
-COPY my-haskell-app.cabal cabal.project.freeze ./
+# If you use cabal.project.freeze, copy it here as well.
+COPY my-haskell-app.cabal ./
 
 # Build only dependencies
-RUN cabal build --only-dependencies
+RUN cabal build --only-dependencies exe:my-haskell-app
 
 # Copy source code
 COPY app ./app
@@ -192,7 +193,7 @@ COPY src ./src
 RUN cabal build exe:my-haskell-app
 
 # Copy the binary to a known location
-RUN cp $(cabal list-bin my-haskell-app) /build/app-binary
+RUN cp $(cabal list-bin exe:my-haskell-app) /build/app-binary
 
 # === Runtime Stage ===
 FROM debian:bookworm-slim
@@ -224,7 +225,7 @@ ENTRYPOINT ["./my-haskell-app", "+RTS", "-N", "-T", "-RTS"]
 
 ## Static Linking for Minimal Images
 
-For the smallest possible images, statically link the binary. This eliminates the need for any system libraries in the runtime image, allowing you to use a scratch or distroless base.
+For the smallest possible images, you can use a statically linked binary. This eliminates the need for system libraries in the runtime image only when all native dependencies are available as static libraries, so always verify the result before using a `scratch` base.
 
 ```dockerfile
 # Dockerfile.static - Statically linked Haskell binary
@@ -232,9 +233,10 @@ For the smallest possible images, statically link the binary. This eliminates th
 # === Build Stage ===
 FROM fpco/stack-build:lts-22.4 AS builder
 
-# Install static libraries
+# Install static libraries used by common Haskell dependencies
 RUN apt-get update && apt-get install -y \
     libgmp-dev \
+    libffi-dev \
     zlib1g-dev
 
 WORKDIR /build
@@ -247,15 +249,14 @@ COPY src ./src
 
 # Build with static linking flags
 RUN stack build --system-ghc \
-    --ghc-options='-optl-static -optl-pthread -fPIC' \
+    --ghc-options='-optl-static -optl-pthread' \
     --copy-bins
 
 RUN cp $(stack path --local-install-root)/bin/my-haskell-app /build/app-binary
 
 # Verify the binary is statically linked
 RUN ldd /build/app-binary 2>&1 | grep -q "not a dynamic executable" && \
-    echo "Binary is statically linked" || \
-    echo "WARNING: Binary has dynamic dependencies"
+    echo "Binary is statically linked"
 
 # === Runtime Stage ===
 # Scratch image - literally nothing but the binary
@@ -272,7 +273,7 @@ EXPOSE 8080
 ENTRYPOINT ["/my-haskell-app", "+RTS", "-N", "-T", "-RTS"]
 ```
 
-A statically linked Haskell binary in a scratch image produces a container as small as 15-25MB.
+A fully statically linked Haskell binary in a scratch image can produce a container as small as 15-25MB, depending on the dependencies and compiler options.
 
 ## Optimizing Build Times
 
@@ -288,7 +289,7 @@ WORKDIR /build
 
 COPY stack.yaml stack.yaml.lock package.yaml ./
 
-# Cache the Stack work directory between builds
+# Cache the Stack compiler and package cache between builds
 RUN --mount=type=cache,target=/root/.stack \
     stack build --only-dependencies --system-ghc
 
@@ -312,18 +313,14 @@ Haskell's runtime system (RTS) has options that affect how the application behav
 
 ```dockerfile
 # Common RTS options for containerized Haskell applications
-ENTRYPOINT ["./my-haskell-app", "+RTS", \
-  "-N",          # Use all available CPU cores \
-  "-T",          # Enable runtime statistics \
-  "-A64m",       # Set the allocation area size (nursery) \
-  "-H256m",      # Suggested heap size \
-  "-I0",         # Disable idle GC (containers should not waste CPU on idle GC) \
-  "-RTS"]
+# Use all available capabilities, collect runtime statistics, tune GC,
+# and disable idle GC for server workloads.
+ENTRYPOINT ["./my-haskell-app", "+RTS", "-N", "-T", "-A64m", "-H256m", "-I0", "-RTS"]
 ```
 
 Key RTS options for containers:
 
-- `-N` - Use all CPU cores available to the container
+- `-N` - Use all capabilities available to the process
 - `-A64m` - Larger allocation area reduces GC frequency
 - `-H256m` - Suggested heap size, helps avoid repeated heap growth
 - `-I0` - Disable idle GC, useful for always-busy server processes
@@ -408,6 +405,7 @@ The `-T` RTS flag enables runtime statistics. Expose them through an endpoint fo
 ```haskell
 -- Add an endpoint that returns GHC runtime statistics
 import GHC.Stats (getRTSStats, RTSStats(..))
+import Control.Monad.IO.Class (liftIO)
 
 get "/metrics" $ do
     stats <- liftIO getRTSStats
