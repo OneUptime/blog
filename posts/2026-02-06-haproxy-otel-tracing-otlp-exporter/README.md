@@ -4,28 +4,38 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, HAProxy, Tracing, OpenTracing Bridge
 
-Description: Configure HAProxy to export distributed traces using the OpenTracing filter with an OTLP exporter bridge for OpenTelemetry integration.
+Description: Configure HAProxy to export distributed traces using the OpenTracing filter and forward them through the OpenTelemetry Collector.
 
-HAProxy supports distributed tracing through its OpenTracing filter. While HAProxy uses the OpenTracing API natively, you can bridge this to OpenTelemetry using the OpenTracing compatibility shim. This post covers how to set up HAProxy tracing with OTLP export.
+HAProxy supports distributed tracing through its OpenTracing filter. While HAProxy uses the OpenTracing API natively, you can bridge this into OpenTelemetry by sending spans to an OpenTracing-compatible tracer protocol that the OpenTelemetry Collector can receive, then exporting them with OTLP. This post covers how to set up HAProxy tracing with the Collector in the middle.
+
+Note: the OpenTracing filter is deprecated in HAProxy 3.4 and is scheduled for removal in HAProxy 3.5. For new HAProxy deployments, prefer the native OpenTelemetry filter available in HAProxy 3.4 and later.
 
 ## How HAProxy Tracing Works
 
-HAProxy includes a built-in OpenTracing filter that hooks into request processing. When enabled, it creates spans for frontend connections, backend selection, and server responses. The filter communicates with a tracing plugin loaded as a shared library.
+HAProxy includes an OpenTracing filter that hooks into request processing when HAProxy is built with OpenTracing support. When enabled, the filter runs the spans and events you define in its configuration file. The filter communicates with an OpenTracing tracer plugin loaded as a shared library.
 
 ## Installing the Tracing Plugin
 
-HAProxy uses the SPOE (Stream Processing Offload Engine) or a shared library for tracing. The recommended approach is using the OTel-compatible tracer:
+HAProxy's OpenTracing filter is compiled into HAProxy and uses the OpenTracing C wrapper plus a tracer plugin such as Jaeger's OpenTracing plugin. Build the wrapper and the tracer plugin first, then build HAProxy with `USE_OT=1`:
 
 ```bash
-# Build the OpenTelemetry tracer plugin for HAProxy
-
+# Build the OpenTracing C wrapper for HAProxy
 git clone https://github.com/haproxytech/opentracing-c-wrapper.git
 cd opentracing-c-wrapper
-mkdir build && cd build
-cmake ..
+./scripts/bootstrap
+./configure --prefix=/opt --with-opentracing=/opt
 make
 sudo make install
 ```
+
+When building HAProxy, enable the filter:
+
+```bash
+PKG_CONFIG_PATH=/opt/lib/pkgconfig make TARGET=linux-glibc USE_OT=1
+./haproxy -vv | grep opentracing
+```
+
+You also need an OpenTracing-compatible tracer plugin. The HAProxy OpenTracing examples use Jaeger's C++ plugin, `libjaegertracing_plugin.so`.
 
 ## HAProxy Configuration
 
@@ -35,10 +45,6 @@ Configure HAProxy with the OpenTracing filter:
 # haproxy.cfg
 global
     log stdout format raw local0 info
-
-    # Load the OpenTracing filter
-    module-path /usr/lib/haproxy
-    module-load opentracing.so
 
 defaults
     mode http
@@ -52,18 +58,12 @@ frontend http_front
     bind *:80
 
     # Enable OpenTracing on this frontend
-    filter opentracing id ot-front config /etc/haproxy/otel-tracer.json
-
-    # Inject trace headers into requests going to backends
-    http-request set-header traceparent %[var(txn.ot.traceparent)]
+    filter opentracing id ot-front config /etc/haproxy/ot.cfg
 
     default_backend servers
 
 backend servers
     balance roundrobin
-
-    # Enable OpenTracing on this backend
-    filter opentracing id ot-back config /etc/haproxy/otel-tracer.json
 
     server s1 backend1:8080 check
     server s2 backend2:8080 check
@@ -71,26 +71,51 @@ backend servers
 
 ## Tracer Configuration
 
-Create the tracer configuration file that points to your Collector:
+Create the HAProxy OpenTracing filter configuration. The file referenced by `filter opentracing ... config` is not the tracer plugin's JSON or YAML file; it defines the tracer, scopes, events, and propagation behavior used by the HAProxy filter:
 
-```json
-{
-  "service_name": "haproxy",
-  "disabled": false,
-  "propagation_format": "w3c",
-  "reporter": {
-    "endpoint": "http://otel-collector:4318/v1/traces",
-    "log_spans": true
-  },
-  "sampler": {
-    "type": "const",
-    "param": 1
-  },
-  "tags": {
-    "haproxy.version": "2.9",
-    "deployment.environment": "production"
-  }
-}
+```text
+# /etc/haproxy/ot.cfg
+[ot-front]
+    ot-tracer haproxy-tracer
+        config /etc/haproxy/jaeger.yml
+        plugin /usr/local/lib/libjaegertracing_plugin.so
+        option hard-errors
+        no option disabled
+        rate-limit 100.0
+        scopes frontend_http_request backend_http_request http_response
+
+    ot-scope frontend_http_request
+        span "HAProxy HTTP request" root
+            tag "http.method" method
+            tag "http.url" url
+            tag "http.version" str("HTTP/") req.ver
+        event on-frontend-http-request
+
+    ot-scope backend_http_request
+        span "HAProxy HTTP request"
+            inject "ot-ctx" use-headers
+        event on-backend-http-request
+
+    ot-scope http_response
+        span "HAProxy HTTP response" child-of "HAProxy HTTP request"
+            tag "http.status_code" status
+        finish *
+        event on-http-response
+```
+
+Then create the tracer plugin configuration that points to the Collector's Jaeger receiver:
+
+```yaml
+# /etc/haproxy/jaeger.yml
+service_name: haproxy
+
+sampler:
+  type: const
+  param: 1
+
+reporter:
+  logSpans: true
+  localAgentHostPort: otel-collector:6831
 ```
 
 ## Using the SPOE Approach
@@ -112,6 +137,11 @@ frontend http_front
 
 backend servers
     server s1 backend1:8080 check
+
+backend otel-agent-backend
+    mode tcp
+    option spop-check
+    server agent1 otel-agent:12345 check
 ```
 
 The SPOE configuration:
@@ -140,12 +170,16 @@ spoe-message on-backend-response
 
 ```yaml
 receivers:
+  jaeger:
+    protocols:
+      thrift_compact:
+        endpoint: 0.0.0.0:6831
   otlp:
     protocols:
-      http:
-        endpoint: 0.0.0.0:4318
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -165,7 +199,7 @@ exporters:
 service:
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [jaeger, otlp]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -177,10 +211,11 @@ version: "3.8"
 
 services:
   haproxy:
-    image: haproxy:latest
+    image: myorg/haproxy-opentracing:2.9
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
-      - ./otel-tracer.json:/etc/haproxy/otel-tracer.json
+      - ./ot.cfg:/etc/haproxy/ot.cfg
+      - ./jaeger.yml:/etc/haproxy/jaeger.yml
     ports:
       - "80:80"
       - "8404:8404"
@@ -194,6 +229,7 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+      - "6831:6831/udp"
 
   backend1:
     image: myorg/backend:latest
@@ -210,31 +246,25 @@ services:
 
 ## Trace Context Propagation
 
-HAProxy can propagate W3C trace context headers to backends. Configure the propagation format in the tracer config:
-
-```json
-{
-  "propagation_format": "w3c"
-}
-```
-
-And in the HAProxy config, make sure headers are forwarded:
+HAProxy can propagate trace context headers to backends. Configure propagation in the HAProxy OpenTracing filter config with `inject ... use-headers`:
 
 ```text
-frontend http_front
-    bind *:80
-    filter opentracing id ot-front config /etc/haproxy/otel-tracer.json
-
-    # Forward trace headers to backend
-    http-request set-header traceparent %[var(txn.ot.traceparent)]
-    http-request set-header tracestate %[var(txn.ot.tracestate)]
+ot-scope backend_http_request
+    span "HAProxy HTTP request"
+        inject "ot-ctx" use-headers
+    event on-backend-http-request
 ```
+
+The exact header format depends on the OpenTracing tracer plugin. With the Jaeger plugin, the injected header is Jaeger's propagation header rather than W3C `traceparent`.
 
 ## Verifying Traces
 
-Enable the HAProxy stats page and check tracing stats:
+Enable the HAProxy stats page and HAProxy runtime socket:
 
 ```text
+global
+    stats socket /tmp/haproxy.sock mode 660 level admin
+
 frontend stats
     bind *:8404
     stats enable
@@ -248,8 +278,10 @@ Send test traffic and verify:
 curl -v http://localhost/api/test
 # Check Collector logs for received spans
 docker logs otel-collector 2>&1 | tail -20
+# Check OpenTracing filter runtime status
+echo "flt-ot status" | socat - UNIX-CONNECT:/tmp/haproxy.sock
 ```
 
 ## Summary
 
-HAProxy's OpenTracing filter provides distributed tracing capability that can be bridged to OpenTelemetry. Configure the tracer plugin with OTLP HTTP export, enable the filter on frontends and backends, and ensure W3C trace context headers are propagated. While the configuration is more involved than natively-instrumented proxies, it gives you the same end-to-end trace visibility through your HAProxy deployment.
+HAProxy's OpenTracing filter provides distributed tracing capability that can be bridged into OpenTelemetry through the Collector. Configure the HAProxy OpenTracing filter, point its tracer plugin at a Collector receiver such as Jaeger, export from the Collector with OTLP, and let the filter inject propagation headers. For new deployments on HAProxy 3.4 and later, use the native OpenTelemetry filter instead of starting a new OpenTracing setup.
