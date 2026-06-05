@@ -40,9 +40,10 @@ exporters:
       - kafka-broker-1:9092
       - kafka-broker-2:9092
       - kafka-broker-3:9092
-    topic: otel-traces
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto
     # Producer settings tuned for throughput
     producer:
       max_message_bytes: 10485760
@@ -99,7 +100,7 @@ Key design decisions:
 
 ## Setting Up the Kafka-to-ClickHouse Consumer
 
-You can use ClickHouse's built-in Kafka engine or run a separate consumer. The Kafka engine approach is simpler:
+You can use ClickHouse's built-in Kafka engine or run a separate consumer. If you send raw `otlp_proto` messages from the Collector, use a separate consumer to decode the OTLP `ExportTraceServiceRequest` payloads and flatten spans into the table shape above. If your Kafka topic already contains flattened, schema-compatible Protobuf records, the Kafka engine approach is simpler:
 
 ```sql
 -- Create a Kafka engine table that reads from the topic
@@ -118,9 +119,10 @@ CREATE TABLE otel_traces_kafka (
 ) ENGINE = Kafka()
 SETTINGS
     kafka_broker_list = 'kafka-broker-1:9092,kafka-broker-2:9092',
-    kafka_topic_list = 'otel-traces',
+    kafka_topic_list = 'otel-traces-flat',
     kafka_group_name = 'clickhouse-traces-consumer',
     kafka_format = 'Protobuf',
+    kafka_schema = 'trace_row.proto:TraceRow',
     kafka_num_consumers = 8;
 
 -- Materialized view to move data from Kafka engine to MergeTree
