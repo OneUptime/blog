@@ -17,7 +17,7 @@ CDN performance is inherently distributed. A single user request might hit an ed
 At each edge server or CDN middleware layer, you need to record both traces and metrics. Here is a Node.js example for an edge handler.
 
 ```javascript
-const { trace, metrics, context, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, metrics, context, propagation, SpanStatusCode } = require("@opentelemetry/api");
 
 const tracer = trace.getTracer("cdn.edge.handler", "1.0.0");
 const meter = metrics.getMeter("cdn.edge.metrics", "1.0.0");
@@ -50,6 +50,7 @@ The edge request handler is where you capture the full picture: was it a hit or 
 async function handleEdgeRequest(req, res) {
   const popId = process.env.POP_ID || "unknown";
   const region = process.env.POP_REGION || "unknown";
+  const host = req.headers.host || "unknown";
 
   return tracer.startActiveSpan("cdn.edge.request", async (span) => {
     const startTime = Date.now();
@@ -57,7 +58,8 @@ async function handleEdgeRequest(req, res) {
     // Set attributes about the edge location
     span.setAttribute("cdn.pop.id", popId);
     span.setAttribute("cdn.pop.region", region);
-    span.setAttribute("http.url", req.url);
+    span.setAttribute("url.full", `${req.headers["x-forwarded-proto"] || "https"}://${host}${req.url}`);
+    span.setAttribute("http.request.method", req.method);
     span.setAttribute("cdn.content.type", getContentType(req.url));
 
     try {
@@ -68,6 +70,8 @@ async function handleEdgeRequest(req, res) {
         // Cache hit path
         span.setAttribute("cdn.cache.status", "hit");
         span.setAttribute("cdn.cache.age", cachedResponse.age);
+        hitCount += 1;
+        totalCount += 1;
         cacheHitCounter.add(1, { pop: popId, region: region });
 
         const latency = Date.now() - startTime;
@@ -82,25 +86,32 @@ async function handleEdgeRequest(req, res) {
       } else {
         // Cache miss - need to fetch from origin
         span.setAttribute("cdn.cache.status", "miss");
+        totalCount += 1;
         cacheMissCounter.add(1, { pop: popId, region: region });
 
         const originResponse = await tracer.startActiveSpan(
           "cdn.origin.fetch",
           async (originSpan) => {
-            const fetchStart = Date.now();
-            originSpan.setAttribute("cdn.origin.url", getOriginUrl(req.url));
+            try {
+              const fetchStart = Date.now();
+              originSpan.setAttribute("cdn.origin.url", getOriginUrl(req.url));
 
-            const result = await fetchFromOrigin(req.url);
+              const originHeaders = {};
+              propagation.inject(context.active(), originHeaders);
 
-            const fetchLatency = Date.now() - fetchStart;
-            originFetchLatency.record(fetchLatency, {
-              pop: popId,
-              origin: result.originServer,
-            });
+              const result = await fetchFromOrigin(req.url, { headers: originHeaders });
 
-            originSpan.setAttribute("cdn.origin.latency_ms", fetchLatency);
-            originSpan.end();
-            return result;
+              const fetchLatency = Date.now() - fetchStart;
+              originFetchLatency.record(fetchLatency, {
+                pop: popId,
+                origin: result.originServer,
+              });
+
+              originSpan.setAttribute("cdn.origin.latency_ms", fetchLatency);
+              return result;
+            } finally {
+              originSpan.end();
+            }
           }
         );
 
