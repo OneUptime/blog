@@ -43,16 +43,15 @@ from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-import time
+from opentelemetry.sdk.resources import Resource
 
 def setup_red_metrics(service_name: str):
     """
-    Set up the standard RED metrics for a service.
+    Set up consistent RED metrics for a service.
     These metrics power the service health dashboard.
     """
     resource = Resource.create({
-        SERVICE_NAME: service_name,
+        "service.name": service_name,
         "service.version": "1.2.3",
         "deployment.environment": "production",
     })
@@ -69,21 +68,21 @@ def setup_red_metrics(service_name: str):
     request_counter = meter.create_counter(
         name="http.server.request.total",
         description="Total number of HTTP requests received",
-        unit="requests",
+        unit="{request}",
     )
 
     # ERRORS: Error count with classification
     error_counter = meter.create_counter(
         name="http.server.error.total",
         description="Total number of HTTP errors",
-        unit="errors",
+        unit="{error}",
     )
 
     # DURATION: Request latency distribution
     request_duration = meter.create_histogram(
         name="http.server.request.duration",
         description="HTTP request duration",
-        unit="ms",
+        unit="s",
     )
 
     return request_counter, error_counter, request_duration
@@ -91,22 +90,23 @@ def setup_red_metrics(service_name: str):
 # Initialize RED metrics
 request_counter, error_counter, request_duration = setup_red_metrics("order-service")
 
-def track_request(endpoint: str, method: str, status_code: int, duration_ms: float):
+def track_request(endpoint: str, method: str, status_code: int, duration_s: float):
     """Record RED metrics for a completed HTTP request."""
     attributes = {
         "http.route": endpoint,
-        "http.method": method,
-        "http.status_code": str(status_code),
+        "http.request.method": method,
+        "http.response.status_code": status_code,
+        "url.scheme": "https",
     }
 
     # Always count the request (Rate)
     request_counter.add(1, attributes)
 
     # Record the duration (Duration)
-    request_duration.record(duration_ms, attributes)
+    request_duration.record(duration_s, attributes)
 
     # Count errors separately for easier error rate calculation
-    if status_code >= 500:
+    if status_code >= 500 or status_code == 429:
         error_counter.add(1, {
             **attributes,
             "error.type": classify_http_error(status_code),
@@ -128,7 +128,7 @@ def classify_http_error(status_code: int) -> str:
         return f"http_{status_code}"
 ```
 
-These three metrics form the core of your dashboard. Rate tells you traffic volume, Errors tells you reliability, and Duration tells you performance. Every service should export these with the same metric names and attribute conventions.
+These three metrics form the core of your dashboard. Rate tells you traffic volume, Errors tells you reliability, and Duration tells you performance. Every service should export these with the same custom metric names and current OpenTelemetry semantic attributes.
 
 ---
 
@@ -143,32 +143,61 @@ import psutil
 
 meter = metrics.get_meter("service.infrastructure")
 
-# CPU utilization per core
+def cpu_utilization_callback(options):
+    observations = []
+    for cpu_number, cpu_times in enumerate(psutil.cpu_times_percent(percpu=True)):
+        for mode in ("user", "system", "idle"):
+            observations.append(metrics.Observation(
+                getattr(cpu_times, mode) / 100,
+                {"cpu.mode": mode, "cpu.logical_number": cpu_number},
+            ))
+    return observations
+
+def network_io_callback(options):
+    observations = []
+    for interface_name, counters in psutil.net_io_counters(pernic=True).items():
+        observations.extend([
+            metrics.Observation(
+                counters.bytes_sent,
+                {
+                    "network.interface.name": interface_name,
+                    "network.io.direction": "transmit",
+                },
+            ),
+            metrics.Observation(
+                counters.bytes_recv,
+                {
+                    "network.interface.name": interface_name,
+                    "network.io.direction": "receive",
+                },
+            ),
+        ])
+    return observations
+
+# CPU utilization
 cpu_utilization = meter.create_observable_gauge(
     name="system.cpu.utilization",
-    description="CPU utilization percentage",
-    unit="percent",
-    callbacks=[lambda options: [
-        metrics.Observation(psutil.cpu_percent(interval=None))
-    ]],
+    description="CPU utilization as a ratio from 0 to 1",
+    unit="1",
+    callbacks=[cpu_utilization_callback],
 )
 
 # Memory usage with breakdown
-memory_usage = meter.create_observable_gauge(
+memory_usage = meter.create_observable_up_down_counter(
     name="system.memory.usage",
     description="Memory usage in bytes",
-    unit="bytes",
+    unit="By",
     callbacks=[lambda options: [
-        metrics.Observation(psutil.virtual_memory().used, {"state": "used"}),
-        metrics.Observation(psutil.virtual_memory().available, {"state": "available"}),
+        metrics.Observation(psutil.virtual_memory().used, {"system.memory.state": "used"}),
+        metrics.Observation(psutil.virtual_memory().free, {"system.memory.state": "free"}),
     ]],
 )
 
 # Open file descriptors (a common resource leak indicator)
-open_fds = meter.create_observable_gauge(
-    name="process.open_file_descriptors",
+open_fds = meter.create_observable_up_down_counter(
+    name="process.unix.file_descriptor.count",
     description="Number of open file descriptors",
-    unit="fds",
+    unit="{file_descriptor}",
     callbacks=[lambda options: [
         metrics.Observation(psutil.Process().num_fds())
     ]],
@@ -176,17 +205,10 @@ open_fds = meter.create_observable_gauge(
 
 # Network I/O
 network_bytes = meter.create_observable_counter(
-    name="system.network.bytes",
+    name="system.network.io",
     description="Network bytes transferred",
-    unit="bytes",
-    callbacks=[lambda options: [
-        metrics.Observation(
-            psutil.net_io_counters().bytes_sent, {"direction": "sent"}
-        ),
-        metrics.Observation(
-            psutil.net_io_counters().bytes_recv, {"direction": "received"}
-        ),
-    ]],
+    unit="By",
+    callbacks=[network_io_callback],
 )
 ```
 
@@ -201,7 +223,6 @@ Your service does not exist in isolation. Track the health of your dependencies 
 ```python
 # dependency_metrics.py
 from opentelemetry import metrics
-import time
 
 meter = metrics.get_meter("service.dependencies")
 
@@ -209,25 +230,25 @@ meter = metrics.get_meter("service.dependencies")
 dependency_latency = meter.create_histogram(
     name="dependency.request.duration",
     description="Latency of calls to downstream dependencies",
-    unit="ms",
+    unit="s",
 )
 
 # Track downstream service availability
 dependency_errors = meter.create_counter(
     name="dependency.request.errors",
     description="Errors from downstream dependencies",
-    unit="errors",
+    unit="{error}",
 )
 
 dependency_requests = meter.create_counter(
     name="dependency.request.total",
     description="Total calls to downstream dependencies",
-    unit="requests",
+    unit="{request}",
 )
 
 def track_dependency_call(
     dependency_name: str,
-    duration_ms: float,
+    duration_s: float,
     success: bool,
     status_code: int = 0,
 ):
@@ -238,7 +259,7 @@ def track_dependency_call(
     }
 
     dependency_requests.add(1, attributes)
-    dependency_latency.record(duration_ms, attributes)
+    dependency_latency.record(duration_s, attributes)
 
     if not success:
         dependency_errors.add(1, {
@@ -318,7 +339,7 @@ class ServiceHealth:
     status: HealthStatus
     request_rate: float
     error_rate_percent: float
-    p95_latency_ms: float
+    p95_latency_s: float
     issues: list
 
 def compute_health(metrics_client, service: str) -> ServiceHealth:
@@ -339,7 +360,7 @@ def compute_health(metrics_client, service: str) -> ServiceHealth:
         window="5m",
     )
 
-    p95_latency = metrics_client.query_percentile(
+    p95_latency_s = metrics_client.query_percentile(
         "http.server.request.duration",
         percentile=0.95,
         labels={"service.name": service},
@@ -360,13 +381,13 @@ def compute_health(metrics_client, service: str) -> ServiceHealth:
         status = HealthStatus.DEGRADED
         issues.append(f"Error rate is {error_percent:.1f}% (threshold: 1%)")
 
-    if p95_latency > 1000:
+    if p95_latency_s > 1.0:
         status = HealthStatus.DOWN
-        issues.append(f"P95 latency is {p95_latency:.0f}ms (threshold: 1000ms)")
-    elif p95_latency > 500:
+        issues.append(f"P95 latency is {p95_latency_s:.2f}s (threshold: 1s)")
+    elif p95_latency_s > 0.5:
         if status != HealthStatus.DOWN:
             status = HealthStatus.DEGRADED
-        issues.append(f"P95 latency is {p95_latency:.0f}ms (threshold: 500ms)")
+        issues.append(f"P95 latency is {p95_latency_s:.2f}s (threshold: 0.5s)")
 
     if request_rate == 0:
         status = HealthStatus.DOWN
@@ -376,7 +397,7 @@ def compute_health(metrics_client, service: str) -> ServiceHealth:
         status=status,
         request_rate=request_rate,
         error_rate_percent=error_percent,
-        p95_latency_ms=p95_latency,
+        p95_latency_s=p95_latency_s,
         issues=issues,
     )
 ```
@@ -394,7 +415,7 @@ The biggest advantage of using OpenTelemetry for dashboards is consistency. When
 def generate_dashboard_config(service_name: str) -> dict:
     """
     Generate a dashboard configuration for a service.
-    Uses the standard OpenTelemetry metric names that every service exports.
+    Uses the custom RED metric names that every service exports.
     """
     return {
         "title": f"{service_name} - Service Health",
@@ -440,9 +461,9 @@ def generate_dashboard_config(service_name: str) -> dict:
                         "type": "timeseries",
                         "title": "Latency Percentiles",
                         "queries": [
-                            f'histogram_quantile(0.50, rate(http_server_request_duration_bucket{{service_name="{service_name}"}}[5m]))',
-                            f'histogram_quantile(0.95, rate(http_server_request_duration_bucket{{service_name="{service_name}"}}[5m]))',
-                            f'histogram_quantile(0.99, rate(http_server_request_duration_bucket{{service_name="{service_name}"}}[5m]))',
+                            f'histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{{service_name="{service_name}"}}[5m])))',
+                            f'histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{{service_name="{service_name}"}}[5m])))',
+                            f'histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{{service_name="{service_name}"}}[5m])))',
                         ],
                     },
                 ],
@@ -451,7 +472,7 @@ def generate_dashboard_config(service_name: str) -> dict:
     }
 ```
 
-This template generator produces a consistent dashboard for any service. The only parameter is the service name, because the metric names and attribute conventions are standardized through OpenTelemetry.
+This template generator produces a consistent dashboard for any service. The only parameter is the service name, because the metric names and attribute conventions are standardized across your OpenTelemetry instrumentation.
 
 ---
 
