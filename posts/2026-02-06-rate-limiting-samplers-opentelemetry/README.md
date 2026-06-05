@@ -105,14 +105,16 @@ The sampler wraps an inner sampler (typically probabilistic) and adds rate limit
 ```typescript
 // rate-limited-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+} from '@opentelemetry/sdk-trace-base';
 import { TokenBucket } from './token-bucket';
 
 export class RateLimitingSampler implements Sampler {
@@ -179,6 +181,10 @@ export class RateLimitingSampler implements Sampler {
     this.droppedCount = 0;
   }
 
+  getAvailableTokens(): number {
+    return this.bucket.getAvailableTokens();
+  }
+
   toString(): string {
     return `RateLimitingSampler{rate=${this.bucket}, inner=${this.innerSampler}}`;
   }
@@ -197,9 +203,10 @@ import {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
   AlwaysOnSampler,
+  AlwaysOffSampler,
 } from '@opentelemetry/sdk-trace-base';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { RateLimitingSampler } from './rate-limited-sampler';
 
 // Inner sampler: 10% probabilistic
@@ -212,13 +219,13 @@ const rateLimited = new RateLimitingSampler(200, probabilistic);
 const sampler = new ParentBasedSampler({
   root: rateLimited,
   remoteParentSampled: new AlwaysOnSampler(),
-  remoteParentNotSampled: rateLimited,
+  remoteParentNotSampled: new AlwaysOffSampler(),
   localParentSampled: new AlwaysOnSampler(),
-  localParentNotSampled: rateLimited,
+  localParentNotSampled: new AlwaysOffSampler(),
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'api-gateway',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -237,9 +244,9 @@ The `ParentBasedSampler` wrapping is important. You only want to rate-limit root
 
 ## Rate Limiting in the Collector
 
-The Collector does not have a built-in rate-limiting sampler, but you can achieve the same effect with the `probabilistic_sampler` processor combined with resource-based routing, or by using the `tail_sampling` processor with a rate-limiting policy.
+The Collector contrib `tail_sampling` processor has a `rate_limiting` policy. It limits sampled span throughput with a token bucket. Because tail sampling sees completed traces, it is also the right place to keep error traces regardless of a normal-traffic rate limit.
 
-A practical approach is to use the `tail_sampling` processor with a `composite` policy:
+A practical approach is to use the `tail_sampling` processor with a `status_code` policy for errors and a `rate_limiting` policy for the rest:
 
 ```yaml
 # otel-collector-config.yaml
@@ -261,31 +268,25 @@ processors:
         status_code:
           status_codes: [ERROR]
 
-      # Rate limit normal traces through composite policy
+      # Rate limit normal traces through the built-in rate-limiting policy
       - name: rate-limited-normal
-        type: composite
-        composite:
-          # Maximum total spans per second across sub-policies
-          max_total_spans_per_second: 500
-          # How to allocate the budget
-          policy_order: [baseline]
-          composite_sub_policy:
-            - name: baseline
-              type: probabilistic
-              probabilistic:
-                sampling_percentage: 100
-          rate_allocation:
-            - policy: baseline
-              percent: 100
+        type: rate_limiting
+        rate_limiting:
+          # Sustained sampled span rate
+          spans_per_second: 500
+          # Optional burst capacity; defaults are version-dependent
+          burst_capacity: 1000
 
   batch:
     timeout: 5s
     send_batch_size: 512
 
 exporters:
-  otlp:
+  otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
 service:
@@ -293,28 +294,30 @@ service:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
-The `composite` policy type in tail sampling supports `max_total_spans_per_second`, which acts as a rate limiter. Sub-policies compete for the budget, and when the limit is reached, additional traces are dropped.
+The `rate_limiting` policy samples based on `spans_per_second` and allows bursts up to `burst_capacity`. The separate `status_code` policy keeps error traces even when the normal-traffic rate limit is exhausted.
 
 ---
 
 ## Priority-Aware Rate Limiting
 
-In production, you want rate limiting that respects priorities. Errors should never be rate-limited. VIP customer traces should get priority over general traffic. Here is how to structure that.
+In production, you want rate limiting that respects priorities. Signals that are known at span creation, such as VIP customers or explicitly marked critical operations, should get priority over general traffic. Error traces whose status is only known after the span finishes are better handled with Collector tail sampling. Here is how to structure SDK-side priority rate limiting.
 
 ```typescript
 // priority-rate-limiter.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+} from '@opentelemetry/sdk-trace-base';
 import { TokenBucket } from './token-bucket';
 
 interface PriorityLevel {
@@ -406,17 +409,18 @@ export class PriorityRateLimitingSampler implements Sampler {
 Usage:
 
 ```typescript
-import { AlwaysOnSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
 import { PriorityRateLimitingSampler } from './priority-rate-limiter';
-import { ErrorSampler } from './error-sampler';
 import { AttributeSampler } from './attribute-sampler';
 
 const sampler = new PriorityRateLimitingSampler(
   [
     {
-      name: 'errors',
-      sampler: new ErrorSampler(),
-      reservedRate: 50,         // 50 error traces/sec guaranteed
+      name: 'critical',
+      sampler: new AttributeSampler([
+        { key: 'sampling.priority', values: ['critical'] }
+      ]),
+      reservedRate: 50,         // 50 critical traces/sec guaranteed
       canBorrowFromShared: true, // Can use shared pool if needed
     },
     {
@@ -438,7 +442,7 @@ const sampler = new PriorityRateLimitingSampler(
 );
 ```
 
-This setup guarantees that errors get at least 50 traces per second, VIP customers get at least 30, and general traffic gets up to 100. The shared pool of 20 provides overflow capacity for errors and VIP traces during spikes.
+This setup guarantees that critical operations get at least 50 traces per second, VIP customers get at least 30, and general traffic gets up to 100. The shared pool of 20 provides overflow capacity for critical and VIP traces during spikes.
 
 ---
 
@@ -457,6 +461,10 @@ const tokensGauge = meter.createObservableGauge(
   'sampling.rate_limiter.available_tokens',
   { description: 'Available tokens in the rate limiter bucket' }
 );
+
+tokensGauge.addCallback((result) => {
+  result.observe(rateLimited.getAvailableTokens());
+});
 
 // Counter for rate-limited drops
 const droppedCounter = meter.createCounter(
@@ -505,7 +513,7 @@ Set your rate limiter to 48 traces per second, and you stay within budget regard
 2. Use the token bucket algorithm for smooth rate limiting with burst tolerance
 3. Always wrap rate-limiting samplers in `ParentBasedSampler` to avoid fragmenting traces
 4. Combine probabilistic and rate-limiting sampling: probabilistic as the primary strategy, rate limiting as the safety net
-5. Implement priority-aware rate limiting so errors and VIP traffic get guaranteed capacity
+5. Implement priority-aware rate limiting so critical and VIP traffic get guaranteed capacity
 6. Monitor token bucket levels and drop counts to tune your rate limits over time
 7. Calculate your target rate from your budget, not from your traffic volume
 
