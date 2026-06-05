@@ -15,12 +15,20 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("analytics.ingestion")
 meter = metrics.get_meter("analytics.ingestion")
@@ -43,6 +51,7 @@ def ingest_event_batch(batch_id: str, events: list, client_info: dict):
         with tracer.start_as_current_span("analytics.validate_batch") as val_span:
             valid_events = []
             invalid_count = 0
+            sample_errors = []
 
             for event in events:
                 validation = validate_event_schema(event)
@@ -50,6 +59,8 @@ def ingest_event_batch(batch_id: str, events: list, client_info: dict):
                     valid_events.append(event)
                 else:
                     invalid_count += 1
+                    if len(sample_errors) < 3:
+                        sample_errors.extend(validation.errors[:3 - len(sample_errors)])
 
             val_span.set_attribute("validation.valid_count", len(valid_events))
             val_span.set_attribute("validation.invalid_count", invalid_count)
@@ -57,7 +68,7 @@ def ingest_event_batch(batch_id: str, events: list, client_info: dict):
             if invalid_count > 0:
                 val_span.add_event("schema_validation_failures", {
                     "invalid_count": invalid_count,
-                    "sample_errors": str(validation.errors[:3])
+                    "sample_errors": str(sample_errors)
                 })
 
         # Deduplicate events (clients sometimes retry and send duplicates)
@@ -71,9 +82,11 @@ def ingest_event_batch(batch_id: str, events: list, client_info: dict):
         # Write to the event queue (Kafka, Kinesis, etc.)
         with tracer.start_as_current_span("analytics.publish_to_queue") as queue_span:
             publish_result = publish_events(deduped_events)
-            queue_span.set_attribute("queue.system", "kafka")
-            queue_span.set_attribute("queue.topic", publish_result.topic)
-            queue_span.set_attribute("queue.partition_count", publish_result.partitions_written)
+            queue_span.set_attribute("messaging.system", "kafka")
+            queue_span.set_attribute("messaging.destination.name", publish_result.topic)
+            queue_span.set_attribute("messaging.batch.message_count", publish_result.count)
+            queue_span.set_attribute("messaging.operation.type", "send")
+            queue_span.set_attribute("queue.partitions_written", publish_result.partitions_written)
             queue_span.set_attribute("queue.events_published", publish_result.count)
 
         span.set_attribute("ingestion.accepted", len(deduped_events))
