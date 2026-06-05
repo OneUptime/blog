@@ -165,8 +165,8 @@ COPY src/ ./src/
 Be careful with patterns that might match nothing:
 
 ```dockerfile
-# If no .conf files exist in the build context, this will fail
-COPY *.conf /etc/app/
+# If config/ is missing or excluded, this will fail
+COPY config/*.conf /etc/app/
 
 # Safer approach: check if files exist or use a directory
 COPY config/ /etc/app/
@@ -174,13 +174,13 @@ COPY config/ /etc/app/
 
 ## Cause 5: Symlinks in the Build Context
 
-Docker does not follow symlinks when building the context. If a file you are trying to COPY is actually a symlink, the symlink itself is included but not the target.
+Docker can follow symlinks that resolve to files inside the build context. But if a symlink points outside the build context, Docker cannot include that target, and COPY will fail when you try to copy through it.
 
 ```bash
 # Check for symlinks in your project
 find . -type l -ls
 
-# If src is a symlink, Docker won't follow it
+# If src points outside the build context, Docker cannot copy through it
 ls -la src
 # lrwxr-xr-x  1 user  group  14 Jan  1 00:00 src -> ../shared/src
 ```
