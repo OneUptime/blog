@@ -35,12 +35,12 @@ The simplest approach is preventing high-cardinality attributes from entering yo
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View, DropAggregation
+from opentelemetry.sdk.metrics.view import View
 
 # Define a view that drops user_id and request_id attributes
 view = View(
     instrument_name="http.server.request.duration",
-    attribute_keys=["http.method", "http.status_code", "http.route"],
+    attribute_keys={"http.method", "http.status_code", "http.route"},
     # Only these attributes will be retained, all others dropped
 )
 
@@ -60,19 +60,16 @@ The OpenTelemetry Collector's filter processor drops metrics based on patterns. 
 processors:
   # Filter processor to drop high-cardinality metrics
   filter/drop_cardinality:
-    metrics:
-      # Drop metrics that match specific patterns
-      exclude:
-        match_type: regexp
-        metric_names:
-          - .*user_id.*
-          - .*session_id.*
-          - .*request_id.*
+    error_mode: ignore
+    # Drop metrics that match specific patterns
+    metric_conditions:
+      - 'IsMatch(metric.name, ".*user_id.*")'
+      - 'IsMatch(metric.name, ".*session_id.*")'
+      - 'IsMatch(metric.name, ".*request_id.*")'
 
-      # Alternative: use datapoint filtering to drop based on attributes
-      datapoint:
-        - 'attributes["user.id"] != nil'
-        - 'attributes["trace.id"] != nil'
+      # Also use datapoint filtering to drop based on attributes
+      - 'datapoint.attributes["user.id"] != nil'
+      - 'datapoint.attributes["trace.id"] != nil'
 
   # Transform processor to remove specific attributes
   transform/remove_attributes:
@@ -80,10 +77,10 @@ processors:
       - context: datapoint
         statements:
           # Remove high-cardinality attributes from all metrics
-          - delete_key(attributes, "user.id")
-          - delete_key(attributes, "session.id")
-          - delete_key(attributes, "request.id")
-          - delete_key(attributes, "client.ip")
+          - delete_key(datapoint.attributes, "user.id")
+          - delete_key(datapoint.attributes, "session.id")
+          - delete_key(datapoint.attributes, "request.id")
+          - delete_key(datapoint.attributes, "client.ip")
 
 service:
   pipelines:
@@ -106,17 +103,18 @@ processors:
       - context: datapoint
         statements:
           # Bucket HTTP status codes into ranges (2xx, 3xx, 4xx, 5xx)
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"], ""))
-          - delete_key(attributes, "http.status_code")
+          - set(datapoint.attributes["http.status_class"], Concat([Substring(String(datapoint.attributes["http.status_code"]), 0, 1), "xx"], ""))
+          - delete_key(datapoint.attributes, "http.status_code")
 
           # Bucket routes with IDs into templates
           # /users/12345 becomes /users/{id}
-          - set(attributes["http.route"], ReplaceAllPatterns(attributes["http.route"], "/\\d+", "/{id}"))
+          - replace_pattern(datapoint.attributes["http.route"], "/\\d+", "/{id}")
 
           # Convert IP addresses to /24 subnets
           # 192.168.1.123 becomes 192.168.1.0/24
-          - set(attributes["client.subnet"], Concat([Substring(attributes["client.ip"], 0, LastIndex(attributes["client.ip"], ".")), ".0/24"], ""))
-          - delete_key(attributes, "client.ip")
+          - set(datapoint.attributes["client.subnet"], String(datapoint.attributes["client.ip"]))
+          - replace_pattern(datapoint.attributes["client.subnet"], "^(\\d+\\.\\d+\\.\\d+)\\.\\d+$", "$$1.0/24")
+          - delete_key(datapoint.attributes, "client.ip")
 
 service:
   pipelines:
@@ -135,9 +133,8 @@ OpenTelemetry SDKs support Views, which define how metrics are aggregated before
 package main
 
 import (
-    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/metric/aggregation"
 )
 
 func initMeterProvider() *metric.MeterProvider {
@@ -155,7 +152,7 @@ func initMeterProvider() *metric.MeterProvider {
                        key != "client.ip"
             },
             // Use histogram with specific buckets to control cardinality
-            Aggregation: aggregation.ExplicitBucketHistogram{
+            Aggregation: metric.AggregationExplicitBucketHistogram{
                 Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0},
             },
         },
@@ -171,34 +168,23 @@ Views provide fine-grained control over metric aggregation and can dramatically 
 
 ## Strategy 5: Use Sampling for High-Cardinality Metrics
 
-For metrics that must include high-cardinality attributes, implement sampling to reduce volume while maintaining statistical validity.
+For metrics that must include high-cardinality attributes, use deterministic filtering to reduce volume while preserving repeatable cohorts. The Collector's `probabilistic_sampler` processor supports traces and logs, not metrics, so metric sampling is usually implemented at instrumentation time or with OTTL filters.
 
 ```yaml
-# Collector configuration for metric sampling
+# Collector configuration for deterministic metric filtering
 processors:
-  # Probabilistic sampling processor
-  probabilistic_sampler:
-    sampling_percentage: 10  # Keep 10% of data points
-    hash_seed: 22  # Deterministic sampling
-
-  # Sample high-cardinality metrics differently
-  filter/route_sampling:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - http.server.request.duration
-      datapoint:
-        # Only sample metrics with user_id attribute
-        - 'attributes["user.id"] != nil'
-        # Sample 1% of requests
-        - 'Int(attributes["user.id"]) % 100 == 0'
+  # Keep only a deterministic 1% cohort for datapoints with numeric user IDs
+  filter/user_id_cohort:
+    error_mode: ignore
+    metric_conditions:
+      # Drop datapoints with user.id unless the ID is evenly divisible by 100
+      - 'metric.name == "http.server.request.duration" and datapoint.attributes["user.id"] != nil and Int(datapoint.attributes["user.id"]) / 100 * 100 != Int(datapoint.attributes["user.id"])'
 
 service:
   pipelines:
     metrics/sampled:
       receivers: [otlp]
-      processors: [filter/route_sampling, batch]
+      processors: [filter/user_id_cohort, batch]
       exporters: [otlp/backend]
 ```
 
@@ -206,34 +192,39 @@ Sampling maintains visibility into trends while reducing the number of stored ti
 
 ## Strategy 6: Implement Cardinality Limits in Collector
 
-The OpenTelemetry Collector can enforce cardinality limits, automatically dropping new series when limits are reached.
+The OpenTelemetry Collector contrib repository has a development-stage Cardinality Guardian processor for catching cardinality explosions. It is not included in the standard Collector distributions, so you need a custom Collector build before using this configuration.
 
 ```yaml
-# Experimental: Cardinality limiter processor
+# Development-stage cardinality guardian processor
 processors:
-  # Note: This is an experimental feature
-  experimental_metricsgeneration/cardinality_limit:
-    # Set maximum number of unique time series
-    max_series: 10000
+  # Note: Requires a custom Collector build that includes cardinalityguardianprocessor
+  cardinality_guardian:
+    # Max new unique values per metric attribute per epoch
+    max_cardinality_delta_per_epoch: 100
 
-    # Action when limit is reached
-    action: drop_newest  # Options: drop_newest, drop_oldest
+    # Epoch rotation interval in seconds
+    epoch_duration_seconds: 300
 
-    # Track cardinality by metric name
-    by_metric: true
+    # Start in tag-only mode before enforcing drops
+    enforcement_mode: tag_only
 
-  # Alternative: Use groupbyattrs to reduce cardinality
-  groupbyattrs/reduce_cardinality:
-    # Only group by these attributes, effectively dropping others
-    keys:
+    # Labels that are never stripped regardless of cardinality
+    never_drop_labels:
       - http.method
       - http.status_code
       - service.name
 
+  # Alternative: use transform aggregation in metric context
+  transform/reduce_cardinality:
+    metric_statements:
+      - context: metric
+        statements:
+          - aggregate_on_attributes("sum", ["http.method", "http.status_code", "service.name"])
+
 service:
   pipelines:
     metrics:
-      processors: [groupbyattrs/reduce_cardinality, batch]
+      processors: [transform/reduce_cardinality, batch]
 ```
 
 ## Monitoring Your Cardinality
@@ -241,20 +232,12 @@ service:
 Track your cardinality to understand the impact of these strategies:
 
 ```yaml
-# Collector configuration to export cardinality metrics
-processors:
-  # Transform processor to add cardinality tracking
-  transform/track_cardinality:
-    metric_statements:
-      - context: metric
-        statements:
-          # Count unique attribute combinations
-          - set(attributes["_cardinality_estimate"], "true")
-
-# Monitor these metrics in your backend
-# - otelcol_processor_batch_batch_size_trigger_send
+# Monitor Collector throughput and backend series counts
+# - otelcol_receiver_accepted_metric_points
 # - otelcol_exporter_sent_metric_points
-# - Compare with configured limits
+# - otelcol_processor_batch_batch_send_size
+# - Unique time series per metric in your backend
+# - Top attribute keys by unique value count in your backend
 ```
 
 ## Real-World Example: E-Commerce Platform
@@ -269,24 +252,20 @@ processors:
     metric_statements:
       - context: datapoint
         statements:
-          # Hash customer IDs into buckets (100 buckets)
-          - set(attributes["customer.segment"], Hash(attributes["customer.id"], 100))
-          - delete_key(attributes, "customer.id")
+          # Hash customer IDs into deterministic buckets
+          - set(datapoint.attributes["customer.segment"], Concat(["bucket-", Substring(SHA256(String(datapoint.attributes["customer.id"])), 0, 2)], ""))
+          - delete_key(datapoint.attributes, "customer.id")
 
           # Aggregate products into categories
-          - set(attributes["product.category"], attributes["product.category_l1"])
-          - delete_key(attributes, "product.id")
-          - delete_key(attributes, "product.sku")
+          - set(datapoint.attributes["product.category"], datapoint.attributes["product.category_l1"])
+          - delete_key(datapoint.attributes, "product.id")
+          - delete_key(datapoint.attributes, "product.sku")
 
   # Step 2: Filter out unnecessary metrics
   filter/essential_only:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - http.server.*
-          - db.client.*
-          - service.latency.*
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^http\\.server\\..*") and not IsMatch(metric.name, "^db\\.client\\..*") and not IsMatch(metric.name, "^service\\.latency\\..*")'
 
   # Step 3: Batch with appropriate sizing
   batch:
