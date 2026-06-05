@@ -75,7 +75,10 @@ class InstrumentedCommandBus:
                 # Track events produced
                 event_count = len(result.events) if hasattr(result, "events") else 0
                 span.set_attribute("cqrs.events.count", event_count)
-                events_produced.add(event_count, {"command.type": command_type})
+                events_produced.add(event_count, {
+                    "cqrs.side": "write",
+                    "command.type": command_type,
+                })
 
                 for event in getattr(result, "events", []):
                     span.add_event("domain_event_produced", {
@@ -84,10 +87,12 @@ class InstrumentedCommandBus:
 
                 elapsed = (time.time() - start) * 1000
                 command_duration.record(elapsed, {
+                    "cqrs.side": "write",
                     "command.type": command_type,
                     "command.status": "success",
                 })
                 command_counter.add(1, {
+                    "cqrs.side": "write",
                     "command.type": command_type,
                     "command.status": "success",
                 })
@@ -97,10 +102,12 @@ class InstrumentedCommandBus:
             except Exception as e:
                 elapsed = (time.time() - start) * 1000
                 command_duration.record(elapsed, {
+                    "cqrs.side": "write",
                     "command.type": command_type,
                     "command.status": "error",
                 })
                 command_counter.add(1, {
+                    "cqrs.side": "write",
                     "command.type": command_type,
                     "command.status": "error",
                 })
@@ -164,14 +171,19 @@ class InstrumentedQueryBus:
                 # Track result size for pagination and performance analysis
                 if isinstance(result, list):
                     span.set_attribute("cqrs.query.result_count", len(result))
-                    query_result_size.record(len(result), {"query.type": query_type})
+                    query_result_size.record(len(result), {
+                        "cqrs.side": "read",
+                        "query.type": query_type,
+                    })
 
                 elapsed = (time.time() - start) * 1000
                 query_duration.record(elapsed, {
+                    "cqrs.side": "read",
                     "query.type": query_type,
                     "query.status": "success",
                 })
                 query_counter.add(1, {
+                    "cqrs.side": "read",
                     "query.type": query_type,
                     "query.status": "success",
                 })
@@ -181,14 +193,17 @@ class InstrumentedQueryBus:
             except Exception as e:
                 elapsed = (time.time() - start) * 1000
                 query_duration.record(elapsed, {
+                    "cqrs.side": "read",
                     "query.type": query_type,
                     "query.status": "error",
                 })
                 query_counter.add(1, {
+                    "cqrs.side": "read",
                     "query.type": query_type,
                     "query.status": "error",
                 })
                 span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
                 raise
 ```
 
@@ -198,8 +213,9 @@ Projections bridge the write and read sides. They consume domain events and upda
 
 ```python
 projection_tracer = trace.get_tracer("cqrs.projection")
+projection_meter = metrics.get_meter("cqrs.projection")
 
-projection_lag = meter.create_histogram(
+projection_lag = projection_meter.create_histogram(
     name="cqrs.projection.lag",
     description="Time between event creation and projection update",
     unit="ms",
@@ -232,14 +248,21 @@ class InstrumentedProjectionHandler:
             if hasattr(event, "timestamp"):
                 lag_ms = (time.time() - event.timestamp) * 1000
                 projection_lag.record(lag_ms, {
+                    "cqrs.side": "projection",
                     "projection.name": self.projection_name,
                     "event.type": type(event).__name__,
                 })
                 span.set_attribute("cqrs.projection.lag_ms", lag_ms)
 
-            # Update the read model
-            self.apply(event)
-            span.set_attribute("cqrs.projection.status", "applied")
+            try:
+                # Update the read model
+                self.apply(event)
+                span.set_attribute("cqrs.projection.status", "applied")
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.set_attribute("cqrs.projection.status", "error")
+                raise
 
     def apply(self, event):
         """Override in subclasses to apply specific event types."""
@@ -256,12 +279,12 @@ sum(rate(cqrs_command_total[5m])) by (command_type)
 
 # Read-side query latency (P95)
 histogram_quantile(0.95,
-  sum(rate(cqrs_query_duration_bucket[5m])) by (le, query_type)
+  sum(rate(cqrs_query_duration_milliseconds_bucket[5m])) by (le, query_type)
 )
 
 # Projection lag by projection name
 histogram_quantile(0.99,
-  sum(rate(cqrs_projection_lag_bucket[5m])) by (le, projection_name)
+  sum(rate(cqrs_projection_lag_milliseconds_bucket[5m])) by (le, projection_name)
 )
 ```
 
