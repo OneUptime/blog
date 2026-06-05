@@ -29,7 +29,7 @@ graph LR
     A[Applications] -->|OTLP| B[OTel Collector]
     B -->|Prometheus Remote Write| C[Grafana Cloud Prometheus]
     B -->|OTLP/HTTP| D[Grafana Cloud Tempo]
-    B -->|Loki HTTP| E[Grafana Cloud Loki]
+    B -->|OTLP/HTTP| E[Grafana Cloud Loki]
     C --> F[Grafana Dashboard]
     D --> F
     E --> F
@@ -103,18 +103,12 @@ exporters:
     tls:
       insecure: false
 
-  # Loki exporter for logs
-  loki:
-    endpoint: https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push
+  # OTLP HTTP exporter for logs to Loki
+  otlphttp/loki:
+    endpoint: https://logs-prod-eu-west-0.grafana.net/otlp
     headers:
       authorization: Basic <base64-encoded-instance-id:api-token>
-    format: json
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "service_namespace"
-      attributes:
-        level: "level"
+    compression: gzip
     tls:
       insecure: false
 
@@ -136,14 +130,19 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 
   # Enable telemetry for the collector itself
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Authentication Configuration
@@ -169,21 +168,21 @@ exporters:
   prometheusremotewrite:
     endpoint: https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
     resource_to_telemetry_conversion:
       enabled: true
 
   otlphttp/tempo:
     endpoint: https://tempo-prod-04-eu-west-0.grafana.net:443
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
     compression: gzip
 
-  loki:
-    endpoint: https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: https://logs-prod-eu-west-0.grafana.net/otlp
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
-    format: json
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
+    compression: gzip
 ```
 
 Then set the environment variable before running the collector:
@@ -219,7 +218,7 @@ processors:
           # Add prefix to avoid naming conflicts
           - action: add_label
             new_label: otel_collector
-            new_value: true
+            new_value: "true"
 
   # Filter out high-cardinality metrics
   filter/metrics:
@@ -241,7 +240,7 @@ exporters:
   prometheusremotewrite:
     endpoint: https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
     # Enable resource to metric label conversion
     resource_to_telemetry_conversion:
       enabled: true
@@ -251,8 +250,8 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-    # Configure sending queue
-    sending_queue:
+    # Configure remote write queue
+    remote_write_queue:
       enabled: true
       num_consumers: 10
       queue_size: 1000
@@ -299,43 +298,19 @@ processors:
   batch:
     timeout: 10s
 
-  # Add resource attributes for Loki labels
+  # Add resource attributes for Loki's default OTLP label mapping
   resource:
     attributes:
-      - key: loki.resource.labels
-        value: service.name, service.namespace, deployment.environment
+      - key: deployment.environment
+        value: production
         action: insert
-
-  # Transform log attributes
-  attributes:
-    actions:
-      - key: level
-        action: insert
-        from_attribute: severity_text
-      - key: job
-        action: insert
-        from_attribute: service.name
 
 exporters:
-  loki:
-    endpoint: https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: https://logs-prod-eu-west-0.grafana.net/otlp
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
-    # Configure labels from resource and log attributes
-    format: json
-    labels:
-      # Resource attributes become static labels
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
-        deployment.environment: "environment"
-      # Log attributes become indexed labels
-      attributes:
-        level: "level"
-        job: "job"
-      # Log record attributes
-      record:
-        severity_text: "severity"
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
+    compression: gzip
     # Configure retry and queue
     retry_on_failure:
       enabled: true
@@ -352,11 +327,11 @@ service:
   pipelines:
     logs:
       receivers: [otlp, filelog]
-      processors: [resource, attributes, batch]
-      exporters: [loki]
+      processors: [resource, batch]
+      exporters: [otlphttp/loki]
 ```
 
-Be careful with Loki labels. Too many labels or high-cardinality labels can cause performance issues. Keep labels to low-cardinality identifiers like service name, environment, and severity level.
+Be careful with Loki labels. When logs are sent through Loki's native OTLP endpoint, Loki maps a default set of resource attributes to index labels and stores the remaining fields as structured metadata. Keep index labels to low-cardinality identifiers like service name and environment.
 
 ## Traces Configuration with Tempo
 
@@ -376,16 +351,6 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
-  # Add span metrics for RED metrics
-  spanmetrics:
-    metrics_exporter: prometheusremotewrite
-    latency_histogram_buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms]
-    dimensions:
-      - name: http.method
-        default: GET
-      - name: http.status_code
-      - name: service.name
-
   # Sample traces if needed
   probabilistic_sampler:
     sampling_percentage: 100.0
@@ -396,12 +361,23 @@ processors:
         value: production
         action: insert
 
+connectors:
+  # Add span metrics for RED metrics
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1s, 2s, 4s, 8s]
+    dimensions:
+      - name: http.method
+        default: GET
+      - name: http.status_code
+
 exporters:
   # Tempo exporter
   otlphttp/tempo:
     endpoint: https://tempo-prod-04-eu-west-0.grafana.net:443
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -419,7 +395,7 @@ exporters:
   prometheusremotewrite:
     endpoint: https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push
     headers:
-      authorization: Basic ${GRAFANA_CLOUD_AUTH}
+      authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
     resource_to_telemetry_conversion:
       enabled: true
 
@@ -427,17 +403,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, probabilistic_sampler, spanmetrics, batch]
-      exporters: [otlphttp/tempo]
+      processors: [resource, probabilistic_sampler, batch]
+      exporters: [otlphttp/tempo, span_metrics]
 
     # Separate pipeline for span metrics
     metrics/spanmetrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheusremotewrite]
 ```
 
-The `spanmetrics` processor is particularly valuable as it generates RED (Rate, Errors, Duration) metrics from your traces, giving you automatic service-level metrics in Grafana Cloud Prometheus.
+The `span_metrics` connector is particularly valuable as it generates RED (Rate, Errors, Duration) metrics from your traces, giving you automatic service-level metrics in Grafana Cloud Prometheus.
 
 ## Kubernetes Deployment
 
@@ -475,21 +451,21 @@ data:
       prometheusremotewrite:
         endpoint: https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push
         headers:
-          authorization: Basic ${GRAFANA_CLOUD_AUTH}
+          authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
         resource_to_telemetry_conversion:
           enabled: true
 
       otlphttp/tempo:
         endpoint: https://tempo-prod-04-eu-west-0.grafana.net:443
         headers:
-          authorization: Basic ${GRAFANA_CLOUD_AUTH}
+          authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
         compression: gzip
 
-      loki:
-        endpoint: https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push
+      otlphttp/loki:
+        endpoint: https://logs-prod-eu-west-0.grafana.net/otlp
         headers:
-          authorization: Basic ${GRAFANA_CLOUD_AUTH}
-        format: json
+          authorization: Basic ${env:GRAFANA_CLOUD_AUTH}
+        compression: gzip
 
     service:
       pipelines:
@@ -504,7 +480,7 @@ data:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ---
 apiVersion: v1
 kind: Secret
@@ -532,7 +508,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/config.yaml
         env:
