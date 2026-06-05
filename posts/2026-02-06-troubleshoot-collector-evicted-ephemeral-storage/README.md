@@ -53,8 +53,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
+  namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
@@ -154,8 +161,15 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: otel-collector
+  namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
@@ -177,8 +191,9 @@ Set up monitoring to catch disk issues before eviction:
 
 ```bash
 # Check current ephemeral storage usage per pod
-kubectl get pods -n observability -o json | \
-  jq '.items[] | {name: .metadata.name, ephemeral: .status.ephemeralContainerStatuses}'
+NODE=$(kubectl get pod otel-collector-pod -n observability -o jsonpath='{.spec.nodeName}')
+kubectl get --raw "/api/v1/nodes/${NODE}/proxy/stats/summary" | \
+  jq '.pods[] | select(.podRef.namespace == "observability" and .podRef.name == "otel-collector-pod") | {name: .podRef.name, ephemeral_used_bytes: .ephemeralStorage.usedBytes}'
 
 # Monitor the queue directory size
 kubectl exec -it otel-collector-pod -- du -sh /var/lib/otelcol/queue
