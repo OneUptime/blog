@@ -47,9 +47,9 @@ graph TD
 Install OpenTelemetry packages alongside your AdonisJS application. AdonisJS 5 uses Node.js, allowing standard Node.js instrumentation.
 
 ```bash
-# Install AdonisJS packages if not already present
+# Install AdonisJS 5 packages if not already present
 
-npm install @adonisjs/core @adonisjs/lucid @adonisjs/auth
+npm install @adonisjs/core@5.9.0 @adonisjs/lucid@18.4.0 @adonisjs/auth@8.2.3
 
 # Install OpenTelemetry packages
 npm install @opentelemetry/api \
@@ -59,6 +59,9 @@ npm install @opentelemetry/api \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
+
+# Optional packages used by the mail and queue examples
+npm install @adonisjs/mail@8.2.1 @rocketseat/adonis-bull@0.3.0
 ```
 
 ## Configuring OpenTelemetry Initialization
@@ -74,11 +77,17 @@ import { ApplicationContract } from '@ioc:Adonis/Core/Application';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 export default class TelemetryProvider {
-  private sdk: NodeSDK;
+  public static needsApplication = true;
+
+  private sdk!: NodeSDK;
 
   constructor(protected app: ApplicationContract) {}
 
@@ -90,15 +99,13 @@ export default class TelemetryProvider {
     });
 
     // Define service resource
-    const resource = Resource.default().merge(
-      new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: this.app.env.get('SERVICE_NAME', 'adonisjs-app'),
-        [SemanticResourceAttributes.SERVICE_VERSION]: this.app.env.get('SERVICE_VERSION', '1.0.0'),
-        [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: this.app.env.get('NODE_ENV', 'development'),
-        'service.framework': 'adonisjs',
-        'service.framework.version': '5.0',
-      })
-    );
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: this.app.env.get('SERVICE_NAME', 'adonisjs-app'),
+      [ATTR_SERVICE_VERSION]: this.app.env.get('SERVICE_VERSION', '1.0.0'),
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: this.app.env.get('NODE_ENV', 'development'),
+      'service.framework': 'adonisjs',
+      'service.framework.version': this.app.adonisVersion?.toString() || '5.0',
+    });
 
     // Initialize OpenTelemetry SDK
     this.sdk = new NodeSDK({
@@ -149,13 +156,11 @@ export default class TelemetryProvider {
 
 Register the provider in your AdonisJS configuration:
 
-```typescript
-// .adonisrc.json
-// Add TelemetryProvider to providers list
+```json
 {
   "providers": [
-    "./providers/AppProvider",
     "./providers/TelemetryProvider",
+    "./providers/AppProvider",
     "@adonisjs/core"
   ]
 }
@@ -170,7 +175,7 @@ Build middleware that enriches traces with AdonisJS-specific context and tracks 
 // Middleware for OpenTelemetry trace enrichment in AdonisJS
 
 import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('adonisjs-middleware');
 
@@ -219,18 +224,18 @@ export default class TracingMiddleware {
           // Set span status based on response
           const status = ctx.response.getStatus();
           if (status >= 500) {
-            activeSpan.setStatus({ code: 2, message: 'Server error' });
+            activeSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Server error' });
           } else if (status >= 400) {
-            activeSpan.setStatus({ code: 2, message: 'Client error' });
+            activeSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Client error' });
           } else {
-            activeSpan.setStatus({ code: 1 });
+            activeSpan.setStatus({ code: SpanStatusCode.OK });
           }
         }
 
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -264,7 +269,8 @@ Add tracing to controllers to monitor business logic execution and identify perf
 
 import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext';
 import User from 'App/Models/User';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { schema, rules } from '@ioc:Adonis/Core/Validator';
 
 const tracer = trace.getTracer('adonisjs-controllers');
 
@@ -293,28 +299,28 @@ export default class UsersController {
               .select('id', 'email', 'username', 'created_at')
               .paginate(page, limit);
 
-            dbSpan.setAttribute('db.result.count', result.length);
+            dbSpan.setAttribute('db.result.count', result.all().length);
             dbSpan.setAttribute('db.result.total', result.total);
-            dbSpan.setStatus({ code: 1 });
+            dbSpan.setStatus({ code: SpanStatusCode.OK });
 
             return result;
           } catch (error) {
             dbSpan.recordException(error);
-            dbSpan.setStatus({ code: 2, message: error.message });
+            dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             dbSpan.end();
           }
         });
 
-        span.setAttribute('response.user_count', users.length);
+        span.setAttribute('response.user_count', users.all().length);
         span.setAttribute('response.total', users.total);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return response.ok(users);
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         return response.internalServerError({ error: 'Failed to fetch users' });
       } finally {
         span.end();
@@ -344,11 +350,11 @@ export default class UsersController {
               .preload('profile')
               .firstOrFail();
 
-            dbSpan.setStatus({ code: 1 });
+            dbSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             dbSpan.recordException(error);
-            dbSpan.setStatus({ code: 2, message: error.message });
+            dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             dbSpan.end();
@@ -356,12 +362,12 @@ export default class UsersController {
         });
 
         span.setAttribute('user.found', true);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return response.ok(user);
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         if (error.code === 'E_ROW_NOT_FOUND') {
           return response.notFound({ error: 'User not found' });
@@ -391,18 +397,29 @@ export default class UsersController {
           validationSpan.setAttribute('validation.fields', JSON.stringify(Object.keys(payload)));
 
           try {
-            await request.validate({
-              schema: {
-                email: 'required|email|unique:users,email',
-                username: 'required|string|min:3|max:50|unique:users,username',
-                password: 'required|string|min:8',
-              },
+            const createUserSchema = schema.create({
+              email: schema.string([
+                rules.email(),
+                rules.unique({ table: 'users', column: 'email' }),
+              ]),
+              username: schema.string([
+                rules.minLength(3),
+                rules.maxLength(50),
+                rules.unique({ table: 'users', column: 'username' }),
+              ]),
+              password: schema.string([
+                rules.minLength(8),
+              ]),
             });
 
-            validationSpan.setStatus({ code: 1 });
+            await request.validate({
+              schema: createUserSchema,
+            });
+
+            validationSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             validationSpan.recordException(error);
-            validationSpan.setStatus({ code: 2, message: error.message });
+            validationSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             validationSpan.end();
@@ -418,12 +435,12 @@ export default class UsersController {
             const newUser = await User.create(payload);
 
             insertSpan.setAttribute('user.id', newUser.id);
-            insertSpan.setStatus({ code: 1 });
+            insertSpan.setStatus({ code: SpanStatusCode.OK });
 
             return newUser;
           } catch (error) {
             insertSpan.recordException(error);
-            insertSpan.setStatus({ code: 2, message: error.message });
+            insertSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             insertSpan.end();
@@ -431,12 +448,12 @@ export default class UsersController {
         });
 
         span.setAttribute('user.id', user.id);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return response.created(user);
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         if (error.messages) {
           return response.badRequest({ errors: error.messages });
@@ -468,11 +485,11 @@ export default class UsersController {
 
           try {
             const result = await User.findOrFail(userId);
-            querySpan.setStatus({ code: 1 });
+            querySpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             querySpan.recordException(error);
-            querySpan.setStatus({ code: 2, message: error.message });
+            querySpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             querySpan.end();
@@ -488,21 +505,21 @@ export default class UsersController {
             user.merge(payload);
             await user.save();
 
-            updateSpan.setStatus({ code: 1 });
+            updateSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             updateSpan.recordException(error);
-            updateSpan.setStatus({ code: 2, message: error.message });
+            updateSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             updateSpan.end();
           }
         });
 
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
         return response.ok(user);
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         if (error.code === 'E_ROW_NOT_FOUND') {
           return response.notFound({ error: 'User not found' });
@@ -533,21 +550,21 @@ export default class UsersController {
             const user = await User.findOrFail(userId);
             await user.delete();
 
-            deleteSpan.setStatus({ code: 1 });
+            deleteSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             deleteSpan.recordException(error);
-            deleteSpan.setStatus({ code: 2, message: error.message });
+            deleteSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             deleteSpan.end();
           }
         });
 
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
         return response.noContent();
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
         if (error.code === 'E_ROW_NOT_FOUND') {
           return response.notFound({ error: 'User not found' });
@@ -572,7 +589,7 @@ Implement tracing in service classes to monitor complex business operations that
 
 import Order from 'App/Models/Order';
 import User from 'App/Models/User';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import Database from '@ioc:Adonis/Lucid/Database';
 
 const tracer = trace.getTracer('adonisjs-services');
@@ -594,11 +611,11 @@ export default class OrderService {
 
           try {
             const result = await User.findOrFail(userId);
-            userSpan.setStatus({ code: 1 });
+            userSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             userSpan.recordException(error);
-            userSpan.setStatus({ code: 2, message: error.message });
+            userSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             userSpan.end();
@@ -625,7 +642,7 @@ export default class OrderService {
                   await order.save();
 
                   orderSpan.setAttribute('order.id', order.id);
-                  orderSpan.setStatus({ code: 1 });
+                  orderSpan.setStatus({ code: SpanStatusCode.OK });
 
                   return order;
                 } finally {
@@ -644,7 +661,7 @@ export default class OrderService {
                   try {
                     // Simulate adding order item
                     total += 29.99 * item.quantity;
-                    itemSpan.setStatus({ code: 1 });
+                    itemSpan.setStatus({ code: SpanStatusCode.OK });
                   } finally {
                     itemSpan.end();
                   }
@@ -658,11 +675,11 @@ export default class OrderService {
               return newOrder;
             });
 
-            txSpan.setStatus({ code: 1 });
+            txSpan.setStatus({ code: SpanStatusCode.OK });
             return result;
           } catch (error) {
             txSpan.recordException(error);
-            txSpan.setStatus({ code: 2, message: error.message });
+            txSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             txSpan.end();
@@ -678,10 +695,10 @@ export default class OrderService {
           try {
             // Simulate payment processing
             await new Promise(resolve => setTimeout(resolve, 200));
-            paymentSpan.setStatus({ code: 1 });
+            paymentSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             paymentSpan.recordException(error);
-            paymentSpan.setStatus({ code: 2, message: error.message });
+            paymentSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             paymentSpan.end();
@@ -690,12 +707,12 @@ export default class OrderService {
 
         span.setAttribute('order.id', order.id);
         span.setAttribute('order.total', order.total);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         return order;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -713,8 +730,7 @@ Monitor background jobs and queued tasks to ensure they execute successfully and
 // app/Jobs/SendWelcomeEmail.ts
 // Background job with OpenTelemetry tracing
 
-import { JobContract } from '@ioc:Rocketseat/Bull';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import Mail from '@ioc:Adonis/Addons/Mail';
 
 const tracer = trace.getTracer('adonisjs-jobs');
@@ -725,7 +741,7 @@ interface SendWelcomeEmailPayload {
   name: string;
 }
 
-export default class SendWelcomeEmail implements JobContract {
+export default class SendWelcomeEmail {
   public key = 'SendWelcomeEmail';
 
   public async handle(job: any) {
@@ -753,20 +769,20 @@ export default class SendWelcomeEmail implements JobContract {
                 .htmlView('emails/welcome', { name });
             });
 
-            mailSpan.setStatus({ code: 1 });
+            mailSpan.setStatus({ code: SpanStatusCode.OK });
           } catch (error) {
             mailSpan.recordException(error);
-            mailSpan.setStatus({ code: 2, message: error.message });
+            mailSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             mailSpan.end();
           }
         });
 
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -780,7 +796,7 @@ export default class SendWelcomeEmail implements JobContract {
       span.recordException(error);
       span.setAttribute('job.status', 'failed');
       span.setAttribute('job.attempts', job.attemptsMade);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     }
     console.error('Job failed:', error);
   }
@@ -807,7 +823,7 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Resource attributes
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,region=eu-west-1
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,region=eu-west-1
 
 # Application settings
 NODE_ENV=production
