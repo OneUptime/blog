@@ -27,16 +27,17 @@ Let's instrument each one.
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const sdk = new NodeSDK({
-    resource: new Resource({
-        'service.name': 'economy-service',
-        'service.version': '3.1.0',
+    resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: 'economy-service',
+        [ATTR_SERVICE_VERSION]: '3.1.0',
     }),
     traceExporter: new OTLPTraceExporter({
-        url: 'grpc://otel-collector.yourgame.com:4317',
+        url: 'http://otel-collector.yourgame.com:4317',
     }),
 });
 sdk.start();
@@ -68,29 +69,43 @@ async function transferCurrency(
         try {
             // Withdraw from sender
             await tracer.startActiveSpan('economy.currency.withdraw', async (withdrawSpan) => {
-                const balanceBefore = await getBalance(fromPlayerId, currencyType);
-                withdrawSpan.setAttribute('economy.balance_before', balanceBefore);
+                try {
+                    const balanceBefore = await getBalance(fromPlayerId, currencyType);
+                    withdrawSpan.setAttribute('economy.balance_before', balanceBefore);
 
-                if (balanceBefore < amount) {
-                    withdrawSpan.setStatus({
-                        code: SpanStatusCode.ERROR,
-                        message: 'Insufficient funds',
-                    });
-                    throw new Error('Insufficient funds');
+                    if (balanceBefore < amount) {
+                        withdrawSpan.setStatus({
+                            code: SpanStatusCode.ERROR,
+                            message: 'Insufficient funds',
+                        });
+                        throw new Error('Insufficient funds');
+                    }
+
+                    await deductBalance(fromPlayerId, currencyType, amount);
+                    withdrawSpan.setAttribute('economy.balance_after', balanceBefore - amount);
+                } catch (err) {
+                    withdrawSpan.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                    withdrawSpan.recordException(err as Error);
+                    throw err;
+                } finally {
+                    withdrawSpan.end();
                 }
-
-                await deductBalance(fromPlayerId, currencyType, amount);
-                withdrawSpan.setAttribute('economy.balance_after', balanceBefore - amount);
-                withdrawSpan.end();
             });
 
             // Deposit to receiver
             await tracer.startActiveSpan('economy.currency.deposit', async (depositSpan) => {
-                const balanceBefore = await getBalance(toPlayerId, currencyType);
-                await addBalance(toPlayerId, currencyType, amount);
-                depositSpan.setAttribute('economy.balance_before', balanceBefore);
-                depositSpan.setAttribute('economy.balance_after', balanceBefore + amount);
-                depositSpan.end();
+                try {
+                    const balanceBefore = await getBalance(toPlayerId, currencyType);
+                    await addBalance(toPlayerId, currencyType, amount);
+                    depositSpan.setAttribute('economy.balance_before', balanceBefore);
+                    depositSpan.setAttribute('economy.balance_after', balanceBefore + amount);
+                } catch (err) {
+                    depositSpan.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                    depositSpan.recordException(err as Error);
+                    throw err;
+                } finally {
+                    depositSpan.end();
+                }
             });
 
             span.setStatus({ code: SpanStatusCode.OK });
@@ -116,52 +131,66 @@ async function calculateLootDrop(
     context: { bossId: string; difficulty: string }
 ) {
     return tracer.startActiveSpan('economy.loot.calculate', async (span) => {
-        span.setAttributes({
-            'player.id': playerId,
-            'loot.table_id': lootTableId,
-            'loot.boss_id': context.bossId,
-            'loot.difficulty': context.difficulty,
-        });
-
-        // Load the drop table
-        const dropTable = await tracer.startActiveSpan('economy.loot.load_table', async (s) => {
-            const table = await lootTableStore.get(lootTableId);
-            s.setAttribute('loot.table_entries', table.entries.length);
-            s.end();
-            return table;
-        });
-
-        // Roll the dice
-        const roll = Math.random();
-        span.setAttribute('loot.roll_value', parseFloat(roll.toFixed(6)));
-
-        // Walk the drop table to determine which item dropped
-        let cumulativeProbability = 0;
-        let droppedItem = null;
-
-        for (const entry of dropTable.entries) {
-            cumulativeProbability += entry.probability;
-            if (roll <= cumulativeProbability) {
-                droppedItem = entry;
-                break;
-            }
-        }
-
-        if (droppedItem) {
+        try {
             span.setAttributes({
-                'loot.dropped_item_id': droppedItem.itemId,
-                'loot.dropped_item_rarity': droppedItem.rarity,
-                'loot.dropped_item_probability': droppedItem.probability,
+                'player.id': playerId,
+                'loot.table_id': lootTableId,
+                'loot.boss_id': context.bossId,
+                'loot.difficulty': context.difficulty,
             });
 
-            // Grant the item to the player's inventory
-            await grantItem(playerId, droppedItem.itemId, span);
-        } else {
-            span.setAttribute('loot.result', 'no_drop');
-        }
+            // Load the drop table
+            const dropTable = await tracer.startActiveSpan('economy.loot.load_table', async (s) => {
+                try {
+                    const table = await lootTableStore.get(lootTableId);
+                    s.setAttribute('loot.table_entries', table.entries.length);
+                    return table;
+                } catch (err) {
+                    s.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                    s.recordException(err as Error);
+                    throw err;
+                } finally {
+                    s.end();
+                }
+            });
 
-        span.end();
-        return droppedItem;
+            // Roll the dice
+            const roll = Math.random();
+            span.setAttribute('loot.roll_value', parseFloat(roll.toFixed(6)));
+
+            // Walk the drop table to determine which item dropped
+            let cumulativeProbability = 0;
+            let droppedItem = null;
+
+            for (const entry of dropTable.entries) {
+                cumulativeProbability += entry.probability;
+                if (roll <= cumulativeProbability) {
+                    droppedItem = entry;
+                    break;
+                }
+            }
+
+            if (droppedItem) {
+                span.setAttributes({
+                    'loot.dropped_item_id': droppedItem.itemId,
+                    'loot.dropped_item_rarity': droppedItem.rarity,
+                    'loot.dropped_item_probability': droppedItem.probability,
+                });
+
+                // Grant the item to the player's inventory
+                await grantItem(playerId, droppedItem.itemId, span);
+            } else {
+                span.setAttribute('loot.result', 'no_drop');
+            }
+
+            return droppedItem;
+        } catch (err) {
+            span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+            span.recordException(err as Error);
+            throw err;
+        } finally {
+            span.end();
+        }
     });
 }
 ```
@@ -176,36 +205,55 @@ async function executeMarketplacePurchase(
     listingId: string
 ) {
     return tracer.startActiveSpan('economy.marketplace.purchase', async (span) => {
-        // Fetch the listing details
-        const listing = await getMarketplaceListing(listingId);
-        span.setAttributes({
-            'marketplace.listing_id': listingId,
-            'marketplace.seller_id': listing.sellerId,
-            'marketplace.buyer_id': buyerId,
-            'marketplace.item_id': listing.itemId,
-            'marketplace.price': listing.price,
-            'marketplace.currency_type': listing.currencyType,
-        });
+        try {
+            // Fetch the listing details
+            const listing = await getMarketplaceListing(listingId);
+            span.setAttributes({
+                'marketplace.listing_id': listingId,
+                'marketplace.seller_id': listing.sellerId,
+                'marketplace.buyer_id': buyerId,
+                'marketplace.item_id': listing.itemId,
+                'marketplace.price': listing.price,
+                'marketplace.currency_type': listing.currencyType,
+            });
 
-        // Transfer currency from buyer to seller (minus platform fee)
-        const platformFee = Math.floor(listing.price * 0.05);
-        const sellerReceives = listing.price - platformFee;
-        span.setAttribute('marketplace.platform_fee', platformFee);
+            // Transfer currency from buyer to seller and collect the platform fee
+            const platformFee = Math.floor(listing.price * 0.05);
+            const sellerReceives = listing.price - platformFee;
+            const platformAccountId = 'platform_fee_account';
+            span.setAttribute('marketplace.platform_fee', platformFee);
+            span.setAttribute('marketplace.platform_account_id', platformAccountId);
 
-        await transferCurrency(buyerId, listing.sellerId, sellerReceives, listing.currencyType, 'marketplace_sale');
+            await transferCurrency(buyerId, listing.sellerId, sellerReceives, listing.currencyType, 'marketplace_sale');
+            if (platformFee > 0) {
+                await transferCurrency(buyerId, platformAccountId, platformFee, listing.currencyType, 'marketplace_fee');
+            }
 
-        // Transfer the item from seller inventory to buyer inventory
-        await tracer.startActiveSpan('economy.marketplace.transfer_item', async (itemSpan) => {
-            await removeItemFromInventory(listing.sellerId, listing.itemId);
-            await addItemToInventory(buyerId, listing.itemId);
-            itemSpan.end();
-        });
+            // Transfer the item from seller inventory to buyer inventory
+            await tracer.startActiveSpan('economy.marketplace.transfer_item', async (itemSpan) => {
+                try {
+                    await removeItemFromInventory(listing.sellerId, listing.itemId);
+                    await addItemToInventory(buyerId, listing.itemId);
+                } catch (err) {
+                    itemSpan.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                    itemSpan.recordException(err as Error);
+                    throw err;
+                } finally {
+                    itemSpan.end();
+                }
+            });
 
-        // Mark the listing as sold
-        await closeMarketplaceListing(listingId, buyerId);
+            // Mark the listing as sold
+            await closeMarketplaceListing(listingId, buyerId);
 
-        span.setStatus({ code: SpanStatusCode.OK });
-        span.end();
+            span.setStatus({ code: SpanStatusCode.OK });
+        } catch (err) {
+            span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+            span.recordException(err as Error);
+            throw err;
+        } finally {
+            span.end();
+        }
     });
 }
 ```
