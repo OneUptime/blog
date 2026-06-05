@@ -85,6 +85,8 @@ With your observability contract defined, write the instrumentation alongside th
 
 ```python
 # order_service.py
+import time
+
 from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode
 
@@ -108,6 +110,9 @@ processing_duration = meter.create_histogram(
 
 class OrderProcessor:
     def process_order(self, order):
+        start_time = time.perf_counter()
+        order_status = "error"
+
         # Create a span that matches our observability contract
         with tracer.start_as_current_span(
             "process-order",
@@ -124,20 +129,29 @@ class OrderProcessor:
                 self._finalize_order(order, span)
 
                 # Record success metric
-                orders_processed.add(1, {"order.status": "success"})
+                order_status = "success"
+                orders_processed.add(1, {"order.status": order_status})
 
             except PaymentError as e:
                 # Set span status and record the error
+                order_status = "payment_failed"
                 span.set_status(StatusCode.ERROR, str(e))
                 span.record_exception(e)
-                orders_processed.add(1, {"order.status": "payment_failed"})
+                orders_processed.add(1, {"order.status": order_status})
                 raise
 
             except InventoryError as e:
+                order_status = "inventory_failed"
                 span.set_status(StatusCode.ERROR, str(e))
                 span.record_exception(e)
-                orders_processed.add(1, {"order.status": "inventory_failed"})
+                orders_processed.add(1, {"order.status": order_status})
                 raise
+
+            finally:
+                processing_duration.record(
+                    (time.perf_counter() - start_time) * 1000,
+                    {"order.status": order_status},
+                )
 
     def _authorize_payment(self, order, span):
         # Add an event when payment is authorized
@@ -166,9 +180,11 @@ Just as you write unit tests for business logic, write tests that verify your te
 # test_order_observability.py
 import unittest
 from unittest.mock import MagicMock
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 # Set up an in-memory exporter to capture spans for testing
 exporter = InMemorySpanExporter()
@@ -244,9 +260,9 @@ alerts:
   - name: high-order-failure-rate
     # Query the counter metric defined in our contract
     query: |
-      sum(rate(orders_processed{order_status="payment_failed"}[5m]))
+      sum(rate(orders_processed_total{order_status="payment_failed"}[5m]))
       /
-      sum(rate(orders_processed[5m]))
+      sum(rate(orders_processed_total[5m]))
     threshold: 0.05
     description: "Order failure rate exceeds 5%"
 
@@ -254,7 +270,7 @@ alerts:
     # Query the histogram metric from our contract
     query: |
       histogram_quantile(0.95,
-        rate(order_processing_duration_bucket[5m])
+        sum by (le) (rate(order_processing_duration_milliseconds_bucket[5m]))
       )
     threshold: 5000
     description: "95th percentile order processing time exceeds 5 seconds"
