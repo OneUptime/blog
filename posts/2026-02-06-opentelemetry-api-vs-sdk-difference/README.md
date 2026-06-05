@@ -59,7 +59,7 @@ The API provides no-op implementations by default. You can call `tracer.startSpa
 
 **Span**: Represents a unit of work. You add attributes, events, set status, record exceptions. The API defines the interface; the SDK decides if/when/how to export it.
 
-**Context Propagation**: APIs for storing and retrieving trace context across async boundaries (thread locals, async hooks, etc). The propagators that serialize context into headers (W3C Trace Context, B3, etc) live in the SDK.
+**Context Propagation**: APIs for storing and retrieving trace context across async boundaries (thread locals, async hooks, etc). Propagators that serialize context into headers (W3C Trace Context, B3, etc) are configured alongside the SDK, but are not part of the API-only surface your library code should depend on.
 
 **Metrics API**: Similar hierarchy- Meter Provider → Meter → Instruments (Counter, Histogram, Gauge). You record values through the API; the SDK aggregates and exports them.
 
@@ -69,7 +69,7 @@ This code works without an SDK. It just won't emit any telemetry.
 
 ```javascript
 // Using only the API - no SDK imported
-import { trace, context } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 function processOrder(orderId) {
   const tracer = trace.getTracer('order-service', '1.0.0');
@@ -82,12 +82,12 @@ function processOrder(orderId) {
   try {
     // Business logic here
     const result = executeOrderProcessing(orderId);
-    span.setStatus({ code: 1 }); // OK status
+    span.setStatus({ code: SpanStatusCode.OK });
     return result;
   } catch (error) {
     // Record exception using API
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message }); // ERROR status
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     throw error;
   } finally {
     span.end();
@@ -127,15 +127,19 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
 
 // Define resource attributes for this service
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'order-api',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.3',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENV || 'dev',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'order-api',
+  [ATTR_SERVICE_VERSION]: '2.1.3',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.ENV || 'development',
 });
 
 // Configure trace exporter
@@ -276,20 +280,21 @@ These are SDK concerns. You implement SDK interfaces (Sampler, SpanProcessor, Sp
 
 This sampler drops traces for health checks but keeps everything else.
 
-```javascript
-import { Sampler, SamplingDecision, SamplingResult } from '@opentelemetry/sdk-trace-base';
-import { Attributes, SpanKind, Context } from '@opentelemetry/api';
+```typescript
+import { SamplingDecision, type Sampler, type SamplingResult } from '@opentelemetry/sdk-trace-base';
+import { type Attributes, type Context, type Link, type SpanKind } from '@opentelemetry/api';
 
 class HealthCheckSampler implements Sampler {
   shouldSample(
-    context: Context,
-    traceId: string,
-    spanName: string,
-    spanKind: SpanKind,
-    attributes: Attributes
+    _context: Context,
+    _traceId: string,
+    _spanName: string,
+    _spanKind: SpanKind,
+    attributes: Attributes,
+    _links: Link[]
   ): SamplingResult {
     // Drop health check traces
-    if (attributes['http.target'] === '/health' || attributes['http.target'] === '/healthz') {
+    if (attributes['url.path'] === '/health' || attributes['url.path'] === '/healthz') {
       return { decision: SamplingDecision.NOT_RECORD };
     }
 
@@ -313,7 +318,7 @@ Notice this implements an SDK interface. You'd never import this in library code
 
 ## The Collector Relationship
 
-The OpenTelemetry Collector is another SDK-level concern. It receives telemetry exported by application SDKs, processes it (sampling, filtering, enrichment), and forwards it to backends.
+The OpenTelemetry Collector is a pipeline-level concern outside your API instrumentation. It receives telemetry exported by application SDKs, processes it (sampling, filtering, enrichment), and forwards it to backends.
 
 Your application code doesn't know or care if there's a Collector in the middle. You configure your SDK to export OTLP (the protocol), and it sends data to an endpoint. That endpoint might be a backend directly or a Collector.
 
@@ -323,9 +328,10 @@ Related reading: [What is OpenTelemetry Collector and why use one?](https://oneu
 
 ## Testing Instrumentation
 
-For unit tests, you can use in-memory exporters from the SDK test packages. Instrument your code normally (using the API), initialize an SDK with an in-memory exporter, run your code, then assert on the captured spans.
+For unit tests, you can use in-memory exporters from the SDK packages. Instrument your code normally (using the API), initialize an SDK with an in-memory exporter, run your code, then assert on the captured spans.
 
 ```javascript
+import { trace } from '@opentelemetry/api';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -337,14 +343,17 @@ describe('Order Processing', () => {
   beforeEach(() => {
     // Set up in-memory exporter for testing
     exporter = new InMemorySpanExporter();
-    provider = new NodeTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
     provider.register();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Clean up after each test
+    await provider.shutdown();
     exporter.reset();
+    trace.disable();
   });
 
   it('creates span for order processing', () => {
