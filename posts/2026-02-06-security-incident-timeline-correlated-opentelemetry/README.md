@@ -8,18 +8,18 @@ Description: Build a security incident timeline by correlating OpenTelemetry tra
 
 When a security incident happens, the first question is always: "What happened, and when?" Reconstructing the timeline of an attack is critical for understanding scope, containing damage, and preventing recurrence. The challenge is that the evidence is scattered across traces, logs, and metrics from different services.
 
-OpenTelemetry solves this by using a common correlation model. Traces, logs, and metrics all share trace IDs, timestamps, and resource attributes. This post shows how to build an incident timeline from these three signal types.
+OpenTelemetry solves this by using a common correlation model. Traces and correlated logs can share trace IDs and span IDs, while all signals can share timestamps and resource attributes. Metrics can also link back to traces through exemplars when your backend stores them. This post shows how to build an incident timeline from these three signal types.
 
 ## The Correlation Model
 
 OpenTelemetry provides built-in correlation through:
 
 - **Trace ID** - Links all spans in a distributed transaction.
-- **Span ID** - Links log records to the specific span that produced them.
+- **Span ID** - Links correlated log records to the specific span that produced them.
 - **Resource attributes** - Links all signals from the same service instance (pod, host, service name).
-- **Timestamps** - Every signal has a precise timestamp for ordering.
+- **Timestamps** - Provide event or observation time for ordering.
 
-When you query across all three signal types using these common fields, you can reconstruct what happened across your entire system.
+When you query across all three signal types using trace context where it exists, plus resource attributes and timestamps, you can reconstruct what happened across your entire system.
 
 ## Ensuring Proper Correlation in Your Instrumentation
 
@@ -30,9 +30,7 @@ import logging
 from opentelemetry import trace
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-# This automatically injects trace_id and span_id
-
-# into every Python log record
+# This injects OTel trace/span fields into Python log records
 LoggingInstrumentor().instrument(set_logging_format=True)
 
 logger = logging.getLogger("my-service")
@@ -42,7 +40,7 @@ logger = logging.getLogger("my-service")
 def handle_request(request):
     with trace.get_tracer("my-service").start_as_current_span("process_request") as span:
         span.set_attribute("user.id", request.user_id)
-        span.set_attribute("http.path", request.path)
+        span.set_attribute("url.path", request.path)
 
         # This log record will automatically include
         # trace_id and span_id
@@ -50,7 +48,7 @@ def handle_request(request):
             "Processing request",
             extra={
                 "user.id": request.user_id,
-                "http.path": request.path,
+                "url.path": request.path,
                 "security.source_ip": request.remote_addr,
             }
         )
@@ -62,7 +60,7 @@ def handle_request(request):
 
 ## Building the Timeline Query
 
-Here is a SQL-based approach to reconstructing an incident timeline. This assumes your observability backend supports querying across signals (most do, including OneUptime, Grafana, and Elastic):
+Here is a SQL-based approach to reconstructing an incident timeline. This assumes your observability backend stores these signals in schemas that can be queried together; adapt the table and field names to your backend:
 
 ```sql
 -- Security Incident Timeline Builder
@@ -87,12 +85,17 @@ trace_events AS (
     s.start_time AS timestamp,
     s.span_name AS event_name,
     s.resource_attributes['service.name'] AS service,
-    s.attributes['http.method'] AS http_method,
-    s.attributes['http.path'] AS http_path,
-    s.attributes['http.status_code'] AS status_code,
+    s.attributes['http.request.method'] AS http_method,
+    s.attributes['url.path'] AS url_path,
+    s.attributes['http.response.status_code'] AS status_code,
     s.attributes['authz.decision'] AS authz_decision,
     s.status_code AS span_status,
-    s.duration_ms
+    s.duration_ms,
+    NULL AS security_event,
+    NULL AS source_ip,
+    NULL AS severity,
+    NULL AS metric_value,
+    NULL AS attributes
   FROM spans s
   JOIN incident_traces it ON s.trace_id = it.trace_id
 ),
@@ -106,9 +109,17 @@ log_events AS (
     l.timestamp,
     l.body AS event_name,
     l.resource_attributes['service.name'] AS service,
+    NULL AS http_method,
+    NULL AS url_path,
+    NULL AS status_code,
+    NULL AS authz_decision,
+    NULL AS span_status,
+    NULL AS duration_ms,
     l.attributes['security.event_type'] AS security_event,
     l.attributes['security.source_ip'] AS source_ip,
-    l.severity_text AS severity
+    l.severity_text AS severity,
+    NULL AS metric_value,
+    l.attributes
   FROM logs l
   JOIN incident_traces it ON l.trace_id = it.trace_id
 ),
@@ -122,7 +133,16 @@ metric_anomalies AS (
     m.timestamp,
     m.metric_name AS event_name,
     m.resource_attributes['service.name'] AS service,
-    m.value,
+    NULL AS http_method,
+    NULL AS url_path,
+    NULL AS status_code,
+    NULL AS authz_decision,
+    NULL AS span_status,
+    NULL AS duration_ms,
+    NULL AS security_event,
+    NULL AS source_ip,
+    NULL AS severity,
+    m.value AS metric_value,
     m.attributes
   FROM metrics m
   WHERE
@@ -132,7 +152,7 @@ metric_anomalies AS (
       (m.metric_name = 'auth.jwt.validations' AND m.attributes['result'] = 'invalid')
       OR (m.metric_name = 'security.large_response.count')
       OR (m.metric_name = 'authz.denials')
-      OR (m.metric_name = 'http.server.request.duration' AND m.value > 5000)
+      OR (m.metric_name = 'http.server.request.duration' AND m.value > 5)
     )
 )
 
@@ -179,6 +199,8 @@ class IncidentTimelineBuilder:
         Query all three signal types and merge them
         into a single ordered timeline.
         """
+        self.entries = []
+
         # Gather traces
         traces = self.client.query_traces(
             start_time=start_time,
@@ -191,13 +213,13 @@ class IncidentTimelineBuilder:
                 timestamp=span.start_time,
                 signal_type="trace",
                 service=span.resource_attrs.get("service.name", "unknown"),
-                event=f"{span.attrs.get('http.method', '')} "
-                      f"{span.attrs.get('http.path', span.name)}",
+                event=f"{span.attrs.get('http.request.method', '')} "
+                      f"{span.attrs.get('url.path', span.name)}",
                 severity=severity,
                 trace_id=span.trace_id,
                 details={
                     "span_name": span.name,
-                    "status_code": span.attrs.get("http.status_code"),
+                    "status_code": span.attrs.get("http.response.status_code"),
                     "authz_decision": span.attrs.get("authz.decision"),
                     "duration_ms": span.duration_ms,
                     "user_id": span.attrs.get("user.id"),
@@ -249,9 +271,9 @@ class IncidentTimelineBuilder:
     def classify_span_severity(self, span):
         if span.attrs.get("authz.decision") == "deny":
             return "warning"
-        if span.status_code == "ERROR":
+        if str(span.status_code).upper() in {"ERROR", "STATUS_CODE_ERROR"}:
             return "critical"
-        if span.attrs.get("http.status_code", 200) >= 400:
+        if span.attrs.get("http.response.status_code", 200) >= 400:
             return "warning"
         return "info"
 
@@ -307,4 +329,4 @@ print(report)
 
 ## Summary
 
-A security incident timeline is only as good as the data it is built from. When your traces, logs, and metrics all flow through OpenTelemetry with proper correlation (trace IDs, span IDs, resource attributes), building the timeline becomes a query problem rather than a data collection problem. The unified correlation model means you can see the complete sequence of events across all your services, from the initial suspicious activity through the full chain of actions, all ordered by timestamp and linked by trace context.
+A security incident timeline is only as good as the data it is built from. When your traces, logs, and metrics all flow through OpenTelemetry with proper correlation (trace IDs and span IDs for traces and logs, plus resource attributes, timestamps, and metric exemplars where available), building the timeline becomes a query problem rather than a data collection problem. The unified correlation model means you can see the complete sequence of events across all your services, from the initial suspicious activity through the full chain of actions, all ordered by timestamp and linked by trace context where it exists.
