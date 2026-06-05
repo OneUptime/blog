@@ -45,7 +45,7 @@ export function register() {
 }
 ```
 
-Enable the hook in your Next.js config:
+In current versions of Next.js, the `instrumentation.ts` file is detected automatically. If you're still on Next.js 14 or earlier, enable the hook in your Next.js config:
 
 ```javascript
 // next.config.js
@@ -59,15 +59,15 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
-This foundation ensures all server-side code runs within an instrumented context.
+This foundation ensures server-side code runs within an instrumented context. Place the file at the project root, or inside `src` if your app uses a `src` directory.
 
 ## Tracing API Routes
 
-API routes represent traditional HTTP endpoints. OpenTelemetry's automatic instrumentation captures the HTTP layer, but you should add custom spans for business logic:
+App Router route handlers under `app/api` represent traditional HTTP endpoints. OpenTelemetry's automatic instrumentation captures the HTTP layer, but you should add custom spans for business logic:
 
 ```typescript
 // app/api/products/route.ts
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 export async function GET(request: Request) {
   const tracer = trace.getTracer('products-api');
@@ -120,12 +120,12 @@ export async function GET(request: Request) {
       });
 
       span.setAttribute('response.count', transformed.length);
-      span.setStatus({ code: 1 }); // OK
+      span.setStatus({ code: SpanStatusCode.OK });
 
       return Response.json(transformed);
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message }); // ERROR
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       return Response.json({ error: 'Failed to fetch products' }, { status: 500 });
     } finally {
       span.end();
@@ -138,7 +138,7 @@ This pattern creates a hierarchy of spans showing exactly where time is spent: d
 
 ## Tracing Server Components
 
-Server Components are async functions that render React elements on the server. Unlike API routes, they don't return JSON but JSX that Next.js serializes:
+Server Components can be async functions that render React elements on the server. Unlike route handlers, they don't return JSON but JSX that Next.js serializes:
 
 ```typescript
 // app/products/page.tsx
@@ -228,11 +228,13 @@ async function getReviews(productId: string) {
   });
 }
 
-export default async function ProductPage({ params }: { params: { id: string } }) {
-  // These execute in parallel by default in Next.js
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  // These execute in parallel because they are started before Promise.all awaits them
   const [product, reviews] = await Promise.all([
-    getProduct(params.id),
-    getReviews(params.id),
+    getProduct(id),
+    getReviews(id),
   ]);
 
   if (!product) {
@@ -265,7 +267,7 @@ Server Actions are server-side functions callable from client components. They'r
 // app/actions/create-product.ts
 'use server';
 
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { revalidatePath } from 'next/cache';
 
 export async function createProduct(formData: FormData) {
@@ -310,11 +312,11 @@ export async function createProduct(formData: FormData) {
         cacheSpan.end();
       });
 
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return { success: true, productId: product.id };
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       return { success: false, error: (error as Error).message };
     } finally {
       span.end();
@@ -335,16 +337,17 @@ import { trace } from '@opentelemetry/api';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const tracer = trace.getTracer('products-api');
+  const { id } = await params;
 
   return await tracer.startActiveSpan('get-product-by-id', async (span) => {
     span.setAttribute('http.method', 'GET');
-    span.setAttribute('product.id', params.id);
+    span.setAttribute('product.id', id);
 
     const product = await db.product.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!product) {
@@ -361,18 +364,19 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const tracer = trace.getTracer('products-api');
+  const { id } = await params;
 
   return await tracer.startActiveSpan('update-product', async (span) => {
     span.setAttribute('http.method', 'PATCH');
-    span.setAttribute('product.id', params.id);
+    span.setAttribute('product.id', id);
 
     const body = await request.json();
 
     const product = await db.product.update({
-      where: { id: params.id },
+      where: { id },
       data: body,
     });
 
@@ -384,16 +388,17 @@ export async function PATCH(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const tracer = trace.getTracer('products-api');
+  const { id } = await params;
 
   return await tracer.startActiveSpan('delete-product', async (span) => {
     span.setAttribute('http.method', 'DELETE');
-    span.setAttribute('product.id', params.id);
+    span.setAttribute('product.id', id);
 
     await db.product.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     span.setAttribute('response.status', 204);
@@ -407,32 +412,29 @@ Different span names for each method make it easy to filter traces by operation 
 
 ## Automatic Database Instrumentation
 
-Most database clients have OpenTelemetry instrumentation. Prisma, for example, can be automatically instrumented:
+Many database clients have OpenTelemetry instrumentation. Prisma, for example, can be automatically instrumented:
 
 ```typescript
 // instrumentation.ts
 import { registerOTel } from '@vercel/otel';
+import type { InstrumentationOptionOrName } from '@vercel/otel';
 
-export function register() {
+export async function register() {
+  const instrumentations: InstrumentationOptionOrName[] = ['auto'];
+
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-
-    registerOTel({
-      serviceName: 'nextjs-app',
-      instrumentations: [
-        getNodeAutoInstrumentations({
-          // Prisma instrumentation (if using Prisma)
-          '@prisma/instrumentation': {
-            enabled: true,
-          },
-        }),
-      ],
-    });
+    const { PrismaInstrumentation } = await import('@prisma/instrumentation');
+    instrumentations.push(new PrismaInstrumentation());
   }
+
+  registerOTel({
+    serviceName: 'nextjs-app',
+    instrumentations,
+  });
 }
 ```
 
-With this setup, every Prisma query automatically generates spans showing the SQL, execution time, and affected rows.
+With this setup, Prisma Client operations generate OpenTelemetry spans for operation-level work such as client operations, serialization, and database query execution.
 
 ## Tracing Parallel Data Fetching
 
@@ -535,6 +537,8 @@ The server-side span that threw the error records the exception:
 
 ```typescript
 // app/products/page.tsx
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+
 async function getProducts() {
   const tracer = trace.getTracer('server-components');
 
@@ -547,7 +551,7 @@ async function getProducts() {
       // Record exception details in the span
       span.recordException(error as Error);
       span.setStatus({
-        code: 2,
+        code: SpanStatusCode.ERROR,
         message: (error as Error).message,
       });
       span.end();
@@ -561,7 +565,7 @@ This pattern ensures errors are visible in both your traces and error tracking s
 
 ## Measuring Serialization Overhead
 
-Next.js serializes Server Component props to send them to the client. Large or complex objects slow this down:
+Next.js serializes the React Server Component payload, and any data passed from Server Components to Client Components must be serializable. Large or complex objects can increase payload size:
 
 ```typescript
 // app/dashboard/page.tsx
@@ -583,7 +587,7 @@ async function getDashboardData() {
       },
     });
 
-    // Measure serialization impact
+    // Estimate payload size before passing data into Client Components
     const serializationSpan = tracer.startSpan('serialize-dashboard-data');
     const serialized = JSON.stringify(data);
     const sizeKb = Buffer.byteLength(serialized, 'utf8') / 1024;
@@ -635,9 +639,10 @@ async function getProduct(category: string, id: string) {
 export default async function ProductDetailPage({
   params,
 }: {
-  params: { category: string; id: string };
+  params: Promise<{ category: string; id: string }>;
 }) {
-  const product = await getProduct(params.category, params.id);
+  const { category, id } = await params;
+  const product = await getProduct(category, id);
 
   if (!product) {
     return <div>Product not found</div>;
