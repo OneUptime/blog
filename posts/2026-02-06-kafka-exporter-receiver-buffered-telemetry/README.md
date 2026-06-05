@@ -30,21 +30,24 @@ exporters:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-traces
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto
     producer:
       compression: snappy
       # Wait up to 10ms to batch messages together
+      linger: 10ms
       flush_max_messages: 1000
 
   kafka/metrics:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-metrics
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    metrics:
+      topic: otel-metrics
+      encoding: otlp_proto
     producer:
       compression: snappy
 
@@ -52,9 +55,10 @@ exporters:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-logs
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    logs:
+      topic: otel-logs
+      encoding: otlp_proto
     producer:
       compression: snappy
 
@@ -92,22 +96,24 @@ receivers:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-traces
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    traces:
+      topics: [otel-traces]
+      encoding: otlp_proto
     group_id: otel-consumer-traces
-    # Start from the earliest unread offset
+    # Start at the beginning only if this consumer group has no committed offset
     initial_offset: earliest
-    # Number of parallel consumers within this Collector
+    # Timeout used to detect failed consumer group members
     session_timeout: 30s
 
   kafka/metrics:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-metrics
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    metrics:
+      topics: [otel-metrics]
+      encoding: otlp_proto
     group_id: otel-consumer-metrics
     initial_offset: earliest
 
@@ -115,9 +121,10 @@ receivers:
     brokers:
       - kafka-1:9092
       - kafka-2:9092
-    topic: otel-logs
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    logs:
+      topics: [otel-logs]
+      encoding: otlp_proto
     group_id: otel-consumer-logs
     initial_offset: earliest
 
@@ -155,18 +162,19 @@ exporters:
   kafka/traces:
     brokers:
       - kafka-1:9093
-    topic: otel-traces
     protocol_version: "3.0.0"
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto
+    tls:
+      ca_file: /etc/ssl/certs/kafka-ca.pem
+      cert_file: /etc/ssl/certs/collector-cert.pem
+      key_file: /etc/ssl/certs/collector-key.pem
     auth:
       sasl:
         mechanism: SCRAM-SHA-512
         username: ${env:KAFKA_USERNAME}
         password: ${env:KAFKA_PASSWORD}
-      tls:
-        ca_file: /etc/ssl/certs/kafka-ca.pem
-        cert_file: /etc/ssl/certs/collector-cert.pem
-        key_file: /etc/ssl/certs/collector-key.pem
 ```
 
 ## Encoding Options
@@ -175,8 +183,8 @@ The `encoding` field supports several formats:
 
 - `otlp_proto` - Native OTLP protobuf. Best for Collector-to-Collector pipelines.
 - `otlp_json` - JSON encoding. Useful when non-OTel consumers need to read the data.
-- `jaeger` - Jaeger format for traces. Use this if you have existing Jaeger consumers.
-- `zipkin` - Zipkin format for traces.
+- `jaeger_proto` and `jaeger_json` - Jaeger formats for traces. Use these if you have existing Jaeger consumers.
+- `zipkin_proto` and `zipkin_json` - Zipkin formats for traces.
 
 Stick with `otlp_proto` unless you have a specific reason to use something else. It is the most compact and preserves all the original data without any lossy conversion.
 
@@ -196,17 +204,27 @@ Make sure your Kafka topic has at least as many partitions as consumer instances
 
 ## Monitoring the Pipeline
 
-Add the Collector's own metrics to track lag:
+Add the Kafka metrics receiver to track consumer lag:
 
 ```yaml
+receivers:
+  kafka_metrics:
+    brokers:
+      - kafka-1:9092
+      - kafka-2:9092
+    protocol_version: "3.0.0"
+    scrapers:
+      - consumers
+
 service:
-  telemetry:
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
+  pipelines:
+    metrics/kafka:
+      receivers: [kafka_metrics]
+      processors: [batch]
+      exporters: [otlphttp]
 ```
 
-Watch the `kafka_receiver_partition_lag` metric to see if consumers are keeping up. If lag grows consistently, add more consumer instances or increase the batch size in the exporter.
+Watch the `kafka.consumer_group.lag` and `kafka.consumer_group.lag_sum` metrics to see if consumers are keeping up. If lag grows consistently, add more consumer instances or increase the batch size in the exporter.
 
 ## Wrapping Up
 
