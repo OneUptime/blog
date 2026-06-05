@@ -11,16 +11,29 @@ Stories and reels are the primary content format on modern social media platform
 ## Setting Up Tracing
 
 ```python
+import time
+
 from opentelemetry import trace, metrics
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-provider = TracerProvider()
+resource = Resource.create({SERVICE_NAME: "media-pipeline"})
+
+provider = TracerProvider(resource=resource)
 provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
+metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("media.pipeline")
 meter = metrics.get_meter("media.pipeline")
@@ -55,11 +68,12 @@ def handle_media_upload(upload_id: str, user_id: str, media_type: str, file_data
 
         # Store the raw file in object storage
         with tracer.start_as_current_span("media.upload.store_raw") as store_span:
+            store_started = time.perf_counter()
             storage_key = store_raw_media(upload_id, file_data)
+            store_duration_ms = (time.perf_counter() - store_started) * 1000
             store_span.set_attribute("storage.bucket", "raw-media")
             store_span.set_attribute("storage.key", storage_key)
-            store_span.set_attribute("storage.upload_duration_ms",
-                                     store_span.end_time - store_span.start_time if hasattr(store_span, 'end_time') else 0)
+            store_span.set_attribute("storage.upload_duration_ms", store_duration_ms)
 
         # Enqueue the transcoding job
         with tracer.start_as_current_span("media.upload.enqueue_transcode"):
