@@ -30,7 +30,7 @@ Overlay2 runs on top of a regular filesystem. The choice between ext4 and xfs ha
 
 ### ext4 vs xfs
 
-For most Docker workloads, xfs performs better:
+Both ext4 and xfs are supported by overlay2. xfs is a strong choice for many production Docker hosts, especially when you want to use project quotas:
 
 ```bash
 # Check your current filesystem
@@ -60,8 +60,8 @@ Verify d_type support (overlay2 requires it):
 xfs_info /var/lib/docker | grep ftype
 # Output should show ftype=1
 
-# For ext4, check the mount options
-tune2fs -l /dev/your-device | grep -i dir_index
+# For ext4, verify that directory entries store file types
+tune2fs -l /dev/your-device | grep -i filetype
 ```
 
 ## Mount Options for Performance
@@ -77,8 +77,8 @@ The mount options on the backing filesystem significantly affect overlay2 perfor
 ```
 
 Explanation of each option:
-- `noatime`: Disables updating file access timestamps on reads. Every read without this option triggers a metadata write.
-- `nodiratime`: Same as noatime but for directory access times.
+- `noatime`: Disables updating file access timestamps on reads. Linux defaults to `relatime`, which reduces atime writes, but `noatime` removes them entirely.
+- `nodiratime`: Disables directory access time updates. This is implied by `noatime`, so it is redundant but harmless when both are listed.
 - `logbufs=8`: Increases the number of in-memory log buffers for better write throughput.
 - `logbsize=256k`: Increases the log buffer size for better write batching.
 
@@ -111,12 +111,12 @@ Docker's overlay2 driver accepts configuration options through the daemon.json:
 
 The `overlay2.size` option limits the writable layer size per container. This prevents runaway containers from filling the disk but adds a small overhead for quota management.
 
-For xfs backing stores, you can use project quotas:
+For overlay2 on xfs backing stores, this size option requires project quotas:
 
 ```bash
 # Enable project quotas on xfs (required for overlay2.size on xfs)
-# Add prjquota to mount options
-sudo mount -o remount,prjquota /var/lib/docker
+# Add pquota (or prjquota) to mount options
+sudo mount -o remount,pquota /var/lib/docker
 ```
 
 ## Reducing Copy-on-Write Overhead
@@ -172,7 +172,7 @@ docker run -d \
 
 ## Managing Inode Usage
 
-Docker images with many small files consume inodes quickly. Each file in every layer needs its own inode. Running out of inodes crashes Docker even if you have free disk space.
+Docker images with many small files consume inodes quickly. Each file in every layer needs its own inode. Running out of inodes can prevent Docker and containers from creating files even if you have free disk space.
 
 ```bash
 # Check inode usage
@@ -201,7 +201,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. Create the filesystem with more inodes if needed
+# 3. On xfs, allow a larger percentage of the filesystem to be used for inodes if needed
 sudo mkfs.xfs -n ftype=1 -i maxpct=50 /dev/your-device
 ```
 
@@ -210,8 +210,11 @@ sudo mkfs.xfs -n ftype=1 -i maxpct=50 /dev/your-device
 Unused layers, dangling images, and stopped containers accumulate. Regular cleanup keeps overlay2 performing well.
 
 ```bash
-# Remove all unused data (images, containers, volumes, build cache)
+# Remove unused containers, networks, images, and build cache
 docker system prune -a -f
+
+# Include anonymous unused volumes too
+docker system prune -a --volumes -f
 
 # More targeted cleanup commands:
 # Remove only dangling images (no tag, no container reference)
