@@ -14,8 +14,8 @@ Angular is one of the most popular frameworks for building single-page applicati
 
 Before you start, make sure you have the following installed on your machine:
 
-- Node.js 18+ and npm
-- Docker Engine 20.10+
+- Node.js 22.22+ or 24.15+ and npm
+- Docker Engine with Docker Compose v2
 - Angular CLI (`npm install -g @angular/cli`)
 
 ## Creating a Sample Angular Application
@@ -52,7 +52,7 @@ The first stage installs dependencies and builds the Angular project:
 ```dockerfile
 # Stage 1: Build the Angular application
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -74,7 +74,7 @@ The second stage copies only the compiled output into an Nginx container:
 
 ```dockerfile
 # Stage 2: Serve the built app with Nginx
-FROM nginx:1.25-alpine AS production
+FROM nginx:stable-alpine AS production
 
 # Remove the default Nginx static files
 RUN rm -rf /usr/share/nginx/html/*
@@ -166,8 +166,6 @@ For more complex setups, Docker Compose makes things easier to manage. Create a 
 This Compose file defines the Angular service with a health check:
 
 ```yaml
-version: "3.8"
-
 services:
   angular-app:
     build:
@@ -177,7 +175,7 @@ services:
       - "8080:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -196,7 +194,7 @@ For local development, you probably want hot reload instead of rebuilding the im
 This development Dockerfile mounts your source code and runs the Angular dev server:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -215,8 +213,6 @@ CMD ["npx", "ng", "serve", "--host", "0.0.0.0"]
 And a matching Compose file for development:
 
 ```yaml
-version: "3.8"
-
 services:
   angular-dev:
     build:
@@ -233,12 +229,12 @@ services:
 
 ## Environment Variables at Build Time
 
-Angular bakes environment configuration into the build output. You can pass build-time variables using Docker build arguments.
+Angular bakes environment configuration into the build output. If your project uses Angular environment files, you can pass build-time variables using Docker build arguments.
 
-This Dockerfile snippet shows how to pass an API URL at build time:
+If your project does not already have environment files, create them first with `ng generate environments`. This Dockerfile snippet shows how to pass an API URL at build time:
 
 ```dockerfile
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Define a build argument for the API base URL
@@ -248,8 +244,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 
-# Replace the environment file before building
-RUN sed -i "s|API_URL_PLACEHOLDER|${API_URL}|g" src/environments/environment.prod.ts
+# Replace the production environment value before building
+RUN sed -i "s|API_URL_PLACEHOLDER|${API_URL}|g" src/environments/environment.ts
 
 RUN npm run build -- --configuration=production
 ```
@@ -264,7 +260,7 @@ docker build --build-arg API_URL=https://api.mycompany.com -t my-angular-app:pro
 
 The multi-stage build already reduces the final image size significantly. Here are a few additional tips:
 
-- Use `node:20-alpine` instead of `node:20` for the build stage. Alpine images are roughly 50MB compared to 350MB+ for the full image.
+- Use `node:24-alpine` instead of `node:24` for the build stage. Alpine images are much smaller than the full image.
 - Run `npm ci` instead of `npm install`. It is faster, stricter, and produces deterministic installs.
 - Make sure `.dockerignore` excludes test files, documentation, and IDE configuration.
 
@@ -278,27 +274,24 @@ A well-optimized Angular Docker image with Nginx typically comes in around 25-40
 
 ## Security Considerations
 
-Running containers as root is a bad practice. Add a non-root user directive to the Nginx stage.
+Running containers as root is a bad practice. For Nginx, use the unprivileged image and listen on port 8080.
 
-This snippet creates a non-root user and adjusts permissions:
+This snippet uses the unprivileged Nginx image and adjusts the runtime port:
 
 ```dockerfile
-FROM nginx:1.25-alpine AS production
+FROM nginxinc/nginx-unprivileged:stable-alpine AS production
 
-# Create a non-root user for running Nginx
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER root
 
 RUN rm -rf /usr/share/nginx/html/*
-COPY --from=build /app/dist/my-angular-app/browser /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build --chown=nginx:nginx /app/dist/my-angular-app/browser /usr/share/nginx/html
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
 
-# Adjust ownership so the non-root user can serve files
-RUN chown -R appuser:appgroup /usr/share/nginx/html
-RUN chown -R appuser:appgroup /var/cache/nginx
-RUN touch /var/run/nginx.pid && chown appuser:appgroup /var/run/nginx.pid
+# The unprivileged image listens on 8080 instead of 80
+RUN sed -i 's/listen 80;/listen 8080;/' /etc/nginx/conf.d/default.conf
 
-USER appuser
-EXPOSE 80
+USER nginx
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
