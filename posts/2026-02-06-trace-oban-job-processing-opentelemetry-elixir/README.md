@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Elixir, Oban, Job Processing, Background Job
 
 Description: Implement comprehensive OpenTelemetry tracing for Oban background jobs to monitor job execution, retries, and performance in Elixir applications.
 
-Oban has become the de facto standard for background job processing in Elixir applications. It leverages PostgreSQL for reliable job scheduling, execution, and monitoring. While Oban provides excellent built-in observability through its dashboard and telemetry events, integrating OpenTelemetry adds distributed tracing capabilities that connect background jobs to the requests that enqueued them.
+Oban has become the de facto standard for background job processing in Elixir applications. It leverages PostgreSQL for reliable job scheduling, execution, and monitoring. While Oban provides excellent observability through telemetry events and an optional dashboard, integrating OpenTelemetry adds distributed tracing capabilities that connect background jobs to the requests that enqueued them.
 
 ## Why Trace Background Jobs
 
@@ -63,11 +63,13 @@ config :my_app, Oban,
   ],
   queues: [default: 10, mailers: 20, events: 50]
 
-config :opentelemetry, :resource,
-  service: [
-    name: "my-app-workers",
-    version: "1.0.0"
-  ]
+config :opentelemetry,
+  resource: %{
+    service: %{
+      name: "my-app-workers",
+      version: "1.0.0"
+    }
+  }
 
 config :opentelemetry_exporter,
   otlp_protocol: :http_protobuf,
@@ -127,7 +129,7 @@ defmodule MyApp.UserService do
         {:ok, job} ->
           Tracer.add_event("job_enqueued", %{
             job_id: job.id,
-            scheduled_at: job.scheduled_at
+            scheduled_at: DateTime.to_iso8601(job.scheduled_at)
           })
           Tracer.set_status(:ok)
           {:ok, job}
@@ -172,28 +174,32 @@ defmodule MyApp.TracedWorker do
       def perform(%Oban.Job{} = job) do
         # Extract and attach trace context from job args
         parent_ctx = extract_trace_context(job.args)
-        Ctx.attach(parent_ctx)
+        token = Ctx.attach(parent_ctx)
 
         # Create a span for this job execution
-        Tracer.with_span worker_span_name() do
-          set_job_attributes(job)
+        try do
+          Tracer.with_span worker_span_name() do
+            set_job_attributes(job)
 
-          try do
-            result = execute(job)
+            try do
+              result = execute(job)
 
-            Tracer.set_status(:ok)
-            result
+              Tracer.set_status(:ok)
+              result
 
-          rescue
-            error ->
-              handle_job_error(job, error, __STACKTRACE__)
-              reraise error, __STACKTRACE__
+            rescue
+              error ->
+                handle_job_error(job, error, __STACKTRACE__)
+                reraise error, __STACKTRACE__
+            end
           end
+        after
+          Ctx.detach(token)
         end
       end
 
       # Must be implemented by workers
-      def execute(job)
+      def execute(_job), do: raise("#{inspect(__MODULE__)} must implement execute/1")
 
       defp worker_span_name do
         module_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
@@ -240,7 +246,7 @@ defmodule MyApp.TracedWorker do
 
         Tracer.set_attributes([
           {"oban.error", true},
-          {"oban.error_type", error.__struct__},
+          {"oban.error_type", Exception.format_banner(:error, error)},
           {"oban.will_retry", job.attempt < job.max_attempts}
         ])
 
@@ -493,17 +499,19 @@ defmodule MyApp.Workers.BatchProcessingWorker do
       })
     end)
 
-    case Oban.insert_all(child_jobs) do
-      {:ok, jobs} ->
-        Tracer.add_event("child_jobs_enqueued", %{
-          count: length(jobs)
-        })
-        Tracer.set_status(:ok)
-        :ok
+    try do
+      jobs = Oban.insert_all(child_jobs)
 
-      {:error, reason} ->
-        Tracer.set_status(:error, inspect(reason))
-        {:error, reason}
+      Tracer.add_event("child_jobs_enqueued", %{
+        count: length(jobs)
+      })
+      Tracer.set_status(:ok)
+      :ok
+    rescue
+      error ->
+        Tracer.set_status(:error, Exception.message(error))
+        Tracer.record_exception(error, __STACKTRACE__)
+        {:error, error}
     end
   end
 
@@ -527,9 +535,7 @@ defmodule MyApp.ObanTelemetry do
     events = [
       [:oban, :job, :start],
       [:oban, :job, :stop],
-      [:oban, :job, :exception],
-      [:oban, :circuit, :trip],
-      [:oban, :circuit, :open]
+      [:oban, :job, :exception]
     ]
 
     :telemetry.attach_many(
@@ -589,23 +595,6 @@ defmodule MyApp.ObanTelemetry do
     )
   end
 
-  def handle_event(
-        [:oban, :circuit, :trip],
-        _measurements,
-        %{name: name, error: error},
-        _config
-      ) do
-    Logger.warning("Oban circuit breaker tripped: #{name} - #{inspect(error)}")
-  end
-
-  def handle_event(
-        [:oban, :circuit, :open],
-        _measurements,
-        %{name: name},
-        _config
-      ) do
-    Logger.error("Oban circuit breaker opened: #{name}")
-  end
 end
 ```
 
@@ -726,15 +715,19 @@ defmodule MyApp.SampledTracedWorker do
 
       defp trace_job_execution(job) do
         parent_ctx = extract_trace_context(job.args)
-        OpenTelemetry.Ctx.attach(parent_ctx)
+        token = OpenTelemetry.Ctx.attach(parent_ctx)
 
-        Tracer.with_span "oban.worker.#{worker_name()}" do
-          set_job_attributes(job)
-          execute(job)
+        try do
+          Tracer.with_span "oban.worker.#{worker_name()}" do
+            set_job_attributes(job)
+            execute(job)
+          end
+        after
+          OpenTelemetry.Ctx.detach(token)
         end
       end
 
-      def execute(job)
+      def execute(_job), do: raise("#{inspect(__MODULE__)} must implement execute/1")
 
       defp worker_name, do: __MODULE__ |> to_string() |> String.split(".") |> List.last()
       defp set_job_attributes(_job), do: :ok
