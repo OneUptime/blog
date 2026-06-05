@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, CloudEvent, Distributed Tracing, Event-Driven Architecture
 
-Description: Learn how to instrument CloudEvents with OpenTelemetry using the distributed tracing extension in the CloudEvents SDK for full event observability.
+Description: Learn how to instrument CloudEvents with OpenTelemetry using the distributed tracing extension with the CloudEvents SDK for full event observability.
 
-CloudEvents is a specification for describing event data in a common way. When you combine it with OpenTelemetry, you get full visibility into how events flow across your distributed system. The CloudEvents SDK ships with a distributed tracing extension that makes this integration straightforward.
+CloudEvents is a specification for describing event data in a common way. When you combine it with OpenTelemetry, you get full visibility into how events flow across your distributed system. The CloudEvents distributed tracing extension defines trace context attributes, and the CloudEvents SDK lets you carry those attributes with your events.
 
 ## Why Instrument CloudEvents?
 
@@ -52,10 +52,10 @@ tracer = trace.get_tracer("cloudevents.producer")
 The CloudEvents distributed tracing extension adds `traceparent` and `tracestate` attributes to your events. Here is how to create an event that carries trace context:
 
 ```python
-from cloudevents.http import CloudEvent
-from cloudevents.conversion import to_json
-from opentelemetry import trace, context
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from cloudevents.core.formats.json import JSONFormat
+from cloudevents.core.v1.event import CloudEvent
+from opentelemetry import trace
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def create_traced_cloud_event(order_data):
     """Create a CloudEvent with OpenTelemetry trace context attached."""
@@ -76,12 +76,13 @@ def create_traced_cloud_event(order_data):
             "source": "https://example.com/orders",
             "subject": f"order/{order_data['order_id']}",
             # Distributed tracing extension fields
-            "traceparent": carrier.get("traceparent", ""),
-            "tracestate": carrier.get("tracestate", ""),
+            "traceparent": carrier["traceparent"],
         }
+        if "tracestate" in carrier:
+            attributes["tracestate"] = carrier["tracestate"]
 
         event = CloudEvent(attributes, order_data)
-        return to_json(event)
+        return JSONFormat().write(event)
 ```
 
 ## Consuming CloudEvents and Restoring Trace Context
@@ -89,22 +90,25 @@ def create_traced_cloud_event(order_data):
 On the consumer side, you need to extract the trace context from the incoming CloudEvent and create a child span:
 
 ```python
-from cloudevents.http import from_json
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
-from opentelemetry import trace, context
+from cloudevents.core.formats.json import JSONFormat
+from cloudevents.core.v1.event import CloudEvent
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry import trace
 
 consumer_tracer = trace.get_tracer("cloudevents.consumer")
 
 def handle_cloud_event(event_json):
     """Process an incoming CloudEvent and continue the trace."""
 
-    event = from_json(event_json)
+    event = JSONFormat().read(CloudEvent, event_json)
 
     # Extract trace context from the CloudEvent extensions
     carrier = {
-        "traceparent": event.get_attributes().get("traceparent", ""),
-        "tracestate": event.get_attributes().get("tracestate", ""),
+        "traceparent": event.get_extension("traceparent"),
     }
+    tracestate = event.get_extension("tracestate")
+    if tracestate:
+        carrier["tracestate"] = tracestate
 
     # Restore the trace context from the event
     propagator = TraceContextTextMapPropagator()
@@ -116,12 +120,12 @@ def handle_cloud_event(event_json):
         context=ctx,
         kind=trace.SpanKind.CONSUMER
     ) as span:
-        span.set_attribute("cloudevents.event_id", event["id"])
-        span.set_attribute("cloudevents.event_type", event["type"])
-        span.set_attribute("cloudevents.event_source", event["source"])
+        span.set_attribute("cloudevents.event_id", event.get_id())
+        span.set_attribute("cloudevents.event_type", event.get_type())
+        span.set_attribute("cloudevents.event_source", event.get_source())
 
         # Process the event data
-        order_data = event.data
+        order_data = event.get_data()
         process_order(order_data)
 
         span.set_attribute("processing.status", "completed")
@@ -137,7 +141,9 @@ When sending CloudEvents over HTTP, the trace context can also live in HTTP head
 
 ```python
 import requests
-from cloudevents.http import CloudEvent, to_structured
+from cloudevents.core.bindings.http import to_structured_event
+from cloudevents.core.v1.event import CloudEvent
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def send_cloud_event_http(event_data):
     """Send a CloudEvent over HTTP with trace context in both headers and body."""
@@ -147,19 +153,27 @@ def send_cloud_event_http(event_data):
             "type": "com.example.order.shipped",
             "source": "https://example.com/shipping",
         }
+
+        propagator = TraceContextTextMapPropagator()
+        carrier = {}
+        propagator.inject(carrier)
+        attributes["traceparent"] = carrier["traceparent"]
+        if "tracestate" in carrier:
+            attributes["tracestate"] = carrier["tracestate"]
+
         event = CloudEvent(attributes, event_data)
 
-        # Convert to structured content mode (JSON body with CE headers)
-        headers, body = to_structured(event)
+        # Convert to structured content mode (CloudEvent attributes in the JSON body)
+        message = to_structured_event(event)
+        headers = message.headers
 
         # Inject OpenTelemetry trace context into the HTTP headers
-        propagator = TraceContextTextMapPropagator()
         propagator.inject(headers)
 
         response = requests.post(
             "https://events.example.com/ingest",
             headers=headers,
-            data=body
+            data=message.body
         )
 
         span.set_attribute("http.status_code", response.status_code)
@@ -187,4 +201,4 @@ When you view these spans in your tracing backend, you will see a connected trac
 
 ## Key Takeaways
 
-The distributed tracing extension in the CloudEvents SDK gives you a standard way to propagate trace context through events. The `traceparent` and `tracestate` fields follow the W3C Trace Context specification, which means they are compatible with any OpenTelemetry-instrumented service. This approach works regardless of the transport layer you choose, whether that is HTTP, Kafka, AMQP, or anything else that can carry CloudEvents.
+The CloudEvents distributed tracing extension gives you a standard way to propagate trace context through events. The `traceparent` and `tracestate` fields follow the W3C Trace Context specification, which means they are compatible with any OpenTelemetry-instrumented service. This approach works regardless of the transport layer you choose, whether that is HTTP, Kafka, AMQP, or anything else that can carry CloudEvents.
