@@ -94,17 +94,14 @@ spec:
 
 ## Bridging During Migration
 
-During the migration period, you need traces from both systems to connect. Use W3C Trace Context propagation, which both OpenTelemetry and SkyWalking support:
+During the migration period, you need traces from both systems to connect. OpenTelemetry uses W3C Trace Context by default:
 
 ```bash
 # OpenTelemetry agent - uses W3C Trace Context by default
 -Dotel.propagators=tracecontext,baggage
-
-# SkyWalking agent - enable W3C propagation
--Dskywalking.agent.propagation_format=W3C
 ```
 
-This way, traces cross service boundaries even when services use different agents.
+Do not assume this automatically connects traces from services that still use the SkyWalking Java agent. Current SkyWalking Java agent documentation describes SkyWalking's native `sw8` propagation header, so verify propagation compatibility for your exact SkyWalking version or use an explicit bridge/gateway that supports both formats.
 
 ## Disabling Specific OpenTelemetry Instrumentations
 
