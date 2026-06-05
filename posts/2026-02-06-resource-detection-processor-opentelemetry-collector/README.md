@@ -50,8 +50,8 @@ receivers:
 
 processors:
   # Resource detection runs detectors in order
-  # Attributes from later detectors can override earlier ones
-  resourcedetection:
+  # For duplicate detected attributes, the first detector to insert wins
+  resource_detection:
     # List of detectors to run
     # Each detector queries specific metadata sources
     detectors: [env, system]
@@ -73,7 +73,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [otlp]
 ```
 
@@ -85,11 +85,11 @@ Reads resource attributes from environment variables:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env]
     timeout: 2s
 
-    # Environment variables prefixed with OTEL_RESOURCE_ATTRIBUTES
+    # Resource attributes from the OTEL_RESOURCE_ATTRIBUTES environment variable
     # Format: OTEL_RESOURCE_ATTRIBUTES=key1=value1,key2=value2
 ```
 
@@ -105,7 +105,7 @@ Detects host information:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     timeout: 2s
 
@@ -117,11 +117,10 @@ processors:
 
 Attributes detected:
 - `host.name` - System hostname
-- `host.id` - Unique host identifier
-- `host.arch` - CPU architecture (amd64, arm64)
-- `host.type` - System type
 - `os.type` - Operating system (linux, windows, darwin)
-- `os.description` - OS version details
+- `host.id` - Unique host identifier (disabled by default)
+- `host.arch` - CPU architecture (disabled by default)
+- `os.description` - OS version details (disabled by default)
 
 ### AWS EC2 Detector
 
@@ -129,19 +128,19 @@ Detects AWS EC2 instance metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [ec2]
     timeout: 5s
 
     # EC2 metadata service configuration
     ec2:
-      # Tags to extract from EC2 instance
+      # Regex patterns for EC2 tag keys to extract from the instance
       # Requires ec2:DescribeTags IAM permission
       tags:
-        - Name
-        - Environment
-        - Team
-        - CostCenter
+        - ^Name$
+        - ^Environment$
+        - ^Team$
+        - ^CostCenter$
 ```
 
 Attributes detected:
@@ -161,7 +160,7 @@ Detects AWS ECS container metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [ecs]
     timeout: 5s
 
@@ -177,13 +176,12 @@ Attributes detected:
 - `cloud.account.id` - AWS account ID
 - `aws.ecs.cluster.arn` - ECS cluster ARN
 - `aws.ecs.task.arn` - Task ARN
+- `aws.ecs.task.id` - Task ID
 - `aws.ecs.task.family` - Task family name
 - `aws.ecs.task.revision` - Task definition revision
 - `aws.ecs.launchtype` - Launch type (EC2 or FARGATE)
-- `container.id` - Container ID
-- `container.name` - Container name
-- `container.image.name` - Image name
-- `container.image.tag` - Image tag
+- `aws.log.group.names` - CloudWatch log group names
+- `aws.log.stream.names` - CloudWatch log stream names
 
 ### AWS EKS Detector
 
@@ -191,20 +189,24 @@ Detects AWS EKS cluster metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [eks]
-    timeout: 5s
+    timeout: 15s
 
-    # Combines EC2 and Kubernetes detection
-    # Automatically identifies EKS clusters
+    # Enable EKS cluster name detection
+    # Requires EC2:DescribeInstances when detected through the EC2 API
+    eks:
+      resource_attributes:
+        k8s.cluster.name:
+          enabled: true
 ```
 
 Attributes detected:
 - `cloud.provider` = "aws"
 - `cloud.platform` = "aws_eks"
-- `cloud.region` - AWS region
-- `cloud.availability_zone` - AZ
-- `k8s.cluster.name` - EKS cluster name
+- `cloud.region` - AWS region (disabled by default; combine with the EC2 detector or enable the attribute)
+- `cloud.availability_zone` - AZ (disabled by default; combine with the EC2 detector or enable the attribute)
+- `k8s.cluster.name` - EKS cluster name (disabled by default unless enabled)
 
 ### GCP Detector
 
@@ -212,7 +214,7 @@ Detects Google Cloud Platform metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [gcp]
     timeout: 5s
 
@@ -237,23 +239,24 @@ Detects Microsoft Azure metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [azure]
     timeout: 5s
 
     # Azure Instance Metadata Service is queried
-    # Works on Azure VMs and Azure Kubernetes Service
+    # Works on Azure VMs
+    # Use the aks detector for Azure Kubernetes Service cluster attributes
 ```
 
 Attributes detected:
 - `cloud.provider` = "azure"
-- `cloud.platform` = "azure_vm" or "azure_aks"
+- `cloud.platform` = "azure_vm"
 - `cloud.region` - Azure region
 - `cloud.account.id` - Subscription ID
 - `host.id` - VM ID
-- `host.type` - VM size
 - `host.name` - VM name
 - `azure.vm.name` - Virtual machine name
+- `azure.vm.size` - VM size
 - `azure.resourcegroup.name` - Resource group
 
 ### Docker Detector
@@ -262,32 +265,35 @@ Detects Docker container metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [docker]
     timeout: 2s
 
-    # Reads from /proc/self/cgroup to detect Docker
+    # Requires access to the Docker daemon socket
+    # Mount /var/run/docker.sock on Linux
 ```
 
 Attributes detected:
-- `container.id` - Container ID
-- `container.name` - Container name
-- `container.image.name` - Image name
-- `container.image.tag` - Image tag
-- `host.name` - Container hostname
+- `host.name` - Docker host name
+- `os.type` - Docker host operating system
+- `container.name` - Container name (disabled by default)
+- `container.image.name` - Image name (disabled by default)
 
-### Kubernetes Detector
+### Kubernetes API Detector
 
-Detects Kubernetes pod and node metadata:
+Detects Kubernetes node and cluster metadata:
 
 ```yaml
 processors:
-  resourcedetection:
-    detectors: [kubernetes]
+  resource_detection:
+    detectors: [k8s_api]
     timeout: 5s
 
-    # Reads from Kubernetes downward API
-    # Requires environment variables to be set
+    # Reads from the Kubernetes API
+    # Requires K8S_NODE_NAME to be set from the downward API
+    # Requires RBAC permissions to read nodes and the kube-system namespace
+    k8s_api:
+      node_from_env_var: K8S_NODE_NAME
 ```
 
 Configure pod to expose metadata:
@@ -302,30 +308,17 @@ spec:
     - name: app
       image: my-app:latest
       env:
-        # Required environment variables for K8s detector
-        - name: KUBE_NODE_NAME
+        # Required environment variable for the k8s_api detector
+        - name: K8S_NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        - name: KUBE_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: KUBE_POD_UID
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.uid
-        - name: KUBE_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
 ```
 
 Attributes detected:
-- `k8s.namespace.name` - Pod namespace
-- `k8s.pod.name` - Pod name
-- `k8s.pod.uid` - Pod UID
 - `k8s.node.name` - Node name
+- `k8s.node.uid` - Node UID
+- `k8s.cluster.uid` - Cluster UID
 
 ### OpenShift Detector
 
@@ -333,18 +326,19 @@ Detects Red Hat OpenShift metadata:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [openshift]
     timeout: 5s
 
-    # Extends Kubernetes detector with OpenShift specifics
-    # Requires OPENSHIFT environment variables
+    # Queries the OpenShift and Kubernetes APIs
+    # Requires permissions to read OpenShift infrastructure resources
 ```
 
 Attributes detected:
-- All Kubernetes attributes
-- `cloud.provider` = "openshift"
-- OpenShift-specific cluster info
+- `cloud.provider`
+- `cloud.platform`
+- `cloud.region`
+- `k8s.cluster.name`
 
 ## Multi-Cloud Configuration
 
@@ -352,10 +346,10 @@ Detect multiple cloud providers (useful for hybrid/multi-cloud):
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     # Try detectors in order
-    # First successful match wins for conflicting attributes
-    detectors: [env, system, ec2, gcp, azure, eks, gke, aks, kubernetes, docker]
+    # First detector to insert an attribute wins for conflicting attributes
+    detectors: [env, eks, ecs, ec2, gcp, azure, aks, k8s_api, docker, system]
 
     # Increase timeout for multiple detectors
     timeout: 10s
@@ -363,15 +357,10 @@ processors:
     # Override existing attributes with detected ones
     override: false
 
-    # Per-detector timeouts (optional)
     ec2:
       tags:
-        - Environment
-        - Team
-    gcp:
-      # GCP-specific config
-    azure:
-      # Azure-specific config
+        - ^Environment$
+        - ^Team$
 
 exporters:
   otlp:
@@ -383,15 +372,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [otlp]
 ```
 
@@ -409,15 +398,15 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Batch before resource detection for efficiency
+  # Batch telemetry before export
   batch:
     timeout: 1s
     send_batch_size: 1024
 
   # Resource detection with AWS focus
-  resourcedetection:
+  resource_detection:
     # Detector order matters - more specific first
-    detectors: [env, system, eks, ec2, docker]
+    detectors: [env, eks, ec2, docker, system]
 
     # Allow up to 10s for metadata service queries
     timeout: 10s
@@ -427,16 +416,21 @@ processors:
 
     # EC2 configuration
     ec2:
-      # Extract EC2 tags
+      # Extract EC2 tags by regex
       # Requires IAM permission: ec2:DescribeTags
       tags:
-        - Name
-        - Environment
-        - Application
-        - Team
-        - CostCenter
-        - Owner
-        - Project
+        - ^Name$
+        - ^Environment$
+        - ^Application$
+        - ^Team$
+        - ^CostCenter$
+        - ^Owner$
+        - ^Project$
+
+    eks:
+      resource_attributes:
+        k8s.cluster.name:
+          enabled: true
 
     # System configuration
     system:
@@ -471,17 +465,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, resourcedetection, k8sattributes]
+      processors: [resource_detection, k8sattributes, batch]
       exporters: [otlp]
 
     metrics:
       receivers: [otlp]
-      processors: [batch, resourcedetection, k8sattributes]
+      processors: [resource_detection, k8sattributes, batch]
       exporters: [otlp]
 
     logs:
       receivers: [otlp]
-      processors: [batch, resourcedetection, k8sattributes]
+      processors: [resource_detection, k8sattributes, batch]
       exporters: [otlp]
 
   # Monitor resource detection performance
@@ -535,9 +529,9 @@ processors:
     timeout: 1s
     send_batch_size: 1024
 
-  resourcedetection:
+  resource_detection:
     # GCP-focused detector order
-    detectors: [env, system, gcp, kubernetes]
+    detectors: [env, gcp, k8s_api, system]
 
     timeout: 10s
     override: false
@@ -573,7 +567,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, resourcedetection, k8sattributes]
+      processors: [resource_detection, k8sattributes, batch]
       exporters: [otlp]
 ```
 
@@ -583,17 +577,17 @@ Control how attributes are merged:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, ec2]
     timeout: 5s
 
-    # override: false (default)
+    # override defaults to true; set it to false to preserve application attributes
     # Existing attributes take precedence
     # Detected attributes only added if not present
     override: false
 
   # Alternative: override detected attributes
-  resourcedetection/override:
+  resource_detection/override:
     detectors: [env, system, ec2]
     timeout: 5s
 
@@ -612,7 +606,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [otlp]
 ```
 
@@ -623,7 +617,7 @@ Add custom attributes alongside detected ones:
 ```yaml
 processors:
   # Detect infrastructure attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, ec2, eks]
     timeout: 5s
 
@@ -653,7 +647,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, resource]
+      processors: [resource_detection, resource]
       exporters: [otlp]
 ```
 
@@ -668,7 +662,7 @@ service:
 - Verify timeout is sufficient (increase to 10s)
 - Confirm metadata service is accessible (AWS IMDS, GCP metadata)
 - For EC2, check IAM permissions for `ec2:DescribeTags`
-- For Kubernetes, verify environment variables are set
+- For Kubernetes, verify `K8S_NODE_NAME` and RBAC permissions are set for the `k8s_api` detector
 
 ### Wrong Cloud Provider Detected
 
@@ -687,7 +681,7 @@ service:
 **Solutions**:
 - Reduce timeout (default 5s might be too high)
 - Remove unnecessary detectors
-- Use `override: false` to skip detection if attributes exist
+- Use only the detectors needed for the environment
 - Cache detected attributes (detection runs once per collector start)
 
 ### Missing EC2 Tags
@@ -719,14 +713,15 @@ Optimize by:
 | Detector | Environment | Key Attributes |
 |----------|-------------|----------------|
 | **env** | Any | OTEL_RESOURCE_ATTRIBUTES |
-| **system** | Any | host.name, os.type, host.arch |
+| **system** | Any | host.name, os.type |
 | **ec2** | AWS EC2 | cloud.region, host.id, host.type |
-| **ecs** | AWS ECS | aws.ecs.cluster.arn, container.id |
+| **ecs** | AWS ECS | aws.ecs.cluster.arn, aws.ecs.task.arn |
 | **eks** | AWS EKS | cloud.platform=aws_eks, k8s.cluster.name |
 | **gcp** | Google Cloud | cloud.platform=gcp_*, cloud.region |
 | **azure** | Microsoft Azure | cloud.platform=azure_*, cloud.region |
-| **docker** | Docker | container.id, container.name |
-| **kubernetes** | Kubernetes | k8s.pod.name, k8s.namespace.name |
+| **aks** | Azure Kubernetes Service | cloud.platform, k8s.cluster.name |
+| **docker** | Docker | host.name, os.type |
+| **k8s_api** | Kubernetes | k8s.node.name, k8s.cluster.uid |
 
 The resource detection processor automatically discovers and adds infrastructure metadata to your telemetry, providing essential context about where your applications are running. This eliminates manual configuration and ensures consistent resource attributes across all traces, metrics, and logs.
 
