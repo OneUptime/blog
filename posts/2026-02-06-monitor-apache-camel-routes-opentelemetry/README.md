@@ -25,47 +25,54 @@ Add Apache Camel and OpenTelemetry dependencies:
 <dependency>
     <groupId>org.apache.camel</groupId>
     <artifactId>camel-core</artifactId>
-    <version>4.3.0</version>
+    <version>4.14.0</version>
 </dependency>
 
 <!-- Camel Spring Boot -->
 <dependency>
     <groupId>org.apache.camel.springboot</groupId>
     <artifactId>camel-spring-boot-starter</artifactId>
-    <version>4.3.0</version>
+    <version>4.14.0</version>
 </dependency>
 
 <!-- Camel OpenTelemetry -->
 <dependency>
-    <groupId>org.apache.camel</groupId>
-    <artifactId>camel-opentelemetry</artifactId>
-    <version>4.3.0</version>
+    <groupId>org.apache.camel.springboot</groupId>
+    <artifactId>camel-opentelemetry-starter</artifactId>
+    <version>4.14.0</version>
 </dependency>
 
 <!-- OpenTelemetry SDK -->
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-sdk</artifactId>
-    <version>1.34.1</version>
+    <version>1.53.0</version>
 </dependency>
 
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-exporter-otlp</artifactId>
-    <version>1.34.1</version>
+    <version>1.53.0</version>
+</dependency>
+
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-sdk-testing</artifactId>
+    <version>1.53.0</version>
+    <scope>test</scope>
 </dependency>
 
 <!-- Camel components for examples -->
 <dependency>
-    <groupId>org.apache.camel</groupId>
-    <artifactId>camel-http</artifactId>
-    <version>4.3.0</version>
+    <groupId>org.apache.camel.springboot</groupId>
+    <artifactId>camel-http-starter</artifactId>
+    <version>4.14.0</version>
 </dependency>
 
 <dependency>
-    <groupId>org.apache.camel</groupId>
-    <artifactId>camel-jackson</artifactId>
-    <version>4.3.0</version>
+    <groupId>org.apache.camel.springboot</groupId>
+    <artifactId>camel-jackson-starter</artifactId>
+    <version>4.14.0</version>
 </dependency>
 ```
 
@@ -76,6 +83,7 @@ The camel-opentelemetry component provides automatic instrumentation for routes.
 Create a configuration class to set up OpenTelemetry:
 
 ```java
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
@@ -85,7 +93,7 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.ResourceAttributes;
+import org.apache.camel.CamelContext;
 import org.apache.camel.opentelemetry.OpenTelemetryTracer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -93,12 +101,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class CamelOpenTelemetryConfig {
 
+    private static final AttributeKey<String> SERVICE_NAME =
+        AttributeKey.stringKey("service.name");
+    private static final AttributeKey<String> SERVICE_VERSION =
+        AttributeKey.stringKey("service.version");
+
     @Bean
     public OpenTelemetry openTelemetry() {
         Resource resource = Resource.getDefault()
             .merge(Resource.builder()
-                .put(ResourceAttributes.SERVICE_NAME, "camel-integration-service")
-                .put(ResourceAttributes.SERVICE_VERSION, "1.0.0")
+                .put(SERVICE_NAME, "camel-integration-service")
+                .put(SERVICE_VERSION, "1.0.0")
                 .build());
 
         OtlpGrpcSpanExporter spanExporter = OtlpGrpcSpanExporter.builder()
@@ -123,13 +136,12 @@ public class CamelOpenTelemetryConfig {
     }
 
     @Bean
-    public OpenTelemetryTracer camelTracer(OpenTelemetry openTelemetry) {
-        OpenTelemetryTracer tracer = new OpenTelemetryTracer();
-        tracer.setOpenTelemetry(openTelemetry);
-        tracer.setTraceProcessors(true);
-        tracer.setTraceSteps(true);
-        tracer.setTraceTemplates(true);
-        return tracer;
+    public OpenTelemetryTracer camelTracer(CamelContext camelContext, Tracer tracer) throws Exception {
+        OpenTelemetryTracer camelTracer = new OpenTelemetryTracer();
+        camelTracer.setTracer(tracer);
+        camelTracer.setTraceProcessors(true);
+        camelTracer.init(camelContext);
+        return camelTracer;
     }
 }
 ```
@@ -153,6 +165,7 @@ public class OrderProcessingRoute extends RouteBuilder {
         from("direct:processOrder")
             .routeId("order-processing-route")
             .log("Received order: ${body}")
+            .to("bean:customProcessor?method=process")
             .to("bean:orderValidator?method=validate")
             .to("bean:orderEnricher?method=enrich")
             .to("bean:orderPersistence?method=save")
@@ -230,7 +243,6 @@ Create routes that split messages and aggregate results:
 
 ```java
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.processor.aggregate.GroupedBodyAggregationStrategy;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -345,12 +357,12 @@ public class CustomOrderProcessor implements Processor {
         try (Scope scope = span.makeCurrent()) {
             // Validation logic
             String body = exchange.getIn().getBody(String.class);
-            span.setAttribute("order.body.length", body.length());
 
             if (body == null || body.isEmpty()) {
                 throw new IllegalArgumentException("Order body is empty");
             }
 
+            span.setAttribute("order.body.length", body.length());
             span.setStatus(StatusCode.OK);
         } catch (Exception e) {
             span.setStatus(StatusCode.ERROR);
@@ -470,6 +482,7 @@ Create routes that call external HTTP services with tracing:
 
 ```java
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.processor.aggregate.GroupedBodyAggregationStrategy;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -482,14 +495,14 @@ public class ExternalApiRoute extends RouteBuilder {
             .log("Calling external API for customer: ${header.customerId}")
             .setHeader("Content-Type", constant("application/json"))
             .setHeader("Authorization", simple("Bearer ${properties:api.token}"))
-            .to("http://api.example.com/customers/${header.customerId}?bridgeEndpoint=true")
+            .toD("http://api.example.com/customers/${header.customerId}?bridgeEndpoint=true")
             .unmarshal().json()
             .log("Received response: ${body}");
 
         from("direct:orchestrateApiCalls")
             .routeId("api-orchestrator")
             .log("Orchestrating multiple API calls")
-            .multicast()
+            .multicast(new GroupedBodyAggregationStrategy())
                 .parallelProcessing()
                 .to("direct:callUserService")
                 .to("direct:callOrderService")
@@ -500,12 +513,13 @@ public class ExternalApiRoute extends RouteBuilder {
 
         from("direct:callUserService")
             .routeId("call-user-service")
-            .to("http://user-service:8080/users/${header.userId}?bridgeEndpoint=true")
+            .toD("http://user-service:8080/users/${header.userId}?bridgeEndpoint=true")
             .unmarshal().json();
 
         from("direct:callOrderService")
             .routeId("call-order-service")
-            .to("http://order-service:8080/orders?userId=${header.userId}&bridgeEndpoint=true")
+            .setHeader("CamelHttpQuery", simple("userId=${header.userId}"))
+            .to("http://order-service:8080/orders?bridgeEndpoint=true")
             .unmarshal().json();
 
         from("direct:callInventoryService")
@@ -516,7 +530,7 @@ public class ExternalApiRoute extends RouteBuilder {
 }
 ```
 
-HTTP client spans automatically include request and response details.
+Camel tracing records the outgoing HTTP endpoint calls. Use the OpenTelemetry Java agent or HTTP client instrumentation as well if you need low-level HTTP client spans with full request and response attributes.
 
 ## Trace Visualization for Complex Routes
 
@@ -583,17 +597,17 @@ public class RoutePerformanceMonitor extends EventNotifierSupport {
         if (event instanceof CamelEvent.ExchangeCompletedEvent completedEvent) {
             String routeId = completedEvent.getExchange().getFromRouteId();
 
-            if (completedEvent.getExchange().isFailed()) {
-                routeFailureCounter.add(1,
-                    io.opentelemetry.api.common.Attributes.builder()
-                        .put("route.id", routeId)
-                        .build());
-            } else {
-                routeSuccessCounter.add(1,
-                    io.opentelemetry.api.common.Attributes.builder()
-                        .put("route.id", routeId)
-                        .build());
-            }
+            routeSuccessCounter.add(1,
+                io.opentelemetry.api.common.Attributes.builder()
+                    .put("route.id", routeId)
+                    .build());
+        } else if (event instanceof CamelEvent.ExchangeFailedEvent failedEvent) {
+            String routeId = failedEvent.getExchange().getFromRouteId();
+
+            routeFailureCounter.add(1,
+                io.opentelemetry.api.common.Attributes.builder()
+                    .put("route.id", routeId)
+                    .build());
         }
     }
 }
@@ -606,19 +620,21 @@ This notifier tracks success and failure counts for each route.
 Write tests that verify trace creation:
 
 ```java
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
-import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.test.spring.junit5.CamelSpringBootTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @CamelSpringBootTest
-@SpringBootTest
+@SpringBootTest(properties = "spring.main.allow-bean-definition-overriding=true")
 class OrderProcessingRouteTest {
 
     @RegisterExtension
@@ -626,6 +642,14 @@ class OrderProcessingRouteTest {
 
     @Autowired
     private ProducerTemplate producerTemplate;
+
+    @TestConfiguration
+    static class OpenTelemetryTestConfig {
+        @Bean
+        OpenTelemetry openTelemetry() {
+            return otelTesting.getOpenTelemetry();
+        }
+    }
 
     @Test
     void shouldTraceOrderProcessing() {
@@ -655,7 +679,7 @@ class OrderProcessingRouteTest {
 
 **Header Propagation**: Store important business identifiers in message headers and add them as span attributes.
 
-**Async Processing**: Use Camel's built-in async processing, which maintains trace context automatically.
+**Async Processing**: Use Camel's built-in async processing so traced exchanges can carry context across asynchronous route boundaries.
 
 **Error Handling**: Configure onException handlers to capture error details in spans.
 
