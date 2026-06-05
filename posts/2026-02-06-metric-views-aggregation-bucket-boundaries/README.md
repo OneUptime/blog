@@ -44,7 +44,7 @@ from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregat
 # Define a view that matches HTTP request duration histograms
 # and applies custom bucket boundaries
 http_duration_view = View(
-    # Match instruments by name using wildcards
+    # Match instruments by name
     instrument_name="http.server.request.duration",
     # Apply custom histogram buckets tuned for web request latencies
     aggregation=ExplicitBucketHistogramAggregation(
@@ -202,7 +202,7 @@ total_duration_view = View(
 )
 
 # Use last-value aggregation for a gauge-like measurement
-# recorded through an observable counter
+# recorded through an observable gauge
 connection_pool_view = View(
     instrument_name="db.pool.active_connections",
     aggregation=LastValueAggregation(),
@@ -227,10 +227,21 @@ The Go SDK provides equivalent view functionality with a slightly different API:
 package main
 
 import (
+	"fmt"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/metric"
 )
 
-func newMeterProvider() *metric.MeterProvider {
+func newMeterProvider() (*metric.MeterProvider, error) {
+	exporter, err := stdoutmetric.New()
+	if err != nil {
+		return nil, fmt.Errorf("create metric exporter: %w", err)
+	}
+	reader := metric.NewPeriodicReader(exporter)
+
 	// Custom histogram boundaries for HTTP latency
 	httpView := metric.NewView(
 		// Match instrument by name
@@ -276,20 +287,21 @@ func newMeterProvider() *metric.MeterProvider {
 	return metric.NewMeterProvider(
 		metric.WithReader(reader),
 		metric.WithView(httpView, filteredView, dropView),
-	)
+	), nil
 }
 ```
 
 Go's `AttributeFilter` function gives you even more flexibility than a simple allowlist. You could implement dynamic filtering logic, pattern matching, or any custom predicate.
 
-## View Matching Priority
+## Multiple Matching Views
 
-When multiple views could match the same instrument, the SDK applies the first matching view. Order matters:
+When multiple views match the same instrument, the SDK applies each matching view independently. Views are not merged, so if one view sets bucket boundaries and another view sets attribute keys, the result is two metric streams unless the SDK drops one because it would produce an invalid stream:
 
 ```python
-# View ordering example: more specific views come first
+# Multiple matching views example
 views = [
-    # Specific view for one particular instrument
+    # Specific view for one particular instrument, with both buckets and attributes
+    # configured on the same stream
     View(
         instrument_name="http.server.request.duration",
         attribute_keys=["http.request.method", "http.response.status_code", "http.route"],
@@ -306,7 +318,7 @@ views = [
         ),
     ),
 
-    # Catch-all view that drops unrecognized attributes from all instruments
+    # Catch-all view that creates another stream with a small shared attribute set
     View(
         instrument_name="*",
         attribute_keys=[
@@ -317,7 +329,7 @@ views = [
 ]
 ```
 
-Place specific views before general ones. The HTTP duration view with its tailored buckets and attribute list takes priority over the generic duration view. If you reversed the order, the generic view would match first and the specific HTTP configuration would never apply.
+Put related stream settings in the same view when you want one output stream with both changes. A broad wildcard view can be useful, but it will also match specific instruments unless you make the selector more precise or use a match-all `DropAggregation` view with explicit views for the instruments you want to keep.
 
 ## Practical Tips
 
