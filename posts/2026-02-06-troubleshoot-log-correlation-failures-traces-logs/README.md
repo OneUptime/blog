@@ -39,14 +39,8 @@ The most common cause of broken correlation is that the logging framework has no
 
 ```xml
 <!-- logback.xml -->
-<!-- Add the OpenTelemetry Logback appender to inject trace context into logs -->
+<!-- Add the OpenTelemetry Logback MDC appender to inject trace context into logs -->
 <configuration>
-    <!-- OpenTelemetry appender that reads trace context and adds it to MDC -->
-    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
-        <!-- Capture MDC properties as log attributes -->
-        <captureMdcAttributes>*</captureMdcAttributes>
-    </appender>
-
     <!-- Standard console appender with trace context in the pattern -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -56,11 +50,14 @@ The most common cause of broken correlation is that the logging framework has no
         </encoder>
     </appender>
 
-    <root level="INFO">
-        <!-- Both appenders must be active -->
-        <!-- OTEL sends logs to the collector, CONSOLE prints them locally -->
-        <appender-ref ref="OTEL" />
+    <!-- OpenTelemetry appender wraps CONSOLE and injects trace context into MDC -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.mdc.v1_0.OpenTelemetryAppender">
         <appender-ref ref="CONSOLE" />
+    </appender>
+
+    <root level="INFO">
+        <!-- Use the wrapped OTEL appender instead of referencing CONSOLE directly -->
+        <appender-ref ref="OTEL" />
     </root>
 </configuration>
 ```
@@ -69,9 +66,9 @@ You also need the dependency in your build file:
 
 ```groovy
 // build.gradle
-// The logback appender bridges Logback logs to OpenTelemetry
+// The Logback MDC appender injects OpenTelemetry trace context into log output
 dependencies {
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:2.2.0-alpha'
+    runtimeOnly 'io.opentelemetry.instrumentation:opentelemetry-logback-mdc-1.0:2.28.1-alpha'
 }
 ```
 
@@ -87,12 +84,13 @@ import logging
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # This instrumentor patches the Python logging module to inject
-# trace_id, span_id, and trace_flags into every log record
+# otelTraceID, otelSpanID, otelServiceName, and otelTraceSampled into log records
 LoggingInstrumentor().instrument(set_logging_format=True)
 
 # The default format after instrumentation includes trace context:
 # %(asctime)s %(levelname)s [%(name)s] [trace_id=%(otelTraceID)s
-#   span_id=%(otelSpanID)s] - %(message)s
+#   span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s
+#   trace_sampled=%(otelTraceSampled)s] - %(message)s
 
 # You can also set a custom format that includes the OTel fields
 logging.basicConfig(
@@ -103,10 +101,12 @@ logging.basicConfig(
 
 ```python
 # If you want to send logs to the collector via OTLP, add the log exporter
+import logging
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
 
 # Configure the OTLP log exporter
 logger_provider = LoggerProvider()
@@ -116,6 +116,10 @@ logger_provider.add_log_record_processor(
     )
 )
 set_logger_provider(logger_provider)
+
+# Attach an OpenTelemetry logging handler so Python log records are exported
+otel_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+logging.getLogger().addHandler(otel_handler)
 ```
 
 ### Node.js with Winston or Pino
@@ -231,7 +235,7 @@ Even if your application correctly attaches trace context to logs, the collector
 
 ```yaml
 # collector-config.yaml
-# BAD: Logs pipeline that strips trace context
+# BAD: Logs pipeline that removes resource data needed by some backends
 receivers:
   otlp:
     protocols:
@@ -239,13 +243,12 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # This transform accidentally removes trace context from logs
+  # This transform accidentally removes service identity from logs
   transform/logs:
     log_statements:
       - context: log
         statements:
-          # Removing all resource attributes might strip service.name
-          # which breaks correlation in the backend
+          # Removing service.name can break backend queries and service-scoped correlation
           - delete_key(resource.attributes, "service.name")
 
   batch:
@@ -375,9 +378,9 @@ receivers:
       - /var/log/app/*.log
     operators:
       # Parse structured fields from log lines like:
-      # 2026-02-06 10:30:45 INFO [trace_id=abc123 span_id=def456] Processing order
+      # 2026-02-06 10:30:45 INFO [trace_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4 span_id=1a2b3c4d5e6f7a8b] Processing order
       - type: regex_parser
-        regex: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) \[trace_id=(?P<trace_id>[a-f0-9]+) span_id=(?P<span_id>[a-f0-9]+)\] (?P<message>.*)'
+        regex: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) \[trace_id=(?P<trace_id>[a-f0-9]{32}) span_id=(?P<span_id>[a-f0-9]{16})\] (?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
           layout: '%Y-%m-%d %H:%M:%S'
@@ -424,18 +427,18 @@ For this to work, the Elasticsearch exporter must preserve the trace_id field. V
 
 ```bash
 # Check that logs in Elasticsearch contain trace_id
-# This query searches for logs with a non-empty TraceId field
+# This query searches for logs with a non-empty trace_id field
 curl -s "http://elasticsearch:9200/app-logs/_search" \
      -H "Content-Type: application/json" \
      -d '{
        "query": {
-         "exists": { "field": "TraceId" }
+         "exists": { "field": "trace_id" }
        },
        "size": 1
      }' | python3 -m json.tool
 ```
 
-If TraceId is missing from the Elasticsearch documents, the exporter or a processor is dropping the field.
+If `trace_id` is missing from the Elasticsearch documents, the exporter or a processor is dropping the field. Older Elasticsearch exporter mapping modes may store the field as `TraceId` instead.
 
 ## Debugging Checklist
 
@@ -454,7 +457,7 @@ When log-trace correlation is not working, walk through these checks in order:
 ```bash
 # Quick verification script
 # Add a debug exporter to see exactly what the collector receives
-# Look for TraceId and SpanId in the log output
+# Look for Trace ID and Span ID in the log output
 
 # In collector config, add debug exporter to the logs pipeline:
 # exporters:
@@ -466,4 +469,4 @@ When log-trace correlation is not working, walk through these checks in order:
 #       exporters: [debug, otlp]
 ```
 
-The most reliable approach is to send both logs and traces through the same collector pipeline to the same OTLP-compatible backend. This minimizes the number of places where correlation can break. If you need to use separate backends, make sure you verify the trace_id field exists at each step of the pipeline from application to backend query.
+The most reliable approach is to send both logs and traces through the same collector deployment to the same OTLP-compatible backend. This minimizes the number of places where correlation can break. If you need to use separate backends, make sure you verify the trace_id field exists at each step of the pipeline from application to backend query.
