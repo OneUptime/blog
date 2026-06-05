@@ -24,29 +24,14 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("event.bus.monitoring")
 
-# Observable gauge for current queue depth
-
-# This gets polled periodically by the metric reader
-queue_depth_gauge = meter.create_observable_gauge(
-    name="event_bus.queue.depth",
-    description="Current number of messages waiting in the queue",
-    unit="messages",
-    callbacks=[],  # We will register callbacks below
-)
+# Observable gauges for queue depth, DLQ depth, and consumer lag
+# are registered with callbacks below.
 
 # Counter for messages entering the DLQ
 dlq_counter = meter.create_counter(
-    name="event_bus.dlq.messages_total",
+    name="event_bus.dlq.messages",
     description="Total number of messages sent to the dead letter queue",
-    unit="messages",
-)
-
-# Observable gauge for DLQ depth
-dlq_depth_gauge = meter.create_observable_gauge(
-    name="event_bus.dlq.depth",
-    description="Current number of messages in the dead letter queue",
-    unit="messages",
-    callbacks=[],
+    unit="{message}",
 )
 
 # Histogram for consumer processing time
@@ -58,18 +43,11 @@ processing_time = meter.create_histogram(
 
 # Counter for processed messages
 messages_processed = meter.create_counter(
-    name="event_bus.messages.processed_total",
+    name="event_bus.messages.processed",
     description="Total messages successfully processed",
-    unit="messages",
+    unit="{message}",
 )
 
-# Gauge for consumer lag (difference between latest and consumed offset)
-consumer_lag = meter.create_observable_gauge(
-    name="event_bus.consumer.lag",
-    description="Number of messages the consumer is behind the producer",
-    unit="messages",
-    callbacks=[],
-)
 ```
 
 ## Implementing Observable Callbacks
@@ -78,6 +56,7 @@ Observable gauges need callback functions that report the current value when pol
 
 ```python
 import redis
+from opentelemetry.metrics import Observation
 
 class EventBusMonitor:
     """Monitors queue depths and consumer lag using observable metrics."""
@@ -90,14 +69,14 @@ class EventBusMonitor:
         meter.create_observable_gauge(
             name="event_bus.queue.depth",
             description="Current number of messages waiting in the queue",
-            unit="messages",
+            unit="{message}",
             callbacks=[self._observe_queue_depth],
         )
 
         meter.create_observable_gauge(
             name="event_bus.dlq.depth",
             description="Current messages in the dead letter queue",
-            unit="messages",
+            unit="{message}",
             callbacks=[self._observe_dlq_depth],
         )
 
@@ -105,7 +84,7 @@ class EventBusMonitor:
         """Callback that reports current queue depths."""
         for queue_name in self.queues:
             depth = self.redis_client.llen(f"queue:{queue_name}")
-            yield metrics.Observation(
+            yield Observation(
                 value=depth,
                 attributes={"queue.name": queue_name},
             )
@@ -114,7 +93,7 @@ class EventBusMonitor:
         """Callback that reports current DLQ depths."""
         for queue_name in self.queues:
             depth = self.redis_client.llen(f"dlq:{queue_name}")
-            yield metrics.Observation(
+            yield Observation(
                 value=depth,
                 attributes={"queue.name": queue_name},
             )
@@ -126,11 +105,13 @@ Wrap your message consumer to capture processing metrics and handle DLQ routing:
 
 ```python
 import time
+import json
 
 class InstrumentedConsumer:
-    def __init__(self, queue_name, handler, max_retries=3):
+    def __init__(self, queue_name, handler, redis_client, max_retries=3):
         self.queue_name = queue_name
         self.handler = handler
+        self.redis_client = redis_client
         self.max_retries = max_retries
 
     def process_message(self, message):
@@ -187,7 +168,9 @@ class InstrumentedConsumer:
 For Kafka, consumer lag is one of the most important backpressure indicators:
 
 ```python
-from confluent_kafka.admin import AdminClient
+from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
+from confluent_kafka.admin import AdminClient, OffsetSpec
+from opentelemetry.metrics import Observation
 
 class KafkaLagMonitor:
     def __init__(self, bootstrap_servers, consumer_group):
@@ -197,7 +180,7 @@ class KafkaLagMonitor:
         meter.create_observable_gauge(
             name="event_bus.kafka.consumer_lag",
             description="Kafka consumer lag per partition",
-            unit="messages",
+            unit="{message}",
             callbacks=[self._observe_lag],
         )
 
@@ -205,9 +188,9 @@ class KafkaLagMonitor:
         """Report per-partition consumer lag."""
         # Get committed offsets and high watermarks
         # and compute the difference
-        group_offsets = self._get_consumer_offsets()
-        for topic_partition, lag in group_offsets.items():
-            yield metrics.Observation(
+        consumer_lag_by_partition = self._get_consumer_lag()
+        for topic_partition, lag in consumer_lag_by_partition.items():
+            yield Observation(
                 value=lag,
                 attributes={
                     "kafka.consumer_group": self.consumer_group,
@@ -215,6 +198,32 @@ class KafkaLagMonitor:
                     "kafka.partition": topic_partition.partition,
                 },
             )
+
+    def _get_consumer_lag(self):
+        """Fetch committed offsets and latest offsets, then compute lag."""
+        request = ConsumerGroupTopicPartitions(self.consumer_group)
+        offsets_future = self.admin.list_consumer_group_offsets([request])[self.consumer_group]
+        committed_partitions = offsets_future.result().topic_partitions
+
+        latest_offset_requests = {
+            TopicPartition(tp.topic, tp.partition): OffsetSpec.latest()
+            for tp in committed_partitions
+            if tp.error is None and tp.offset >= 0
+        }
+        latest_offset_futures = self.admin.list_offsets(latest_offset_requests)
+        latest_offsets = {
+            (tp.topic, tp.partition): future.result().offset
+            for tp, future in latest_offset_futures.items()
+        }
+
+        return {
+            TopicPartition(tp.topic, tp.partition): max(
+                latest_offsets[(tp.topic, tp.partition)] - tp.offset,
+                0,
+            )
+            for tp in committed_partitions
+            if (tp.topic, tp.partition) in latest_offsets
+        }
 ```
 
 ## Alerting Rules
