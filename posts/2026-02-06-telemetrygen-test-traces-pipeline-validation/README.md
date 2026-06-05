@@ -17,7 +17,7 @@ telemetrygen is a command-line tool from the OpenTelemetry project that generate
 telemetrygen is distributed as a standalone binary and as a container image. You can install it in several ways.
 
 ```bash
-# Install using go install (requires Go 1.21+)
+# Install using go install (requires Go 1.25+ for the current latest version)
 
 go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
 ```
@@ -88,10 +88,10 @@ telemetrygen traces \
     --child-spans 3 \
     --service "payment-service" \
     --span-duration 150ms \
-    --status-code 0
+    --status-code Ok
 ```
 
-The `--service` flag sets the `service.name` resource attribute, which is critical for identifying the source of traces in your backend. The `--span-duration` flag controls how long each span appears to take, and `--status-code` sets the span status (0 for OK, 1 for Error).
+The `--service` flag sets the `service.name` resource attribute, which is critical for identifying the source of traces in your backend. The `--span-duration` flag controls how long each span appears to take, and `--status-code` sets the span status. Use `Ok`, `Error`, or `Unset` to avoid ambiguity.
 
 ### Adding Custom Attributes
 
@@ -123,7 +123,7 @@ telemetrygen traces \
     --otlp-insecure \
     --traces 80 \
     --service "api-gateway" \
-    --status-code 0
+    --status-code Ok
 
 # Then, send error traces
 telemetrygen traces \
@@ -131,10 +131,10 @@ telemetrygen traces \
     --otlp-insecure \
     --traces 20 \
     --service "api-gateway" \
-    --status-code 2
+    --status-code Error
 ```
 
-Status code 2 represents ERROR in the OpenTelemetry specification. This split gives you an 80/20 ratio of successful to error traces, which is useful for testing sampling policies that prioritize error traces.
+This split gives you an 80/20 ratio of successful to error traces, which is useful for testing sampling policies that prioritize error traces.
 
 ## Validating Pipeline Configurations
 
@@ -148,9 +148,9 @@ Suppose you have a filter processor that drops traces from health check endpoint
 # collector-config.yaml
 processors:
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
 
 exporters:
   debug:
@@ -173,7 +173,7 @@ telemetrygen traces \
     --otlp-insecure \
     --traces 10 \
     --service "web-app" \
-    --otlp-attributes 'http.route="/health"'
+    --telemetry-attributes 'http.route="/health"'
 
 # These traces should pass through
 telemetrygen traces \
@@ -181,7 +181,7 @@ telemetrygen traces \
     --otlp-insecure \
     --traces 10 \
     --service "web-app" \
-    --otlp-attributes 'http.route="/api/orders"'
+    --telemetry-attributes 'http.route="/api/orders"'
 ```
 
 Check the debug exporter output. You should only see spans with the `/api/orders` route, confirming that the filter is working correctly.
@@ -214,7 +214,7 @@ telemetrygen traces \
     --traces 100 \
     --child-spans 2 \
     --service "test-app" \
-    --status-code 2
+    --status-code Error
 
 # 900 successful traces (approximately 10% should be kept)
 telemetrygen traces \
@@ -223,7 +223,7 @@ telemetrygen traces \
     --traces 900 \
     --child-spans 2 \
     --service "test-app" \
-    --status-code 0
+    --status-code Ok
 ```
 
 After the sampling decision wait period, count the spans in your debug output. You should see all 100 error traces (300 spans) plus roughly 90 of the successful traces (about 270 spans, give or take due to probabilistic sampling).
@@ -246,12 +246,12 @@ telemetrygen traces \
 
 The key flags for load testing are:
 
-- `--traces 0`: Generate traces indefinitely (until duration expires)
-- `--rate 1000`: Generate 1000 traces per second
+- `--traces 0`: Leave the trace count unbounded; with `--duration` set, generation runs until the duration expires
+- `--rate 1000`: Generate approximately 1000 spans per second per worker
 - `--duration 60s`: Run the load test for 60 seconds
 - `--child-spans 5`: Each trace has 6 spans total (1 root + 5 children)
 
-This configuration produces 6000 spans per second for one minute, which is a meaningful load for testing batch processor tuning, memory limits, and exporter throughput.
+This configuration produces approximately 1000 spans per second for one minute, which is a meaningful load for testing batch processor tuning, memory limits, and exporter throughput.
 
 ### Monitoring the Collector Under Load
 
@@ -319,7 +319,7 @@ jobs:
       - name: Verify spans were processed
         run: |
           # Check that the collector successfully processed spans
-          docker logs collector 2>&1 | grep "TracesExporter" | tail -5
+          docker logs collector 2>&1 | grep '"otelcol.signal": "traces"' | tail -5
 
       - name: Cleanup
         if: always()
@@ -342,11 +342,11 @@ telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure --traces 5
 
 # Test 2: Custom attributes for processor testing
 telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure --traces 5 \
-    --otlp-attributes 'environment="production"'
+    --telemetry-attributes 'environment="production"'
 
 # Test 3: Error traces for sampling validation
 telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure --traces 5 \
-    --status-code 2
+    --status-code Error
 ```
 
 Watch the debug output in Terminal 1 after each command. You get immediate, visual confirmation that your pipeline handles each scenario correctly.
