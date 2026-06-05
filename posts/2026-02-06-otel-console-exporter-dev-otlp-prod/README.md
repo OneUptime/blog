@@ -18,34 +18,48 @@ The core idea is simple: check an environment variable (like `NODE_ENV`, `FLASK_
 // tracing.js - Environment-aware OpenTelemetry configuration
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-base');
+const { BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const env = process.env.NODE_ENV || 'development';
 const serviceName = process.env.OTEL_SERVICE_NAME || 'my-service';
 
-// Pick the exporter based on environment
-function getExporter() {
+function getTraceEndpoint(defaultEndpoint) {
+  if (process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) {
+    return process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+  }
+
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    return new URL('v1/traces', endpoint.endsWith('/') ? endpoint : `${endpoint}/`).toString();
+  }
+
+  return defaultEndpoint;
+}
+
+// Pick the span processor based on environment
+function getSpanProcessor() {
   if (env === 'production' || env === 'staging') {
     // In production, export over OTLP to the collector
-    return new OTLPTraceExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4318/v1/traces',
+    const exporter = new OTLPTraceExporter({
+      url: getTraceEndpoint('http://otel-collector:4318/v1/traces'),
     });
+    return new BatchSpanProcessor(exporter);
   }
 
   // In development, print spans to the console
   console.log('[tracing] Using console exporter for local development');
-  return new ConsoleSpanExporter();
+  return new SimpleSpanProcessor(new ConsoleSpanExporter());
 }
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_DEPLOYMENT_ENVIRONMENT]: env,
+    'deployment.environment.name': env,
   }),
-  traceExporter: getExporter(),
+  spanProcessors: [getSpanProcessor()],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -56,7 +70,7 @@ process.on('SIGTERM', () => {
 });
 ```
 
-When you run the app locally without setting `NODE_ENV`, you see spans printed to stdout in a readable JSON format:
+When you run the app locally without setting `NODE_ENV`, you see spans printed to stdout in a readable structured format:
 
 ```bash
 node --require ./tracing.js app.js
@@ -85,7 +99,7 @@ service_name = os.environ.get("OTEL_SERVICE_NAME", "my-service")
 
 resource = Resource.create({
     "service.name": service_name,
-    "deployment.environment": env,
+    "deployment.environment.name": env,
 })
 
 provider = TracerProvider(resource=resource)
@@ -121,7 +135,7 @@ import (
     "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracing(ctx context.Context) (*sdktrace.TracerProvider, error) {
@@ -130,10 +144,15 @@ func initTracing(ctx context.Context) (*sdktrace.TracerProvider, error) {
         env = "development"
     }
 
+    serviceName := os.Getenv("OTEL_SERVICE_NAME")
+    if serviceName == "" {
+        serviceName = "my-service"
+    }
+
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName(os.Getenv("OTEL_SERVICE_NAME")),
-            semconv.DeploymentEnvironment(env),
+            semconv.ServiceName(serviceName),
+            semconv.DeploymentEnvironmentName(env),
         ),
     )
     if err != nil {
@@ -141,6 +160,7 @@ func initTracing(ctx context.Context) (*sdktrace.TracerProvider, error) {
     }
 
     var exporter sdktrace.SpanExporter
+    var spanProcessor sdktrace.TracerProviderOption
 
     if env == "production" || env == "staging" {
         // OTLP exporter for production
@@ -148,18 +168,20 @@ func initTracing(ctx context.Context) (*sdktrace.TracerProvider, error) {
         if err != nil {
             return nil, err
         }
+        spanProcessor = sdktrace.WithBatcher(exporter)
     } else {
         // Console exporter for development
         exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
         if err != nil {
             return nil, err
         }
+        spanProcessor = sdktrace.WithSyncer(exporter)
         log.Println("[tracing] Using stdout exporter for local development")
     }
 
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithResource(res),
-        sdktrace.WithBatcher(exporter),
+        spanProcessor,
     )
     otel.SetTracerProvider(tp)
 
@@ -177,23 +199,37 @@ Sometimes you want console output during development AND export to a local colle
 // tracing.js - Dual exporter setup
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+const { BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 const env = process.env.NODE_ENV || 'development';
 
 const spanProcessors = [];
 
+function getTraceEndpoint() {
+  if (process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) {
+    return process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+  }
+
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    return new URL('v1/traces', endpoint.endsWith('/') ? endpoint : `${endpoint}/`).toString();
+  }
+
+  return undefined;
+}
+
 if (env === 'development') {
   // Console for quick feedback
   spanProcessors.push(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 
   // Also send to local collector if it is running
-  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+  const traceEndpoint = getTraceEndpoint();
+  if (traceEndpoint) {
     spanProcessors.push(
       new SimpleSpanProcessor(
         new OTLPTraceExporter({
-          url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
+          url: traceEndpoint,
         })
       )
     );
@@ -201,7 +237,7 @@ if (env === 'development') {
 } else {
   // Production: only OTLP
   spanProcessors.push(
-    new SimpleSpanProcessor(new OTLPTraceExporter())
+    new BatchSpanProcessor(new OTLPTraceExporter())
   );
 }
 
@@ -217,7 +253,7 @@ This way, in development you always see spans in the terminal. If you also have 
 
 ## What the Console Output Looks Like
 
-When using the console exporter, each completed span prints a JSON object:
+When using the console exporter, each completed span prints a structured representation. The exact fields and formatting vary by language, but the output includes span details like this:
 
 ```json
 {
