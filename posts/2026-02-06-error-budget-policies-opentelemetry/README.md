@@ -34,7 +34,7 @@ graph TD
 
 ## Computing Budget Status from OpenTelemetry Metrics
 
-The error budget remaining metric, derived from your OpenTelemetry counters, feeds directly into the policy engine. Here are the Prometheus recording rules that produce the budget status label.
+The error budget remaining metric, derived from Prometheus counters generated from your OpenTelemetry data, feeds directly into the policy engine. Here are the Prometheus recording rules that produce the budget status series.
 
 ```yaml
 # prometheus-rules/error-budget-policy.yaml
@@ -46,30 +46,30 @@ groups:
       # Calculate error budget remaining (0.0 to 1.0 scale)
       - record: slo:error_budget:remaining_ratio
         expr: |
-          1 - (
+          clamp_min(1 - (
             (
-              sum(increase(http_server_request_errors_total{service="payment-service"}[30d]))
+              sum by (service) (increase(http_server_request_errors_total{service="payment-service"}[30d]))
               /
-              sum(increase(http_server_request_total{service="payment-service"}[30d]))
+              sum by (service) (increase(http_server_request_total{service="payment-service"}[30d]))
             )
             /
             (1 - 0.999)
-          )
+          ), 0)
 
       # Green zone indicator (1 if green, 0 otherwise)
       - record: slo:error_budget:zone_green
-        expr: slo:error_budget:remaining_ratio > 0.50
+        expr: slo:error_budget:remaining_ratio > bool 0.50
 
       # Yellow zone indicator
       - record: slo:error_budget:zone_yellow
         expr: |
-          slo:error_budget:remaining_ratio <= 0.50
-          and
-          slo:error_budget:remaining_ratio > 0.15
+          (slo:error_budget:remaining_ratio <= bool 0.50)
+          *
+          (slo:error_budget:remaining_ratio > bool 0.15)
 
       # Red zone indicator
       - record: slo:error_budget:zone_red
-        expr: slo:error_budget:remaining_ratio <= 0.15
+        expr: slo:error_budget:remaining_ratio <= bool 0.15
 ```
 
 ## Automating Policy Enforcement
@@ -100,11 +100,11 @@ def get_budget_remaining(prometheus_url: str, service: str) -> float:
         f"{prometheus_url}/api/v1/query",
         params={"query": query},
     )
+    response.raise_for_status()
     result = response.json()["data"]["result"]
 
     if not result:
-        # No data means no errors recorded - budget is full
-        return 1.0
+        raise RuntimeError(f"No error budget data found for service {service}")
 
     return float(result[0]["value"][1])
 
