@@ -72,14 +72,15 @@ import time
 
 async def flash_sale_middleware(request, call_next):
     """Middleware that tracks request rates and latency with sale context."""
-    start = time.time()
+    start = time.perf_counter()
 
     # Determine if this request is part of the flash sale
     is_sale_traffic = is_flash_sale_active() and is_sale_endpoint(request.path)
+    route = get_route_template(request)
 
     request_rate.add(1, {
         "http.method": request.method,
-        "http.route": request.path,
+        "http.route": route,
         "sale.active": is_sale_traffic,
         "sale.event_id": get_current_sale_id() if is_sale_traffic else "none"
     })
@@ -90,17 +91,17 @@ async def flash_sale_middleware(request, call_next):
     try:
         response = await call_next(request)
 
-        latency_ms = (time.time() - start) * 1000
+        latency_ms = (time.perf_counter() - start) * 1000
         response_latency.record(latency_ms, {
             "http.method": request.method,
-            "http.route": request.path,
+            "http.route": route,
             "http.status_code": response.status_code,
             "sale.active": is_sale_traffic
         })
 
         if response.status_code >= 500:
             error_counter.add(1, {
-                "http.route": request.path,
+                "http.route": route,
                 "http.status_code": response.status_code,
                 "sale.active": is_sale_traffic
             })
@@ -109,7 +110,7 @@ async def flash_sale_middleware(request, call_next):
 
     except Exception as e:
         error_counter.add(1, {
-            "http.route": request.path,
+            "http.route": route,
             "error.type": type(e).__name__,
             "sale.active": is_sale_traffic
         })
@@ -159,7 +160,7 @@ async def flash_sale_add_to_cart(user_id: str, product_id: str, quantity: int):
 
 ## Autoscaling Based on OpenTelemetry Metrics
 
-Export your metrics to a system that can trigger Kubernetes HPA scaling decisions. Here is a collector config that feeds metrics to both your observability backend and a Prometheus endpoint for the HPA to scrape.
+Export your metrics to a system that can trigger Kubernetes HPA scaling decisions. Here is a collector config that feeds metrics to both your observability backend and a Prometheus endpoint. Prometheus can scrape that endpoint, and a custom metrics adapter can expose selected Prometheus series to the HPA through the Kubernetes custom metrics API.
 
 ```yaml
 # otel-collector-config.yaml
@@ -182,7 +183,7 @@ exporters:
   otlp:
     endpoint: "https://otel.oneuptime.com:4317"
   prometheus:
-    endpoint: "0.0.0.0:8889"  # Scraped by Prometheus for HPA
+    endpoint: "0.0.0.0:8889"  # Scraped by Prometheus; exposed to HPA through a metrics adapter
 
 service:
   pipelines:
@@ -196,7 +197,7 @@ service:
       exporters: [otlp]
 ```
 
-Then configure the Kubernetes HPA to scale based on your request rate metric:
+Then configure the Kubernetes HPA to scale based on your request rate metric. The metric names below assume you have Prometheus recording rules and a custom metrics adapter rule that expose per-pod `http_requests_per_second` and `http_response_latency_ms_p95` metrics through `custom.metrics.k8s.io`.
 
 ```yaml
 # hpa-flash-sale.yaml
@@ -216,7 +217,7 @@ spec:
     - type: Pods
       pods:
         metric:
-          name: http_requests_total_rate
+          name: http_requests_per_second
         target:
           type: AverageValue
           averageValue: "500"  # Target 500 rps per pod
