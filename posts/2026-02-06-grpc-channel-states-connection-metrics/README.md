@@ -39,7 +39,7 @@ var (
     stateTransitions metric.Int64Counter
     currentState     metric.Int64ObservableGauge
     timeInState      metric.Float64Histogram
-    activeConns      metric.Int64UpDownCounter
+    readyChannels    metric.Int64UpDownCounter
 )
 
 func initChannelMetrics() {
@@ -62,9 +62,9 @@ func initChannelMetrics() {
         panic(err)
     }
 
-    activeConns, err = meter.Int64UpDownCounter(
-        "grpc.client.connections.active",
-        metric.WithDescription("Number of active gRPC connections"),
+    readyChannels, err = meter.Int64UpDownCounter(
+        "grpc.client.channels.ready",
+        metric.WithDescription("Number of gRPC channels currently in READY state"),
     )
     if err != nil {
         panic(err)
@@ -119,13 +119,13 @@ func (cm *ChannelMonitor) Watch(ctx context.Context) {
         log.Printf("Channel %s: %s -> %s (was in %s for %.2fs)",
             cm.target, state, newState, state, duration)
 
-        // Update tracking for connection count
+        // Update tracking for channels in READY state
         if newState == connectivity.Ready && state != connectivity.Ready {
-            activeConns.Add(ctx, 1, metric.WithAttributes(
+            readyChannels.Add(ctx, 1, metric.WithAttributes(
                 attribute.String("grpc.channel.target", cm.target),
             ))
         } else if state == connectivity.Ready && newState != connectivity.Ready {
-            activeConns.Add(ctx, -1, metric.WithAttributes(
+            readyChannels.Add(ctx, -1, metric.WithAttributes(
                 attribute.String("grpc.channel.target", cm.target),
             ))
         }
@@ -187,7 +187,8 @@ func (pm *ConnectionPoolMonitor) AddChannel(conn *grpc.ClientConn, target string
 
 func (pm *ConnectionPoolMonitor) RegisterGauges() {
     // Register an observable gauge that reports all channel states
-    meter.Int64ObservableGauge(
+    var err error
+    currentState, err = meter.Int64ObservableGauge(
         "grpc.client.channel.current_state",
         metric.WithDescription("Current state of each gRPC channel"),
         metric.WithInt64Callback(func(ctx context.Context, obs metric.Int64Observer) error {
@@ -214,6 +215,9 @@ func (pm *ConnectionPoolMonitor) RegisterGauges() {
             return nil
         }),
     )
+    if err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -221,7 +225,6 @@ func (pm *ConnectionPoolMonitor) RegisterGauges() {
 
 ```python
 import grpc
-import threading
 import time
 from opentelemetry import metrics
 
@@ -240,32 +243,31 @@ time_in_state = meter.create_histogram(
 
 def monitor_channel(channel, target_name):
     """Watch a gRPC channel for state changes."""
-    last_state = channel._channel.check_connectivity_state(True)
+    last_state = None
     last_changed = time.time()
 
     def on_state_change(state):
         nonlocal last_state, last_changed
         now = time.time()
-        duration = now - last_changed
+        if last_state is not None:
+            duration = now - last_changed
 
-        time_in_state.record(duration, {
-            "grpc.channel.target": target_name,
-            "grpc.channel.state": str(last_state),
-        })
+            time_in_state.record(duration, {
+                "grpc.channel.target": target_name,
+                "grpc.channel.state": str(last_state),
+            })
 
-        state_transitions.add(1, {
-            "grpc.channel.target": target_name,
-            "grpc.channel.from_state": str(last_state),
-            "grpc.channel.to_state": str(state),
-        })
+            state_transitions.add(1, {
+                "grpc.channel.target": target_name,
+                "grpc.channel.from_state": str(last_state),
+                "grpc.channel.to_state": str(state),
+            })
 
         last_state = state
         last_changed = now
 
-        # Continue watching
-        channel.subscribe(on_state_change, try_to_connect=True)
-
     channel.subscribe(on_state_change, try_to_connect=True)
+    return on_state_change
 ```
 
 ## Alerting on Connection Issues
