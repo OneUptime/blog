@@ -36,6 +36,7 @@ Here is an example using Node.js with the `ioredis` library.
 
 npm install @opentelemetry/api \
     @opentelemetry/sdk-node \
+    @opentelemetry/sdk-metrics \
     @opentelemetry/auto-instrumentations-node \
     @opentelemetry/instrumentation-ioredis \
     @opentelemetry/exporter-trace-otlp-grpc \
@@ -81,7 +82,7 @@ sdk.start();
 
 ## Part 2: Tracking Cache Hit Rates with Custom Metrics
 
-Auto-instrumentation gives you command latency and throughput, but cache hit rate requires a bit of application-level logic. You need to track when a cache lookup returns a result (hit) versus when it returns null (miss).
+Redis spans give you command latency and throughput when your backend derives metrics from traces, but cache hit rate requires a bit of application-level logic. You need to track when a cache lookup returns a result (hit) versus when it returns null (miss).
 
 Here is a pattern for wrapping your Redis calls with hit/miss tracking.
 
@@ -154,8 +155,8 @@ receivers:
     endpoint: "redis-server:6379"
     collection_interval: 60s
     # If your Redis requires authentication
-    password: "${REDIS_PASSWORD}"
-    # Collect metrics from all databases
+    password: "${env:REDIS_PASSWORD}"
+    # Enable Redis metrics that are disabled by default
     metrics:
       redis.maxmemory:
         enabled: true
@@ -224,7 +225,7 @@ The Redis receiver collects dozens of metrics. Here are the ones that matter mos
 
 ## Setting Up Alerts
 
-With both client and server metrics flowing into your backend, you can create meaningful alerts.
+With both client and server metrics flowing into your backend, you can create meaningful alerts. If you export to Prometheus, OpenTelemetry metric and attribute names are commonly translated from dots to underscores, byte units get a `_bytes` suffix, and monotonic counters get a `_total` suffix.
 
 ```yaml
 # alert-rules.yaml
@@ -251,7 +252,8 @@ groups:
       # Alert when Redis memory usage exceeds 85% of maxmemory
       - alert: RedisMemoryHigh
         expr: |
-          redis_memory_used / redis_maxmemory > 0.85
+          redis_memory_used_bytes / redis_maxmemory_bytes > 0.85
+          and redis_maxmemory_bytes > 0
         for: 5m
         labels:
           severity: critical
