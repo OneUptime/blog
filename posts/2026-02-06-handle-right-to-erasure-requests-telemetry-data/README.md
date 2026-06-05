@@ -56,6 +56,15 @@ Here is a sample collector config that exports to multiple destinations. Each de
 # OpenTelemetry Collector config showing multiple export destinations
 
 # Each destination must be included in your data erasure inventory
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
 exporters:
   otlp/jaeger:
     endpoint: jaeger-collector:4317
@@ -144,11 +153,11 @@ curl -X POST "https://es-cluster:9200/otel-logs-*/_delete_by_query" \
 
 ### Grafana Tempo / Jaeger with Cassandra
 
-These backends are trickier. Tempo stores traces as objects and does not support selective deletion within a trace. Your options are:
+These backends are trickier. Tempo stores traces as objects and does not support deleting an individual span or attribute inside a trace through a normal query API. Your options are:
 
-1. Delete the entire trace if it contains the user's data.
+1. Redact or delete the entire trace if it contains the user's data. Recent Tempo versions provide `tempo-cli redact` for removing traces by trace ID from object storage.
 2. Set a short retention period and let TTL handle it.
-3. Export, redact, and re-import (expensive but thorough).
+3. Export, redact, and re-import if your backend or version does not support trace redaction (expensive but thorough).
 
 For Jaeger backed by Cassandra, you can write a targeted deletion script.
 
@@ -160,18 +169,32 @@ from cassandra.cluster import Cluster
 cluster = Cluster(["cassandra-node1", "cassandra-node2"])
 session = cluster.connect("jaeger_v1_dc1")
 
-# Find trace IDs associated with the user
-rows = session.execute(
-    "SELECT trace_id FROM tag_index WHERE tag_key = %s AND tag_value = %s",
-    ("enduser.id", "usr_42981")
-)
+services = ["frontend", "user-service", "checkout-service"]
 
-# Delete each trace and its associated spans
-for row in rows:
-    trace_id = row.trace_id
-    session.execute("DELETE FROM traces WHERE trace_id = %s", (trace_id,))
-    session.execute("DELETE FROM span_index WHERE trace_id = %s", (trace_id,))
-    print(f"Deleted trace {trace_id}")
+# Find trace IDs associated with the user. Jaeger's tag_index table is
+# partitioned by service_name, tag_key, and tag_value, so search each service.
+for service_name in services:
+    rows = session.execute(
+        """
+        SELECT trace_id FROM tag_index
+        WHERE service_name = %s AND tag_key = %s AND tag_value = %s
+        """,
+        (service_name, "enduser.id", "usr_42981")
+    )
+
+    # Delete each trace and remove the matching tag index partition.
+    for row in rows:
+        trace_id = row.trace_id
+        session.execute("DELETE FROM traces WHERE trace_id = %s", (trace_id,))
+        print(f"Deleted trace {trace_id}")
+
+    session.execute(
+        """
+        DELETE FROM tag_index
+        WHERE service_name = %s AND tag_key = %s AND tag_value = %s
+        """,
+        (service_name, "enduser.id", "usr_42981")
+    )
 
 cluster.shutdown()
 ```
@@ -190,28 +213,30 @@ s3 = boto3.client("s3")
 bucket = "telemetry-archive"
 prefix = "raw-data/"
 
-# List all archived telemetry files
-response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+# List all archived telemetry files. S3 returns at most 1,000 keys per
+# ListObjectsV2 response, so use a paginator for larger archives.
+paginator = s3.get_paginator("list_objects_v2")
 
-for obj in response.get("Contents", []):
-    key = obj["Key"]
-    data = s3.get_object(Bucket=bucket, Key=key)
-    records = json.loads(data["Body"].read())
+for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+    for obj in page.get("Contents", []):
+        key = obj["Key"]
+        data = s3.get_object(Bucket=bucket, Key=key)
+        records = json.loads(data["Body"].read())
 
-    # Filter out records belonging to the target user
-    cleaned = [
-        r for r in records
-        if r.get("attributes", {}).get("enduser.id") != "usr_42981"
-    ]
+        # Filter out records belonging to the target user
+        cleaned = [
+            r for r in records
+            if r.get("attributes", {}).get("enduser.id") != "usr_42981"
+        ]
 
-    # Only rewrite if records were actually removed
-    if len(cleaned) < len(records):
-        s3.put_object(
-            Bucket=bucket,
-            Key=key,
-            Body=json.dumps(cleaned)
-        )
-        print(f"Cleaned {len(records) - len(cleaned)} records from {key}")
+        # Only rewrite if records were actually removed
+        if len(cleaned) < len(records):
+            s3.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=json.dumps(cleaned)
+            )
+            print(f"Cleaned {len(records) - len(cleaned)} records from {key}")
 ```
 
 ## Step 4: Automate the Erasure Workflow
@@ -270,23 +295,41 @@ The best erasure strategy is to never store PII in telemetry data at all. Use th
 ```yaml
 # Collector config that redacts PII before export
 # This reduces the scope of future erasure requests significantly
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   transform:
     trace_statements:
       - context: span
         statements:
           # Hash the email attribute so the original value is not stored
-          - set(attributes["user.email"], SHA256(attributes["user.email"]))
-            where attributes["user.email"] != nil
+          - set(span.attributes["user.email"], SHA256(span.attributes["user.email"]))
+            where span.attributes["user.email"] != nil
           # Remove IP addresses entirely
-          - delete_key(attributes, "http.client_ip")
+          - delete_key(span.attributes, "http.client_ip")
 
   # Also filter sensitive log body content
   transform/logs:
     log_statements:
       - context: log
         statements:
-          - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "[REDACTED_EMAIL]")
+          - replace_pattern(log.body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[REDACTED_EMAIL]")
+
+  batch:
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
+    tls:
+      insecure: false
+
+  elasticsearch:
+    endpoints: ["https://es-cluster:9200"]
+    logs_index: otel-logs
 
 service:
   pipelines:
@@ -304,9 +347,9 @@ By hashing emails and stripping IPs at the collector level, you dramatically red
 
 ## Retention Policies as a Safety Net
 
-Set aggressive retention policies on your telemetry backends. If traces are automatically deleted after 30 days and logs after 90 days, then any PII that slips through will be removed on schedule. This does not replace targeted erasure (GDPR requires timely response, usually within 30 days), but it limits the blast radius.
+Set aggressive retention policies on your telemetry backends. If traces are automatically deleted after 30 days and logs after 90 days, then any PII that slips through will be removed on schedule. This does not replace targeted erasure (GDPR requires timely response, usually within one month), but it limits the blast radius.
 
-```yaml
+```console
 # Elasticsearch ILM policy for automatic telemetry cleanup
 # Ensures data does not persist beyond the retention window
 PUT _ilm/policy/telemetry-lifecycle
