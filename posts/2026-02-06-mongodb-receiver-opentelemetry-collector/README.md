@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, MongoDB, NoSQL, Database Monitoring, Metric, Performance
 
-Description: Learn how to configure the MongoDB receiver in OpenTelemetry Collector to monitor NoSQL database performance with practical YAML examples, replication tracking, and sharding metrics.
+Description: Learn how to configure the MongoDB receiver in OpenTelemetry Collector to monitor NoSQL database performance with practical YAML examples for standalone, replica set, and sharded deployments.
 
-The MongoDB receiver enables the OpenTelemetry Collector to collect performance metrics directly from MongoDB instances. This receiver provides insights into database operations, collection statistics, replication lag, and resource utilization, making it essential for maintaining healthy MongoDB deployments at scale.
+The MongoDB receiver enables the OpenTelemetry Collector to collect performance metrics directly from MongoDB instances. This receiver provides insights into database operations, collection statistics, connections, and resource utilization, making it essential for maintaining healthy MongoDB deployments at scale.
 
 ## Why Monitor MongoDB
 
-MongoDB monitoring helps you understand database performance, identify bottlenecks, and optimize resource allocation. Unlike relational databases, MongoDB's document-based architecture and distributed nature require monitoring specific metrics like oplog size, replication lag, chunk distribution, and write concern performance.
+MongoDB monitoring helps you understand database performance, identify bottlenecks, and optimize resource allocation. Unlike relational databases, MongoDB's document-based architecture and distributed nature require monitoring specific metrics like collection size, index size, cache behavior, and connection utilization.
 
-The MongoDB receiver collects metrics by connecting to MongoDB instances and querying administrative commands and server status. This approach provides real-time metrics without requiring log parsing or external agents.
+The MongoDB receiver collects metrics by connecting to MongoDB instances and querying MongoDB's `serverStatus` and `dbStats` commands. This approach provides real-time metrics without requiring log parsing or external agents.
 
 ```mermaid
 graph TD
     A[MongoDB Instance] -->|serverStatus| B[MongoDB Receiver]
     A -->|dbStats| B
-    A -->|replSetGetStatus| B
     B --> C[Metrics Processor]
     C --> D[Resource Detection]
     D --> E[Batch Processor]
@@ -34,22 +33,23 @@ The minimal configuration requires connection details and credentials:
 receivers:
   # MongoDB receiver with basic connection
   mongodb:
-    # Connection endpoint
+    # Connection hosts
     # For standalone: hostname:port
-    # For replica set: mongodb://host1:27017,host2:27017/?replicaSet=rs0
-    endpoint: localhost:27017
+    # For replica sets, specify all replica set members and set replica_set
+    hosts:
+      - endpoint: localhost:27017
 
     # Authentication credentials
     username: monitoring_user
     password: ${env:MONGODB_PASSWORD}
+    auth_source: admin
 
     # Collection interval (default: 1m)
     collection_interval: 1m
 
     # TLS configuration
     tls:
-      insecure: false
-      insecure_skip_verify: false
+      insecure: true
 
 processors:
   # Batch metrics for efficiency
@@ -59,15 +59,15 @@ processors:
 
 exporters:
   # Export to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
     metrics:
       receivers: [mongodb]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration connects to a local MongoDB instance and collects metrics every minute. The password is securely read from an environment variable.
@@ -78,31 +78,33 @@ The receiver collects comprehensive metrics across multiple categories:
 
 ### Connection Metrics
 
-- `mongodb.connection.count`: Current number of connections
-- `mongodb.connection.active`: Active connections
-- `mongodb.connection.available`: Available connections in pool
+- `mongodb.connection.count`: Number of connections, with `type` values such as `current`, `active`, and `available`
+- `mongodb.network.request.count`: Number of requests received by the server
 
 ### Operation Metrics
 
 - `mongodb.operation.count`: Operations by type (query, insert, update, delete)
 - `mongodb.operation.time`: Operation execution time
-- `mongodb.operation.latency`: Operation latency by percentile
+- `mongodb.document.operation.count`: Document operations by type
+- `mongodb.operation.latency.time`: Operation latency time when explicitly enabled
 
 ### Database Metrics
 
 - `mongodb.database.count`: Number of databases
 - `mongodb.collection.count`: Number of collections per database
-- `mongodb.data.size`: Total data size
-- `mongodb.storage.size`: Total storage size including indexes
+- `mongodb.data.size`: Data size by database
+- `mongodb.storage.size`: Storage allocated by database
+- `mongodb.object.count`: Number of objects
 - `mongodb.index.count`: Number of indexes
 - `mongodb.index.size`: Total index size
+- `mongodb.index.access.count`: Index access counts
 
-### Replication Metrics
+### Replication-Related Metrics
 
-- `mongodb.replication.lag`: Replication lag in seconds
-- `mongodb.replication.oplog.size`: Oplog size in bytes
-- `mongodb.replication.oplog.window`: Oplog time window
-- `mongodb.replication.state`: Replica set member state
+- `mongodb.operation.repl.count`: Replicated operations executed when explicitly enabled
+- `mongodb.repl_inserts_per_sec`: Replicated insertions per second when explicitly enabled
+- `mongodb.repl_updates_per_sec`: Replicated updates per second when explicitly enabled
+- `mongodb.repl_deletes_per_sec`: Replicated deletes per second when explicitly enabled
 
 ### Memory and Resource Metrics
 
@@ -117,6 +119,7 @@ The receiver collects comprehensive metrics across multiple categories:
 - `mongodb.lock.acquire.count`: Lock acquisitions by type
 - `mongodb.lock.acquire.wait_count`: Locks that had to wait
 - `mongodb.lock.acquire.time`: Time spent acquiring locks
+- `mongodb.lock.deadlock.count`: Lock acquisitions that encountered deadlocks
 
 ## Advanced Configuration
 
@@ -125,12 +128,17 @@ For production environments, configure comprehensive monitoring with authenticat
 ```yaml
 receivers:
   mongodb:
-    # Connection string with replica set
-    endpoint: mongodb://mongo1.example.com:27017,mongo2.example.com:27017,mongo3.example.com:27017/?replicaSet=prod-rs
+    # Replica set hosts
+    hosts:
+      - endpoint: mongo1.example.com:27017
+      - endpoint: mongo2.example.com:27017
+      - endpoint: mongo3.example.com:27017
+    replica_set: prod-rs
 
     # Authentication
     username: otel_monitor
     password: ${env:MONGODB_MONITORING_PASSWORD}
+    auth_source: admin
 
     # Collection interval
     collection_interval: 30s
@@ -151,7 +159,7 @@ receivers:
       # Connection metrics
       mongodb.connection.count:
         enabled: true
-      mongodb.connection.active:
+      mongodb.network.request.count:
         enabled: true
 
       # Operation metrics
@@ -159,7 +167,9 @@ receivers:
         enabled: true
       mongodb.operation.time:
         enabled: true
-      mongodb.operation.latency:
+      mongodb.document.operation.count:
+        enabled: true
+      mongodb.operation.latency.time:
         enabled: true
 
       # Database metrics
@@ -169,13 +179,17 @@ receivers:
         enabled: true
       mongodb.data.size:
         enabled: true
+      mongodb.storage.size:
+        enabled: true
+      mongodb.index.count:
+        enabled: true
       mongodb.index.size:
         enabled: true
 
-      # Replication metrics
-      mongodb.replication.lag:
+      # Replication-related metrics
+      mongodb.operation.repl.count:
         enabled: true
-      mongodb.replication.oplog.size:
+      mongodb.repl_inserts_per_sec:
         enabled: true
 
       # Resource metrics
@@ -227,10 +241,7 @@ db.createRole({
       resource: { cluster: true },
       actions: [
         "serverStatus",
-        "replSetGetStatus",
-        "top",
-        "inprog",
-        "shardingState"
+        "listDatabases"
       ]
     },
     {
@@ -238,7 +249,9 @@ db.createRole({
       actions: [
         "dbStats",
         "collStats",
-        "indexStats"
+        "indexStats",
+        "listCollections",
+        "listIndexes"
       ]
     }
   ],
@@ -257,51 +270,28 @@ db.createUser({
 
 ## Monitoring Replica Sets
 
-Configure monitoring for MongoDB replica sets to track replication health:
+Configure monitoring for MongoDB replica sets by listing the replica set members and setting the replica set name. When `replica_set` is set, the receiver can autodiscover nodes in the replica set:
 
 ```yaml
 receivers:
-  # Primary node monitoring
-  mongodb/primary:
-    endpoint: mongodb://mongo-primary.example.com:27017/?replicaSet=prod-rs
+  mongodb:
+    hosts:
+      - endpoint: mongo-primary.example.com:27017
+      - endpoint: mongo-secondary.example.com:27017
+    replica_set: prod-rs
     username: otel_monitor
     password: ${env:MONGODB_PASSWORD}
+    auth_source: admin
     collection_interval: 30s
 
-    # Enable replication metrics
+    # Enable operation and replication-related metrics
     metrics:
       mongodb.operation.count:
         enabled: true
-      mongodb.replication.lag:
+      mongodb.operation.repl.count:
         enabled: true
-      mongodb.replication.oplog.size:
+      mongodb.repl_inserts_per_sec:
         enabled: true
-      mongodb.replication.oplog.window:
-        enabled: true
-
-    # Add resource attributes
-    resource_attributes:
-      mongodb.node.type:
-        enabled: true
-        value: primary
-
-  # Secondary node monitoring
-  mongodb/secondary:
-    endpoint: mongodb://mongo-secondary.example.com:27017/?replicaSet=prod-rs
-    username: otel_monitor
-    password: ${env:MONGODB_PASSWORD}
-    collection_interval: 30s
-
-    metrics:
-      mongodb.replication.lag:
-        enabled: true
-      mongodb.operation.count:
-        enabled: true
-
-    resource_attributes:
-      mongodb.node.type:
-        enabled: true
-        value: secondary
 
 processors:
   # Add cluster information
@@ -324,70 +314,25 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [mongodb/primary, mongodb/secondary]
+      receivers: [mongodb]
       processors: [resource, batch]
       exporters: [otlp]
 ```
 
 ## Monitoring Sharded Clusters
 
-For sharded MongoDB deployments, monitor mongos routers, config servers, and shards:
+For sharded MongoDB deployments, configure the receiver with the `mongos` router hosts:
 
 ```yaml
 receivers:
-  # Monitor mongos router
-  mongodb/mongos:
-    endpoint: mongodb://mongos.example.com:27017
+  mongodb:
+    hosts:
+      - endpoint: mongos-1.example.com:27017
+      - endpoint: mongos-2.example.com:27017
     username: otel_monitor
     password: ${env:MONGODB_PASSWORD}
+    auth_source: admin
     collection_interval: 30s
-
-    resource_attributes:
-      mongodb.component:
-        enabled: true
-        value: mongos
-
-  # Monitor config server
-  mongodb/config:
-    endpoint: mongodb://config-server.example.com:27017
-    username: otel_monitor
-    password: ${env:MONGODB_PASSWORD}
-    collection_interval: 60s
-
-    resource_attributes:
-      mongodb.component:
-        enabled: true
-        value: config-server
-
-  # Monitor shard 1
-  mongodb/shard1:
-    endpoint: mongodb://shard1.example.com:27017/?replicaSet=shard1-rs
-    username: otel_monitor
-    password: ${env:MONGODB_PASSWORD}
-    collection_interval: 30s
-
-    resource_attributes:
-      mongodb.component:
-        enabled: true
-        value: shard
-      mongodb.shard.name:
-        enabled: true
-        value: shard1
-
-  # Monitor shard 2
-  mongodb/shard2:
-    endpoint: mongodb://shard2.example.com:27017/?replicaSet=shard2-rs
-    username: otel_monitor
-    password: ${env:MONGODB_PASSWORD}
-    collection_interval: 30s
-
-    resource_attributes:
-      mongodb.component:
-        enabled: true
-        value: shard
-      mongodb.shard.name:
-        enabled: true
-        value: shard2
 
 processors:
   resource:
@@ -395,14 +340,21 @@ processors:
       - key: mongodb.cluster
         value: sharded-prod-cluster
         action: insert
+      - key: mongodb.component
+        value: mongos
+        action: insert
 
   batch:
     timeout: 30s
 
+exporters:
+  otlp:
+    endpoint: https://observability.example.com:4317
+
 service:
   pipelines:
     metrics:
-      receivers: [mongodb/mongos, mongodb/config, mongodb/shard1, mongodb/shard2]
+      receivers: [mongodb]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -415,11 +367,16 @@ Here's a complete production-ready configuration with all best practices:
 receivers:
   mongodb:
     # Connection with all replica set members
-    endpoint: mongodb://mongo1.prod.example.com:27017,mongo2.prod.example.com:27017,mongo3.prod.example.com:27017/?replicaSet=prod-rs&readPreference=secondaryPreferred
+    hosts:
+      - endpoint: mongo1.prod.example.com:27017
+      - endpoint: mongo2.prod.example.com:27017
+      - endpoint: mongo3.prod.example.com:27017
+    replica_set: prod-rs
 
     # Authentication
     username: otel_monitoring
     password: ${env:MONGODB_MONITORING_PASSWORD}
+    auth_source: admin
 
     # Collection interval
     collection_interval: 30s
@@ -440,13 +397,15 @@ receivers:
     metrics:
       mongodb.connection.count:
         enabled: true
-      mongodb.connection.active:
+      mongodb.network.request.count:
         enabled: true
       mongodb.operation.count:
         enabled: true
       mongodb.operation.time:
         enabled: true
-      mongodb.operation.latency:
+      mongodb.document.operation.count:
+        enabled: true
+      mongodb.operation.latency.time:
         enabled: true
       mongodb.database.count:
         enabled: true
@@ -460,11 +419,9 @@ receivers:
         enabled: true
       mongodb.index.size:
         enabled: true
-      mongodb.replication.lag:
+      mongodb.operation.repl.count:
         enabled: true
-      mongodb.replication.oplog.size:
-        enabled: true
-      mongodb.replication.oplog.window:
+      mongodb.repl_inserts_per_sec:
         enabled: true
       mongodb.memory.usage:
         enabled: true
@@ -508,16 +465,11 @@ processors:
 
   # Filter system databases
   filter/exclude_system:
-    metrics:
-      exclude:
-        match_type: strict
-        resource_attributes:
-          - key: mongodb.database.name
-            value: admin
-          - key: mongodb.database.name
-            value: config
-          - key: mongodb.database.name
-            value: local
+    error_mode: ignore
+    metric_conditions:
+      - datapoint.attributes["db.namespace"] == "admin"
+      - datapoint.attributes["db.namespace"] == "config"
+      - datapoint.attributes["db.namespace"] == "local"
 
   # Transform metric names
   metricstransform:
@@ -573,7 +525,12 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Monitoring MongoDB Atlas
@@ -583,12 +540,15 @@ For MongoDB Atlas (managed service), use a similar configuration with Atlas conn
 ```yaml
 receivers:
   mongodb:
-    # Atlas connection string
-    endpoint: mongodb+srv://cluster0.example.mongodb.net/?retryWrites=true&w=majority
+    # Atlas SRV host
+    hosts:
+      - endpoint: cluster0.example.mongodb.net
+    scheme: mongodb+srv
 
     # Atlas credentials
     username: otel_monitor
     password: ${env:ATLAS_PASSWORD}
+    auth_source: admin
 
     # Collection interval
     collection_interval: 60s
@@ -600,7 +560,7 @@ receivers:
     metrics:
       mongodb.operation.count:
         enabled: true
-      mongodb.operation.latency:
+      mongodb.operation.latency.time:
         enabled: true
       mongodb.data.size:
         enabled: true
@@ -614,6 +574,13 @@ processors:
         value: mongodb_atlas
         action: insert
 
+  batch:
+    timeout: 30s
+
+exporters:
+  otlp:
+    endpoint: https://observability.example.com:4317
+
 service:
   pipelines:
     metrics:
@@ -626,21 +593,22 @@ service:
 
 Configure alerts for common MongoDB issues:
 
-### High Replication Lag
+### High Replicated Operation Rate
 
-Alert on excessive replication delay:
+Alert on unusually high replicated operation volume when `mongodb.operation.repl.count` is enabled:
 
 ```yaml
-# Prometheus alert rule
+# Prometheus alert rule using OTLP metric names. If your Prometheus exporter translates
+# metric names, adjust the metric selectors to match the exported names.
 
-- alert: MongoDBHighReplicationLag
-  expr: mongodb.replication.lag > 10
+- alert: MongoDBHighReplicatedOperationRate
+  expr: 'rate({__name__="mongodb.operation.repl.count"}[5m]) > 1000'
   for: 5m
   labels:
-    severity: critical
+    severity: warning
   annotations:
-    summary: "MongoDB replication lag on {{ $labels.instance }}"
-    description: "Replication lag is {{ $value }} seconds"
+    summary: "MongoDB replicated operation rate high on {{ $labels.instance }}"
+    description: "Replicated operations: {{ $value }} per second"
 ```
 
 ### Connection Pool Exhaustion
@@ -650,7 +618,10 @@ Alert when connections are near limit:
 ```yaml
 - alert: MongoDBHighConnectionUsage
   expr: |
-    (mongodb.connection.active / mongodb.connection.count) > 0.8
+    (
+      {__name__="mongodb.connection.count", type="active"} /
+      {__name__="mongodb.connection.count", type="current"}
+    ) > 0.8
   for: 5m
   labels:
     severity: warning
@@ -659,19 +630,19 @@ Alert when connections are near limit:
     description: "Connection usage: {{ $value | humanizePercentage }}"
 ```
 
-### Oplog Window Too Small
+### High Index Size
 
-Alert when oplog window is insufficient:
+Alert when index size grows beyond an expected threshold:
 
 ```yaml
-- alert: MongoDBOplogWindowTooSmall
-  expr: mongodb.replication.oplog.window < 3600
+- alert: MongoDBHighIndexSize
+  expr: '{__name__="mongodb.index.size"} > 107374182400'
   for: 15m
   labels:
     severity: warning
   annotations:
-    summary: "MongoDB oplog window too small"
-    description: "Oplog window: {{ $value | humanizeDuration }}"
+    summary: "MongoDB index size high"
+    description: "Index size: {{ $value | humanize1024 }}B"
 ```
 
 ### High Lock Wait Time
@@ -681,8 +652,8 @@ Alert on lock contention:
 ```yaml
 - alert: MongoDBHighLockWaitTime
   expr: |
-    rate(mongodb.lock.acquire.wait_count[5m]) /
-    rate(mongodb.lock.acquire.count[5m]) > 0.1
+    rate({__name__="mongodb.lock.acquire.wait_count"}[5m]) /
+    rate({__name__="mongodb.lock.acquire.count"}[5m]) > 0.1
   for: 10m
   labels:
     severity: warning
@@ -696,7 +667,7 @@ Alert on high cursor timeout rate:
 
 ```yaml
 - alert: MongoDBHighCursorTimeoutRate
-  expr: rate(mongodb.cursor.timeout.count[5m]) > 10
+  expr: 'rate({__name__="mongodb.cursor.timeout.count"}[5m]) > 10'
   for: 10m
   labels:
     severity: warning
@@ -719,9 +690,11 @@ data:
   config.yaml: |
     receivers:
       mongodb:
-        endpoint: mongodb://mongodb-service:27017
+        hosts:
+          - endpoint: mongodb-service:27017
         username: otel_monitor
         password: ${env:MONGODB_PASSWORD}
+        auth_source: admin
         collection_interval: 30s
 
     processors:
@@ -766,8 +739,8 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:latest
-          command: ["--config=/conf/config.yaml"]
+          image: otel/opentelemetry-collector-contrib:0.153.0
+          args: ["--config=/conf/config.yaml"]
           env:
             - name: MONGODB_PASSWORD
               valueFrom:
@@ -809,7 +782,7 @@ If expected metrics are missing:
 If monitoring impacts performance:
 
 1. Increase collection_interval to reduce frequency
-2. Use readPreference=secondaryPreferred to query secondaries
+2. Monitor a secondary directly when that matches your deployment and permissions
 3. Reduce number of enabled metrics
 4. Ensure proper indexes on system collections
 
@@ -833,11 +806,11 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime provides MongoDB-specific dashboards with replication topology visualization, shard distribution metrics, and intelligent alerting for NoSQL workloads. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view).
+OneUptime provides MongoDB-specific dashboards and intelligent alerting for NoSQL workloads. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
-The MongoDB receiver provides comprehensive monitoring for MongoDB deployments through the OpenTelemetry Collector. By collecting metrics on operations, replication, sharding, and resource usage, you gain complete visibility into MongoDB performance and health.
+The MongoDB receiver provides comprehensive monitoring for MongoDB deployments through the OpenTelemetry Collector. By collecting metrics on operations, collections, indexes, connections, and resource usage, you gain visibility into MongoDB performance and health.
 
 Start with basic configuration for standalone instances, then expand to monitor replica sets and sharded clusters as your architecture grows. Use the collected metrics to optimize queries, tune resource allocation, and maintain healthy MongoDB operations at scale.
 
