@@ -67,7 +67,10 @@ npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
             @opentelemetry/auto-instrumentations-node \
             @opentelemetry/exporter-trace-otlp-http \
-            @opentelemetry/sdk-metrics
+            @opentelemetry/exporter-metrics-otlp-http \
+            @opentelemetry/sdk-metrics \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions
 ```
 
 Create `tracing.js`:
@@ -78,18 +81,22 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
 // Use environment variables for configuration
 const serviceName = process.env.OTEL_SERVICE_NAME || 'monolith-app';
 const serviceVersion = process.env.SERVICE_VERSION || '1.0.0';
 const environment = process.env.ENVIRONMENT || 'development';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-  [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: serviceName,
+  [ATTR_SERVICE_VERSION]: serviceVersion,
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
 });
 
 const traceExporter = new OTLPTraceExporter({
@@ -146,57 +153,56 @@ Create a tracer for each module:
 
 ```javascript
 // src/orders/service.js
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('orders-module', '1.0.0');
 
 async function createOrder(userId, items) {
-  const span = tracer.startSpan('orders.create', {
+  return tracer.startActiveSpan('orders.create', {
     attributes: {
-      'user.id': userId,
       'order.item_count': items.length,
     }
+  }, async (span) => {
+    try {
+      const order = await saveOrder(userId, items);
+      span.setAttribute('order.id', order.id);
+      return order;
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
-
-  try {
-    const order = await saveOrder(userId, items);
-    span.setAttribute('order.id', order.id);
-    span.end();
-    return order;
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2, message: error.message });
-    span.end();
-    throw error;
-  }
 }
 ```
 
 ```javascript
 // src/payments/service.js
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payments-module', '1.0.0');
 
 async function processPayment(orderId, amount) {
-  const span = tracer.startSpan('payments.process', {
+  return tracer.startActiveSpan('payments.process', {
     attributes: {
       'order.id': orderId,
       'payment.amount': amount,
     }
+  }, async (span) => {
+    try {
+      const result = await chargeCard(amount);
+      span.setAttribute('payment.transaction_id', result.id);
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
-
-  try {
-    const result = await chargeCard(amount);
-    span.setAttribute('payment.transaction_id', result.id);
-    span.end();
-    return result;
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2, message: error.message });
-    span.end();
-    throw error;
-  }
 }
 ```
 
@@ -209,7 +215,6 @@ Structure your code to reflect future service boundaries. Each module should hav
 ```javascript
 // src/orders/index.js - Public interface for orders module
 const service = require('./service');
-const repository = require('./repository');
 
 module.exports = {
   createOrder: service.createOrder,
@@ -239,62 +244,63 @@ When one module calls another, create spans to show the boundary crossing. This 
 
 ```javascript
 // src/orders/service.js
-const { trace, context } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 const payments = require('../payments');
 const notifications = require('../notifications');
 
 const tracer = trace.getTracer('orders-module', '1.0.0');
 
 async function createOrder(userId, items) {
-  const span = tracer.startSpan('orders.create');
-
-  try {
-    // Save order first
-    const order = await saveOrder(userId, items);
-
-    // Process payment (cross-module call)
-    const paymentSpan = tracer.startSpan('orders.call.payments', {
-      attributes: {
-        'target.module': 'payments',
-        'operation': 'processPayment',
-      }
-    });
-
-    let payment;
+  return tracer.startActiveSpan('orders.create', async (span) => {
     try {
-      payment = await payments.processPayment(order.id, order.total);
-      paymentSpan.end();
+      // Save order first
+      const order = await saveOrder(userId, items);
+
+      // Process payment (cross-module call)
+      await tracer.startActiveSpan('orders.call.payments', {
+        attributes: {
+          'target.module': 'payments',
+          'operation': 'processPayment',
+        }
+      }, async (paymentSpan) => {
+        try {
+          await payments.processPayment(order.id, order.total);
+        } catch (error) {
+          paymentSpan.recordException(error);
+          paymentSpan.setStatus({ code: SpanStatusCode.ERROR });
+          throw error;
+        } finally {
+          paymentSpan.end();
+        }
+      });
+
+      // Send notification (cross-module call)
+      await tracer.startActiveSpan('orders.call.notifications', {
+        attributes: {
+          'target.module': 'notifications',
+          'operation': 'sendOrderConfirmation',
+        }
+      }, async (notifySpan) => {
+        try {
+          await notifications.sendOrderConfirmation(userId, order.id);
+        } catch (error) {
+          // Log but don't fail order creation if notification fails
+          notifySpan.recordException(error);
+          notifySpan.setStatus({ code: SpanStatusCode.ERROR });
+        } finally {
+          notifySpan.end();
+        }
+      });
+
+      return order;
     } catch (error) {
-      paymentSpan.recordException(error);
-      paymentSpan.end();
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
+    } finally {
+      span.end();
     }
-
-    // Send notification (cross-module call)
-    const notifySpan = tracer.startSpan('orders.call.notifications', {
-      attributes: {
-        'target.module': 'notifications',
-        'operation': 'sendOrderConfirmation',
-      }
-    });
-
-    try {
-      await notifications.sendOrderConfirmation(userId, order.id);
-      notifySpan.end();
-    } catch (error) {
-      // Log but don't fail order creation if notification fails
-      notifySpan.recordException(error);
-      notifySpan.end();
-    }
-
-    span.end();
-    return order;
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2 });
-    span.end();
-    throw error;
-  }
+  });
 }
 ```
 
@@ -481,7 +487,7 @@ module.exports = {
 // Monolith: src/payments/service.js
 const orders = require('../orders');
 
-async function handlePaymentSuccess(paymentId) {
+async function handlePaymentSuccess(orderId, paymentId) {
   const order = await orders.getOrder(orderId);
   // ...
 }
@@ -493,10 +499,10 @@ Orders service (new microservice):
 
 ```javascript
 // orders-service/src/tracing.js
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'orders-service', // Changed!
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'orders-service', // Changed!
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
 });
 
 // Rest of tracing setup stays identical
@@ -508,8 +514,13 @@ const resource = new Resource({
 const tracer = trace.getTracer('orders-module', '1.0.0');
 
 async function createOrder(userId, items) {
-  const span = tracer.startSpan('orders.create');
-  // Same code as before
+  return tracer.startActiveSpan('orders.create', async (span) => {
+    try {
+      // Same code as before
+    } finally {
+      span.end();
+    }
+  });
 }
 ```
 
@@ -557,7 +568,7 @@ Monoliths often have shared resources (database connections, caches). Instrument
 
 ```javascript
 // src/shared/database.js
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 const pg = require('pg');
 
 const tracer = trace.getTracer('database-shared', '1.0.0');
@@ -568,25 +579,25 @@ const pool = new pg.Pool({
 
 // Wrapper that adds tracing
 async function query(text, params, context) {
-  const span = tracer.startSpan('db.query', {
+  return tracer.startActiveSpan('db.query', {
     attributes: {
-      'db.system': 'postgresql',
-      'db.statement': text,
-      'db.operation': text.split(' ')[0].toUpperCase(),
+      'db.system.name': 'postgresql',
+      'db.query.text': text,
+      'db.operation.name': text.split(' ')[0].toUpperCase(),
+    }
+  }, async (span) => {
+    try {
+      const result = await pool.query(text, params);
+      span.setAttribute('db.response.returned_rows', result.rowCount);
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
     }
   });
-
-  try {
-    const result = await pool.query(text, params);
-    span.setAttribute('db.rows_affected', result.rowCount);
-    span.end();
-    return result;
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2 });
-    span.end();
-    throw error;
-  }
 }
 
 module.exports = { query };
@@ -628,31 +639,34 @@ const { trace } = require('@opentelemetry/api');
 const tracer = trace.getTracer('events', '1.0.0');
 
 function emit(eventName, data) {
-  const span = tracer.startSpan('event.emit', {
+  tracer.startActiveSpan('event.emit', {
     attributes: {
       'event.name': eventName,
     }
+  }, (span) => {
+    try {
+      emitter.emit(eventName, data);
+    } finally {
+      span.end();
+    }
   });
-
-  emitter.emit(eventName, data);
-  span.end();
 }
 
 function on(eventName, handler) {
   emitter.on(eventName, async (data) => {
-    const span = tracer.startSpan('event.handle', {
+    await tracer.startActiveSpan('event.handle', {
       attributes: {
         'event.name': eventName,
       }
+    }, async (span) => {
+      try {
+        await handler(data);
+      } catch (error) {
+        span.recordException(error);
+      } finally {
+        span.end();
+      }
     });
-
-    try {
-      await handler(data);
-      span.end();
-    } catch (error) {
-      span.recordException(error);
-      span.end();
-    }
   });
 }
 
@@ -695,8 +709,9 @@ Pass context explicitly instead of using globals. This makes dependencies visibl
 ```javascript
 // src/shared/context.js
 class RequestContext {
-  constructor(userId, requestId, authToken) {
+  constructor(userId, userTier, requestId, authToken) {
     this.userId = userId;
+    this.userTier = userTier;
     this.requestId = requestId;
     this.authToken = authToken;
   }
@@ -708,18 +723,20 @@ module.exports = { RequestContext };
 ```javascript
 // src/orders/service.js
 async function createOrder(context, items) {
-  const span = tracer.startSpan('orders.create', {
+  return tracer.startActiveSpan('orders.create', {
     attributes: {
-      'user.id': context.userId,
-      'request.id': context.requestId,
+      'user.tier': context.userTier,
+    }
+  }, async (span) => {
+    try {
+      // Use context.userId instead of global auth state
+      const order = await saveOrder(context.userId, items);
+
+      return order;
+    } finally {
+      span.end();
     }
   });
-
-  // Use context.userId instead of global auth state
-  const order = await saveOrder(context.userId, items);
-
-  span.end();
-  return order;
 }
 ```
 
