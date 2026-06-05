@@ -37,7 +37,7 @@ graph LR
 
 ## Collecting Metrics from NGINX Ingress Controller
 
-The NGINX Ingress Controller exposes Prometheus metrics by default on port 10254 at the `/metrics` endpoint. The OpenTelemetry Collector can scrape these using the Prometheus receiver.
+The ingress-nginx controller exposes Prometheus metrics on port 10254 at the `/metrics` endpoint when metrics are enabled. The OpenTelemetry Collector can scrape these using the Prometheus receiver.
 
 This collector configuration scrapes the NGINX Ingress Controller's Prometheus metrics endpoint using Kubernetes service discovery to find the controller pods automatically.
 
@@ -62,7 +62,7 @@ receivers:
               action: keep
               regex: ingress-nginx
             # Use the metrics port
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__meta_kubernetes_pod_ip]
               action: replace
               target_label: __address__
               regex: (.+)
@@ -98,12 +98,12 @@ The key metrics you will get from this scrape include:
 
 - `nginx_ingress_controller_requests` - Total request count with status, method, and ingress labels.
 - `nginx_ingress_controller_request_duration_seconds` - Histogram of request latencies.
-- `nginx_ingress_controller_upstream_latency_seconds` - How long upstream services take to respond.
+- `nginx_ingress_controller_response_duration_seconds` - How long upstream services take to respond.
 - `nginx_ingress_controller_nginx_process_connections` - Active, reading, writing, and waiting connections.
 
 ## Enabling OpenTelemetry Tracing in NGINX Ingress
 
-The NGINX Ingress Controller has native OpenTelemetry support built in since version 1.9.0. You enable it through a ConfigMap. This is much better than the older Jaeger or Zipkin integration because it speaks OTLP natively.
+Current ingress-nginx releases support OpenTelemetry instrumentation through the OpenTelemetry C++ NGINX module. You enable it through a ConfigMap. This is much better than the older Jaeger or Zipkin integration because it speaks OTLP natively.
 
 This ConfigMap configuration enables the NGINX Ingress Controller's built-in OpenTelemetry instrumentation to export traces via OTLP.
 
@@ -119,7 +119,7 @@ data:
   enable-opentelemetry: "true"
 
   # Collector endpoint receiving traces
-  opentelemetry-config: "/etc/nginx/opentelemetry.toml"
+  opentelemetry-config: "/etc/ingress-controller/telemetry/opentelemetry.toml"
   opentelemetry-operation-name: "HTTP $request_method $service_name $uri"
 
   # Trust incoming trace context headers
@@ -166,7 +166,7 @@ receivers:
         parse_from: attributes.log
         regex: '(?P<remote_addr>\S+)\s-\s(?P<remote_user>\S+)\s\[(?P<time_local>[^\]]+)\]\s"(?P<request_method>\S+)\s(?P<request_uri>\S+)\s(?P<http_version>[^"]+)"\s(?P<status>\d+)\s(?P<body_bytes_sent>\d+)\s"(?P<http_referer>[^"]*)"\s"(?P<http_user_agent>[^"]*)"\s(?P<request_length>\d+)\s(?P<request_time>[\d.]+)\s\[(?P<proxy_upstream_name>[^\]]*)\]'
 
-      # Convert numeric fields from strings
+      # Set log severity from the HTTP status code
       - type: severity_parser
         parse_from: attributes.status
         mapping:
@@ -237,13 +237,11 @@ histogram_quantile(0.95,
 )
 ```
 
-**Connection saturation** shows when you are approaching connection limits:
+**Connection pressure** shows active and waiting NGINX connections:
 
 ```promql
-# Ratio of active connections to max allowed
-nginx_ingress_controller_nginx_process_connections{state="active"}
-  /
-nginx_ingress_controller_nginx_process_connections_total
+# Active and waiting connections
+nginx_ingress_controller_nginx_process_connections{state=~"active|waiting"}
 ```
 
 ## Alerting on Ingress Issues
@@ -320,7 +318,7 @@ metrics:
       insecure: true
 ```
 
-**HAProxy Ingress** exposes Prometheus metrics that you can scrape the same way as NGINX. Tracing support varies by version but newer releases support OpenTelemetry natively.
+**HAProxy Ingress** exposes Prometheus metrics that you can scrape the same way as NGINX. For tracing, check your controller and version documentation; Prometheus metrics are the portable baseline across HAProxy Ingress deployments.
 
 ## Conclusion
 
