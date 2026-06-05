@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, etcd, Prometheus, Kubernetes, Metrics Scraping
 
-Description: Configure the OpenTelemetry Collector to scrape the etcd Prometheus metrics endpoint in Kubernetes with proper TLS and RBAC setup.
+Description: Configure the OpenTelemetry Collector to scrape the etcd Prometheus metrics endpoint in Kubernetes with proper TLS and scheduling setup.
 
-Scraping etcd metrics in Kubernetes requires special attention to TLS certificates, network access, and RBAC permissions. etcd does not expose its metrics endpoint openly since it holds the entire cluster state. This post walks through the complete setup for getting the OpenTelemetry Collector to scrape etcd metrics in a Kubernetes environment.
+Scraping etcd metrics in Kubernetes requires special attention to TLS certificates, network access, and scheduling. etcd does not expose its metrics endpoint openly since it holds the entire cluster state. This post walks through the complete setup for getting the OpenTelemetry Collector to scrape etcd metrics in a Kubernetes environment.
 
 ## The Challenge
 
@@ -48,7 +48,7 @@ spec:
       serviceAccountName: otel-collector-etcd
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           volumeMounts:
             - name: config
@@ -104,16 +104,9 @@ data:
             action: upsert
 
       filter/important:
-        metrics:
-          include:
-            match_type: regexp
-            metric_names:
-              - "etcd_server_.*"
-              - "etcd_mvcc_.*"
-              - "etcd_network_.*"
-              - "etcd_disk_.*"
-              - "grpc_server_.*"
-              - "process_.*"
+        error_mode: ignore
+        metric_conditions:
+          - 'not IsMatch(metric.name, "^(etcd_server_.*|etcd_mvcc_.*|etcd_network_.*|etcd_disk_.*|grpc_server_.*|process_.*)$")'
 
       batch:
         timeout: 10s
@@ -132,7 +125,9 @@ data:
           exporters: [otlp]
 ```
 
-## RBAC Configuration
+## Service Account Configuration
+
+Because this configuration uses a static Prometheus target and host-mounted certificates, it does not need Kubernetes API permissions to scrape etcd. A dedicated ServiceAccount is still useful so the DaemonSet runs with its own identity:
 
 ```yaml
 apiVersion: v1
@@ -140,31 +135,6 @@ kind: ServiceAccount
 metadata:
   name: otel-collector-etcd
   namespace: monitoring
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: otel-collector-etcd
-rules:
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["nodes/metrics"]
-    verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: otel-collector-etcd
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: otel-collector-etcd
-subjects:
-  - kind: ServiceAccount
-    name: otel-collector-etcd
-    namespace: monitoring
 ```
 
 ## Handling Different Kubernetes Distributions
