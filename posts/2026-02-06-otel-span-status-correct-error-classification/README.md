@@ -12,18 +12,18 @@ OpenTelemetry gives you three span status codes: `UNSET`, `OK`, and `ERROR`. Tha
 
 Let us start with what each code means according to the OpenTelemetry specification:
 
-- **UNSET**: The default. The span completed but the instrumentation did not explicitly set a status. This is NOT the same as "success."
+- **UNSET**: The default. The instrumentation did not explicitly set a status. For instrumentation libraries, this is the normal status for operations that completed without errors.
 - **OK**: The operation completed successfully AND the instrumentation explicitly confirmed it. This is the strongest positive signal.
 - **ERROR**: The operation failed in a way that should be tracked as an error.
 
-The key insight: `UNSET` is not a success indicator. It means "I have no opinion about whether this succeeded or failed." This distinction is important for metrics.
+The key insight: `UNSET` is not the same as an explicit positive signal. It means the span status was not set. This distinction is important for metrics.
 
 ## Common Mistakes
 
-### Mistake 1: Setting ERROR for Client Errors (HTTP 4xx)
+### Mistake 1: Setting ERROR for HTTP Server 4xx Responses
 
 ```python
-# WRONG - Do not treat client errors as span errors
+# WRONG - Do not treat expected server-side 4xx responses as span errors
 
 @app.route("/api/users/<user_id>")
 def get_user(user_id):
@@ -36,22 +36,21 @@ def get_user(user_id):
 ```
 
 ```python
-# CORRECT - 404 is a valid response, not an error
+# CORRECT - 404 is a valid server response, not a server error
 @app.route("/api/users/<user_id>")
 def get_user(user_id):
     with tracer.start_as_current_span("get-user") as span:
         user = db.find_user(user_id)
         if not user:
-            # The server handled this correctly. Leave status as UNSET or OK.
-            span.set_attribute("http.status_code", 404)
-            span.set_status(trace.StatusCode.OK)
+            # The server handled this correctly. Leave status as UNSET.
+            span.set_attribute("http.response.status_code", 404)
             return jsonify({"error": "Not found"}), 404
 ```
 
-### Mistake 2: Not Setting Status on Successful Operations
+### Mistake 2: Treating UNSET as a Strong Success Signal
 
 ```python
-# INCOMPLETE - Status stays UNSET, which is ambiguous
+# ACCEPTABLE - Status stays UNSET, the default for an operation without errors
 def process_payment(order_id):
     with tracer.start_as_current_span("process-payment") as span:
         result = payment_gateway.charge(order_id)
@@ -59,7 +58,7 @@ def process_payment(order_id):
 ```
 
 ```python
-# BETTER - Explicitly confirm success
+# OPTIONAL - Explicitly confirm success only when you need a strong override
 def process_payment(order_id):
     with tracer.start_as_current_span("process-payment") as span:
         result = payment_gateway.charge(order_id)
@@ -89,10 +88,10 @@ def charge_card(card_id, amount):
                 # Record the business outcome as an attribute
                 span.set_attribute("payment.outcome", "declined")
                 span.set_attribute("payment.decline_reason", result.reason)
-                span.set_status(trace.StatusCode.OK)  # The system worked correctly
+                # Leave the status as UNSET unless you need to suppress noisy errors.
             else:
                 span.set_attribute("payment.outcome", "approved")
-                span.set_status(trace.StatusCode.OK)
+                # Leave the status as UNSET for a normal success.
             return result
         except GatewayTimeoutError as e:
             # THIS is a real error - the system failed
@@ -117,38 +116,36 @@ def set_span_status(span, http_status_code=None, exception=None, business_failur
     Rules:
     1. If an exception occurred due to a system failure -> ERROR
     2. If HTTP 5xx -> ERROR
-    3. If HTTP 4xx -> OK (client's fault, server worked correctly)
-    4. If business logic failure (e.g., validation) -> OK with attributes
-    5. If operation succeeded -> OK
+    3. If HTTP 4xx on a server span -> leave UNSET
+    4. If business logic failure (e.g., validation) -> leave UNSET with attributes
+    5. If operation succeeded -> leave UNSET unless an explicit OK is needed
     6. If unsure -> leave UNSET
     """
     if exception:
         # System-level failure
         span.record_exception(exception)
+        span.set_attribute("error.type", type(exception).__name__)
         span.set_status(trace.StatusCode.ERROR, str(exception))
         return
 
     if http_status_code:
-        span.set_attribute("http.status_code", http_status_code)
+        span.set_attribute("http.response.status_code", http_status_code)
 
         if 500 <= http_status_code < 600:
             # Server error - this is a real error
-            span.set_status(
-                trace.StatusCode.ERROR,
-                f"HTTP {http_status_code}"
-            )
+            span.set_attribute("error.type", str(http_status_code))
+            span.set_status(trace.StatusCode.ERROR)
         elif 200 <= http_status_code < 500:
-            # Success or client error - server worked correctly
-            span.set_status(trace.StatusCode.OK)
+            # Success or client error on a server span - leave UNSET
+            pass
         return
 
     if business_failure:
         # Business logic said "no" but the system worked
-        span.set_status(trace.StatusCode.OK)
         return
 
-    # Default: explicit success
-    span.set_status(trace.StatusCode.OK)
+    # Default: leave UNSET
+    return
 ```
 
 ## Impact on Metrics and Dashboards
@@ -156,7 +153,7 @@ def set_span_status(span, http_status_code=None, exception=None, business_failur
 Getting span status right directly affects your error rate calculations:
 
 ```promql
-# This query only works correctly when ERROR means "system failure"
+# Exact metric and label names depend on your backend or span-to-metrics processor.
 sum(rate(spans_total{status_code="ERROR"}[5m]))
 /
 sum(rate(spans_total[5m]))
@@ -168,18 +165,28 @@ If you set `ERROR` for 404s, your error rate includes users requesting nonexiste
 
 ### gRPC Status Codes
 
-For gRPC, the mapping is more nuanced:
+For gRPC server spans, the mapping is more nuanced:
 
 ```python
 # grpc_status_mapping.py
 GRPC_STATUS_TO_SPAN_STATUS = {
-    0: trace.StatusCode.OK,           # OK
+    0: trace.StatusCode.UNSET,        # OK
     1: trace.StatusCode.UNSET,        # CANCELLED - client cancelled
+    2: trace.StatusCode.ERROR,        # UNKNOWN
     3: trace.StatusCode.UNSET,        # INVALID_ARGUMENT - client's fault
+    4: trace.StatusCode.ERROR,        # DEADLINE_EXCEEDED
     5: trace.StatusCode.UNSET,        # NOT_FOUND - not a server error
+    6: trace.StatusCode.UNSET,        # ALREADY_EXISTS
+    7: trace.StatusCode.UNSET,        # PERMISSION_DENIED
+    8: trace.StatusCode.UNSET,        # RESOURCE_EXHAUSTED
+    9: trace.StatusCode.UNSET,        # FAILED_PRECONDITION
+    10: trace.StatusCode.UNSET,       # ABORTED
+    11: trace.StatusCode.UNSET,       # OUT_OF_RANGE
+    12: trace.StatusCode.ERROR,       # UNIMPLEMENTED
     13: trace.StatusCode.ERROR,       # INTERNAL - server error
     14: trace.StatusCode.ERROR,       # UNAVAILABLE - server error
-    4: trace.StatusCode.ERROR,        # DEADLINE_EXCEEDED - could be server issue
+    15: trace.StatusCode.ERROR,       # DATA_LOSS
+    16: trace.StatusCode.UNSET,       # UNAUTHENTICATED
 }
 ```
 
@@ -191,11 +198,9 @@ def insert_user(user_data):
     with tracer.start_as_current_span("insert-user") as span:
         try:
             db.insert("users", user_data)
-            span.set_status(trace.StatusCode.OK)
         except UniqueConstraintError:
             # The database worked correctly - the data was invalid
             span.set_attribute("db.constraint_violation", True)
-            span.set_status(trace.StatusCode.OK)
         except ConnectionError as e:
             # The database is actually broken
             span.record_exception(e)
@@ -205,4 +210,4 @@ def insert_user(user_data):
 
 ## Conclusion
 
-Use `ERROR` only for actual system failures that your team needs to investigate. Use `OK` for operations that completed as designed, even if the business outcome was negative. Leave `UNSET` when the instrumentation does not have enough context to decide. This discipline keeps your error rates meaningful and your alerts actionable.
+Use `ERROR` only for actual failures that your team needs to investigate. Leave `UNSET` for operations that completed as designed, even if the business outcome was negative. Use `OK` when application context needs an explicit success signal or needs to suppress errors an analysis tool might otherwise infer. This discipline keeps your error rates meaningful and your alerts actionable.
