@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Span Events, Connector, Log, Metric
 
 Description: Convert OpenTelemetry span events into standalone log records and metric data points using Collector connectors and processors.
 
-Span events are timestamped annotations attached to a span. They capture things like exceptions, retry attempts, cache hits/misses, and state transitions. But span events are buried inside traces. If you want to search for all exceptions across your system, or count cache miss rates as a metric, you need to extract those events into standalone log records and metric data points. The OpenTelemetry Collector makes this possible with connectors and processors.
+Span events are timestamped annotations attached to a span. They capture things like exceptions, retry attempts, cache hits/misses, and state transitions. But span events are buried inside traces. If you want to search for all exceptions across your system, or count cache miss rates as a metric, you need to extract those events into standalone log records and metric data points. The OpenTelemetry Collector makes this possible with the exceptions connector, the count connector, and processors.
 
 ## What Are Span Events?
 
@@ -54,9 +54,9 @@ def process_order(order):
 
 These events are only visible when you open a specific trace in your trace UI. You cannot search across all traces for `payment.retry` events or count how many times they occur.
 
-## Converting Span Events to Log Records
+## Converting Exception Span Events to Log Records
 
-The `transform` processor in the collector can extract span events and convert them to standalone log records:
+The `exceptions` connector in the collector can extract exception span events and convert them to standalone log records:
 
 ```yaml
 # collector-config.yaml
@@ -67,34 +67,28 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  # Span-to-log connector: converts span events to log records
-  spantolog:
-    # Which events to convert
-    events:
-      - name: "exception"        # convert exception events
-      - name: "payment.retry"    # convert retry events
-      - name: "payment.attempt"  # convert payment attempts
+  # Exceptions connector: converts exception span events to logs
+  exceptions:
 
 processors:
   batch:
     timeout: 5s
 
-  # Transform span events into structured log records
-  transform/events_to_logs:
-    trace_statements:
-      - context: spanevent
+  # Enrich exception logs emitted by the connector
+  transform/exception_logs:
+    log_statements:
+      - context: log
         statements:
-          # Copy event attributes to the log record
-          - set(attributes["event.name"], name)
-          - set(attributes["source"], "span_event")
+          - set(log.attributes["source"], "span_event")
+          - set(log.event_name, "exception") where log.attributes["exception.type"] != nil
 
 exporters:
   otlp/traces:
-    endpoint: "http://tempo:4317"
+    endpoint: "tempo:4317"
     tls:
       insecure: true
 
-  otlp/logs:
+  otlphttp/logs:
     endpoint: "http://loki:3100/otlp"
     tls:
       insecure: true
@@ -104,23 +98,23 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/traces, spantolog]
+      exporters: [otlp/traces, exceptions]
 
     logs:
-      receivers: [otlp, spantolog]
-      processors: [batch]
-      exporters: [otlp/logs]
+      receivers: [otlp, exceptions]
+      processors: [transform/exception_logs, batch]
+      exporters: [otlphttp/logs]
 ```
 
-The connector takes span events from the trace pipeline and emits them as log records in the log pipeline. Each log record carries:
+The connector takes exception span events from the trace pipeline and emits them as log records in the log pipeline. Each log record carries:
 
-- The original event name, timestamp, and attributes
+- The original event timestamp and exception attributes
 - The trace ID and span ID from the parent span (preserving correlation)
-- The resource attributes from the parent span
+- The service name, span name, span kind, status code, stack trace, and span attributes
 
 ## Using the Transform Processor for Event Extraction
 
-If the spantolog connector is not available in your collector build, you can use the transform processor to achieve similar results:
+If you need to prepare span event attributes before deriving logs or metrics, you can use the transform processor. The transform processor modifies telemetry in the current pipeline; it does not create a new log pipeline by itself:
 
 ```yaml
 processors:
@@ -129,53 +123,51 @@ processors:
       - context: spanevent
         conditions:
           # Only process exception events
-          - name == "exception"
+          - spanevent.name == "exception"
         statements:
-          # These attributes will be available in derived log records
-          - set(attributes["log.source"], "span_event")
-          - set(attributes["original.span.name"], span.name)
-          - set(attributes["event.name"], name)
+          # These attributes stay on the span event for downstream connectors/exporters
+          - set(spanevent.attributes["log.source"], "span_event")
+          - set(spanevent.attributes["original.span.name"], span.name)
+          - set(spanevent.attributes["event.name"], spanevent.name)
 ```
 
 ## Converting Span Events to Metrics
 
-Some span events are better represented as metrics. For example, counting `payment.retry` events as a counter tells you how often retries happen across your system. Use the `count` connector or build it with the `spanmetrics` connector:
+Some span events are better represented as metrics. For example, counting `payment.retry` events as a counter tells you how often retries happen across your system. Use the `count` connector to count arbitrary span events:
 
 ```yaml
 connectors:
   # Custom counting connector for specific span events
   count:
-    spans:
+    spanevents:
       span.events.exception:
         description: "Count of exception events"
         conditions:
-          - 'IsMatch(events["exception"].name, "exception")'
+          - 'spanevent.name == "exception"'
         attributes:
           - key: service.name
             default_value: "unknown"
           - key: exception.type
 
-    spanevents:
       payment.retry.count:
         description: "Count of payment retry events"
         conditions:
-          - 'name == "payment.retry"'
+          - 'spanevent.name == "payment.retry"'
         attributes:
-          - key: payment.provider
+          - key: provider
 ```
 
-Alternative approach using the transform and routing processors:
+Alternative approach using the transform processor before the count connector:
 
 ```yaml
 processors:
-  # Count span events and emit as metrics
+  # Normalize span events before metric extraction
   transform/event_metrics:
     trace_statements:
       - context: spanevent
         statements:
           # Tag events for metric extraction
-          - set(attributes["metric.name"], Concat(["event.", name], ""))
-            where name == "payment.retry" or name == "cache.miss" or name == "exception"
+          - set(spanevent.attributes["metric.name"], Concat(["event.", spanevent.name], "")) where spanevent.name == "payment.retry" or spanevent.name == "cache.miss" or spanevent.name == "exception"
 ```
 
 ## A Practical Example: Exception Tracking
@@ -185,9 +177,7 @@ One of the most valuable event-to-log conversions is turning exception span even
 ```yaml
 # collector-config.yaml focused on exception extraction
 connectors:
-  spantolog/exceptions:
-    events:
-      - name: "exception"
+  exceptions:
 
 processors:
   # Enrich the extracted exception logs
@@ -195,19 +185,20 @@ processors:
     log_statements:
       - context: log
         conditions:
-          - attributes["event.name"] == "exception"
+          - log.attributes["exception.type"] != nil
         statements:
           # Set severity to ERROR for exception events
-          - set(severity_text, "ERROR")
-          - set(severity_number, 17)
+          - set(log.severity_text, "ERROR")
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR)
           # Create a structured log body
-          - set(body, Concat([
+          - |
+            set(log.body, Concat([
               "Exception in ",
-              attributes["original.span.name"],
+              log.attributes["span.name"],
               ": ",
-              attributes["exception.type"],
+              log.attributes["exception.type"],
               " - ",
-              attributes["exception.message"]
+              log.attributes["exception.message"]
             ], ""))
 
 service:
@@ -215,19 +206,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/traces, spantolog/exceptions]
+      exporters: [otlp/traces, exceptions]
 
     logs:
-      receivers: [spantolog/exceptions]
+      receivers: [exceptions]
       processors: [transform/exceptions, batch]
-      exporters: [otlp/logs]
+      exporters: [otlphttp/logs]
 ```
 
 Now you can search all exceptions across all services in your log backend:
 
 ```text
 # LogQL query for all exceptions derived from span events
-{source="span_event"} | json | event_name="exception" | line_format "{{.exception_type}}: {{.exception_message}}"
+{service_name=~".+"} | json | exception_type!="" | line_format "{{.exception_type}}: {{.exception_message}}"
 ```
 
 ## Cache Hit/Miss Metrics from Span Events
@@ -258,11 +249,11 @@ connectors:
       cache.hits:
         description: "Cache hit count"
         conditions:
-          - 'name == "cache.hit"'
+          - 'spanevent.name == "cache.hit"'
       cache.misses:
         description: "Cache miss count"
         conditions:
-          - 'name == "cache.miss"'
+          - 'spanevent.name == "cache.miss"'
 ```
 
 This gives you a `cache.hits` and `cache.misses` counter metric that you can use to calculate cache hit rates:
@@ -274,4 +265,4 @@ sum(rate(cache_hits[5m])) / (sum(rate(cache_hits[5m])) + sum(rate(cache_misses[5
 
 ## Wrapping Up
 
-Span events contain valuable structured data that is otherwise locked inside individual traces. By extracting them into standalone log records and metric data points, you make that data searchable, countable, and alertable. Use the spantolog connector for log extraction, the count connector for metric derivation, and the transform processor for enrichment. The correlation is preserved through trace IDs, so you can always navigate back from a derived log or metric to the original span.
+Span events contain valuable structured data that is otherwise locked inside individual traces. By extracting exception events into standalone log records and counting selected span events as metric data points, you make that data searchable, countable, and alertable. Use the exceptions connector for exception log extraction, the count connector for metric derivation, and the transform processor for enrichment. The correlation is preserved through trace IDs on generated exception logs, so you can navigate back from a derived log to the original span.
