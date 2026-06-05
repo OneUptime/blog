@@ -26,6 +26,7 @@ A coupon code goes through several checks before it is applied:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("ecommerce.coupons", "1.0.0")
 meter = metrics.get_meter("ecommerce.coupons", "1.0.0")
@@ -63,15 +64,16 @@ discount_amount = meter.create_histogram(
 ## The Validation Pipeline with Tracing
 
 ```python
+import hashlib
 import time
 
 async def validate_coupon(code: str, cart: dict, user_id: str):
     """Validate a coupon code against the cart and user context."""
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("coupon.validate") as root_span:
-        root_span.set_attribute("coupon.code", code)
-        root_span.set_attribute("coupon.user_id", user_id)
+        root_span.set_attribute("coupon.code_hash", hash_identifier(code))
+        root_span.set_attribute("coupon.user_id_hash", hash_identifier(user_id))
         root_span.set_attribute("coupon.cart_total", cart["total"])
         root_span.set_attribute("coupon.cart_item_count", len(cart["items"]))
 
@@ -80,8 +82,8 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
             coupon = await coupon_store.find_by_code(code)
             if not coupon:
                 lookup_span.set_attribute("coupon.found", False)
-                root_span.set_status(trace.StatusCode.ERROR, "Code not found")
-                record_rejection("code_not_found", code)
+                root_span.set_status(Status(StatusCode.ERROR, "Code not found"))
+                record_rejection("code_not_found")
                 return {"valid": False, "reason": "invalid_code"}
 
             lookup_span.set_attribute("coupon.found", True)
@@ -97,12 +99,12 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
 
             if coupon["starts_at"].timestamp() > now:
                 exp_span.set_attribute("coupon.not_yet_active", True)
-                record_rejection("not_yet_active", code)
+                record_rejection("not_yet_active")
                 return {"valid": False, "reason": "not_yet_active"}
 
             if coupon["expires_at"].timestamp() < now:
                 exp_span.set_attribute("coupon.expired", True)
-                record_rejection("expired", code)
+                record_rejection("expired")
                 return {"valid": False, "reason": "expired"}
 
         # Step 3: Usage limits
@@ -111,16 +113,23 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
             user_usage = await coupon_store.get_user_usage_count(coupon["id"], user_id)
 
             usage_span.set_attribute("coupon.global_usage", global_usage)
-            usage_span.set_attribute("coupon.global_limit", coupon["max_uses"])
             usage_span.set_attribute("coupon.user_usage", user_usage)
-            usage_span.set_attribute("coupon.per_user_limit", coupon["max_per_user"])
+            if coupon.get("max_uses") is not None:
+                usage_span.set_attribute("coupon.global_limit", coupon["max_uses"])
+            else:
+                usage_span.set_attribute("coupon.global_limit_unlimited", True)
+
+            if coupon.get("max_per_user") is not None:
+                usage_span.set_attribute("coupon.per_user_limit", coupon["max_per_user"])
+            else:
+                usage_span.set_attribute("coupon.per_user_limit_unlimited", True)
 
             if coupon["max_uses"] and global_usage >= coupon["max_uses"]:
-                record_rejection("global_limit_reached", code)
+                record_rejection("global_limit_reached")
                 return {"valid": False, "reason": "usage_limit_reached"}
 
             if coupon["max_per_user"] and user_usage >= coupon["max_per_user"]:
-                record_rejection("per_user_limit_reached", code)
+                record_rejection("per_user_limit_reached")
                 return {"valid": False, "reason": "already_used"}
 
         # Step 4: Cart eligibility
@@ -129,7 +138,7 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
             cart_span.set_attribute("coupon.cart_eligible", eligible)
             if not eligible:
                 cart_span.set_attribute("coupon.cart_rejection_reason", cart_reason)
-                record_rejection(f"cart_{cart_reason}", code)
+                record_rejection(f"cart_{cart_reason}")
                 return {"valid": False, "reason": cart_reason}
 
         # Step 5: Customer eligibility
@@ -142,7 +151,7 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
 
                 overlap = set(coupon["target_segments"]) & set(user_segments)
                 if not overlap:
-                    record_rejection("customer_not_in_segment", code)
+                    record_rejection("customer_not_in_segment")
                     return {"valid": False, "reason": "not_eligible"}
 
         # Step 6: Stacking rules
@@ -153,7 +162,7 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
             stack_span.set_attribute("coupon.stackable", coupon.get("stackable", False))
 
             if existing_discounts and not coupon.get("stackable", False):
-                record_rejection("not_stackable", code)
+                record_rejection("not_stackable")
                 return {"valid": False, "reason": "cannot_combine"}
 
         # Step 7: Calculate the discount
@@ -170,7 +179,7 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
             })
 
         # Record success
-        total_ms = (time.time() - start) * 1000
+        total_ms = (time.perf_counter() - start) * 1000
         validation_latency.record(total_ms)
         validation_counter.add(1, {
             "coupon.result": "valid",
@@ -187,7 +196,12 @@ async def validate_coupon(code: str, cart: dict, user_id: str):
         }
 
 
-def record_rejection(reason: str, code: str):
+def hash_identifier(value: str) -> str:
+    """Hash identifiers before adding them to telemetry."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def record_rejection(reason: str):
     """Record a coupon rejection with the reason."""
     rejection_counter.add(1, {"coupon.rejection_reason": reason})
     validation_counter.add(1, {"coupon.result": "rejected"})
@@ -242,4 +256,4 @@ Once this instrumentation is running, you can answer questions like:
 - **How long does validation take?** If the customer eligibility check is slow because the segment service is under-provisioned, you will see it clearly in the span breakdown.
 - **Are there coupon abuse patterns?** A spike in "per_user_limit_reached" rejections from specific IP ranges might indicate abuse attempts.
 
-The combination of per-step spans and rejection reason metrics turns coupon debugging from a support ticket investigation into a dashboard glance. When a customer says "my code didn't work," you can search by the code and see exactly which validation step rejected it and why.
+The combination of per-step spans and rejection reason metrics turns coupon debugging from a support ticket investigation into a dashboard glance. When a customer says "my code didn't work," you can search by the code hash or coupon ID and see exactly which validation step rejected it and why.
