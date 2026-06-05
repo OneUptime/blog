@@ -8,7 +8,7 @@ Description: Comprehensive guide to instrumenting Entity Framework Core with Ope
 
 Database queries are often the bottleneck in web applications. Entity Framework Core, Microsoft's modern ORM, abstracts away SQL details, which is convenient but can make it difficult to understand what's happening at the database layer. OpenTelemetry provides the instrumentation needed to trace every database query, measure performance, and identify N+1 query problems.
 
-Understanding how your application interacts with the database is critical for performance optimization. OpenTelemetry's EF Core instrumentation automatically creates spans for database operations, capturing query text, parameters, timing, and errors. Combined with custom instrumentation for business logic, you get end-to-end visibility from HTTP request through business logic down to individual SQL queries.
+Understanding how your application interacts with the database is critical for performance optimization. OpenTelemetry's EF Core instrumentation automatically creates spans for database commands, capturing query text, timing, and errors. Combined with custom instrumentation for business logic, you get end-to-end visibility from HTTP request through business logic down to individual SQL queries.
 
 ## Setting Up the Project
 
@@ -24,16 +24,17 @@ cd EfCoreTracingDemo
 dotnet add package Microsoft.EntityFrameworkCore
 dotnet add package Microsoft.EntityFrameworkCore.SqlServer
 dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet add package Swashbuckle.AspNetCore
 
 # Add OpenTelemetry packages
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
-dotnet add package OpenTelemetry.Instrumentation.EntityFrameworkCore
+dotnet add package OpenTelemetry.Instrumentation.EntityFrameworkCore --prerelease
 dotnet add package OpenTelemetry.Exporter.Console
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 ```
 
-The EntityFrameworkCore instrumentation package provides automatic tracing for all database operations executed through EF Core.
+The EntityFrameworkCore instrumentation package provides automatic tracing for relational database operations executed through EF Core. It is currently distributed as a prerelease package.
 
 ## Creating the Data Model
 
@@ -152,6 +153,7 @@ Set up OpenTelemetry in your Program.cs to trace database operations:
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using EfCoreTracingDemo.Models;
@@ -206,14 +208,20 @@ builder.Services.AddOpenTelemetry()
             options.EnrichWithIDbCommand = (activity, command) =>
             {
                 // Add custom tags
-                activity.SetTag("db.connection_string",
-                    command.Connection?.DataSource);
+                activity.SetTag("db.name",
+                    command.Connection?.Database);
                 activity.SetTag("db.command_type",
                     command.CommandType.ToString());
             };
         })
         .AddSource("EfCoreTracingDemo.*")
         .AddConsoleExporter()
+        .AddOtlpExporter(otlpOptions =>
+        {
+            otlpOptions.Endpoint = new Uri("http://localhost:4317");
+        }))
+    .WithMetrics(metrics => metrics
+        .AddMeter("EfCoreTracingDemo.Database")
         .AddOtlpExporter(otlpOptions =>
         {
             otlpOptions.Endpoint = new Uri("http://localhost:4317");
@@ -250,6 +258,7 @@ Create a repository that combines EF Core's automatic instrumentation with custo
 ```csharp
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Trace;
 using EfCoreTracingDemo.Models;
 
 namespace EfCoreTracingDemo.Repositories;
@@ -464,7 +473,7 @@ public class OrderStatistics
 }
 ```
 
-The repository methods show proper patterns for EF Core queries. Each database operation gets its own span from the automatic instrumentation, while custom activities provide business context.
+The repository methods show proper patterns for EF Core queries. Each EF Core database command gets its own span from the automatic instrumentation, while custom activities provide business context.
 
 ## Understanding Query Spans in Traces
 
@@ -475,14 +484,12 @@ graph TD
     A[HTTP POST /api/orders] --> B[CreateOrder Activity]
     B --> C[DB: SELECT Customers]
     B --> D[DB: SELECT Products]
-    B --> E[DB: BEGIN TRANSACTION]
-    B --> F[DB: INSERT Order]
-    B --> G[DB: INSERT OrderItems]
-    B --> H[DB: UPDATE Products]
-    B --> I[DB: COMMIT TRANSACTION]
+    B --> E[DB: INSERT Order]
+    B --> F[DB: INSERT OrderItems]
+    B --> G[DB: UPDATE Products]
 ```
 
-Each database operation appears as a child span under your custom activity, showing timing, SQL query text, and any errors.
+Each EF Core database command appears as a child span under your custom activity, showing timing, SQL query text, and any errors.
 
 ## Detecting and Fixing N+1 Query Problems
 
@@ -634,7 +641,7 @@ public class PerformanceInterceptor : DbCommandInterceptor
     }
 }
 
-// Register in Program.cs
+// Register in Program.cs and update the existing DbContext registration
 builder.Services.AddSingleton<DatabaseMetrics>();
 builder.Services.AddSingleton<PerformanceInterceptor>();
 
@@ -654,6 +661,7 @@ Build a controller that demonstrates the tracing in action:
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
+using EfCoreTracingDemo.Models;
 using EfCoreTracingDemo.Repositories;
 
 namespace EfCoreTracingDemo.Controllers;
@@ -748,11 +756,11 @@ Add meaningful tags to your custom activities. Include business identifiers like
 
 Monitor query duration metrics to establish performance baselines. Set up alerts for queries that exceed acceptable thresholds.
 
-Be careful with sensitive data in traces. The SetDbStatementForText option includes SQL with parameters, which might contain PII. Consider disabling in production or scrubbing sensitive data.
+Be careful with sensitive data in traces. The SetDbStatementForText option includes SQL text with parameter placeholders; parameter values are emitted only when the experimental OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS environment variable is enabled. Consider disabling SQL statement capture in production or scrubbing sensitive data.
 
 ## Conclusion
 
-OpenTelemetry's Entity Framework Core instrumentation provides complete visibility into your database layer. Every query, transaction, and database operation becomes observable, with detailed timing information and the actual SQL being executed.
+OpenTelemetry's Entity Framework Core instrumentation provides detailed visibility into your database layer. Every EF Core database command becomes observable, with timing information and the actual SQL being executed.
 
 Combined with custom activities for business logic, you get end-to-end traces that show exactly how requests flow through your application and down to the database. This visibility is invaluable for identifying N+1 queries, optimizing slow queries, and understanding the performance characteristics of your data access patterns.
 
