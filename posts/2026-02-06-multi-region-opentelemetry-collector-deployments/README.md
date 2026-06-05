@@ -116,10 +116,19 @@ extensions:
     endpoint: 0.0.0.0:13133
   file_storage:
     directory: /var/otel/queue
+    create_directory: true
     timeout: 10s
 
 service:
   extensions: [health_check, file_storage]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
@@ -130,6 +139,8 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [otlphttp]
 ```
+
+If you run multiple gateway collector replicas with tail sampling, route all spans for the same trace to the same collector instance, for example with the load-balancing exporter in the agent tier.
 
 ## Kubernetes Multi-Cluster Deployment
 
@@ -143,7 +154,7 @@ replicaCount: 3
 
 image:
   repository: otel/opentelemetry-collector-contrib
-  tag: "0.96.0"
+  tag: "0.153.0"
 
 resources:
   requests:
@@ -214,7 +225,7 @@ processors:
   resource:
     attributes:
       - key: telemetry.source.region
-        value: "${REGION}"
+        value: "${env:REGION}"
         action: insert
 ```
 
@@ -224,13 +235,28 @@ If your backend supports it, configure cross-region fan-out so that cross-region
 # Cross-region trace routing.
 # When a trace involves spans from multiple regions, send a copy
 # to each region's backend for local querying.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  resource:
+    attributes:
+      - key: telemetry.source.region
+        value: "${env:REGION}"
+        action: insert
+  batch:
+
 connectors:
   routing:
+    default_pipelines: [traces/local]
     table:
-      - statement: route() where attributes["upstream.region"] != "${REGION}"
+      - context: resource
+        condition: attributes["upstream.region"] != "${env:REGION}"
+        action: copy
         pipelines: [traces/cross-region]
-      - statement: route()
-        pipelines: [traces/local]
 
 exporters:
   otlphttp/local:
@@ -240,11 +266,24 @@ exporters:
     endpoint: https://oneuptime.com/otlp
     headers:
       X-Cross-Region: "true"
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [routing]
+    traces/local:
+      receivers: [routing]
+      exporters: [otlphttp/local]
+    traces/cross-region:
+      receivers: [routing]
+      exporters: [otlphttp/cross-region]
 ```
 
 ## Regional Failover
 
-If a regional collector fleet goes down, you need a failover strategy. The simplest approach is to configure applications with a primary and secondary collector endpoint:
+If a regional collector fleet goes down, you need a failover strategy. If you own the exporter setup code or use a local proxy, configure applications with a primary and secondary collector endpoint:
 
 ```yaml
 # Application configuration with regional failover.
@@ -255,16 +294,41 @@ kind: ConfigMap
 metadata:
   name: otel-config-us-east
 data:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-gateway.observability.svc:4318"
-  # Failover endpoint in the nearest region
-  OTEL_EXPORTER_OTLP_FALLBACK_ENDPOINT: "http://otel-gateway-eu-west.observability.svc:4318"
+  PRIMARY_OTLP_ENDPOINT: "http://otel-gateway.observability.svc:4318"
+  # App-specific failover endpoint in the nearest region
+  SECONDARY_OTLP_ENDPOINT: "http://otel-gateway-eu-west.observability.svc:4318"
 ```
 
-Since most SDKs do not support native failover, implement it at the collector level using the failover exporter:
+Since most SDKs do not support native failover, implement it at the collector level using the failover connector:
 
 ```yaml
 # Collector with failover export configuration.
 # If the primary backend is unreachable, data is sent to the secondary.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 4096
+    spike_limit_mib: 1024
+  resource:
+    attributes:
+      - key: cloud.region
+        value: "us-east-1"
+        action: upsert
+  batch:
+
+connectors:
+  failover:
+    priority_levels:
+      - [traces/primary]
+      - [traces/secondary]
+    retry_interval: 30s
+
 exporters:
   otlphttp/primary:
     endpoint: https://oneuptime.com/otlp
@@ -280,11 +344,16 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      # Primary exporter with failover
-      exporters: [otlphttp/primary, otlphttp/secondary]
+      exporters: [failover]
+    traces/primary:
+      receivers: [failover]
+      exporters: [otlphttp/primary]
+    traces/secondary:
+      receivers: [failover]
+      exporters: [otlphttp/secondary]
 ```
 
 ## Monitoring the Multi-Region Fleet
@@ -349,12 +418,14 @@ processors:
       # Aggregate per-pod metrics into per-service metrics
       # before sending cross-region
       - include: http.server.request.duration
-        action: combine
-        aggregation_type: histogram
-        label_set:
-          - service.name
-          - http.request.method
-          - http.response.status_code
+        action: update
+        operations:
+          - action: aggregate_labels
+            aggregation_type: sum
+            label_set:
+              - service.name
+              - http.request.method
+              - http.response.status_code
 ```
 
 ## Conclusion
