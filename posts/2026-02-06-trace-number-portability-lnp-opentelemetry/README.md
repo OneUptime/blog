@@ -27,8 +27,8 @@ A number port typically follows these steps:
 
 from opentelemetry import trace, metrics
 from opentelemetry.trace import StatusCode, SpanKind
+import hashlib
 import time
-from datetime import datetime
 
 tracer = trace.get_tracer("lnp.porting")
 meter = metrics.get_meter("lnp.porting")
@@ -62,21 +62,35 @@ foc_response_time = meter.create_histogram(
 active_ports = {}
 
 
+def hash_tn(tn: str) -> str:
+    """Avoid sending raw telephone numbers to telemetry backends."""
+    return hashlib.sha256(tn.encode("utf-8")).hexdigest()
+
+
+def format_otel_attribute(value):
+    """Convert timestamp-like values to OpenTelemetry-safe attribute values."""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
 class PortRequestTracer:
     """Manages OpenTelemetry tracing for a single LNP port request."""
 
     def __init__(self, port_request_id: str):
         self.port_request_id = port_request_id
         self.root_span = None
+        self.started_at = None
 
     def start_port_request(self, request_data: dict):
         """Begin tracing when a new port request is submitted."""
+        self.started_at = time.time()
         self.root_span = tracer.start_span(
             "lnp.port_request.lifecycle",
             kind=SpanKind.SERVER,
             attributes={
                 "lnp.port_request_id": self.port_request_id,
-                "lnp.ported_number": request_data["tn"],
+                "lnp.ported_number_hash": hash_tn(request_data["tn"]),
                 "lnp.recipient_spid": request_data["new_carrier_spid"],
                 "lnp.donor_spid": request_data["old_carrier_spid"],
                 "lnp.port_type": request_data.get("port_type", "simple"),
@@ -96,7 +110,7 @@ class PortRequestTracer:
             start = time.time()
 
             span.set_attributes({
-                "lnp.ported_number": tn,
+                "lnp.ported_number_hash": hash_tn(tn),
                 "lnp.port_request_id": self.port_request_id,
             })
 
@@ -119,6 +133,7 @@ class PortRequestTracer:
 
             elapsed = (time.time() - start) * 1000
             validation_latency.record(elapsed)
+            port_request_counter.add(1, {"status": "validated"})
             return True
 
     def trace_donor_notification(self):
@@ -132,11 +147,15 @@ class PortRequestTracer:
 
             # Send LSR (Local Service Request) to donor
             lsr_response = send_lsr_to_donor(self.port_request_id)
-            span.set_attributes({
+            lsr_attributes = {
                 "lnp.lsr.message_id": lsr_response.message_id,
-                "lnp.lsr.sent_at": lsr_response.timestamp,
                 "lnp.lsr.delivery_status": lsr_response.status,
-            })
+            }
+            if lsr_response.timestamp:
+                lsr_attributes["lnp.lsr.sent_at"] = format_otel_attribute(
+                    lsr_response.timestamp
+                )
+            span.set_attributes(lsr_attributes)
 
             if lsr_response.status != "delivered":
                 span.set_status(StatusCode.ERROR, "LSR delivery failed")
@@ -148,22 +167,24 @@ class PortRequestTracer:
         with tracer.start_as_current_span(
             "lnp.foc_received", context=ctx
         ) as span:
-            span.set_attributes({
+            foc_attributes = {
                 "lnp.port_request_id": self.port_request_id,
                 "lnp.foc.result": foc_data["result"],
-                "lnp.foc.confirmed_due_date": foc_data.get("due_date"),
-            })
+            }
+            if foc_data.get("due_date"):
+                foc_attributes["lnp.foc.confirmed_due_date"] = foc_data["due_date"]
+            span.set_attributes(foc_attributes)
 
             if foc_data["result"] == "confirmed":
                 port_request_counter.add(1, {"status": "foc_confirmed"})
                 # Calculate time from submission to FOC
-                submission_time = self.root_span.start_time
-                hours_elapsed = calculate_hours_elapsed(submission_time)
+                hours_elapsed = (time.time() - self.started_at) / 3600
                 foc_response_time.record(hours_elapsed)
             elif foc_data["result"] == "rejected":
                 span.set_status(StatusCode.ERROR,
                     f"FOC rejected: {foc_data.get('reason', 'unknown')}")
-                span.set_attribute("lnp.foc.reject_reason", foc_data.get("reason"))
+                if foc_data.get("reason"):
+                    span.set_attribute("lnp.foc.reject_reason", foc_data["reason"])
                 port_request_counter.add(1, {"status": "foc_rejected"})
 
     def trace_activation(self):
@@ -177,11 +198,15 @@ class PortRequestTracer:
 
             # Submit activation to NPAC
             activation_result = activate_in_npac(self.port_request_id)
-            span.set_attributes({
+            activation_attributes = {
                 "lnp.activation.new_lrn": activation_result.new_lrn,
                 "lnp.activation.broadcast_status": activation_result.broadcast_status,
-                "lnp.activation.timestamp": activation_result.activated_at,
-            })
+            }
+            if activation_result.activated_at:
+                activation_attributes["lnp.activation.timestamp"] = (
+                    format_otel_attribute(activation_result.activated_at)
+                )
+            span.set_attributes(activation_attributes)
 
             if activation_result.success:
                 port_request_counter.add(1, {"status": "activated"})
@@ -213,9 +238,12 @@ class PortRequestTracer:
     def complete(self):
         """Mark the port request as complete and end the root span."""
         if self.root_span:
+            hours_elapsed = (time.time() - self.started_at) / 3600
+            port_duration.record(hours_elapsed)
+            port_request_counter.add(1, {"status": "completed"})
             self.root_span.set_status(StatusCode.OK)
             self.root_span.end()
-            del active_ports[self.port_request_id]
+            active_ports.pop(self.port_request_id, None)
 ```
 
 ## Metrics Dashboard Recommendations
