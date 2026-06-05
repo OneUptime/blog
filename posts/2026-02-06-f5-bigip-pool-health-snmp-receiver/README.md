@@ -32,26 +32,26 @@ F5 BIG-IP uses enterprise OID `1.3.6.1.4.1.3375`. Here are the important metrics
 
 ```text
 # Virtual Server metrics
-1.3.6.1.4.1.3375.2.2.10.1.2.1.1   - VS name
-1.3.6.1.4.1.3375.2.2.10.1.2.1.9   - VS current connections
-1.3.6.1.4.1.3375.2.2.10.1.2.1.7   - VS total connections
-1.3.6.1.4.1.3375.2.2.10.1.2.1.12  - VS bytes in
-1.3.6.1.4.1.3375.2.2.10.1.2.1.13  - VS bytes out
+1.3.6.1.4.1.3375.2.2.10.2.3.1.1   - VS name
+1.3.6.1.4.1.3375.2.2.10.2.3.1.12  - VS current connections
+1.3.6.1.4.1.3375.2.2.10.2.3.1.11  - VS total connections
+1.3.6.1.4.1.3375.2.2.10.2.3.1.7   - VS bytes in
+1.3.6.1.4.1.3375.2.2.10.2.3.1.9   - VS bytes out
 
 # Pool metrics
-1.3.6.1.4.1.3375.2.2.5.1.2.1.1    - Pool name
-1.3.6.1.4.1.3375.2.2.5.1.2.1.8    - Pool current connections
-1.3.6.1.4.1.3375.2.2.5.1.2.1.15   - Pool status availability
+1.3.6.1.4.1.3375.2.2.5.2.3.1.1    - Pool name
+1.3.6.1.4.1.3375.2.2.5.2.3.1.8    - Pool current connections
+1.3.6.1.4.1.3375.2.2.5.5.2.1.2    - Pool status availability
 
 # Pool Member metrics
-1.3.6.1.4.1.3375.2.2.5.3.2.1.1    - Member name
-1.3.6.1.4.1.3375.2.2.5.3.2.1.5    - Member current connections
-1.3.6.1.4.1.3375.2.2.5.3.2.1.10   - Member status
-1.3.6.1.4.1.3375.2.2.5.3.2.1.12   - Member bytes in
-1.3.6.1.4.1.3375.2.2.5.3.2.1.13   - Member bytes out
+1.3.6.1.4.1.3375.2.2.5.4.3.1.28   - Member node name
+1.3.6.1.4.1.3375.2.2.5.4.3.1.11   - Member current connections
+1.3.6.1.4.1.3375.2.2.5.6.2.1.5    - Member status availability
+1.3.6.1.4.1.3375.2.2.5.4.3.1.6    - Member bytes in
+1.3.6.1.4.1.3375.2.2.5.4.3.1.8    - Member bytes out
 
 # System metrics
-1.3.6.1.4.1.3375.2.1.1.2.1.44.0   - System CPU usage
+1.3.6.1.4.1.3375.2.1.1.2.1.44.0   - System memory total
 1.3.6.1.4.1.3375.2.1.1.2.1.45.0   - System memory used
 ```
 
@@ -66,6 +66,19 @@ receivers:
     version: v2c
     community: otel_read
 
+    # Define attributes used by table metrics
+    attributes:
+      vs_name:
+        oid: "1.3.6.1.4.1.3375.2.2.10.2.3.1.1"
+      pool_name:
+        oid: "1.3.6.1.4.1.3375.2.2.5.2.3.1.1"
+      pool_member_status_pool:
+        oid: "1.3.6.1.4.1.3375.2.2.5.6.2.1.1"
+      pool_member_status_name:
+        oid: "1.3.6.1.4.1.3375.2.2.5.6.2.1.9"
+      pool_member_status_port:
+        oid: "1.3.6.1.4.1.3375.2.2.5.6.2.1.4"
+
     # Define metrics to collect
     metrics:
       # Virtual server current connections
@@ -74,10 +87,9 @@ receivers:
         gauge:
           value_type: int
         column_oids:
-          - oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.9"
+          - oid: "1.3.6.1.4.1.3375.2.2.10.2.3.1.12"
             attributes:
               - name: vs_name
-                oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.1"
 
       # Virtual server bytes in
       bigip.vs.bytes_in:
@@ -87,10 +99,9 @@ receivers:
           monotonic: true
           aggregation: cumulative
         column_oids:
-          - oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.12"
+          - oid: "1.3.6.1.4.1.3375.2.2.10.2.3.1.7"
             attributes:
               - name: vs_name
-                oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.1"
 
       # Virtual server bytes out
       bigip.vs.bytes_out:
@@ -100,10 +111,9 @@ receivers:
           monotonic: true
           aggregation: cumulative
         column_oids:
-          - oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.13"
+          - oid: "1.3.6.1.4.1.3375.2.2.10.2.3.1.9"
             attributes:
               - name: vs_name
-                oid: "1.3.6.1.4.1.3375.2.2.10.1.2.1.1"
 
       # Pool current connections
       bigip.pool.current_connections:
@@ -111,10 +121,9 @@ receivers:
         gauge:
           value_type: int
         column_oids:
-          - oid: "1.3.6.1.4.1.3375.2.2.5.1.2.1.8"
+          - oid: "1.3.6.1.4.1.3375.2.2.5.2.3.1.8"
             attributes:
               - name: pool_name
-                oid: "1.3.6.1.4.1.3375.2.2.5.1.2.1.1"
 
       # Pool member status
       bigip.pool_member.status:
@@ -122,14 +131,15 @@ receivers:
         gauge:
           value_type: int
         column_oids:
-          - oid: "1.3.6.1.4.1.3375.2.2.5.3.2.1.10"
+          - oid: "1.3.6.1.4.1.3375.2.2.5.6.2.1.5"
             attributes:
-              - name: member_name
-                oid: "1.3.6.1.4.1.3375.2.2.5.3.2.1.1"
+              - name: pool_member_status_pool
+              - name: pool_member_status_name
+              - name: pool_member_status_port
 
-      # System CPU usage
-      bigip.system.cpu_usage:
-        unit: "%"
+      # System memory total
+      bigip.system.memory_total:
+        unit: By
         gauge:
           value_type: int
         scalar_oids:
@@ -182,13 +192,14 @@ Set up alerts based on pool member status. The status OID returns:
 - `2` = yellow (degraded)
 - `3` = red (unavailable)
 - `4` = blue (unknown)
+- `5` = gray (unlicensed)
 
 ```yaml
 # Example alert condition (pseudo-code)
 # Alert when any pool member is not green (1)
 condition: bigip.pool_member.status != 1
 severity: critical
-message: "Pool member ${member_name} is unhealthy (status: ${status})"
+message: "Pool member ${pool_member_status_name}:${pool_member_status_port} in pool ${pool_member_status_pool} is unhealthy (status: ${status})"
 ```
 
 ## Monitoring Multiple BIG-IP Devices
@@ -202,6 +213,8 @@ receivers:
     endpoint: udp://10.0.0.1:161
     version: v2c
     community: otel_read
+    attributes:
+      # ... same attribute definitions ...
     metrics:
       # ... same metric definitions ...
 
@@ -210,6 +223,8 @@ receivers:
     endpoint: udp://10.0.0.2:161
     version: v2c
     community: otel_read
+    attributes:
+      # ... same attribute definitions ...
     metrics:
       # ... same metric definitions ...
 
