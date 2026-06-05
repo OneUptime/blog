@@ -16,6 +16,7 @@ Write a pytest plugin that creates a span for every test:
 # conftest.py
 
 import pytest
+import os
 import time
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -44,12 +45,14 @@ class OpenTelemetryPlugin:
     def __init__(self):
         self.test_spans = {}
         self.suite_span = None
+        self.suite_start_time = None
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_sessionstart(self, session):
+        self.suite_start_time = time.time()
         self.suite_span = tracer.start_span("test_suite", attributes={
-            "test.suite.name": str(session.config.rootdir),
-            "test.suite.start_time": time.time(),
+            "test.suite.name": str(session.config.rootpath),
+            "test.suite.start_time": self.suite_start_time,
         })
 
     @pytest.hookimpl(tryfirst=True)
@@ -61,7 +64,7 @@ class OpenTelemetryPlugin:
             attributes={
                 "test.name": item.name,
                 "test.module": item.module.__name__ if item.module else "unknown",
-                "test.file": str(item.fspath),
+                "test.file": str(item.path),
                 "test.nodeid": item.nodeid,
             },
         )
@@ -79,9 +82,6 @@ class OpenTelemetryPlugin:
         span = span_info["span"]
 
         if call.when == "call":
-            duration_ms = (time.monotonic() - span_info["start_time"]) * 1000
-            span.set_attribute("test.duration_ms", duration_ms)
-
             if call.excinfo is not None:
                 span.set_attribute("test.outcome", "failed")
                 span.set_attribute("test.error.type", call.excinfo.typename)
@@ -92,23 +92,36 @@ class OpenTelemetryPlugin:
                 span.set_attribute("test.outcome", "passed")
                 span.set_status(trace.Status(trace.StatusCode.OK))
 
+        if call.when in ("setup", "teardown") and call.excinfo is not None:
+            span.set_attribute("test.outcome", "failed")
+            span.set_attribute("test.error.type", call.excinfo.typename)
+            span.set_attribute("test.error.message", str(call.excinfo.value))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(call.excinfo.value)))
+            span.record_exception(call.excinfo.value)
+
         if call.when == "teardown":
+            duration_ms = (time.monotonic() - span_info["start_time"]) * 1000
+            span.set_attribute("test.duration_ms", duration_ms)
             span.end()
             del self.test_spans[item.nodeid]
 
     @pytest.hookimpl(trylast=True)
     def pytest_runtest_logreport(self, report):
         # Detect xfail and skip
-        if hasattr(report, "wasxfail"):
-            nodeid = report.nodeid
-            if nodeid in self.test_spans:
-                self.test_spans[nodeid]["span"].set_attribute("test.outcome", "xfail")
+        nodeid = report.nodeid
+        if nodeid in self.test_spans:
+            if hasattr(report, "wasxfail"):
+                outcome = "xpass" if report.passed else "xfail"
+                self.test_spans[nodeid]["span"].set_attribute("test.outcome", outcome)
+                self.test_spans[nodeid]["span"].set_status(trace.Status(trace.StatusCode.OK))
+            elif report.skipped:
+                self.test_spans[nodeid]["span"].set_attribute("test.outcome", "skipped")
 
     def pytest_sessionfinish(self, session, exitstatus):
         if self.suite_span:
             self.suite_span.set_attribute("test.suite.exit_code", exitstatus)
             self.suite_span.set_attribute("test.suite.total_duration_s",
-                                          time.time() - self.suite_span.attributes.get("test.suite.start_time", 0))
+                                          time.time() - self.suite_start_time)
             self.suite_span.end()
 
         # Flush all spans
@@ -124,6 +137,7 @@ A flaky test is one that sometimes passes and sometimes fails without code chang
 
 ```python
 # analyze_flaky_tests.py
+import time
 import requests
 from collections import defaultdict
 
@@ -131,10 +145,12 @@ TRACE_BACKEND = "http://localhost:16686"  # Jaeger
 
 def get_test_results(lookback_hours=24):
     """Fetch test spans from the last N hours."""
+    end = int(time.time() * 1_000_000)
+    start = end - lookback_hours * 60 * 60 * 1_000_000
     resp = requests.get(f"{TRACE_BACKEND}/api/traces", params={
         "service": "test-suite",
-        "operation": "test:",  # All test spans start with "test:"
-        "lookback": f"{lookback_hours}h",
+        "start": start,
+        "end": end,
         "limit": 5000,
     })
     return resp.json().get("data", [])
@@ -145,6 +161,8 @@ def find_flaky_tests(traces):
 
     for trace_data in traces:
         for span in trace_data.get("spans", []):
+            if not span.get("operationName", "").startswith("test:"):
+                continue
             tags = {t["key"]: t["value"] for t in span.get("tags", [])}
             test_name = tags.get("test.nodeid")
             outcome = tags.get("test.outcome")
@@ -171,6 +189,8 @@ def find_slow_tests(traces, threshold_ms=5000):
 
     for trace_data in traces:
         for span in trace_data.get("spans", []):
+            if not span.get("operationName", "").startswith("test:"):
+                continue
             tags = {t["key"]: t["value"] for t in span.get("tags", [])}
             test_name = tags.get("test.nodeid")
             duration = tags.get("test.duration_ms")
@@ -209,8 +229,14 @@ With spans flowing to your trace backend, you can build dashboards using the spa
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 connectors:
-  spanmetrics:
+  span_metrics:
     dimensions:
       - name: test.name
       - name: test.outcome
@@ -220,21 +246,30 @@ connectors:
 exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [span_metrics]
+    metrics:
+      receivers: [span_metrics]
+      exporters: [prometheus]
 ```
 
 Then create Prometheus queries:
 
 ```promql
 # Test failure rate by test name
-sum(rate(calls_total{service_name="test-suite", test_outcome="failed"}[1d])) by (test_name)
+sum(rate(traces_span_metrics_calls_total{service_name="test-suite", test_outcome="failed"}[1d])) by (test_name)
 /
-sum(rate(calls_total{service_name="test-suite"}[1d])) by (test_name)
+sum(rate(traces_span_metrics_calls_total{service_name="test-suite"}[1d])) by (test_name)
 
 # Average test duration trend
-avg(rate(duration_milliseconds_sum{service_name="test-suite"}[1h]))
+sum(rate(traces_span_metrics_duration_milliseconds_sum{service_name="test-suite"}[1h]))
 by (test_name)
 /
-avg(rate(duration_milliseconds_count{service_name="test-suite"}[1h]))
+sum(rate(traces_span_metrics_duration_milliseconds_count{service_name="test-suite"}[1h]))
 by (test_name)
 ```
 
@@ -249,9 +284,9 @@ groups:
     rules:
       - alert: FlakyTestDetected
         expr: |
-          (sum(rate(calls_total{service_name="test-suite", test_outcome="failed"}[24h])) by (test_name))
+          (sum(rate(traces_span_metrics_calls_total{service_name="test-suite", test_outcome="failed"}[24h])) by (test_name))
           /
-          (sum(rate(calls_total{service_name="test-suite"}[24h])) by (test_name))
+          (sum(rate(traces_span_metrics_calls_total{service_name="test-suite"}[24h])) by (test_name))
           > 0.1
         for: 1h
         labels:
