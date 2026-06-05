@@ -25,6 +25,7 @@ When an instructor uploads a video, it goes through transcoding to produce multi
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("content.transcoding")
 meter = metrics.get_meter("content.transcoding")
@@ -82,7 +83,7 @@ def transcode_video(video_id, course_id, source_url, target_qualities):
 
                 except Exception as e:
                     transcode_errors.add(1, {"content.quality": quality})
-                    span.set_status(trace.StatusCode.ERROR, str(e))
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
                     span.record_exception(e)
                     raise
 
@@ -171,7 +172,7 @@ def handle_content_request(request):
         attributes={
             "content.path": request.path,
             "content.type": get_content_type(request.path),
-            "http.method": request.method,
+            "http.request.method": request.method,
         }
     ) as span:
         # Check if content is cached at edge
@@ -204,26 +205,35 @@ def handle_content_request(request):
 Interactive content like HTML5 modules and SCORM packages have their own loading patterns:
 
 ```javascript
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
+
 const tracer = trace.getTracer('content.interactive');
 
 async function loadInteractiveModule(moduleId, courseId) {
   return tracer.startActiveSpan('content.load_interactive', async (span) => {
-    span.setAttribute('content.module_id', moduleId);
-    span.setAttribute('content.course_id', courseId);
-    span.setAttribute('content.type', 'interactive');
+    try {
+      span.setAttribute('content.module_id', moduleId);
+      span.setAttribute('content.course_id', courseId);
+      span.setAttribute('content.type', 'interactive');
 
-    // Load the module manifest
-    const manifest = await fetchManifest(moduleId);
-    span.setAttribute('content.asset_count', manifest.assets.length);
-    span.setAttribute('content.total_size_kb', manifest.totalSizeKb);
+      // Load the module manifest
+      const manifest = await fetchManifest(moduleId);
+      span.setAttribute('content.asset_count', manifest.assets.length);
+      span.setAttribute('content.total_size_kb', manifest.totalSizeKb);
 
-    // Load all assets in parallel and track completion
-    const loadStart = performance.now();
-    await Promise.all(manifest.assets.map(asset => loadAsset(asset)));
-    const loadDuration = performance.now() - loadStart;
+      // Load all assets in parallel and track completion
+      const loadStart = performance.now();
+      await Promise.all(manifest.assets.map(asset => loadAsset(asset)));
+      const loadDuration = performance.now() - loadStart;
 
-    span.setAttribute('content.load_duration_ms', loadDuration);
-    span.end();
+      span.setAttribute('content.load_duration_ms', loadDuration);
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
