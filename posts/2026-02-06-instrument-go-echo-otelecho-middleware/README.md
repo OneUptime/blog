@@ -55,9 +55,10 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // initTracer sets up the OpenTelemetry pipeline with OTLP exporter
@@ -79,9 +80,9 @@ func initTracer() (*sdktrace.TracerProvider, error) {
     // These attributes appear on every span from this service
     res := resource.NewWithAttributes(
         semconv.SchemaURL,
-        semconv.ServiceNameKey.String("echo-api-service"),
-        semconv.ServiceVersionKey.String("1.0.0"),
-        semconv.DeploymentEnvironmentKey.String("production"),
+        semconv.ServiceName("echo-api-service"),
+        semconv.ServiceVersion("1.0.0"),
+        semconv.DeploymentEnvironmentName("production"),
     )
 
     // Create tracer provider with batch span processor
@@ -97,6 +98,12 @@ func initTracer() (*sdktrace.TracerProvider, error) {
 
     // Register as global tracer provider
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(
+        propagation.NewCompositeTextMapPropagator(
+            propagation.TraceContext{},
+            propagation.Baggage{},
+        ),
+    )
 
     return tp, nil
 }
@@ -110,7 +117,10 @@ With the tracer provider initialized, you can add the otelecho middleware to you
 package main
 
 import (
+    "context"
+    "log"
     "net/http"
+    "time"
 
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
@@ -139,7 +149,6 @@ func main() {
     e.Use(middleware.Recover())
 
     // Add otelecho middleware for distributed tracing
-    // This must match the service name in your tracer provider
     e.Use(otelecho.Middleware("echo-api-service"))
 
     // Register routes - these will be automatically traced
@@ -288,11 +297,13 @@ The otelecho package provides configuration options to customize span behavior.
 
 ```go
 import (
+    "github.com/labstack/echo/v4"
     "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
-    "go.opentelemetry.io/otel/trace"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
-func setupEchoWithCustomConfig() *echo.Engine {
+func setupEchoWithCustomConfig() *echo.Echo {
     e := echo.New()
 
     // Use otelecho with custom configuration
@@ -303,8 +314,15 @@ func setupEchoWithCustomConfig() *echo.Engine {
             path := c.Path()
             return path == "/health" || path == "/metrics"
         }),
-        // Customize which trace propagator to use
+        // Customize which tracer provider to use
         otelecho.WithTracerProvider(otel.GetTracerProvider()),
+        // Customize which trace propagators to use
+        otelecho.WithPropagators(
+            propagation.NewCompositeTextMapPropagator(
+                propagation.TraceContext{},
+                propagation.Baggage{},
+            ),
+        ),
     ))
 
     return e
@@ -317,6 +335,9 @@ When errors occur in your handlers, you should record them in the active span fo
 
 ```go
 import (
+    "net/http"
+
+    "github.com/labstack/echo/v4"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
@@ -351,8 +372,12 @@ Sometimes you need to create additional spans to track specific operations withi
 
 ```go
 import (
+    "net/http"
+
+    "github.com/labstack/echo/v4"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // complexHandler performs multiple operations that should be individually traced
@@ -435,7 +460,7 @@ func setupRoutesWithGroups(e *echo.Echo) {
     admin.GET("/stats", getStats)
     admin.POST("/config", updateConfig)
 
-    // Health check endpoint (not traced due to skipper)
+    // Health check endpoint
     e.GET("/health", func(c echo.Context) error {
         return c.JSON(http.StatusOK, map[string]string{
             "status": "healthy",
@@ -504,11 +529,13 @@ When calling other services, use an instrumented HTTP client to propagate trace 
 
 ```go
 import (
-    "bytes"
+    "context"
     "encoding/json"
-    "io"
+    "fmt"
     "net/http"
+    "time"
 
+    "github.com/labstack/echo/v4"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -637,15 +664,17 @@ func main() {
 
 ## Testing Instrumented Echo Applications
 
-You can test that your instrumentation is working correctly using an in-memory exporter.
+You can test that your instrumentation is working correctly using an in-memory span recorder.
 
 ```go
 import (
+    "net/http"
     "net/http/httptest"
     "testing"
 
     "github.com/labstack/echo/v4"
     "github.com/stretchr/testify/assert"
+    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
     "go.opentelemetry.io/otel"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -713,9 +742,10 @@ import (
     "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 type User struct {
@@ -778,7 +808,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
 
     res := resource.NewWithAttributes(
         semconv.SchemaURL,
-        semconv.ServiceNameKey.String("echo-api-service"),
+        semconv.ServiceName("echo-api-service"),
     )
 
     tp := sdktrace.NewTracerProvider(
@@ -787,6 +817,12 @@ func initTracer() (*sdktrace.TracerProvider, error) {
     )
 
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(
+        propagation.NewCompositeTextMapPropagator(
+            propagation.TraceContext{},
+            propagation.Baggage{},
+        ),
+    )
     return tp, nil
 }
 ```
