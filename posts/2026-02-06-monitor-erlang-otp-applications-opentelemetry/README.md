@@ -24,7 +24,7 @@ The BEAM VM exposes runtime information through several mechanisms. Understandin
 
 **Memory Metrics**: Total memory usage, process memory, binary memory, atom table size, ETS table memory.
 
-**Distribution Metrics**: Connected nodes, distribution buffer usage, network traffic between nodes.
+**Distribution Metrics**: Connected nodes, inter-node latency, and distribution carrier details where your runtime or carrier exposes them.
 
 ## Setting Up OpenTelemetry in Erlang
 
@@ -32,9 +32,11 @@ Add OpenTelemetry dependencies to your `rebar.config`:
 
 ```erlang
 {deps, [
-    {opentelemetry_api, "~> 1.2"},
-    {opentelemetry, "~> 1.3"},
-    {opentelemetry_exporter, "~> 1.6"}
+    opentelemetry_api,
+    opentelemetry,
+    opentelemetry_exporter,
+    opentelemetry_api_experimental,
+    opentelemetry_experimental
 ]}.
 ```
 
@@ -58,6 +60,13 @@ Configure OpenTelemetry in your `sys.config`:
     {opentelemetry_exporter, [
         {otlp_protocol, http_protobuf},
         {otlp_endpoint, "http://localhost:4318"}
+    ]},
+    {opentelemetry_experimental, [
+        {readers, [
+            #{module => otel_metric_reader,
+              config => #{export_interval_ms => 10000,
+                          exporter => {otel_exporter_metrics_otlp, #{}}}}
+        ]}
     ]}
 ].
 ```
@@ -117,6 +126,7 @@ init(Opts) ->
             <<"storage">> => <<"ets">>
         }),
 
+        erlang:send_after(60000, self(), cleanup_expired),
         {ok, #{table => Tid, ttl => Ttl}}
     end).
 
@@ -162,7 +172,7 @@ handle_cast({put_user, UserId, UserData}, State) ->
         {noreply, State}
     end).
 
-handle_info({cleanup_expired}, State) ->
+handle_info(cleanup_expired, State) ->
     ?with_span(<<"user_cache.cleanup_expired">>, #{}, fun(_SpanCtx) ->
         #{table := Tid} = State,
         Now = erlang:system_time(second),
@@ -176,7 +186,7 @@ handle_info({cleanup_expired}, State) ->
         }),
 
         %% Schedule next cleanup
-        erlang:send_after(60000, self(), {cleanup_expired}),
+        erlang:send_after(60000, self(), cleanup_expired),
         {noreply, State}
     end).
 
@@ -262,30 +272,26 @@ init([]) ->
     end).
 ```
 
-Create a custom event handler to track supervisor events:
+Create a custom Logger handler to track supervisor reports:
 
 ```erlang
 -module(supervisor_telemetry).
--behaviour(gen_event).
 
--export([init/1, handle_event/2, handle_call/2, handle_info/2, terminate/2]).
+-export([log/2]).
 -include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
-init(_Args) ->
-    {ok, #{}}.
-
-handle_event({supervisor_report, Report}, State) ->
+log(#{msg := {report, #{label := {supervisor, _}, report := Report}}}, _Config) ->
     %% Extract supervisor report details
-    Supervisor = proplists:get_value(supervisor, Report),
-    Context = proplists:get_value(context, Report),
-    Reason = proplists:get_value(reason, Report),
-    Offender = proplists:get_value(offender, Report),
+    Supervisor = maps:get(supervisor, Report, undefined),
+    Context = maps:get(errorContext, Report, undefined),
+    Reason = maps:get(reason, Report, undefined),
+    Offender = maps:get(offender, Report, #{}),
 
     %% Create a span for the supervisor event
     ?with_span(<<"supervisor.child_event">>, #{
         attributes => #{
             <<"supervisor">> => format_name(Supervisor),
-            <<"context">> => atom_to_binary(Context, utf8),
+            <<"context">> => format_name(Context),
             <<"reason">> => format_term(Reason),
             <<"child_id">> => get_child_id(Offender)
         }
@@ -296,24 +302,14 @@ handle_event({supervisor_report, Report}, State) ->
                     <<"exit_reason">> => format_term(Reason)
                 });
             start_error ->
-                ?set_status('ERROR', <<"Child start failed">>);
+                ?set_status(error, <<"Child start failed">>);
             _ ->
                 ok
         end
     end),
 
-    {ok, State};
-
-handle_event(_Event, State) ->
-    {ok, State}.
-
-handle_call(_Request, State) ->
-    {ok, ok, State}.
-
-handle_info(_Info, State) ->
-    {ok, State}.
-
-terminate(_Reason, _State) ->
+    ok;
+log(_LogEvent, _Config) ->
     ok.
 
 %%% Helper functions
@@ -329,7 +325,7 @@ format_term(Term) ->
     iolist_to_binary(io_lib:format("~p", [Term])).
 
 get_child_id(Offender) ->
-    case proplists:get_value(id, Offender) of
+    case maps:get(id, Offender, undefined) of
         undefined -> <<"unknown">>;
         Id when is_atom(Id) -> atom_to_binary(Id, utf8);
         Id -> format_term(Id)
@@ -345,20 +341,22 @@ Install the event handler in your application:
 -export([start/2, stop/1]).
 
 start(_Type, _Args) ->
-    %% Attach supervisor event handler
-    error_logger:add_report_handler(supervisor_telemetry),
+    %% Attach supervisor Logger handler
+    logger:add_handler(supervisor_telemetry, supervisor_telemetry, #{
+        level => error
+    }),
 
     %% Start application supervisor
     my_app_sup:start_link().
 
 stop(_State) ->
-    error_logger:delete_report_handler(supervisor_telemetry),
+    logger:remove_handler(supervisor_telemetry),
     ok.
 ```
 
 ## Collecting BEAM VM Metrics
 
-Create a metrics collector that periodically gathers BEAM runtime information:
+Create a metrics collector that registers observable gauges for BEAM runtime information:
 
 ```erlang
 -module(beam_metrics_collector).
@@ -367,16 +365,39 @@ Create a metrics collector that periodically gathers BEAM runtime information:
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--include_lib("opentelemetry_api/include/otel_tracer.hrl").
-
--define(COLLECTION_INTERVAL, 10000). %% 10 seconds
+-include_lib("opentelemetry_api_experimental/include/otel_meter.hrl").
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    %% Schedule first metrics collection
-    erlang:send_after(?COLLECTION_INTERVAL, self(), collect_metrics),
+    erlang:system_flag(scheduler_wall_time, true),
+
+    ?create_observable_gauge('beam.process.count',
+        fun process_count_observer/1,
+        [],
+        #{description => <<"Current number of Erlang processes">>}),
+    ?create_observable_gauge('beam.process.large_queues',
+        fun large_queue_observer/1,
+        [],
+        #{description => <<"Processes with message queues over 1000 messages">>}),
+    ?create_observable_gauge('beam.memory.bytes',
+        fun memory_observer/1,
+        [],
+        #{description => <<"BEAM memory by category">>, unit => 'By'}),
+    ?create_observable_gauge('beam.scheduler.count',
+        fun scheduler_count_observer/1,
+        [],
+        #{description => <<"Schedulers online">>}),
+    ?create_observable_gauge('beam.scheduler.utilization',
+        fun scheduler_utilization_observer/1,
+        [],
+        #{description => <<"Average scheduler active time ratio">>}),
+    ?create_observable_gauge('beam.distribution.nodes',
+        fun distribution_nodes_observer/1,
+        [],
+        #{description => <<"Connected distributed Erlang nodes">>}),
+
     {ok, #{}}.
 
 handle_call(_Request, _From, State) ->
@@ -385,89 +406,41 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(collect_metrics, State) ->
-    %% Collect and report metrics
-    collect_process_metrics(),
-    collect_memory_metrics(),
-    collect_scheduler_metrics(),
-    collect_distribution_metrics(),
-
-    %% Schedule next collection
-    erlang:send_after(?COLLECTION_INTERVAL, self(), collect_metrics),
+handle_info(_Info, State) ->
     {noreply, State}.
 
-%%% Metrics collection functions
+%%% Observable metric callbacks
 
-collect_process_metrics() ->
-    ProcessCount = erlang:system_info(process_count),
-    ProcessLimit = erlang:system_info(process_limit),
+process_count_observer(_Args) ->
+    [{erlang:system_info(process_count), #{}}].
 
-    %% Get processes with large message queues
+large_queue_observer(_Args) ->
     LargeQueues = lists:filter(fun(Pid) ->
         case process_info(Pid, message_queue_len) of
             {message_queue_len, Len} when Len > 1000 -> true;
             _ -> false
         end
     end, processes()),
+    [{length(LargeQueues), #{}}].
 
-    %% Record metrics
-    record_gauge(<<"beam.process.count">>, ProcessCount, #{
-        <<"limit">> => ProcessLimit
-    }),
+memory_observer(_Args) ->
+    [{Bytes, #{<<"type">> => atom_to_binary(Type, utf8)}} ||
+        {Type, Bytes} <- erlang:memory()].
 
-    record_gauge(<<"beam.process.large_queues">>, length(LargeQueues), #{}).
+scheduler_count_observer(_Args) ->
+    [{erlang:system_info(schedulers_online), #{}}].
 
-collect_memory_metrics() ->
-    MemoryInfo = erlang:memory(),
+scheduler_utilization_observer(_Args) ->
+    SchedulerTimes = statistics(scheduler_wall_time),
+    Utilizations = [Active / Total || {_, Active, Total} <- SchedulerTimes, Total > 0],
+    Value = case Utilizations of
+        [] -> 0;
+        _ -> lists:sum(Utilizations) / length(Utilizations)
+    end,
+    [{Value, #{}}].
 
-    lists:foreach(fun({Type, Bytes}) ->
-        TypeBin = atom_to_binary(Type, utf8),
-        record_gauge(<<"beam.memory.", TypeBin/binary>>, Bytes, #{
-            <<"unit">> => <<"bytes">>
-        })
-    end, MemoryInfo).
-
-collect_scheduler_metrics() ->
-    SchedulerCount = erlang:system_info(schedulers_online),
-    SchedulerUtilization = lists:sum([U || {_, U, _} <- statistics(scheduler_wall_time)]) / SchedulerCount,
-
-    record_gauge(<<"beam.scheduler.count">>, SchedulerCount, #{}),
-    record_gauge(<<"beam.scheduler.utilization">>, SchedulerUtilization, #{}).
-
-collect_distribution_metrics() ->
-    Nodes = erlang:nodes(),
-    NodeCount = length(Nodes),
-
-    record_gauge(<<"beam.distribution.nodes">>, NodeCount, #{}),
-
-    %% Collect metrics per connected node
-    lists:foreach(fun(Node) ->
-        NodeBin = atom_to_binary(Node, utf8),
-
-        %% Get distribution buffer sizes
-        case erlang:dist_ctrl_get_data_notification(Node) of
-            {ok, BufferSize} ->
-                record_gauge(<<"beam.distribution.buffer_size">>, BufferSize, #{
-                    <<"node">> => NodeBin
-                });
-            _ ->
-                ok
-        end
-    end, Nodes).
-
-%%% Helper functions for recording metrics
-
-record_gauge(Name, Value, Attributes) ->
-    %% Record metric using OpenTelemetry metrics API
-    ?with_span(<<"metrics.record">>, #{
-        attributes => maps:merge(#{
-            <<"metric_name">> => Name,
-            <<"metric_value">> => Value
-        }, Attributes)
-    }, fun(_SpanCtx) ->
-        %% In a real implementation, use proper metrics API
-        ok
-    end).
+distribution_nodes_observer(_Args) ->
+    [{length(erlang:nodes()), #{}}].
 ```
 
 ## Tracing Distributed OTP Applications
@@ -478,7 +451,7 @@ For distributed Erlang applications running across multiple nodes, propagate tra
 -module(distributed_worker).
 -behaviour(gen_server).
 
--export([start_link/1, process_remote/2]).
+-export([start_link/1, process_remote/2, process_work/2]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -include_lib("opentelemetry_api/include/otel_tracer.hrl").
@@ -493,22 +466,22 @@ process_remote(Node, WorkData) ->
             <<"target_node">> => atom_to_binary(Node, utf8),
             <<"local_node">> => atom_to_binary(node(), utf8)
         }
-    }, fun(SpanCtx) ->
+    }, fun(_SpanCtx) ->
         %% Serialize trace context for remote call
-        TraceContext = serialize_span_context(SpanCtx),
+        TraceContext = otel_propagator_text_map:inject([]),
 
         %% Make remote call with trace context
         case rpc:call(Node, ?MODULE, process_work, [WorkData, TraceContext]) of
             {ok, Result} ->
-                ?set_status('OK'),
+                ?set_status(ok),
                 {ok, Result};
 
             {error, Reason} ->
-                ?set_status('ERROR', format_term(Reason)),
+                ?set_status(error, format_term(Reason)),
                 {error, Reason};
 
             {badrpc, Reason} ->
-                ?set_status('ERROR', <<"RPC failed">>),
+                ?set_status(error, <<"RPC failed">>),
                 ?add_event(<<"rpc_failure">>, #{
                     <<"reason">> => format_term(Reason)
                 }),
@@ -519,8 +492,7 @@ process_remote(Node, WorkData) ->
 %% Remote function that processes work
 process_work(WorkData, TraceContext) ->
     %% Restore trace context on remote node
-    SpanCtx = deserialize_span_context(TraceContext),
-    otel_tracer:set_current_span(SpanCtx),
+    otel_propagator_text_map:extract(TraceContext),
 
     ?with_span(<<"distributed.process_work">>, #{
         attributes => #{
@@ -548,24 +520,6 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %%% Helper functions
-
-serialize_span_context(SpanCtx) ->
-    %% Convert span context to a format that can be sent over the wire
-    #{
-        trace_id => otel_span:trace_id(SpanCtx),
-        span_id => otel_span:span_id(SpanCtx),
-        trace_flags => otel_span:trace_flags(SpanCtx)
-    }.
-
-deserialize_span_context(TraceContext) ->
-    %% Reconstruct span context from serialized form
-    #{
-        trace_id := TraceId,
-        span_id := SpanId,
-        trace_flags := TraceFlags
-    } = TraceContext,
-
-    otel_span:set_span(TraceId, SpanId, TraceFlags).
 
 perform_computation(Data) ->
     %% Simulate computation
@@ -672,7 +626,7 @@ Traces show which processes communicate with each other, how supervision trees r
 
 **Scheduler Balance**: Monitor per-scheduler run queue lengths. Imbalanced schedulers can indicate scheduling problems or processes bound to specific cores.
 
-**Distribution Health**: For distributed applications, monitor inter-node latency and buffer sizes. Network issues often manifest as increased distribution buffer usage.
+**Distribution Health**: For distributed applications, monitor inter-node latency, node up/down events, and any distribution carrier metrics your runtime exposes. Network issues often manifest as node instability or increased message latency.
 
 **Memory Pressure**: Track memory growth over time, especially binary memory. Memory leaks in Erlang often appear as steadily growing binary memory.
 
