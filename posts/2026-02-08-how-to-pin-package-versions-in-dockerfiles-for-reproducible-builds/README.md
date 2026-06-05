@@ -64,10 +64,10 @@ Get the digest of an image:
 
 ```bash
 # Find the digest for an image you're using
+docker pull python:3.11-slim
 docker inspect --format='{{index .RepoDigests 0}}' python:3.11-slim
 
-# Or pull and check
-docker pull python:3.11-slim
+# Or check local images
 docker images --digests python
 ```
 
@@ -96,9 +96,9 @@ FROM ubuntu:22.04
 # Pin system packages to exact versions
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl=7.81.0-1ubuntu1.16 \
-      ca-certificates=20230311ubuntu0.22.04.1 \
-      git=1:2.34.1-1ubuntu1.10 \
+      curl=7.81.0-1ubuntu1.24 \
+      ca-certificates=20240203~22.04.1 \
+      git=1:2.34.1-1ubuntu1.17 \
     && rm -rf /var/lib/apt/lists/*
 ```
 
@@ -129,8 +129,8 @@ FROM alpine:3.19
 
 # Pin Alpine packages to exact versions
 RUN apk add --no-cache \
-    curl=8.5.0-r0 \
-    git=2.43.0-r0 \
+    curl=8.14.1-r2 \
+    git=2.43.7-r0 \
     bash=5.2.21-r0
 ```
 
@@ -148,8 +148,8 @@ FROM rockylinux:9
 
 # Pin RPM packages to specific versions
 RUN dnf install -y \
-    curl-7.76.1-26.el9 \
-    git-2.39.3-1.el9 \
+    curl-minimal-7.76.1-40.el9 \
+    git-2.52.0-1.el9 \
     && dnf clean all
 ```
 
@@ -202,7 +202,7 @@ Use `package-lock.json` and `npm ci`:
 COPY package.json package-lock.json ./
 
 # npm ci installs exact versions from the lockfile (not package.json ranges)
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 ```
 
 Never use `npm install` in Dockerfiles. It resolves version ranges and can produce different results on different days. `npm ci` installs exactly what the lockfile specifies.
@@ -242,10 +242,10 @@ The `--locked` flag ensures Cargo uses exactly the versions in `Cargo.lock`.
 COPY Gemfile Gemfile.lock ./
 
 # Install exact versions from the lockfile
-RUN bundle install --frozen
+RUN bundle config set frozen true && bundle install
 ```
 
-The `--frozen` flag prevents Bundler from updating `Gemfile.lock`.
+The `frozen` setting prevents Bundler from updating `Gemfile.lock`.
 
 ## Level 4: Pin the Dockerfile Syntax
 
