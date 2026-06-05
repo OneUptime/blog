@@ -22,7 +22,7 @@ Keep this section short. Something like:
 
 Your guide should describe three layers of instrumentation:
 
-**Automatic instrumentation** covers HTTP servers, database clients, gRPC calls, and message queues. This is what the OpenTelemetry SDK provides out of the box.
+**Automatic instrumentation** covers HTTP servers, database clients, gRPC calls, and message queues. This is what OpenTelemetry instrumentation libraries and zero-code instrumentation provide when they are installed and registered with the SDK.
 
 **Framework-level instrumentation** covers patterns specific to your stack. For example, if your team uses a shared middleware library, document how it integrates with OpenTelemetry.
 
@@ -92,7 +92,7 @@ For metrics:
 
 - Follow the OpenTelemetry semantic conventions as a baseline
 - Use the pattern `<domain>.<entity>.<measurement>`: `orders.checkout.duration`, `orders.checkout.count`
-- Always specify units in the metric description
+- Always specify units in the metric instrument metadata, and include them in the description when that removes ambiguity
 
 For attributes:
 
@@ -110,8 +110,7 @@ Many teams skip this section and then spend days debugging broken traces. Explai
 # No manual action needed if you use the OpenTelemetry HTTP instrumentation.
 
 # When using a message queue, you need to inject context manually:
-from opentelemetry import context, trace
-from opentelemetry.propagators import inject
+from opentelemetry.propagate import inject
 
 def publish_message(queue, message):
     headers = {}
