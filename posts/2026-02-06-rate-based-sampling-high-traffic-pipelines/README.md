@@ -65,7 +65,7 @@ Rate-based sampling reduces this to manageable levels while preserving observabi
 
 ## Configuring the Probabilistic Sampling Processor
 
-The probabilistic sampling processor provides basic rate control based on trace ID hashing.
+The probabilistic sampling processor provides basic volume reduction based on trace ID hashing.
 
 ```yaml
 # collector-config.yaml
@@ -106,7 +106,7 @@ Limitations of basic probabilistic sampling:
 - No rate limiting per time unit
 - Traffic spikes still cause volume spikes
 
-## Implementing Adaptive Rate-Based Sampling
+## Implementing Policy-Based Rate Sampling
 
 The tail sampling processor provides sophisticated rate-based sampling with configurable policies.
 
@@ -150,7 +150,7 @@ processors:
           # Allow 1000 spans per second
           spans_per_second: 1000
 
-      # Policy 4: Probabilistic sampling for remaining traffic
+      # Policy 4: Additional probabilistic sampling
       - name: probabilistic-policy
         type: probabilistic
         probabilistic:
@@ -172,15 +172,17 @@ service:
       exporters: [otlp]
 ```
 
-This configuration implements a tiered sampling strategy:
+This configuration implements a policy-based sampling strategy:
 1. All errors are sampled (100%)
 2. All slow requests (>1s) are sampled (100%)
-3. Normal traffic is rate-limited to 1000 spans/second
-4. Remaining traffic is sampled at 5%
+3. Traffic that matches the rate-limiting policy is limited to an average of 1000 spans/second
+4. A probabilistic policy samples 5% of traces that are not already sampled by another policy
 
-## Dynamic Rate Adjustment
+Tail sampling policies are not processed as a sequential fallback chain. A trace is sampled if any non-drop policy returns a sample decision.
 
-Implement dynamic rate adjustment based on traffic patterns using the processor's adaptive capabilities.
+## Endpoint-Specific Rate Policies
+
+Configure different static rates for different endpoints based on traffic patterns and business importance.
 
 ```yaml
 processors:
@@ -234,11 +236,33 @@ processors:
 
       # Default rate limit for other traffic
       - name: rate-limit-default
-        type: rate_limiting
-        rate_limiting:
-          spans_per_second: 1000
+        type: and
+        and:
+          and_sub_policy:
+            - name: not-checkout-endpoint
+              type: not
+              not:
+                not_sub_policy:
+                  name: checkout-endpoint
+                  type: string_attribute
+                  string_attribute:
+                    key: http.route
+                    values: ["/api/checkout"]
+            - name: not-search-endpoint
+              type: not
+              not:
+                not_sub_policy:
+                  name: search-endpoint
+                  type: string_attribute
+                  string_attribute:
+                    key: http.route
+                    values: ["/api/search"]
+            - name: rate-limit
+              type: rate_limiting
+              rate_limiting:
+                spans_per_second: 1000
 
-      # Final probabilistic sampling
+      # Additional probabilistic sampling
       - name: probabilistic-fallback
         type: probabilistic
         probabilistic:
@@ -252,6 +276,12 @@ This configuration assigns different sampling rates based on endpoint importance
 Apply different sampling rates per service for multi-service architectures.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Use transform processor to add routing hints
   transform:
@@ -314,6 +344,14 @@ processors:
               rate_limiting:
                 spans_per_second: 3000
 
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  otlp:
+    endpoint: backend:4317
+
 service:
   pipelines:
     traces:
@@ -335,10 +373,8 @@ package ratelimiter
 import (
     "context"
     "sync"
-    "time"
 
     "go.opentelemetry.io/collector/pdata/ptrace"
-    "go.opentelemetry.io/collector/processor"
     "golang.org/x/time/rate"
 )
 
@@ -348,15 +384,17 @@ type rateLimiterProcessor struct {
     mu       sync.RWMutex
 
     // Configuration
-    defaultRate  int  // spans per second
-    burstSize    int  // burst capacity
+    defaultRate     int            // spans per second
+    burstSize       int            // burst capacity
+    perServiceRates map[string]int // optional spans per second by service
 }
 
-func newRateLimiterProcessor(defaultRate, burstSize int) *rateLimiterProcessor {
+func newRateLimiterProcessor(defaultRate, burstSize int, perServiceRates map[string]int) *rateLimiterProcessor {
     return &rateLimiterProcessor{
-        limiters:    make(map[string]*rate.Limiter),
-        defaultRate: defaultRate,
-        burstSize:   burstSize,
+        limiters:        make(map[string]*rate.Limiter),
+        defaultRate:     defaultRate,
+        burstSize:       burstSize,
+        perServiceRates: perServiceRates,
     }
 }
 
@@ -379,7 +417,12 @@ func (p *rateLimiterProcessor) getLimiter(service string) *rate.Limiter {
     }
 
     // Create new limiter
-    limiter = rate.NewLimiter(rate.Limit(p.defaultRate), p.burstSize)
+    serviceRate := p.defaultRate
+    if configuredRate, ok := p.perServiceRates[service]; ok {
+        serviceRate = configuredRate
+    }
+
+    limiter = rate.NewLimiter(rate.Limit(serviceRate), p.burstSize)
     p.limiters[service] = limiter
     return limiter
 }
@@ -392,6 +435,8 @@ func (p *rateLimiterProcessor) processTraces(ctx context.Context, td ptrace.Trac
     resourceSpans := td.ResourceSpans()
     for i := 0; i < resourceSpans.Len(); i++ {
         rs := resourceSpans.At(i)
+        var sampledRS ptrace.ResourceSpans
+        hasSampledRS := false
 
         // Get service name from resource attributes
         serviceName := "unknown"
@@ -406,6 +451,8 @@ func (p *rateLimiterProcessor) processTraces(ctx context.Context, td ptrace.Trac
         for j := 0; j < scopeSpans.Len(); j++ {
             ss := scopeSpans.At(j)
             spans := ss.Spans()
+            var targetSS ptrace.ScopeSpans
+            hasTargetSS := false
 
             // Check rate limit for each span
             for k := 0; k < spans.Len(); k++ {
@@ -413,13 +460,19 @@ func (p *rateLimiterProcessor) processTraces(ctx context.Context, td ptrace.Trac
 
                 // Allow or drop based on rate limit
                 if limiter.Allow() {
-                    // Span allowed - copy to output
-                    if sampled.ResourceSpans().Len() == 0 {
-                        rs.CopyTo(sampled.ResourceSpans().AppendEmpty())
+                    if !hasSampledRS {
+                        sampledRS = sampled.ResourceSpans().AppendEmpty()
+                        rs.Resource().CopyTo(sampledRS.Resource())
+                        hasSampledRS = true
                     }
-                    targetRS := sampled.ResourceSpans().At(sampled.ResourceSpans().Len() - 1)
-                    targetSS := targetRS.ScopeSpans().AppendEmpty()
-                    ss.CopyTo(targetSS)
+
+                    if !hasTargetSS {
+                        targetSS = sampledRS.ScopeSpans().AppendEmpty()
+                        ss.Scope().CopyTo(targetSS.Scope())
+                        hasTargetSS = true
+                    }
+
+                    // Span allowed - copy only this span to output
                     span.CopyTo(targetSS.Spans().AppendEmpty())
                 }
                 // Else: span dropped due to rate limit
@@ -434,6 +487,12 @@ func (p *rateLimiterProcessor) processTraces(ctx context.Context, td ptrace.Trac
 Use the custom processor in your collector configuration:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Custom rate limiter with burst support
   custom_rate_limiter:
@@ -443,6 +502,14 @@ processors:
       api-service: 2000
       database-service: 500
       cache-service: 100
+
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  otlp:
+    endpoint: backend:4317
 
 service:
   pipelines:
@@ -454,10 +521,15 @@ service:
 
 ## Monitoring Rate Limiting Effectiveness
 
-Track sampling metrics to understand rate limiter performance:
+Track the Collector's internal tail-sampling metrics to understand rate limiter performance:
 
 ```yaml
-# Add metrics to monitor sampling decisions
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   tail_sampling:
     decision_wait: 10s
@@ -469,42 +541,46 @@ processors:
         rate_limiting:
           spans_per_second: 1000
 
-  # Add metrics processor to track sampling
-  metrics_transform:
-    include:
-      match_type: regexp
-      metric_names:
-        - ".*sampling.*"
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
 
 exporters:
   otlp:
     endpoint: backend:4317
-  prometheus:
-    endpoint: 0.0.0.0:8889
 
 service:
+  telemetry:
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
       exporters: [otlp]
-    metrics:
-      receivers: [otlp]
-      processors: [metrics_transform]
-      exporters: [prometheus]
 ```
 
 Query sampling metrics:
 
 ```promql
 # Sampling rate by policy
-rate(otelcol_processor_tail_sampling_policy_decision[5m])
+sum(rate(otelcol_processor_tail_sampling_count_traces_sampled{decision="sampled"}[5m])) by (policy) /
+sum(rate(otelcol_processor_tail_sampling_count_traces_sampled[5m])) by (policy)
 
-# Dropped spans
-rate(otelcol_processor_tail_sampling_dropped_spans[5m])
+# Traces dropped before a sampling decision because num_traces was exceeded
+rate(otelcol_processor_tail_sampling_sampling_trace_dropped_too_early[5m])
 
 # Sampled vs total traces
-otelcol_processor_tail_sampling_sampled_traces / otelcol_processor_tail_sampling_total_traces
+sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled{sampled="true"}[5m])) /
+sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled[5m]))
 ```
 
 Create alerts for sampling anomalies:
@@ -518,8 +594,8 @@ groups:
       # Alert when sampling rate drops below threshold
       - alert: LowSamplingRate
         expr: |
-          rate(otelcol_processor_tail_sampling_sampled_traces[5m]) /
-          rate(otelcol_processor_tail_sampling_total_traces[5m]) < 0.01
+          sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled{sampled="true"}[5m])) /
+          sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled[5m])) < 0.01
         for: 5m
         labels:
           severity: warning
@@ -527,16 +603,16 @@ groups:
           summary: "Sampling rate below 1%"
           description: "Only {{ $value | humanizePercentage }} of traces are being sampled"
 
-      # Alert when too many spans are dropped
-      - alert: HighSpanDropRate
+      # Alert when too many traces are dropped before a sampling decision
+      - alert: HighEarlyTraceDropRate
         expr: |
-          rate(otelcol_processor_tail_sampling_dropped_spans[5m]) > 10000
+          rate(otelcol_processor_tail_sampling_sampling_trace_dropped_too_early[5m]) > 100
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High span drop rate"
-          description: "{{ $value }} spans per second are being dropped"
+          summary: "High early trace drop rate"
+          description: "{{ $value }} traces per second are being dropped before a sampling decision"
 ```
 
 ## Testing Rate-Based Sampling
@@ -548,21 +624,48 @@ Validate sampling behavior under load:
 import asyncio
 import aiohttp
 from datetime import datetime
-import statistics
+import time
 
-async def send_trace(session, trace_id, should_error=False):
+async def send_trace(session, second, index, should_error=False):
     """Send a trace to the collector"""
-    span_data = {
-        "trace_id": trace_id,
-        "span_id": f"span-{trace_id}",
-        "name": "test-operation",
-        "status": "ERROR" if should_error else "OK",
-        "duration_ms": 50 if not should_error else 2000
+    trace_id = f"{second + 1:08x}{index + 1:024x}"
+    span_id = f"{index + 1:016x}"
+    start_time = time.time_ns()
+    duration_ms = 50 if not should_error else 2000
+    end_time = start_time + duration_ms * 1_000_000
+
+    trace_data = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": "load-test"}}
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "scope": {"name": "sampling-load-test"},
+                        "spans": [
+                            {
+                                "traceId": trace_id,
+                                "spanId": span_id,
+                                "name": "test-operation",
+                                "startTimeUnixNano": str(start_time),
+                                "endTimeUnixNano": str(end_time),
+                                "status": {
+                                    "code": 2 if should_error else 1
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
     }
 
     async with session.post(
         'http://localhost:4318/v1/traces',
-        json=span_data
+        json=trace_data
     ) as response:
         return response.status == 200
 
@@ -580,10 +683,9 @@ async def test_rate_limiting():
 
             # Create 10,000 tasks for this second
             for i in range(10000):
-                trace_id = f"trace-{second}-{i}"
                 # 1% should be errors (always sampled)
                 should_error = (i % 100) == 0
-                tasks.append(send_trace(session, trace_id, should_error))
+                tasks.append(send_trace(session, second, i, should_error))
 
             # Execute all tasks for this second
             results = await asyncio.gather(*tasks)
@@ -607,19 +709,12 @@ if __name__ == "__main__":
     asyncio.run(test_rate_limiting())
 ```
 
-Compare sampled trace count to sent trace count:
+Compare the observed sampling rate from Collector internal metrics:
 
 ```bash
-# Query backend for sampled trace count
-curl -X POST http://backend:3100/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "{}",
-    "limit": 1
-  }' | jq '.traces | length'
-
-# Calculate actual sampling rate
-echo "Sampling rate: $(bc <<< "scale=2; $sampled / 600000 * 100")%"
+curl -G http://prometheus:9090/api/v1/query \
+  --data-urlencode 'query=sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled{sampled="true"}[5m])) / sum(rate(otelcol_processor_tail_sampling_global_count_traces_sampled[5m]))' \
+  | jq -r '.data.result[0].value[1]'
 ```
 
 ## Best Practices for Rate-Based Sampling
@@ -627,7 +722,7 @@ echo "Sampling rate: $(bc <<< "scale=2; $sampled / 600000 * 100")%"
 1. **Start conservative**: Begin with higher sampling rates and reduce gradually
 2. **Always sample errors**: Ensure 100% error sampling regardless of rate limits
 3. **Tier critical endpoints**: Give business-critical paths higher sampling rates
-4. **Monitor sampling metrics**: Track sampled vs dropped spans
+4. **Monitor sampling metrics**: Track sampled traces and early trace drops
 5. **Adjust based on traffic patterns**: Different rates for peak vs off-peak hours
 6. **Test under load**: Validate sampling behavior matches expectations
 7. **Document sampling policies**: Ensure teams understand what's sampled and why
