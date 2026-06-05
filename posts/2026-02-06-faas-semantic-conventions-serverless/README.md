@@ -25,9 +25,9 @@ These attributes are set once and apply to all telemetry produced by the functio
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `faas.name` | string | The name of the function |
-| `faas.version` | string | The version or alias of the function |
+| `faas.version` | string | The version or revision of the function |
 | `faas.instance` | string | The execution environment instance ID |
-| `faas.max_memory` | int | Maximum memory available in MB |
+| `faas.max_memory` | int | Maximum memory available in bytes |
 | `cloud.provider` | string | The cloud provider (aws, gcp, azure) |
 | `cloud.region` | string | The region where the function runs |
 | `cloud.account.id` | string | The cloud account ID |
@@ -72,7 +72,7 @@ AWS Lambda is the most widely deployed serverless platform. Let's walk through a
 
 The simplest approach for Python Lambda functions is to use the OpenTelemetry Lambda layer. But to understand what happens under the hood, here is a manual setup that explicitly applies FaaS semantic conventions.
 
-This Python Lambda handler sets up OpenTelemetry with full FaaS resource and span attributes. The resource attributes are read from Lambda environment variables that AWS provides automatically:
+This Python Lambda handler sets up OpenTelemetry with FaaS resource and span attributes. Most resource attributes are read from Lambda environment variables that AWS provides automatically:
 
 ```python
 # AWS Lambda handler with manual OpenTelemetry FaaS instrumentation.
@@ -83,9 +83,10 @@ import os
 import json
 import time
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace.export import SimpleSpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 # Track cold start across invocations
@@ -96,17 +97,16 @@ resource = Resource.create({
     "faas.name": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown"),
     "faas.version": os.environ.get("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST"),
     "faas.instance": os.environ.get("AWS_LAMBDA_LOG_STREAM_NAME", "unknown"),
-    "faas.max_memory": int(os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128")),
+    "faas.max_memory": int(os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128")) * 1048576,
     "cloud.provider": "aws",
     "cloud.region": os.environ.get("AWS_REGION", "us-east-1"),
-    "cloud.account.id": os.environ.get("AWS_ACCOUNT_ID", "unknown"),
     "service.name": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown"),
 })
 
-# Use SimpleSpanExporter for Lambda to flush before the function freezes
+# Use SimpleSpanProcessor for Lambda to export spans synchronously.
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    SimpleSpanExporter(OTLPSpanExporter(
+    SimpleSpanProcessor(OTLPSpanExporter(
         endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT",
                                  "https://ingest.oneuptime.com/v1/traces")
     ))
@@ -115,7 +115,7 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("order-processor")
 ```
 
-Notice that we use `SimpleSpanExporter` instead of `BatchSpanProcessor`. This is critical for Lambda. The batch processor relies on background threads and timers, which do not work reliably in Lambda's execution model. When the function finishes, Lambda freezes the execution environment immediately, and queued spans may never be exported.
+Notice that we use `SimpleSpanProcessor` instead of `BatchSpanProcessor`. This is important for Lambda when you export directly from the function. The batch processor relies on background threads and timers, which can be interrupted when Lambda freezes the execution environment, and queued spans may not be exported before the invocation completes.
 
 ### The Handler Function
 
@@ -136,6 +136,8 @@ def handler(event, context):
         span.set_attribute("faas.trigger", "http")
         span.set_attribute("faas.invocation_id", context.aws_request_id)
         span.set_attribute("faas.coldstart", _is_cold_start)
+        span.set_attribute("cloud.account.id",
+                           context.invoked_function_arn.split(":")[4])
 
         # Clear cold start flag after first invocation
         _is_cold_start = False
@@ -159,7 +161,7 @@ def handler(event, context):
                 "body": json.dumps({"status": "processed", "order_id": order_id})
             }
         except Exception as e:
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             return {
                 "statusCode": 500,
@@ -192,11 +194,16 @@ def set_trigger_attributes(span, event):
 
     elif "Records" in event and event["Records"][0].get("eventSource") == "aws:dynamodb":
         # DynamoDB Streams trigger
+        operation_map = {
+            "INSERT": "insert",
+            "MODIFY": "edit",
+            "REMOVE": "delete",
+        }
         span.set_attribute("faas.trigger", "datasource")
         span.set_attribute("faas.document.collection",
                           event["Records"][0].get("eventSourceARN", "").split("/")[1])
         span.set_attribute("faas.document.operation",
-                          event["Records"][0]["eventName"].lower())
+                          operation_map.get(event["Records"][0]["eventName"], "edit"))
 
     elif "source" in event and event["source"] == "aws.events":
         # EventBridge / CloudWatch Events (scheduled)
@@ -282,7 +289,7 @@ This portability is one of the strongest benefits of following the semantic conv
 
 Always track cold starts with the `faas.coldstart` attribute. This is the single most valuable FaaS-specific data point for performance optimization.
 
-Use `SimpleSpanExporter` or the Lambda extension rather than `BatchSpanProcessor` in Lambda environments. Batch processing assumes long-lived processes and will lose data in serverless contexts.
+Use `SimpleSpanProcessor` for direct export, or the Lambda extension rather than in-process batching, in Lambda environments. Batch processing assumes long-lived processes and can lose data in serverless contexts.
 
 Set the `faas.trigger` attribute on every function span. It enables you to build dashboards that break down performance by trigger type, which is essential for functions that respond to multiple event sources.
 
