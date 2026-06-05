@@ -16,6 +16,8 @@ Start by defining the metrics instruments that will capture API key usage patter
 
 ```python
 from opentelemetry import metrics, trace
+from opentelemetry.metrics import CallbackOptions, Observation
+from typing import Iterable
 
 meter = metrics.get_meter("api-key-monitor")
 tracer = trace.get_tracer("api-key-monitor")
@@ -25,21 +27,24 @@ tracer = trace.get_tracer("api-key-monitor")
 key_usage_counter = meter.create_counter(
     "api.key.requests",
     description="Number of requests per API key",
-    unit="requests",
+    unit="1",
 )
 
 # Track API key age when used
 key_age_histogram = meter.create_histogram(
     "api.key.age_days",
     description="Age of the API key in days when it was used",
-    unit="days",
+    unit="d",
 )
 
 # Track keys that are close to expiration
+def observe_keys_near_expiry(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(count_keys_near_expiry())
+
 keys_near_expiry = meter.create_observable_gauge(
     "api.key.near_expiry_count",
     description="Number of active API keys expiring within 7 days",
-    callbacks=[lambda options: count_keys_near_expiry()],
+    callbacks=[observe_keys_near_expiry],
 )
 
 # Track rotation events
@@ -219,7 +224,7 @@ groups:
 
       # Alert when a key is very old
       - alert: OldApiKeyInUse
-        expr: histogram_quantile(0.95, api_key_age_days_bucket) > 90
+        expr: histogram_quantile(0.95, sum by (le) (rate(api_key_age_days_bucket[1h]))) > 90
         for: 1h
         labels:
           severity: info
