@@ -16,7 +16,7 @@ Start by forking the official demo repository. Go to [https://github.com/open-te
 
 From your forked repository on GitHub, click the green "Code" button and select the "Codespaces" tab. Click "Create codespace on main." GitHub will provision a cloud-based development environment and open it in a browser-based VS Code editor.
 
-The default machine type (4-core, 16GB RAM) works for the demo, but if you find it sluggish, you can switch to an 8-core machine. To do this, click the three dots next to "Create codespace" and select "New with options," then pick a larger machine type.
+GitHub Codespaces uses the lowest valid machine type by default. The demo needs at least 6GB of RAM for the full Docker Compose deployment, so if the default machine is too small or feels sluggish, switch to a larger machine type. To do this, click the three dots next to "Create codespace" and select "New with options," then pick a larger machine type.
 
 ## Building and Running the Demo
 
@@ -29,7 +29,7 @@ Once the Codespace is ready, open the integrated terminal and run:
 docker compose build
 
 # Start all services in detached mode
-docker compose up -d
+docker compose up --force-recreate --remove-orphans --detach
 ```
 
 The demo includes about a dozen microservices written in Go, Java, Python, .NET, Node.js, and more. Each service is instrumented with OpenTelemetry and sends traces, metrics, and logs to a central collector.
@@ -41,16 +41,14 @@ Monitor the startup progress:
 docker compose logs -f --tail=50
 ```
 
-Wait until you see all services reporting as healthy. This usually takes 2 to 3 minutes.
+Wait until the services are running, and until services with health checks report as healthy. This usually takes a few minutes.
 
 ## Accessing the UI Components
 
 GitHub Codespaces automatically detects and forwards ports. You will see notifications for exposed ports. The key ports to access are:
 
-- **Port 8080** - The demo storefront (a web shop you can interact with)
-- **Port 16686** - Jaeger UI for viewing traces
+- **Port 8080** - The demo storefront, Grafana at `/grafana/`, Jaeger at `/jaeger/ui/`, the load generator UI at `/loadgen/`, and the feature flag UI at `/feature`
 - **Port 9090** - Prometheus for metrics
-- **Port 3000** - Grafana dashboards
 
 Click on the port forwarding notification or go to the Ports tab in the terminal panel. Click the globe icon next to a port to open it in your browser.
 
@@ -61,7 +59,7 @@ docker compose ps --format "table {{.Service}}\t{{.Ports}}"
 
 ## Exploring Traces in Jaeger
 
-Open the Jaeger UI on port 16686. In the Service dropdown, you will see all the demo services listed. Select one, like `frontend`, and click "Find Traces." You will see a list of traces showing requests flowing through the system.
+Open the Jaeger UI at `/jaeger/ui/` on the forwarded port 8080 URL. In the Service dropdown, you will see all the demo services listed. Select one, like `frontend`, and click "Find Traces." You will see a list of traces showing requests flowing through the system.
 
 Click on any trace to see the full span waterfall. This is where the learning happens. You can see:
 
@@ -75,35 +73,27 @@ The demo includes a load generator that produces synthetic traffic. If you want 
 
 ```bash
 # Check if the load generator is running
-docker compose ps loadgenerator
+docker compose ps load-generator
 
 # If you want to restart it with different settings
-docker compose restart loadgenerator
+docker compose restart load-generator
 ```
 
 ## Modifying Instrumentation
 
-This is where Codespaces really shines for learning. Pick a service and modify its instrumentation. For example, open the Node.js currency service and add a custom span:
+This is where Codespaces really shines for learning. Pick a service and modify its instrumentation. For example, open the Node.js payment service and add a custom span:
 
 ```javascript
-// src/currencyservice/charge.js
+// src/payment/charge.js
 const { trace } = require('@opentelemetry/api');
 
-const tracer = trace.getTracer('currency-service');
+const tracer = trace.getTracer('payment');
 
-function convertCurrency(from, to, amount) {
-  // Add a custom span to track conversion logic
-  return tracer.startActiveSpan('currency.convert', (span) => {
-    span.setAttribute('currency.from', from.currencyCode);
-    span.setAttribute('currency.to', to);
-    span.setAttribute('currency.amount', amount);
-
-    const rate = getExchangeRate(from.currencyCode, to);
-    const result = amount * rate;
-
-    span.setAttribute('currency.result', result);
+function recordPaymentAmount(request) {
+  return tracer.startActiveSpan('payment.record_amount', (span) => {
+    span.setAttribute('payment.currency', request.amount.currencyCode);
+    span.setAttribute('payment.amount_units', request.amount.units);
     span.end();
-    return result;
   });
 }
 ```
@@ -111,11 +101,11 @@ function convertCurrency(from, to, amount) {
 After making changes, rebuild and restart just that service:
 
 ```bash
-# Rebuild only the currency service
-docker compose build currencyservice
+# Rebuild only the payment service
+docker compose build payment
 
 # Restart it
-docker compose up -d currencyservice
+docker compose up --force-recreate --remove-orphans --detach payment
 ```
 
 Then generate some traffic and look for your new span in Jaeger.
