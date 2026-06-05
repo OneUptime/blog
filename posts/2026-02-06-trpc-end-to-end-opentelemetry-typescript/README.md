@@ -24,23 +24,23 @@ packages/
 
 ## Shared Tracing Configuration
 
-Create a shared tracing package that both client and server can use:
+Create a shared tracing package that your server and other Node.js packages can use:
 
 ```typescript
 // packages/tracing/src/index.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 export function initTracing(serviceName: string) {
   const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: serviceName,
     }),
     traceExporter: new OTLPTraceExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+      url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
     }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
@@ -55,14 +55,19 @@ export function initTracing(serviceName: string) {
 The core of tRPC instrumentation is a middleware that wraps every procedure call in a span:
 
 ```typescript
-// packages/api/src/tracing-middleware.ts
+// packages/api/src/trpc.ts
 import { trace, SpanKind, SpanStatusCode, context, propagation } from '@opentelemetry/api';
-import { TRPCError } from '@trpc/server';
-import { middleware } from './trpc';
+import { initTRPC, TRPCError } from '@trpc/server';
+
+import type { Context } from './context';
+
+const t = initTRPC.context<Context>().create();
 
 const tracer = trace.getTracer('trpc-server');
 
-export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawInput }) => {
+const tracingMiddleware = t.middleware(async ({ path, type, next, ctx, getRawInput }) => {
+  const rawInput = await getRawInput();
+
   // Extract propagated context from incoming HTTP headers
   const parentContext = propagation.extract(context.active(), ctx.req?.headers || {});
 
@@ -91,12 +96,13 @@ export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawI
           span.end();
           return result;
         } catch (error) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : 'Procedure threw an error',
+          });
+
           if (error instanceof TRPCError) {
             span.setAttribute('trpc.error.code', error.code);
-            span.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
           }
 
           span.recordException(error as Error);
@@ -107,16 +113,6 @@ export const tracingMiddleware = middleware(async ({ path, type, next, ctx, rawI
     );
   });
 });
-```
-
-Apply the middleware to your tRPC router:
-
-```typescript
-// packages/api/src/trpc.ts
-import { initTRPC } from '@trpc/server';
-import { tracingMiddleware } from './tracing-middleware';
-
-const t = initTRPC.context<Context>().create();
 
 // Create a traced procedure that all routes will use
 export const tracedProcedure = t.procedure.use(tracingMiddleware);
@@ -132,6 +128,7 @@ Now every procedure you define with `tracedProcedure` is automatically traced:
 ```typescript
 // packages/api/src/routers/user.ts
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, tracedProcedure } from '../trpc';
 import { trace } from '@opentelemetry/api';
 
@@ -194,30 +191,58 @@ export const userRouter = router({
 On the client side, create a tRPC link that injects trace context into outgoing requests:
 
 ```typescript
+// packages/web/src/instrumentation-client.ts
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
+
+const exporter = new OTLPTraceExporter({
+  url: process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
+});
+
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'web',
+  }),
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
+provider.register();
+```
+
+```typescript
 // packages/web/src/utils/trpc.ts
-import { httpBatchLink } from '@trpc/client';
+import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import { trace, context, propagation } from '@opentelemetry/api';
+
+import type { AppRouter } from '@acme/api';
 
 const tracer = trace.getTracer('trpc-client');
 
 // Custom fetch that adds tracing
 function tracedFetch(input: RequestInfo | URL, init?: RequestInit) {
-  const url = typeof input === 'string' ? input : input.toString();
+  const url =
+    typeof input === 'string' || input instanceof URL
+      ? input.toString()
+      : input.url;
 
   return tracer.startActiveSpan(
     `trpc.client.fetch`,
     { attributes: { 'http.url': url } },
     async (span) => {
       // Inject trace context into headers
-      const headers: Record<string, string> = {};
-      propagation.inject(context.active(), headers);
+      const headers = new Headers(init?.headers);
+      propagation.inject(context.active(), headers, {
+        set(carrier, key, value) {
+          carrier.set(key, value);
+        },
+      });
 
       const mergedInit = {
         ...init,
-        headers: {
-          ...init?.headers,
-          ...headers,
-        },
+        headers,
       };
 
       try {
@@ -250,6 +275,11 @@ For tRPC subscriptions using WebSockets, add per-message tracing:
 
 ```typescript
 // packages/api/src/routers/notifications.ts
+import { trace } from '@opentelemetry/api';
+import { z } from 'zod';
+
+import { router, tracedProcedure } from '../trpc';
+
 export const notificationRouter = router({
   onNewNotification: tracedProcedure
     .input(z.object({ userId: z.string() }))
