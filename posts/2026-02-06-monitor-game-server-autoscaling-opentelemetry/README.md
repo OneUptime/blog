@@ -15,18 +15,31 @@ This post shows how to feed the right signals into OpenTelemetry so you can unde
 Before instrumenting, identify what your autoscaler should care about:
 
 ```python
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Set up the meter provider
+# Set up the trace and meter providers
+resource = Resource.create({SERVICE_NAME: "game-autoscaler"})
+
+trace_provider = TracerProvider(resource=resource)
+trace_provider.add_span_processor(
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="otel-collector.yourgame.com:4317")
+    )
+)
+trace.set_tracer_provider(trace_provider)
 
 reader = PeriodicExportingMetricReader(
     OTLPMetricExporter(endpoint="otel-collector.yourgame.com:4317"),
     export_interval_millis=10000
 )
-provider = MeterProvider(metric_readers=[reader])
+provider = MeterProvider(resource=resource, metric_readers=[reader])
 metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("game.autoscaler", "1.0.0")
@@ -92,7 +105,7 @@ scale_event_counter = meter.create_counter(
     description="Count of autoscaling decisions by type"
 )
 
-def evaluate_scaling(region, game_mode):
+async def evaluate_scaling(region, game_mode):
     with tracer.start_as_current_span("autoscaler.evaluate") as span:
         # Gather current state
         active_servers = server_registry.count_active(region, game_mode)
@@ -114,7 +127,7 @@ def evaluate_scaling(region, game_mode):
             decision = "scale_up"
             servers_to_add = max(1, queue_depth // 30)
             span.set_attribute("autoscaler.servers_to_add", servers_to_add)
-            provision_servers(region, game_mode, servers_to_add)
+            await provision_servers(region, game_mode, servers_to_add)
 
         elif avg_utilization < 20 and active_servers > 2:
             decision = "scale_down"
@@ -140,6 +153,8 @@ def evaluate_scaling(region, game_mode):
 How long does it take from the decision to scale up until the server is actually ready to accept players?
 
 ```python
+import time
+
 server_provision_histogram = meter.create_histogram(
     "game.autoscaler.provision_duration_seconds",
     unit="s",
