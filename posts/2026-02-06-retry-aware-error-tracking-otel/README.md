@@ -28,6 +28,8 @@ Model retries as child spans under a parent span that represents the overall ope
 import time
 from opentelemetry import trace
 
+from error_classification import PermanentError, TransientError
+
 tracer = trace.get_tracer("my-service")
 
 def call_with_retry(operation_name, func, max_retries=3, backoff_base=0.5):
@@ -205,6 +207,12 @@ def record_retry_metrics(operation_name, total_attempts, final_outcome, transien
             "outcome": "success",
             "attempt": str(total_attempts - 1),
         })
+    elif final_outcome == "permanent_failure":
+        attempt_outcomes.add(1, {
+            **base_attrs,
+            "outcome": "permanent_failure",
+            "attempt": str(total_attempts - 1),
+        })
 ```
 
 ## Dashboard Queries
@@ -212,7 +220,7 @@ def record_retry_metrics(operation_name, total_attempts, final_outcome, transien
 With these metrics, build queries that show the real picture:
 
 ```promql
-# User-facing error rate (only permanent failures)
+# User-facing error rate (only final failures after retries)
 sum(rate(operation_outcome_total{outcome!="success"}[5m]))
 /
 sum(rate(operation_outcome_total[5m]))
@@ -222,10 +230,14 @@ sum(rate(operation_attempt_outcome_total{outcome!="success"}[5m]))
 /
 sum(rate(operation_attempt_outcome_total[5m]))
 
-# Retry rate (what percentage of operations need at least one retry)
+# Retry rate (what percentage of successful operations need at least one retry)
+(
+  sum(rate(operation_outcome_total{outcome="success"}[5m]))
+  -
+  sum(rate(operation_attempt_outcome_total{outcome="success", attempt="0"}[5m]))
+)
+/
 sum(rate(operation_outcome_total{outcome="success"}[5m]))
--
-sum(rate(operation_attempt_outcome_total{outcome="success", attempt="0"}[5m]))
 
 # Average retries per operation
 sum(rate(operation_retry_count_sum[5m]))
@@ -261,4 +273,4 @@ groups:
 
 ## Conclusion
 
-Retry-aware error tracking gives you two views of system health: the user-facing error rate (permanent failures only) and the system health indicator (including transient failures). By modeling retries as child spans and tracking separate metrics for each outcome type, you can detect degradation early through rising retry rates while keeping your user-facing SLO metrics clean. The retry rate is often the first signal that something is going wrong, long before users start seeing errors.
+Retry-aware error tracking gives you two views of system health: the user-facing error rate (final failures after retries) and the system health indicator (including transient failures). By modeling retries as child spans and tracking separate metrics for each outcome type, you can detect degradation early through rising retry rates while keeping your user-facing SLO metrics clean. The retry rate is often the first signal that something is going wrong, long before users start seeing errors.
