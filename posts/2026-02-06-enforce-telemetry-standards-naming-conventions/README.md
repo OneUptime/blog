@@ -18,7 +18,7 @@ Start with a written standard that extends the OpenTelemetry semantic convention
 # telemetry-standards/conventions.yaml
 
 # Organization telemetry naming conventions
-# Based on OpenTelemetry Semantic Conventions v1.25
+# Based on OpenTelemetry Semantic Conventions v1.41
 
 version: "2.0"
 
@@ -46,11 +46,11 @@ resource_attributes:
 
 # Span naming rules
 span_naming:
-  # Use format: VERB resource.action
+  # Use the low-cardinality format recommended for each signal type
   patterns:
-    http: "{method} {route}"          # GET /api/users
-    database: "{db.system} {db.operation}" # postgresql SELECT
-    messaging: "{system} {operation}" # kafka send
+    http: "{http.request.method} {http.route}"                 # GET /api/users/{id}
+    database: "{db.operation.name} {db.collection.name}"        # SELECT users
+    messaging: "{messaging.operation.name} {messaging.destination.name}" # send orders
   rules:
     - max_length: 128
     - no_ids: true           # No UUIDs, numeric IDs in span names
@@ -82,6 +82,7 @@ The first enforcement layer is your internal SDK wrapper. Validate span names an
 import re
 import logging
 from typing import Optional
+from opentelemetry.sdk.trace import SpanProcessor
 
 logger = logging.getLogger("telemetry.validation")
 
@@ -100,8 +101,10 @@ def validate_attribute_name(key: str) -> Optional[str]:
     Returns a warning message if invalid, None if valid.
     """
     # Allow standard OTel attributes
-    otel_prefixes = ("http.", "db.", "rpc.", "net.", "messaging.", "service.",
-                     "deployment.", "telemetry.", "os.", "process.", "host.")
+    otel_prefixes = ("http.", "url.", "server.", "client.", "network.",
+                     "db.", "rpc.", "messaging.", "service.", "deployment.",
+                     "telemetry.", "os.", "process.", "host.", "cloud.",
+                     "k8s.", "error.")
     if any(key.startswith(p) for p in otel_prefixes):
         return None
 
@@ -128,7 +131,7 @@ def validate_span_name(name: str) -> Optional[str]:
             )
     return None
 
-class ValidatingSpanProcessor:
+class ValidatingSpanProcessor(SpanProcessor):
     """
     SpanProcessor that validates spans against conventions
     and logs warnings for violations.
@@ -139,7 +142,7 @@ class ValidatingSpanProcessor:
             logger.warning(f"[telemetry-standards] {warning}")
 
     def on_end(self, span):
-        for key in span.attributes:
+        for key in span.attributes or {}:
             warning = validate_attribute_name(key)
             if warning:
                 logger.warning(f"[telemetry-standards] {warning}")
@@ -147,29 +150,34 @@ class ValidatingSpanProcessor:
     def shutdown(self):
         pass
 
-    def force_flush(self, timeout_millis=None):
-        pass
+    def force_flush(self, timeout_millis=30000):
+        return True
 ```
 
 ## Collector-Level Enforcement
 
-The Collector acts as a second enforcement layer. Use the transform processor to normalize attributes and the filter processor to drop non-compliant data.
+The Collector acts as a second enforcement layer. Use the transform processor to normalize attributes and tag non-compliant data, and the attributes processor to add compliance markers.
 
 ```yaml
 # otel-collector-standards.yaml
 processors:
   # Normalize common mistakes automatically
   transform/normalize:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Fix common attribute name mistakes
-          - replace_pattern(attributes["userId"], ".*", attributes["user.id"])
-          - replace_pattern(attributes["user_id"], ".*", attributes["user.id"])
-          - replace_pattern(attributes["UserID"], ".*", attributes["user.id"])
+          - set(attributes["user.id"], attributes["userId"]) where attributes["userId"] != nil
+          - delete_key(attributes, "userId") where attributes["userId"] != nil
+          - set(attributes["user.id"], attributes["user_id"]) where attributes["user_id"] != nil
+          - delete_key(attributes, "user_id") where attributes["user_id"] != nil
+          - set(attributes["user.id"], attributes["UserID"]) where attributes["UserID"] != nil
+          - delete_key(attributes, "UserID") where attributes["UserID"] != nil
 
   # Tag spans that violate conventions
   transform/tag_violations:
+    error_mode: ignore
     trace_statements:
       - context: resource
         statements:
@@ -177,7 +185,7 @@ processors:
           - set(attributes["telemetry.compliance"], "missing_team")
             where attributes["team.name"] == nil
 
-  # Count violations for metrics (do not drop data in enforcement mode)
+  # Mark spans for downstream metrics and dashboards (do not drop data in enforcement mode)
   attributes/compliance_metrics:
     actions:
       - key: telemetry.compliance_checked
