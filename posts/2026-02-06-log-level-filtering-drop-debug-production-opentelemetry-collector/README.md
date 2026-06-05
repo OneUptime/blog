@@ -26,9 +26,8 @@ receivers:
 processors:
   # Drop DEBUG and TRACE logs before they reach the exporter
   filter/drop-debug:
-    logs:
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 
   batch:
     timeout: 5s
@@ -45,7 +44,7 @@ service:
       exporters: [otlp]
 ```
 
-The `severity_number < SEVERITY_NUMBER_INFO` condition uses OpenTelemetry's severity number scale. In this scale, TRACE is 1-4, DEBUG is 5-8, INFO is 9-12, WARN is 13-16, ERROR is 17-20, and FATAL is 21-24. By filtering out everything below INFO (severity number 9), you drop both TRACE and DEBUG records.
+The `log.severity_number < SEVERITY_NUMBER_INFO` condition uses OpenTelemetry's severity number scale. In this scale, TRACE is 1-4, DEBUG is 5-8, INFO is 9-12, WARN is 13-16, ERROR is 17-20, and FATAL is 21-24. By filtering out everything below INFO (severity number 9), you drop both TRACE and DEBUG records.
 
 ## Understanding Severity Numbers
 
@@ -98,33 +97,32 @@ receivers:
 processors:
   # Route logs based on service name
   filter/standard:
-    logs:
-      log_record:
-        # Drop DEBUG and TRACE for most services
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+    log_conditions:
+      # Drop DEBUG and TRACE for most services
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 
   filter/strict:
-    logs:
-      log_record:
-        # Only keep WARN and above for noisy services
-        - 'severity_number < SEVERITY_NUMBER_WARN'
-
-  # Route logs to different pipelines based on resource attributes
-  routing:
-    from_attribute: service.name
-    attribute_source: resource
-    table:
-      # Payment service gets all logs (no filtering)
-      - value: payment-service
-        pipelines: [logs/all]
-      # Health check service is filtered aggressively
-      - value: health-checker
-        pipelines: [logs/strict]
-    # Everything else goes to standard filtering
-    default_pipelines: [logs/standard]
+    log_conditions:
+      # Only keep WARN and above for noisy services
+      - 'log.severity_number < SEVERITY_NUMBER_WARN'
 
   batch:
     timeout: 5s
+
+connectors:
+  # Route logs to different pipelines based on resource attributes
+  routing:
+    table:
+      # Payment service gets all logs (no filtering)
+      - context: resource
+        condition: attributes["service.name"] == "payment-service"
+        pipelines: [logs/all]
+      # Health check service is filtered aggressively
+      - context: resource
+        condition: attributes["service.name"] == "health-checker"
+        pipelines: [logs/strict]
+    # Everything else goes to standard filtering
+    default_pipelines: [logs/standard]
 
 exporters:
   otlp:
@@ -132,6 +130,9 @@ exporters:
 
 service:
   pipelines:
+    logs/in:
+      receivers: [otlp]
+      exporters: [routing]
     logs/all:
       receivers: [routing]
       processors: [batch]
@@ -150,17 +151,16 @@ service:
 
 One useful pattern is to keep DEBUG logs that are part of a trace that also contains an error. These logs provide the context you need for debugging production issues. Unfortunately, the collector cannot do this natively in real-time because it would need to buffer all logs until the trace completes.
 
-However, you can approximate this by keeping DEBUG logs that have an associated trace ID and error status. Here is a filter that drops DEBUG logs only when they are not part of an active trace:
+However, you can approximate this by keeping DEBUG logs that have an associated trace ID. Here is a filter that drops DEBUG logs only when they do not have trace context:
 
 ```yaml
 processors:
   # Keep DEBUG logs that have trace context (they are correlated with a request)
   # Drop DEBUG logs that have no trace context (standalone debug noise)
   filter/smart-debug:
-    logs:
-      log_record:
-        # Drop if: severity is DEBUG AND there is no trace_id
-        - 'severity_number >= SEVERITY_NUMBER_DEBUG and severity_number < SEVERITY_NUMBER_INFO and trace_id == ""'
+    log_conditions:
+      # Drop if: severity is DEBUG AND there is no trace_id
+      - 'log.severity_number >= SEVERITY_NUMBER_DEBUG and log.severity_number < SEVERITY_NUMBER_INFO and log.trace_id == TraceID(0x00000000000000000000000000000000)'
 ```
 
 This is a compromise. It keeps DEBUG logs from instrumented code paths (where they are most useful) and drops standalone DEBUG output (which is usually just noise).
@@ -173,12 +173,16 @@ Before deploying aggressive filtering, understand how much data each level contr
 service:
   telemetry:
     metrics:
-      # Enable internal metrics on this endpoint
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-With `level: detailed`, the filter processor reports `otelcol_processor_filter_logs_filtered` which tells you how many log records were dropped. Monitor this after deploying to confirm the filter is working as expected and to track the volume reduction.
+The Collector's internal processor metrics include `otelcol_processor_incoming_items` and `otelcol_processor_outgoing_items`, which you can compare for the filter processor to estimate how much data was dropped. Monitor these after deploying to confirm the filter is working as expected and to track the volume reduction.
 
 ## Dynamic Log Level Control
 
@@ -187,9 +191,8 @@ For troubleshooting, you sometimes want to temporarily enable DEBUG logs for a s
 ```yaml
 processors:
   filter/dynamic:
-    logs:
-      log_record:
-        - 'severity_number < ${env:MIN_LOG_SEVERITY}'
+    log_conditions:
+      - 'log.severity_number < ${env:MIN_LOG_SEVERITY}'
 ```
 
 Then set the environment variable and trigger a reload:
