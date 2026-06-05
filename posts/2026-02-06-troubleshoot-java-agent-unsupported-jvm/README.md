@@ -6,20 +6,20 @@ Tags: OpenTelemetry, Java, JVM, Compatibility
 
 Description: Fix the issue where the OpenTelemetry Java agent silently disables itself when running on an unsupported or incompatible JVM version.
 
-The OpenTelemetry Java agent requires a minimum JVM version to function. When the JVM version is too old, the agent disables itself silently - no error, no warning in the default log output. Your application starts normally but produces no telemetry.
+The OpenTelemetry Java agent requires a minimum JVM version to function. When the JVM version is too old, the agent may fail before its normal startup logging appears, or optional instrumentation compiled for a newer Java version may be skipped. Your application may start normally but produce no telemetry.
 
 ## Minimum JVM Requirements
 
-The OpenTelemetry Java agent requires **Java 8+** for basic functionality. However, specific versions have additional requirements:
+The OpenTelemetry Java agent requires **Java 8+** for basic functionality. Current releases are tested on current LTS and early-access JVM lines:
 
 | Agent Version | Minimum Java | Notes |
 |--------------|--------------|-------|
 | 1.x | Java 8 | Full support |
-| 2.x | Java 8 | Java 8+ required, Java 17+ recommended |
+| 2.x | Java 8 | Tested on OpenJDK and OpenJ9 versions 8, 11, 17, 21, 25, and 26 |
 
 Some agent features require newer JVM versions:
 - Virtual thread instrumentation requires Java 21+
-- Some module system features require Java 11+
+- Some runtime telemetry features depend on JVM-specific support such as JFR availability
 
 ## Diagnosing the Issue
 
@@ -41,35 +41,41 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar myapp.jar 2>&1 | head -50
 ```
 
-Look for messages like:
+Look for startup messages like:
 
 ```text
-[otel.javaagent] WARN - Java version 1.7 is not supported. Agent will be disabled.
+[otel.javaagent 2026-02-06 10:00:00:000 +0000] [main] INFO io.opentelemetry.javaagent.tooling.VersionLogger - opentelemetry-javaagent - version: 2.28.1
 ```
 
-Or:
+If optional instrumentation was compiled for a newer JVM than the one you are running, debug output can include messages like:
 
 ```text
-[otel.javaagent] INFO - opentelemetry-javaagent 1.32.0
+Unable to load instrumentation class: ... has been compiled by a more recent version of the Java Runtime
 ```
 
 If you see the version line, the agent started successfully. If you do not see it at all, the agent failed to load.
 
-### Step 3: Check for JVM Flags That Disable the Agent
+### Step 3: Check for Flags That Disable the Agent or Dynamic Attach
 
-Some JVM flags can prevent the agent from loading:
+This flag disables the OpenTelemetry agent entirely:
 
 ```bash
-# These flags can interfere
--XX:+DisableAttachMechanism
--XX:-EnableDynamicAgentLoading  # Java 21+
+-Dotel.javaagent.enabled=false
 ```
 
-In Java 21+, dynamic agent loading produces a warning. This does not disable the agent but may cause confusion:
+These JVM flags affect dynamic attachment through the Attach API, not normal startup with `-javaagent`:
+
+```bash
+-XX:+DisableAttachMechanism
+-XX:-EnableDynamicAgentLoading  # Java 9+
+```
+
+In Java 21+, dynamic agent loading produces a warning. This does not disable a statically loaded `-javaagent`, but may cause confusion:
 
 ```text
-WARNING: A terminally deprecated method in java.lang.System has been called
-WARNING: System::setSecurityManager will be removed in a future release
+WARNING: A Java agent has been loaded dynamically
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
 ```
 
 ## Fix 1: Update the JVM
@@ -86,7 +92,7 @@ CMD ["java", "-javaagent:/opt/otel/opentelemetry-javaagent.jar", "-jar", "/app/m
 
 ## Fix 2: Use an Older Agent Version
 
-If upgrading the JVM is not possible, use an older agent version that supports your JVM:
+If you are already on Java 8+ but a specific agent release has a JVM compatibility regression, use an older agent version that supports your JVM. Older OpenTelemetry Java agents still do not make Java 7 supported:
 
 ```bash
 # Download agent version compatible with your JVM
@@ -96,10 +102,10 @@ curl -L -o opentelemetry-javaagent.jar \
 
 ## Fix 3: Allow Dynamic Agent Loading on Java 21+
 
-Java 21 introduced a warning for dynamic agent loading. While the OpenTelemetry agent uses static attachment (via `-javaagent`), some configurations may trigger the warning:
+Java 21 introduced a warning for dynamic agent loading. While the OpenTelemetry agent uses static attachment when you pass `-javaagent`, dynamically attaching an agent or using a library that attaches one at runtime may trigger the warning:
 
 ```bash
-# Suppress the warning if needed
+# Suppress the warning for dynamic attachment if needed
 java -XX:+EnableDynamicAgentLoading \
      -javaagent:opentelemetry-javaagent.jar \
      -jar myapp.jar
@@ -107,11 +113,11 @@ java -XX:+EnableDynamicAgentLoading \
 
 ## Fix 4: Handle IBM J9 and Other JVM Variants
 
-The agent is tested primarily on HotSpot (OpenJDK, Oracle JDK). Other JVM implementations may have issues:
+The agent is tested on OpenJDK and OpenJ9. Other runtime targets may need different OpenTelemetry tooling:
 
-- **IBM J9 / OpenJ9**: Generally supported but some instrumentations may not work
+- **IBM J9 / OpenJ9**: Tested on Java 8, 11, 17, 21, 25, and 26, though individual runtime telemetry features can depend on JVM support
 - **GraalVM Native Image**: The agent does not work with native images (use SDK instead)
-- **Android**: Not supported
+- **Android**: Use the OpenTelemetry Android agent/tooling instead of the standard JVM `-javaagent`
 
 For GraalVM native images, use the OpenTelemetry SDK directly:
 
@@ -125,7 +131,7 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
 
 ## Kubernetes Health Check
 
-Add a health check that verifies the agent is active:
+Add a health check that verifies the telemetry pipeline can create spans:
 
 ```java
 @RestController
@@ -138,13 +144,13 @@ public class HealthController {
         status.put("jvm.vendor", System.getProperty("java.vendor"));
 
         Tracer tracer = GlobalOpenTelemetry.getTracer("health-check");
-        // If the agent is active, this returns a real tracer
-        // If not, it returns a no-op tracer
+        // If an OpenTelemetry SDK is configured, this should create a span with a valid context.
+        // Treat this as a telemetry pipeline check, not definitive proof that the Java agent loaded.
         Span testSpan = tracer.spanBuilder("health-check").startSpan();
-        boolean agentActive = testSpan.getSpanContext().isValid();
+        boolean sdkActive = testSpan.getSpanContext().isValid();
         testSpan.end();
 
-        status.put("otel.agent.active", agentActive);
+        status.put("otel.sdk.active", sdkActive);
         return status;
     }
 }
