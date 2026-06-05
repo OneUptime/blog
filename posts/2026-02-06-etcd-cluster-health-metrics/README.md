@@ -76,14 +76,14 @@ processors:
           - "etcd_server_proposals_.*"
           # Database
           - "etcd_mvcc_db_total_size.*"
-          - "etcd_mvcc_keys_total"
+          - "etcd_debugging_mvcc_keys_total"
           - "etcd_debugging_mvcc.*"
           # Network
           - "etcd_network_peer_round_trip_time.*"
           - "etcd_network_peer_sent_failures_total"
           # gRPC
           - "grpc_server_handled_total"
-          - "grpc_server_handling_seconds.*"
+          - "grpc_server_started_total"
           # Disk
           - "etcd_disk_wal_fsync_duration_seconds.*"
           - "etcd_disk_backend_commit_duration_seconds.*"
@@ -110,13 +110,12 @@ Use the transform processor to create computed health indicators:
 ```yaml
 processors:
   transform/etcd-health:
+    error_mode: ignore
     metric_statements:
-      - context: datapoint
-        statements:
-          # Flag when proposals are piling up
-          - set(attributes["health.status"], "degraded") where metric.name == "etcd_server_proposals_pending" and Float(value_int) > 100
-          # Flag when there is no leader
-          - set(attributes["health.status"], "critical") where metric.name == "etcd_server_has_leader" and Float(value_int) == 0
+      # Flag when proposals are piling up
+      - set(datapoint.attributes["health.status"], "degraded") where metric.name == "etcd_server_proposals_pending" and datapoint.value_double > 100
+      # Flag when there is no leader
+      - set(datapoint.attributes["health.status"], "critical") where metric.name == "etcd_server_has_leader" and datapoint.value_double == 0
 ```
 
 ## Alerting Thresholds
@@ -128,7 +127,7 @@ Here are recommended alerting thresholds for etcd metrics:
 
 # etcd_server_has_leader == 0 (no leader)
 # etcd_server_proposals_failed_total rate > 0 (proposals failing)
-# etcd_mvcc_db_total_size_in_bytes > 6GB (approaching default 8GB limit)
+# etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes > 0.75 (approaching configured quota)
 
 # Warning alerts:
 # etcd_server_leader_changes_seen_total rate > 3/hour (frequent elections)
@@ -140,17 +139,13 @@ Here are recommended alerting thresholds for etcd metrics:
 
 ## Database Size Management
 
-Track the ratio of used space to total space to detect fragmentation:
+Track the ratio of unused allocated space to total space to detect fragmentation:
 
-```yaml
-processors:
-  transform/etcd-fragmentation:
-    metric_statements:
-      - context: metric
-        statements:
-          # The difference between total size and in-use size indicates fragmentation
-          # Monitor etcd_mvcc_db_total_size_in_bytes vs etcd_mvcc_db_total_size_in_use_in_bytes
-          # If total >> in_use, you need to defragment
+```promql
+# The difference between total size and in-use size indicates fragmentation.
+# If the ratio is high, you need to defragment.
+(etcd_mvcc_db_total_size_in_bytes - etcd_mvcc_db_total_size_in_use_in_bytes)
+  / etcd_mvcc_db_total_size_in_bytes
 ```
 
 When `etcd_mvcc_db_total_size_in_bytes` is significantly larger than `etcd_mvcc_db_total_size_in_use_in_bytes`, run defragmentation:
@@ -165,7 +160,7 @@ etcdctl defrag --endpoints=https://etcd-0:2379 \
 
 ## Monitoring from Inside Kubernetes
 
-If etcd runs as part of a Kubernetes cluster (managed control plane), the metrics endpoint might be accessible at a different location:
+If etcd runs as part of a self-managed Kubernetes control plane, the metrics endpoint might be accessible at a different location:
 
 ```yaml
 receivers:
