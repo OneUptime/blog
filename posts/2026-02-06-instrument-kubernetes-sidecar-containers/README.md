@@ -49,6 +49,8 @@ spec:
         # Point the SDK to the sidecar collector on localhost
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://localhost:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
         - name: OTEL_SERVICE_NAME
           value: "my-app"
 
@@ -56,6 +58,11 @@ spec:
     - name: otel-collector
       image: otel/opentelemetry-collector-contrib:0.96.0
       args: ["--config=/etc/otel/config.yaml"]
+      env:
+        - name: K8S_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
       volumeMounts:
         - name: otel-config
           mountPath: /etc/otel
@@ -96,9 +103,8 @@ data:
       resource:
         attributes:
           - key: k8s.pod.name
-            from_attribute: ""
             action: insert
-            value: "${K8S_POD_NAME}"
+            value: "${env:K8S_POD_NAME}"
 
     exporters:
       otlphttp:
@@ -117,11 +123,61 @@ data:
 Envoy has built-in OpenTelemetry support. If you are running Envoy as a sidecar (either directly or through Istio), you can configure it to emit traces:
 
 ```yaml
-# Envoy bootstrap configuration for OpenTelemetry tracing.
+# Envoy bootstrap configuration fragment for OpenTelemetry tracing.
 # This configures Envoy to create spans for every proxied request
 # and send them to the sidecar collector.
 static_resources:
+  listeners:
+    - name: ingress
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 10000
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                tracing:
+                  provider:
+                    name: envoy.tracers.opentelemetry
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
+                      grpc_service:
+                        envoy_grpc:
+                          cluster_name: opentelemetry_collector
+                        timeout: 0.250s
+                      service_name: envoy-sidecar
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: app
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: app
+
   clusters:
+    - name: app
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: app
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: localhost
+                      port_value: 8081
+
     - name: opentelemetry_collector
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -139,17 +195,6 @@ static_resources:
                     socket_address:
                       address: localhost
                       port_value: 4317
-
-tracing:
-  http:
-    name: envoy.tracers.opentelemetry
-    typed_config:
-      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
-      grpc_service:
-        envoy_grpc:
-          cluster_name: opentelemetry_collector
-        timeout: 0.250s
-      service_name: envoy-sidecar
 ```
 
 With Istio, the configuration is simpler. You configure tracing at the mesh level:
@@ -179,16 +224,14 @@ NGINX sidecars are common for TLS termination and static file serving. Use the O
 ```dockerfile
 # Dockerfile for NGINX with OpenTelemetry instrumentation.
 # The OTel module is loaded as a dynamic module.
-FROM nginx:1.25
+FROM nginx:1.25.3
 
-# Install the OpenTelemetry NGINX module
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev \
-    libprotobuf-dev \
-    protobuf-compiler
+# Install the pre-built OpenTelemetry NGINX module from the
+# official NGINX package repository.
+RUN apt-get update && apt-get install -y nginx-module-otel
 
-# Copy the pre-built OTel module (or build from source)
-COPY otel_ngx_module.so /etc/nginx/modules/
+# If you build the module from source instead, copy ngx_otel_module.so
+# to /etc/nginx/modules/ and keep the same load_module directive below.
 
 # Load the module in the NGINX configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -199,7 +242,7 @@ Configure the module in your NGINX configuration:
 ```nginx
 # nginx.conf with OpenTelemetry instrumentation enabled.
 # Traces are sent to the sidecar collector on localhost.
-load_module modules/otel_ngx_module.so;
+load_module modules/ngx_otel_module.so;
 
 http {
     otel_exporter {
@@ -229,7 +272,8 @@ The OpenTelemetry Operator for Kubernetes can automatically inject sidecar colle
 
 ```yaml
 # OpenTelemetry Instrumentation resource.
-# The operator watches for pods with the annotation and injects the sidecar.
+# The operator watches for pods with language-specific annotations and
+# injects the corresponding auto-instrumentation.
 apiVersion: opentelemetry.io/v1alpha1
 kind: Instrumentation
 metadata:
@@ -251,6 +295,37 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+```
+
+For sidecar collector injection, define an `OpenTelemetryCollector` resource in sidecar mode:
+
+```yaml
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: my-sidecar
+  namespace: default
+spec:
+  mode: sidecar
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch: {}
+    exporters:
+      otlphttp:
+        endpoint: http://otel-gateway.observability.svc:4318
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp]
 ```
 
 Annotate your pods to opt into auto-instrumentation:
