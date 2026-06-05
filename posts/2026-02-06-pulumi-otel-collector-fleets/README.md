@@ -73,7 +73,7 @@ export const teams: TeamConfig[] = [
 
 ```typescript
 // config-generator.ts
-import { TeamConfig } from "./fleet-config";
+import type { TeamConfig } from "./fleet-config";
 
 export function generateCollectorConfig(team: TeamConfig): string {
   // Build exporters section dynamically
@@ -90,7 +90,7 @@ export function generateCollectorConfig(team: TeamConfig): string {
       send_batch_size: 4096,
       timeout: "1s",
     },
-    // Tail-based sampling rate from team config
+    // Probabilistic sampling rate from team config
     probabilistic_sampler: {
       sampling_percentage: team.samplingRate * 100,
     },
@@ -108,14 +108,10 @@ export function generateCollectorConfig(team: TeamConfig): string {
     for (const proc of team.extraProcessors) {
       if (proc === "transform/redact_pii") {
         processors["transform/redact_pii"] = {
+          error_mode: "ignore",
           trace_statements: [
-            {
-              context: "span",
-              statements: [
-                'replace_pattern(attributes["http.url"], "email=[^&]*", "email=REDACTED")',
-                'replace_pattern(attributes["http.url"], "token=[^&]*", "token=REDACTED")',
-              ],
-            },
+            'replace_pattern(span.attributes["url.full"], "email=[^&]*", "email=REDACTED") where span.attributes["url.full"] != nil',
+            'replace_pattern(span.attributes["url.full"], "token=[^&]*", "token=REDACTED") where span.attributes["url.full"] != nil',
           ],
         };
       }
@@ -162,8 +158,8 @@ export function generateCollectorConfig(team: TeamConfig): string {
     },
   };
 
-  // Pulumi requires YAML as a string
-  // Using JSON.stringify since the Collector accepts JSON configs too
+  // ConfigMap data values must be strings.
+  // JSON is valid YAML, so the Collector can read this config file.
   return JSON.stringify(config, null, 2);
 }
 ```
@@ -186,17 +182,17 @@ for (const team of teams) {
   const configMap = new k8s.core.v1.ConfigMap(`config-${team.name}`, {
     metadata: {
       name: `otel-collector-${team.name}`,
-      namespace: team.namespace,
+      namespace: namespace.metadata.name,
     },
     data: {
       "config.json": generateCollectorConfig(team),
     },
   });
 
-  const daemonSet = new k8s.apps.v1.DaemonSet(`collector-${team.name}`, {
+  new k8s.apps.v1.DaemonSet(`collector-${team.name}`, {
     metadata: {
       name: `otel-collector-${team.name}`,
-      namespace: team.namespace,
+      namespace: namespace.metadata.name,
     },
     spec: {
       selector: {
@@ -209,7 +205,7 @@ for (const team of teams) {
         spec: {
           containers: [{
             name: "otel-collector",
-            image: "otel/opentelemetry-collector-contrib:0.96.0",
+            image: "otel/opentelemetry-collector-contrib:0.153.0",
             args: ["--config", "/etc/otel/config.json"],
             ports: [
               { containerPort: 4317, name: "otlp-grpc" },
@@ -235,7 +231,7 @@ for (const team of teams) {
     },
   });
 
-  // Export the service endpoint for each team
+  // Log the deployment for each team
   pulumi.log.info(
     `Deployed Collector for team ${team.name} ` +
     `with ${team.samplingRate * 100}% sampling`
