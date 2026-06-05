@@ -10,7 +10,7 @@ Description: A practical guide to installing system fonts and custom fonts in Do
 
 Most Docker base images ship with zero fonts installed. That is perfectly fine until your application needs to generate PDFs, render images with text, run headless Chrome for screenshots, or produce charts. Without the right fonts, you get missing characters, empty boxes, or garbled text in your output.
 
-This guide walks through installing both system font packages and custom fonts in Docker containers. We cover Debian, Ubuntu, Alpine, and Red Hat-based images with real examples you can copy into your Dockerfiles.
+This guide walks through installing both system font packages and custom fonts in Docker containers. We cover Debian, Ubuntu, and Alpine images with real examples you can copy into your Dockerfiles.
 
 ## Why Fonts Matter in Containers
 
@@ -64,18 +64,17 @@ Install Microsoft TrueType core fonts on Debian/Ubuntu:
 FROM debian:bookworm-slim
 
 # Accept the EULA non-interactively and install msttcorefonts
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        software-properties-common && \
+RUN sed -i 's/Components: main/Components: main contrib/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
     echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | \
         debconf-set-selections && \
-    apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ttf-mscorefonts-installer && \
     rm -rf /var/lib/apt/lists/* && \
     fc-cache -fv
 ```
 
-The `debconf-set-selections` line pre-accepts the Microsoft EULA so the installation does not hang waiting for interactive input.
+The `sed` command enables Debian's `contrib` repository, where `ttf-mscorefonts-installer` is packaged. The `debconf-set-selections` line pre-accepts the Microsoft EULA so the installation does not hang waiting for interactive input.
 
 ## Installing Fonts on Alpine Linux
 
@@ -153,7 +152,7 @@ RUN apt-get update && \
 RUN mkdir -p /usr/local/share/fonts/custom
 
 # Copy your font files into the container
-# Supports .ttf, .otf, .woff, and .woff2 formats
+# This example copies .ttf and .otf files
 COPY fonts/*.ttf /usr/local/share/fonts/custom/
 COPY fonts/*.otf /usr/local/share/fonts/custom/
 
@@ -180,10 +179,13 @@ Google Fonts are freely available and cover a wide range of styles. You can down
 Download and install specific Google Fonts:
 
 ```bash
-# Download a Google Font family (run locally or in Dockerfile)
+# Download Google Font files (run locally or in Dockerfile)
 # This fetches the Roboto font family
-wget -O /tmp/roboto.zip "https://fonts.google.com/download?family=Roboto"
-unzip /tmp/roboto.zip -d /usr/local/share/fonts/roboto
+mkdir -p /usr/local/share/fonts/roboto
+wget -O /usr/local/share/fonts/roboto/Roboto.ttf \
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+wget -O /usr/local/share/fonts/roboto/Roboto-Italic.ttf \
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Italic%5Bwdth%2Cwght%5D.ttf"
 fc-cache -fv
 ```
 
@@ -195,17 +197,17 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        ca-certificates \
         fontconfig \
-        wget \
-        unzip && \
+        wget && \
     rm -rf /var/lib/apt/lists/*
 
 # Download and install the Roboto font family
-RUN wget -q -O /tmp/roboto.zip \
-        "https://fonts.google.com/download?family=Roboto" && \
-    mkdir -p /usr/local/share/fonts/roboto && \
-    unzip /tmp/roboto.zip -d /usr/local/share/fonts/roboto && \
-    rm /tmp/roboto.zip && \
+RUN mkdir -p /usr/local/share/fonts/roboto && \
+    wget -q -O /usr/local/share/fonts/roboto/Roboto.ttf \
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf" && \
+    wget -q -O /usr/local/share/fonts/roboto/Roboto-Italic.ttf \
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Italic%5Bwdth%2Cwght%5D.ttf" && \
     fc-cache -fv
 ```
 
@@ -231,7 +233,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     fc-cache -fv
 
-# Install Puppeteer (it will use the system-installed Chromium)
+# Install Puppeteer (it downloads a compatible Chrome for Testing by default)
 RUN npm install puppeteer
 
 COPY generate-pdf.js .
