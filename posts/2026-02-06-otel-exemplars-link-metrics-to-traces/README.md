@@ -21,20 +21,21 @@ Exemplars are configured in the meter provider section. Here is how to enable th
 ```yaml
 # otel-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "checkout-service"
-    deployment.environment: "production"
+    - name: service.name
+      value: "checkout-service"
+    - name: deployment.environment.name
+      value: "production"
 
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
   sampler:
     parent_based:
       root:
@@ -46,9 +47,8 @@ meter_provider:
     - periodic:
         interval: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
             temporality_preference: "cumulative"
 
   # Exemplar configuration
@@ -76,7 +76,7 @@ When your application records a metric measurement, the SDK checks if there is a
 
 ```python
 # Python example showing what happens internally
-from opentelemetry import metrics, trace
+from opentelemetry import metrics
 
 meter = metrics.get_meter("checkout")
 duration_histogram = meter.create_histogram(
@@ -91,7 +91,7 @@ duration_histogram = meter.create_histogram(
 duration_histogram.record(2.3, {"http.route": "/checkout", "http.method": "POST"})
 ```
 
-The resulting metric data point looks like this in OTLP:
+The resulting metric data point looks like this in a simplified OTLP-style representation:
 
 ```json
 {
@@ -138,7 +138,7 @@ processors:
 
 exporters:
   # Prometheus Remote Write preserves exemplars
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://mimir:9009/api/v1/push"
     resource_to_telemetry_conversion:
       enabled: true
@@ -152,7 +152,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
     traces:
       receivers: [otlp]
       processors: [batch]
@@ -173,6 +173,8 @@ storage:
     max_exemplars: 100000  # max exemplars to store in memory
 ```
 
+For Prometheus versions that still gate exemplar storage, also start Prometheus with `--enable-feature=exemplar-storage`.
+
 In Grafana, configure a Tempo data source for traces, then set up the exemplar link in your Prometheus/Mimir data source:
 
 ```text
@@ -180,14 +182,14 @@ In Grafana, configure a Tempo data source for traces, then set up the exemplar l
 Exemplars:
   - Internal link: enabled
     Data source: Tempo
-    URL: ${__value.traceID}
+    Label name: trace_id
 ```
 
 Now when you hover over a metric graph in Grafana, exemplar dots appear. Click one and Grafana opens the corresponding trace in Tempo.
 
 ## Querying Exemplars in PromQL
 
-You can query exemplars directly in Grafana or via the Prometheus API:
+You can overlay exemplars in Grafana for a PromQL query like this:
 
 ```promql
 # Show exemplars for request duration histogram
@@ -195,6 +197,8 @@ histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket{servic
 ```
 
 Enable "Exemplars" toggle in the Grafana query editor to see the exemplar dots overlaid on the graph.
+
+To query exemplars directly through the Prometheus API, call `/api/v1/query_exemplars` with the PromQL expression and a start and end time.
 
 ## Wrapping Up
 
