@@ -153,7 +153,11 @@ def require_permission(action, resource_type):
         @wraps(f)
         def decorated(*args, **kwargs):
             user = g.current_user
-            resource_id = kwargs.get("resource_id") or kwargs.get("id")
+            resource_id = (
+                kwargs.get("resource_id")
+                or kwargs.get(f"{resource_type}_id")
+                or kwargs.get("id")
+            )
 
             with tracer.start_as_current_span(
                 f"authz.check.{action}.{resource_type}"
