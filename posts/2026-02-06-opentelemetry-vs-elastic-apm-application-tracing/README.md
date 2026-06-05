@@ -36,7 +36,7 @@ flowchart LR
     end
 ```
 
-One notable architectural difference: Elastic APM Server is a required component that processes and enriches trace data before indexing. It handles sampling decisions, source mapping for frontend errors, and data transformation. The OTel Collector serves a similar role but with a more modular, configurable pipeline.
+One notable architectural difference: in self-managed Elastic APM deployments, APM Server is the component that receives agent data, processes and enriches it, and stores it in Elasticsearch. Agents make head-based sampling decisions, while APM Server can also apply tail-based sampling when configured. The OTel Collector serves a similar role but with a more modular, configurable pipeline.
 
 ---
 
@@ -151,7 +151,7 @@ The code patterns are very similar. Both support auto-instrumentation for common
 
 Elastic APM and OpenTelemetry model traces differently.
 
-Elastic APM uses a two-tier model: **transactions** and **spans**. A transaction represents a top-level operation (like an HTTP request or a background job). Spans represent sub-operations within a transaction (like database queries or HTTP calls to other services).
+Elastic APM uses a two-tier vocabulary: **transactions** and **spans**. A transaction is a special kind of span that represents a top-level operation (like an HTTP request or a background job). Spans represent sub-operations within a transaction (like database queries or HTTP calls to other services).
 
 OpenTelemetry uses a flat model: everything is a **span**. The root span of a trace is structurally identical to a child span. The parent-child relationship is defined by span context propagation, not by different data types.
 
@@ -172,7 +172,7 @@ flowchart TB
     end
 ```
 
-In practice, this difference is subtle. When you view traces in Kibana or any OTel-compatible UI, the waterfall visualization looks nearly identical. But the distinction matters when you write queries against the underlying data. In Elasticsearch, transactions and spans are stored in separate indices with different schemas.
+In practice, this difference is subtle. When you view traces in Kibana or any OTel-compatible UI, the waterfall visualization looks nearly identical. But the distinction matters when you write queries against the underlying data. In Elasticsearch, transactions and spans are stored as separate documents with different fields, such as `transaction.*` and `span.*`, in the APM trace data streams.
 
 ---
 
@@ -180,8 +180,9 @@ In practice, this difference is subtle. When you view traces in Kibana or any OT
 
 Elastic APM stores trace data in Elasticsearch, which gives you the full power of Elasticsearch's query DSL. This is a genuine strength. You can write complex aggregations, create custom visualizations in Kibana, and perform full-text search across trace attributes.
 
+Elasticsearch query to find slow payment spans:
+
 ```json
-// Elasticsearch query - Find slow payment spans
 {
   "query": {
     "bool": {
@@ -233,6 +234,14 @@ Elastic has invested heavily in OpenTelemetry compatibility. APM Server can rece
 
 ```yaml
 # OTel Collector config to send traces to Elastic APM
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+
+processors:
+  batch:
+
 exporters:
   otlp/elastic:
     endpoint: "apm-server:8200"
@@ -251,13 +260,13 @@ service:
 
 This hybrid approach is compelling. You get OpenTelemetry's vendor-neutral instrumentation with Elasticsearch's powerful storage and querying. If you later decide to switch backends, your application code stays the same.
 
-Elastic also provides an OpenTelemetry-based distribution of their agents (the Elastic Distribution of OpenTelemetry, or EDOT), which is essentially the OTel SDK preconfigured for Elastic backends. This lowers the barrier for teams already using Elastic who want to standardize on OpenTelemetry.
+Elastic also provides OpenTelemetry-based distributions for SDKs and the Collector (the Elastic Distribution of OpenTelemetry, or EDOT), which package OpenTelemetry components with Elastic support and configuration guidance. This lowers the barrier for teams already using Elastic who want to standardize on OpenTelemetry.
 
 ---
 
 ## Sampling and Performance
 
-Both Elastic APM agents and OpenTelemetry SDKs introduce comparable overhead. The key factors are sampling rate, batch size, and export frequency. OpenTelemetry gives you more granular control through head-based and tail-based sampling in the Collector.
+Both Elastic APM agents and OpenTelemetry SDKs introduce comparable overhead. The key factors are sampling rate, batch size, and export frequency. OpenTelemetry gives you granular control through head-based sampling in SDKs and tail-based sampling in the Collector.
 
 ```yaml
 # OTel Collector - Tail-based sampling to reduce storage cost
@@ -279,7 +288,7 @@ processors:
         probabilistic: { sampling_percentage: 10 }
 ```
 
-Tail-based sampling is a key advantage of the OTel Collector pipeline. It lets you make sampling decisions based on the complete trace, keeping all error and slow traces while sampling routine requests. Elastic APM's built-in sampling is head-based only, though you can add the OTel Collector in front of APM Server for tail-based sampling.
+Tail-based sampling is a key advantage of collector-side sampling pipelines. It lets you make sampling decisions based on the complete trace, keeping all error and slow traces while sampling routine requests. Elastic APM supports head-based sampling in agents and tail-based sampling in APM Server when configured; you can also add the OTel Collector in front of APM Server for collector-based tail sampling.
 
 ---
 
