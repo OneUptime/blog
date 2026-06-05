@@ -56,12 +56,16 @@ resource = Resource.create({
 # Initialize tracing
 trace_provider = TracerProvider(resource=resource)
 trace_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="grpc://otel-collector:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+    )
 )
 trace.set_tracer_provider(trace_provider)
 
 # Initialize metrics
-metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
@@ -101,7 +105,7 @@ async def send_email_notification(notification):
     with tracer.start_as_current_span("notification.send_email") as span:
         span.set_attribute("notification.id", notification.id)
         span.set_attribute("notification.channel", "email")
-        span.set_attribute("notification.recipient", notification.recipient_email)
+        span.set_attribute("notification.recipient_hash", hash_recipient(notification.recipient_email))
         span.set_attribute("notification.template", notification.template_name)
         span.set_attribute("notification.priority", notification.priority)
 
@@ -132,7 +136,7 @@ async def send_email_notification(notification):
 
             if not rate_limit_result.allowed:
                 span.add_event("rate_limited", {
-                    "notification.recipient": notification.recipient_email,
+                    "notification.recipient_hash": hash_recipient(notification.recipient_email),
                     "rate_limit.retry_after_seconds": rate_limit_result.retry_after,
                 })
                 notifications_failed.add(1, {
@@ -190,12 +194,47 @@ The three child spans (template rendering, rate limiting, and provider send) giv
 SMS has its own quirks. Providers have per-second rate limits, messages have character limits that affect segmentation, and delivery receipts arrive asynchronously.
 
 ```python
+import math
+
+GSM_7_BASIC = (
+    "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5"
+    "\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e"
+    "\u001b\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?"
+    "\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7"
+    "\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0"
+)
+GSM_7_EXTENDED = "^{}\\[~]|"
+
+def count_sms_segments(message_body):
+    """Estimate SMS billing segments for GSM-7 and UCS-2 encoded messages."""
+    gsm_units = 0
+    is_gsm_7 = True
+
+    for char in message_body:
+        if char in GSM_7_BASIC:
+            gsm_units += 1
+        elif char in GSM_7_EXTENDED:
+            gsm_units += 2
+        else:
+            is_gsm_7 = False
+            break
+
+    length = gsm_units if is_gsm_7 else len(message_body)
+    single_segment_limit = 160 if is_gsm_7 else 70
+    multipart_segment_limit = 153 if is_gsm_7 else 67
+
+    if length == 0:
+        return 0
+    if length <= single_segment_limit:
+        return 1
+    return math.ceil(length / multipart_segment_limit)
+
 async def send_sms_notification(notification):
     """Send an SMS notification with segment and delivery tracking."""
     with tracer.start_as_current_span("notification.send_sms") as span:
         span.set_attribute("notification.id", notification.id)
         span.set_attribute("notification.channel", "sms")
-        span.set_attribute("notification.recipient", notification.phone_number)
+        span.set_attribute("notification.recipient_hash", hash_recipient(notification.phone_number))
         span.set_attribute("notification.country_code", notification.country_code)
 
         # Render the SMS body from template
@@ -206,7 +245,7 @@ async def send_sms_notification(notification):
 
         # Calculate SMS segments (important for cost tracking)
         message_length = len(message_body)
-        segments = (message_length // 160) + (1 if message_length % 160 else 0)
+        segments = count_sms_segments(message_body)
         span.set_attribute("sms.message_length", message_length)
         span.set_attribute("sms.segments", segments)
 
@@ -264,26 +303,28 @@ from opentelemetry.trace import Link, SpanContext, TraceFlags
 
 async def handle_sms_delivery_webhook(webhook_data):
     """Process an SMS delivery status callback and link to original trace."""
-    with tracer.start_as_current_span("notification.delivery_callback") as span:
-        message_sid = webhook_data.get("MessageSid")
-        delivery_status = webhook_data.get("MessageStatus")
+    message_sid = webhook_data.get("MessageSid")
+    delivery_status = webhook_data.get("MessageStatus")
 
+    # Retrieve the original trace context
+    original_context = await get_trace_context(message_sid)
+    links = []
+
+    if original_context:
+        # Create a link back to the original send span
+        original_span_context = SpanContext(
+            trace_id=original_context["trace_id"],
+            span_id=original_context["span_id"],
+            is_remote=True,
+            trace_flags=TraceFlags(0x01),
+        )
+        links.append(Link(original_span_context))
+
+    with tracer.start_as_current_span("notification.delivery_callback", links=links) as span:
         span.set_attribute("notification.channel", "sms")
         span.set_attribute("sms.message_sid", message_sid)
         span.set_attribute("sms.delivery_status", delivery_status)
-
-        # Retrieve the original trace context
-        original_context = await get_trace_context(message_sid)
-
         if original_context:
-            # Create a link back to the original send span
-            original_span_context = SpanContext(
-                trace_id=original_context["trace_id"],
-                span_id=original_context["span_id"],
-                is_remote=True,
-                trace_flags=TraceFlags(0x01),
-            )
-            span.add_link(Link(original_span_context))
             span.set_attribute("notification.original_trace_linked", True)
 
         # Update delivery metrics
@@ -376,7 +417,7 @@ The per-device child spans are important because push notification delivery can 
 With all three channels instrumented, you can build a unified dashboard that shows notification system health. The key metrics to display are delivery rate by channel (email, SMS, push), average send latency by channel and provider, failure rate by failure reason, rate limiting frequency, and stale push token accumulation over time.
 
 ```python
-# Useful gauge for tracking pending notifications in the queue
+# Useful UpDownCounter for tracking pending notifications in the queue
 pending_notifications = meter.create_up_down_counter(
     "notifications.pending",
     description="Number of notifications waiting to be sent",
