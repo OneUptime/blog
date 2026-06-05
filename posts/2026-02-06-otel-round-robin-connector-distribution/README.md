@@ -34,7 +34,7 @@ receivers:
 
 connectors:
   # Round robin across three downstream pipelines
-  roundrobin:
+  round_robin:
 
 processors:
   batch:
@@ -63,21 +63,21 @@ service:
     logs:
       receivers: [otlp]
       processors: []
-      exporters: [roundrobin]
+      exporters: [round_robin]
 
     # Three downstream pipelines, each targeting a shard
     logs/shard1:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [batch]
       exporters: [otlp/shard1]
 
     logs/shard2:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [batch]
       exporters: [otlp/shard2]
 
     logs/shard3:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [batch]
       exporters: [otlp/shard3]
 ```
@@ -100,7 +100,7 @@ receivers:
             - role: pod
 
 connectors:
-  roundrobin/metrics:
+  round_robin/metrics:
 
 processors:
   batch/small:
@@ -112,37 +112,37 @@ exporters:
   clickhouse/shard0:
     endpoint: "tcp://clickhouse-0.clickhouse.svc:9000"
     database: "otel"
-    ttl_days: 30
+    ttl: 720h
 
   clickhouse/shard1:
     endpoint: "tcp://clickhouse-1.clickhouse.svc:9000"
     database: "otel"
-    ttl_days: 30
+    ttl: 720h
 
   clickhouse/shard2:
     endpoint: "tcp://clickhouse-2.clickhouse.svc:9000"
     database: "otel"
-    ttl_days: 30
+    ttl: 720h
 
 service:
   pipelines:
     metrics:
       receivers: [otlp, prometheus]
       processors: []
-      exporters: [roundrobin/metrics]
+      exporters: [round_robin/metrics]
 
     metrics/shard0:
-      receivers: [roundrobin/metrics]
+      receivers: [round_robin/metrics]
       processors: [batch/small]
       exporters: [clickhouse/shard0]
 
     metrics/shard1:
-      receivers: [roundrobin/metrics]
+      receivers: [round_robin/metrics]
       processors: [batch/small]
       exporters: [clickhouse/shard1]
 
     metrics/shard2:
-      receivers: [roundrobin/metrics]
+      receivers: [round_robin/metrics]
       processors: [batch/small]
       exporters: [clickhouse/shard2]
 ```
@@ -174,17 +174,17 @@ processors:
 service:
   pipelines:
     logs/shard0:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [attributes/shard0, batch]
       exporters: [otlp/shard0]
 
     logs/shard1:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [attributes/shard1, batch]
       exporters: [otlp/shard1]
 
     logs/shard2:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       processors: [attributes/shard2, batch]
       exporters: [otlp/shard2]
 ```
@@ -203,7 +203,7 @@ curl -s http://localhost:8888/metrics | grep otelcol_exporter_sent
 # otelcol_exporter_sent_log_records{exporter="otlp/shard2"} 150201
 ```
 
-The counts should be very close to each other. If one shard is significantly behind, it might be experiencing backpressure, which would cause the round robin to skip it.
+The counts should be very close to each other. If one shard is significantly behind, it might be experiencing backpressure or send failures, so check that exporter's queue and failure metrics.
 
 ## Handling Shard Failures
 
