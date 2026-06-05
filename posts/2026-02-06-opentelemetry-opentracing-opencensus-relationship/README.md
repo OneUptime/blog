@@ -27,6 +27,8 @@ Here's what OpenTracing instrumentation looked like:
 import io.opentracing.Tracer;
 import io.opentracing.Span;
 import io.opentracing.util.GlobalTracer;
+import java.util.HashMap;
+import java.util.Map;
 
 public class PaymentService {
     private final Tracer tracer = GlobalTracer.get();
@@ -43,7 +45,10 @@ public class PaymentService {
             span.setTag("payment.status", "success");
         } catch (Exception e) {
             span.setTag("error", true);
-            span.log(ImmutableMap.of("event", "error", "message", e.getMessage()));
+            Map<String, Object> fields = new HashMap<>();
+            fields.put("event", "error");
+            fields.put("message", e.getMessage());
+            span.log(fields);
             throw e;
         } finally {
             span.finish();
@@ -117,7 +122,7 @@ The API design drew heavily from both predecessors. The span API looks similar t
 
 ```javascript
 // OpenTelemetry example in Node.js
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('payment-service', '1.0.0');
 
 async function processPayment(userId, amount) {
@@ -145,7 +150,7 @@ async function processPayment(userId, amount) {
 }
 ```
 
-The similarities to both OpenTracing and OpenCensus are visible, but OpenTelemetry introduced improvements like explicit status codes, better error handling with `recordException`, and the ability to specify service version alongside the tracer name.
+The similarities to both OpenTracing and OpenCensus are visible, but OpenTelemetry introduced improvements like explicit status codes, better error handling with `recordException`, and the ability to specify an instrumentation scope version alongside the tracer name.
 
 ## Migration Paths from OpenTracing
 
@@ -156,12 +161,14 @@ The shim works by translating OpenTracing API calls to OpenTelemetry equivalents
 ```java
 // Using OpenTracing shim with OpenTelemetry
 import io.opentelemetry.opentracingshim.OpenTracingShim;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentracing.Tracer;
+import io.opentracing.Span;
 import io.opentracing.util.GlobalTracer;
 
 // Initialize OpenTelemetry
-OpenTelemetry openTelemetry = // ... initialize OpenTelemetry SDK
+OpenTelemetry openTelemetry = GlobalOpenTelemetry.get();
 
 // Create an OpenTracing tracer backed by OpenTelemetry
 Tracer tracer = OpenTracingShim.createTracerShim(openTelemetry);
@@ -217,8 +224,8 @@ span.finish();
 // After: OpenTelemetry
 const span = tracer.startSpan('database_query', {
     attributes: {
-        'db.statement': sql,
-        'db.system': 'postgresql',
+        'db.query.text': sql,
+        'db.system.name': 'postgresql',
     },
 });
 span.end();
