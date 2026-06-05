@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Profiling, OTLP
 
 Description: Configure the OpenTelemetry Collector to receive profiling data from agents and applications via OTLP and forward it to your profiling backend.
 
-OpenTelemetry's profiling signal is the newest addition to the observability trifecta (now quartet) of traces, metrics, logs, and profiles. The Collector can receive, process, and export profiling data just like it handles the other signal types. This post walks through configuring the Collector to act as a profiling data pipeline.
+OpenTelemetry's profiling signal is the newest addition to the observability trifecta (now quartet) of traces, metrics, logs, and profiles. The Collector can receive, process, and export profiling data with profile-aware components, but profile support is still alpha and requires the `service.profilesSupport` feature gate. This post walks through configuring the Collector to act as a profiling data pipeline.
 
 ## Understanding the Profiling Data Flow
 
@@ -22,6 +22,12 @@ Profile data follows the OpenTelemetry profile data model, which represents prof
 
 Here is a minimal collector configuration that receives and forwards profiling data:
 
+Start the Collector with profile support enabled:
+
+```bash
+otelcol-contrib --feature-gates=service.profilesSupport --config=collector-config.yaml
+```
+
 ```yaml
 # collector-config.yaml
 
@@ -32,12 +38,6 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-    send_batch_size: 256
-    send_batch_max_size: 512
 
 exporters:
   otlp/profiles:
@@ -55,7 +55,6 @@ service:
   pipelines:
     profiles:
       receivers: [otlp]
-      processors: [batch]
       exporters: [otlp/profiles]
 ```
 
@@ -75,8 +74,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Separate batch processors for each signal type
-  # because profiles tend to be larger and less frequent
+  # Separate batch processors for the stable signals.
+  # The batch processor does not currently support profiles.
   batch/traces:
     timeout: 5s
     send_batch_size: 512
@@ -88,10 +87,6 @@ processors:
   batch/logs:
     timeout: 5s
     send_batch_size: 512
-
-  batch/profiles:
-    timeout: 15s
-    send_batch_size: 128
 
   # Memory limiter to prevent OOM
   memory_limiter:
@@ -154,7 +149,7 @@ service:
       exporters: [otlp/logs]
     profiles:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch/profiles]
+      processors: [memory_limiter, resource]
       exporters: [otlp/profiles]
 ```
 
@@ -162,17 +157,19 @@ service:
 
 Profile data has unique characteristics compared to other signals. Profiles are larger (they contain full stack traces) and arrive in bursts (profiling agents typically batch and send every 30-60 seconds).
 
-Tune the batch processor for profiles:
+Use profile-aware processors to protect memory and drop profile payloads you do not want to forward:
 
 ```yaml
 processors:
-  batch/profiles:
-    # Longer timeout because profiles arrive less frequently
-    timeout: 15s
-    # Smaller batch size because each profile is larger
-    send_batch_size: 128
-    # Cap the maximum batch size to control memory
-    send_batch_max_size: 256
+  memory_limiter/profiles:
+    check_interval: 5s
+    limit_mib: 1024
+    spike_limit_mib: 256
+
+  filter/drop_short_profiles:
+    error_mode: ignore
+    profile_conditions:
+      - profile.duration_unix_nano < 10000000000
 ```
 
 ## Sending Profiles to Multiple Backends
@@ -182,20 +179,22 @@ You might want to send profiles to both a dedicated profiling backend and a gene
 ```yaml
 exporters:
   otlp/pyroscope:
-    endpoint: pyroscope.internal:4317
+    endpoint: pyroscope.internal:4040
     tls:
-      insecure: false
+      insecure: true
 
   otlphttp/oneuptime:
-    endpoint: https://otlp.oneuptime.com
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     profiles:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch/profiles]
+      processors: [memory_limiter, resource]
       exporters: [otlp/pyroscope, otlphttp/oneuptime]
 ```
 
@@ -206,34 +205,28 @@ Not all profile data is equally valuable. You might want to filter out low-value
 ```yaml
 processors:
   filter/profiles:
-    profiles:
-      # Only forward profiles from specific services
-      include:
-        match_type: regexp
-        resource_attributes:
-          - key: service.name
-            value: "^(payment|checkout|inventory)-service$"
+    error_mode: ignore
+    profile_conditions:
+      # Drop profiles unless they come from specific services
+      - resource.attributes["service.name"] == nil or not IsMatch(resource.attributes["service.name"], "^(payment|checkout|inventory)-service$")
 
   # Alternatively, drop profiles from noisy internal services
   filter/drop_internal:
-    profiles:
-      exclude:
-        match_type: strict
-        resource_attributes:
-          - key: service.name
-            value: "health-checker"
+    error_mode: ignore
+    profile_conditions:
+      - resource.attributes["service.name"] == "health-checker"
 
 service:
   pipelines:
     profiles:
       receivers: [otlp]
-      processors: [memory_limiter, filter/profiles, batch/profiles]
+      processors: [memory_limiter, filter/profiles]
       exporters: [otlp/profiles]
 ```
 
 ## Gateway Pattern for Profile Collection
 
-In larger environments, use a two-tier collector architecture. Edge collectors aggregate profiles from local agents and forward them to a central gateway:
+In larger environments, use a two-tier collector architecture. Edge collectors receive profiles from local agents and forward them to a central gateway:
 
 ```yaml
 # Edge collector (runs on each host)
@@ -242,6 +235,11 @@ receivers:
     protocols:
       grpc:
         endpoint: 127.0.0.1:4317
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
 
 exporters:
   otlp/gateway:
@@ -256,7 +254,7 @@ service:
   pipelines:
     profiles:
       receivers: [otlp]
-      processors: [batch/profiles]
+      processors: [memory_limiter]
       exporters: [otlp/gateway]
 ```
 
@@ -270,9 +268,10 @@ receivers:
         max_recv_msg_size_mib: 32
 
 processors:
-  batch/profiles:
-    timeout: 15s
-    send_batch_size: 256
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 2048
+    spike_limit_mib: 512
 
 exporters:
   otlp/backend:
@@ -282,7 +281,7 @@ service:
   pipelines:
     profiles:
       receivers: [otlp]
-      processors: [memory_limiter, batch/profiles]
+      processors: [memory_limiter]
       exporters: [otlp/backend]
 ```
 
@@ -294,20 +293,19 @@ Check that profiles are flowing through the collector using the zpages extension
 # View pipeline status
 curl http://localhost:55679/debug/pipelinez
 
-# View trace-level details of processed data
+# View trace-level details for trace operations
 curl http://localhost:55679/debug/tracez
 ```
 
 Also check the collector's own metrics:
 
 ```bash
-# Check profile-specific metrics on the collector's metrics endpoint
-curl -s http://localhost:8888/metrics | grep profile
+# Check for profile-related metrics on the collector's metrics endpoint
+curl -s http://localhost:8888/metrics | grep -E 'profile|profiles'
 
-# You should see metrics like:
-# otelcol_receiver_accepted_profiles
-# otelcol_exporter_sent_profiles
-# otelcol_processor_batch_batch_send_size_profiles
+# Exact metric names vary by Collector version and enabled components.
+# Look for receiver/exporter accepted, refused, sent, or failed counts
+# associated with the profiles data type.
 ```
 
-The Collector's profile pipeline works just like traces, metrics, and logs. Once you have it set up, profiling data flows through the same infrastructure, benefits from the same processing capabilities, and follows the same operational patterns you already know.
+The Collector's profile pipeline uses the same receiver-pipeline-exporter model as traces, metrics, and logs, with alpha-stage caveats around component support. Once you have it set up with profile-aware components, profiling data flows through the same infrastructure and follows the same operational patterns you already know.
