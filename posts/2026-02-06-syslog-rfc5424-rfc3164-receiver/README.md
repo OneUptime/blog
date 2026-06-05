@@ -20,7 +20,7 @@ Syslog is the oldest and most widely deployed logging protocol. Networking equip
 <165>1 2026-02-06T14:23:45.123456+00:00 myhost appname 12345 ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] An application event has occurred
 ```
 
-RFC 5424 adds structured data, millisecond timestamps, and a formal message format.
+RFC 5424 adds structured data, subsecond timestamps, and a formal message format.
 
 ## Configuring the Syslog Receiver for RFC 5424
 
@@ -47,7 +47,7 @@ receivers:
     location: America/New_York
 ```
 
-RFC 3164 timestamps lack year and timezone information, so you need to specify the `location` to correctly interpret them.
+RFC 3164 timestamps lack year and timezone information, so you should set `location` to the timezone used by the sending systems when it is not UTC.
 
 ## Handling Both Formats
 
@@ -67,6 +67,13 @@ receivers:
       listen_address: "0.0.0.0:514"
     protocol: rfc3164
     location: UTC
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    endpoint: "backend.internal:4317"
 
 service:
   pipelines:
@@ -98,20 +105,12 @@ receivers:
     location: UTC
 
 processors:
-  # Map syslog attributes to OTel semantic conventions
+  # Copy the receiver's syslog facility text to a custom attribute
   transform/syslog-to-otel:
     log_statements:
       - context: log
         statements:
-          # Map syslog facility to a human-readable name
-          - set(attributes["syslog.facility.name"], "kern") where attributes["facility"] == 0
-          - set(attributes["syslog.facility.name"], "user") where attributes["facility"] == 1
-          - set(attributes["syslog.facility.name"], "mail") where attributes["facility"] == 2
-          - set(attributes["syslog.facility.name"], "daemon") where attributes["facility"] == 3
-          - set(attributes["syslog.facility.name"], "auth") where attributes["facility"] == 4
-          - set(attributes["syslog.facility.name"], "syslog") where attributes["facility"] == 5
-          - set(attributes["syslog.facility.name"], "local0") where attributes["facility"] == 16
-          - set(attributes["syslog.facility.name"], "local7") where attributes["facility"] == 23
+          - set(attributes["syslog.facility.name"], attributes["facility_text"]) where attributes["facility_text"] != nil
 
   resource/syslog:
     attributes:
@@ -142,31 +141,38 @@ For RFC 5424:
 - `appname` - the application name
 - `hostname` - the originating host
 - `facility` - the syslog facility number
+- `facility_text` - the syslog facility name
 - `priority` - the priority value
 - `proc_id` - the process ID
 - `msg_id` - the message ID
+- `message` - the syslog message content
 - `structured_data` - the structured data section
+- `version` - the RFC 5424 version
 
 For RFC 3164:
 - `appname` - extracted from the tag field
 - `hostname` - the originating host
 - `facility` - the syslog facility number
+- `facility_text` - the syslog facility name
 - `priority` - the priority value
+- `proc_id` - the process ID, when present
+- `msg_id` - the message ID, when present
+- `message` - the syslog message content
 
 ## Severity Mapping
 
-The syslog receiver automatically maps syslog severity to OpenTelemetry severity levels:
+The syslog receiver automatically maps syslog severity to OpenTelemetry severity fields:
 
-| Syslog Severity | Name | OTel Severity |
-|----------------|------|---------------|
-| 0 | Emergency | FATAL |
-| 1 | Alert | FATAL |
-| 2 | Critical | FATAL |
-| 3 | Error | ERROR |
-| 4 | Warning | WARN |
-| 5 | Notice | INFO |
-| 6 | Informational | INFO |
-| 7 | Debug | DEBUG |
+| Syslog Severity | Syslog Name | Collector `SeverityText` | OTel `SeverityNumber` |
+|----------------|-------------|--------------------------|-----------------------|
+| 0 | Emergency | `emerg` | `Fatal` |
+| 1 | Alert | `alert` | `Error3` |
+| 2 | Critical | `crit` | `Error2` |
+| 3 | Error | `err` | `Error` |
+| 4 | Warning | `warning` | `Warn` |
+| 5 | Notice | `notice` | `Info2` |
+| 6 | Informational | `info` | `Info` |
+| 7 | Debug | `debug` | `Debug` |
 
 ## Using the Filelog Receiver for Syslog Files
 
@@ -195,14 +201,9 @@ You might want to route different syslog facilities to different pipelines:
 ```yaml
 processors:
   filter/auth-only:
-    logs:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: facility
-            value: "4"
-          - key: facility
-            value: "10"
+    error_mode: ignore
+    log_conditions:
+      - 'attributes["facility"] != 4 and attributes["facility"] != 10'
 ```
 
 This keeps only auth (4) and authpriv (10) facility messages, which is useful for security monitoring.
