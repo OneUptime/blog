@@ -12,15 +12,23 @@ Demand forecasting predicts how much of each product you will sell, and inventor
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("demand.forecasting")
 meter = metrics.get_meter("demand.forecasting")
@@ -145,9 +153,9 @@ You need to compare predictions against actual sales to measure model performanc
 
 ```python
 forecast_error = meter.create_histogram(
-    "forecast.error_pct",
+    "forecast.error",
     description="Percentage error between forecasted and actual demand",
-    unit="pct"
+    unit="%"
 )
 
 stockout_counter = meter.create_counter(
