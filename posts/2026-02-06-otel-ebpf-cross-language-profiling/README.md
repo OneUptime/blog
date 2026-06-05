@@ -16,69 +16,67 @@ This means a single deployment covers every process on the host. No code changes
 
 ## Setting Up the eBPF Profiler
 
-First, pull the OpenTelemetry eBPF profiler agent. It ships as a container image or a standalone binary.
+First, pull the OpenTelemetry Collector eBPF profiling distribution. The standalone `ebpf-profiler` binary still exists for development and testing, but the supported deployment path is the Collector receiver.
 
 ```bash
-# Pull the profiler agent image
+# Pull the profiler Collector image
 
-docker pull ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
+docker pull otel/opentelemetry-collector-ebpf-profiler:0.153.0
 
-# Run the profiler agent
+# Run the profiler Collector
 docker run --rm -d \
   --name otel-ebpf-profiler \
   --privileged \
   --pid=host \
-  -v /sys/kernel:/sys/kernel:ro \
-  -v /lib/modules:/lib/modules:ro \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 \
-  ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
+  -v /sys:/sys:ro \
+  -v "$(pwd)/otel-ebpf-profiler.yaml:/etc/otelcol/config.yaml:ro" \
+  otel/opentelemetry-collector-ebpf-profiler:0.153.0 \
+  --feature-gates=+service.profilesSupport \
+  --config=/etc/otelcol/config.yaml
 ```
 
-The `--privileged` flag is required because eBPF programs need elevated permissions to attach to kernel probes. The `--pid=host` flag allows the agent to see all processes on the host, not just those inside its own container namespace.
+The `--privileged` flag is the simplest way to grant the Linux capabilities and filesystem access the receiver needs for eBPF and low-level process inspection. The `--pid=host` flag allows the Collector to see all processes on the host, not just those inside its own container namespace.
 
 ## Kernel Requirements
 
-Your host kernel must be version 4.19 or later. For best results, use 5.8+ which has better BPF trampoline support. Check your kernel version:
+Your host kernel must be version 5.10 or later for current releases, unless your distribution has backported the required eBPF features and you intentionally use the `no_kernel_version_check` option. Check your kernel version:
 
 ```bash
 uname -r
 # Expected output: 5.15.0-88-generic or similar
 ```
 
-You also need `CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, and `CONFIG_BPF_JIT=y` enabled in the kernel config. Most modern distributions ship with these enabled by default.
+You also need eBPF support in the kernel, including `CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, and `CONFIG_BPF_JIT=y`. Most modern distributions ship with these enabled by default.
 
 ## How It Handles Different Languages
 
 The profiler uses different stack unwinding strategies depending on the language runtime it detects.
 
-For **C++ and Rust**, it reads frame pointers or DWARF unwind info directly. These compiled languages produce native stack frames, so the profiler walks the stack using standard kernel-level unwinding.
+For **C++ and Rust**, it reads frame pointers or ELF `.eh_frame` unwind information. These compiled languages produce native stack frames, so the profiler can unwind native code without requiring DWARF debug information on the host.
 
 For **Python**, the agent detects the CPython interpreter and reads the PyFrameObject structures from memory. It maps these interpreter frames back to Python function names and file locations.
 
 For **Node.js**, it reads V8's internal code maps. V8 maintains metadata about JIT-compiled functions, and the profiler uses this to resolve JavaScript function names from raw instruction pointers.
 
 ```yaml
-# Collector config to receive profiles
+# otel-ebpf-profiler.yaml
 receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+  profiling:
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: http://pyroscope:4040
 
 service:
   pipelines:
     profiles:
-      receivers: [otlp]
+      receivers: [profiling]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Verifying Cross-Language Stacks
@@ -98,29 +96,18 @@ The profiler tags each frame with the language runtime it came from, so you can 
 
 ## Filtering by Process or Container
 
-In production, you probably do not want to profile every single process. The profiler supports filtering:
+In production, remember that this distribution is designed to run as a whole-system node agent. It does not expose a process-name allowlist like some language-specific profilers do. If you need narrower views, filter or aggregate by process, container, pod, or resource attributes in your profiling backend or in downstream Collector processors.
 
-```bash
-# Only profile specific processes by name
-docker run --rm -d \
-  --name otel-ebpf-profiler \
-  --privileged \
-  --pid=host \
-  -v /sys/kernel:/sys/kernel:ro \
-  -e OTEL_PROFILER_FILTER_PROCESS_NAMES="my-rust-service,python3,node" \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 \
-  ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
-```
-
-You can also filter by container ID or Kubernetes pod labels if running in a Kubernetes environment.
+You can still enrich profiles with Kubernetes or container metadata in the Collector pipeline and use those attributes when querying your backend.
 
 ## Sampling Rate Configuration
 
-The default sampling rate is typically 19 Hz (19 samples per second per CPU). This keeps overhead well under 1% while still providing statistically meaningful profiles. You can adjust it:
+The default sampling rate is 20 Hz (20 samples per second). This keeps overhead low while still providing statistically meaningful profiles. You can adjust it in the `profiling` receiver configuration:
 
-```bash
-# Set sampling frequency to 49 Hz for more detail
--e OTEL_PROFILER_SAMPLING_FREQUENCY=49
+```yaml
+receivers:
+  profiling:
+    samples_per_second: 49
 ```
 
 Higher rates give more detail but increase CPU overhead. For production, stick with 19-29 Hz.
@@ -129,6 +116,6 @@ Higher rates give more detail but increase CPU overhead. For production, stick w
 
 There are a few things to keep in mind. Debug symbols improve the quality of stack traces significantly. For C++ and Rust, make sure your binaries ship with debug info or that you have separate debuginfo packages installed. For Python and Node.js, the interpreter metadata is usually sufficient, but minified or bundled JavaScript will produce less readable stacks.
 
-Also, some container runtimes strip capabilities that eBPF needs. If you are running in Kubernetes, you may need to add `SYS_ADMIN` and `SYS_PTRACE` capabilities to your profiler pod's security context instead of running fully privileged.
+Also, some container runtimes strip capabilities that eBPF needs. If you are running in Kubernetes, you may need to run the profiler pod with `hostPID: true` and either privileged mode or explicit capabilities such as `SYS_ADMIN`, `PERFMON`, and `BPF`, plus access to host `/proc` and `/sys`.
 
 The OpenTelemetry eBPF profiler turns what used to be a per-language, per-team effort into a single infrastructure concern. Deploy it once, and you get profiling data for every language on the host, all flowing through the same OpenTelemetry pipeline as your traces, metrics, and logs.
