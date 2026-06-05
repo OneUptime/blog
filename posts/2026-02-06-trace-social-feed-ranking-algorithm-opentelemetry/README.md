@@ -15,12 +15,20 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("feed.ranking")
 meter = metrics.get_meter("feed.ranking")
@@ -57,7 +65,8 @@ def generate_feed(user_id: str, page_size: int = 20):
             score_span.set_attribute("scoring.model_name", "feed_ranker_v4")
             score_span.set_attribute("scoring.posts_scored", len(scored_posts))
             score_span.set_attribute("scoring.avg_score",
-                round(sum(p.score for p in scored_posts) / len(scored_posts), 4))
+                round(sum(p.score for p in scored_posts) / len(scored_posts), 4)
+                if scored_posts else 0)
 
         # Stage 4: Apply content mixing rules (diversity, freshness, etc.)
         with tracer.start_as_current_span("feed.content_mixing") as mix_span:
@@ -131,10 +140,11 @@ def score_candidates(features: list):
 
         # Record score distribution stats
         sorted_scores = sorted(scores, key=lambda x: x.score, reverse=True)
-        span.set_attribute("scores.max", sorted_scores[0].score)
-        span.set_attribute("scores.min", sorted_scores[-1].score)
-        span.set_attribute("scores.p50", sorted_scores[len(sorted_scores) // 2].score)
-        span.set_attribute("scores.p90", sorted_scores[len(sorted_scores) // 10].score)
+        if sorted_scores:
+            span.set_attribute("scores.max", sorted_scores[0].score)
+            span.set_attribute("scores.min", sorted_scores[-1].score)
+            span.set_attribute("scores.p50", sorted_scores[len(sorted_scores) // 2].score)
+            span.set_attribute("scores.p90", sorted_scores[len(sorted_scores) // 10].score)
 
         return sorted_scores
 ```
@@ -163,7 +173,13 @@ def apply_content_mixing(scored_posts: list, user_id: str):
             type_span.set_attribute("mix.video_count", type_counts.get("video", 0))
             type_span.set_attribute("mix.text_count", type_counts.get("text", 0))
 
-        return MixResult(posts=posts, diversity_score=calculate_diversity(posts))
+        return MixResult(
+            posts=posts,
+            promoted_count=freshness_count,
+            demoted_count=0,
+            diversity_score=calculate_diversity(posts),
+            freshness_boosted=freshness_count > 0
+        )
 ```
 
 ## Feed Generation Metrics
