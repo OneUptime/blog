@@ -8,7 +8,7 @@ Description: Learn how to configure Grafana Tempo as a trace backend for OpenTel
 
 ---
 
-Grafana Tempo is a distributed tracing backend that stores traces at scale without requiring an index. Unlike older tracing systems like Jaeger or Zipkin that need Elasticsearch or Cassandra for indexing, Tempo uses object storage directly and relies on trace IDs for lookups. This makes it cheap to operate and simple to maintain. In this guide, we will set up Tempo as the trace backend for an OpenTelemetry pipeline.
+Grafana Tempo is a distributed tracing backend that stores traces at scale without requiring an index. Unlike older tracing deployments that often rely on Elasticsearch or Cassandra for indexing, Tempo uses object storage directly and relies on trace IDs for direct lookups. This makes it cheap to operate and simple to maintain. In this guide, we will set up Tempo as the trace backend for an OpenTelemetry pipeline.
 
 ## How Tempo Fits into the OpenTelemetry Ecosystem
 
@@ -46,11 +46,14 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-ingester:
-  # How long traces stay in the ingester before being flushed to storage
+live_store:
+  # How long recent trace data stays in a live block before being flushed
   max_block_duration: 5m
+  wal:
+    # Write-ahead log ensures data durability for recent trace data
+    path: /var/tempo/wal
 
-compactor:
+backend_worker:
   compaction:
     # Merge small blocks into larger ones for better query performance
     block_retention: 48h
@@ -61,9 +64,6 @@ storage:
     # Local storage is fine for development and testing
     local:
       path: /var/tempo/traces
-    wal:
-      # Write-ahead log ensures data durability
-      path: /var/tempo/wal
 
 metrics_generator:
   # Generate RED metrics from traces automatically
@@ -206,21 +206,15 @@ datasources:
     access: proxy
     url: http://tempo:3200
     jsonData:
-      # Enable TraceQL for powerful trace querying
-      tracesToLogsV2:
-        datasourceUid: ''
-      serviceMap:
-        datasourceUid: ''
+      # Show node graphs in trace views
       nodeGraph:
         enabled: true
+      # Keep the search query type visible in Explore
       search:
-        filters:
-          - tag: service.name
-            operator: "="
-            scope: resource
+        hide: false
 ```
 
-The `nodeGraph` setting enables the service graph visualization, which shows you how services communicate with each other. The search filters let you quickly filter traces by service name in the Grafana UI.
+The `nodeGraph` setting enables node graph rendering in trace views. Search remains available in Explore so you can filter traces by fields such as service name. To use the Service Graph query type, Grafana also needs service graph metrics in a Prometheus-compatible backend and the Tempo data source's `serviceMap.datasourceUid` must point to that metrics data source.
 
 ## Querying Traces with TraceQL
 
@@ -255,7 +249,8 @@ For production deployments, local storage is not sufficient. Tempo supports S3, 
 
 ```yaml
 # tempo-config-production.yaml (storage section only)
-# Configures Tempo to use S3 for production trace storage
+# Configures Tempo to use S3 for production trace storage.
+# If you use ${...} environment variables, start Tempo with -config.expand-env=true.
 
 storage:
   trace:
@@ -277,20 +272,24 @@ Object storage is where Tempo really shines compared to alternatives. Since Temp
 
 ## Performance Tuning Tips
 
-There are a few settings worth tuning for production workloads. First, increase the `max_block_duration` in the ingester if your trace volume is high. This reduces the number of blocks created and improves compaction efficiency. Second, configure the compactor to run on dedicated nodes if you are using the microservices deployment mode. Compaction is I/O-heavy and can affect query performance if it shares resources with the query frontend. Third, set appropriate `max_bytes_per_trace` limits to prevent runaway traces from consuming too much memory in the ingester.
+There are a few settings worth tuning for production workloads. First, increase the `max_block_duration` in the live-store if your trace volume is high. This reduces the number of blocks created and improves compaction efficiency. Second, configure backend workers to run on dedicated nodes if you are using the microservices deployment mode. Compaction is I/O-heavy and can affect query performance if it shares resources with the query frontend. Third, set appropriate `max_bytes_per_trace` limits to prevent runaway traces from consuming too many live-store and block-builder resources.
 
 ```yaml
 # Overrides section for production trace limits
 overrides:
   defaults:
     ingestion:
+      # Share the configured byte rate across distributor instances
+      rate_strategy: global
+      # Sustained ingestion rate in bytes per second
+      rate_limit_bytes: 30000000
+      # Temporary burst allowance in bytes
+      burst_size_bytes: 40000000
+      # Maximum concurrently active traces per tenant on each live-store
+      max_traces_per_user: 50000
+    global:
       # Maximum size of a single trace in bytes (10 MB)
       max_bytes_per_trace: 10000000
-      # Maximum number of spans per trace
-      max_spans_per_trace: 50000
-    global:
-      # Maximum traces per second across the entire cluster
-      max_traces_per_user: 200000
 ```
 
 ## Verifying the Pipeline
