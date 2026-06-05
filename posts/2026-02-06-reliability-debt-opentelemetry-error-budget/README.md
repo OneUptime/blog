@@ -72,6 +72,8 @@ The critical step is tagging each bad event with attributes that identify the ca
 # budget_attribution.py - Tag budget consumption with root cause attributes
 from enum import Enum
 
+from sli_metrics import budget_consumed, good_requests, total_requests
+
 class FailureCategory(Enum):
     TIMEOUT = "timeout"
     SERVER_ERROR = "server_error"
@@ -85,7 +87,7 @@ def record_request(service: str, endpoint: str, status_code: int,
     attributes = {
         "service.name": service,
         "http.route": endpoint,
-        "http.status_code": status_code,
+        "http.response.status_code": status_code,
     }
 
     total_requests.add(1, attributes=attributes)
@@ -119,23 +121,25 @@ A snapshot of remaining budget is useful, but the consumption rate tells you whe
 ```python
 # burn_rate.py - Calculate error budget burn rates
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 @dataclass
 class BurnRateResult:
     current_consumption_pct: float  # How much budget is used so far
     projected_consumption_pct: float  # Where you will be at window end
     burn_rate_multiplier: float  # 1.0 = on track, 2.0 = burning 2x too fast
-    budget_exhaustion_time: datetime  # When budget hits zero at current rate
+    budget_exhaustion_time: Optional[datetime]  # When budget hits zero at current rate
     top_consumers: list  # Ranked list of budget-consuming components
 
 def compute_burn_rate(metrics_store, slo_target: float,
-                      window_days: int = 30) -> BurnRateResult:
+                      window_start: datetime,
+                      window_days: int = 30) -> Optional[BurnRateResult]:
     """Compute burn rate from SLI metrics."""
-    now = datetime.utcnow()
-    window_start = now - timedelta(days=window_days)
-    elapsed_fraction = min(1.0, (now - window_start).total_seconds()
-                          / timedelta(days=window_days).total_seconds())
+    now = datetime.now(timezone.utc)
+    window_end = window_start + timedelta(days=window_days)
+    elapsed_fraction = min(1.0, max(0.0, (now - window_start).total_seconds()
+                          / (window_end - window_start).total_seconds()))
 
     # Query totals from the metrics store
     total = metrics_store.sum("sli.requests.total", window_start, now)
@@ -151,6 +155,7 @@ def compute_burn_rate(metrics_store, slo_target: float,
     # Burn rate: consumption rate vs expected rate
     expected_consumption_pct = elapsed_fraction * 100
     burn_rate = consumption_pct / expected_consumption_pct if expected_consumption_pct > 0 else 0
+    projected_consumption_pct = consumption_pct / elapsed_fraction if elapsed_fraction > 0 else 0
 
     # Project when budget exhausts
     if burn_rate > 0:
@@ -169,7 +174,7 @@ def compute_burn_rate(metrics_store, slo_target: float,
 
     return BurnRateResult(
         current_consumption_pct=round(consumption_pct, 2),
-        projected_consumption_pct=round(consumption_pct / elapsed_fraction, 2),
+        projected_consumption_pct=round(projected_consumption_pct, 2),
         burn_rate_multiplier=round(burn_rate, 2),
         budget_exhaustion_time=exhaustion_time,
         top_consumers=top_consumers,
@@ -178,7 +183,7 @@ def compute_burn_rate(metrics_store, slo_target: float,
 
 ## Collector Configuration for Budget Metrics
 
-Route SLI and budget metrics through the collector with resource detection to automatically enrich with deployment metadata.
+Route SLI and budget metrics through the collector with the resource processor to automatically enrich with deployment metadata.
 
 ```yaml
 # otel-collector-config.yaml
@@ -197,10 +202,10 @@ processors:
   resource:
     attributes:
       - key: deployment.environment
-        from_attribute: DEPLOYMENT_ENV
+        value: ${env:DEPLOYMENT_ENV:-unknown}
         action: upsert
       - key: service.version
-        from_attribute: SERVICE_VERSION
+        value: ${env:SERVICE_VERSION:-unknown}
         action: upsert
 
 exporters:
