@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Java, Kafka, Consumer Instrumentation
 
-Description: Fix the issue where the OpenTelemetry Java agent does not produce spans for Kafka consumer operations despite active instrumentation.
+Description: Fix the issue where the OpenTelemetry Java agent does not produce or connect spans for Kafka consumer operations despite active instrumentation.
 
-The OpenTelemetry Java agent instruments Apache Kafka producers and consumers to create spans for message publishing and consumption. However, consumer spans frequently go missing due to how Kafka consumer groups work. The consumer polling loop, rebalancing, and the way records are processed can all interfere with the instrumentation.
+The OpenTelemetry Java agent instruments Apache Kafka producers and consumers to create spans for message publishing and consumption. However, consumer-side spans can appear to be missing or disconnected when the Kafka client version is unsupported, an instrumentation is disabled, processing happens outside an instrumented callback, or trace context is not propagated in headers.
 
 ## How Kafka Instrumentation Works
 
 The agent instruments:
 - **Producer**: Creates a PRODUCER span when `KafkaProducer.send()` is called. Injects trace context into Kafka headers.
-- **Consumer**: Creates a CONSUMER span when records are processed. Extracts trace context from Kafka headers to link consumer spans to producer spans.
+- **Consumer**: Creates messaging spans when records are received from `KafkaConsumer.poll()`. Spring Kafka instrumentation can also create processing spans for listener callbacks. Extracts trace context from Kafka headers to correlate consumer spans with producer spans.
 
 The expected trace:
 
 ```text
 order-service: publish_order     [====] 10ms  (PRODUCER span)
-  payment-service: process_order   [========] 50ms  (CONSUMER span, linked to producer)
+payment-service: poll orders     [========] 50ms  (messaging span, linked to producer)
 ```
 
 ## Cause 1: Kafka Client Version Mismatch
@@ -30,27 +30,27 @@ The agent supports specific Kafka client versions. Check compatibility:
 
 mvn dependency:tree -Dincludes=org.apache.kafka
 
-# Agent support: kafka-clients 0.11.0 to 3.x
+# Agent support: Apache Kafka Producer/Consumer API 0.11+
 ```
 
-If your version is outside the supported range, the instrumentation is silently skipped.
+If your version is outside the supported range, the agent will not apply the Kafka instrumentation. Enable agent debug logging with `-Dotel.javaagent.debug=true` when you need to confirm whether the Kafka instrumentation matched your application.
 
 ## Cause 2: Manual Record Processing Without Context Extraction
 
-If you process records manually, the agent may not be able to hook in:
+If you process records manually after `poll()`, the agent can instrument the receive operation but may not create a span covering your `processRecord()` method:
 
 ```java
-// The agent instruments poll(), but context extraction happens per-record
+// The agent instruments poll(), but your application work happens after poll() returns
 while (true) {
     ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
     for (ConsumerRecord<String, String> record : records) {
-        // If you process here without the agent's hooks, spans may be missing
+        // Add manual instrumentation here if you need a process span for this work
         processRecord(record);
     }
 }
 ```
 
-**Fix:** Make sure the agent is loaded and the Kafka instrumentation is enabled:
+**Fix:** Make sure the agent is loaded and the Kafka instrumentation is enabled. If you disabled default instrumentations, enable Kafka explicitly:
 
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
@@ -60,7 +60,7 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 ## Cause 3: Spring Kafka Listener Not Instrumented
 
-Spring Kafka's `@KafkaListener` requires the Spring Kafka instrumentation:
+Spring Kafka's `@KafkaListener` requires the Spring Kafka instrumentation. The OpenTelemetry Java agent supports Spring Kafka 2.7+:
 
 ```java
 @KafkaListener(topics = "orders")
@@ -78,19 +78,19 @@ public void listen(ConsumerRecord<String, String> record) {
 
 ## Cause 4: Consumer Group Rebalancing
 
-During rebalancing, the consumer's partition assignment changes. The agent may lose context during this transition. This is a known edge case that can cause gaps in consumer traces.
+During rebalancing, the consumer's partition assignment changes. Rebalancing does not remove trace context that is already present in Kafka record headers, but it can create apparent gaps when processing is interrupted, retried, or moved to another consumer instance.
 
 **Mitigation:** Use static group membership to reduce rebalancing:
 
 ```java
 Properties props = new Properties();
 props.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG, "consumer-instance-1");
-// Static membership reduces rebalancing frequency
+// Use a unique group.instance.id for each consumer instance
 ```
 
 ## Cause 5: Trace Context Not Propagated in Headers
 
-The producer must inject trace context into Kafka headers for the consumer to extract it. If the producer does not have OpenTelemetry instrumentation, there is no context to extract.
+The producer must inject trace context into Kafka headers for the consumer to connect its spans to the producer. If the producer does not have OpenTelemetry instrumentation, the consumer can still create receive spans, but there is no producer context to extract.
 
 Check the producer side:
 
@@ -115,11 +115,11 @@ for (ConsumerRecord<String, String> record : records) {
 }
 ```
 
-If `traceparent` headers are present, the producer instrumentation is working. If they are absent, the producer side needs fixing.
+If `traceparent` headers are present, W3C trace context propagation from the producer is working. If they are absent, the consumer spans may be created as root or unlinked spans and the producer side needs fixing.
 
 ## Manual Context Propagation
 
-If auto-instrumentation does not work for your setup, propagate context manually:
+If auto-instrumentation does not work for your setup, propagate context manually. Avoid creating duplicate producer or consumer spans if the Java agent is already instrumenting the same Kafka calls.
 
 ```java
 // Producer side - inject context
@@ -175,4 +175,4 @@ for (ConsumerRecord<String, String> record : records) {
 
 ## Summary
 
-Missing Kafka consumer spans are caused by version mismatches, disabled instrumentations, missing trace context in headers, or the producer not having OpenTelemetry enabled. Verify both producer and consumer have the agent, check Kafka headers for `traceparent`, and ensure the correct instrumentations are enabled.
+Missing or disconnected Kafka consumer spans are caused by version mismatches, disabled instrumentations, missing trace context in headers, processing outside an instrumented callback, or the producer not having OpenTelemetry enabled. Verify both producer and consumer have the agent, check Kafka headers for `traceparent`, and ensure the correct instrumentations are enabled.
