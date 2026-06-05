@@ -39,7 +39,7 @@ docker pull "$IMAGE"
 
 # Compare image IDs to check if an update is available
 RUNNING_ID=$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME")
-LATEST_ID=$(docker inspect --format '{{.Id}}' "$IMAGE")
+LATEST_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
 
 if [ "$RUNNING_ID" = "$LATEST_ID" ]; then
     echo "Container is already running the latest image"
@@ -51,7 +51,7 @@ echo "Update available. Recreating container..."
 # Save the container's run configuration for recreation
 docker inspect "$CONTAINER_NAME" > "/tmp/${CONTAINER_NAME}_config.json"
 
-# Stop and remove the old container
+# Stop and rename the old container
 docker stop "$CONTAINER_NAME"
 docker rename "$CONTAINER_NAME" "${CONTAINER_NAME}_old"
 
@@ -127,7 +127,6 @@ Watchtower monitors running containers and automatically updates them when new i
 ```yaml
 # docker-compose.watchtower.yml
 # Watchtower automatically updates running containers when new images are pushed
-version: "3.8"
 
 services:
   watchtower:
@@ -154,7 +153,6 @@ Label containers that Watchtower should manage:
 ```yaml
 # docker-compose.yml
 # Application containers with Watchtower update labels
-version: "3.8"
 
 services:
   web:
@@ -172,6 +170,9 @@ services:
       - com.centurylinklabs.watchtower.enable=false
     volumes:
       - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
 ```
 
 ## Docker Compose Update Script
@@ -181,7 +182,7 @@ For teams using Docker Compose, a targeted update script works well.
 ```bash
 #!/bin/bash
 # compose-update.sh
-# Updates Docker Compose services with zero-downtime rolling updates
+# Updates Docker Compose services after pulling newer images
 
 COMPOSE_FILE="${1:-docker-compose.yml}"
 SERVICES="${2:-}"  # Optional: specific services to update (space-separated)
@@ -202,7 +203,7 @@ else
     docker compose -f "$COMPOSE_FILE" pull
 fi
 
-# Recreate only containers that have new images
+# Recreate the selected containers
 # The --no-deps flag prevents restarting dependent services unnecessarily
 if [ -n "$SERVICES" ]; then
     for SERVICE in $SERVICES; do
@@ -214,8 +215,8 @@ if [ -n "$SERVICES" ]; then
         RETRIES=30
         while [ $RETRIES -gt 0 ]; do
             HEALTH=$(docker compose -f "$COMPOSE_FILE" ps --format json "$SERVICE" | \
-                jq -r '.Health // "none"')
-            if [ "$HEALTH" = "healthy" ] || [ "$HEALTH" = "none" ]; then
+                jq -r '.[0].Health // "none"')
+            if [ "$HEALTH" = "healthy" ] || [ "$HEALTH" = "none" ] || [ -z "$HEALTH" ]; then
                 echo "$SERVICE is ready"
                 break
             fi
@@ -305,20 +306,22 @@ on:
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
-      # Pull latest images and check for updates
+      # Run your version bump script and check whether it changed the compose file
       - name: Check for updates
         id: check
         run: |
-          docker compose pull 2>&1 | tee /tmp/pull-output.txt
+          ./bump-versions.sh
 
-          # Check if any images were actually updated
-          if grep -q "Downloaded newer image" /tmp/pull-output.txt; then
-            echo "updates=true" >> $GITHUB_OUTPUT
-          else
+          if git diff --quiet docker-compose.yml; then
             echo "updates=false" >> $GITHUB_OUTPUT
+          else
+            echo "updates=true" >> $GITHUB_OUTPUT
           fi
 
       # Run tests with the updated images
@@ -338,6 +341,8 @@ jobs:
         if: steps.check.outputs.updates == 'true'
         run: |
           git checkout -b auto-update/$(date +%Y%m%d)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml
           git commit -m "chore: update Docker images to latest versions"
           git push origin auto-update/$(date +%Y%m%d)
@@ -366,8 +371,8 @@ if [ -z "$SERVICE" ]; then
     exit 1
 fi
 
-# Get the previous image from Docker's local image history
-CURRENT_IMAGE=$(docker compose -f "$COMPOSE_FILE" images "$SERVICE" --format json | jq -r '.Repository + ":" + .Tag')
+# Get the current image used by the Compose service
+CURRENT_IMAGE=$(docker compose -f "$COMPOSE_FILE" images "$SERVICE" --format json | jq -r '.[0].Repository + ":" + .[0].Tag')
 echo "Current image: $CURRENT_IMAGE"
 
 # List recent versions of this image available locally
@@ -388,10 +393,18 @@ docker compose -f "$COMPOSE_FILE" stop "$SERVICE"
 docker compose -f "$COMPOSE_FILE" rm -f "$SERVICE"
 
 # Temporarily override the image in docker compose
-IMAGE_OVERRIDE="${ROLLBACK_IMAGE}" docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
+OVERRIDE_FILE=$(mktemp)
+trap 'rm -f "$OVERRIDE_FILE"' EXIT
+cat > "$OVERRIDE_FILE" <<EOF
+services:
+  $SERVICE:
+    image: $ROLLBACK_IMAGE
+EOF
+
+docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d "$SERVICE"
 
 echo "Rollback complete. Verify the service is healthy."
-docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" ps "$SERVICE"
 ```
 
 ## Summary
