@@ -29,16 +29,13 @@ processors:
       - context: span
         statements:
           # Set span status to ERROR for any 5xx HTTP status code
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
-
-          # Set a descriptive status message
-          - set(status.message, "Server Error") where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
 ```
 
-In OTTL, `status.code` uses numeric values:
-- `0` = Unset
-- `1` = Ok
-- `2` = Error
+In OTTL, `status.code` can use status code enum constants:
+- `STATUS_CODE_UNSET`
+- `STATUS_CODE_OK`
+- `STATUS_CODE_ERROR`
 
 ## Handling 4xx Responses
 
@@ -51,21 +48,17 @@ processors:
       - context: span
         statements:
           # Mark all 5xx as errors
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
-          - set(status.message, "Server Error") where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
 
           # Mark specific 4xx codes as errors
           # 401 Unauthorized
-          - set(status.code, 2) where attributes["http.response.status_code"] == 401
-          - set(status.message, "Unauthorized") where attributes["http.response.status_code"] == 401
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] == 401
 
           # 403 Forbidden
-          - set(status.code, 2) where attributes["http.response.status_code"] == 403
-          - set(status.message, "Forbidden") where attributes["http.response.status_code"] == 403
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] == 403
 
           # 429 Too Many Requests
-          - set(status.code, 2) where attributes["http.response.status_code"] == 429
-          - set(status.message, "Rate Limited") where attributes["http.response.status_code"] == 429
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] == 429
 ```
 
 ## Using Range Conditions
@@ -79,11 +72,7 @@ processors:
       - context: span
         statements:
           # Any HTTP status >= 400 is an error
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 400
-
-          # Build a descriptive message based on the range
-          - set(status.message, "Client Error") where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500
-          - set(status.message, "Server Error") where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 400
 ```
 
 ## Excluding Specific Status Codes
@@ -97,13 +86,10 @@ processors:
       - context: span
         statements:
           # Mark 4xx as errors, but skip 404
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500 and attributes["http.response.status_code"] != 404
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500 and attributes["http.response.status_code"] != 404
 
           # Always mark 5xx as errors
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
-
-          # Set status message for errors
-          - set(status.message, "HTTP Error") where status.code == 2
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
 ```
 
 ## Handling Legacy Attribute Names
@@ -117,10 +103,10 @@ processors:
       - context: span
         statements:
           # New convention
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
 
           # Legacy convention (older instrumentation libraries)
-          - set(status.code, 2) where attributes["http.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.status_code"] >= 500
 ```
 
 ## Full Collector Configuration
@@ -138,15 +124,10 @@ processors:
       - context: span
         statements:
           # Set ERROR for 5xx responses
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
-          - set(status.message, "Server Error") where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
 
           # Set ERROR for 4xx responses except 404
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500 and attributes["http.response.status_code"] != 404
-          - set(status.message, "Client Error") where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500 and attributes["http.response.status_code"] != 404
-
-          # Set OK for 2xx responses that do not already have a status
-          - set(status.code, 1) where attributes["http.response.status_code"] >= 200 and attributes["http.response.status_code"] < 300 and status.code == 0
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500 and attributes["http.response.status_code"] != 404
 
   batch:
     send_batch_size: 512
@@ -177,10 +158,10 @@ processors:
       - context: span
         statements:
           # For API services: 4xx and 5xx are errors
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 400 and resource.attributes["service.name"] == "api-gateway"
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 400 and resource.attributes["service.name"] == "api-gateway"
 
           # For web frontend: only 5xx are errors (404s are expected)
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500 and resource.attributes["service.name"] == "web-frontend"
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500 and resource.attributes["service.name"] == "web-frontend"
 ```
 
 ## Testing Your OTTL Statements
@@ -205,7 +186,7 @@ Send test spans with different status codes and verify the output:
 ```bash
 # Check the Collector's stdout for transformed spans
 
-# Look for status.code and status.message in the output
+# Look for status.code in the output
 ```
 
 OTTL-based status setting centralizes your error classification logic in the Collector rather than spreading it across every instrumented service. This gives you a single place to update when your error definitions change.
