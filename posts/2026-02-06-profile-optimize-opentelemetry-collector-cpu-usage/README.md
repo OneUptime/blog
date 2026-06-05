@@ -34,6 +34,21 @@ extensions:
   zpages:
     endpoint: 0.0.0.0:55679
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp/backend:
+    endpoint: backend.example.com:4317
+
 service:
   extensions: [pprof, zpages]
   pipelines:
@@ -126,25 +141,25 @@ Regular expressions are expensive. Every time the Collector evaluates a regex ag
 # BEFORE: Regex matching is expensive, especially on high-volume pipelines
 processors:
   filter/slow:
-    traces:
-      span:
-        # This regex is evaluated for every single span
-        - 'attributes["http.target"] matches "^/api/v[0-9]+/health$"'
-        - 'attributes["http.target"] matches "^/api/v[0-9]+/ready$"'
+    error_mode: ignore
+    trace_conditions:
+      # This regex is evaluated for every single span
+      - 'IsMatch(span.attributes["http.target"], "^/api/v[0-9]+/health$")'
+      - 'IsMatch(span.attributes["http.target"], "^/api/v[0-9]+/ready$")'
 
 # AFTER: Exact string matching is much faster
 processors:
   filter/fast:
-    traces:
-      span:
-        # Exact matches use simple string comparison instead of regex
-        - 'attributes["http.target"] == "/api/v1/health"'
-        - 'attributes["http.target"] == "/api/v2/health"'
-        - 'attributes["http.target"] == "/api/v1/ready"'
-        - 'attributes["http.target"] == "/api/v2/ready"'
+    error_mode: ignore
+    trace_conditions:
+      # Exact matches use simple string comparison instead of regex
+      - 'span.attributes["http.target"] == "/api/v1/health"'
+      - 'span.attributes["http.target"] == "/api/v2/health"'
+      - 'span.attributes["http.target"] == "/api/v1/ready"'
+      - 'span.attributes["http.target"] == "/api/v2/ready"'
 ```
 
-Yes, the exact match version is more verbose. But at 100,000 spans per second, the difference in CPU usage is significant. Regex matching can consume 5-10x more CPU than exact string comparison.
+Yes, the exact match version is more verbose. But at 100,000 spans per second, the difference in CPU usage can be significant because regex matching does more work than a direct string comparison.
 
 If you must use regex, anchor your patterns (use `^` and `$`) and avoid greedy quantifiers like `.*`. Anchored patterns let the regex engine fail fast on non-matching strings.
 
@@ -156,7 +171,7 @@ The batch processor has a major impact on CPU efficiency. Small batches mean mor
 # collector-config.yaml - Optimized batch processor settings
 processors:
   batch:
-    # Maximum number of spans/metrics/logs in a batch
+    # Number of spans/metrics/logs that triggers sending a batch
     # Larger batches = fewer export cycles = less CPU overhead per item
     send_batch_size: 8192
 
@@ -194,34 +209,32 @@ The transform processor using OTTL (OpenTelemetry Transformation Language) is in
 # BEFORE: Multiple OTTL statements evaluated for every span
 processors:
   transform/expensive:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Each of these runs for every span, even if conditions don't match
-          - set(attributes["service.tier"], "premium") where attributes["customer.plan"] == "enterprise"
-          - set(attributes["service.tier"], "standard") where attributes["customer.plan"] == "pro"
-          - set(attributes["service.tier"], "free") where attributes["customer.plan"] == "free"
-          - delete_key(attributes, "internal.debug.id")
-          - delete_key(attributes, "internal.trace.tag")
-          - delete_key(attributes, "internal.request.id")
+      # Each of these runs for every span, even if conditions don't match
+      - set(span.attributes["service.tier"], "premium") where span.attributes["customer.plan"] == "enterprise"
+      - set(span.attributes["service.tier"], "standard") where span.attributes["customer.plan"] == "pro"
+      - set(span.attributes["service.tier"], "free") where span.attributes["customer.plan"] == "free"
+      - delete_key(span.attributes, "internal.debug.id")
+      - delete_key(span.attributes, "internal.trace.tag")
+      - delete_key(span.attributes, "internal.request.id")
 
-# AFTER: Combined conditions reduce the number of evaluations
+# AFTER: Fewer statements reduce the amount of work per span
 processors:
   transform/efficient:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Combine deletions into fewer operations
-          - delete_key(attributes, "internal.debug.id")
-          - delete_key(attributes, "internal.trace.tag")
-          - delete_key(attributes, "internal.request.id")
+      # Keep only the necessary transformations in the Collector
+      - delete_key(span.attributes, "internal.debug.id")
+      - delete_key(span.attributes, "internal.trace.tag")
+      - delete_key(span.attributes, "internal.request.id")
 ```
 
 For the tier assignment, consider whether you really need it in the Collector. If this mapping is static, it might be cheaper to do it in the application SDK or in your backend's query layer.
 
 ## Optimization 4: Use the Right Exporter Protocol
 
-The exporter protocol affects CPU usage more than most people realize. Protobuf (gRPC) encoding is faster than JSON encoding, and compression settings add CPU overhead that may or may not be worth the network savings.
+The exporter protocol affects CPU usage more than most people realize. OTLP/gRPC and OTLP/HTTP both use protobuf in the Collector's built-in OTLP exporters, and compression settings add CPU overhead that may or may not be worth the network savings.
 
 ```yaml
 # Compare CPU impact of different exporter configurations
@@ -236,33 +249,32 @@ exporters:
     endpoint: collector-gateway:4317
     compression: gzip
 
-  # Most CPU-expensive: HTTP/JSON with gzip compression
-  otlphttp/expensive:
+  # Often more CPU-expensive: HTTP/protobuf with gzip compression
+  otlphttp/compressed:
     endpoint: http://collector-gateway:4318
     compression: gzip
 ```
 
-If your Collector is CPU-bound and network bandwidth is not a concern (for example, when the Collector runs as a sidecar communicating with a local gateway), disable compression. gzip compression can consume 10-20% of total Collector CPU at high throughput.
+If your Collector is CPU-bound and network bandwidth is not a concern (for example, when the Collector runs as a sidecar communicating with a local gateway), disable compression. gzip compression can become a visible part of total Collector CPU at high throughput.
 
 ## Optimization 5: Scale Horizontally
 
-Sometimes the best optimization is to spread the load. The Collector supports horizontal scaling through load balancing at the receiver level.
+Sometimes the best optimization is to spread the load. A gateway Collector can be scaled horizontally behind a Kubernetes Service or another load balancer.
 
 ```yaml
-# collector-config.yaml - Gateway collector with multiple receiver workers
+# collector-config.yaml - Gateway collector receiver settings
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-        # Increase the number of gRPC server workers
-        # Default is based on the number of CPUs
+        # Raise this only if clients send large OTLP requests
         max_recv_msg_size_mib: 16
       http:
         endpoint: 0.0.0.0:4318
 
 # Set GOMAXPROCS to match your container CPU limit
-# This prevents Go from spawning too many OS threads
+# This caps how many goroutines execute Go code in parallel
 ```
 
 For Kubernetes deployments, use a Deployment with multiple replicas behind a Service:
@@ -273,10 +285,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector-gateway
+  labels:
+    app: otel-collector-gateway
 spec:
   # Scale to multiple replicas to distribute CPU load
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector-gateway
   template:
+    metadata:
+      labels:
+        app: otel-collector-gateway
     spec:
       containers:
         - name: collector
@@ -296,16 +316,23 @@ spec:
 
 ## Continuous Profiling Setup
 
-Rather than profiling only when problems arise, set up continuous profiling to catch regressions early. You can send the Collector's pprof data to a continuous profiling backend:
+Rather than profiling only when problems arise, set up continuous profiling to catch regressions early. You can scrape the Collector's pprof endpoint with a profiling agent and send the profiles to a continuous profiling backend:
 
-```bash
-# Use a profiling agent alongside your collector
-# This example uses Pyroscope's Go agent approach via environment variables
+```river
+# Grafana Alloy example: scrape the Collector's pprof endpoints and send them to Pyroscope
+pyroscope.scrape "otel_collector" {
+  targets = [
+    {"__address__" = "otel-collector:1777", "service_name" = "otel-collector"},
+  ]
 
-# Set environment variables for the collector container
-PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
-PYROSCOPE_APPLICATION_NAME=otel-collector
-PYROSCOPE_AUTH_TOKEN=your-token
+  forward_to = [pyroscope.write.local.receiver]
+}
+
+pyroscope.write "local" {
+  endpoint {
+    url = "http://pyroscope:4040"
+  }
+}
 ```
 
 Alternatively, write a simple script that captures profiles on a schedule:
@@ -354,4 +381,4 @@ If you are in a hurry and need to reduce Collector CPU usage right now, here is 
 
 ## Wrapping Up
 
-Profiling the OpenTelemetry Collector is straightforward thanks to Go's built-in tooling. The pprof extension gives you everything you need to identify CPU hotspots. The most common culprits are regex-heavy filter rules, complex OTTL transformations, compression overhead, and undersized batch configurations. Address those first, measure the impact, and scale horizontally if single-instance optimization is not enough. A well-tuned Collector should use less than 1 CPU core per 50,000 spans per second. If yours is using significantly more, there is almost certainly an optimization waiting to be found.
+Profiling the OpenTelemetry Collector is straightforward thanks to Go's built-in tooling. The pprof extension gives you everything you need to identify CPU hotspots. The most common culprits are regex-heavy filter rules, complex OTTL transformations, compression overhead, and undersized batch configurations. Address those first, measure the impact, and scale horizontally if single-instance optimization is not enough. A well-tuned Collector can process high span volumes on modest CPU, but the exact throughput depends heavily on processors, exporters, payload shape, and backend behavior. If yours is using significantly more CPU than similar workloads, there is almost certainly an optimization waiting to be found.
