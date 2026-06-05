@@ -10,7 +10,7 @@ Description: Learn how to trace messages through Google Cloud Pub/Sub using Open
 
 Google Cloud Pub/Sub is one of the most widely used messaging services for decoupling microservices. Messages go in on one side and come out on the other, but what happens in between is often a black box. When a message fails to process or takes too long, you are left guessing which publisher sent it, how long it sat in the queue, and where the subscriber choked.
 
-OpenTelemetry fixes this by letting you propagate trace context through Pub/Sub messages. A trace that starts in the publisher continues into the subscriber, giving you a single view of the entire message lifecycle. This guide shows you how to set it up in practice.
+OpenTelemetry fixes this by letting you propagate trace context through Pub/Sub messages. A trace that starts in the publisher can be correlated with the subscriber's processing work, giving you a single view of the entire message lifecycle. This guide shows you how to set it up in practice.
 
 ## The Tracing Challenge with Messaging
 
@@ -31,7 +31,7 @@ flowchart LR
 
 - A Google Cloud project with the Pub/Sub API enabled.
 - A Pub/Sub topic and subscription already created.
-- Python 3.9+ (the examples use Python, but the concepts apply to any language).
+- Python 3.10+ (the examples use Python, but the concepts apply to any language).
 - An OpenTelemetry backend for viewing traces.
 
 ## Setting Up the Project
@@ -62,7 +62,6 @@ def configure_tracing(service_name: str) -> trace.Tracer:
     resource = Resource.create({
         "service.name": service_name,
         "cloud.provider": "gcp",
-        "messaging.system": "gcp_pubsub",
     })
 
     provider = TracerProvider(resource=resource)
@@ -77,13 +76,12 @@ def configure_tracing(service_name: str) -> trace.Tracer:
 
 ## Instrumenting the Publisher
 
-The publisher needs to do two things: create a span for the publish operation and inject the current trace context into the message attributes. This is how the subscriber will know which trace to join.
+The publisher needs to do two things: create a span for the publish operation and inject the current trace context into the message attributes. This is how the subscriber will know which publish span to link to.
 
 ```python
 # publisher.py - Publish messages with trace context
 import json
 from google.cloud import pubsub_v1
-from opentelemetry import context, trace
 from opentelemetry.trace import SpanKind
 from opentelemetry.propagate import inject
 from tracing_config import configure_tracing
@@ -106,7 +104,8 @@ def publish_order(order: dict):
         attributes={
             "messaging.system": "gcp_pubsub",
             "messaging.destination.name": "orders-topic",
-            "messaging.operation": "publish",
+            "messaging.operation.name": "publish",
+            "messaging.operation.type": "send",
         },
     ) as span:
         # Prepare the message attributes dict
@@ -121,7 +120,7 @@ def publish_order(order: dict):
 
         # Serialize and publish the message
         message_data = json.dumps(order).encode("utf-8")
-        span.set_attribute("messaging.message.payload_size_bytes", len(message_data))
+        span.set_attribute("messaging.message.body.size", len(message_data))
 
         future = publisher.publish(
             topic_path,
@@ -147,16 +146,15 @@ if __name__ == "__main__":
 
 ## Instrumenting the Subscriber
 
-The subscriber extracts the trace context from the message attributes and uses it to create a child span. This links the subscriber's processing span to the publisher's span, forming a complete trace.
+The subscriber extracts the trace context from the message attributes and uses it to link the processing span to the publisher's span, forming a complete trace path.
 
 ```python
 # subscriber.py - Consume messages and continue the trace
 import json
 from google.cloud import pubsub_v1
-from opentelemetry import context, trace
-from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry import trace
+from opentelemetry.trace import Link, SpanKind, StatusCode
 from opentelemetry.propagate import extract
-from opentelemetry.context import attach, detach
 from tracing_config import configure_tracing
 
 # Initialize tracing for the subscriber service
@@ -172,21 +170,22 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
     # Extract trace context from the message attributes
     # This retrieves the traceparent and tracestate injected by the publisher
     ctx = extract(message.attributes)
+    link = Link(trace.get_current_span(ctx).get_span_context())
 
-    # Attach the extracted context so the new span becomes a child of the publisher span
-    token = attach(ctx)
-
-    try:
-        with tracer.start_as_current_span(
-            "orders-subscription process",
-            kind=SpanKind.CONSUMER,
-            attributes={
-                "messaging.system": "gcp_pubsub",
-                "messaging.destination.name": "orders-topic",
-                "messaging.operation": "process",
-                "messaging.message.id": message.message_id,
-            },
-        ) as span:
+    with tracer.start_as_current_span(
+        "orders-subscription process",
+        kind=SpanKind.CONSUMER,
+        links=[link],
+        attributes={
+            "messaging.system": "gcp_pubsub",
+            "messaging.destination.name": "orders-topic",
+            "messaging.destination.subscription.name": "orders-subscription",
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
+            "messaging.message.id": message.message_id,
+        },
+    ) as span:
+        try:
             # Parse the message body
             order = json.loads(message.data.decode("utf-8"))
             span.set_attribute("order.id", order.get("id", "unknown"))
@@ -204,13 +203,10 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
             span.set_status(StatusCode.OK)
             message.ack()
 
-    except Exception as e:
-        span.set_status(StatusCode.ERROR, str(e))
-        span.record_exception(e)
-        message.nack()  # Negative ack so the message gets redelivered
-    finally:
-        # Detach the context to restore the previous one
-        detach(token)
+        except Exception as e:
+            span.set_status(StatusCode.ERROR, str(e))
+            span.record_exception(e)
+            message.nack()  # Negative ack so the message gets redelivered
 
 
 def validate_order(order: dict):
@@ -257,11 +253,11 @@ gantt
     save-order                  :105, 180
 ```
 
-The publisher's span and the subscriber's span are connected through the trace context that traveled inside the Pub/Sub message attributes. In your trace viewer, you will see them as part of the same distributed trace, even though the two services have no direct network connection.
+The publisher's span and the subscriber's span are connected through the trace context that traveled inside the Pub/Sub message attributes. In your trace viewer, you will see the publishing and processing work correlated across the asynchronous boundary, even though the two services have no direct network connection.
 
 ## Handling Batch Publishing
 
-If you publish messages in batches, you should create a span for each individual message, not one span for the entire batch. Each message might be consumed independently by different subscribers, so each needs its own trace context.
+If you publish messages in batches, make sure each individual message gets its own trace context. Each message might be consumed independently by different subscribers, so each one needs enough context to be linked back to its publish work.
 
 ```python
 def publish_batch(orders: list[dict]):
@@ -276,7 +272,8 @@ def publish_batch(orders: list[dict]):
             attributes={
                 "messaging.system": "gcp_pubsub",
                 "messaging.destination.name": "orders-topic",
-                "messaging.batch.message_count": len(orders),
+                "messaging.operation.name": "publish",
+                "messaging.operation.type": "send",
                 "order.id": order.get("id", "unknown"),
             },
         ):
@@ -302,28 +299,28 @@ def process_dead_letter(message):
     """Process a dead letter message while preserving the original trace link."""
     # Extract the original trace context - same as with normal messages
     ctx = extract(message.attributes)
-    token = attach(ctx)
+    link = Link(trace.get_current_span(ctx).get_span_context())
 
-    try:
-        with tracer.start_as_current_span(
-            "dead-letter process",
-            kind=SpanKind.CONSUMER,
-            attributes={
-                "messaging.system": "gcp_pubsub",
-                "messaging.destination.name": "orders-dead-letter",
-                # Record how many times delivery was attempted
-                "messaging.delivery_attempt": message.delivery_attempt,
-            },
-        ) as span:
-            # Log the failed message for investigation
-            span.add_event("Dead letter received", {
-                "message.id": message.message_id,
-                "delivery_attempt": message.delivery_attempt,
-            })
-            # Handle the dead letter (store it, alert, etc.)
-            message.ack()
-    finally:
-        detach(token)
+    with tracer.start_as_current_span(
+        "dead-letter process",
+        kind=SpanKind.CONSUMER,
+        links=[link],
+        attributes={
+            "messaging.system": "gcp_pubsub",
+            "messaging.destination.name": "orders-dead-letter",
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
+            # Record how many times delivery was attempted
+            "messaging.delivery_attempt": message.delivery_attempt,
+        },
+    ) as span:
+        # Log the failed message for investigation
+        span.add_event("Dead letter received", {
+            "message.id": message.message_id,
+            "delivery_attempt": message.delivery_attempt,
+        })
+        # Handle the dead letter (store it, alert, etc.)
+        message.ack()
 ```
 
 ## Best Practices
@@ -332,7 +329,7 @@ Here are some things to keep in mind when tracing Pub/Sub workflows.
 
 Use `SpanKind.PRODUCER` for publish operations and `SpanKind.CONSUMER` for subscribe operations. This follows the OpenTelemetry messaging semantic conventions and helps backends render the trace correctly.
 
-Always include `messaging.system`, `messaging.destination.name`, and `messaging.operation` as span attributes. These are part of the semantic conventions and make your traces consistent with other messaging systems.
+Always include `messaging.system`, `messaging.destination.name`, `messaging.operation.name`, and `messaging.operation.type` as span attributes. These are part of the semantic conventions and make your traces consistent with other messaging systems.
 
 Be careful with attribute cardinality. Do not put high-cardinality values like user IDs or session tokens directly on spans if you plan to use them for metrics. Use span events or log correlation for that kind of data.
 
