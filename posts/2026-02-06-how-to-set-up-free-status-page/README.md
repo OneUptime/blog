@@ -16,16 +16,16 @@ By the end of this guide, you'll have:
 - ✅ Resources (monitors) displayed with real-time status
 - ✅ Groups to organize your services
 - ✅ Subscriber notifications via email, SMS, Slack, or MS Teams
-- ✅ Custom domain support (optional)
+- ✅ Custom domain support (optional, depending on your plan)
 
 ## Step 1: Create Your OneUptime Account
 
 1. Go to [oneuptime.com](https://oneuptime.com)
-2. Click "Start Free Trial"
+2. Click "Get Started"
 3. Enter your email and create a password
 4. Verify your email
 
-No credit card required. The free tier includes status pages.
+No credit card required. The free tier includes 1 public status page and 100 subscribers.
 
 ## Step 2: Create a New Status Page
 
@@ -121,6 +121,8 @@ Make the status page match your brand.
 3. Create a CNAME record pointing to OneUptime
 4. Verify the domain
 
+Custom domains may require a paid plan.
+
 ### HTML, CSS & JavaScript
 1. Go to **HTML, CSS & JavaScript** for advanced customization
 2. Add custom CSS to override default styles
@@ -132,7 +134,7 @@ Make the status page match your brand.
 
 ## Step 7: Authentication (Optional)
 
-For private status pages that require login:
+For private status pages that require login, use the private status page features available on paid plans:
 
 ### Private Users
 1. Go to **Private Users**
@@ -141,7 +143,7 @@ For private status pages that require login:
 
 ### SSO (Single Sign-On)
 1. Go to **SSO**
-2. Configure SAML or OAuth for enterprise authentication
+2. Configure SAML 2.0 for enterprise authentication
 3. Users can log in with their corporate credentials
 
 ### SCIM
@@ -224,9 +226,11 @@ This lets you integrate status data into your own applications or dashboards.
 OneUptime is open source. For complete control, self-host:
 
 ```bash
-git clone https://github.com/OneUptime/oneuptime
+git clone --depth 1 --single-branch --branch release https://github.com/OneUptime/oneuptime.git
 cd oneuptime
-docker-compose up -d
+cp config.example.env config.env
+# Edit config.env and replace the default secrets with random long strings.
+npm start
 ```
 
 Self-hosting gives you:
