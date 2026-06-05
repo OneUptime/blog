@@ -59,17 +59,24 @@ class InstrumentedCache:
             value = self.client.get(key)
             duration_ms = (time.time() - start) * 1000
 
-            cache_latency.record(duration_ms, attrs)
             cache_operations.add(1, {**attrs, "cache.operation": "get"})
 
             if value is not None:
                 # Cache hit
+                cache_latency.record(
+                    duration_ms,
+                    {**attrs, "cache.operation": "get", "cache.hit": "true"},
+                )
                 cache_hit_counter.add(1, attrs)
                 span.set_attribute("cache.hit", True)
                 span.set_attribute("cache.value_size", len(value))
                 cache_value_size.record(len(value), attrs)
             else:
                 # Cache miss
+                cache_latency.record(
+                    duration_ms,
+                    {**attrs, "cache.operation": "get", "cache.hit": "false"},
+                )
                 cache_miss_counter.add(1, attrs)
                 span.set_attribute("cache.hit", False)
 
@@ -81,7 +88,7 @@ class InstrumentedCache:
 
         with tracer.start_as_current_span("cache.set", attributes=attrs) as span:
             start = time.time()
-            self.client.setex(key, ttl_seconds, value)
+            self.client.set(key, value, ex=ttl_seconds)
             duration_ms = (time.time() - start) * 1000
 
             cache_latency.record(duration_ms, {**attrs, "cache.operation": "set"})
@@ -89,11 +96,19 @@ class InstrumentedCache:
             span.set_attribute("cache.ttl_seconds", ttl_seconds)
             span.set_attribute("cache.value_size", len(value))
 
-    def get_or_fetch(self, key, fetch_fn, ttl_seconds=3600, cache_group="default"):
+    def get_or_fetch(
+        self,
+        key,
+        fetch_fn,
+        ttl_seconds=3600,
+        cache_group="default",
+        serialize_fn=lambda value: value,
+        deserialize_fn=lambda value: value,
+    ):
         """Get from cache, or fetch and cache on miss."""
         value = self.get(key, cache_group)
         if value is not None:
-            return value
+            return deserialize_fn(value)
 
         # Cache miss - fetch from origin
         with tracer.start_as_current_span("cache.origin_fetch",
@@ -105,7 +120,7 @@ class InstrumentedCache:
             span.set_attribute("cache.origin_fetch_duration_ms", fetch_duration_ms)
 
         # Store in cache for next time
-        self.set(key, value, ttl_seconds, cache_group)
+        self.set(key, serialize_fn(value), ttl_seconds, cache_group)
         return value
 ```
 
@@ -113,6 +128,7 @@ class InstrumentedCache:
 
 ```python
 # product_service.py
+import json
 from instrumented_cache import InstrumentedCache
 
 cache = InstrumentedCache()
@@ -124,6 +140,8 @@ def get_product(product_id):
         fetch_fn=lambda: db.query("SELECT * FROM products WHERE id = %s", product_id),
         ttl_seconds=300,  # 5 minute cache
         cache_group="products",
+        serialize_fn=json.dumps,
+        deserialize_fn=json.loads,
     )
 
 def get_user_recommendations(user_id):
@@ -133,6 +151,8 @@ def get_user_recommendations(user_id):
         fetch_fn=lambda: recommendation_engine.compute(user_id),
         ttl_seconds=600,  # 10 minute cache
         cache_group="recommendations",
+        serialize_fn=json.dumps,
+        deserialize_fn=json.loads,
     )
 ```
 
