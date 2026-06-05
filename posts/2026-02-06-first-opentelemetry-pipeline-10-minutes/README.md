@@ -23,12 +23,12 @@ A simple HTTP server with automatic instrumentation. Every request creates a tra
 
 ## Prerequisites
 
-You need Node.js (v16+) and Docker installed. That's it.
+You need Node.js (v18+) and Docker installed. That's it.
 
 Verify:
 
 ```bash
-node --version  # Should show v16 or higher
+node --version  # Should show v18 or higher
 docker --version  # Any recent version works
 ```
 
@@ -114,8 +114,6 @@ We'll run Jaeger (for viewing traces) and the OpenTelemetry Collector (for recei
 Create `docker-compose.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   # Jaeger all-in-one (includes UI and backend)
   jaeger:
@@ -163,7 +161,7 @@ exporters:
       insecure: true
 
   # Also log to console for debugging
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -171,19 +169,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 Start the infrastructure:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 Check that containers are running:
 
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 Open Jaeger UI at http://localhost:16686. You'll see the interface but no traces yet.
@@ -196,7 +194,10 @@ Install OpenTelemetry packages:
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-trace-otlp-http
+            @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions \
+            @opentelemetry/sdk-trace-base
 ```
 
 These packages provide:
@@ -204,6 +205,7 @@ These packages provide:
 - `api`: API for creating custom spans
 - `auto-instrumentations-node`: Automatic instrumentation for Express, HTTP, etc.
 - `exporter-trace-otlp-http`: Exporter that sends traces to Collector via HTTP
+- `resources` and `semantic-conventions`: Helpers for setting service metadata
 
 Create `tracing.js` (the OpenTelemetry setup):
 
@@ -211,13 +213,16 @@ Create `tracing.js` (the OpenTelemetry setup):
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Define service resource attributes
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'otel-quickstart-api',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'otel-quickstart-api',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
 });
 
 // Configure trace exporter to send to local Collector
@@ -363,36 +368,36 @@ const app = express();
 
 // Wrap database query in a span
 function queryDatabase(userId) {
-  const span = tracer.startSpan('database.query', {
+  return tracer.startActiveSpan('database.query', {
     attributes: {
       'db.operation': 'select',
       'db.user_id': userId,
     }
+  }, (span) => {
+    const start = Date.now();
+    while (Date.now() - start < 50) {}
+    const result = { id: userId, name: 'Test User', email: 'user@example.com' };
+
+    span.end();
+    return result;
   });
-
-  const start = Date.now();
-  while (Date.now() - start < 50) {}
-  const result = { id: userId, name: 'Test User', email: 'user@example.com' };
-
-  span.end();
-  return result;
 }
 
 // Wrap external API call in a span
 function callExternalAPI() {
-  const span = tracer.startSpan('external.api.call', {
+  return tracer.startActiveSpan('external.api.call', {
     attributes: {
       'http.method': 'GET',
       'external.service': 'partner-api',
     }
+  }, (span) => {
+    const start = Date.now();
+    while (Date.now() - start < 30) {}
+    const result = { status: 'ok', data: 'external data' };
+
+    span.end();
+    return result;
   });
-
-  const start = Date.now();
-  while (Date.now() - start < 30) {}
-  const result = { status: 'ok', data: 'external data' };
-
-  span.end();
-  return result;
 }
 
 // Routes stay the same
@@ -433,23 +438,20 @@ The trace shows the call hierarchy and timing breakdown. You can see how much ti
 
 ## Step 6: Add Context Propagation
 
-When spans are created inside request handlers, they should be children of the HTTP request span. Update the functions to properly propagate context:
+When spans are created inside request handlers, they should be children of the HTTP request span. `startActiveSpan` uses the current active context, so nested spans are attached to the request trace and become the active span while the callback runs:
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('app-logic', '1.0.0');
 
 function queryDatabase(userId) {
-  // context.active() ensures this span becomes a child of the current span
-  return context.with(context.active(), () => {
-    const span = tracer.startSpan('database.query', {
-      attributes: {
-        'db.operation': 'select',
-        'db.user_id': userId,
-      }
-    });
-
+  return tracer.startActiveSpan('database.query', {
+    attributes: {
+      'db.operation': 'select',
+      'db.user_id': userId,
+    }
+  }, (span) => {
     const start = Date.now();
     while (Date.now() - start < 50) {}
     const result = { id: userId, name: 'Test User', email: 'user@example.com' };
@@ -460,14 +462,12 @@ function queryDatabase(userId) {
 }
 
 function callExternalAPI() {
-  return context.with(context.active(), () => {
-    const span = tracer.startSpan('external.api.call', {
-      attributes: {
-        'http.method': 'GET',
-        'external.service': 'partner-api',
-      }
-    });
-
+  return tracer.startActiveSpan('external.api.call', {
+    attributes: {
+      'http.method': 'GET',
+      'external.service': 'partner-api',
+    }
+  }, (span) => {
     const start = Date.now();
     while (Date.now() - start < 30) {}
     const result = { status: 'ok', data: 'external data' };
@@ -487,17 +487,17 @@ Now traces show proper parent-child relationships. The HTTP span is the root, wi
 Check the Collector logs:
 
 ```bash
-docker-compose logs otel-collector
+docker compose logs otel-collector
 ```
 
-Look for errors receiving or exporting data. The logging exporter in the config should show received spans.
+Look for errors receiving or exporting data. The debug exporter in the config should show received spans.
 
 **"Connection refused" errors**
 
 Verify Collector is running:
 
 ```bash
-docker-compose ps otel-collector
+docker compose ps otel-collector
 ```
 
 Check that port 4318 is exposed:
@@ -534,7 +534,7 @@ This is the standard OpenTelemetry architecture. You can swap any component with
 
 Now that you have a working pipeline, you can:
 
-**Add metrics**: Install `@opentelemetry/sdk-metrics` and export metrics alongside traces.
+**Add metrics**: Add a metric reader with `@opentelemetry/sdk-metrics` and export metrics alongside traces.
 
 **Add logs**: Use a structured logging library like Pino with OpenTelemetry context injection.
 
@@ -544,7 +544,7 @@ Now that you have a working pipeline, you can:
 
 **Implement sampling**: Add tail sampling in the Collector to keep only interesting traces (errors, slow requests).
 
-**Add distributed tracing**: When calling other services, OpenTelemetry automatically propagates trace context via HTTP headers.
+**Add distributed tracing**: When calling other services through supported instrumented HTTP clients, OpenTelemetry automatically propagates trace context via HTTP headers.
 
 ## Production Checklist
 
@@ -564,14 +564,18 @@ Here's an improved production-ready `tracing.js`:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'otel-quickstart-api',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'otel-quickstart-api',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.ENVIRONMENT || 'development',
 });
 
 const traceExporter = new OTLPTraceExporter({
