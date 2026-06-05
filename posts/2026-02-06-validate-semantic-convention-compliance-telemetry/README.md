@@ -40,26 +40,21 @@ The first layer of defense is in your application tests. Write tests that verify
 # These run in CI and catch convention drift before code is deployed.
 
 import unittest
-from unittest.mock import MagicMock, patch
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 class TestOrderInstrumentation(unittest.TestCase):
     """Verify that the order service emits correct semantic convention attributes."""
 
-    def setUp(self):
-        # Set up an in-memory exporter to capture spans during tests
-        self.exporter = InMemorySpanExporter()
-        provider = TracerProvider()
-        provider.add_span_processor(
-            trace.get_tracer_provider()
-            # SimpleSpanProcessor for synchronous test export
-        )
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-        self.provider = TracerProvider()
-        self.provider.add_span_processor(SimpleSpanProcessor(self.exporter))
-        trace.set_tracer_provider(self.provider)
+    @classmethod
+    def setUpClass(cls):
+        # Set up an in-memory exporter to capture spans during tests.
+        cls.exporter = InMemorySpanExporter()
+        cls.provider = TracerProvider()
+        cls.provider.add_span_processor(SimpleSpanProcessor(cls.exporter))
+        trace.set_tracer_provider(cls.provider)
 
     def tearDown(self):
         self.exporter.clear()
@@ -104,10 +99,12 @@ class TestOrderInstrumentation(unittest.TestCase):
         self.assertIsInstance(status, int,
             f"http.response.status_code should be int, got {type(status)}")
 
-        # HTTP method must be uppercase
+        # HTTP method must be one of the convention's known methods or _OTHER
         method = attrs.get("http.request.method")
-        self.assertEqual(method, method.upper(),
-            f"http.request.method should be uppercase, got '{method}'")
+        self.assertIn(method, {
+            "CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH",
+            "POST", "PUT", "QUERY", "TRACE", "_OTHER"
+        }, f"http.request.method has unexpected value '{method}'")
 ```
 
 These tests serve as living documentation of your conventions. When a developer modifies the instrumentation code and accidentally breaks a convention, the test suite catches it immediately.
@@ -122,7 +119,7 @@ For more comprehensive validation, define your conventions as a schema and valid
 # Can be used in tests, CI pipelines, or as a collector component.
 
 from dataclasses import dataclass, field
-from typing import Optional
+import re
 
 @dataclass
 class AttributeRule:
@@ -141,13 +138,16 @@ class ConventionSchema:
 
 # Define the schema for HTTP server spans
 HTTP_SERVER_SCHEMA = ConventionSchema(
-    span_name_pattern=r"^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s",
+    span_name_pattern=r"^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|QUERY|TRACE)\s",
     rules=[
         AttributeRule(
             name="http.request.method",
             attr_type=str,
             required=True,
-            allowed_values=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            allowed_values=[
+                "CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH",
+                "POST", "PUT", "QUERY", "TRACE", "_OTHER"
+            ],
             deprecated_names=["http.method"]
         ),
         AttributeRule(
@@ -165,7 +165,7 @@ HTTP_SERVER_SCHEMA = ConventionSchema(
         AttributeRule(
             name="url.scheme",
             attr_type=str,
-            required=False,
+            required=True,
             allowed_values=["http", "https"],
             deprecated_names=["http.scheme"]
         ),
@@ -178,6 +178,9 @@ def validate_span(span_data: dict, schema: ConventionSchema) -> list:
     Returns a list of violation descriptions. An empty list means compliance.
     """
     violations = []
+    if not re.match(schema.span_name_pattern, span_data.get("name", "")):
+        return violations
+
     attrs = span_data.get("attributes", {})
 
     for rule in schema.rules:
@@ -222,29 +225,22 @@ The OpenTelemetry Collector sits at a natural chokepoint where all telemetry flo
 
 ```yaml
 # collector-validation.yaml
-# Uses the filter processor to detect and log non-compliant spans.
-# Pairs with the transform processor to fix common issues.
+# Uses the transform processor to tag non-compliant spans.
+# Pairs with normalization statements to fix common issues.
 
 processors:
-  # Log warnings for spans missing required attributes
-  filter/warn_missing_method:
-    spans:
-      # This processor can selectively drop or keep spans
-      # For validation, use it with logging to flag issues
-      include:
-        match_type: regexp
-        span_names: ["^(GET|POST|PUT|DELETE).*"]
-      exclude:
-        match_type: strict
-        attributes:
-          - key: http.request.method
-            value: ""
-
-  # Transform processor to fix known compliance issues
+  # Transform processor to flag and fix known compliance issues
   transform/normalize:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
+          # Tag spans that are missing required attributes
+          - set(attributes["_compliance.violation"], "missing_http_request_method")
+            where IsMatch(name, "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|QUERY|TRACE)\\s") and attributes["http.request.method"] == nil
+          - set(attributes["_compliance.violation"], "missing_url_scheme")
+            where IsMatch(name, "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|QUERY|TRACE)\\s") and attributes["url.scheme"] == nil
+
           # Fix common type errors: string status codes to integers
           # Some libraries incorrectly emit status_code as a string
           - set(attributes["http.response.status_code"],
@@ -255,14 +251,6 @@ processors:
           - set(attributes["http.request.method"],
               ConvertCase(attributes["http.request.method"], "upper"))
             where attributes["http.request.method"] != nil
-
-  # Attributes processor to flag non-compliant spans
-  attributes/compliance_tag:
-    actions:
-      # Tag spans that are missing required attributes
-      - key: _compliance.missing_method
-        value: true
-        action: insert
 ```
 
 This configuration catches and fixes common issues automatically. String status codes get converted to integers. HTTP methods get normalized to uppercase. Spans with missing attributes get tagged so you can track compliance rates in your backend.
