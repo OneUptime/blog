@@ -31,7 +31,7 @@ done
 
 ## Self-Hosted Registry Cleanup
 
-For the official Docker registry (distribution/distribution), cleanup involves deleting tags through the API and then running garbage collection.
+For the official Docker registry (distribution/distribution), cleanup involves deleting tags through the API and then running garbage collection. Manifest deletion must be enabled in the registry configuration with `delete.enabled: true`.
 
 ### Deleting Tags by Age
 
@@ -75,7 +75,7 @@ for REPO in $REPOS; do
             continue
         fi
 
-        CONFIG=$(curl -s "${REGISTRY}/v2/${REPO}/blobs/${CONFIG_DIGEST}")
+        CONFIG=$(curl -s -L "${REGISTRY}/v2/${REPO}/blobs/${CONFIG_DIGEST}")
         CREATED=$(echo "$CONFIG" | jq -r '.created // empty' | cut -dT -f1)
 
         if [ -z "$CREATED" ]; then
@@ -114,14 +114,14 @@ fi
 
 ```bash
 #!/bin/bash
-# registry-keep-latest.sh
-# Keeps only the N most recent tags per repository, deleting the rest
+# registry-keep-highest-versions.sh
+# Keeps only the N highest version-like tags per repository, deleting the rest
 
 REGISTRY="https://registry.example.com"
 KEEP_COUNT=10
 DRY_RUN=true
 
-echo "Registry cleanup - keeping $KEEP_COUNT latest tags per repository"
+echo "Registry cleanup - keeping $KEEP_COUNT highest version-like tags per repository"
 
 REPOS=$(curl -s "${REGISTRY}/v2/_catalog" | jq -r '.repositories[]')
 
@@ -135,9 +135,9 @@ for REPO in $REPOS; do
     fi
 
     DELETE_COUNT=$((TAG_COUNT - KEEP_COUNT))
-    echo "$REPO: $TAG_COUNT tags, deleting $DELETE_COUNT oldest"
+    echo "$REPO: $TAG_COUNT tags, deleting $DELETE_COUNT lowest version-like tags"
 
-    # Get the tags to delete (all except the latest N)
+    # Get the tags to delete (all except the highest N after version sorting)
     TAGS_TO_DELETE=$(echo "$TAGS" | head -n "$DELETE_COUNT")
 
     for TAG in $TAGS_TO_DELETE; do
@@ -161,18 +161,18 @@ After deleting tags, run garbage collection to actually reclaim disk space:
 
 ```bash
 # Run garbage collection on the registry container
-# The --delete-untagged flag removes blobs not referenced by any manifest
+# The --delete-untagged flag deletes manifests not referenced by any tag
 docker exec registry bin/registry garbage-collect \
-    /etc/docker/registry/config.yml \
-    --delete-untagged
+    --delete-untagged \
+    /etc/distribution/config.yml
 
 # For a dry run to see what would be deleted
 docker exec registry bin/registry garbage-collect \
-    /etc/docker/registry/config.yml \
-    --dry-run
+    --dry-run \
+    /etc/distribution/config.yml
 ```
 
-Important: garbage collection requires the registry to be in read-only mode or stopped to avoid data corruption. Schedule it during maintenance windows.
+Important: garbage collection requires the registry to be restarted in read-only mode or stopped to avoid data corruption. Schedule it during maintenance windows.
 
 ```bash
 #!/bin/bash
@@ -181,24 +181,16 @@ Important: garbage collection requires the registry to be in read-only mode or s
 
 echo "Starting garbage collection..."
 
-# Put the registry in read-only mode by updating the config
-docker exec registry sh -c '
-    sed -i "s/readonly: false/readonly: true/" /etc/docker/registry/config.yml
-    kill -HUP 1  # Signal the registry to reload config
-'
-
-sleep 5
+# Stop the registry so no writes can occur during garbage collection
+docker stop registry
 
 # Run garbage collection
-docker exec registry bin/registry garbage-collect \
-    /etc/docker/registry/config.yml \
-    --delete-untagged
+docker run --rm --volumes-from registry registry:3 garbage-collect \
+    --delete-untagged \
+    /etc/distribution/config.yml
 
 # Restore write access
-docker exec registry sh -c '
-    sed -i "s/readonly: true/readonly: false/" /etc/docker/registry/config.yml
-    kill -HUP 1
-'
+docker start registry
 
 echo "Garbage collection complete"
 ```
@@ -246,7 +238,7 @@ aws ecr put-lifecycle-policy \
 ## Google Artifact Registry Cleanup
 
 ```bash
-# Delete images older than 30 days in Google Artifact Registry
+# List image versions and tags in Google Artifact Registry
 gcloud artifacts docker images list \
     us-central1-docker.pkg.dev/my-project/my-repo/myapp \
     --include-tags \
@@ -254,7 +246,7 @@ gcloud artifacts docker images list \
     --sort-by=createTime
 
 # Use gcr-cleaner for automated cleanup
-docker run -it gcr.io/gcr-cleaner/gcr-cleaner-cli \
+docker run -it us-docker.pkg.dev/gcr-cleaner/gcr-cleaner/gcr-cleaner-cli \
     -repo us-central1-docker.pkg.dev/my-project/my-repo/myapp \
     -grace 720h \
     -keep 10
