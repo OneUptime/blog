@@ -6,11 +6,11 @@ Tags: OpenTelemetry, SOX Compliance, Audit Trail, Structured Logging
 
 Description: Build tamper-evident audit trails for financial transactions using OpenTelemetry structured logging that satisfy SOX requirements.
 
-The Sarbanes-Oxley Act (SOX) requires publicly traded companies to maintain accurate and complete audit trails for financial transactions. These trails must be tamper-evident, timestamped, and attributable to specific users and systems. OpenTelemetry's structured logging capabilities provide a solid foundation for building audit trails that meet these requirements while integrating with your existing observability stack.
+The Sarbanes-Oxley Act (SOX) requires publicly traded companies to maintain effective controls over financial reporting and retain relevant audit records. For transaction systems that support those controls, audit trails should be tamper-evident, timestamped, and attributable to specific users and systems. OpenTelemetry's structured logging capabilities provide a solid foundation for building audit trails that support these requirements while integrating with your existing observability stack.
 
 ## What SOX Requires From Audit Trails
 
-SOX Section 302 and 802 mandate that financial records include:
+SOX Sections 302 and 802 do not prescribe an exact log schema, but effective financial-reporting controls and record-retention practices normally require audit trails that capture:
 
 - Who performed the action (user identity, role, authorization level)
 - What action was performed (transaction type, amounts, accounts)
@@ -27,7 +27,7 @@ We start by setting up a logger provider with a resource that identifies the fin
 ```python
 # audit_logging_config.py
 
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
@@ -69,7 +69,7 @@ import uuid
 import hashlib
 import json
 from opentelemetry import trace
-from opentelemetry._logs import SeverityNumber
+from opentelemetry._logs import LogRecord, SeverityNumber
 
 class AuditEntry:
     """Structured audit log entry for SOX compliance."""
@@ -109,9 +109,9 @@ class AuditEntry:
             "audit.outcome.reason": reason or "completed",
         })
 
-    def compute_integrity_hash(self):
-        """Generate a hash of the audit entry for tamper detection."""
-        payload = json.dumps({
+    def canonical_payload(self):
+        """Return the canonical payload used for integrity verification."""
+        return json.dumps({
             "entry_id": self.entry_id,
             "timestamp": self.timestamp,
             "action": self.action,
@@ -119,11 +119,16 @@ class AuditEntry:
             "attributes": self.attributes,
             "previous_hash": self.previous_hash
         }, sort_keys=True)
+
+    def compute_integrity_hash(self, payload: str = None):
+        """Generate a hash of the audit entry for tamper detection."""
+        payload = payload or self.canonical_payload()
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def emit(self):
         """Emit the audit log entry via OpenTelemetry."""
-        integrity_hash = self.compute_integrity_hash()
+        payload = self.canonical_payload()
+        integrity_hash = self.compute_integrity_hash(payload)
 
         # Combine all attributes into the log record
         all_attributes = {
@@ -136,6 +141,7 @@ class AuditEntry:
             "audit.integrity.hash": integrity_hash,
             "audit.integrity.algorithm": "sha256",
             "audit.integrity.previous_hash": self.previous_hash,
+            "audit.integrity.payload": payload,
         }
         all_attributes.update(self.attributes)
 
@@ -212,6 +218,8 @@ SOX requires audit trails around period-close activities. Here is how to audit a
 ```python
 # period_close.py
 def close_period(period, user_context):
+    global last_hash
+
     audit = AuditEntry(audit_logger, "period.close", user_context)
     audit.previous_hash = last_hash
 
@@ -233,7 +241,7 @@ def close_period(period, user_context):
 
     result = ledger.close_period(period)
     audit.set_outcome(success=result.closed)
-    audit.emit()
+    last_hash = audit.emit()
 ```
 
 ## Integrity Verification
@@ -242,21 +250,28 @@ The chained hashes allow you to verify that no audit records have been tampered 
 
 ```python
 # integrity_check.py
+import hashlib
+
 def verify_audit_chain(audit_records):
     """Verify the integrity of a chain of audit records."""
     previous_hash = None
 
     for record in audit_records:
+        attributes = record.attributes
+        entry_id = attributes["audit.entry_id"]
+        integrity_hash = attributes["audit.integrity.hash"]
+
         # Verify the previous_hash matches
-        if record.previous_hash != previous_hash:
-            return False, f"Chain broken at entry {record.entry_id}"
+        if attributes.get("audit.integrity.previous_hash") != previous_hash:
+            return False, f"Chain broken at entry {entry_id}"
 
         # Recompute the hash and verify it matches
-        computed = record.compute_integrity_hash()
-        if computed != record.integrity_hash:
-            return False, f"Tampered entry detected: {record.entry_id}"
+        payload = attributes["audit.integrity.payload"]
+        computed = hashlib.sha256(payload.encode()).hexdigest()
+        if computed != integrity_hash:
+            return False, f"Tampered entry detected: {entry_id}"
 
-        previous_hash = record.integrity_hash
+        previous_hash = integrity_hash
 
     return True, "Audit chain verified"
 ```
