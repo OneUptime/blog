@@ -72,6 +72,17 @@ from collections import defaultdict
 import time
 import hashlib
 
+from login_metrics import (
+    login_failure_streak,
+    login_failures,
+    login_success,
+    login_total,
+    time_between_attempts,
+    tracer,
+    unique_accounts_per_ip,
+    unique_ips_per_account,
+)
+
 class AuthenticationMonitor:
     def __init__(self):
         self.ip_accounts = defaultdict(set)       # IP -> set of attempted accounts
@@ -84,7 +95,7 @@ class AuthenticationMonitor:
                               success: bool, failure_reason: str = None,
                               auth_method: str = "password"):
         """Record a login attempt with full context for pattern analysis."""
-        # Hash the username for metrics to avoid cardinality explosion
+        # Hash the username before adding it to traces to avoid exposing raw identifiers.
         username_hash = hashlib.sha256(username.encode()).hexdigest()[:12]
 
         with tracer.start_as_current_span(
@@ -98,7 +109,6 @@ class AuthenticationMonitor:
         ) as span:
             common_attrs = {
                 "auth.method": auth_method,
-                "auth.source_ip": source_ip,
             }
 
             login_total.add(1, common_attrs)
@@ -135,13 +145,13 @@ class AuthenticationMonitor:
             # Record unique accounts per IP
             accounts_from_ip = len(self.ip_accounts[source_ip])
             unique_accounts_per_ip.record(accounts_from_ip, {
-                "auth.source_ip": source_ip,
+                "auth.method": auth_method,
             })
 
             # Record unique IPs per account
             ips_for_account = len(self.account_ips[username])
             unique_ips_per_account.record(ips_for_account, {
-                "auth.username_hash": username_hash,
+                "auth.method": auth_method,
             })
 
             # Track timing between attempts
@@ -149,7 +159,7 @@ class AuthenticationMonitor:
             if source_ip in self.ip_last_attempt:
                 gap_ms = (now - self.ip_last_attempt[source_ip]) * 1000
                 time_between_attempts.record(gap_ms, {
-                    "auth.source_ip": source_ip,
+                    "auth.method": auth_method,
                 })
                 span.set_attribute("auth.time_since_last_attempt_ms", gap_ms)
 
@@ -194,7 +204,7 @@ class AuthenticationMonitor:
             })
 
     def reset_window(self):
-        """Reset sliding window counters."""
+        """Reset window counters."""
         self.ip_accounts.clear()
         self.account_ips.clear()
         self.ip_last_attempt.clear()
@@ -206,13 +216,16 @@ class AuthenticationMonitor:
 ```python
 # auth_endpoint.py
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from auth_monitor import AuthenticationMonitor
 
 router = APIRouter()
 monitor = AuthenticationMonitor()
 
 @router.post("/auth/login")
 async def login(request: Request, credentials: LoginCredentials):
-    source_ip = request.client.host
+    source_ip = request.client.host if request.client else "unknown"
 
     user = await authenticate(credentials.username, credentials.password)
 
