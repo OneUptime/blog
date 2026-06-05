@@ -39,33 +39,28 @@ Each of these transitions is something you want to track. A slow installation me
 Service workers cannot share the tracer provider from the main page. They need their own setup:
 
 ```javascript
-// sw.js (service worker file)
-importScripts(
-  'https://cdn.jsdelivr.net/npm/@opentelemetry/api@1.7.0/build/bundles/api.min.js',
-  'https://cdn.jsdelivr.net/npm/@opentelemetry/sdk-trace-web@1.22.0/build/bundles/sdk-trace-web.min.js',
-  'https://cdn.jsdelivr.net/npm/@opentelemetry/exporter-trace-otlp-http@0.48.0/build/bundles/exporter-trace-otlp-http.min.js'
-);
+// sw.js (service worker file, bundled as a module service worker)
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 
 // Initialize the tracer provider for the service worker context
-const { WebTracerProvider } = opentelemetry.sdk.trace.web;
-const { OTLPTraceExporter } = opentelemetry.exporter.trace.otlp.http;
-const { BatchSpanProcessor } = opentelemetry.sdk.trace.web;
-const { trace, SpanStatusCode } = opentelemetry.api;
-
-const provider = new WebTracerProvider();
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'https://otel-collector.example.com/v1/traces',
-    })
-  )
-);
+const provider = new WebTracerProvider({
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://otel-collector.example.com/v1/traces',
+      })
+    ),
+  ],
+});
 provider.register();
 
 const tracer = trace.getTracer('service-worker', '1.0.0');
 ```
 
-Using `importScripts` is the standard way to load libraries in a service worker since ES module imports have limited support in this context. The tracer operates independently from the main page, so spans from the service worker and spans from the main page will show up as separate traces unless you manually propagate context between them.
+Bundle this code with your web application and register the worker with `{ type: 'module' }` if your service worker output still contains static `import` statements. The collector endpoint also needs CORS headers that allow browser exports. The tracer operates independently from the main page, so spans from the service worker and spans from the main page will show up as separate traces unless you manually propagate context between them.
 
 ## Instrumenting the Install and Activate Lifecycle
 
@@ -137,14 +132,17 @@ self.addEventListener('activate', (event) => {
         );
       })
       .then(() => {
+        return self.clients.claim();
+      })
+      .then(() => {
         span.setStatus({ code: SpanStatusCode.OK });
         span.end();
-        return self.clients.claim();
       })
       .catch((error) => {
         span.recordException(error);
         span.setStatus({ code: SpanStatusCode.ERROR });
         span.end();
+        throw error;
       })
   );
 });
@@ -169,8 +167,8 @@ self.addEventListener('fetch', (event) => {
     (async () => {
       const span = tracer.startSpan('sw.fetch', {
         attributes: {
-          'http.url': event.request.url,
-          'http.method': event.request.method,
+          'url.full': event.request.url,
+          'http.request.method': event.request.method,
           'sw.request_mode': event.request.mode,
           'sw.request_destination': event.request.destination,
         },
@@ -192,7 +190,7 @@ self.addEventListener('fetch', (event) => {
           span.end();
 
           // Revalidate in the background
-          revalidateCache(event.request);
+          event.waitUntil(revalidateCache(event.request));
 
           return cachedResponse;
         }
@@ -204,12 +202,12 @@ self.addEventListener('fetch', (event) => {
 
         span.setAttribute('sw.network_latency_ms', networkLatency);
         span.setAttribute('sw.strategy', 'network-fallback');
-        span.setAttribute('http.status_code', networkResponse.status);
+        span.setAttribute('http.response.status_code', networkResponse.status);
 
         // Cache the response for next time
         if (networkResponse.ok) {
           const cache = await caches.open(CACHE_NAME);
-          cache.put(event.request, networkResponse.clone());
+          await cache.put(event.request, networkResponse.clone());
           span.setAttribute('sw.cached_new_response', true);
         }
 
@@ -244,7 +242,7 @@ self.addEventListener('fetch', (event) => {
 async function revalidateCache(request) {
   const span = tracer.startSpan('sw.revalidate', {
     attributes: {
-      'http.url': request.url,
+      'url.full': request.url,
     },
   });
 
@@ -269,7 +267,7 @@ The `sw.cache_hit` attribute is the most important one here. By aggregating this
 
 ## Tracking Background Sync
 
-Background sync lets your PWA defer actions until the user has a stable internet connection. This is critical for offline-capable apps:
+Where supported, Background Sync lets your PWA defer actions until the user has a stable internet connection. This is critical for offline-capable apps:
 
 ```javascript
 // sw.js - background sync instrumentation
@@ -344,7 +342,9 @@ export async function registerAndMonitorServiceWorker() {
   const span = tracer.startSpan('sw.registration');
 
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.register('/sw.js', {
+      type: 'module',
+    });
 
     span.setAttribute('sw.scope', registration.scope);
     span.setAttribute('sw.already_active', !!registration.active);
