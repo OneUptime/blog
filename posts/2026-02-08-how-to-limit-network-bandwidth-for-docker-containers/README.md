@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Networking, Bandwidth, Traffic Shaping, DevOps, Container
 
-Description: Learn how to limit and control network bandwidth for Docker containers using tc, Docker plugins, and proxy-based throttling approaches.
+Description: Learn how to limit and control network bandwidth for Docker containers using tc, Wondershaper, netem, and Pumba.
 
 ---
 
-Docker does not include a built-in bandwidth limiting flag like it does for CPU and memory. If you want to throttle a container's network throughput, you need to use Linux traffic control (tc), network plugins, or proxy-based approaches. This guide covers all the practical methods to control how much bandwidth your containers consume.
+Docker does not include a built-in bandwidth limiting flag like it does for CPU and memory. If you want to throttle a container's network throughput, you need to use Linux traffic control (tc), helper tools such as Wondershaper, or chaos testing tools such as Pumba. This guide covers practical methods to control how much bandwidth your containers consume.
 
 ## Why Limit Bandwidth?
 
@@ -38,6 +38,10 @@ docker run -d \
 Now apply a bandwidth limit using tc inside the container:
 
 ```bash
+# Install tc from the iproute2 package
+docker exec throttled-app apt-get update
+docker exec throttled-app apt-get install -y iproute2
+
 # Limit outbound bandwidth to 1 Mbit/s on eth0
 docker exec throttled-app tc qdisc add dev eth0 root tbf \
   rate 1mbit burst 32kbit latency 400ms
@@ -76,11 +80,11 @@ Find the container's veth interface on the host:
 # Get the container's PID
 PID=$(docker inspect --format '{{.State.Pid}}' throttled-app)
 
-# Find the interface index inside the container's network namespace
-IFINDEX=$(nsenter -t $PID -n ip link show eth0 | head -1 | awk -F: '{print $1}')
+# Find eth0's host-side peer interface index
+IFLINK=$(nsenter -t $PID -n cat /sys/class/net/eth0/iflink)
 
 # Find the matching veth interface on the host
-VETH=$(ip link | grep "if${IFINDEX}:" | awk -F: '{print $2}' | tr -d ' ')
+VETH=$(ip -o link | awk -F': ' -v iflink="$IFLINK" '$1 == iflink {print $2}' | cut -d'@' -f1)
 echo "Host veth interface: $VETH"
 ```
 
@@ -152,13 +156,9 @@ docker exec throttled-app tc qdisc add dev eth0 root netem \
 Combine bandwidth limiting with latency:
 
 ```bash
-# First add the netem qdisc for latency
-docker exec throttled-app tc qdisc add dev eth0 root handle 1: netem \
-  delay 50ms 10ms
-
-# Then add tbf as a child qdisc for bandwidth limiting
-docker exec throttled-app tc qdisc add dev eth0 parent 1:1 handle 10: tbf \
-  rate 1mbit burst 32kbit latency 400ms
+# Add latency and rate control in one netem qdisc
+docker exec throttled-app tc qdisc add dev eth0 root netem \
+  delay 50ms 10ms rate 1mbit
 ```
 
 Simulate packet loss:
@@ -172,10 +172,8 @@ Simulate a terrible mobile connection:
 
 ```bash
 # Simulate 3G-like conditions: slow, high latency, some packet loss
-docker exec throttled-app tc qdisc add dev eth0 root handle 1: netem \
-  delay 200ms 50ms loss 2%
-docker exec throttled-app tc qdisc add dev eth0 parent 1:1 handle 10: tbf \
-  rate 384kbit burst 16kbit latency 400ms
+docker exec throttled-app tc qdisc add dev eth0 root netem \
+  delay 200ms 50ms loss 2% rate 384kbit
 ```
 
 ## Method 6: Using Pumba for Container Network Chaos
@@ -184,13 +182,14 @@ Pumba is a chaos testing tool for Docker that can add network delays and bandwid
 
 ```bash
 # Install pumba
-docker pull gaiaadm/pumba
+docker pull ghcr.io/alexei-led/pumba:latest
 
 # Add 500ms delay to the target container's network for 60 seconds
 docker run -d \
   --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem \
+  ghcr.io/alexei-led/pumba:latest netem \
+  --tc-image ghcr.io/alexei-led/pumba-alpine-nettools:latest \
   --duration 60s \
   delay --time 500 \
   throttled-app
@@ -199,7 +198,8 @@ docker run -d \
 docker run -d \
   --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem \
+  ghcr.io/alexei-led/pumba:latest netem \
+  --tc-image ghcr.io/alexei-led/pumba-alpine-nettools:latest \
   --duration 120s \
   rate --rate 1mbit \
   throttled-app
