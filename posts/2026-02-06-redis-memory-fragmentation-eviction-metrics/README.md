@@ -14,7 +14,7 @@ Redis stores everything in memory, making memory management critical. High fragm
 receivers:
   redis:
     endpoint: "redis:6379"
-    password: "${REDIS_PASSWORD}"
+    password: "${env:REDIS_PASSWORD}"
     collection_interval: 15s
     metrics:
       redis.memory.used:
@@ -24,6 +24,8 @@ receivers:
       redis.memory.peak:
         enabled: true
       redis.memory.fragmentation_ratio:
+        enabled: true
+      redis.maxmemory:
         enabled: true
       redis.clients.connected:
         enabled: true
@@ -71,13 +73,13 @@ service:
 fragmentation_ratio = redis.memory.rss / redis.memory.used
 ```
 
-- **Ratio > 1.5**: High fragmentation. Redis has allocated more OS memory than it actually uses for data. This wastes RAM.
+- **Ratio > 1.5**: High RSS compared to Redis allocator usage. This can indicate fragmentation or memory that the allocator has not returned to the operating system.
 - **Ratio 1.0 - 1.5**: Normal range. Some fragmentation is expected.
 - **Ratio < 1.0**: Redis is using swap. This is very bad for performance.
 
 ### What Causes Fragmentation
 
-Fragmentation happens when Redis deletes keys. The freed memory has gaps that cannot be reused for new, differently-sized allocations. Common scenarios:
+Fragmentation can happen when Redis deletes or expires keys. Freed memory is returned to the allocator, which may not immediately return it to the operating system or may not be able to reuse it efficiently for differently sized allocations. Common scenarios:
 - Frequently deleting and creating keys of different sizes
 - Large keys being expired
 - Sorted sets with heavy member turnover
@@ -90,7 +92,6 @@ Redis 4.0+ includes an active defragmentation feature:
 # Enable active defragmentation
 
 redis-cli CONFIG SET activedefrag yes
-redis-cli CONFIG SET active-defrag-enabled yes
 redis-cli CONFIG SET active-defrag-cycle-min 5
 redis-cli CONFIG SET active-defrag-cycle-max 75
 redis-cli CONFIG SET active-defrag-threshold-lower 10
@@ -211,7 +212,7 @@ High client counts often indicate connection leaks in application code. Common c
 
 # Memory usage above 90%
 - alert: RedisMemoryHigh
-  condition: redis.memory.used / redis.memory.maxmemory > 0.9
+  condition: redis.memory.used / redis.maxmemory > 0.9
   for: 5m
   severity: warning
   message: "Redis memory usage at {{ value }}% of maxmemory."
