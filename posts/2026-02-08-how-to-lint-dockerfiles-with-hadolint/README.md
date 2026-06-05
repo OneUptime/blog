@@ -8,7 +8,7 @@ Description: Learn how to use Hadolint to catch Dockerfile mistakes, enforce bes
 
 ---
 
-Dockerfiles look simple, but they hide plenty of opportunities for mistakes. Forgetting to pin a base image version, running `apt-get update` and `apt-get install` in separate RUN instructions, or using `COPY` when `ADD` is more appropriate - these are all common errors that lead to broken builds, security vulnerabilities, or bloated images. Hadolint catches these problems before they reach production.
+Dockerfiles look simple, but they hide plenty of opportunities for mistakes. Forgetting to pin a base image version, running `apt-get update` and `apt-get install` in separate RUN instructions, or using `ADD` when `COPY` is more appropriate - these are all common errors that lead to broken builds, security vulnerabilities, or bloated images. Hadolint catches these problems before they reach production.
 
 Hadolint is a Dockerfile linter that parses your Dockerfile and checks it against a comprehensive set of best-practice rules. It also integrates ShellCheck to lint the shell commands inside your RUN instructions. Together, they catch both Dockerfile-specific and shell scripting issues.
 
@@ -24,9 +24,9 @@ Install Hadolint on different platforms:
 brew install hadolint
 
 # Linux - download the binary directly
-wget -O /usr/local/bin/hadolint \
+sudo wget -O /usr/local/bin/hadolint \
     https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
-chmod +x /usr/local/bin/hadolint
+sudo chmod +x /usr/local/bin/hadolint
 
 # Run via Docker (no installation needed)
 docker run --rm -i hadolint/hadolint < Dockerfile
@@ -46,8 +46,8 @@ A Dockerfile with several issues:
 FROM ubuntu
 RUN apt-get update
 RUN apt-get install -y python3 wget
-ADD https://example.com/app.tar.gz /app/
-RUN cd /app && tar xzf app.tar.gz
+ADD app/ /app/
+RUN cd /app && python3 main.py --version
 EXPOSE 8080
 CMD python3 /app/main.py
 ```
@@ -62,15 +62,17 @@ hadolint bad-example.Dockerfile
 Hadolint produces output like this:
 
 ```text
-bad-example.Dockerfile:1 DL3007 warning: Using latest is prone to errors
-bad-example.Dockerfile:2 DL3009 info: Delete the apt-get lists after installing
-bad-example.Dockerfile:2 DL3008 warning: Pin versions in apt get install
-bad-example.Dockerfile:3 DL3008 warning: Pin versions in apt get install
+bad-example.Dockerfile:1 DL3006 warning: Always tag the version of an image explicitly
+bad-example.Dockerfile:2 DL3009 info: Delete the apt lists (/var/lib/apt/lists) after installing something
+bad-example.Dockerfile:3 DL3008 warning: Pin versions in apt get install. Instead of `apt-get install <package>` use `apt-get install <package>=<version>`
+bad-example.Dockerfile:3 DL3015 info: Avoid additional packages by specifying `--no-install-recommends`
+bad-example.Dockerfile:3 DL3059 info: Multiple consecutive `RUN` instructions. Consider consolidation.
 bad-example.Dockerfile:4 DL3020 error: Use COPY instead of ADD for files and folders
-bad-example.Dockerfile:7 DL3025 warning: Use arguments JSON notation for CMD
+bad-example.Dockerfile:5 DL3003 warning: Use WORKDIR to switch to a directory
+bad-example.Dockerfile:7 DL3025 warning: Use arguments JSON notation for CMD and ENTRYPOINT arguments
 ```
 
-Each warning includes a rule ID (like DL3007), a severity level, and a human-readable description of the problem.
+Each finding includes a rule ID (like DL3006), a severity level, and a human-readable description of the problem.
 
 ## Understanding Hadolint Rules
 
@@ -79,7 +81,7 @@ Hadolint rules fall into several categories. Rules prefixed with `DL` are Docker
 Here are the most important rules you will encounter:
 
 ```bash
-# DL3007 - Always pin the base image version
+# DL3006 - Always pin the base image version
 # Bad:
 FROM ubuntu
 # Good:
@@ -89,9 +91,9 @@ FROM ubuntu:22.04
 # Bad:
 RUN apt-get install -y curl
 # Good:
-RUN apt-get install -y curl=7.88.1-10+deb12u5
+RUN apt-get install -y curl=7.81.0-1ubuntu1.24
 
-# DL3009 - Remove apt-get cache after installing
+# DL3009 - Delete apt-get lists after installing
 # Bad:
 RUN apt-get update && apt-get install -y curl
 # Good:
@@ -229,7 +231,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
@@ -274,7 +276,7 @@ Add Hadolint to your `.pre-commit-config.yaml`:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.14.0
     hooks:
       - id: hadolint-docker
         args: ["--failure-threshold", "warning"]
@@ -356,7 +358,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Use npm ci instead of npm install for reproducible builds
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -366,7 +368,7 @@ EXPOSE 3000
 CMD ["npm", "start"]
 ```
 
-Every change above corresponds to a Hadolint rule. Pinning the version prevents unexpected base image changes. Using `npm ci` ensures reproducible installs. JSON notation for CMD avoids shell interpretation issues.
+The base-image and CMD changes above correspond to Hadolint rules. Pinning the version reduces unexpected base image changes from floating tags. Using `npm ci` ensures reproducible installs. JSON notation for CMD avoids shell interpretation issues.
 
 ## Summary
 
