@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Filelog Receiver, Log Rotation, Fingerprint, Production
 
 Description: Configure the OpenTelemetry filelog receiver with fingerprint-based tracking to handle log rotation reliably in production.
 
-Log rotation is one of the trickiest aspects of file-based log collection. When logrotate renames your log file and the application starts writing to a new file, your Collector needs to seamlessly track this transition without duplicating or missing entries. The filelog receiver uses fingerprint-based file tracking to handle this correctly.
+Log rotation is one of the trickiest aspects of file-based log collection. When logrotate renames your log file and the application starts writing to a new file, your Collector needs to seamlessly track this transition without duplicating or missing entries. The filelog receiver uses file identity and content fingerprint tracking to handle this correctly.
 
 ## How Fingerprint Tracking Works
 
-Instead of tracking files by name (which changes during rotation), the filelog receiver reads the first N bytes of each file and creates a fingerprint hash. This fingerprint stays the same even if the file is renamed. The receiver stores the fingerprint along with the current read offset, so it knows exactly where it left off in each file.
+Instead of tracking files by name (which changes during rotation), the filelog receiver tracks files by their internal identity and the first N bytes of file content. This fingerprint stays the same even if the file is renamed. The receiver stores the fingerprint along with the current read offset, so it knows exactly where it left off in each file.
 
 ```text
 Before rotation:
@@ -50,13 +50,16 @@ extensions:
     compaction:
       on_start: true
       directory: /var/lib/otel-collector/filelog/compaction
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Handling Different Rotation Strategies
 
 ### logrotate with copytruncate
 
-The `copytruncate` strategy copies the log file and then truncates the original. This is problematic because the fingerprint stays the same (same first N bytes) but the file size drops to zero:
+The `copytruncate` strategy copies the log file and then truncates the original. The receiver detects this by comparing the stored offset with the current file size. Use `on_truncate` to choose how the receiver behaves after truncation:
 
 ```yaml
 receivers:
@@ -64,7 +67,8 @@ receivers:
     include:
       - /var/log/app/*.log
     start_at: end
-    # Larger fingerprint helps distinguish between truncated and new files
+    # read_new skips the truncated content and continues with new writes
+    on_truncate: read_new
     fingerprint_size: 4kb
     poll_interval: 200ms
 ```
@@ -78,8 +82,6 @@ This is the standard and recommended rotation strategy. The current file is rena
 ```yaml
 receivers:
   filelog/create-rotate:
-    include:
-      - /var/log/app/*.log
     # Also include rotated files to finish reading them
     include:
       - /var/log/app/*.log
@@ -94,7 +96,7 @@ Including `*.log.1` ensures the receiver finishes reading the rotated file if th
 
 ### Compressed Rotation
 
-If logrotate compresses old files (producing `.gz` files), the filelog receiver cannot read compressed files. Make sure you finish reading before compression happens:
+If logrotate compresses old files (producing `.gz` files), the filelog receiver only reads them when `compression` is configured. If you do not include compressed files with `compression: gzip` or `compression: auto`, make sure you finish reading before compression happens:
 
 ```yaml
 # logrotate config
@@ -167,13 +169,17 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Watch these metrics:
-- `otelcol_filelog_open_files`: Number of currently tracked files
-- `otelcol_filelog_reading_files`: Number of files actively being read
-- `otelcol_filelog_lines_read`: Total log lines processed
+- `otelcol_fileconsumer_open_files`: Number of currently open files
+- `otelcol_fileconsumer_reading_files`: Number of files actively being read
 
 ## Handling Edge Cases
 
