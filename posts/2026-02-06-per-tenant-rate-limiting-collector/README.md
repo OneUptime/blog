@@ -18,9 +18,9 @@ Without rate limiting, here is what happens:
 4. The Collector starts dropping data from all teams, not just Team A.
 5. Teams B, C, and D lose visibility during an unrelated incident.
 
-## Rate Limiting with the Collector's Transform Processor
+## Rate Limiting with the Collector's Routing Connector
 
-The OpenTelemetry Collector does not have a built-in per-tenant rate limiter, but you can build one using a combination of the routing processor and multiple pipeline configurations:
+The OpenTelemetry Collector does not have a built-in per-tenant rate limiter, but you can build one using a combination of the routing connector and multiple pipeline configurations:
 
 ```yaml
 # gateway-config.yaml
@@ -42,21 +42,8 @@ processors:
     limit_mib: 8192
     spike_limit_mib: 2048
 
-  # Route traces to team-specific pipelines
-  routing/traces:
-    from_attribute: team.name
-    attribute_source: resource
-    table:
-      - value: payments
-        pipelines: [traces/payments]
-      - value: catalog
-        pipelines: [traces/catalog]
-      - value: frontend
-        pipelines: [traces/frontend]
-    default_pipelines: [traces/default]
-
   # Per-team rate limiting via probabilistic sampling
-  # When a team exceeds their budget, increase sampling
+  # When a team exceeds their budget, lower its sampling percentage
   probabilistic_sampler/payments:
     sampling_percentage: 100  # Critical: keep everything
 
@@ -73,12 +60,27 @@ exporters:
   otlphttp:
     endpoint: https://backend:4318
 
+connectors:
+  # Route traces to team-specific pipelines
+  routing/traces:
+    default_pipelines: [traces/default]
+    table:
+      - context: resource
+        condition: 'attributes["team.name"] == "payments"'
+        pipelines: [traces/payments]
+      - context: resource
+        condition: 'attributes["team.name"] == "catalog"'
+        pipelines: [traces/catalog]
+      - context: resource
+        condition: 'attributes["team.name"] == "frontend"'
+        pipelines: [traces/frontend]
+
 service:
   pipelines:
     traces/intake:
       receivers: [otlp]
-      processors: [memory_limiter, routing/traces]
-      exporters: []
+      processors: [memory_limiter]
+      exporters: [routing/traces]
 
     traces/payments:
       receivers: [routing/traces]
@@ -234,10 +236,15 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
-Create alerts for rate limiting events:
+If your custom processor emits a counter for dropped spans, create alerts for rate limiting events:
 
 ```yaml
 # Prometheus alert rule
@@ -246,7 +253,7 @@ groups:
     rules:
       - alert: TenantRateLimited
         expr: |
-          rate(otel_processor_rate_limiter_dropped_spans_total[5m]) > 0
+          rate(otelcol_processor_rate_limiter_dropped_spans_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -257,4 +264,4 @@ groups:
 
 ## Wrapping Up
 
-Per-tenant rate limiting is essential for multi-tenant observability. Without it, one team's runaway telemetry can take down the entire observability pipeline. Whether you use sampling-based limits in the Collector's routing processor or build a custom rate limiter, the key is to isolate tenants from each other's resource consumption.
+Per-tenant rate limiting is essential for multi-tenant observability. Without it, one team's runaway telemetry can take down the entire observability pipeline. Whether you use sampling-based limits with the Collector's routing connector or build a custom rate limiter, the key is to isolate tenants from each other's resource consumption.
