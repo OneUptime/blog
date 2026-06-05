@@ -2,24 +2,23 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Chronosphere, GRPC OTLP, Snappy Compression
+Tags: OpenTelemetry, Chronosphere, GRPC OTLP, Gzip Compression
 
-Description: Configure the OpenTelemetry OTLP gRPC exporter to send metrics to Chronosphere with API token authentication and Snappy compression.
+Description: Configure the OpenTelemetry OTLP gRPC exporter to send metrics to Chronosphere with API token authentication and gzip compression.
 
-Chronosphere is a cloud-native observability platform focused on metrics management at scale. It accepts OpenTelemetry data through OTLP endpoints and supports Snappy compression for efficient data transfer. This post covers how to configure your application to send metrics directly to Chronosphere.
+Chronosphere is a cloud-native observability platform focused on metrics management at scale. It accepts OpenTelemetry data through OTLP endpoints and supports compression methods such as gzip, Snappy, and zstd for efficient data transfer. This post covers how to configure your application to send metrics directly to Chronosphere using compression supported by the standard OpenTelemetry SDK exporters.
 
 ## Chronosphere OTLP Configuration
 
 Chronosphere provides a tenant-specific endpoint for OTLP ingestion. The format is typically `<company>.chronosphere.io`. Authentication uses an API token in the request headers.
 
-## Go Setup with Snappy Compression
+## Go Setup with Gzip Compression
 
 ```go
 package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -28,7 +27,7 @@ import (
     "go.opentelemetry.io/otel/sdk/resource"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 const (
@@ -45,9 +44,9 @@ func initChronosphereMetrics() (*sdkmetric.MeterProvider, error) {
         otlpmetricgrpc.WithHeaders(map[string]string{
             "API-Token": chronosphereAPIToken,
         }),
-        // Use Snappy compression for efficient transfer
-        // Snappy is faster than gzip with slightly lower compression ratio
-        otlpmetricgrpc.WithCompressor("snappy"),
+        // Use gzip compression for efficient transfer
+        // Standard OpenTelemetry Go OTLP gRPC exporters support gzip compression
+        otlpmetricgrpc.WithCompressor("gzip"),
         // Timeout for each export
         otlpmetricgrpc.WithTimeout(30*time.Second),
         // Retry configuration
@@ -66,7 +65,7 @@ func initChronosphereMetrics() (*sdkmetric.MeterProvider, error) {
         resource.WithAttributes(
             semconv.ServiceName("payment-processor"),
             semconv.ServiceVersion("3.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -95,7 +94,7 @@ func initChronosphereTracing() (*sdktrace.TracerProvider, error) {
         otlptracegrpc.WithHeaders(map[string]string{
             "API-Token": chronosphereAPIToken,
         }),
-        otlptracegrpc.WithCompressor("snappy"),
+        otlptracegrpc.WithCompressor("gzip"),
     )
     if err != nil {
         return nil, err
@@ -114,6 +113,16 @@ func initChronosphereTracing() (*sdktrace.TracerProvider, error) {
 Chronosphere works best with well-structured metrics that follow naming conventions:
 
 ```go
+package main
+
+import (
+    "context"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/metric"
+)
+
 func createApplicationMetrics() {
     meter := otel.Meter("payment-processor")
 
@@ -157,6 +166,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
+from grpc import Compression
 
 CHRONOSPHERE_ENDPOINT = "your-company.chronosphere.io:443"
 CHRONOSPHERE_TOKEN = "your-chronosphere-api-token"
@@ -164,15 +174,15 @@ CHRONOSPHERE_TOKEN = "your-chronosphere-api-token"
 resource = Resource.create({
     "service.name": "order-service",
     "service.version": "2.0.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
-# Configure with Snappy compression
+# Configure with gzip compression
 
 exporter = OTLPMetricExporter(
     endpoint=CHRONOSPHERE_ENDPOINT,
     headers=(("api-token", CHRONOSPHERE_TOKEN),),
-    compression=Compression.Gzip,  # Use gzip if Snappy not available in Python
+    compression=Compression.Gzip,
     timeout=30,
 )
 
@@ -208,23 +218,24 @@ order_value.record(4999, {"order.type": "standard", "region": "us-east"})
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-company.chronosphere.io:443"
 export OTEL_EXPORTER_OTLP_HEADERS="API-Token=your-chronosphere-api-token"
-export OTEL_EXPORTER_OTLP_COMPRESSION="snappy"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+export OTEL_EXPORTER_OTLP_COMPRESSION="gzip"
 export OTEL_SERVICE_NAME="my-service"
 export OTEL_METRIC_EXPORT_INTERVAL=15000
 ```
 
-## Snappy vs Gzip Performance
+## Compression Support
 
-Snappy compression is designed for speed rather than maximum compression:
+Chronosphere supports gzip, Snappy, and zstd compression, but standard OpenTelemetry SDK exporter configuration only guarantees gzip support. If you are using the standard Go or Python OTLP gRPC exporters directly, use gzip:
 
-| Property | Snappy | Gzip |
-|---|---|---|
-| Compression ratio | Moderate (50-60%) | High (70-80%) |
-| Compression speed | Very fast | Moderate |
-| Decompression speed | Very fast | Moderate |
-| CPU usage | Low | Higher |
+| Property | Gzip |
+|---|---|
+| Compression ratio | High |
+| Compression speed | Moderate |
+| Decompression speed | Moderate |
+| CPU usage | Higher than no compression |
 
-For metrics data that is exported every 15 seconds, Snappy's speed advantage usually outweighs the lower compression ratio. You send slightly more bytes but use less CPU time.
+For metrics data that is exported every 15 seconds, gzip reduces bytes on the wire while staying within the compression values supported by the standard OpenTelemetry exporter APIs and environment variables.
 
 ## Chronosphere Best Practices
 
@@ -234,4 +245,4 @@ When sending metrics to Chronosphere, follow these guidelines:
 - Set appropriate export intervals (15-30 seconds for most metrics)
 - Use histograms instead of computing percentiles client-side
 
-Chronosphere's strength is high-cardinality metrics management. By sending well-structured OpenTelemetry metrics with Snappy compression, you get efficient ingestion and the ability to slice and dice your metrics data across any dimension.
+Chronosphere's strength is high-cardinality metrics management. By sending well-structured OpenTelemetry metrics with supported compression, you get efficient ingestion and the ability to slice and dice your metrics data across any dimension.
