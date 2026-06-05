@@ -21,29 +21,32 @@ sequenceDiagram
     participant P as Producer
     participant B as Message Broker
     participant C as Consumer
-    P->>B: publish (PRODUCER span)
+    P->>B: publish/send (PRODUCER span)
     Note over P,B: Trace context injected into message headers
     B-->>C: deliver
     C->>C: receive/process (CONSUMER span)
     Note over C: Trace context extracted from message headers
-    Note over P,C: Both spans linked in the same trace
+    Note over P,C: Spans correlated through parent context or links
 ```
 
-The semantic conventions define three span kinds for messaging:
+The semantic conventions define messaging operation types and map them to span kinds:
 
-- **PRODUCER**: Created when a message is sent to a broker
-- **CONSUMER**: Created when a message is received and processed
-- **CLIENT**: Used for synchronous request-reply patterns over messaging
+- **create**: A message is created; uses a **PRODUCER** span
+- **send**: A message is sent to a broker; usually uses a **PRODUCER** span
+- **receive**: A pull-based receive or poll operation; uses a **CLIENT** span
+- **process**: A message is processed by a consumer; uses a **CONSUMER** span
+- **settle**: A message is acknowledged, rejected, or otherwise settled; uses a **CLIENT** span
 
 ## Core Messaging Attributes
 
 Every messaging span should include a common set of attributes, regardless of which broker is being used.
 
 ```yaml
-# Required for all messaging spans
+# Core attributes
 
 messaging.system: "kafka"              # The messaging system (kafka, rabbitmq, aws_sqs, etc.)
-messaging.operation.name: "publish"    # publish, receive, process, settle
+messaging.operation.name: "send"       # System-specific operation name (send, publish, poll, consume, etc.)
+messaging.operation.type: "send"       # create, send, receive, process, settle
 messaging.destination.name: "orders"   # Topic, queue, or exchange name
 
 # Recommended attributes
@@ -61,7 +64,7 @@ server.port: 9092
 Let us start with a Kafka producer example. Kafka is one of the most widely used messaging systems, and its instrumentation is well supported by OpenTelemetry.
 
 ```java
-// KafkaTracingProducer.java - Kafka producer with semantic conventions
+// OrderEventProducer.java - Kafka producer with semantic conventions
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
@@ -71,22 +74,37 @@ import io.opentelemetry.context.propagation.TextMapSetter;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Headers;
+import java.nio.charset.StandardCharsets;
 
 public class OrderEventProducer {
     private final KafkaProducer<String, String> producer;
     private final Tracer tracer;
     private final OpenTelemetry openTelemetry;
 
+    public OrderEventProducer(
+            KafkaProducer<String, String> producer,
+            Tracer tracer,
+            OpenTelemetry openTelemetry) {
+        this.producer = producer;
+        this.tracer = tracer;
+        this.openTelemetry = openTelemetry;
+    }
+
     // TextMapSetter injects trace context into Kafka message headers
     private static final TextMapSetter<Headers> HEADER_SETTER =
-        (headers, key, value) -> headers.add(key, value.getBytes());
+        (headers, key, value) -> {
+            if (headers != null && key != null && value != null) {
+                headers.add(key, value.getBytes(StandardCharsets.UTF_8));
+            }
+        };
 
     public void publishOrderCreated(String orderId, String orderJson) {
         // Create a PRODUCER span following messaging semantic conventions
-        Span span = tracer.spanBuilder("orders publish")
+        Span span = tracer.spanBuilder("send orders")
             .setSpanKind(SpanKind.PRODUCER)
             .setAttribute("messaging.system", "kafka")
-            .setAttribute("messaging.operation.name", "publish")
+            .setAttribute("messaging.operation.name", "send")
+            .setAttribute("messaging.operation.type", "send")
             .setAttribute("messaging.destination.name", "orders")
             .setAttribute("messaging.kafka.message.key", orderId)
             .setAttribute("server.address", "kafka-broker-1.internal")
@@ -99,7 +117,7 @@ public class OrderEventProducer {
 
             // Inject the trace context into message headers for propagation
             openTelemetry.getPropagators().getTextMapPropagator()
-                .inject(Context.current().with(span), record.headers(), HEADER_SETTER);
+                .inject(span.storeInContext(Context.current()), record.headers(), HEADER_SETTER);
 
             // Send the message and capture partition/offset in the callback
             producer.send(record, (metadata, exception) -> {
@@ -113,7 +131,7 @@ public class OrderEventProducer {
                         String.valueOf(metadata.partition())
                     );
                     span.setAttribute(
-                        "messaging.kafka.message.offset",
+                        "messaging.kafka.offset",
                         metadata.offset()
                     );
                 }
@@ -129,7 +147,7 @@ public class OrderEventProducer {
 }
 ```
 
-The producer span name follows the convention `{destination} {operation}`, giving us "orders publish". The trace context is injected into the Kafka message headers using OpenTelemetry's propagation API. When a consumer reads this message, it can extract that context and continue the same trace.
+The producer span name follows the convention `{operation} {destination}`, giving us "send orders". The trace context is injected into the Kafka message headers using OpenTelemetry's propagation API. When a consumer reads this message, it can extract that context and continue the same trace or link the producer and consumer spans.
 
 Notice that the span is ended inside the producer callback rather than immediately after `send()`. This is because Kafka's `send()` is asynchronous, and we want the span duration to reflect the actual time it takes for the broker to acknowledge the message.
 
@@ -138,29 +156,49 @@ Notice that the span is ended inside the producer callback rather than immediate
 On the consumer side, we extract the trace context from the message headers and create a CONSUMER span that links back to the producer.
 
 ```java
-// KafkaTracingConsumer.java - Kafka consumer with semantic conventions
+// OrderEventConsumer.java - Kafka consumer with semantic conventions
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.context.propagation.TextMapGetter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.Headers;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public class OrderEventConsumer {
     private final Tracer tracer;
     private final OpenTelemetry openTelemetry;
+
+    public OrderEventConsumer(Tracer tracer, OpenTelemetry openTelemetry) {
+        this.tracer = tracer;
+        this.openTelemetry = openTelemetry;
+    }
 
     // TextMapGetter extracts trace context from Kafka message headers
     private static final TextMapGetter<Headers> HEADER_GETTER = new TextMapGetter<>() {
         @Override
         public Iterable<String> keys(Headers headers) {
             List<String> keys = new ArrayList<>();
-            headers.forEach(h -> keys.add(h.key()));
+            if (headers != null) {
+                headers.forEach(h -> keys.add(h.key()));
+            }
             return keys;
         }
 
         @Override
         public String get(Headers headers, String key) {
+            if (headers == null || key == null) {
+                return null;
+            }
             Header header = headers.lastHeader(key);
-            return header != null ? new String(header.value()) : null;
+            return header != null ? new String(header.value(), StandardCharsets.UTF_8) : null;
         }
     };
 
@@ -172,20 +210,21 @@ public class OrderEventConsumer {
                 .extract(Context.current(), record.headers(), HEADER_GETTER);
 
             // Create a CONSUMER span linked to the producer's trace
-            Span span = tracer.spanBuilder("orders process")
+            Span span = tracer.spanBuilder("process orders")
                 .setParent(extractedContext)
                 .setSpanKind(SpanKind.CONSUMER)
                 .setAttribute("messaging.system", "kafka")
                 .setAttribute("messaging.operation.name", "process")
+                .setAttribute("messaging.operation.type", "process")
                 .setAttribute("messaging.destination.name", "orders")
                 .setAttribute("messaging.kafka.message.key", record.key())
-                .setAttribute("messaging.kafka.message.offset", record.offset())
+                .setAttribute("messaging.kafka.offset", record.offset())
                 .setAttribute("messaging.destination.partition.id",
                     String.valueOf(record.partition()))
                 .setAttribute("messaging.consumer.group.name", "order-processors")
                 .startSpan();
 
-            try {
+            try (Scope scope = span.makeCurrent()) {
                 // Process the message within the span context
                 handleOrderEvent(record.value());
             } catch (Exception e) {
@@ -199,7 +238,7 @@ public class OrderEventConsumer {
 }
 ```
 
-The consumer span name is "orders process" because the operation is processing. The extracted context from message headers becomes the parent of the consumer span, which means both the producer and consumer spans appear in the same trace.
+The consumer span name is "process orders" because the operation is processing. For single-message processing, the extracted context from message headers can become the parent of the consumer span, which means both the producer and consumer spans appear in the same trace. Span links are also commonly used, especially for batches or when processing happens inside another active span.
 
 ## RabbitMQ Instrumentation in Python
 
@@ -209,7 +248,7 @@ RabbitMQ uses a different model based on exchanges and queues. The semantic conv
 # rabbitmq_producer.py - RabbitMQ publisher with semantic conventions
 import pika
 import json
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject
 
 tracer = trace.get_tracer("notification-service")
@@ -219,12 +258,13 @@ def publish_notification(user_id: str, message: str, notification_type: str):
 
     # Create a PRODUCER span for the publish operation
     with tracer.start_as_current_span(
-        name="notifications publish",
+        name="publish notifications:notify." + notification_type,
         kind=trace.SpanKind.PRODUCER,
         attributes={
             "messaging.system": "rabbitmq",
             "messaging.operation.name": "publish",
-            "messaging.destination.name": "notifications",
+            "messaging.operation.type": "send",
+            "messaging.destination.name": f"notifications:notify.{notification_type}",
             # RabbitMQ-specific: the exchange and routing key
             "messaging.rabbitmq.destination.routing_key": f"notify.{notification_type}",
             "server.address": "rabbitmq.internal",
@@ -263,12 +303,13 @@ def publish_notification(user_id: str, message: str, notification_type: str):
         connection.close()
 ```
 
-For RabbitMQ, the `messaging.rabbitmq.destination.routing_key` attribute captures the routing key used for exchange-based routing. This is critical for debugging because it tells you exactly which queue bindings matched.
+For RabbitMQ, the `messaging.rabbitmq.destination.routing_key` attribute captures the routing key used for exchange-based routing. This is critical for debugging because it tells you which routing key was used to match exchange bindings.
 
 ```python
 # rabbitmq_consumer.py - RabbitMQ consumer with semantic conventions
 import pika
-from opentelemetry import trace, context
+import json
+from opentelemetry import trace
 from opentelemetry.propagate import extract
 
 tracer = trace.get_tracer("notification-service")
@@ -281,14 +322,16 @@ def on_message(channel, method, properties, body):
 
     # Create a CONSUMER span linked to the producer trace
     with tracer.start_as_current_span(
-        name="notifications process",
+        name=f"consume {method.exchange}:{method.routing_key}:email-notifications",
         context=ctx,
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "rabbitmq",
-            "messaging.operation.name": "process",
-            "messaging.destination.name": "email-notifications",
+            "messaging.operation.name": "consume",
+            "messaging.operation.type": "process",
+            "messaging.destination.name": f"{method.exchange}:{method.routing_key}:email-notifications",
             "messaging.rabbitmq.destination.routing_key": method.routing_key,
+            "messaging.rabbitmq.message.delivery_tag": method.delivery_tag,
             "messaging.message.body.size": len(body),
             "server.address": "rabbitmq.internal",
             "server.port": 5672,
@@ -310,13 +353,12 @@ The consumer extracts the trace context from the AMQP message properties and use
 
 ## Amazon SQS Instrumentation in Node.js
 
-SQS is the most common messaging system in AWS-based architectures. The conventions treat it similarly to other messaging systems, with SQS-specific attributes for things like message group IDs.
+SQS is the most common messaging system in AWS-based architectures. The conventions treat it similarly to other messaging systems, with SQS-specific attributes for things like queue URLs.
 
 ```javascript
 // sqs-producer.js - SQS publisher with semantic conventions
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { trace, SpanKind, context } = require('@opentelemetry/api');
-const { propagation } = require('@opentelemetry/api');
+const { trace, SpanKind, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-service');
 const sqsClient = new SQSClient({ region: 'us-east-1' });
@@ -325,15 +367,17 @@ async function publishPaymentEvent(paymentId, amount, currency) {
   const queueUrl = 'https://sqs.us-east-1.amazonaws.com/123456789/payment-events';
 
   // Create a PRODUCER span for the SQS send operation
-  const span = tracer.startSpan('payment-events publish', {
+  const span = tracer.startSpan('send payment-events', {
     kind: SpanKind.PRODUCER,
     attributes: {
       'messaging.system': 'aws_sqs',
-      'messaging.operation.name': 'publish',
+      'messaging.operation.name': 'send',
+      'messaging.operation.type': 'send',
       'messaging.destination.name': 'payment-events',
       'cloud.region': 'us-east-1',
       'cloud.account.id': '123456789',
       'server.address': 'sqs.us-east-1.amazonaws.com',
+      'aws.sqs.queue.url': queueUrl,
     },
   });
 
@@ -341,7 +385,8 @@ async function publishPaymentEvent(paymentId, amount, currency) {
     // Inject trace context into message attributes for propagation
     const messageAttributes = {};
     const carrier = {};
-    propagation.inject(context.active(), carrier);
+    const spanContext = trace.setSpan(context.active(), span);
+    propagation.inject(spanContext, carrier);
 
     // Convert trace context headers to SQS message attributes
     for (const [key, value] of Object.entries(carrier)) {
@@ -357,7 +402,7 @@ async function publishPaymentEvent(paymentId, amount, currency) {
       QueueUrl: queueUrl,
       MessageBody: payload,
       MessageAttributes: messageAttributes,
-      // Use payment ID as deduplication key for FIFO queues
+      // Group related payment messages for FIFO ordering or standard-queue fairness
       MessageGroupId: 'payments',
     });
 
@@ -367,7 +412,7 @@ async function publishPaymentEvent(paymentId, amount, currency) {
     span.setAttribute('messaging.message.id', result.MessageId);
     span.setAttribute('messaging.message.body.size', Buffer.byteLength(payload));
   } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     span.recordException(error);
     throw error;
   } finally {
@@ -381,9 +426,10 @@ SQS uses message attributes (not headers) for metadata. The trace context is inj
 ```javascript
 // sqs-consumer.js - SQS consumer with semantic conventions
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
-const { trace, SpanKind, context, propagation } = require('@opentelemetry/api');
+const { trace, SpanKind, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-processor');
+const sqsClient = new SQSClient({ region: 'us-east-1' });
 
 async function pollAndProcess() {
   const queueUrl = 'https://sqs.us-east-1.amazonaws.com/123456789/payment-events';
@@ -407,32 +453,36 @@ async function pollAndProcess() {
 
     // Create a CONSUMER span linked to the producer trace
     const span = tracer.startSpan(
-      'payment-events process',
+      'process payment-events',
       {
         kind: SpanKind.CONSUMER,
         attributes: {
           'messaging.system': 'aws_sqs',
           'messaging.operation.name': 'process',
+          'messaging.operation.type': 'process',
           'messaging.destination.name': 'payment-events',
           'messaging.message.id': message.MessageId,
           'cloud.region': 'us-east-1',
           'server.address': 'sqs.us-east-1.amazonaws.com',
+          'aws.sqs.queue.url': queueUrl,
         },
       },
       extractedContext,
     );
 
     try {
-      const payment = JSON.parse(message.Body);
-      await processPayment(payment);
+      await context.with(trace.setSpan(extractedContext, span), async () => {
+        const payment = JSON.parse(message.Body);
+        await processPayment(payment);
 
-      // Delete message after successful processing
-      await sqsClient.send(new DeleteMessageCommand({
-        QueueUrl: queueUrl,
-        ReceiptHandle: message.ReceiptHandle,
-      }));
+        // Delete message after successful processing
+        await sqsClient.send(new DeleteMessageCommand({
+          QueueUrl: queueUrl,
+          ReceiptHandle: message.ReceiptHandle,
+        }));
+      });
     } catch (error) {
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       span.recordException(error);
     } finally {
       span.end();
@@ -458,7 +508,7 @@ SELECT
     count(*) as message_count
 FROM spans
 WHERE messaging.system IS NOT NULL
-  AND messaging.operation.name = 'process'
+  AND messaging.operation.type = 'process'
 GROUP BY messaging.system, messaging.destination.name, messaging.operation.name
 ORDER BY p99_processing_ms DESC;
 ```
@@ -467,6 +517,6 @@ This single query shows you processing latency across Kafka, RabbitMQ, and SQS. 
 
 ## Wrapping Up
 
-Messaging semantic conventions bring order to the chaos of event-driven architectures. The core pattern is the same across all brokers: set `messaging.system`, `messaging.operation.name`, and `messaging.destination.name` on every span. Inject trace context into message headers on the producer side and extract it on the consumer side. Add system-specific attributes like partition IDs for Kafka, routing keys for RabbitMQ, or message group IDs for SQS.
+Messaging semantic conventions bring order to the chaos of event-driven architectures. The core pattern is the same across all brokers: set `messaging.system`, `messaging.operation.name`, `messaging.operation.type`, and `messaging.destination.name` on every span. Inject trace context into message headers or attributes on the producer side and extract it on the consumer side. Add system-specific attributes like partition IDs for Kafka, routing keys for RabbitMQ, or queue URLs for SQS.
 
 With these conventions in place, you get traces that span the full lifecycle of a message, from publication through broker delivery to consumer processing. When messages start failing or backing up, you will know exactly where to look.
