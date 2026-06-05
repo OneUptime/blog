@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Contrib, Package, Instrumentation, Libraries
 
 Description: A practical guide to understanding OpenTelemetry contrib packages, their purpose, and when to integrate them into your observability stack.
 
-When you start working with OpenTelemetry, you'll quickly encounter two distinct repositories: the core specification and the contrib packages. The core provides the fundamental APIs and SDKs, while contrib packages offer pre-built instrumentation for popular libraries and frameworks. Understanding the distinction and knowing when to use contrib packages can save you weeks of custom instrumentation work.
+When you start working with OpenTelemetry, you'll quickly encounter two distinct kinds of repositories: the core specification and language SDKs, and the contrib packages. The core specification and SDKs provide the fundamental APIs and implementations, while contrib packages offer pre-built instrumentation for popular libraries and frameworks. Understanding the distinction and knowing when to use contrib packages can save you weeks of custom instrumentation work.
 
 ## What Are OpenTelemetry Contrib Packages
 
-Contrib packages are community-maintained instrumentation libraries that automatically capture telemetry data from third-party frameworks, databases, HTTP clients, and other common tools. Rather than manually instrumenting every database call or HTTP request, you can use a contrib package that hooks into the library and generates spans, metrics, and logs automatically.
+Contrib packages are community-maintained instrumentation libraries that automatically capture telemetry data from third-party frameworks, databases, HTTP clients, and other common tools. Rather than manually instrumenting every database call or HTTP request, you can use a contrib package that hooks into the library and generates telemetry such as spans and metrics where supported.
 
 The contrib repositories exist separately from the core because they evolve at different speeds. Core APIs follow a strict stability guarantee, while contrib packages need flexibility to adapt to breaking changes in the libraries they instrument. This separation allows the project to maintain a stable foundation while still supporting the fast-moving ecosystem of web frameworks, databases, and cloud services.
 
@@ -33,7 +33,7 @@ graph TD
 
 The core OpenTelemetry package provides the specification, API, and SDK. These components define how traces, metrics, and logs should be created, propagated, and exported. The core is intentionally minimal and focuses on providing stable interfaces.
 
-Contrib packages build on top of this foundation. They provide automatic instrumentation for specific technologies. For example, if you're using Express.js in Node.js, the `@opentelemetry/instrumentation-express` package automatically creates spans for incoming HTTP requests and outgoing responses without requiring you to modify your route handlers.
+Contrib packages build on top of this foundation. They provide automatic instrumentation for specific technologies. For example, if you're using Express.js in Node.js, the `@opentelemetry/instrumentation-express` package automatically creates spans for Express middleware, routers, and route handlers without requiring you to modify your route handlers. It is usually used together with `@opentelemetry/instrumentation-http`, which creates the incoming HTTP server span.
 
 The key difference comes down to maintenance and stability. Core packages are maintained by the OpenTelemetry organization with strict backward compatibility guarantees. Contrib packages are maintained by community members and may break when the underlying library changes. This trade-off gives you powerful automation while keeping the core stable.
 
@@ -80,7 +80,7 @@ app.get('/users/:id', async (req, res) => {
 app.listen(3000);
 ```
 
-The beauty of this approach is that your application code doesn't change. The contrib packages monkey-patch the underlying libraries to inject instrumentation at runtime. Every HTTP request to your Express app generates a parent span, and the PostgreSQL query creates a child span with the SQL statement captured as an attribute.
+The beauty of this approach is that your application code doesn't change. The contrib packages monkey-patch the underlying libraries to inject instrumentation at runtime. With HTTP, Express, and PostgreSQL instrumentation enabled, every HTTP request to your Express app generates a server span, Express creates spans for matching middleware and route handlers, and the PostgreSQL query creates a child span with database attributes such as the SQL statement.
 
 ## Navigating the Contrib Repository
 
@@ -88,7 +88,7 @@ Each language has its own contrib repository with different packages. The JavaSc
 
 To find the right package, start with the language-specific contrib repository on GitHub. For Node.js, that's `open-telemetry/opentelemetry-js-contrib`. The README lists all available instrumentation packages with links to their documentation.
 
-Each instrumentation package has its own configuration options. Some packages are plug-and-play, while others require configuration to capture the right level of detail. For example, the HTTP instrumentation can be configured to ignore certain routes, sanitize headers, or capture request and response bodies.
+Each instrumentation package has its own configuration options. Some packages are plug-and-play, while others require configuration to capture the right level of detail. For example, the HTTP instrumentation can be configured to ignore certain requests, capture selected headers as span attributes, or add custom attributes with hooks.
 
 ```javascript
 // Configure HTTP instrumentation with custom options
@@ -96,12 +96,15 @@ const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
 const httpInstrumentation = new HttpInstrumentation({
   // Ignore health check endpoints
-  ignoreIncomingPaths: ['/health', '/ready'],
+  ignoreIncomingRequestHook: (request) =>
+    request.url === '/health' || request.url === '/ready',
 
-  // Sanitize sensitive headers
+  // Capture only selected headers as span attributes
   headersToSpanAttributes: {
-    requestHeaders: ['user-agent', 'accept'],
-    responseHeaders: ['content-type'],
+    server: {
+      requestHeaders: ['user-agent', 'accept'],
+      responseHeaders: ['content-type'],
+    },
   },
 
   // Add custom attributes to spans
@@ -120,36 +123,38 @@ Custom instrumentation also makes sense when you want to capture business-level 
 Here's an example of custom instrumentation alongside contrib packages:
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-service');
 
 async function processPayment(userId, amount) {
-  // Create a custom span for the business operation
-  const span = tracer.startSpan('process_payment');
-  span.setAttribute('user.id', userId);
-  span.setAttribute('payment.amount', amount);
+  // Create an active custom span for the business operation
+  return tracer.startActiveSpan('process_payment', async (span) => {
+    span.setAttribute('user.id', userId);
+    span.setAttribute('payment.amount', amount);
 
-  try {
-    // These calls are automatically instrumented by contrib packages
-    const user = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-    const paymentResult = await stripeClient.charges.create({
-      amount: amount * 100,
-      currency: 'usd',
-      customer: user.stripe_id,
-    });
+    try {
+      // These calls are automatically instrumented by contrib packages
+      const result = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+      const user = result.rows[0];
+      const paymentResult = await stripeClient.paymentIntents.create({
+        amount: amount * 100,
+        currency: 'usd',
+        customer: user.stripe_customer_id,
+      });
 
-    span.setAttribute('payment.id', paymentResult.id);
-    span.setStatus({ code: 1 }); // OK
+      span.setAttribute('payment.id', paymentResult.id);
+      span.setStatus({ code: SpanStatusCode.OK });
 
-    return paymentResult;
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2, message: error.message }); // ERROR
-    throw error;
-  } finally {
-    span.end();
-  }
+      return paymentResult;
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 ```
 
@@ -171,7 +176,7 @@ Most contrib packages are optimized to minimize overhead, but you should still m
 
 ```javascript
 // Configure sampling to reduce overhead
-const { TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
+const { TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-node');
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
@@ -197,11 +202,13 @@ Most production deployments use environment variables to configure instrumentati
 // Use environment variables for production configuration
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+    url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
   sampler: new TraceIdRatioBasedSampler(
-    parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG) || 1.0
+    Number.isFinite(parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG))
+      ? parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG)
+      : 1.0
   ),
 });
 ```
