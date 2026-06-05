@@ -14,7 +14,7 @@ This guide walks through how to use OpenTelemetry to instrument, monitor, and tr
 
 ## The PCI DSS Observability Problem
 
-PCI DSS (Payment Card Industry Data Security Standard) defines strict rules around how cardholder data is handled. The primary account number (PAN), cardholder name, expiration date, and CVV must never appear in logs, traces, or any monitoring system outside the Cardholder Data Environment (CDE).
+PCI DSS (Payment Card Industry Data Security Standard) defines strict rules around how account data is handled. The primary account number (PAN), cardholder name, expiration date, and service code are cardholder data, while CVV is sensitive authentication data that must not be stored after authorization. None of these values should appear in logs, traces, or any monitoring system outside the Cardholder Data Environment (CDE).
 
 The challenge for observability is that payment APIs naturally handle this data on every request. A naive instrumentation setup could easily capture credit card numbers in HTTP request bodies, log full API payloads for debugging, or include PANs in error messages when transactions fail.
 
@@ -34,7 +34,7 @@ graph TB
     style F fill:#9cf,stroke:#333,stroke-width:2px
 ```
 
-The key insight is that the OpenTelemetry Collector must sit outside the CDE, and telemetry must be sanitized before it crosses that boundary. No cardholder data should ever leave the CDE through the observability pipeline.
+The key insight is that any OpenTelemetry Collector or backend outside the CDE must receive only sanitized telemetry. If a collector receives unsanitized cardholder data, that collector is part of the CDE. No cardholder data should ever leave the CDE through the observability pipeline.
 
 ## Instrumenting Payment Endpoints
 
@@ -48,9 +48,12 @@ Start with the payment service itself. The instrumentation must capture enough d
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 import hashlib
+import hmac
+import os
 import time
 
 tracer = trace.get_tracer("payment-service", "2.1.0")
+PAN_CORRELATION_KEY = os.environ["PAN_CORRELATION_KEY"].encode()
 
 def process_payment(request):
     """Process a payment while keeping cardholder data out of telemetry."""
@@ -61,14 +64,13 @@ def process_payment(request):
         span.set_attribute("payment.currency", request.currency)
         span.set_attribute("payment.amount_cents", request.amount_cents)
 
-        # Safe: use a truncated hash of the PAN for correlation
-        # PCI DSS allows storing first 6 and last 4 digits, but even
-        # that is more than we need for observability
+        # Safer: use a keyed HMAC for correlation, or use a token
+        # returned by your payment processor or token vault.
         pan_token = tokenize_pan(request.card_number)
         span.set_attribute("payment.pan_token", pan_token)
 
-        # Safe: record the BIN (first 6 digits) for fraud analysis
-        # PCI DSS explicitly permits storing the BIN
+        # Safe when there is a business need: record the BIN/IIN
+        # for routing or fraud analysis.
         span.set_attribute("payment.bin", request.card_number[:6])
 
         # Safe: merchant and transaction metadata
@@ -110,15 +112,21 @@ def process_payment(request):
 
 
 def tokenize_pan(card_number: str) -> str:
-    """Create a non-reversible token from a PAN for telemetry correlation.
+    """Create a keyed correlation value from a PAN.
 
     This allows tracing multiple transactions for the same card
-    without storing or transmitting the actual card number.
+    without storing or transmitting the actual card number. Keep
+    PAN_CORRELATION_KEY inside the CDE and manage it as a PCI key.
     """
-    return hashlib.sha256(card_number.encode()).hexdigest()[:12]
+    digest = hmac.new(
+        PAN_CORRELATION_KEY,
+        card_number.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest[:16]
 ```
 
-Notice that we never set an attribute containing the full card number, expiration date, or CVV. The `tokenize_pan` function produces a consistent hash so you can search for all transactions involving the same card, but you cannot reverse it to get the actual PAN.
+Notice that we never set an attribute containing the full card number, expiration date, or CVV. The `tokenize_pan` function produces a consistent keyed value so you can search for all transactions involving the same card without exposing the raw PAN. Confirm this design with your QSA, because PAN-derived correlation values and the key-management process can still affect PCI scope.
 
 ## Tracking Payment Latency and Success Rates
 
@@ -191,21 +199,18 @@ receivers:
 processors:
   # Strip cardholder data patterns from all telemetry
   transform/pci_redact:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Redact credit card numbers (13-19 digit sequences)
-          - replace_pattern(attributes["http.request.body"], "\\b\\d{13,19}\\b", "[PAN-REDACTED]")
-          # Redact CVV patterns (3-4 digits following common CVV field names)
-          - replace_pattern(attributes["http.request.body"], "(?i)(cvv|cvc|cvv2|csc)[\"':=\\s]+\\d{3,4}", "$1=[CVV-REDACTED]")
-          # Redact expiration dates in common formats
-          - replace_pattern(attributes["http.request.body"], "\\b(0[1-9]|1[0-2])[/\\-](2[0-9]{3}|[0-9]{2})\\b", "[EXP-REDACTED]")
+      # Redact credit card numbers (13-19 digit sequences)
+      - replace_pattern(span.attributes["http.request.body"], "\\b\\d{13,19}\\b", "[PAN-REDACTED]")
+      # Redact CVV patterns (3-4 digits following common CVV field names)
+      - replace_pattern(span.attributes["http.request.body"], "(?i)(cvv|cvc|cvv2|csc)[\"':=\\s]+\\d{3,4}", "$1=[CVV-REDACTED]")
+      # Redact expiration dates in common formats
+      - replace_pattern(span.attributes["http.request.body"], "\\b(0[1-9]|1[0-2])[/\\-](2[0-9]{3}|[0-9]{2})\\b", "[EXP-REDACTED]")
 
     log_statements:
-      - context: log
-        statements:
-          - replace_pattern(body, "\\b\\d{13,19}\\b", "[PAN-REDACTED]")
-          - replace_pattern(body, "(?i)(cvv|cvc|cvv2|csc)[\"':=\\s]+\\d{3,4}", "$1=[CVV-REDACTED]")
+      - replace_pattern(log.body, "\\b\\d{13,19}\\b", "[PAN-REDACTED]")
+      - replace_pattern(log.body, "(?i)(cvv|cvc|cvv2|csc)[\"':=\\s]+\\d{3,4}", "$1=[CVV-REDACTED]")
 
   # Delete high-risk attributes entirely
   attributes/pci_strip:
@@ -275,10 +280,10 @@ from opentelemetry import trace, metrics
 tracer = trace.get_tracer("gateway-monitor", "1.0.0")
 meter = metrics.get_meter("gateway-monitor", "1.0.0")
 
-# Track consecutive failures per gateway for circuit breaker logic
+# Track gateway failures for circuit breaker monitoring
 gateway_errors = meter.create_counter(
     name="payment.gateway.errors",
-    description="Consecutive gateway errors for circuit breaker monitoring",
+    description="Total gateway errors for circuit breaker monitoring",
 )
 
 gateway_health = meter.create_gauge(
@@ -354,7 +359,7 @@ groups:
       - alert: GatewayLatencyHigh
         expr: |
           histogram_quantile(0.99,
-            rate(payment_gateway_latency_bucket[5m])
+            sum by (le) (rate(payment_gateway_latency_bucket[5m]))
           ) > 2000
         for: 3m
         labels:
@@ -368,9 +373,7 @@ groups:
       # This should never fire if the pipeline is working correctly
       - alert: PotentialCardDataInTelemetry
         expr: |
-          sum(rate(otelcol_processor_transform_match_count{
-            pattern="PAN-REDACTED"
-          }[5m])) > 0
+          sum(rate(pci_telemetry_redaction_events_total[5m])) > 0
         for: 1m
         labels:
           severity: critical
@@ -379,7 +382,7 @@ groups:
           summary: "Cardholder data detected and redacted in telemetry pipeline"
 ```
 
-The last alert is especially important. If the collector's redaction processor is actively catching and replacing card number patterns, it means application code is leaking cardholder data. This should trigger an immediate investigation and code fix, even though the collector prevented the data from reaching the backend.
+The last alert is especially important. Expose `pci_telemetry_redaction_events_total` from your collector-side redaction audit logs, validation tests, or backend log-derived metrics. If the collector is actively catching and replacing card number patterns, it means application code is leaking cardholder data. This should trigger an immediate investigation and code fix, even though the collector prevented the data from reaching the backend.
 
 ## Tracing a Payment Through the Full Lifecycle
 
@@ -408,6 +411,8 @@ Treat your PCI observability pipeline like any other security control: test it c
 ```python
 # test_pci_compliance.py
 # Validate that the observability pipeline strips cardholder data
+
+import time
 
 TEST_CARD_NUMBERS = [
     "4111111111111111",    # Visa test number
