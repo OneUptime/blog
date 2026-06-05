@@ -78,8 +78,10 @@ commands = dockerfile.parse_file("Dockerfile")
 # - json: whether arguments are in JSON format
 # - original: the original line from the Dockerfile
 # - start_line: line number where the instruction starts
+# - end_line: line number where the instruction ends
 # - flags: any flags used (like --from=builder)
 # - value: tuple of argument values
+# - heredocs: any heredoc content attached to the instruction
 
 for cmd in commands:
     print(f"Line {cmd.start_line}: {cmd.cmd} {' '.join(cmd.value)}")
@@ -157,9 +159,10 @@ def analyze_dockerfile(path):
 
         elif instruction == "LABEL":
             # Parse label key=value pairs
-            for item in cmd.value:
-                if "=" in item:
-                    key, value = item.split("=", 1)
+            for i in range(0, len(cmd.value), 2):
+                if i + 1 < len(cmd.value):
+                    key = cmd.value[i]
+                    value = cmd.value[i + 1]
                     analysis["labels"][key] = value.strip('"')
 
     return analysis
@@ -464,14 +467,11 @@ def generate_docs(path):
         doc.append("| Variable | Default |")
         doc.append("|----------|---------|")
         for env in envs:
-            text = " ".join(env.value)
-            if "=" in text:
-                key, value = text.split("=", 1)
-                doc.append(f"| `{key}` | `{value}` |")
-            else:
-                parts = env.value
-                if len(parts) >= 2:
-                    doc.append(f"| `{parts[0]}` | `{parts[1]}` |")
+            for i in range(0, len(env.value), 2):
+                if i + 1 < len(env.value):
+                    key = env.value[i]
+                    value = env.value[i + 1]
+                    doc.append(f"| `{key}` | `{value}` |")
         doc.append("")
 
     # Document volumes
