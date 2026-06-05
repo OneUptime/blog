@@ -61,34 +61,34 @@ class SymptomAnalyzer:
 
         # Get the current error rate
         current_errors = self.metrics_client.query_rate(
-            metric="http.server.errors",
-            labels={"service.name": service},
+            metric="http.server.request.duration",
+            labels={"service.name": service, "error.type": "*"},
             start=start_time,
             end=now,
         )
 
         # Get the baseline error rate from the same period yesterday
         baseline_errors = self.metrics_client.query_rate(
-            metric="http.server.errors",
-            labels={"service.name": service},
+            metric="http.server.request.duration",
+            labels={"service.name": service, "error.type": "*"},
             start=start_time - timedelta(days=1),
             end=now - timedelta(days=1),
         )
 
         # Break down errors by endpoint and type
         error_breakdown = self.metrics_client.query_grouped(
-            metric="http.server.errors",
-            group_by=["http.route", "error.category"],
-            labels={"service.name": service},
+            metric="http.server.request.duration",
+            group_by=["http.route", "error.type"],
+            labels={"service.name": service, "error.type": "*"},
             start=start_time,
             end=now,
         )
 
         # Break down by status code
         status_breakdown = self.metrics_client.query_grouped(
-            metric="http.server.errors",
-            group_by=["http.status_code"],
-            labels={"service.name": service},
+            metric="http.server.request.duration",
+            group_by=["http.response.status_code"],
+            labels={"service.name": service, "error.type": "*"},
             start=start_time,
             end=now,
         )
@@ -293,10 +293,9 @@ class SignalCorrelator:
         changes = []
         metrics_to_check = [
             "http.server.request.duration",
-            "http.server.errors",
-            "db.query.duration",
+            "db.client.operation.duration",
             "system.cpu.utilization",
-            "system.memory.utilization",
+            "system.memory.usage",
         ]
 
         for metric_name in metrics_to_check:
