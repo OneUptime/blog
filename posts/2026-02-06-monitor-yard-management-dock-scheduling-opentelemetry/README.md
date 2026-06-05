@@ -15,12 +15,20 @@ from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="http://otel-collector:4317")
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(
+    OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("yard.management")
 meter = metrics.get_meter("yard.management")
@@ -44,7 +52,8 @@ def check_in_truck(truck_id: str, carrier: str, appointment_id: str):
             appt_span.set_attribute("appointment.type", appointment.load_type)  # inbound or outbound
 
             import datetime
-            arrival_delta = (datetime.datetime.now() - appointment.scheduled).total_seconds() / 60
+            now = datetime.datetime.now(appointment.scheduled.tzinfo) if appointment.scheduled.tzinfo else datetime.datetime.now()
+            arrival_delta = (now - appointment.scheduled).total_seconds() / 60
             appt_span.set_attribute("appointment.early_late_minutes", round(arrival_delta))
 
             if abs(arrival_delta) > 60:
@@ -155,10 +164,10 @@ truck_wait_time = meter.create_histogram(
 )
 
 # Dock utilization
-dock_utilization = meter.create_histogram(
-    "dock.utilization_pct",
-    description="Percentage of dock doors in use at measurement time",
-    unit="pct"
+dock_utilization = meter.create_gauge(
+    "dock.utilization",
+    description="Fraction of dock doors in use at measurement time",
+    unit="1"
 )
 
 # Yard move duration
