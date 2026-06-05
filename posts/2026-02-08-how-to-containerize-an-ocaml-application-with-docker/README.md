@@ -103,7 +103,7 @@ version: "0.1.0"
 depends: [
   "ocaml" {>= "5.1.0"}
   "dune" {>= "3.12"}
-  "dream" {>= "1.0.0~alpha5"}
+  "dream" {>= "1.0.0~alpha8"}
   "yojson" {>= "2.1.0"}
 ]
 build: [
@@ -131,7 +131,7 @@ USER opam
 
 # Copy opam file and install dependencies
 COPY --chown=opam:opam ocaml_docker_demo.opam ./
-RUN opam install --deps-only -y .
+RUN opam update && opam install --deps-only -y .
 
 # Copy source and build
 COPY --chown=opam:opam . .
@@ -162,7 +162,7 @@ WORKDIR /home/opam/app
 
 # Copy opam file first for dependency caching
 COPY --chown=opam:opam ocaml_docker_demo.opam dune-project ./
-RUN opam install --deps-only -y .
+RUN opam update && opam install --deps-only -y .
 
 # Copy source and build in release mode
 COPY --chown=opam:opam . .
@@ -174,7 +174,7 @@ FROM ubuntu:22.04
 # Install only runtime libraries
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libev4 libssl3 ca-certificates \
+    libev4 libssl3 ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -196,13 +196,13 @@ CMD ["/app/server"]
 
 The runtime image drops from several GB to around 80 MB.
 
-## Static Linking with Alpine
+## Smaller Images with Alpine
 
-For even smaller images, build with musl on Alpine:
+For even smaller images, build and run on Alpine's musl-based userspace:
 
 ```dockerfile
-# Stage 1: Build on Alpine for static linking
-FROM ocaml/opam:alpine-3.19-ocaml-5.1 AS builder
+# Stage 1: Build on Alpine
+FROM ocaml/opam:alpine-3.22-ocaml-5.1 AS builder
 
 USER root
 RUN apk add --no-cache libev-dev openssl-dev linux-headers
@@ -211,13 +211,13 @@ USER opam
 WORKDIR /home/opam/app
 
 COPY --chown=opam:opam ocaml_docker_demo.opam dune-project ./
-RUN opam install --deps-only -y .
+RUN opam update && opam install --deps-only -y .
 
 COPY --chown=opam:opam . .
 RUN opam exec -- dune build --release
 
 # Stage 2: Alpine runtime
-FROM alpine:3.19
+FROM alpine:3.22
 
 RUN apk add --no-cache libev openssl ca-certificates
 
@@ -240,7 +240,7 @@ Pin exact versions in your opam file for reproducibility:
 depends: [
   "ocaml" {= "5.1.1"}
   "dune" {= "3.12.1"}
-  "dream" {= "1.0.0~alpha5"}
+  "dream" {= "1.0.0~alpha8"}
   "yojson" {= "2.1.2"}
 ]
 ```
@@ -257,7 +257,7 @@ Copy the lockfile into Docker:
 ```dockerfile
 # Use lockfile for reproducible builds
 COPY --chown=opam:opam ocaml_docker_demo.opam ocaml_docker_demo.opam.locked ./
-RUN opam install --deps-only --locked -y .
+RUN opam update && opam install --deps-only --locked -y .
 ```
 
 ## The .dockerignore File
@@ -278,7 +278,6 @@ docker-compose.yml
 
 ```yaml
 # docker-compose.yml - OCaml development environment
-version: "3.8"
 services:
   app:
     build:
@@ -318,7 +317,7 @@ USER opam
 WORKDIR /home/opam/app
 
 COPY --chown=opam:opam ocaml_docker_demo.opam dune-project ./
-RUN opam install --deps-only -y . && \
+RUN opam update && opam install --deps-only -y . && \
     opam install ocaml-lsp-server -y
 
 COPY --chown=opam:opam . .
@@ -331,14 +330,18 @@ CMD ["opam", "exec", "--", "dune", "exec", "bin/server.exe"]
 
 ## OCaml 5 and Multicore
 
-OCaml 5 introduced multicore support with domains and effects. Configure your application to use multiple cores:
+OCaml 5 introduced multicore support with domains and effects. Dream uses Lwt for asynchronous I/O; for CPU-bound parallelism, spawn domains explicitly or use a domain-based worker pool. You can size that pool from an environment variable:
 
 ```ocaml
-(* Use multiple domains for parallel request handling *)
+(* Size a domain pool for CPU-bound work. *)
 let () =
-  let num_cores = try int_of_string (Sys.getenv "CORES") with _ -> 1 in
-  Printf.printf "Using %d cores\n%!" num_cores;
-  (* Dream handles this internally with its async runtime *)
+  let num_domains =
+    match Sys.getenv_opt "CORES" with
+    | Some value -> int_of_string value
+    | None -> Domain.recommended_domain_count ()
+  in
+  Printf.printf "Domain pool size: %d\n%!" num_domains;
+  (* Create and use a domain pool for CPU-bound handlers as needed. *)
   Dream.run ~port:8080 ~interface:"0.0.0.0"
   @@ Dream.logger
   @@ Dream.router [ (* routes *) ]
@@ -347,7 +350,7 @@ let () =
 Set CPU limits in Docker to match:
 
 ```bash
-# Allocate 4 CPUs for an OCaml 5 multicore application
+# Make 4 CPUs available to an OCaml 5 multicore application
 docker run -d \
   --name ocaml-server \
   -p 8080:8080 \
@@ -368,7 +371,7 @@ USER opam
 
 WORKDIR /home/opam/app
 COPY --chown=opam:opam . .
-RUN opam install --deps-only --with-test -y .
+RUN opam update && opam install --deps-only --with-test -y .
 RUN opam exec -- dune runtest
 
 # Build stage continues from test
@@ -382,4 +385,4 @@ OCaml applications are reliable by nature thanks to the language's strong type s
 
 ## Summary
 
-Containerizing OCaml applications requires working with opam, which adds complexity to the Docker build. Multi-stage builds separate the heavy opam/compiler toolchain from the lean runtime. The key optimization is caching the opam dependency installation layer, which is the slowest build step. Alpine-based builds produce smaller images through musl linking. OCaml 5's multicore support makes the language even more suitable for containerized services that need to handle concurrent workloads. The combination of OCaml's type safety and native compilation with Docker's standardized deployment creates a robust foundation for production services.
+Containerizing OCaml applications requires working with opam, which adds complexity to the Docker build. Multi-stage builds separate the heavy opam/compiler toolchain from the lean runtime. The key optimization is caching the opam dependency installation layer, which is the slowest build step. Alpine-based builds can produce smaller images with musl-based runtime libraries. OCaml 5's multicore support makes the language even more suitable for containerized services that need to handle concurrent workloads. The combination of OCaml's type safety and native compilation with Docker's standardized deployment creates a robust foundation for production services.
