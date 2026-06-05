@@ -35,7 +35,7 @@ Check the size of a container's log file:
 ls -lh $(docker inspect --format '{{.LogPath}}' my-container)
 
 # Check log sizes for all containers
-docker ps -q | while read id; do
+docker ps -a -q | while read id; do
     name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/\///')
     logpath=$(docker inspect --format '{{.LogPath}}' "$id")
     if [ -f "$logpath" ]; then
@@ -279,7 +279,7 @@ This clears the log file instantly. The container keeps running and new logs are
 
 echo "Truncating Docker container logs..."
 
-docker ps -q | while read id; do
+docker ps -a -q | while read id; do
     logpath=$(docker inspect --format '{{.LogPath}}' "$id")
     name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/\///')
     if [ -f "$logpath" ]; then
@@ -317,13 +317,13 @@ Set up monitoring to track log consumption over time.
 THRESHOLD_MB=500
 
 TOTAL_BYTES=0
-docker ps -q | while read id; do
+while read id; do
     logpath=$(docker inspect --format '{{.LogPath}}' "$id" 2>/dev/null)
     if [ -f "$logpath" ]; then
         size=$(stat -f%z "$logpath" 2>/dev/null || stat -c%s "$logpath" 2>/dev/null)
         TOTAL_BYTES=$((TOTAL_BYTES + size))
     fi
-done
+done < <(docker ps -a -q)
 
 TOTAL_MB=$((TOTAL_BYTES / 1048576))
 
