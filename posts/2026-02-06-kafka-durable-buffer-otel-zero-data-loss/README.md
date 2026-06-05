@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka, Data Durability, Pipeline Architecture
 
-Description: Use Apache Kafka as a durable buffer between OpenTelemetry Collector tiers to guarantee zero telemetry data loss during outages.
+Description: Use Apache Kafka as a durable buffer between OpenTelemetry Collector tiers to reduce telemetry data loss during outages.
 
 The OpenTelemetry Collector's built-in queues are good for handling short bursts and brief backend outages. But if your backend goes down for hours, or you need to reprocess telemetry data, in-process queues fall short. Kafka solves this by acting as a durable, replayable buffer between your edge Collectors and your backend-facing Collectors. This post shows how to set it up.
 
@@ -61,8 +61,9 @@ exporters:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-traces
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto
     # Producer config tuned for durability
     producer:
       # Wait for all in-sync replicas to acknowledge
@@ -80,8 +81,9 @@ exporters:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-logs
-    encoding: otlp_proto
+    logs:
+      topic: otel-logs
+      encoding: otlp_proto
     producer:
       required_acks: -1
       compression: zstd
@@ -93,8 +95,9 @@ exporters:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-metrics
-    encoding: otlp_proto
+    metrics:
+      topic: otel-metrics
+      encoding: otlp_proto
     producer:
       required_acks: -1
       compression: zstd
@@ -182,17 +185,20 @@ receivers:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-traces
-    encoding: otlp_proto
+    traces:
+      topics: [otel-traces]
+      encoding: otlp_proto
     # Consumer group ID - all gateway collectors share the same group
     # so partitions are distributed across them
     group_id: otel-gateway-traces
     # Start from earliest unprocessed message on first join
     initial_offset: earliest
-    # Commit offsets only after successful export
-    auto_commit:
+    # Commit offsets after successful pipeline execution
+    autocommit:
       enable: true
       interval: 5s
+    message_marking:
+      after: true
 
   kafka/logs:
     protocol_version: 3.5.0
@@ -200,10 +206,13 @@ receivers:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-logs
-    encoding: otlp_proto
+    logs:
+      topics: [otel-logs]
+      encoding: otlp_proto
     group_id: otel-gateway-logs
     initial_offset: earliest
+    message_marking:
+      after: true
 
   kafka/metrics:
     protocol_version: 3.5.0
@@ -211,10 +220,13 @@ receivers:
       - kafka-0.kafka.svc:9092
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
-    topic: otel-metrics
-    encoding: otlp_proto
+    metrics:
+      topics: [otel-metrics]
+      encoding: otlp_proto
     group_id: otel-gateway-metrics
     initial_offset: earliest
+    message_marking:
+      after: true
 
 processors:
   batch:
@@ -224,12 +236,14 @@ processors:
 exporters:
   otlp/tempo:
     endpoint: tempo.monitoring.svc:4317
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       max_elapsed_time: 300s
 
-  otlp/loki:
-    endpoint: loki.monitoring.svc:3100
+  otlphttp/loki:
+    endpoint: http://loki.monitoring.svc:3100/otlp
     retry_on_failure:
       enabled: true
 
@@ -247,7 +261,7 @@ service:
     logs:
       receivers: [kafka/logs]
       processors: [batch]
-      exporters: [otlp/loki]
+      exporters: [otlphttp/loki]
     metrics:
       receivers: [kafka/metrics]
       processors: [batch]
@@ -321,4 +335,4 @@ echo "Replay started. Monitor consumer lag to track progress."
 
 ## Summary
 
-Kafka between OTel Collector tiers gives you the durability guarantees that built-in queues cannot match. With 24-hour retention on Kafka topics, replication factor 3, and min.insync.replicas set to 2, you can survive extended backend outages without losing a single span or log record. The trade-off is operational complexity - you now have a Kafka cluster to manage. But for teams that already run Kafka or need guaranteed zero data loss, this architecture is well worth it.
+Kafka between OTel Collector tiers gives you durability that built-in queues cannot match. With retention sized for your outage window, replication factor 3, min.insync.replicas set to 2, and producers using acks=all, you can survive extended backend outages with a much lower risk of losing spans or log records. The trade-off is operational complexity - you now have a Kafka cluster to manage. But for teams that already run Kafka or need stronger data durability, this architecture is well worth it.
