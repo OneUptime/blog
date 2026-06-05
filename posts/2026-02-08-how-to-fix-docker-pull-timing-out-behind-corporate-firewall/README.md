@@ -86,9 +86,9 @@ Alternatively, configure the proxy in `/etc/docker/daemon.json`:
 }
 ```
 
-## Fix 2: Configure Docker Client Proxy
+## Fix 2: Configure Docker Container Proxy
 
-The Docker client also needs proxy configuration for operations like `docker login` and `docker search`. This is configured per user:
+If containers or builds also need proxy access, configure the Docker client proxy settings per user:
 
 ```bash
 # Create or edit the Docker client config
@@ -108,7 +108,7 @@ nano ~/.docker/config.json
 }
 ```
 
-This configuration is also passed to containers as environment variables during `docker build` operations.
+This configuration is passed to containers as environment variables during `docker run` and as build arguments during `docker build` operations.
 
 ## Fix 3: Handle Corporate SSL/TLS Inspection
 
@@ -140,7 +140,7 @@ sudo update-ca-trust
 sudo systemctl restart docker
 ```
 
-If the certificate is in PEM format, you might need to convert it:
+If the certificate is in DER format, you might need to convert it:
 
 ```bash
 # Convert DER to PEM if needed
@@ -172,8 +172,8 @@ Test that the mirror works:
 # Pull through the mirror
 docker pull nginx:latest
 
-# Check which registry the image came from
-docker inspect nginx:latest | grep -i registry
+# Check the image digest that was pulled
+docker image inspect nginx:latest --format '{{json .RepoDigests}}'
 ```
 
 If your company does not have a registry mirror, you can set up a simple one:
@@ -205,8 +205,9 @@ Sometimes the cleanest solution is asking your IT team to whitelist the required
 registry-1.docker.io:443          # Docker Hub registry API
 auth.docker.io:443                # Docker Hub authentication
 production.cloudflare.docker.com:443  # Image layer CDN
-docker.io:443                     # Docker Hub website
-index.docker.io:443               # Docker Hub index
+production.cloudfront.docker.com:443   # Image layer CDN
+docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com:443  # Image layer storage
+hub.docker.com:443                # Docker Hub website
 
 # For GitHub Container Registry (ghcr.io)
 ghcr.io:443
@@ -266,9 +267,9 @@ Environment="HTTP_PROXY=http://localhost:3128"
 Environment="HTTPS_PROXY=http://localhost:3128"
 ```
 
-## Fix 7: Increase Timeout Settings
+## Fix 7: Increase Retry Attempts
 
-If the proxy works but transfers are slow, increase Docker's timeout:
+If the proxy works but transfers are slow or flaky, increase Docker's download retry attempts:
 
 ```json
 {
@@ -277,7 +278,7 @@ If the proxy works but transfers are slow, increase Docker's timeout:
 }
 ```
 
-For specific slow pulls, use the `--timeout` flag (available in some Docker versions) or pull individual layers:
+For specific slow pulls, use the `--platform` flag to avoid pulling an image variant for the wrong architecture:
 
 ```bash
 # Pull with explicit platform to avoid pulling unnecessary architectures
