@@ -30,9 +30,8 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
-    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 var requestDuration metric.Float64Histogram
@@ -61,8 +60,8 @@ func RecordRequestDuration(ctx context.Context, route string, method string, sta
     requestDuration.Record(ctx, duration.Seconds(),
         metric.WithAttributes(
             attribute.String("http.route", route),
-            attribute.String("http.method", method),
-            attribute.Int("http.status_code", statusCode),
+            attribute.String("http.request.method", method),
+            attribute.Int("http.response.status_code", statusCode),
         ),
     )
 }
@@ -103,7 +102,7 @@ budgets:
 
 ## Enforcement Script
 
-This script queries your metrics backend and checks each endpoint against its budget:
+This script queries your metrics backend and checks each endpoint against its budget. It assumes the default OpenTelemetry-to-Prometheus name translation, where dots become underscores and the `s` unit becomes the `_seconds` suffix:
 
 ```python
 # enforce_budgets.py
@@ -122,7 +121,7 @@ def query_latency_percentile(endpoint, method, percentile):
     query = (
         f'histogram_quantile({percentile}, '
         f'sum(rate(http_server_request_duration_seconds_bucket{{'
-        f'http_route="{endpoint}", http_method="{method}"'
+        f'http_route="{endpoint}", http_request_method="{method}"'
         f'}}[10m])) by (le))'
     )
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
