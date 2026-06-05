@@ -10,14 +10,14 @@ When you run a fleet of OpenTelemetry Collectors, the question is never "will so
 
 ## OpAMP Health Reporting Basics
 
-Every OpAMP agent reports its health through the `AgentToServer` message. The health information includes:
+An OpAMP agent that supports health reporting reports its health through the `AgentToServer` message. The health information includes:
 
-- Whether the agent is healthy and processing data
+- Whether the agent is up and healthy
 - The last error encountered
 - The component health breakdown (which receivers, processors, and exporters are healthy)
-- The timestamp of the last status change
+- The time when the component status was observed
 
-The supervisor continuously monitors the collector process and the collector's health check endpoint, then relays this information to the OpAMP server.
+The supervisor monitors the collector process and can use the collector's health check endpoint, then relays this information to the OpAMP server.
 
 ## Setting Up Health Checks on the Collector
 
@@ -54,14 +54,15 @@ service:
       exporters: [otlp]
 ```
 
-The supervisor polls this endpoint to determine whether the collector is actually processing data or just running as a zombie process.
+The supervisor can poll this endpoint to determine whether the collector has reached its ready state. Treat it as a liveness/readiness check, not proof that every pipeline is successfully processing and exporting data.
 
 ## Handling Health Reports on the Server
 
 On your OpAMP server, implement the message handler to process health reports:
 
 ```go
-OnMessageFunc: func(
+OnMessage: func(
+    ctx context.Context,
     conn types.Connection,
     msg *protobufs.AgentToServer,
 ) *protobufs.ServerToAgent {
@@ -91,7 +92,7 @@ OnMessageFunc: func(
         agentStore.UpdateHealth(agentID, msg.Health)
     }
 
-    return &protobufs.ServerToAgent{}
+    return &protobufs.ServerToAgent{InstanceUid: msg.InstanceUid}
 },
 ```
 
@@ -183,8 +184,8 @@ func checkForDisconnectedAgents(store *AgentStore, timeout time.Duration) {
 Beyond the overall healthy/unhealthy binary, OpAMP lets agents report health at the component level. This is useful for identifying partial failures, like a collector that is receiving data fine but failing to export it:
 
 ```go
-if msg.Health != nil && msg.Health.ComponentHealth != nil {
-    for name, component := range msg.Health.ComponentHealth {
+if msg.Health != nil && msg.Health.ComponentHealthMap != nil {
+    for name, component := range msg.Health.ComponentHealthMap {
         if !component.Healthy {
             log.Printf("Agent %s component %s unhealthy: %s",
                 agentID, name, component.LastError)
