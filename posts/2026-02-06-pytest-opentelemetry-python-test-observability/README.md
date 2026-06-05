@@ -10,7 +10,7 @@ Description: Learn how to instrument your Python test suites with pytest-opentel
 
 Running a test suite and seeing a pass/fail summary is fine for small projects. But once your test suite grows into hundreds or thousands of tests, you need more than a binary outcome. You need to understand which tests are slow, which ones are flaky, and how test execution patterns change over time. That is where pytest-opentelemetry comes in.
 
-The pytest-opentelemetry plugin instruments your pytest runs with OpenTelemetry tracing. Every test session, module, and individual test case becomes a span in a distributed trace. You can export these spans to any OpenTelemetry-compatible backend and analyze them the same way you would analyze production traces.
+The pytest-opentelemetry plugin instruments your pytest runs with OpenTelemetry tracing. Every test session, individual test case, test phase, and fixture setup or teardown becomes a span in a distributed trace. You can export these spans to an OpenTelemetry backend or Collector that accepts OTLP over gRPC and analyze them the same way you would analyze production traces.
 
 ## Why Trace Your Tests
 
@@ -25,7 +25,7 @@ This is especially valuable in CI/CD pipelines where test duration directly impa
 
 ## Installing pytest-opentelemetry
 
-The plugin is available on PyPI and works with pytest 7.x and later. Install it alongside the OpenTelemetry SDK and an exporter of your choice.
+The plugin is available on PyPI. Install it alongside the OpenTelemetry SDK and OTLP exporter.
 
 ```bash
 # Install the pytest plugin and OTLP exporter
@@ -33,7 +33,7 @@ The plugin is available on PyPI and works with pytest 7.x and later. Install it 
 pip install pytest-opentelemetry opentelemetry-sdk opentelemetry-exporter-otlp
 
 # Verify the plugin is recognized by pytest
-pytest --co -q 2>&1 | head -5
+pytest --help | grep export-traces
 ```
 
 Once installed, the plugin registers itself as a pytest plugin automatically. You do not need to add it to your conftest.py or any configuration file.
@@ -52,11 +52,11 @@ export OTEL_SERVICE_NAME="my-app-tests"
 # Set the resource attributes for additional context
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=ci,service.version=1.2.3"
 
-# Run your tests normally; the plugin handles instrumentation
-pytest tests/ -v
+# Run your tests with trace export enabled
+pytest tests/ -v --export-traces
 ```
 
-With those environment variables set, every pytest run will produce spans and export them to your collector or backend. The service name is particularly important because it lets you distinguish test traces from production traces in the same observability platform.
+With those environment variables set and `--export-traces` enabled, pytest will produce spans and export them to your collector or backend. The service name is particularly important because it lets you distinguish test traces from production traces in the same observability platform.
 
 ## Understanding the Span Hierarchy
 
@@ -64,18 +64,17 @@ The plugin creates a structured hierarchy of spans that mirrors the pytest execu
 
 ```mermaid
 graph TD
-    A[Test Session Span] --> B[Test Module Span: test_users.py]
-    A --> C[Test Module Span: test_orders.py]
-    B --> D[Test Case: test_create_user]
-    B --> E[Test Case: test_delete_user]
-    C --> F[Test Case: test_place_order]
-    C --> G[Test Case: test_cancel_order]
-    D --> H[Fixture: db_session setup]
-    D --> I[Test Body Execution]
-    D --> J[Fixture: db_session teardown]
+    A[Test Session Span] --> B[Test Case Span: test_users.py::test_create_user]
+    A --> C[Test Case Span: test_orders.py::test_place_order]
+    B --> D[Test Setup Span]
+    B --> E[Test Call Span]
+    B --> F[Test Teardown Span]
+    D --> G[Fixture: db_session setup]
+    F --> H[Fixture: db_session teardown]
+    E --> I[Instrumented Application Code]
 ```
 
-The session span is the root. Each test module becomes a child span, and individual test cases nest under their module. If your tests call instrumented application code, those spans will also appear as children of the test case span, giving you a complete picture of what happened during each test.
+The session span is the root. Each individual test case becomes a child span, with nested spans for setup, the test call, teardown, and fixture setup or teardown. If your tests call instrumented application code, those spans will also appear under the active test span, giving you a complete picture of what happened during each test.
 
 ## Writing Tests with Rich Span Attributes
 
@@ -105,7 +104,8 @@ def traced_db(request):
     with tracer.start_as_current_span("db.connect") as span:
         span.set_attribute("db.connection_string", "localhost:5432/test_db")
         connection = create_test_connection()
-        yield connection
+
+    yield connection
 
     # Teardown also gets its own span
     with tracer.start_as_current_span("db.disconnect") as span:
@@ -170,12 +170,6 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      # Run a collector sidecar to receive test spans
-      otel-collector:
-        image: otel/opentelemetry-collector-contrib:latest
-        ports:
-          - 4317:4317
 
     steps:
       - uses: actions/checkout@v4
@@ -185,14 +179,14 @@ jobs:
 
       - name: Run tests with tracing
         env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_SERVICE_NAME: "my-app-tests"
           # Add CI-specific attributes for filtering
           OTEL_RESOURCE_ATTRIBUTES: >-
             ci.pipeline.id=${{ github.run_id }},
             ci.branch=${{ github.ref_name }},
             ci.commit.sha=${{ github.sha }}
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --export-traces
 ```
 
 The resource attributes include the pipeline ID, branch name, and commit SHA. These attributes let you query your backend for all test runs on a specific branch or see how test duration changed across commits.
@@ -231,29 +225,20 @@ This script sets up a console exporter so you can see the raw span data in your 
 
 ## Filtering and Sampling Test Spans
 
-In large test suites, exporting every span for every test run can produce a lot of data. You can use the OpenTelemetry SDK's built-in sampling to control the volume.
+In large test suites, exporting every span for every test run can produce a lot of data. You can use the OpenTelemetry SDK's built-in sampling environment variables to control the volume.
 
-```python
-# conftest.py
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+```bash
+# Sample 25% of root test traces in CI to reduce volume
+export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
+export OTEL_TRACES_SAMPLER_ARG="0.25"
 
-# Sample 25% of test traces in CI to reduce volume
-# Use 100% sampling locally for full visibility
-import os
-
-sample_rate = 1.0 if os.getenv("CI") is None else 0.25
-sampler = TraceIdRatioBased(sample_rate)
-
-provider = TracerProvider(sampler=sampler)
-trace.set_tracer_provider(provider)
+pytest tests/ -v --export-traces
 ```
 
-On your local machine, every test run is fully traced. In CI, only 25% of runs produce full traces, keeping your data volume manageable while still giving you enough data to spot trends and outliers.
+On your local machine, you can leave the default sampler in place for full visibility. In CI, this configuration samples 25% of root test traces, keeping your data volume manageable while still giving you enough data to spot trends and outliers.
 
 ## Wrapping Up
 
 Test observability is an underappreciated aspect of software reliability. By instrumenting your pytest runs with pytest-opentelemetry, you transform opaque pass/fail results into rich, queryable telemetry data. You can track test performance over time, catch flaky tests before they erode developer confidence, and understand exactly where time is spent during test execution.
 
-The setup is minimal. Install the plugin, set a few environment variables, and your existing tests start producing spans. From there, you can add custom attributes, integrate with CI/CD, and build dashboards that give your team real visibility into the health of your test suite.
+The setup is minimal. Install the plugin, set a few environment variables, and run pytest with `--export-traces` so your existing tests start exporting spans. From there, you can add custom attributes, integrate with CI/CD, and build dashboards that give your team real visibility into the health of your test suite.
