@@ -93,7 +93,12 @@ exporters:
     tls:
       insecure: false
 
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
@@ -161,6 +166,10 @@ resource "kubernetes_deployment" "otel_collector" {
           port {
             container_port = 8888
             name           = "metrics"
+          }
+          port {
+            container_port = 13133
+            name           = "health"
           }
 
           volume_mount {
@@ -243,6 +252,11 @@ variable "collector_namespace" {
   default     = "observability"
 }
 
+variable "kube_context" {
+  description = "Kubeconfig context to use"
+  type        = string
+}
+
 variable "otlp_endpoint" {
   description = "OTLP backend endpoint"
   type        = string
@@ -286,6 +300,30 @@ variable "collector_replicas" {
   description = "Number of collector replicas"
   type        = number
   default     = 2
+}
+
+variable "collector_cpu_request" {
+  description = "Collector CPU request"
+  type        = string
+  default     = "100m"
+}
+
+variable "collector_memory_request" {
+  description = "Collector memory request"
+  type        = string
+  default     = "256Mi"
+}
+
+variable "collector_cpu_limit" {
+  description = "Collector CPU limit"
+  type        = string
+  default     = "500m"
+}
+
+variable "collector_memory_limit" {
+  description = "Collector memory limit"
+  type        = string
+  default     = "512Mi"
 }
 ```
 
