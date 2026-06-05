@@ -46,29 +46,20 @@ The error typically looks like:
 
 ```text
 java.lang.NoSuchMethodError:
-  'io.opentelemetry.api.trace.SpanBuilder
-   io.opentelemetry.api.trace.SpanBuilder.setAttribute(
-     io.opentelemetry.api.common.AttributeKey, java.lang.Object)'
+  '... io.opentelemetry...SomeClass.someMethod(...)'
 ```
 
-This means the code was compiled against a version that has the method, but the runtime has a different version that does not.
+This means the code was compiled against a version that has the method, but the runtime has a different version that does not. OpenTelemetry's stable Java API has strong backward compatibility guarantees, so between close stable versions such as 1.30.0 and 1.34.0 this is more likely to happen when an older transitive dependency, an alpha artifact, or instrumentation dependency pulls in an incompatible OpenTelemetry artifact.
 
 ## Fix 1: Use a BOM (Bill of Materials)
 
-OpenTelemetry provides a BOM that ensures all packages use the same version:
+OpenTelemetry provides BOMs that ensure related packages use compatible versions. Use the core BOM for API and SDK dependencies. If you use instrumentation dependencies such as the Spring Boot starter, use the instrumentation BOM instead; it also manages compatible core API and SDK versions.
 
 ### Maven
 
 ```xml
 <dependencyManagement>
     <dependencies>
-        <dependency>
-            <groupId>io.opentelemetry</groupId>
-            <artifactId>opentelemetry-bom</artifactId>
-            <version>1.34.0</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-instrumentation-bom</artifactId>
@@ -97,7 +88,6 @@ OpenTelemetry provides a BOM that ensures all packages use the same version:
 
 ```groovy
 dependencies {
-    implementation platform('io.opentelemetry:opentelemetry-bom:1.34.0')
     implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.1.0')
 
     // Versions are resolved by the platform
@@ -120,9 +110,9 @@ For multi-module Maven projects, declare the BOM in the parent POM:
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>io.opentelemetry</groupId>
-                <artifactId>opentelemetry-bom</artifactId>
-                <version>1.34.0</version>
+                <groupId>io.opentelemetry.instrumentation</groupId>
+                <artifactId>opentelemetry-instrumentation-bom</artifactId>
+                <version>2.1.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -178,9 +168,9 @@ The `dependencyConvergence` rule fails the build if any dependency is resolved t
 
 ## Which Versions Must Match
 
-All packages within these groups must use the same version:
+Packages published from the same OpenTelemetry Java repository generally use the same version. Use the matching BOM so these groups resolve to compatible versions:
 
-**Group 1: Core API and SDK** (same version number):
+**Group 1: Core API and SDK** (managed by `opentelemetry-bom`):
 - `opentelemetry-api`
 - `opentelemetry-sdk`
 - `opentelemetry-sdk-trace`
@@ -188,12 +178,12 @@ All packages within these groups must use the same version:
 - `opentelemetry-sdk-logs`
 - `opentelemetry-exporter-otlp`
 
-**Group 2: Instrumentation** (same version number, different from Group 1):
+**Group 2: Instrumentation** (managed by `opentelemetry-instrumentation-bom`, which also imports a compatible core BOM):
 - `opentelemetry-instrumentation-api`
 - `opentelemetry-spring-boot-starter`
 - All `opentelemetry-*-instrumentation` packages
 
-The BOM handles both groups correctly.
+The instrumentation BOM handles both groups correctly when you use instrumentation dependencies.
 
 ## Checking at Runtime
 
@@ -205,7 +195,7 @@ public void verifyOtelVersions() {
     String apiVersion = io.opentelemetry.api.OpenTelemetry.class.getPackage().getImplementationVersion();
     logger.info("OpenTelemetry API version: {}", apiVersion);
 
-    // If this does not match the SDK version, you have a problem
+    // Compare this with the SDK version resolved in your dependency tree
 }
 ```
 
