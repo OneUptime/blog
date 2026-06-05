@@ -16,10 +16,11 @@ This code registers observable gauges that read pool stats on every collection c
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 import time
 
 # Standard OTel setup
@@ -43,15 +44,15 @@ engine = create_engine(
 def observe_pool_stats(options):
     """Report current connection pool statistics."""
     pool = engine.pool
-    yield metrics.Observation(
+    yield Observation(
         value=pool.checkedout(),
         attributes={"pool": "primary", "state": "active"}
     )
-    yield metrics.Observation(
+    yield Observation(
         value=pool.checkedin(),
         attributes={"pool": "primary", "state": "idle"}
     )
-    yield metrics.Observation(
+    yield Observation(
         value=pool.overflow(),
         attributes={"pool": "primary", "state": "overflow"}
     )
@@ -69,16 +70,13 @@ wait_time_histogram = meter.create_histogram(
     unit="ms"
 )
 
-# Hook into SQLAlchemy pool events to measure wait time
-@event.listens_for(engine, "checkout")
-def on_checkout(dbapi_conn, connection_record, connection_proxy):
-    connection_record.info["checkout_time"] = time.time()
-
-@event.listens_for(engine, "checkin")
-def on_checkin(dbapi_conn, connection_record):
-    if "checkout_time" in connection_record.info:
-        duration = (time.time() - connection_record.info["checkout_time"]) * 1000
-        wait_time_histogram.record(duration, {"pool": "primary"})
+# Wrap connection acquisition to measure how long callers wait for the pool
+def connect_with_metrics():
+    start = time.perf_counter()
+    conn = engine.connect()
+    wait_ms = (time.perf_counter() - start) * 1000
+    wait_time_histogram.record(wait_ms, {"pool": "primary"})
+    return conn
 ```
 
 ## Tracking Query Throughput by Type
@@ -89,6 +87,8 @@ This instrumentation categorizes queries and tracks their throughput:
 
 ```python
 from opentelemetry import metrics
+from sqlalchemy import text
+import time
 
 meter = metrics.get_meter("db.queries", version="1.0.0")
 
@@ -105,12 +105,12 @@ query_duration = meter.create_histogram(
 
 def execute_query(conn, sql, params=None):
     """Wrapper that instruments database queries."""
-    # Determine query type from the SQL statement
+    # Determine query type from a simple SQL statement
     query_type = "read" if sql.strip().upper().startswith("SELECT") else "write"
 
-    start = time.time()
-    result = conn.execute(sql, params)
-    elapsed_ms = (time.time() - start) * 1000
+    start = time.perf_counter()
+    result = conn.execute(text(sql), params or {})
+    elapsed_ms = (time.perf_counter() - start) * 1000
 
     query_counter.add(1, {
         "pool": "primary",
@@ -127,21 +127,22 @@ def execute_query(conn, sql, params=None):
 
 With the metrics flowing, you can define concrete scaling policies. The logic is: when pool utilization is consistently high AND the read/write ratio favors reads, add a read replica. When pool utilization is low, reduce replicas.
 
-These PromQL expressions calculate the key decision signals for database scaling:
+These PromQL expressions calculate the key decision signals for database scaling. The metric names below assume the OpenTelemetry Collector is exporting with Prometheus-compatible name translation, where dots are converted to underscores and counters receive a `_total` suffix.
 
 ```promql
-# Pool utilization: active connections as a fraction of max pool size
+# Pool utilization: active connections as a fraction of total configured capacity
 # Values above 0.8 indicate pool pressure
 (
   sum(db_pool_connections{state="active", pool="primary"})
   /
-  (sum(db_pool_connections{state="active", pool="primary"})
-   + sum(db_pool_connections{state="idle", pool="primary"})
-   + 10)  # max_overflow
+  30  # pool_size + max_overflow
 )
 
 # P95 connection wait time - anything above 100ms is a problem
-histogram_quantile(0.95, rate(db_pool_wait_duration_bucket{pool="primary"}[5m]))
+histogram_quantile(
+  0.95,
+  sum by (le) (rate(db_pool_wait_duration_milliseconds_bucket{pool="primary"}[5m]))
+)
 
 # Read/write ratio over the last hour
 sum(rate(db_queries_total{query_type="read"}[1h]))
@@ -178,16 +179,19 @@ def get_current_replica_count():
     replicas = [db for db in response["DBInstances"] if db.get("ReadReplicaSourceDBInstanceIdentifier")]
     return len(replicas)
 
+def adjust_replicas(desired_replicas):
+    """Replace this with CreateDBInstanceReadReplica or deletion logic for your database."""
+    print(f"Would adjust read replicas to {desired_replicas}")
+
 def scale_read_replicas():
     pool_utilization = get_metric(
-        'sum(db_pool_connections{state="active"}) / '
-        '(sum(db_pool_connections{state="active"}) + sum(db_pool_connections{state="idle"}) + 10)'
+        'sum(db_pool_connections{state="active"}) / 30'
     )
     read_ratio = get_metric(
         'sum(rate(db_queries_total{query_type="read"}[1h])) / sum(rate(db_queries_total[1h]))'
     )
     wait_p95 = get_metric(
-        'histogram_quantile(0.95, rate(db_pool_wait_duration_bucket[5m]))'
+        'histogram_quantile(0.95, sum by (le) (rate(db_pool_wait_duration_milliseconds_bucket[5m])))'
     )
 
     current_replicas = get_current_replica_count()
@@ -226,9 +230,8 @@ groups:
       - alert: ConnectionPoolNearExhaustion
         expr: |
           (sum by (pool) (db_pool_connections{state="active"})
-          + sum by (pool) (db_pool_connections{state="overflow"}))
           /
-          30  # total pool capacity (pool_size + max_overflow)
+          30)
           > 0.85
         for: 5m
         labels:
@@ -238,7 +241,10 @@ groups:
 
       - alert: ConnectionPoolWaitTimeHigh
         expr: |
-          histogram_quantile(0.95, rate(db_pool_wait_duration_bucket[5m])) > 500
+          histogram_quantile(
+            0.95,
+            sum by (pool, le) (rate(db_pool_wait_duration_milliseconds_bucket[5m]))
+          ) > 500
         for: 10m
         labels:
           severity: critical
