@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GlassFlow, Kafka, ClickHouse
 
-Description: Learn to use GlassFlow as a serverless stream processor to transform OpenTelemetry data between Kafka and ClickHouse.
+Description: Learn to use GlassFlow as a stream processor to transform OpenTelemetry data between Kafka and ClickHouse.
 
-GlassFlow is a serverless stream processing platform that lets you write Python transformation functions without managing any infrastructure. It sits naturally between a Kafka topic (where your OpenTelemetry Collector exports data) and ClickHouse (where you want to store processed telemetry). This approach gives you the power of custom stream processing without the operational burden of running Flink or Spark Streaming.
+GlassFlow is an open-source streaming ETL platform for moving data from sources such as Kafka or OTLP into ClickHouse. It sits naturally between a Kafka topic (where your OpenTelemetry Collector exports data) and ClickHouse (where you want to store processed telemetry). This approach gives you the power of stream filtering, deduplication, and field mapping without the operational burden of running Flink or Spark Streaming.
 
 ## Why GlassFlow?
 
-Running Apache Flink for telemetry processing is powerful, but it comes with serious operational overhead. You need to manage a cluster, handle state checkpointing, and deal with job restarts. GlassFlow gives you a simpler model: write a Python function, deploy it, and it processes your stream. It handles scaling, retries, and exactly-once delivery for you.
+Running Apache Flink for telemetry processing is powerful, but it comes with serious operational overhead. You need to manage a cluster, handle state checkpointing, and deal with job restarts. GlassFlow gives you a simpler model: define a pipeline, add optional transformations, and send the result to ClickHouse. It handles scaling, retries, and deduplication when configured.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ Running Apache Flink for telemetry processing is powerful, but it comes with ser
 OTel Collector -> Kafka -> GlassFlow (transform) -> ClickHouse
 ```
 
-GlassFlow connects to your Kafka topic as a consumer and processes each message through your Python function. The output gets written to ClickHouse.
+GlassFlow connects to your Kafka topic as a consumer and processes each message through the configured transformations. The output gets written to ClickHouse through its native ClickHouse sink.
 
 ## Setting Up the Kafka Source
 
@@ -37,8 +37,9 @@ exporters:
   kafka:
     brokers:
       - kafka:9092
-    topic: otel-traces-raw
-    encoding: otlp_json
+    traces:
+      topic: otel-traces-raw
+      encoding: otlp_json
     producer:
       compression: snappy
 
@@ -57,119 +58,117 @@ service:
 
 ## Creating the GlassFlow Pipeline
 
-Install the GlassFlow SDK and create your pipeline:
+Install the GlassFlow SDK and create your pipeline. The Kafka source schema below assumes each Kafka message is already a flattened JSON span record with the fields shown in `schema_fields`. If your topic contains raw `otlp_json` batches with `resourceSpans`, flatten them before this Kafka topic or use GlassFlow's OTLP source instead.
 
 ```python
 # create_pipeline.py
-import glassflow
+from glassflow.etl import Client
 
-# Initialize the client
-client = glassflow.GlassFlowClient()
+client = Client(host="http://localhost:30180")
 
-# Create a new pipeline
-pipeline = client.create_pipeline(
-    name="otel-traces-to-clickhouse",
-    space_id="your-space-id",
-    # Define the source as Kafka
-    source={
-        "type": "kafka",
-        "config": {
-            "bootstrap_servers": "kafka:9092",
+pipeline_config = {
+    "version": "v3",
+    "pipeline_id": "otel-traces-to-clickhouse",
+    "name": "OTel traces to ClickHouse",
+    "sources": [
+        {
+            "type": "kafka",
+            "source_id": "otel_traces",
+            "connection_params": {
+                "brokers": ["kafka:9092"],
+                "protocol": "PLAINTEXT",
+                "mechanism": "NO_AUTH"
+            },
             "topic": "otel-traces-raw",
-            "group_id": "glassflow-otel-processor",
-            "auto_offset_reset": "earliest"
+            "consumer_group_initial_offset": "earliest",
+            "schema_fields": [
+                {"name": "timestamp", "type": "datetime"},
+                {"name": "trace_id", "type": "string"},
+                {"name": "span_id", "type": "string"},
+                {"name": "parent_span_id", "type": "string"},
+                {"name": "service_name", "type": "string"},
+                {"name": "span_name", "type": "string"},
+                {"name": "duration_ms", "type": "float"},
+                {"name": "status_code", "type": "string"},
+                {"name": "attributes", "type": "object"},
+                {"name": "fingerprint", "type": "string"}
+            ]
         }
-    },
-    # Define the sink as a webhook (to ClickHouse HTTP interface)
-    sink={
-        "type": "webhook",
-        "config": {
-            "url": "http://clickhouse:8123/",
-            "method": "POST",
-            "headers": {
-                "X-ClickHouse-Database": "default",
-                "X-ClickHouse-Format": "JSONEachRow"
+    ],
+    "transforms": [
+        {
+            "type": "filter",
+            "source_id": "otel_traces",
+            "config": {
+                "expression": "duration_ms >= 1.0"
+            }
+        },
+        {
+            "type": "dedup",
+            "source_id": "otel_traces",
+            "config": {
+                "key": "fingerprint",
+                "time_window": "1h"
             }
         }
+    ],
+    "sink": {
+        "type": "clickhouse",
+        "connection_params": {
+            "host": "clickhouse",
+            "port": "9000",
+            "http_port": "8123",
+            "database": "default",
+            "username": "default",
+            "password": "",
+            "secure": False
+        },
+        "table": "otel_traces_processed",
+        "max_batch_size": 1000,
+        "max_delay_time": "1s",
+        "mapping": [
+            {"name": "timestamp", "column_name": "timestamp", "column_type": "DateTime64(6)"},
+            {"name": "trace_id", "column_name": "trace_id", "column_type": "String"},
+            {"name": "span_id", "column_name": "span_id", "column_type": "String"},
+            {"name": "parent_span_id", "column_name": "parent_span_id", "column_type": "String"},
+            {"name": "service_name", "column_name": "service_name", "column_type": "LowCardinality(String)"},
+            {"name": "span_name", "column_name": "span_name", "column_type": "LowCardinality(String)"},
+            {"name": "duration_ms", "column_name": "duration_ms", "column_type": "Float64"},
+            {"name": "status_code", "column_name": "status_code", "column_type": "LowCardinality(String)"},
+            {"name": "attributes", "column_name": "attributes", "column_type": "Map(String, String)"},
+            {"name": "fingerprint", "column_name": "fingerprint", "column_type": "String"}
+        ]
     }
-)
+}
 
-print(f"Pipeline created: {pipeline.id}")
+pipeline = client.create_pipeline(pipeline_config)
+
+print(f"Pipeline created: {pipeline.pipeline_id}")
 ```
 
-## Writing the Transformation Function
+## Writing the Transformation Configuration
 
-This is where the real value is. Write a Python function that transforms raw OTLP JSON into the format your ClickHouse table expects:
+This is where the real value is. Configure GlassFlow transformations to filter and deduplicate each JSON record before the sink maps it into the format your ClickHouse table expects:
 
 ```python
-# transform.py
-import hashlib
-from datetime import datetime
-
-def handler(data, log):
-    """
-    Transform OTLP trace data into a flattened format
-    suitable for ClickHouse insertion.
-    """
-    results = []
-
-    # OTLP JSON has a nested structure we need to flatten
-    for resource_span in data.get("resourceSpans", []):
-        # Extract service name from resource attributes
-        resource_attrs = {}
-        for attr in resource_span.get("resource", {}).get("attributes", []):
-            resource_attrs[attr["key"]] = attr.get("value", {}).get("stringValue", "")
-
-        service_name = resource_attrs.get("service.name", "unknown")
-
-        for scope_span in resource_span.get("scopeSpans", []):
-            for span in scope_span.get("spans", []):
-                # Convert nanosecond timestamps to datetime
-                start_ns = int(span.get("startTimeUnixNano", 0))
-                end_ns = int(span.get("endTimeUnixNano", 0))
-                duration_ms = (end_ns - start_ns) / 1_000_000
-
-                # Flatten span attributes into a map
-                span_attrs = {}
-                for attr in span.get("attributes", []):
-                    key = attr["key"]
-                    value = attr.get("value", {})
-                    # Handle different value types
-                    if "stringValue" in value:
-                        span_attrs[key] = value["stringValue"]
-                    elif "intValue" in value:
-                        span_attrs[key] = str(value["intValue"])
-                    elif "boolValue" in value:
-                        span_attrs[key] = str(value["boolValue"])
-
-                # Compute a fingerprint for deduplication
-                fingerprint = hashlib.md5(
-                    f"{span['traceId']}{span['spanId']}".encode()
-                ).hexdigest()
-
-                record = {
-                    "timestamp": datetime.utcfromtimestamp(
-                        start_ns / 1e9
-                    ).strftime("%Y-%m-%d %H:%M:%S.%f"),
-                    "trace_id": span["traceId"],
-                    "span_id": span["spanId"],
-                    "parent_span_id": span.get("parentSpanId", ""),
-                    "service_name": service_name,
-                    "span_name": span.get("name", ""),
-                    "duration_ms": round(duration_ms, 2),
-                    "status_code": span.get("status", {}).get("code", "UNSET"),
-                    "attributes": span_attrs,
-                    "fingerprint": fingerprint
-                }
-
-                # Drop spans shorter than 1ms to reduce noise
-                if duration_ms >= 1.0:
-                    results.append(record)
-
-                log.info(f"Processed span {span['spanId']} "
-                         f"from {service_name}")
-
-    return results
+transforms = [
+    # Drop spans shorter than 1ms to reduce noise.
+    {
+        "type": "filter",
+        "source_id": "otel_traces",
+        "config": {
+            "expression": "duration_ms >= 1.0"
+        }
+    },
+    {
+        "type": "dedup",
+        "source_id": "otel_traces",
+        "config": {
+            "key": "fingerprint",
+            "time_window": "1h"
+        }
+    }
+]
 ```
 
 ## ClickHouse Table Setup
@@ -193,21 +192,18 @@ PARTITION BY toDate(timestamp)
 ORDER BY (service_name, fingerprint);
 ```
 
-Using `ReplacingMergeTree` with the fingerprint in the ORDER BY clause gives you automatic deduplication during merges.
+Using `ReplacingMergeTree` with the fingerprint in the `ORDER BY` clause gives you eventual deduplication during background merges. ClickHouse does not guarantee that duplicates disappear immediately; use GlassFlow deduplication before the sink, or query with `FINAL` when you need query-time deduplication.
 
 ## Monitoring the Pipeline
 
-GlassFlow provides built-in metrics for your pipeline. You can also add logging inside your handler function:
+GlassFlow provides built-in metrics for your pipeline. You can also inspect pipeline health through the SDK:
 
 ```python
-def handler(data, log):
-    log.info(f"Processing batch with "
-             f"{len(data.get('resourceSpans', []))} resource spans")
-    # ... transformation logic ...
-    log.info(f"Produced {len(results)} records")
-    return results
+pipeline = client.get_pipeline(pipeline_id="otel-traces-to-clickhouse")
+print(pipeline.status)
+print(pipeline.health())
 ```
 
 ## Wrapping Up
 
-GlassFlow provides a low-overhead way to add stream processing to your OpenTelemetry pipeline. Instead of managing a Flink cluster, you write a Python function and deploy it. For teams that need custom transformations, filtering, or enrichment between Kafka and ClickHouse but do not want to manage stream processing infrastructure, GlassFlow is worth considering.
+GlassFlow provides a low-overhead way to add stream processing to your OpenTelemetry pipeline. Instead of managing a Flink cluster, you define a pipeline and deploy it. For teams that need filtering, deduplication, or field mapping between Kafka and ClickHouse but do not want to manage a general-purpose stream processing stack, GlassFlow is worth considering.
