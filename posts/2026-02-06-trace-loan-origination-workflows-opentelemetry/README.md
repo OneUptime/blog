@@ -29,11 +29,11 @@ The key idea is to attach the loan application ID as a baggage item and create l
 from opentelemetry import trace, baggage, context
 from opentelemetry.trace import Link
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanExporter(OTLPSpanExporter()))
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("loan-origination")
 
@@ -47,6 +47,8 @@ def submit_application(borrower_data):
         span.set_attribute("loan.amount", borrower_data["requested_amount"])
         span.set_attribute("borrower.state", borrower_data["state"])
 
+        loan_ctx = baggage.set_baggage("loan.id", loan_id)
+
         # Store the application in the database
         application = create_application(borrower_data, loan_id)
 
@@ -54,7 +56,11 @@ def submit_application(borrower_data):
         store_span_context(loan_id, "application_submit", span.get_span_context())
 
         # Kick off the next phase asynchronously
-        trigger_credit_pull(loan_id)
+        token = context.attach(loan_ctx)
+        try:
+            trigger_credit_pull(loan_id)
+        finally:
+            context.detach(token)
 
         return application
 ```
@@ -114,13 +120,12 @@ def underwrite_loan(loan_id, credit_data):
 
         # Step 2: If the rules engine says "refer", route to manual review
         if rules_result.decision == "refer":
-            with tracer.start_as_current_span("loan.underwriting.manual_review") as manual_span:
+            with tracer.start_as_current_span("loan.underwriting.manual_review.assign") as manual_span:
                 manual_span.set_attribute("underwriter.queue", "manual_review")
-                # This span will be long-lived; we record it and close when the
-                # underwriter makes their decision via a callback
+                # Record this assignment span and link the underwriter's
+                # decision callback back to it later.
                 store_span_context(loan_id, "manual_review", manual_span.get_span_context())
                 assign_to_underwriter(loan_id)
-                # The span stays open until the underwriter submits their decision
                 return "pending_manual_review"
 
         # Step 3: Auto-decision path
