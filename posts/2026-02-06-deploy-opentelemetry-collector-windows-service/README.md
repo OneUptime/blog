@@ -27,8 +27,8 @@ First, download the OpenTelemetry Collector binary for Windows. The OpenTelemetr
 New-Item -ItemType Directory -Path "C:\Program Files\OpenTelemetry Collector" -Force
 
 # Download the latest Collector binary (replace version as needed)
-$version = "0.95.0"
-$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$version/otelcol_$version_windows_amd64.tar.gz"
+$version = "0.153.0"
+$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$version/otelcol-contrib_$version_windows_amd64.tar.gz"
 $outputPath = "$env:TEMP\otelcol.tar.gz"
 
 Invoke-WebRequest -Uri $url -OutFile $outputPath
@@ -37,7 +37,7 @@ Invoke-WebRequest -Uri $url -OutFile $outputPath
 tar -xzf $outputPath -C "C:\Program Files\OpenTelemetry Collector"
 
 # Verify installation
-& "C:\Program Files\OpenTelemetry Collector\otelcol.exe" --version
+& "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" --version
 ```
 
 ## Create the Collector Configuration
@@ -68,7 +68,7 @@ receivers:
       process:
 
   # Windows Event Log receiver for system logs
-  windowseventlog:
+  windows_event_log:
     channel: Application
     max_reads: 100
     start_at: end
@@ -107,9 +107,9 @@ exporters:
       cert_file: C:\Program Files\OpenTelemetry Collector\certs\client.crt
       key_file: C:\Program Files\OpenTelemetry Collector\certs\client.key
 
-  # Logging exporter for debugging (disable in production)
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting (disable in production)
+  debug:
+    verbosity: normal
 
 # Service section defines the telemetry pipeline
 service:
@@ -119,19 +119,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
     # Logs pipeline
     logs:
-      receivers: [otlp, windowseventlog]
+      receivers: [otlp, windows_event_log]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
   # Telemetry configuration for the Collector itself
   telemetry:
@@ -141,7 +141,12 @@ service:
         - C:\Program Files\OpenTelemetry Collector\logs\collector.log
     metrics:
       level: detailed
-      address: localhost:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 ```
 
 ## Configure the Windows Service
@@ -153,7 +158,7 @@ Windows services are managed through the Service Control Manager (SCM). Use the 
 ```powershell
 # Create the service
 sc.exe create OpenTelemetryCollector `
-  binPath= "C:\Program Files\OpenTelemetry Collector\otelcol.exe --config=C:\Program Files\OpenTelemetry Collector\config.yaml" `
+  binPath= '"C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" --config="C:\Program Files\OpenTelemetry Collector\config.yaml"' `
   DisplayName= "OpenTelemetry Collector" `
   start= auto `
   obj= "NT AUTHORITY\LocalService"
@@ -182,7 +187,7 @@ Expand-Archive -Path $nssmZip -DestinationPath "$env:TEMP\nssm"
 Copy-Item "$env:TEMP\nssm\nssm-$nssmVersion\win64\nssm.exe" -Destination "C:\Program Files\OpenTelemetry Collector\"
 
 # Install the service using NSSM
-& "C:\Program Files\OpenTelemetry Collector\nssm.exe" install OpenTelemetryCollector "C:\Program Files\OpenTelemetry Collector\otelcol.exe"
+& "C:\Program Files\OpenTelemetry Collector\nssm.exe" install OpenTelemetryCollector "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe"
 
 # Configure service parameters
 & "C:\Program Files\OpenTelemetry Collector\nssm.exe" set OpenTelemetryCollector AppParameters "--config=C:\Program Files\OpenTelemetry Collector\config.yaml"
@@ -302,7 +307,7 @@ Test the configuration before deploying to production.
 
 ```powershell
 # Validate configuration syntax
-& "C:\Program Files\OpenTelemetry Collector\otelcol.exe" validate --config="C:\Program Files\OpenTelemetry Collector\config.yaml"
+& "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" validate --config="C:\Program Files\OpenTelemetry Collector\config.yaml"
 ```
 
 ### Service Crashes After Starting
@@ -327,11 +332,11 @@ To update the Collector to a new version:
 Stop-Service -Name OpenTelemetryCollector
 
 # Backup current installation
-Copy-Item "C:\Program Files\OpenTelemetry Collector\otelcol.exe" -Destination "C:\Program Files\OpenTelemetry Collector\otelcol.exe.backup"
+Copy-Item "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" -Destination "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe.backup"
 
 # Download and extract new version
-$version = "0.96.0"
-$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$version/otelcol_$version_windows_amd64.tar.gz"
+$version = "0.153.0"
+$url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$version/otelcol-contrib_$version_windows_amd64.tar.gz"
 Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\otelcol.tar.gz"
 tar -xzf "$env:TEMP\otelcol.tar.gz" -C "C:\Program Files\OpenTelemetry Collector"
 
@@ -339,7 +344,7 @@ tar -xzf "$env:TEMP\otelcol.tar.gz" -C "C:\Program Files\OpenTelemetry Collector
 Start-Service -Name OpenTelemetryCollector
 
 # Verify the new version
-& "C:\Program Files\OpenTelemetry Collector\otelcol.exe" --version
+& "C:\Program Files\OpenTelemetry Collector\otelcol-contrib.exe" --version
 ```
 
 ## Uninstalling the Service
