@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Multi-Tenancy, Observability, Collector, Routing, Pipeline
 
-Description: Learn how to build multi-tenant observability pipelines using OpenTelemetry Collector routing processors to isolate and direct telemetry data per tenant.
+Description: Learn how to build multi-tenant observability pipelines using OpenTelemetry Collector routing connectors to isolate and direct telemetry data per tenant.
 
 ---
 
@@ -21,7 +21,7 @@ In a shared infrastructure setup, all your services emit traces, metrics, and lo
 - **Retention policies differ**: Some tenants need 30-day retention, others need 90.
 - **Backend flexibility**: Different tenants may use different observability backends entirely.
 
-The routing processor in the OpenTelemetry Collector solves these problems by inspecting telemetry attributes and directing data to the correct exporter pipeline.
+The routing connector in the OpenTelemetry Collector solves these problems by inspecting telemetry attributes and directing data to the correct pipeline.
 
 ## Architecture Overview
 
@@ -87,11 +87,11 @@ service:
 
 In Kubernetes, you can use environment variables to inject the tenant ID dynamically instead of hardcoding it. Pull it from a namespace label or a pod annotation.
 
-## Configuring the Routing Processor on the Gateway
+## Configuring the Routing Connector on the Gateway
 
-The routing processor is the core piece. It evaluates a routing condition based on resource attributes and sends data to the matching sub-pipeline. You need to install the `routingprocessor` component in your collector distribution (it ships with the OpenTelemetry Collector Contrib).
+The routing connector is the core piece. It evaluates a routing condition based on resource attributes and sends data to the matching pipeline. You need the `routing` connector in your collector distribution; it ships with the OpenTelemetry Collector Contrib and OpenTelemetry Collector K8s distributions. The older `routingprocessor` component is deprecated in favor of this connector.
 
-This gateway configuration defines three tenant-specific exporters and uses the routing processor to direct telemetry based on the `tenant.id` resource attribute.
+This gateway configuration defines three tenant-specific exporters and uses the routing connector to direct trace telemetry based on the `tenant.id` resource attribute. Use the same connector pattern for metrics and logs by changing the pipeline type.
 
 ```yaml
 # Gateway collector config - central routing layer
@@ -101,21 +101,22 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
+connectors:
   # Route based on the tenant.id resource attribute
   routing:
-    from_attribute: tenant.id
-    attribute_source: resource
     # Default route for unrecognized tenants
-    default_exporters: [otlp/default]
+    default_pipelines: [traces/default]
     table:
-      # Each entry maps a tenant ID to one or more exporters
-      - value: "tenant-a"
-        exporters: [otlp/tenant-a]
-      - value: "tenant-b"
-        exporters: [otlp/tenant-b]
-      - value: "tenant-c"
-        exporters: [otlp/tenant-c]
+      # Each entry maps a tenant ID to one or more pipelines
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-a"'
+        pipelines: [traces/tenant-a]
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-b"'
+        pipelines: [traces/tenant-b]
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-c"'
+        pipelines: [traces/tenant-c]
 
 exporters:
   # Tenant A ships data to their dedicated backend
@@ -142,79 +143,91 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing]
-      exporters: [otlp/tenant-a, otlp/tenant-b, otlp/tenant-c, otlp/default]
-    metrics:
-      receivers: [otlp]
-      processors: [routing]
-      exporters: [otlp/tenant-a, otlp/tenant-b, otlp/tenant-c, otlp/default]
-    logs:
-      receivers: [otlp]
-      processors: [routing]
-      exporters: [otlp/tenant-a, otlp/tenant-b, otlp/tenant-c, otlp/default]
+      exporters: [routing]
+    traces/tenant-a:
+      receivers: [routing]
+      exporters: [otlp/tenant-a]
+    traces/tenant-b:
+      receivers: [routing]
+      exporters: [otlp/tenant-b]
+    traces/tenant-c:
+      receivers: [routing]
+      exporters: [otlp/tenant-c]
+    traces/default:
+      receivers: [routing]
+      exporters: [otlp/default]
 ```
 
-Note that you must list all possible exporters in the pipeline's `exporters` field. The routing processor selects which ones actually receive data at runtime. Exporters not matched by any route simply receive nothing.
+Note that the routing connector acts as both an exporter and a receiver. The incoming pipeline exports to the connector, and each destination pipeline receives from the connector before sending to the correct backend exporter.
 
 ## Using OTTL-Based Routing for Complex Conditions
 
-Sometimes a simple attribute match is not enough. You might need to route based on combinations of attributes, or apply regex patterns. The routing processor supports OTTL (OpenTelemetry Transformation Language) statements for this.
+Sometimes a simple attribute match is not enough. You might need to route based on combinations of attributes, or apply regex patterns. The routing connector supports OTTL (OpenTelemetry Transformation Language) conditions for this.
 
 This configuration uses OTTL expressions to implement more sophisticated routing logic, such as routing by environment or matching multiple attribute conditions.
 
 ```yaml
-processors:
+connectors:
   routing:
     # Use OTTL context for richer routing logic
-    default_exporters: [otlp/default]
+    default_pipelines: [traces/default]
     table:
       # Route production traffic for tenant-a to a premium backend
-      - statement: 'resource.attributes["tenant.id"] == "tenant-a" and resource.attributes["deployment.environment"] == "production"'
-        exporters: [otlp/tenant-a-prod]
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-a" and attributes["deployment.environment"] == "production"'
+        pipelines: [traces/tenant-a-prod]
 
       # Route all staging traffic to a shared staging backend
-      - statement: 'resource.attributes["deployment.environment"] == "staging"'
-        exporters: [otlp/staging-shared]
+      - context: resource
+        condition: 'attributes["deployment.environment"] == "staging"'
+        pipelines: [traces/staging-shared]
 
       # Catch-all for tenant-a non-production
-      - statement: 'resource.attributes["tenant.id"] == "tenant-a"'
-        exporters: [otlp/tenant-a-dev]
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-a"'
+        pipelines: [traces/tenant-a-dev]
 ```
 
-The OTTL statements are evaluated in order. The first match wins. This lets you build priority-based routing where more specific rules take precedence over general ones.
+The OTTL conditions are evaluated in order. With the default `move` action, matched data is moved to the target pipeline and removed from later route evaluation. This lets you build priority-based routing where more specific rules take precedence over general ones.
 
-## Adding Per-Tenant Rate Limiting and Sampling
+## Adding Per-Tenant Batching and Sampling
 
 Tenants do not all generate the same volume of telemetry. A noisy tenant can overwhelm your pipeline if you are not careful. You can add per-tenant processing by splitting your pipeline into tenant-specific sub-pipelines using connectors.
 
 ```mermaid
 graph TD
-    R[OTLP Receiver] --> RP[Routing Processor]
-    RP -->|tenant-a| PA[Batch + Rate Limit A]
-    RP -->|tenant-b| PB[Batch + Rate Limit B]
-    RP -->|tenant-c| PC[Batch + Sampling C]
+    R[OTLP Receiver] --> RC[Routing Connector]
+    RC -->|tenant-a| PA[Batch + Sampling A]
+    RC -->|tenant-b| PB[Batch B]
+    RC -->|tenant-c| PC[Batch + Sampling C]
     PA --> EA[Exporter A]
     PB --> EB[Exporter B]
     PC --> EC[Exporter C]
 ```
 
-To implement per-tenant processing, you use the routing connector instead of the routing processor. The connector forwards data to different pipelines, each with its own set of processors.
+To implement per-tenant processing, use the routing connector. The connector forwards data to different pipelines, each with its own set of processors.
 
-This configuration uses the routing connector to fan out to separate pipelines where each tenant gets independent batch sizing and memory limits.
+This configuration uses the routing connector to fan out to separate pipelines where each tenant gets independent batch sizing and sampling policies.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 connectors:
   # The routing connector sends data to sub-pipelines
   routing:
-    from_attribute: tenant.id
-    attribute_source: resource
     default_pipelines: [traces/default]
     table:
-      - value: "tenant-a"
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-a"'
         pipelines: [traces/tenant-a]
-      - value: "tenant-b"
+      - context: resource
+        condition: 'attributes["tenant.id"] == "tenant-b"'
         pipelines: [traces/tenant-b]
 
 processors:
@@ -238,9 +251,17 @@ processors:
         type: latency
         latency: {threshold_ms: 1000}
 
+exporters:
+  otlp/tenant-a:
+    endpoint: tenant-a-backend.example.com:4317
+  otlp/tenant-b:
+    endpoint: tenant-b-backend.example.com:4317
+  otlp/default:
+    endpoint: default-backend.example.com:4317
+
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       exporters: [routing]
     traces/tenant-a:
@@ -251,6 +272,9 @@ service:
       receivers: [routing]
       processors: [batch/tenant-b]
       exporters: [otlp/tenant-b]
+    traces/default:
+      receivers: [routing]
+      exporters: [otlp/default]
 ```
 
 ## Handling Tenant Onboarding and Dynamic Configuration
@@ -259,22 +283,22 @@ A production multi-tenant system needs to handle new tenants without redeploying
 
 1. **Configuration management**: Use a tool like Helm or Kustomize to template the routing table and redeploy with rolling updates when tenants change.
 2. **OpAMP protocol**: The OpenTelemetry OpAMP protocol allows remote configuration management. Your control plane can push updated routing tables to the gateway.
-3. **Header-based routing**: Instead of resource attributes, route based on OTLP request headers. Tenants set their own `X-Tenant-ID` header, and the `routing` processor inspects it using `attribute_source: context`.
+3. **Header-based routing**: Instead of resource attributes, route based on OTLP request headers. Tenants set their own `X-Tenant-ID` header, and the `routing` connector inspects it using the `request` context.
 
 For header-based routing, the configuration looks like this. The tenant ID comes from the gRPC metadata rather than the telemetry attributes themselves.
 
 ```yaml
-processors:
+connectors:
   routing:
     # Read tenant ID from gRPC metadata / HTTP headers
-    from_attribute: X-Tenant-ID
-    attribute_source: context
-    default_exporters: [otlp/default]
+    default_pipelines: [traces/default]
     table:
-      - value: "tenant-a"
-        exporters: [otlp/tenant-a]
-      - value: "tenant-b"
-        exporters: [otlp/tenant-b]
+      - context: request
+        condition: 'request["X-Tenant-ID"] == "tenant-a"'
+        pipelines: [traces/tenant-a]
+      - context: request
+        condition: 'request["X-Tenant-ID"] == "tenant-b"'
+        pipelines: [traces/tenant-b]
 ```
 
 ## Monitoring the Pipeline Itself
@@ -283,24 +307,29 @@ A multi-tenant routing pipeline is only as reliable as your ability to observe i
 
 Key metrics to watch:
 
-- `otelcol_processor_routing_items_routed`: How many items each route handled.
 - `otelcol_exporter_sent_spans`: Confirms data is reaching backends.
 - `otelcol_exporter_send_failed_spans`: Detects export failures per tenant.
-- `otelcol_processor_dropped_spans`: Catch data loss early.
+- `otelcol_exporter_enqueue_failed_spans`: Catches data that could not be queued for export.
+- `otelcol_receiver_refused_spans`: Catches telemetry that could not enter the pipeline.
 
-Add the Prometheus exporter to your gateway's service configuration so you can scrape these metrics and alert on them.
+Configure the Collector's internal telemetry Prometheus pull reader on your gateway so you can scrape these metrics and alert on them.
 
 ```yaml
 # Expose internal collector metrics for monitoring
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Conclusion
 
-Multi-tenant observability with OpenTelemetry comes down to three things: stamping telemetry with a tenant identifier, routing based on that identifier at the gateway layer, and applying per-tenant processing policies. The routing processor and routing connector in the OpenTelemetry Collector Contrib give you the tools to build this cleanly.
+Multi-tenant observability with OpenTelemetry comes down to three things: stamping telemetry with a tenant identifier, routing based on that identifier at the gateway layer, and applying per-tenant processing policies. The routing connector in the OpenTelemetry Collector Contrib gives you the tools to build this cleanly.
 
-Start simple with attribute-based routing and a static routing table. As your tenant count grows, layer in OTTL-based routing for complex conditions and the routing connector for per-tenant processing pipelines. The architecture scales well because each component has a single, clear responsibility.
+Start simple with attribute-based routing and a static routing table. As your tenant count grows, layer in OTTL-based routing for complex conditions and per-tenant processing pipelines. The architecture scales well because each component has a single, clear responsibility.
