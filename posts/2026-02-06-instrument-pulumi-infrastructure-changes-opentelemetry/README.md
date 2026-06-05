@@ -10,7 +10,7 @@ Description: Learn how to instrument Pulumi infrastructure changes with OpenTele
 
 Infrastructure changes are some of the riskiest operations your team performs. A Pulumi update that modifies a database, rotates credentials, or changes network rules can cause outages if something goes wrong. Yet most teams have almost no observability into their infrastructure provisioning process. They run `pulumi up` and hope for the best, checking the Pulumi console or CLI output when things go sideways.
 
-OpenTelemetry gives you a way to instrument Pulumi programs so you can trace every resource change, measure provisioning times, and correlate infrastructure modifications with application behavior.
+OpenTelemetry gives you a way to instrument Pulumi programs and Automation API workflows so you can trace infrastructure deployment steps, measure provisioning runs, and correlate infrastructure modifications with application behavior.
 
 ---
 
@@ -29,7 +29,7 @@ flowchart TD
     Trace --> Backend["Observability Backend"]
 ```
 
-Pulumi programs are real code written in TypeScript, Python, Go, or C#. This means you can use the OpenTelemetry SDK directly in your Pulumi program, just like you would in any application. Each resource operation becomes a span, and the entire `pulumi up` execution becomes a trace.
+Pulumi programs are real code written in TypeScript, Python, Go, or C#. This means you can use the OpenTelemetry SDK directly in your Pulumi program, just like you would in any application. Resource constructors can be wrapped in spans to trace resource registration, while the Automation API can wrap the actual preview, update, and refresh operations.
 
 ---
 
@@ -41,18 +41,16 @@ Here is how to add OpenTelemetry tracing to a Python-based Pulumi program. The s
 # __main__.py
 
 # A Pulumi program with OpenTelemetry instrumentation. The tracer wraps
-# each resource creation in a span so you can see exactly how long each
-# resource takes to provision and which ones fail.
+# each resource declaration in a span so you can see how the Pulumi program
+# registers resources before the engine provisions them.
 
 import pulumi
-import pulumi_aws as aws
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 import os
-import time
 
 # Configure the tracer with stack and project metadata.
 # This helps you filter traces by stack (dev, staging, prod) later.
@@ -79,38 +77,32 @@ The resource attributes include the Pulumi project and stack names. These are va
 
 ## Wrapping Resource Creation with Spans
 
-The core pattern is to wrap each Pulumi resource creation in a traced function. This lets you see the full resource graph as a trace:
+The core pattern is to wrap each Pulumi resource declaration in a traced function. This lets you see how your Pulumi program registers resources:
 
 ```python
 # traced_resources.py
-# Helper functions that wrap Pulumi resource creation with OpenTelemetry
+# Helper functions that wrap Pulumi resource declarations with OpenTelemetry
 # spans. Each resource gets its own span with attributes describing
 # the resource type, name, and any relevant configuration.
 
 from opentelemetry import trace
-import pulumi
 import pulumi_aws as aws
 
 tracer = trace.get_tracer("pulumi.infrastructure")
 
 def traced_vpc(name, cidr_block, **kwargs):
     """Create a VPC with tracing."""
-    with tracer.start_as_current_span(f"create:aws:ec2:Vpc:{name}") as span:
+    with tracer.start_as_current_span(f"register:aws:ec2:Vpc:{name}") as span:
         span.set_attribute("resource.type", "aws:ec2:Vpc")
         span.set_attribute("resource.name", name)
         span.set_attribute("vpc.cidr_block", cidr_block)
 
         vpc = aws.ec2.Vpc(name, cidr_block=cidr_block, **kwargs)
-
-        # Pulumi outputs are resolved asynchronously, so we register
-        # a callback to record the resource ID once it is available
-        vpc.id.apply(lambda id: span.set_attribute("resource.id", id))
-
         return vpc
 
 def traced_subnet(name, vpc_id, cidr_block, availability_zone, **kwargs):
     """Create a subnet with tracing."""
-    with tracer.start_as_current_span(f"create:aws:ec2:Subnet:{name}") as span:
+    with tracer.start_as_current_span(f"register:aws:ec2:Subnet:{name}") as span:
         span.set_attribute("resource.type", "aws:ec2:Subnet")
         span.set_attribute("resource.name", name)
         span.set_attribute("subnet.cidr_block", cidr_block)
@@ -124,12 +116,11 @@ def traced_subnet(name, vpc_id, cidr_block, availability_zone, **kwargs):
             **kwargs,
         )
 
-        subnet.id.apply(lambda id: span.set_attribute("resource.id", id))
         return subnet
 
 def traced_security_group(name, vpc_id, description, ingress_rules, **kwargs):
     """Create a security group with tracing."""
-    with tracer.start_as_current_span(f"create:aws:ec2:SecurityGroup:{name}") as span:
+    with tracer.start_as_current_span(f"register:aws:ec2:SecurityGroup:{name}") as span:
         span.set_attribute("resource.type", "aws:ec2:SecurityGroup")
         span.set_attribute("resource.name", name)
         span.set_attribute("sg.rule_count", len(ingress_rules))
@@ -138,15 +129,24 @@ def traced_security_group(name, vpc_id, description, ingress_rules, **kwargs):
             name,
             vpc_id=vpc_id,
             description=description,
-            ingress=ingress_rules,
             **kwargs,
         )
 
-        sg.id.apply(lambda id: span.set_attribute("resource.id", id))
+        for index, rule in enumerate(ingress_rules):
+            for cidr_index, cidr_block in enumerate(rule["cidr_blocks"]):
+                aws.vpc.SecurityGroupIngressRule(
+                    f"{name}-ingress-{index}-{cidr_index}",
+                    security_group_id=sg.id,
+                    cidr_ipv4=cidr_block,
+                    from_port=rule["from_port"],
+                    to_port=rule["to_port"],
+                    ip_protocol=rule["protocol"],
+                )
+
         return sg
 ```
 
-A note about Pulumi outputs: because Pulumi resolves resource IDs asynchronously, we use the `.apply()` method to set span attributes once the ID is known. The span may already be closed by the time the ID resolves, which is a limitation. For more accurate tracking, you might record resource IDs as events rather than attributes.
+A note about Pulumi outputs: Pulumi resolves resource IDs asynchronously after resource registration, and OpenTelemetry span attributes should not be changed after a span ends. If you need provider-assigned IDs and actual provisioning outcomes in telemetry, capture them from Automation API update results or events instead of from short-lived constructor spans.
 
 ---
 
@@ -158,7 +158,7 @@ Here is a complete Pulumi program that provisions a VPC with subnets and an RDS 
 # __main__.py (continued)
 # The main Pulumi program that uses the traced resource helpers.
 # The entire provisioning run is wrapped in a root span, with
-# individual resource spans nested inside it.
+# individual resource registration spans nested inside it.
 
 with tracer.start_as_current_span("pulumi-up") as root_span:
     root_span.set_attribute("pulumi.operation", "update")
@@ -196,7 +196,7 @@ with tracer.start_as_current_span("pulumi-up") as root_span:
     )
 
     # Create RDS instance
-    with tracer.start_as_current_span("create:aws:rds:Instance:main-db") as span:
+    with tracer.start_as_current_span("register:aws:rds:Instance:main-db") as span:
         span.set_attribute("resource.type", "aws:rds:Instance")
         span.set_attribute("db.engine", "postgres")
         span.set_attribute("db.instance_class", "db.t3.medium")
@@ -207,6 +207,8 @@ with tracer.start_as_current_span("pulumi-up") as root_span:
             engine_version="15",
             instance_class="db.t3.medium",
             allocated_storage=50,
+            username="postgres",
+            manage_master_user_password=True,
             db_subnet_group_name=aws.rds.SubnetGroup(
                 "db-subnets",
                 subnet_ids=[subnet_a.id, subnet_b.id],
@@ -219,7 +221,7 @@ with tracer.start_as_current_span("pulumi-up") as root_span:
 provider.shutdown()
 ```
 
-When you look at the resulting trace, you see a root span for the `pulumi up` operation with child spans for each resource. The trace shows which resources were created in parallel and which had to wait for dependencies.
+When you look at the resulting trace, you see a root span for the Pulumi program execution with child spans for each resource declaration. To measure the actual preview and update lifecycle, use the Automation API pattern below.
 
 ---
 
@@ -259,7 +261,8 @@ def deploy_stack(stack_name, project_name, program):
         # Run the preview to see what will change
         with tracer.start_as_current_span("pulumi-preview") as preview_span:
             preview_result = stack.preview()
-            preview_span.set_attribute("preview.changes", preview_result.change_summary)
+            preview_span.set_attribute("preview.changes",
+                                       str(preview_result.change_summary))
 
         # Run the update
         with tracer.start_as_current_span("pulumi-update") as update_span:
@@ -383,4 +386,4 @@ def record_operation(resource_type, operation, duration_s, success):
 
 ## Summary
 
-Instrumenting Pulumi with OpenTelemetry turns your infrastructure provisioning from a black box into an observable process. You get traces that show every resource creation, modification, and deletion as individual spans. You can track provisioning times, detect drift, and correlate infrastructure changes with application behavior. Since Pulumi programs are written in general-purpose languages, adding OpenTelemetry instrumentation follows the same patterns you would use in any application. The result is full visibility into one of the riskiest parts of your operations workflow.
+Instrumenting Pulumi with OpenTelemetry turns your infrastructure provisioning from a black box into an observable process. You can trace resource registration in your Pulumi program and wrap Automation API preview, update, and refresh operations to track provisioning times, detect drift, and correlate infrastructure changes with application behavior. Since Pulumi programs are written in general-purpose languages, adding OpenTelemetry instrumentation follows the same patterns you would use in any application. The result is full visibility into one of the riskiest parts of your operations workflow.
