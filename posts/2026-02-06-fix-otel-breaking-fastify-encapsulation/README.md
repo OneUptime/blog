@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Fastify, Node.js, Plugin System
 
-Description: Resolve the issue where OpenTelemetry instrumentation breaks Fastify's plugin encapsulation by leaking context across scopes.
+Description: Resolve confusing OpenTelemetry trace relationships in Fastify apps by scoping instrumentation to the right plugin context.
 
-Fastify's plugin system is built on encapsulation. Each plugin gets its own scope for decorators, hooks, and route prefixes. The OpenTelemetry Fastify instrumentation can break this encapsulation by creating spans that leak across plugin boundaries, causing unexpected parent-child relationships and incorrect timing in traces.
+Fastify's plugin system is built on encapsulation. Each plugin gets its own scope for decorators, hooks, and route prefixes. Some OpenTelemetry Fastify instrumentation setups can make traces harder to read by creating hook and handler spans that cross plugin boundaries, causing unexpected parent-child relationships and confusing timing in traces.
 
 ## How Fastify Encapsulation Works
 
@@ -36,7 +36,7 @@ Each plugin has its own scope. `pluginA` cannot access `dbB` and vice versa. Thi
 
 ## The Encapsulation Problem
 
-OpenTelemetry's Fastify instrumentation hooks into Fastify's lifecycle at a global level. When it creates spans for hooks (onRequest, preHandler, etc.), those spans can become parents for spans in other plugins:
+OpenTelemetry's legacy `@opentelemetry/instrumentation-fastify` package wraps Fastify's lifecycle hooks and request handlers. When it creates spans for hooks (onRequest, preHandler, etc.), those spans can become parents for work that is logically owned by another plugin:
 
 ```text
 GET /api/a                          [========================] 50ms
@@ -47,21 +47,23 @@ GET /api/a                          [========================] 50ms
 
 The DB query from pluginB should not be a child of pluginA's preHandler span.
 
-## Fix 1: Use requestHook to Scope Spans Correctly
+## Fix 1: Use requestHook to Add Route Attributes
 
-Configure the Fastify instrumentation to use request hooks that set attributes instead of creating nested spans for every hook:
+Configure the Fastify instrumentation to use request hooks that set route attributes on the Fastify handler span:
 
 ```javascript
 const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify');
 
 const fastifyInstrumentation = new FastifyInstrumentation({
   requestHook: (span, info) => {
-    // Add route info as attributes instead of creating extra spans
-    span.setAttribute('fastify.route', info.request.routerPath || 'unknown');
-    span.setAttribute('fastify.method', info.request.method);
+    // Add route info as attributes on the Fastify handler span
+    span.setAttribute('fastify.route', info.request.routeOptions?.url || 'unknown');
+    span.setAttribute('fastify.method', info.request.routeOptions?.method || info.request.method);
   },
 });
 ```
+
+`requestHook` does not disable hook spans by itself. It is useful for making the generated spans easier to filter and validate.
 
 ## Fix 2: Disable Hook Spans
 
@@ -81,47 +83,19 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-You lose the per-hook span detail, but the HTTP instrumentation still gives you one span per request with the correct route information.
+You lose the per-hook span detail, but the HTTP instrumentation still gives you one span per request. Add route attributes in your Fastify app if you need the matched Fastify route on that span.
 
 ## Fix 3: Register OpenTelemetry as a Fastify Plugin
 
-Instead of using global auto-instrumentation, register OpenTelemetry as a proper Fastify plugin that respects encapsulation:
+Instead of using the deprecated `@opentelemetry/instrumentation-fastify` package, use the Fastify-maintained OpenTelemetry plugin and register it in the scope you want to instrument:
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const FastifyOtelInstrumentation = require('@fastify/otel');
 
-async function otelPlugin(fastify, opts) {
-  const tracer = trace.getTracer('fastify-app');
+const fastifyOtelInstrumentation = new FastifyOtelInstrumentation();
 
-  // This hook respects Fastify's encapsulation
-  fastify.addHook('onRequest', async (request, reply) => {
-    const span = tracer.startSpan(`${request.method} ${request.routerPath}`, {
-      attributes: {
-        'http.method': request.method,
-        'http.url': request.url,
-        'fastify.plugin': opts.pluginName || 'root',
-      },
-    });
-    request.otelSpan = span;
-  });
-
-  fastify.addHook('onResponse', async (request, reply) => {
-    if (request.otelSpan) {
-      request.otelSpan.setAttribute('http.status_code', reply.statusCode);
-      request.otelSpan.end();
-    }
-  });
-
-  fastify.addHook('onError', async (request, reply, error) => {
-    if (request.otelSpan) {
-      request.otelSpan.setStatus({ code: trace.SpanStatusCode.ERROR });
-      request.otelSpan.recordException(error);
-    }
-  });
-}
-
-// Register per-plugin with plugin name
-fastify.register(otelPlugin, { pluginName: 'root' });
+// Register in the Fastify scope you want to instrument
+await fastify.register(fastifyOtelInstrumentation.plugin());
 ```
 
 ## Fix 4: Use Fastify's Built-In Request ID for Correlation
@@ -154,15 +128,15 @@ const pluginBSpans = spans.filter(s => s.attributes['fastify.route'] === '/api/b
 
 // Each set should have its own parent chain
 pluginASpans.forEach(span => {
-  const parentId = span.parentSpanId;
+  const parentId = span.parentSpanContext?.spanId;
   if (parentId) {
     const parent = spans.find(s => s.spanContext().spanId === parentId);
     // Parent should not be a pluginB span
-    assert(parent.attributes['fastify.route'] !== '/api/b');
+    assert(!parent || parent.attributes['fastify.route'] !== '/api/b');
   }
 });
 ```
 
 ## Summary
 
-OpenTelemetry's Fastify instrumentation can break encapsulation by creating global lifecycle hooks that span across plugin boundaries. The most pragmatic fix is to reduce instrumentation granularity to the HTTP level, or to register tracing as a Fastify plugin that respects scope boundaries. Test your span hierarchies to ensure they reflect your application's actual plugin structure.
+Fastify instrumentation can create hook and handler spans that make plugin boundaries hard to read in traces. The most pragmatic fix is to reduce instrumentation granularity to the HTTP level, or to register tracing as a Fastify plugin that respects scope boundaries. Test your span hierarchies to ensure they reflect your application's actual plugin structure.
