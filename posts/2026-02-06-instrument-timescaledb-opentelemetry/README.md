@@ -32,7 +32,7 @@ flowchart LR
         App[App + OTel SDK]
     end
 
-    PG -->|pg_stat_statements| Col[OTel Collector]
+    PG -->|pg_stat views| Col[OTel Collector]
     TS -->|timescaledb_information views| Col
     App -->|OTLP Traces + Metrics| Col
     Col --> Backend[Observability Backend]
@@ -149,7 +149,7 @@ metrics.set_meter_provider(provider)
 meter = metrics.get_meter("timescaledb-metrics")
 
 # Create gauges for TimescaleDB-specific metrics
-chunk_count_gauge = meter.create_up_down_counter(
+chunk_count_gauge = meter.create_gauge(
     "timescaledb.hypertable.chunks",
     description="Number of chunks per hypertable"
 )
@@ -157,7 +157,7 @@ compression_ratio_gauge = meter.create_gauge(
     "timescaledb.compression.ratio",
     description="Compression ratio for compressed hypertables"
 )
-uncompressed_chunks_gauge = meter.create_up_down_counter(
+uncompressed_chunks_gauge = meter.create_gauge(
     "timescaledb.chunks.uncompressed",
     description="Number of uncompressed chunks eligible for compression"
 )
@@ -184,7 +184,7 @@ def collect_timescaledb_metrics():
         GROUP BY hypertable_schema, hypertable_name
     """)
     for row in cur.fetchall():
-        chunk_count_gauge.add(row[2], {
+        chunk_count_gauge.set(row[2], {
             "hypertable_schema": row[0],
             "hypertable_name": row[1]
         })
@@ -192,13 +192,15 @@ def collect_timescaledb_metrics():
     # Collect compression statistics
     # Compression ratio shows how effective compression is for each hypertable
     cur.execute("""
-        SELECT hypertable_schema, hypertable_name,
-               before_compression_total_bytes,
-               after_compression_total_bytes
-        FROM timescaledb_information.compression_settings cs
-        JOIN hypertable_compression_stats(cs.hypertable_schema || '.' || cs.hypertable_name)
-        ON true
-        WHERE after_compression_total_bytes > 0
+        SELECT h.hypertable_schema, h.hypertable_name,
+               stats.before_compression_total_bytes,
+               stats.after_compression_total_bytes
+        FROM timescaledb_information.hypertables h
+        CROSS JOIN LATERAL hypertable_columnstore_stats(
+            format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+        ) stats
+        WHERE h.compression_enabled = true
+          AND stats.after_compression_total_bytes > 0
     """)
     for row in cur.fetchall():
         ratio = row[2] / row[3] if row[3] > 0 else 0
@@ -217,7 +219,7 @@ def collect_timescaledb_metrics():
         GROUP BY hypertable_schema, hypertable_name
     """)
     for row in cur.fetchall():
-        uncompressed_chunks_gauge.add(row[2], {
+        uncompressed_chunks_gauge.set(row[2], {
             "hypertable_schema": row[0],
             "hypertable_name": row[1]
         })
@@ -225,10 +227,13 @@ def collect_timescaledb_metrics():
     # Check continuous aggregate freshness
     # A large lag means the aggregate is serving stale data
     cur.execute("""
-        SELECT view_schema, view_name,
-               EXTRACT(EPOCH FROM (now() - last_run_finished_at)) as lag_seconds
+        SELECT cagg.view_schema, cagg.view_name,
+               EXTRACT(EPOCH FROM (now() - js.last_successful_finish)) as lag_seconds
         FROM timescaledb_information.jobs j
         JOIN timescaledb_information.job_stats js ON j.job_id = js.job_id
+        JOIN timescaledb_information.continuous_aggregates cagg
+          ON cagg.materialization_hypertable_schema = js.hypertable_schema
+         AND cagg.materialization_hypertable_name = js.hypertable_name
         WHERE j.proc_name = 'policy_refresh_continuous_aggregate'
     """)
     for row in cur.fetchall():
@@ -291,9 +296,9 @@ class TimeSeriesDB:
         """Insert a batch of time-series metrics into a hypertable."""
         with tracer.start_as_current_span("timescaledb.insert_metrics") as span:
             # Record TimescaleDB-specific context
-            span.set_attribute("db.system", "timescaledb")
-            span.set_attribute("db.operation", "INSERT")
-            span.set_attribute("db.sql.table", "device_metrics")
+            span.set_attribute("db.system.name", "postgresql")
+            span.set_attribute("db.operation.name", "INSERT")
+            span.set_attribute("db.collection.name", "device_metrics")
             span.set_attribute("timescaledb.is_hypertable", True)
             span.set_attribute("timescaledb.batch_size", len(metrics_batch))
 
@@ -308,17 +313,17 @@ class TimeSeriesDB:
             )
 
             duration_ms = (time.monotonic() - start) * 1000
-            span.set_attribute("db.query.duration_ms", duration_ms)
-            span.set_attribute("db.rows_affected", len(metrics_batch))
+            span.set_attribute("timescaledb.query.duration_ms", duration_ms)
+            span.set_attribute("timescaledb.rows_affected", len(metrics_batch))
 
             cur.close()
 
     def query_time_range(self, device_id, start_time, end_time, bucket_interval='1 hour'):
         """Query time-bucketed data from a hypertable using time_bucket."""
         with tracer.start_as_current_span("timescaledb.query_time_range") as span:
-            span.set_attribute("db.system", "timescaledb")
-            span.set_attribute("db.operation", "SELECT")
-            span.set_attribute("db.sql.table", "device_metrics")
+            span.set_attribute("db.system.name", "postgresql")
+            span.set_attribute("db.operation.name", "SELECT")
+            span.set_attribute("db.collection.name", "device_metrics")
             span.set_attribute("timescaledb.is_hypertable", True)
             span.set_attribute("timescaledb.bucket_interval", bucket_interval)
             span.set_attribute("timescaledb.uses_time_bucket", True)
@@ -343,12 +348,12 @@ class TimeSeriesDB:
             rows = cur.fetchall()
             duration_ms = (time.monotonic() - start) * 1000
 
-            span.set_attribute("db.query.duration_ms", duration_ms)
-            span.set_attribute("db.rows_returned", len(rows))
+            span.set_attribute("timescaledb.query.duration_ms", duration_ms)
+            span.set_attribute("db.response.returned_rows", len(rows))
 
             # Flag slow queries over 2 seconds
             if duration_ms > 2000:
-                span.set_attribute("db.query.slow", True)
+                span.set_attribute("timescaledb.query.slow", True)
                 span.add_event("slow_timeseries_query", {
                     "duration_ms": duration_ms,
                     "bucket_interval": bucket_interval,
@@ -361,9 +366,9 @@ class TimeSeriesDB:
     def query_continuous_aggregate(self, device_id, start_time, end_time):
         """Query a continuous aggregate for pre-computed results."""
         with tracer.start_as_current_span("timescaledb.query_cagg") as span:
-            span.set_attribute("db.system", "timescaledb")
-            span.set_attribute("db.operation", "SELECT")
-            span.set_attribute("db.sql.table", "device_metrics_hourly")
+            span.set_attribute("db.system.name", "postgresql")
+            span.set_attribute("db.operation.name", "SELECT")
+            span.set_attribute("db.collection.name", "device_metrics_hourly")
             span.set_attribute("timescaledb.is_continuous_aggregate", True)
 
             cur = self.conn.cursor()
@@ -382,8 +387,8 @@ class TimeSeriesDB:
             rows = cur.fetchall()
             duration_ms = (time.monotonic() - start) * 1000
 
-            span.set_attribute("db.query.duration_ms", duration_ms)
-            span.set_attribute("db.rows_returned", len(rows))
+            span.set_attribute("timescaledb.query.duration_ms", duration_ms)
+            span.set_attribute("db.response.returned_rows", len(rows))
 
             cur.close()
             return rows
@@ -411,6 +416,8 @@ TimescaleDB runs background jobs for compression and data retention. Monitoring 
 This monitoring function checks the status of all TimescaleDB background jobs and reports their health as metrics and spans.
 
 ```python
+import datetime
+
 def monitor_background_jobs(conn):
     """Check TimescaleDB background job health and report via OpenTelemetry."""
     with tracer.start_as_current_span("timescaledb.monitor_jobs") as span:
@@ -424,7 +431,7 @@ def monitor_background_jobs(conn):
                 j.schedule_interval,
                 js.last_run_status,
                 js.last_run_started_at,
-                js.last_run_finished_at,
+                js.last_successful_finish,
                 js.last_run_duration,
                 js.next_start,
                 js.total_runs,
@@ -497,8 +504,8 @@ This SQL query provides a comprehensive view of hypertable health that you can e
 SELECT
     h.hypertable_schema,
     h.hypertable_name,
-    -- Total data size including indexes
-    pg_size_pretty(hypertable_size(format('%I.%I', h.hypertable_schema, h.hypertable_name))) as total_size,
+    -- Total data size including indexes, in bytes
+    hypertable_size(format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass) as total_size_bytes,
     -- Number of chunks
     (SELECT count(*) FROM timescaledb_information.chunks c
      WHERE c.hypertable_schema = h.hypertable_schema
