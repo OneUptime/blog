@@ -12,7 +12,7 @@ While Deployments work well for stateless collectors, certain use cases require 
 
 StatefulSets offer unique characteristics that benefit specific collector deployment patterns:
 
-**Stable Network Identities**: Each pod receives a predictable DNS name (collector-0, collector-1, collector-2) that persists across restarts. This enables external systems to target specific collector instances.
+**Stable Network Identities**: Each pod receives a predictable DNS name (otel-collector-0, otel-collector-1, otel-collector-2) that persists across restarts. This enables external systems to target specific collector instances.
 
 **Persistent Storage**: Collectors can maintain state across restarts using PersistentVolumeClaims (PVCs). This is crucial for Write-Ahead Logs (WAL), local caching, or maintaining scrape position.
 
@@ -30,9 +30,9 @@ Common scenarios requiring StatefulSets:
 ```mermaid
 graph TB
     subgraph "StatefulSet Pods"
-        C0[collector-0<br/>PVC: data-collector-0]
-        C1[collector-1<br/>PVC: data-collector-1]
-        C2[collector-2<br/>PVC: data-collector-2]
+        C0[otel-collector-0<br/>PVC: data-otel-collector-0]
+        C1[otel-collector-1<br/>PVC: data-otel-collector-1]
+        C2[otel-collector-2<br/>PVC: data-otel-collector-2]
     end
 
     subgraph "Headless Service"
@@ -73,6 +73,16 @@ metadata:
   name: otel-collector
   namespace: observability
 ---
+# Secret for remote write authentication
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-credentials
+  namespace: observability
+type: Opaque
+stringData:
+  prometheus-token: replace-with-your-token
+---
 # ClusterRole for accessing Kubernetes API
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -87,9 +97,20 @@ rules:
   - apiGroups: [""]
     resources: ["services", "endpoints"]
     verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
   # Required for scraping metrics
   - apiGroups: [""]
     resources: ["nodes/metrics", "nodes/stats"]
+    verbs: ["get"]
+  - nonResourceURLs: ["/metrics"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -142,11 +163,11 @@ data:
                   action: keep
                   regex: true
                 # Use custom scrape port if specified
-                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
                   action: replace
                   target_label: __address__
-                  regex: (.+)
-                  replacement: $1
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
                 # Use custom metrics path if specified
                 - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
                   action: replace
@@ -186,7 +207,7 @@ data:
           metadata:
             - k8s.pod.name
             - k8s.pod.uid
-            - k8s.deployment.name
+            - k8s.statefulset.name
             - k8s.namespace.name
             - k8s.node.name
 
@@ -218,8 +239,8 @@ data:
           max_days: 7
           max_backups: 3
 
-      # Debug logging
-      logging:
+      # Debug exporter
+      debug:
         verbosity: normal
 
     extensions:
@@ -227,7 +248,7 @@ data:
       health_check:
         endpoint: 0.0.0.0:13133
 
-      # Prometheus metrics endpoint
+      # pprof diagnostic endpoint
       pprof:
         endpoint: 0.0.0.0:1777
 
@@ -243,12 +264,12 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 
         metrics:
           receivers: [otlp, prometheus]
           processors: [memory_limiter, resource, batch]
-          exporters: [prometheusremotewrite, file, logging]
+          exporters: [prometheusremotewrite, file, debug]
 
       telemetry:
         logs:
@@ -314,7 +335,7 @@ spec:
   # Pod Management Policy controls creation/deletion order
   # Parallel: All pods created/deleted simultaneously
   # OrderedReady: Pods created/deleted one at a time in order
-  podManagementPolicy: Parallel
+  podManagementPolicy: OrderedReady
 
   selector:
     matchLabels:
@@ -496,7 +517,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
@@ -670,8 +691,10 @@ metadata:
   namespace: observability
 data:
   targetallocator.yaml: |
-    label_selector:
+    collector_namespace: observability
+    collector_selector:
       app: otel-collector
+    listen_addr: 0.0.0.0:8080
     config:
       scrape_configs:
         - job_name: 'kubernetes-pods'
@@ -704,7 +727,7 @@ spec:
               mountPath: /conf
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
       volumes:
         - name: config
           configMap:
@@ -720,7 +743,7 @@ spec:
     app: target-allocator
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080
 ```
 
 Update collector configuration to use Target Allocator:
@@ -773,39 +796,37 @@ Key metrics to monitor:
 Implement backup strategies for persistent data:
 
 ```yaml
-# backup-cronjob.yaml
-# Periodic backup of collector data
-apiVersion: batch/v1
-kind: CronJob
+# volume-snapshots.yaml
+# Point-in-time snapshots of collector data PVCs
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
 metadata:
-  name: otel-collector-backup
+  name: data-otel-collector-0-snapshot
   namespace: observability
 spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: backup
-              image: alpine:3.18
-              command:
-                - sh
-                - -c
-                - |
-                  apk add --no-cache rsync
-                  for i in 0 1 2; do
-                    POD="otel-collector-$i"
-                    kubectl cp observability/$POD:/data /backup/$POD-$(date +%Y%m%d)
-                  done
-              volumeMounts:
-                - name: backup-storage
-                  mountPath: /backup
-          restartPolicy: OnFailure
-          volumes:
-            - name: backup-storage
-              persistentVolumeClaim:
-                claimName: backup-pvc
+  volumeSnapshotClassName: csi-snapshot-class
+  source:
+    persistentVolumeClaimName: data-otel-collector-0
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: data-otel-collector-1-snapshot
+  namespace: observability
+spec:
+  volumeSnapshotClassName: csi-snapshot-class
+  source:
+    persistentVolumeClaimName: data-otel-collector-1
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: data-otel-collector-2-snapshot
+  namespace: observability
+spec:
+  volumeSnapshotClassName: csi-snapshot-class
+  source:
+    persistentVolumeClaimName: data-otel-collector-2
 ```
 
 ## When to Choose StatefulSet vs Deployment
