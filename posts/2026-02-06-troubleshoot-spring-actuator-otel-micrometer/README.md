@@ -30,17 +30,16 @@ Micrometer and OpenTelemetry are separate metrics systems. Micrometer collects m
 
 ## Fix 1: Use the Micrometer-OpenTelemetry Bridge
 
-The `micrometer-registry-otlp` or the OpenTelemetry Micrometer bridge sends Micrometer metrics through OpenTelemetry:
+The OpenTelemetry Micrometer bridge sends Micrometer metrics through OpenTelemetry:
 
 ```xml
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-micrometer-1.5</artifactId>
-    <version>2.1.0-alpha</version>
 </dependency>
 ```
 
-When using the Java agent, the bridge is included automatically. Enable it:
+Manage the version with the OpenTelemetry instrumentation alpha BOM. When using the Java agent, the Micrometer instrumentation is included but disabled by default. Enable it:
 
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
@@ -50,19 +49,23 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 ## Fix 2: Use the Spring Boot OpenTelemetry Starter
 
-The OpenTelemetry Spring Boot starter integrates with Micrometer automatically:
+The OpenTelemetry Spring Boot starter can integrate with Micrometer:
 
 ```xml
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.1.0</version>
 </dependency>
 ```
+
+Manage the version with the OpenTelemetry instrumentation BOM.
 
 ```yaml
 # application.yml
 otel:
+  instrumentation:
+    micrometer:
+      enabled: true
   exporter:
     otlp:
       endpoint: http://collector:4318
@@ -71,7 +74,7 @@ otel:
       service.name: my-spring-service
 ```
 
-The starter configures the Micrometer bridge and sets up OpenTelemetry metrics export.
+The starter configures the Micrometer bridge when `otel.instrumentation.micrometer.enabled` is `true` and sets up OpenTelemetry metrics export.
 
 ## Fix 3: Configure Micrometer OTLP Registry Directly
 
@@ -117,10 +120,10 @@ jvm.memory.used{area="heap", id="G1 Eden Space"}
 http.server.requests{method="GET", uri="/api/users", status="200"}
 ```
 
-Or use the debug exporter temporarily:
+Or use the console exporter temporarily:
 
 ```bash
--Dotel.metrics.exporter=logging
+-Dotel.metrics.exporter=console
 ```
 
 ## Common Issues
@@ -144,7 +147,7 @@ Micrometer uses dot-separated names (`http.server.requests`). OpenTelemetry uses
 
 ### Issue: Missing Custom Metrics
 
-Custom Micrometer metrics only flow through the bridge if they are registered with the global `MeterRegistry`:
+Custom Micrometer metrics only flow through the bridge if they are registered with the application `MeterRegistry` that the bridge observes:
 
 ```java
 @Component
