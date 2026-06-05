@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Bandwidth, gRPC
 
-Description: Replace your OTLP/gRPC exporter with OTel Arrow to achieve 30-70% network bandwidth reduction for telemetry data.
+Description: Replace your OTLP/gRPC exporter with OTel Arrow to reduce network bandwidth for telemetry data.
 
-The standard OTLP/gRPC exporter sends each batch of telemetry as a protobuf message. It works well, but protobuf is a row-oriented format. Each span, metric point, or log record is serialized independently, which means repeated values like service names, attribute keys, and resource metadata are encoded over and over again in every batch. OTel Arrow fixes this by using Apache Arrow's columnar format, which compresses repeated values dramatically. The result is 30-70% less bandwidth for the same telemetry data.
+The standard OTLP/gRPC exporter sends each batch of telemetry as a protobuf message. It works well, but OTLP protobuf payloads are not columnar. Telemetry is encoded in a resource, scope, and record hierarchy, and repeated values like service names, attribute keys, and resource metadata can still be repeated across records, scopes, and batches. OTel Arrow fixes this by using Apache Arrow's columnar format, which compresses repeated values dramatically. OpenTelemetry's production results report 30-70% less bandwidth compared with similarly configured OTLP/gRPC pipelines using large batches and Zstd compression.
 
 ## How OTel Arrow Achieves the Savings
 
-Apache Arrow is a columnar in-memory format. Instead of encoding each telemetry record as a complete row, it groups all values of the same field into a column. When you have 1,000 spans and 990 of them have `service.name = "checkout-service"`, the columnar format stores that string once and references it 990 times via dictionary encoding.
+Apache Arrow is a columnar in-memory format. Instead of encoding each telemetry record as a complete row, it groups all values of the same field into a column. When you have 1,000 spans and 990 of them have `service.name = "checkout-service"`, the columnar format can store that string in a dictionary and reference it with compact integer values.
 
-On top of the columnar layout, OTel Arrow applies Zstd compression to the Arrow record batches. Columnar data compresses much better than row-oriented data because similar values are adjacent in memory.
+On top of the columnar layout, the OTel Arrow exporter uses Zstd compression by default at the gRPC level and supports Arrow IPC payload compression. Columnar data compresses much better than row-oriented data because similar values are adjacent in memory.
 
 The combined effect:
 
-- Dictionary encoding eliminates repeated strings: 20-40% reduction
-- Columnar layout improves compression ratio: additional 15-30% reduction
-- Total: 30-70% bandwidth savings compared to standard OTLP/gRPC with gzip
+- Dictionary encoding and deduplication reduce repeated strings and metadata
+- Columnar layout improves compression ratio by improving data locality
+- OpenTelemetry reports 30-70% bandwidth savings compared to standard OTLP/gRPC with large batches and Zstd compression
 
 ## Replacing the Exporter in the Collector
 
@@ -32,7 +32,7 @@ exporters:
     endpoint: collector-gateway:4317
     tls:
       insecure: true
-    compression: gzip
+    compression: zstd
 ```
 
 After (OTel Arrow):
@@ -43,6 +43,7 @@ exporters:
     endpoint: collector-gateway:4317
     tls:
       insecure: true
+    compression: zstd
     arrow:
       num_streams: 4
       max_stream_lifetime: 10m
@@ -88,6 +89,7 @@ exporters:
     endpoint: gateway-collector:4317
     tls:
       insecure: true
+    compression: zstd
     arrow:
       num_streams: 4
     retry_on_failure:
@@ -166,10 +168,10 @@ Or use Prometheus metrics from the Collector itself:
 
 ```promql
 # Bytes sent by the exporter (OTLP)
-rate(otelcol_exporter_sent_bytes_total{exporter="otlp"}[5m])
+rate(otelcol_exporter_sent_wire_total{exporter="otlp"}[5m])
 
 # Bytes sent by the exporter (OTel Arrow)
-rate(otelcol_exporter_sent_bytes_total{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_sent_wire_total{exporter="otelarrow"}[5m])
 ```
 
 ## When the Savings Are Greatest
@@ -180,4 +182,4 @@ OTel Arrow's compression advantages are most pronounced when:
 - **Batch sizes are large**: Larger batches give Arrow more data to build efficient dictionaries from. Batches of 2,000+ records compress much better than batches of 50.
 - **String values dominate**: Attributes with string values benefit most from dictionary encoding. Numeric metrics with high cardinality see smaller but still meaningful savings.
 
-For a typical microservices deployment with 50+ attributes per span and batches of 1,000-5,000, expect 50-65% bandwidth reduction. That is a significant cost saving on cross-region or cloud egress traffic.
+For a typical microservices deployment with repetitive attributes and batches of 1,000-5,000, a 30-70% bandwidth reduction is realistic. That is a significant cost saving on cross-region or cloud egress traffic.
