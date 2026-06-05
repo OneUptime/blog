@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Micrometer, Spring Boot, Migration, Tracing
 
 Description: A step-by-step guide to migrating Spring Boot applications from Micrometer Tracing to native OpenTelemetry instrumentation for better observability and vendor neutrality.
 
-Many Spring Boot applications use Micrometer Tracing (formerly Spring Cloud Sleuth) for distributed tracing. While Micrometer provides a solid abstraction layer, migrating to native OpenTelemetry offers several advantages: direct access to OpenTelemetry's rich ecosystem, better performance, more features like metrics and logs correlation, and alignment with the industry-standard observability framework.
+Many Spring Boot applications use Micrometer Tracing (formerly Spring Cloud Sleuth) for distributed tracing. While Micrometer provides a solid abstraction layer, migrating to native OpenTelemetry offers several advantages: direct access to OpenTelemetry's rich ecosystem, fewer bridge layers in custom instrumentation, more features like metrics and logs correlation, and alignment with the industry-standard observability framework.
 
 ## Understanding the Differences
 
@@ -89,19 +89,29 @@ Add OpenTelemetry dependencies while keeping Micrometer temporarily (for gradual
 
 ```xml
 <!-- pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <!-- Keep Micrometer temporarily for comparison -->
     <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-tracing-bridge-otel</artifactId>
-        <version>1.2.0</version>
     </dependency>
 
     <!-- Add OpenTelemetry Spring Boot Starter -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        <version>2.1.0-alpha</version>
     </dependency>
 
     <!-- OTLP Exporter -->
@@ -128,11 +138,13 @@ For Gradle:
 
 ```groovy
 dependencies {
+    implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.28.1')
+
     // Keep Micrometer temporarily
-    implementation 'io.micrometer:micrometer-tracing-bridge-otel:1.2.0'
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
 
     // Add OpenTelemetry
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.1.0-alpha'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'io.opentelemetry:opentelemetry-api'
     implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure'
@@ -150,11 +162,6 @@ Migrate configuration from Micrometer to OpenTelemetry format.
 spring:
   application:
     name: payment-service
-
-  zipkin:
-    base-url: http://zipkin:9411
-    sender:
-      type: web
 
 management:
   tracing:
@@ -177,12 +184,13 @@ spring:
 otel:
   service:
     name: ${spring.application.name}
-    version: 1.0.0
 
   resource:
     attributes:
       deployment.environment: production
-      service.namespace: payments
+      service:
+        namespace: payments
+        version: 1.0.0
 
   exporter:
     otlp:
@@ -191,8 +199,8 @@ otel:
 
   traces:
     exporter: otlp
-    sampler:
-      probability: 0.1
+    sampler: parentbased_traceidratio
+  traces.sampler.arg: 0.1
 
   metrics:
     exporter: otlp
@@ -214,6 +222,8 @@ import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.Span;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+
+import java.math.BigDecimal;
 
 /**
  * Payment service using Micrometer Tracing API.
@@ -262,6 +272,14 @@ public class PaymentService {
             span.end();
         }
     }
+
+    private void chargeCustomer(String paymentId, BigDecimal amount) {
+        // Charge logic
+    }
+
+    private void recordTransaction(String paymentId) {
+        // Transaction recording logic
+    }
 }
 ```
 
@@ -270,12 +288,14 @@ public class PaymentService {
 ```java
 package com.example.payment;
 
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
+
+import java.math.BigDecimal;
 
 /**
  * Payment service using OpenTelemetry API.
@@ -284,8 +304,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 @Service
 public class PaymentService {
 
-    @Autowired
-    private Tracer tracer;
+    private final Tracer tracer;
+
+    public PaymentService(OpenTelemetry openTelemetry) {
+        this.tracer = openTelemetry.getTracer("com.example.payment");
+    }
 
     public void processPayment(String paymentId, BigDecimal amount) {
         // Create a span using OpenTelemetry API
@@ -336,6 +359,14 @@ public class PaymentService {
         } finally {
             span.end();
         }
+    }
+
+    private void chargeCustomer(String paymentId, BigDecimal amount) {
+        // Charge logic
+    }
+
+    private void recordTransaction(String paymentId) {
+        // Transaction recording logic
     }
 }
 ```
@@ -395,8 +426,8 @@ span.setStatus(StatusCode.ERROR, exception.getMessage());
 try {
     // work
 } finally {
-    span.end();
     ws.close();
+    span.end();
 }
 
 // OpenTelemetry
@@ -430,21 +461,22 @@ Micrometer's baggage concept maps to OpenTelemetry's baggage API:
 **Before (Micrometer):**
 
 ```java
-import io.micrometer.tracing.BaggageManager;
+import io.micrometer.tracing.BaggageInScope;
 
 // Set baggage
-BaggageManager baggageManager = tracer.getBaggageManager();
-baggageManager.createBaggage("user.id").set("12345");
+try (BaggageInScope baggage = tracer.createBaggageInScope("user.id", "12345")) {
+    // Baggage is available in this scope
 
-// Get baggage
-String userId = baggageManager.getBaggage("user.id").get();
+    // Get baggage
+    String userId = tracer.getBaggage("user.id").get();
+}
 ```
 
 **After (OpenTelemetry):**
 
 ```java
 import io.opentelemetry.api.baggage.Baggage;
-import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 
 // Set baggage
 Baggage baggage = Baggage.current()
@@ -488,6 +520,8 @@ public void makeHttpRequest() {
 ```java
 import io.opentelemetry.context.propagation.TextMapSetter;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.api.OpenTelemetry;
+import org.springframework.http.HttpHeaders;
 
 @Autowired
 private OpenTelemetry openTelemetry;
@@ -511,16 +545,20 @@ Create tests to verify both implementations produce equivalent traces:
 ```java
 package com.example.payment;
 
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -537,8 +575,15 @@ class PaymentServiceTest {
     @Autowired
     private PaymentService paymentService;
 
-    @Autowired
-    private Tracer tracer;
+    @TestConfiguration
+    static class OtelTestConfig {
+
+        @Bean
+        @Primary
+        OpenTelemetry openTelemetry() {
+            return otelTesting.getOpenTelemetry();
+        }
+    }
 
     @Test
     void testPaymentProcessingCreatesSpans() {
@@ -550,7 +595,7 @@ class PaymentServiceTest {
 
         // Verify main span
         assertThat(spans)
-            .hasSize(3)  // payment.process, payment.validate, payment.charge
+            .hasSize(2)  // payment.process, payment.validate
             .anySatisfy(span -> {
                 assertThat(span.getName()).isEqualTo("payment.process");
                 assertThat(span.getAttributes().get(
@@ -585,11 +630,10 @@ import org.springframework.context.annotation.Profile;
 @Profile("migration")
 public class DualTracingConfig {
 
-    // Both tracers will be available
-    // Micrometer via its auto-configuration
-    // OpenTelemetry via its starter
+    // Keep this profile isolated to avoid duplicate exported spans
+    // in normal application runs.
 
-    // Compare traces in your backend to verify
+    // Compare traces in your backend or a test exporter to verify
     // the OpenTelemetry implementation matches
 }
 ```
@@ -602,6 +646,7 @@ If you have custom Micrometer instrumentation, migrate it to OpenTelemetry:
 
 ```java
 import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.Span;
 import io.micrometer.tracing.annotation.NewSpan;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -615,8 +660,12 @@ public class CustomTracingAspect {
 
     private final Tracer tracer;
 
+    public CustomTracingAspect(Tracer tracer) {
+        this.tracer = tracer;
+    }
+
     @Around("@annotation(newSpan)")
-    public Object traceMethod(ProceedingJoinPoint pjp, NewSpan newSpan) {
+    public Object traceMethod(ProceedingJoinPoint pjp, NewSpan newSpan) throws Throwable {
         Span span = tracer.nextSpan().name(newSpan.value());
         try (Tracer.SpanInScope ws = tracer.withSpan(span.start())) {
             return pjp.proceed();
@@ -648,8 +697,12 @@ public class CustomTracingAspect {
 
     private final Tracer tracer;
 
+    public CustomTracingAspect(Tracer tracer) {
+        this.tracer = tracer;
+    }
+
     @Around("@annotation(withSpan)")
-    public Object traceMethod(ProceedingJoinPoint pjp, WithSpan withSpan) {
+    public Object traceMethod(ProceedingJoinPoint pjp, WithSpan withSpan) throws Throwable {
         Span span = tracer.spanBuilder(withSpan.value()).startSpan();
         try (Scope scope = span.makeCurrent()) {
             Object result = pjp.proceed();
@@ -739,12 +792,12 @@ try (Scope scope = span.makeCurrent()) {
 
 ## Performance Comparison
 
-OpenTelemetry typically offers better performance than Micrometer with bridges:
+OpenTelemetry can reduce overhead compared with Micrometer bridge-based custom instrumentation:
 
-- **Lower overhead**: Direct instrumentation without abstraction layer
+- **Lower bridge overhead**: Direct instrumentation without a Micrometer-to-tracer bridge for custom spans
 - **Better batching**: More efficient span export
 - **Reduced allocations**: Optimized for high-throughput scenarios
 
-Monitor these metrics before and after migration to verify improvements.
+Monitor these metrics before and after migration to verify whether your application sees improvements.
 
-Migrating from Micrometer Tracing to OpenTelemetry positions your application for the future of observability. While the migration requires careful planning and testing, the benefits of vendor neutrality, richer features, and better performance make it worthwhile for production systems.
+Migrating from Micrometer Tracing to OpenTelemetry positions your application for the future of observability. While the migration requires careful planning and testing, the benefits of vendor neutrality, richer features, and direct OpenTelemetry APIs make it worthwhile for production systems.
