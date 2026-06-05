@@ -32,20 +32,31 @@ sudo zypper update -y
 Docker is available from the official openSUSE repositories.
 
 ```bash
-# Install Docker and Docker Compose
-sudo zypper install -y docker docker-compose docker-buildx
+# Install Docker
+sudo zypper install -y docker
 ```
 
-openSUSE packages Docker directly, so no external repository is needed. The version may be slightly behind Docker's official releases.
-
-If you prefer the latest Docker CE version from Docker's own repository:
+openSUSE packages Docker directly, so no external repository is needed. The version may be slightly behind Docker's official releases. If your Leap release provides the Docker Compose package, install it as well.
 
 ```bash
-# Alternative: Add Docker's official repository
-sudo zypper addrepo https://download.docker.com/linux/sles/docker-ce.repo
-sudo zypper refresh
-sudo zypper install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# Optional: Install Docker Compose if it is available for your Leap release
+sudo zypper install -y docker-compose
+
+# Verify the Compose v2 plugin
+docker compose version
 ```
+
+If `docker compose version` is not available, install Docker Compose as a CLI plugin manually.
+
+```bash
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p "$DOCKER_CONFIG/cli-plugins"
+curl -SL https://github.com/docker/compose/releases/download/v5.1.2/docker-compose-linux-x86_64 -o "$DOCKER_CONFIG/cli-plugins/docker-compose"
+chmod +x "$DOCKER_CONFIG/cli-plugins/docker-compose"
+docker compose version
+```
+
+If you prefer Docker's upstream Engine release, Docker's official documentation currently points unsupported distributions to the static binary installation path rather than a tested openSUSE Leap repository install. Follow Docker's binary installation documentation for that path: <https://docs.docker.com/engine/install/binaries/>.
 
 ## Step 3: Start and Enable Docker
 
@@ -235,8 +246,8 @@ openSUSE uses Snapper for system snapshots on Btrfs. Docker's data lives under `
 Verify that Docker's data directory is excluded.
 
 ```bash
-# Check Snapper configuration for excluded paths
-sudo snapper get-config | grep ALLOW
+# Check whether Docker's data directory is a separate Btrfs subvolume
+sudo btrfs subvolume list / | grep /var/lib/docker
 ```
 
 If snapshots are growing too large, check that `/var/lib/docker` is on its own subvolume.
@@ -255,9 +266,9 @@ Test Docker Compose with a simple application stack.
 services:
   web:
     image: python:3.12-alpine
-    command: >
+    command: |
       sh -c "pip install flask redis &&
-             python -c \"
+             python - <<'PY'
       from flask import Flask
       import redis
       app = Flask(__name__)
@@ -265,9 +276,9 @@ services:
       @app.route('/')
       def hello():
           r.incr('hits')
-          return f'Hits: {r.get(\"hits\").decode()}'
+          return 'Hits: {}'.format(r.get('hits').decode())
       app.run(host='0.0.0.0', port=5000)
-      \""
+      PY"
     ports:
       - "5000:5000"
     depends_on:
@@ -326,8 +337,8 @@ sudo zypper repos | grep -i oss
 If missing, add it.
 
 ```bash
-# Add the main OSS repository
-sudo zypper addrepo https://download.opensuse.org/distribution/leap/15.5/repo/oss/ openSUSE-Leap-OSS
+# Add the main OSS repository for Leap 15.6; adjust the version for your release
+sudo zypper addrepo https://download.opensuse.org/distribution/leap/15.6/repo/oss/ openSUSE-Leap-OSS
 sudo zypper refresh
 ```
 
