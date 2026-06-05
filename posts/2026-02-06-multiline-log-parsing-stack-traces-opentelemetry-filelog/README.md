@@ -44,10 +44,10 @@ receivers:
     operators:
       # Parse the first line to extract timestamp and severity
       - type: regex_parser
-        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}[.,]\d{3})\s+(?P<severity>\w+)\s+(?P<message>.*)'
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s+(?P<severity>\w+)\s+(?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
-          layout: '%Y-%m-%d %H:%M:%S,%L'
+          layout: '%Y-%m-%d %H:%M:%S'
         severity:
           parse_from: attributes.severity
 ```
@@ -68,7 +68,7 @@ receivers:
     include:
       - /var/log/apps/python-*.log
     multiline:
-      # Python logging typically starts with a log level
+      # Python logging often starts with a timestamp and separator
       line_start_pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - '
 ```
 
@@ -109,6 +109,7 @@ receivers:
     include:
       - /var/log/pods/*/*/*.log
     start_at: end
+    include_file_path: true
     operators:
       # Step 1: Parse the CRI log format
       - type: regex_parser
@@ -117,7 +118,8 @@ receivers:
         output: recombine
         timestamp:
           parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05.999999999Z07:00'
 
       # Step 2: Recombine multi-line entries after CRI parsing
       - type: recombine
@@ -128,6 +130,8 @@ receivers:
         # Maximum number of lines to combine into one entry
         max_batch_size: 100
         # Time to wait for more lines before flushing
+        force_flush_period: 5s
+        # Separator inserted between combined lines
         combine_with: "\n"
         source_identifier: attributes["log.file.path"]
 
