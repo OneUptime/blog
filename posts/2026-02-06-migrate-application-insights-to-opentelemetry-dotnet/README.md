@@ -16,9 +16,9 @@ This guide walks you through a practical migration from Application Insights to 
 
 ## Why Migrate?
 
-Application Insights locks your telemetry data into the Azure ecosystem. If you ever want to switch backends, use multiple backends, or run outside Azure, you are stuck rewriting instrumentation code. OpenTelemetry solves this by providing a single, vendor-neutral API that works with dozens of backends.
+The classic Application Insights SDK ties your telemetry collection closely to Azure Monitor. If you ever want to switch backends, use multiple backends, or run outside Azure, you often need to rewrite instrumentation code. OpenTelemetry solves this by providing a single, vendor-neutral API that works with dozens of backends.
 
-Microsoft has also signaled the future direction. The Azure Monitor OpenTelemetry Distro is now the recommended path for new .NET applications. The classic Application Insights SDK is in maintenance mode.
+Microsoft has also signaled the future direction. The Azure Monitor OpenTelemetry Distro is now the recommended path for new ASP.NET Core applications that use Application Insights, and Application Insights .NET SDK 3.x also uses OpenTelemetry under the hood for compatibility-focused migrations.
 
 ---
 
@@ -148,8 +148,7 @@ builder.Services.AddOpenTelemetry()
             // Instrument SQL queries (replaces AI SQL dependency tracking)
             .AddSqlClientInstrumentation(options =>
             {
-                options.SetDbStatementForText = true;  // capture query text
-                options.RecordException = true;         // capture SQL errors
+                options.RecordException = true;  // capture SQL errors as span events
             })
             // Export traces via OTLP to your backend
             .AddOtlpExporter(options =>
@@ -209,7 +208,7 @@ If you used `TelemetryClient` to send custom events and metrics, you need to rep
 
 ### Replacing TelemetryClient.TrackEvent
 
-Application Insights custom events map to span events in OpenTelemetry. Here is how to convert them:
+Application Insights custom events can map to span events in OpenTelemetry when the event belongs to a traced operation. Here is how to convert them:
 
 ```csharp
 // BEFORE: Application Insights custom event tracking
@@ -312,6 +311,8 @@ Application Insights exception tracking translates directly to span status and e
 // });
 
 // AFTER: OpenTelemetry exception recording on spans
+using OpenTelemetry.Trace;
+
 using var activity = ActivitySource.StartActivity("ProcessPayment");
 
 try
@@ -324,7 +325,7 @@ catch (Exception ex)
     // Record the exception on the current span
     // This captures the full stack trace and exception details
     activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-    activity?.RecordException(ex);
+    activity?.AddException(ex);
     throw;
 }
 ```
@@ -357,7 +358,7 @@ One step that is easy to forget: you need to register your custom `ActivitySourc
 
 **Not filtering health check endpoints.** Without filtering, health check probes generate massive amounts of trace data. Use the filter option on `AddAspNetCoreInstrumentation` to exclude them.
 
-**Missing SQL query capture.** By default, `SqlClientInstrumentation` does not capture query text. Set `SetDbStatementForText = true` if you want to see the actual SQL queries in your traces.
+**Capturing sensitive SQL data.** Current `SqlClientInstrumentation` versions can add query text attributes to spans. Review what your backend stores and avoid enabling experimental query parameter capture unless you have confirmed it is safe for your data.
 
 **Environment variable conflicts.** If you set `APPLICATIONINSIGHTS_CONNECTION_STRING` in your environment, remove it. Leftover configuration can cause unexpected behavior.
 
