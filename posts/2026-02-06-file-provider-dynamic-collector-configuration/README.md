@@ -6,27 +6,27 @@ Tags: OpenTelemetry, Collector, Configuration, File Provider, Dynamic Configurat
 
 Description: Implement dynamic configuration reloading for the OpenTelemetry Collector using file providers to update collector behavior without restarts or downtime.
 
-The OpenTelemetry Collector's file provider enables dynamic configuration updates by monitoring configuration files for changes and automatically reloading them. This capability is essential for production environments where collector downtime is unacceptable and configuration changes need to be applied seamlessly.
+The OpenTelemetry Collector's file provider enables configuration to be loaded from files and file-backed configuration fragments. Combined with the Collector's configuration reload support, this lets you update collector behavior without a full process restart.
 
 ## Understanding Configuration Providers
 
-Configuration providers are components that supply configuration data to the collector. While the standard collector reads configuration from a static file at startup, providers enable dynamic configuration management.
+Configuration providers are components that supply configuration data to the collector. While the standard collector can read a static file at startup, providers enable configuration to come from different URI schemes such as `file:`, `env:`, `yaml:`, `http:`, and `https:`.
 
-The file provider watches specified files or directories for changes and triggers configuration reloads when modifications are detected:
+The file provider reads configuration from a file URI. The Collector can also reload its configuration when you send it a SIGHUP signal:
 
 ```mermaid
 graph LR
     A[Config File] --> B[File Provider]
-    B --> C[Watch for Changes]
-    C --> D[Detect Modification]
-    D --> E[Reload Config]
-    E --> F[Apply New Config]
+    B --> C[Collector Config]
+    C --> D[Update File]
+    D --> E[Send SIGHUP]
+    E --> F[Reload Config]
     F --> C
 ```
 
 ## Enabling the File Provider
 
-The collector requires the `configprovider` feature to use file providers. When using the OpenTelemetry Collector Contrib distribution, this feature is typically enabled by default.
+The standard OpenTelemetry Collector and Collector Contrib distributions include the file provider. Use the `file:` scheme with `--config` to load configuration from a file.
 
 Basic file provider configuration structure:
 
@@ -39,20 +39,6 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-# Define configuration providers
-providers:
-  file:
-    # Enable file watching
-    enabled: true
-
-    # Poll interval for checking file changes (default: 5s)
-    poll_interval: 5s
-
-    # Paths to watch for configuration changes
-    paths:
-      - /etc/otel/config.d/*.yaml
-      - /etc/otel/pipelines.yaml
-
 exporters:
   debug:
     verbosity: detailed
@@ -64,15 +50,22 @@ service:
       exporters: [debug]
 ```
 
-Start the collector with the configuration provider enabled:
+Start the collector with the file provider:
 
 ```bash
-./otelcol --config collector-config.yaml --feature-gates=configprovider.Enable
+./otelcol-contrib --config=file:collector-config.yaml
+```
+
+After updating the file, validate the configuration and send SIGHUP to reload it:
+
+```bash
+./otelcol-contrib validate --config=file:collector-config.yaml
+kill -HUP $(pgrep -f otelcol-contrib)
 ```
 
 ## Dynamic Pipeline Configuration
 
-The file provider excels at enabling dynamic pipeline updates. Create separate configuration files for different pipeline components that can be modified independently.
+The file provider is useful for composing pipeline configuration from separate files. Create separate configuration files for different pipeline components that can be modified independently.
 
 Main collector configuration:
 
@@ -86,160 +79,152 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-# Reference external configuration files
-providers:
-  file:
-    enabled: true
-    poll_interval: 10s
-    paths:
-      # Watch the entire configuration directory
-      - /etc/otel/config.d/
+# Reference external configuration fragments
+exporters: ${file:/etc/otel/config.d/exporters.yaml}
 
-exporters:
-  # Exporters will be loaded from external files
-  debug:
-    verbosity: basic
-
-processors:
-  # Processors will be loaded from external files
-  batch:
-    timeout: 10s
+processors: ${file:/etc/otel/config.d/processors.yaml}
 
 service:
-  # Pipeline configuration from external files
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+  pipelines: ${file:/etc/otel/config.d/pipelines.yaml}
 ```
 
 Create modular configuration files:
 
 ```yaml
 # /etc/otel/config.d/exporters.yaml
-exporters:
-  # Prometheus exporter for metrics
-  prometheus:
-    endpoint: 0.0.0.0:8889
+# Prometheus exporter for metrics
+prometheus:
+  endpoint: 0.0.0.0:8889
 
-  # OTLP exporter for traces
-  otlp/traces:
-    endpoint: tempo.observability.svc:4317
-    compression: gzip
-    tls:
-      insecure: false
-      cert_file: /etc/certs/client.crt
-      key_file: /etc/certs/client.key
+# OTLP exporter for traces
+otlp/traces:
+  endpoint: tempo.observability.svc:4317
+  compression: gzip
+  tls:
+    insecure: false
+    cert_file: /etc/certs/client.crt
+    key_file: /etc/certs/client.key
 
-  # OTLP exporter for metrics
-  otlp/metrics:
-    endpoint: mimir.observability.svc:4317
-    compression: gzip
+# OTLP exporter for metrics
+otlp/metrics:
+  endpoint: mimir.observability.svc:4317
+  compression: gzip
 
-  # Jaeger exporter for traces
-  jaeger:
-    endpoint: jaeger-collector:14250
-    tls:
-      insecure: true
+# OTLP exporter for Jaeger traces
+otlp/jaeger:
+  endpoint: jaeger-collector:4317
+  tls:
+    insecure: true
 ```
 
 ```yaml
 # /etc/otel/config.d/processors.yaml
-processors:
-  # Batch processor for all signals
-  batch:
-    timeout: 10s
-    send_batch_size: 1000
-    send_batch_max_size: 1500
+# Batch processor for all signals
+batch:
+  timeout: 10s
+  send_batch_size: 1000
+  send_batch_max_size: 1500
 
-  # Attributes processor for adding labels
-  attributes:
-    actions:
-      - key: environment
-        value: production
-        action: upsert
-      - key: cluster
-        value: us-east-1
-        action: upsert
+# Attributes processor for adding labels
+attributes:
+  actions:
+    - key: environment
+      value: production
+      action: upsert
+    - key: cluster
+      value: us-east-1
+      action: upsert
 
-  # Resource detection processor
-  resourcedetection:
-    detectors: [env, system, docker]
-    timeout: 5s
+# Resource detection processor
+resourcedetection:
+  detectors: [env, system, docker]
+  timeout: 5s
 
-  # Memory limiter to prevent OOM
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
-    spike_limit_mib: 128
+# Memory limiter to prevent OOM
+memory_limiter:
+  check_interval: 1s
+  limit_mib: 512
+  spike_limit_mib: 128
 ```
 
 ```yaml
 # /etc/otel/config.d/pipelines.yaml
-service:
-  pipelines:
-    # Traces pipeline
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes, batch]
-      exporters: [otlp/traces, jaeger]
+# Traces pipeline
+traces:
+  receivers: [otlp]
+  processors: [memory_limiter, resourcedetection, attributes, batch]
+  exporters: [otlp/traces, otlp/jaeger]
 
-    # Metrics pipeline
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes, batch]
-      exporters: [otlp/metrics, prometheus]
+# Metrics pipeline
+metrics:
+  receivers: [otlp]
+  processors: [memory_limiter, resourcedetection, attributes, batch]
+  exporters: [otlp/metrics, prometheus]
 ```
 
-When you modify any file in `/etc/otel/config.d/`, the file provider detects the change and reloads the configuration automatically.
+When you modify any referenced file in `/etc/otel/config.d/`, validate the merged configuration and send SIGHUP to the collector to apply the change.
 
 ## Hot-Swapping Exporters
 
-The file provider enables adding, removing, or modifying exporters without collector downtime. This is valuable for testing new backends or migrating between observability platforms.
+The file provider enables adding, removing, or modifying exporters without a full collector process restart. This is valuable for testing new backends or migrating between observability platforms.
 
 Example of dynamically switching exporters:
 
 ```yaml
-# /etc/otel/config.d/exporters-active.yaml
-# Initially configured with debug exporter
-exporters:
-  debug:
-    verbosity: detailed
+# collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  batch:
+
+exporters: ${file:/etc/otel/config.d/exporters-active.yaml}
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug]
+      exporters: ${file:/etc/otel/config.d/trace-exporters.yaml}
 ```
 
-Update the file to add a production exporter:
+```yaml
+# /etc/otel/config.d/exporters-active.yaml
+# Initially configured with debug exporter
+debug:
+  verbosity: detailed
+```
+
+```yaml
+# /etc/otel/config.d/trace-exporters.yaml
+- debug
+```
+
+Update the files to add a production exporter:
 
 ```yaml
 # /etc/otel/config.d/exporters-active.yaml
 # Add production OTLP exporter alongside debug
-exporters:
-  debug:
-    verbosity: detailed
+debug:
+  verbosity: detailed
 
-  otlp/production:
-    endpoint: prod-backend.example.com:4317
-    compression: gzip
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
+otlp/production:
+  endpoint: prod-backend.example.com:4317
+  compression: gzip
+  retry_on_failure:
+    enabled: true
+    initial_interval: 5s
+    max_interval: 30s
+    max_elapsed_time: 300s
+```
 
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      # Send to both exporters for validation
-      exporters: [debug, otlp/production]
+```yaml
+# /etc/otel/config.d/trace-exporters.yaml
+# Send to both exporters for validation
+- debug
+- otlp/production
 ```
 
 After validating the production exporter works correctly, remove the debug exporter:
@@ -247,60 +232,39 @@ After validating the production exporter works correctly, remove the debug expor
 ```yaml
 # /etc/otel/config.d/exporters-active.yaml
 # Final configuration with only production exporter
-exporters:
-  otlp/production:
-    endpoint: prod-backend.example.com:4317
-    compression: gzip
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/production]
+otlp/production:
+  endpoint: prod-backend.example.com:4317
+  compression: gzip
+  retry_on_failure:
+    enabled: true
+    initial_interval: 5s
+    max_interval: 30s
+    max_elapsed_time: 300s
 ```
 
-The collector applies each change without restart, ensuring continuous data collection.
+```yaml
+# /etc/otel/config.d/trace-exporters.yaml
+- otlp/production
+```
+
+The collector applies each valid reload without a full process restart, ensuring continuous data collection.
 
 ## Dynamic Sampling Configuration
 
 Adjust sampling rates dynamically based on traffic patterns or debugging needs:
 
 ```yaml
-# /etc/otel/config.d/sampling.yaml
-processors:
-  # Tail sampling processor with dynamic rules
-  tail_sampling:
-    # Decision wait time before sampling
-    decision_wait: 10s
+# collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
 
-    # Number of traces to keep in memory
-    num_traces: 100000
+processors: ${file:/etc/otel/config.d/sampling.yaml}
 
-    # Sampling policies (can be modified dynamically)
-    policies:
-      # Always sample errors
-      - name: error-policy
-        type: status_code
-        status_code:
-          status_codes: [ERROR]
-
-      # Sample 100% of slow requests
-      - name: slow-requests
-        type: latency
-        latency:
-          threshold_ms: 1000
-
-      # Probabilistic sampling for normal traffic
-      - name: probabilistic-policy
-        type: probabilistic
-        probabilistic:
-          sampling_percentage: 10
+exporters:
+  otlp/traces:
+    endpoint: tempo.observability.svc:4317
 
 service:
   pipelines:
@@ -308,46 +272,75 @@ service:
       receivers: [otlp]
       processors: [tail_sampling, batch]
       exporters: [otlp/traces]
+```
+
+```yaml
+# /etc/otel/config.d/sampling.yaml
+# Tail sampling processor with dynamic rules
+tail_sampling:
+  # Decision wait time before sampling
+  decision_wait: 10s
+
+  # Number of traces to keep in memory
+  num_traces: 100000
+
+  # Sampling policies (can be modified dynamically)
+  policies:
+    # Always sample errors
+    - name: error-policy
+      type: status_code
+      status_code:
+        status_codes: [ERROR]
+
+    # Sample 100% of slow requests
+    - name: slow-requests
+      type: latency
+      latency:
+        threshold_ms: 1000
+
+    # Probabilistic sampling for normal traffic
+    - name: probabilistic-policy
+      type: probabilistic
+      probabilistic:
+        sampling_percentage: 10
+
+batch:
+  timeout: 10s
 ```
 
 During a production incident, increase sampling for debugging:
 
 ```yaml
 # /etc/otel/config.d/sampling.yaml
-processors:
-  tail_sampling:
-    decision_wait: 10s
-    num_traces: 100000
-    policies:
-      # Keep error sampling
-      - name: error-policy
-        type: status_code
-        status_code:
-          status_codes: [ERROR]
+tail_sampling:
+  decision_wait: 10s
+  num_traces: 100000
+  policies:
+    # Keep error sampling
+    - name: error-policy
+      type: status_code
+      status_code:
+        status_codes: [ERROR]
 
-      # Lower latency threshold to catch more issues
-      - name: slow-requests
-        type: latency
-        latency:
-          threshold_ms: 500  # Changed from 1000ms
+    # Lower latency threshold to catch more issues
+    - name: slow-requests
+      type: latency
+      latency:
+        threshold_ms: 500  # Changed from 1000ms
 
-      # Increase sampling to 50% during incident
-      - name: probabilistic-policy
-        type: probabilistic
-        probabilistic:
-          sampling_percentage: 50  # Changed from 10%
+    # Increase sampling to 50% during incident
+    - name: probabilistic-policy
+      type: probabilistic
+      probabilistic:
+        sampling_percentage: 50  # Changed from 10%
 
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [tail_sampling, batch]
-      exporters: [otlp/traces]
+batch:
+  timeout: 10s
 ```
 
 ## Configuration with GitOps
 
-The file provider integrates well with GitOps workflows. Use Git repositories to version control collector configurations and automatically deploy changes.
+The file provider integrates well with GitOps workflows. Use Git repositories to version control collector configurations and deploy changes, then trigger a SIGHUP reload after validation.
 
 Directory structure for GitOps:
 
@@ -391,12 +384,7 @@ receivers:
       disk: {}
       network: {}
 
-providers:
-  file:
-    enabled: true
-    poll_interval: 15s
-    paths:
-      - /etc/otel/config.d/*.yaml
+exporters: ${file:/etc/otel/config.d/exporters.yaml}
 
 processors:
   batch:
@@ -406,48 +394,42 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
+
+service:
+  pipelines: ${file:/etc/otel/config.d/pipelines.yaml}
 ```
 
 Environment-specific configurations:
 
 ```yaml
 # overlays/production/exporters.yaml
-exporters:
-  otlp/tempo:
-    endpoint: tempo-prod.monitoring.svc:4317
-    compression: gzip
-    tls:
-      insecure: false
-      cert_file: /etc/certs/client.crt
-      key_file: /etc/certs/client.key
+otlp/tempo:
+  endpoint: tempo-prod.monitoring.svc:4317
+  compression: gzip
+  tls:
+    insecure: false
+    cert_file: /etc/certs/client.crt
+    key_file: /etc/certs/client.key
 
-  prometheusremotewrite:
-    endpoint: https://prometheus-prod.monitoring.svc/api/v1/write
-    tls:
-      insecure: false
-    headers:
-      X-Scope-OrgID: production
+prometheus_remote_write:
+  endpoint: https://prometheus-prod.monitoring.svc/api/v1/write
+  tls:
+    insecure: false
+  headers:
+    X-Scope-OrgID: production
 ```
 
 ```yaml
 # overlays/production/pipelines.yaml
-service:
-  telemetry:
-    logs:
-      level: warn
-    metrics:
-      level: detailed
+traces:
+  receivers: [otlp]
+  processors: [memory_limiter, batch]
+  exporters: [otlp/tempo]
 
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlp/tempo]
-
-    metrics:
-      receivers: [otlp, hostmetrics]
-      processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+metrics:
+  receivers: [otlp, hostmetrics]
+  processors: [memory_limiter, batch]
+  exporters: [prometheus_remote_write]
 ```
 
 Deployment script:
@@ -458,6 +440,7 @@ Deployment script:
 
 ENVIRONMENT=$1
 CONFIG_DIR="/etc/otel/config.d"
+MAIN_CONFIG="/etc/otel/collector-config.yaml"
 
 if [ -z "$ENVIRONMENT" ]; then
   echo "Usage: $0 <environment>"
@@ -471,13 +454,19 @@ if [ ! -d "overlays/$ENVIRONMENT" ]; then
 fi
 
 # Copy base configuration
-cp base/*.yaml "$CONFIG_DIR/"
+cp base/collector-config.yaml "$MAIN_CONFIG"
 
 # Copy environment-specific configuration
 cp overlays/$ENVIRONMENT/*.yaml "$CONFIG_DIR/"
 
+# Validate the merged configuration
+./otelcol-contrib validate --config="file:$MAIN_CONFIG"
+
+# Reload the collector
+kill -HUP $(pgrep -f otelcol-contrib)
+
 echo "Configuration deployed for $ENVIRONMENT"
-echo "File provider will detect changes and reload automatically"
+echo "Collector reload signal sent"
 ```
 
 Deploy configuration:
@@ -486,16 +475,20 @@ Deploy configuration:
 # Deploy to production
 ./deploy.sh production
 
-# The file provider detects changes and reloads
-# No collector restart needed
+# The collector reloads after validation and SIGHUP
+# No full collector process restart needed
 ```
 
 ## Monitoring Configuration Changes
 
-Implement monitoring to track configuration reloads and detect issues:
+Implement monitoring to track collector health and detect issues after configuration reloads:
 
 ```yaml
 # collector-config.yaml
+extensions:
+  zpages:
+    endpoint: 0.0.0.0:55679
+
 service:
   telemetry:
     logs:
@@ -503,33 +496,34 @@ service:
       level: info
 
     metrics:
-      # Expose collector internal metrics
+      # Expose detailed collector internal metrics
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   # Enable zpages for debugging
   extensions: [zpages]
 
-extensions:
-  zpages:
-    endpoint: 0.0.0.0:55679
-
-# Monitor configuration reload events
+# Monitor configuration version on telemetry flowing through the pipeline
 processors:
   attributes:
     actions:
       - key: config.version
-        value: ${CONFIG_VERSION:-unknown}
+        value: ${env:CONFIG_VERSION:-unknown}
         action: upsert
 ```
 
 Query collector internal metrics to monitor reloads:
 
 ```promql
-# Number of configuration reloads
-otelcol_process_uptime{job="otel-collector"}
+# Collector process uptime
+otelcol_process_uptime
 
-# Configuration reload errors
+# Exporter metric point send failures
 rate(otelcol_exporter_send_failed_metric_points[5m])
 
 # Memory usage after reload
@@ -538,7 +532,7 @@ otelcol_process_memory_rss
 
 ## Error Handling and Rollback
 
-When the file provider detects an invalid configuration, the collector continues running with the previous valid configuration and logs errors.
+When a reload fails because the new configuration is invalid, the collector logs the error. Validate configurations before deployment so invalid updates are not signaled to a running collector.
 
 Create a validation script to test configurations before deployment:
 
@@ -560,7 +554,7 @@ if ! yq eval '.' "$CONFIG_FILE" > /dev/null 2>&1; then
 fi
 
 # Use collector's validate command
-if ! ./otelcol validate --config="$CONFIG_FILE"; then
+if ! ./otelcol-contrib validate --config="file:$CONFIG_FILE"; then
   echo "Error: Configuration validation failed"
   exit 1
 fi
@@ -576,22 +570,27 @@ Integrate validation into deployment:
 
 ENVIRONMENT=$1
 CONFIG_DIR="/etc/otel/config.d"
+MAIN_CONFIG="/etc/otel/collector-config.yaml"
 BACKUP_DIR="/etc/otel/backups/$(date +%Y%m%d-%H%M%S)"
 
 # Create backup
 mkdir -p "$BACKUP_DIR"
+cp "$MAIN_CONFIG" "$BACKUP_DIR/"
 cp "$CONFIG_DIR"/*.yaml "$BACKUP_DIR/"
 
 # Validate new configuration
-for file in overlays/$ENVIRONMENT/*.yaml; do
-  if ! ./validate-config.sh "$file"; then
-    echo "Validation failed, aborting deployment"
-    exit 1
-  fi
-done
-
-# Deploy configuration
+cp base/collector-config.yaml "$MAIN_CONFIG"
 cp overlays/$ENVIRONMENT/*.yaml "$CONFIG_DIR/"
+
+if ! ./otelcol-contrib validate --config="file:$MAIN_CONFIG"; then
+  echo "Validation failed, rolling back"
+  cp "$BACKUP_DIR"/collector-config.yaml "$MAIN_CONFIG"
+  cp "$BACKUP_DIR"/*.yaml "$CONFIG_DIR/"
+  exit 1
+fi
+
+# Reload configuration
+kill -HUP $(pgrep -f otelcol-contrib)
 
 # Monitor for errors (wait 30 seconds)
 sleep 30
@@ -599,7 +598,9 @@ sleep 30
 # Check collector logs for errors
 if grep -q "ERROR" /var/log/otel-collector.log; then
   echo "Errors detected, rolling back"
+  cp "$BACKUP_DIR"/collector-config.yaml "$MAIN_CONFIG"
   cp "$BACKUP_DIR"/*.yaml "$CONFIG_DIR/"
+  kill -HUP $(pgrep -f otelcol-contrib)
   exit 1
 fi
 
@@ -624,4 +625,4 @@ For more advanced configuration management, explore [HTTP provider for remote co
 
 ## Conclusion
 
-The file provider transforms the OpenTelemetry Collector from a static data pipeline into a dynamic, adaptable system. By enabling configuration changes without restarts, teams can respond quickly to production issues, test new exporters safely, and implement GitOps workflows. Combined with proper validation and monitoring, the file provider provides a robust foundation for managing collector configurations at scale.
+The file provider helps transform the OpenTelemetry Collector from a single static configuration file into a composable, adaptable system. By validating file-backed changes and reloading configuration without a full process restart, teams can respond quickly to production issues, test new exporters safely, and implement GitOps workflows. Combined with proper validation and monitoring, the file provider provides a robust foundation for managing collector configurations at scale.
