@@ -163,17 +163,17 @@ EXPOSE 4321
 CMD ["node", "dist/server/entry.mjs"]
 ```
 
-## Hybrid Mode
+## Static Mode with On-Demand Routes
 
-Astro's hybrid mode pre-renders most pages while allowing specific routes to use SSR:
+Astro's static mode pre-renders pages by default while allowing specific routes to use SSR. Server-rendered routes still require an adapter:
 
 ```javascript
-// astro.config.mjs - Hybrid rendering
+// astro.config.mjs - Static output with on-demand routes
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 
 export default defineConfig({
-  output: 'hybrid',   // Static by default, SSR where opted in
+  // output: 'static' is the default, no need to specify
   adapter: node({
     mode: 'standalone',
   }),
@@ -194,7 +194,7 @@ export const prerender = false;  // This page renders on each request
 </html>
 ```
 
-The Docker setup for hybrid mode is identical to the SSR Dockerfile since the Node.js server handles both static and dynamic pages.
+The Docker setup for on-demand routes is identical to the SSR Dockerfile since the Node.js server handles both static and dynamic pages.
 
 ## The .dockerignore File
 
@@ -205,7 +205,7 @@ dist
 .astro
 .git
 .gitignore
-*.md
+README.md
 .env
 .env.*
 .vscode
@@ -291,7 +291,7 @@ services:
       POSTGRES_PASSWORD: devpass
       POSTGRES_DB: astro_dev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d astro_dev"]
       interval: 2s
       retries: 5
     volumes:
@@ -337,11 +337,11 @@ export async function GET() {
 ```dockerfile
 # For SSR mode
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4321/api/health || exit 1
+  CMD wget -q --spider http://localhost:4321/api/health || exit 1
 
 # For static mode with Nginx
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+  CMD wget -q --spider http://localhost:80/ || exit 1
 ```
 
 ## Image Size Comparison
@@ -350,6 +350,6 @@ HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
 |---|---|
 | Static + Nginx Alpine | 30-50 MB |
 | SSR + Node.js Alpine | 140-180 MB |
-| Hybrid + Node.js Alpine | 140-180 MB |
+| Static with on-demand routes + Node.js Alpine | 140-180 MB |
 
 Astro's static output paired with Nginx produces one of the smallest possible Docker images for a web application. If your site does not need server-side rendering, choose the static approach. The image is tiny, serves lightning fast, and has virtually no attack surface beyond Nginx itself. For dynamic content, the SSR Dockerfile with Node.js Alpine stays under 200MB, which is competitive with other Node.js frameworks.
