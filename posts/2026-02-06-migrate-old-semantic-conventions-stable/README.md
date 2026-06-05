@@ -29,8 +29,9 @@ http.request_content_length  ->  http.request.body.size
 http.response_content_length ->  http.response.body.size
 
 # Network attribute renames
-net.peer.name        ->  server.address (client) / client.address (server)
-net.peer.port        ->  server.port (client) / client.port (server)
+net.peer.name        ->  server.address (client spans)
+net.peer.port        ->  server.port (client spans)
+http.client_ip       ->  client.address (server spans)
 net.host.name        ->  server.address
 net.host.port        ->  server.port
 net.transport        ->  network.transport
@@ -64,8 +65,9 @@ DEPRECATED_ATTRS = {
     "http.host": "server.address",
     "http.scheme": "url.scheme",
     "http.status_code": "http.response.status_code",
-    "net.peer.name": "server.address / client.address",
-    "net.peer.port": "server.port / client.port",
+    "net.peer.name": "server.address",
+    "net.peer.port": "server.port",
+    "http.client_ip": "client.address",
     "net.host.name": "server.address",
     "net.host.port": "server.port",
     "db.statement": "db.query.text",
@@ -181,6 +183,7 @@ For services you cannot easily modify, or during the transition period, the Open
 
 processors:
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -208,10 +211,33 @@ processors:
             where attributes["net.peer.port"] != nil and
                   attributes["server.port"] == nil
 
+          - set(attributes["server.address"], attributes["net.host.name"])
+            where attributes["net.host.name"] != nil and
+                  attributes["server.address"] == nil
+
+          - set(attributes["server.port"], attributes["net.host.port"])
+            where attributes["net.host.port"] != nil and
+                  attributes["server.port"] == nil
+
+          - set(attributes["client.address"], attributes["http.client_ip"])
+            where attributes["http.client_ip"] != nil and
+                  attributes["client.address"] == nil
+
           # Database migration
           - set(attributes["db.query.text"], attributes["db.statement"])
             where attributes["db.statement"] != nil and
                   attributes["db.query.text"] == nil
+  batch:
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  otlp:
+    endpoint: telemetry-backend.example.com:4317
 
 service:
   pipelines:
@@ -227,17 +253,17 @@ The `where` conditions ensure that if a service already emits the new attribute 
 
 If you are using auto-instrumentation libraries from the OpenTelemetry ecosystem, check whether newer versions already emit the stable conventions. Most maintained libraries have been updated.
 
-```python
+```text
 # requirements.txt
 # Pin to versions that support stable semantic conventions.
 # Check changelogs for the version that introduced stable convention support.
 
-opentelemetry-api>=1.22.0
-opentelemetry-sdk>=1.22.0
-opentelemetry-instrumentation-flask>=0.43b0
-opentelemetry-instrumentation-requests>=0.43b0
-opentelemetry-instrumentation-sqlalchemy>=0.43b0
-opentelemetry-semantic-conventions>=0.43b0
+opentelemetry-api>=1.33.0
+opentelemetry-sdk>=1.33.0
+opentelemetry-instrumentation-flask>=0.54b0
+opentelemetry-instrumentation-requests>=0.54b0
+opentelemetry-instrumentation-sqlalchemy>=0.54b0
+opentelemetry-semantic-conventions>=0.54b0
 ```
 
 After upgrading, some libraries offer configuration flags to control which conventions they emit.
@@ -278,10 +304,12 @@ With dual emission in place, you can update dashboards and alerts incrementally.
 rate(http_server_duration_milliseconds_bucket{http_method="GET"}[5m])
 
 # After (new convention)
-rate(http_server_duration_milliseconds_bucket{http_request_method="GET"}[5m])
+rate(http_server_request_duration_seconds_bucket{http_request_method="GET"}[5m])
 
-# During migration, you can use regex matching to handle both
-rate(http_server_duration_milliseconds_bucket{http_method=~"GET|",http_request_method=~"GET|"}[5m])
+# During migration, query both metric names and combine the result
+rate(http_server_duration_milliseconds_bucket{http_method="GET"}[5m])
+or
+rate(http_server_request_duration_seconds_bucket{http_request_method="GET"}[5m])
 ```
 
 For each dashboard and alert rule, update the attribute references to use the new names. Test that the updated queries return the expected results. Once confirmed, note the dashboard as migrated in your tracking spreadsheet or issue tracker.
