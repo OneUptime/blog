@@ -204,10 +204,14 @@ Here's a complete example that ties everything together in a FastAPI application
 
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from pydantic import BaseModel
 from otel_setup import configure_otel
 from metrics_setup import configure_metrics
 from instrumented_pipeline import InstrumentedClassifier
 import time
+
+class PredictRequest(BaseModel):
+    text: str
 
 # Initialize OpenTelemetry before anything else
 tracer = configure_otel()
@@ -222,10 +226,10 @@ app = FastAPI()
 FastAPIInstrumentor.instrument_app(app)
 
 @app.post("/predict")
-async def predict(text: str):
+async def predict(request: PredictRequest):
     start_time = time.time()
 
-    result = classifier.predict(text)
+    result = classifier.predict(request.text)
 
     # Record the inference duration metric
     duration_ms = (time.time() - start_time) * 1000
