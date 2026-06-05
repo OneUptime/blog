@@ -14,12 +14,11 @@ Traditional logging tells you what happened but not when things happened relativ
 
 ## Ensuring Context Propagation in Async Code
 
-The most common source of broken traces in async applications is lost context. When you spawn a new task or coroutine, the OpenTelemetry context does not always propagate automatically. Here is how to handle it in Python with asyncio:
+The most common source of broken traces in async applications is lost context. In modern Python, asyncio Tasks copy the current context automatically, so child spans created inside `asyncio.gather()` remain connected to the parent span. If you cross a boundary that does not copy context automatically, such as a thread executor or custom callback scheduler, capture and reattach the OpenTelemetry context explicitly.
 
 ```python
 import asyncio
-from opentelemetry import trace, context
-from opentelemetry.context import attach, detach
+from opentelemetry import trace
 
 tracer = trace.get_tracer("race-condition-debugger")
 
@@ -27,44 +26,32 @@ async def process_order(order_id):
     with tracer.start_as_current_span("process_order") as parent_span:
         parent_span.set_attribute("order.id", order_id)
 
-        # Capture the current context before spawning tasks
-        ctx = context.get_current()
-
-        # Launch concurrent operations that might race
+        # asyncio Tasks copy the current context when they are created
         results = await asyncio.gather(
-            reserve_inventory(order_id, ctx),
-            charge_payment(order_id, ctx),
-            update_order_status(order_id, ctx),
+            reserve_inventory(order_id),
+            charge_payment(order_id),
+            update_order_status(order_id),
         )
         return results
 
 
-async def reserve_inventory(order_id, parent_ctx):
-    # Reattach the parent context in this async task
-    token = attach(parent_ctx)
-    try:
-        with tracer.start_as_current_span("reserve_inventory") as span:
-            span.set_attribute("order.id", order_id)
-            # Simulate inventory check and reservation
-            available = await check_inventory(order_id)
-            if available:
-                await lock_inventory(order_id)
-                span.set_attribute("inventory.reserved", True)
-            else:
-                span.set_attribute("inventory.reserved", False)
-    finally:
-        detach(token)
+async def reserve_inventory(order_id):
+    with tracer.start_as_current_span("reserve_inventory") as span:
+        span.set_attribute("order.id", order_id)
+        # Simulate inventory check and reservation
+        available = await check_inventory(order_id)
+        if available:
+            await lock_inventory(order_id)
+            span.set_attribute("inventory.reserved", True)
+        else:
+            span.set_attribute("inventory.reserved", False)
 
 
-async def charge_payment(order_id, parent_ctx):
-    token = attach(parent_ctx)
-    try:
-        with tracer.start_as_current_span("charge_payment") as span:
-            span.set_attribute("order.id", order_id)
-            result = await payment_gateway.charge(order_id)
-            span.set_attribute("payment.status", result.status)
-    finally:
-        detach(token)
+async def charge_payment(order_id):
+    with tracer.start_as_current_span("charge_payment") as span:
+        span.set_attribute("order.id", order_id)
+        result = await payment_gateway.charge(order_id)
+        span.set_attribute("payment.status", result.status)
 ```
 
 ## Detecting Race Conditions Through Span Overlap Analysis
@@ -113,7 +100,7 @@ def find_overlapping_spans(trace_data, span_names_that_should_not_overlap):
 
 # Example usage: these operations should not overlap
 
-races = find_overlapping_spans(trace, [
+races = find_overlapping_spans(trace_data, [
     "reserve_inventory",
     "charge_payment",
     "update_order_status",
@@ -148,7 +135,7 @@ async def update_shared_resource(resource_id):
     })
 ```
 
-When a race condition occurs, you will see two traces that both read the same version of the resource before either writes. The span events make this read-read-write-write pattern obvious in the trace timeline.
+When a race condition occurs, you will see two spans or traces that both read the same version of the resource before either writes. The span events make this read-read-write-write pattern obvious in the trace timeline.
 
 ## Using Span Links for Related Concurrent Operations
 
@@ -165,7 +152,7 @@ def acquire_resource_lock(resource_id):
     if current_holder:
         # Link to the span that currently holds the lock
         links.append(Link(
-            current_holder.span_context,
+            current_holder.get_span_context(),
             attributes={"link.type": "contended_resource"},
         ))
 
