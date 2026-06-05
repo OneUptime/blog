@@ -150,6 +150,7 @@ docker pull "$NEW_IMAGE"
 
 # Step 2: Start the new container
 echo "Starting new container..."
+docker rm "$NEW_NAME" 2>/dev/null || true
 docker run -d \
   --name "$NEW_NAME" \
   -p "$NEW_PORT:8080" \
@@ -202,10 +203,10 @@ docker exec nginx-lb nginx -s reload
 echo "Traffic shifted to new container. Waiting 10 seconds for connections to drain..."
 sleep 10
 
-# Step 6: Stop and remove the old container
+# Step 6: Stop the old container
 echo "Stopping old container..."
 docker stop "$CURRENT_NAME"
-docker rm "$CURRENT_NAME"
+echo "Keeping $CURRENT_NAME stopped so rollback.sh can restart it if needed."
 
 echo "Deployment complete. $NEW_NAME is now serving all traffic on port $NEW_PORT."
 ```
@@ -243,9 +244,9 @@ if [ -z "$CURRENT" ]; then
     exit 1
 fi
 
-# Get the previous image from Docker history
-PREVIOUS_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CURRENT")
-echo "Current container: $CURRENT running $PREVIOUS_IMAGE"
+# Get the current image
+CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CURRENT")
+echo "Current container: $CURRENT running $CURRENT_IMAGE"
 
 # Check if there is a stopped previous container
 STOPPED=$(docker ps -a --format '{{.Names}}' --filter "name=app-" --filter "status=exited" | head -1)
@@ -264,7 +265,20 @@ docker start "$STOPPED"
 
 # Wait for it to be healthy
 echo "Waiting for previous container to become healthy..."
-sleep 15
+SECONDS_WAITED=0
+HEALTH_TIMEOUT=60
+while true; do
+    HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$STOPPED" 2>/dev/null || echo "unknown")
+    if [ "$HEALTH" = "healthy" ] || [ "$HEALTH" = "none" ]; then
+        break
+    fi
+    if [ $SECONDS_WAITED -ge $HEALTH_TIMEOUT ]; then
+        echo "ERROR: Previous container did not become healthy after ${HEALTH_TIMEOUT}s."
+        exit 1
+    fi
+    sleep 2
+    SECONDS_WAITED=$((SECONDS_WAITED + 2))
+done
 
 # Shift traffic
 if [ -n "$PREVIOUS_PORT" ]; then
@@ -275,7 +289,6 @@ EOF
 fi
 
 # Stop the current (bad) container
-CURRENT_PORT=$(docker inspect --format='{{range $p, $conf := .HostConfig.PortBindings}}{{(index $conf 0).HostPort}}{{end}}' "$CURRENT")
 docker stop "$CURRENT"
 
 echo "Rollback complete. $STOPPED is now serving traffic."
@@ -294,8 +307,10 @@ NEW_IMAGE=$1
 INSTANCE_COUNT=${2:-2}
 BASE_PORT=8001
 NGINX_UPSTREAM="/etc/nginx/upstream.conf"
+HEALTH_TIMEOUT=60
 
 echo "Deploying $NEW_IMAGE across $INSTANCE_COUNT instances..."
+docker pull "$NEW_IMAGE"
 
 # Update one instance at a time
 for i in $(seq 1 "$INSTANCE_COUNT"); do
@@ -325,10 +340,24 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
       -p "$PORT:8080" \
       --health-cmd="curl -f http://localhost:8080/health || exit 1" \
       --health-interval=5s \
+      --health-timeout=3s \
+      --health-retries=3 \
       "$NEW_IMAGE"
 
     # Wait for health
-    sleep 15
+    SECONDS_WAITED=0
+    while true; do
+        HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "unknown")
+        if [ "$HEALTH" = "healthy" ]; then
+            break
+        fi
+        if [ $SECONDS_WAITED -ge $HEALTH_TIMEOUT ]; then
+            echo "ERROR: $CONTAINER_NAME did not become healthy after ${HEALTH_TIMEOUT}s."
+            exit 1
+        fi
+        sleep 2
+        SECONDS_WAITED=$((SECONDS_WAITED + 2))
+    done
 
     # Add back to load balancer
     UPSTREAM_CONTENT=""
@@ -359,8 +388,8 @@ wait_for_drain() {
 
     while true; do
         # Count established connections to the target port
-        CONNS=$(ss -tn state established "( dport = :$PORT )" | wc -l)
-        if [ "$CONNS" -le 1 ]; then  # 1 accounts for the header line
+        CONNS=$(ss -Htn state established "( dport = :$PORT or sport = :$PORT )" | wc -l)
+        if [ "$CONNS" -eq 0 ]; then
             echo "All connections drained from port $PORT"
             return 0
         fi
