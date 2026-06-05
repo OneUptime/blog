@@ -13,15 +13,15 @@ The gRPC Go ecosystem has moved toward `stats.Handler` as the preferred way to c
 The `stats.Handler` interface receives callbacks for the full lifecycle of an RPC:
 
 - `TagRPC`: Called at the start of an RPC (set up context)
-- `HandleRPC`: Called for each RPC event (begin, in-header, in-payload, out-header, out-payload, end)
+- `HandleRPC`: Called for RPC events such as begin, headers, payloads, trailers, and end
 - `TagConn`: Called when a new connection is created
 - `HandleConn`: Called for connection events (begin, end)
 
-Interceptors only see the start and end of the RPC. They miss payload-level events and connection lifecycle events entirely.
+Basic interceptor-based instrumentation typically sees the start and end of the RPC. It does not receive the same built-in payload-level and connection lifecycle callbacks as a `stats.Handler`.
 
 ## The Old Way (Deprecated)
 
-This is the interceptor-based approach that you should migrate away from:
+Older versions of `otelgrpc` exposed interceptor helpers like this. If you still have this pattern in your codebase, you should migrate away from it:
 
 ```go
 // DEPRECATED - do not use this pattern anymore
@@ -127,21 +127,13 @@ You can pass options to customize the behavior:
 
 ```go
 // Server with custom options
+// import "google.golang.org/grpc/stats"
 server := grpc.NewServer(
     grpc.StatsHandler(otelgrpc.NewServerHandler(
         // Filter out health check RPCs from tracing
-        otelgrpc.WithFilter(func(info *otelgrpc.InterceptorInfo) bool {
+        otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
             // Return false to skip tracing for health checks
-            return info.UnaryServerInfo.FullMethod != "/grpc.health.v1.Health/Check"
-        }),
-        // Set a custom span name formatter
-        otelgrpc.WithSpanNameFormatter(func(fullMethod string) string {
-            // Extract just the method name without the service prefix
-            parts := strings.Split(fullMethod, "/")
-            if len(parts) >= 3 {
-                return parts[1] + "." + parts[2]
-            }
-            return fullMethod
+            return info.FullMethodName != "/grpc.health.v1.Health/Check"
         }),
         // Only record specific message events
         otelgrpc.WithMessageEvents(
