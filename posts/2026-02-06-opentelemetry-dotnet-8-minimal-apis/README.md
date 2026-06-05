@@ -51,6 +51,7 @@ cd MinimalApiOtel
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 dotnet add package OpenTelemetry.Instrumentation.Http
+dotnet add package OpenTelemetry.Instrumentation.Runtime
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package OpenTelemetry.Exporter.Console
 ```
@@ -117,6 +118,8 @@ builder.Services.AddOpenTelemetry()
         // Add custom activity source for route handlers
         .AddSource("MinimalApi.Handlers")
         .AddSource("MinimalApi.Services")
+        .AddSource("MinimalApi.Filters")
+        .AddSource("MinimalApi.HealthChecks")
         // Export to console for development
         .AddConsoleExporter()
         // Export to OTLP collector
@@ -150,6 +153,7 @@ app.Run();
 Build a helper class to simplify instrumentation in route handlers without cluttering the endpoint definitions.
 
 ```csharp
+using OpenTelemetry.Trace;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
@@ -173,9 +177,9 @@ public static class ActivitySourceProvider
 
 public static class InstrumentationExtensions
 {
-    // Extension method to wrap route handlers with instrumentation
+    // Helper method to wrap route handlers with instrumentation
     public static async Task<T> WithInstrumentation<T>(
-        this Task<T> task,
+        Func<Task<T>> operation,
         string operationName,
         Action<Activity?>? enrichActivity = null,
         Dictionary<string, object>? tags = null)
@@ -204,7 +208,7 @@ public static class InstrumentationExtensions
             ActivitySourceProvider.RequestCounter.Add(1, new KeyValuePair<string, object?>(
                 "operation", operationName));
 
-            var result = await task;
+            var result = await operation();
 
             activity?.SetStatus(ActivityStatusCode.Ok);
 
@@ -234,11 +238,11 @@ Now instrument your route handlers using the helper methods. This keeps the rout
 ```csharp
 app.MapGet("/api/products", async (IProductService productService) =>
 {
-    return await Task.Run(async () =>
+    return await InstrumentationExtensions.WithInstrumentation(async () =>
     {
         var products = await productService.GetAllProductsAsync();
         return Results.Ok(products);
-    }).WithInstrumentation(
+    },
         "GetProducts",
         activity =>
         {
@@ -250,7 +254,7 @@ app.MapGet("/api/products", async (IProductService productService) =>
 
 app.MapGet("/api/products/{id:int}", async (int id, IProductService productService) =>
 {
-    return await Task.Run(async () =>
+    return await InstrumentationExtensions.WithInstrumentation(async () =>
     {
         var product = await productService.GetProductByIdAsync(id);
 
@@ -260,7 +264,7 @@ app.MapGet("/api/products/{id:int}", async (int id, IProductService productServi
         }
 
         return Results.Ok(product);
-    }).WithInstrumentation(
+    },
         "GetProductById",
         activity =>
         {
@@ -277,7 +281,7 @@ app.MapGet("/api/products/{id:int}", async (int id, IProductService productServi
 
 app.MapPost("/api/products", async (Product product, IProductService productService) =>
 {
-    return await Task.Run(async () =>
+    return await InstrumentationExtensions.WithInstrumentation(async () =>
     {
         if (string.IsNullOrWhiteSpace(product.Name))
         {
@@ -286,7 +290,7 @@ app.MapPost("/api/products", async (Product product, IProductService productServ
 
         var created = await productService.CreateProductAsync(product);
         return Results.Created($"/api/products/{created.Id}", created);
-    }).WithInstrumentation(
+    },
         "CreateProduct",
         activity =>
         {
@@ -303,6 +307,7 @@ app.MapPost("/api/products", async (Product product, IProductService productServ
 Endpoint filters provide a cleaner way to add cross-cutting concerns like instrumentation to multiple endpoints.
 
 ```csharp
+using OpenTelemetry.Trace;
 using System.Diagnostics;
 
 namespace MinimalApiOtel.Filters;
@@ -517,9 +522,6 @@ namespace MinimalApiOtel.Middleware;
 public class RequestTelemetryMiddleware
 {
     private readonly RequestDelegate _next;
-    private static readonly ActivitySource ActivitySource = new(
-        "MinimalApi.Middleware",
-        "1.0.0");
 
     public RequestTelemetryMiddleware(RequestDelegate next)
     {
@@ -566,6 +568,7 @@ app.UseMiddleware<RequestTelemetryMiddleware>();
 Add health checks that are also instrumented but filtered from main telemetry to reduce noise.
 
 ```csharp
+using OpenTelemetry.Trace;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Diagnostics;
 
@@ -621,7 +624,7 @@ When your Minimal API calls external services, ensure those calls are traced pro
 ```csharp
 app.MapGet("/api/external-data", async (IHttpClientFactory httpClientFactory) =>
 {
-    return await Task.Run(async () =>
+    return await InstrumentationExtensions.WithInstrumentation(async () =>
     {
         using var activity = ActivitySourceProvider.Source.StartActivity(
             "FetchExternalData",
@@ -651,7 +654,7 @@ app.MapGet("/api/external-data", async (IHttpClientFactory httpClientFactory) =>
             activity?.RecordException(ex);
             throw;
         }
-    }).WithInstrumentation("GetExternalData");
+    }, "GetExternalData");
 })
 .WithName("GetExternalData");
 ```
