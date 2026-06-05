@@ -28,7 +28,7 @@ Set up your GCS bucket if you have not already:
 
 gcloud storage buckets create gs://my-docker-backups \
   --location=us-central1 \
-  --default-storage-class=NEARLINE
+  --default-storage-class=STANDARD
 
 # Create a service account for backup operations
 gcloud iam service-accounts create docker-backup-sa \
@@ -70,14 +70,15 @@ Let's build a proper backup script that handles multiple volumes and uploads the
 set -euo pipefail
 
 # Configuration
-GCS_BUCKET="gs://my-docker-backups"
+GCS_BUCKET="${GCS_BUCKET:-gs://my-docker-backups}"
 BACKUP_DIR="/tmp/docker-backups"
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
 HOSTNAME=$(hostname)
 KEY_FILE="/opt/backup/gcs-key.json"
 
-# List of volumes to back up (space-separated)
-VOLUMES="postgres_data redis_data app_uploads"
+# List of volumes to back up (space-separated or comma-separated)
+VOLUMES="${BACKUP_VOLUMES:-postgres_data redis_data app_uploads}"
+VOLUMES="${VOLUMES//,/ }"
 
 # Activate the GCS service account
 gcloud auth activate-service-account --key-file="$KEY_FILE"
@@ -97,7 +98,7 @@ for VOLUME in $VOLUMES; do
         alpine tar czf "/backup/${VOLUME}_${DATE}.tar.gz" -C /source .
 
     # Upload the archive to GCS with the hostname prefix for organization
-    gsutil cp "$BACKUP_FILE" "${GCS_BUCKET}/${HOSTNAME}/${VOLUME}/${VOLUME}_${DATE}.tar.gz"
+    gcloud storage cp "$BACKUP_FILE" "${GCS_BUCKET}/${HOSTNAME}/${VOLUME}/${VOLUME}_${DATE}.tar.gz"
 
     # Remove the local backup file to save disk space
     rm -f "$BACKUP_FILE"
@@ -137,8 +138,7 @@ You do not want to keep backups forever. GCS lifecycle rules handle this cleanly
       {
         "action": {"type": "Delete"},
         "condition": {
-          "age": 30,
-          "matchesPrefix": ["backups/"]
+          "age": 120
         }
       },
       {
@@ -147,8 +147,7 @@ You do not want to keep backups forever. GCS lifecycle rules handle this cleanly
           "storageClass": "COLDLINE"
         },
         "condition": {
-          "age": 7,
-          "matchesPrefix": ["backups/"]
+          "age": 30
         }
       }
     ]
@@ -160,10 +159,10 @@ Apply the lifecycle policy to your bucket:
 
 ```bash
 # Apply the lifecycle configuration to automatically manage old backups
-gsutil lifecycle set lifecycle.json gs://my-docker-backups
+gcloud storage buckets update gs://my-docker-backups --lifecycle-file=lifecycle.json
 ```
 
-This policy moves backups to Coldline storage after 7 days and deletes them after 30 days.
+This policy moves backups to Coldline storage after 30 days and deletes them after 120 days.
 
 ## Using a Dedicated Backup Container
 
@@ -195,6 +194,7 @@ services:
     build: ./backup
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/docker-backups:/tmp/docker-backups
       - postgres_data:/volumes/postgres_data:ro
       - redis_data:/volumes/redis_data:ro
     environment:
@@ -257,7 +257,7 @@ RESTORE_DIR="/tmp/docker-restore"
 mkdir -p "$RESTORE_DIR"
 
 # Download the backup archive from GCS
-gsutil cp "$BACKUP_PATH" "$RESTORE_DIR/restore.tar.gz"
+gcloud storage cp "$BACKUP_PATH" "$RESTORE_DIR/restore.tar.gz"
 
 # Create the volume if it does not exist
 docker volume create "$VOLUME_NAME" 2>/dev/null || true
@@ -266,7 +266,7 @@ docker volume create "$VOLUME_NAME" 2>/dev/null || true
 docker run --rm \
     -v "${VOLUME_NAME}:/target" \
     -v "${RESTORE_DIR}:/backup:ro" \
-    alpine sh -c "rm -rf /target/* && tar xzf /backup/restore.tar.gz -C /target"
+    alpine sh -c "rm -rf /target/* /target/.[!.]* /target/..?* && tar xzf /backup/restore.tar.gz -C /target"
 
 # Clean up the temporary restore file
 rm -rf "$RESTORE_DIR"
@@ -284,12 +284,12 @@ Always verify backups by doing a test restore. Set up a simple validation script
 # Downloads the latest backup and verifies the archive integrity
 
 VOLUME="postgres_data"
-LATEST=$(gsutil ls "gs://my-docker-backups/$(hostname)/${VOLUME}/" | sort | tail -1)
+LATEST=$(gcloud storage ls "gs://my-docker-backups/$(hostname)/${VOLUME}/" | sort | tail -1)
 
 echo "Verifying latest backup: $LATEST"
 
 # Download and test the archive without extracting
-gsutil cp "$LATEST" /tmp/verify.tar.gz
+gcloud storage cp "$LATEST" /tmp/verify.tar.gz
 tar tzf /tmp/verify.tar.gz > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
@@ -308,15 +308,14 @@ rm -f /tmp/verify.tar.gz
 
 When backing up large volumes, consider these optimizations:
 
-1. **Use parallel uploads** - gsutil supports parallel composite uploads for files over 150MB.
+1. **Use parallel uploads** - `gcloud storage` supports parallel composite uploads for large files.
 2. **Compress selectively** - Binary data like media files may not compress well. Skip compression for those volumes.
 3. **Snapshot before backup** - If your volume is on an LVM partition, take a snapshot first to get a consistent point-in-time copy.
-4. **Limit bandwidth** - Use `gsutil -o GSUtil:max_upload_compression_buffer_size=2G` to control memory usage during uploads.
+4. **Tune upload concurrency** - Adjust `gcloud storage` process and thread counts if uploads are using too many local resources.
 
 ```bash
 # Upload large backup files using parallel composite uploads
-gsutil -o GSUtil:parallel_composite_upload_threshold=150M \
-    cp /tmp/large_backup.tar.gz gs://my-docker-backups/
+gcloud storage cp /tmp/large_backup.tar.gz gs://my-docker-backups/
 ```
 
 ## Summary
