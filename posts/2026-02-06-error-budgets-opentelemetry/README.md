@@ -69,7 +69,7 @@ receivers:
 
 connectors:
   # The spanmetrics connector derives metrics from trace spans
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2.5s, 5s]
@@ -89,17 +89,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
-The spanmetrics connector produces `calls_total` and `duration_milliseconds` metrics derived from spans. You can then query the error budget from trace-derived data.
+The span metrics connector produces call count and duration metrics derived from spans. With the Prometheus exporter, the generated calls metric is exposed as `calls_total`. You can then query the error budget from trace-derived data.
 
 ```promql
 # Error rate from trace-derived span metrics
-# Spans with status_code="ERROR" are counted as failures
+# Spans exported with status_code="STATUS_CODE_ERROR" are counted as failures
 sum(increase(calls_total{service_name="payment-service", status_code="STATUS_CODE_ERROR"}[30d]))
 /
 sum(increase(calls_total{service_name="payment-service"}[30d]))
@@ -111,13 +111,23 @@ Sometimes you want to compute error budgets programmatically - for example, to e
 
 ```python
 from dataclasses import dataclass
+from typing import Iterable
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 meter = metrics.get_meter("slo-calculator", version="1.0.0")
+
+current_error_budget_remaining = 1.0
+
+
+def observe_error_budget(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(current_error_budget_remaining)
+
 
 # Expose error budget remaining as its own gauge metric
 error_budget_gauge = meter.create_observable_gauge(
     name="slo.error_budget.remaining",
+    callbacks=[observe_error_budget],
     description="Fraction of error budget remaining (1.0 = full, 0.0 = exhausted)",
     unit="1",
 )
@@ -161,6 +171,7 @@ remaining = calculate_error_budget_remaining(
     failed_requests=350,
     slo=slo,
 )
+current_error_budget_remaining = remaining
 # remaining = 1 - (0.00035 / 0.001) = 1 - 0.35 = 0.65 (65% remaining)
 ```
 
@@ -179,7 +190,7 @@ graph TD
 
 ## Combining Trace and Metric Error Budgets
 
-In practice, metric-based and trace-based error budgets may produce slightly different numbers. Metrics are sampled at the counter level and are very efficient. Traces provide richer context but may be subject to sampling. A good strategy is to use metric-based error budgets for real-time alerting (they are cheaper to compute) and trace-based analysis for post-incident investigation (they provide more detail about what went wrong).
+In practice, metric-based and trace-based error budgets may produce slightly different numbers. Metrics are aggregated at the counter level and are very efficient. Traces provide richer context but may be subject to sampling. A good strategy is to use metric-based error budgets for real-time alerting (they are cheaper to compute) and trace-based analysis for post-incident investigation (they provide more detail about what went wrong).
 
 ## Practical Considerations
 
