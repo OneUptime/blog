@@ -32,13 +32,15 @@ const eventsSent = meter.createCounter('sse.events.sent', {
 });
 
 const eventDeliveryLatency = meter.createHistogram('sse.event.latency_ms', {
-  description: 'Time from event creation to sending over SSE',
+  description: 'Time from event creation to queueing the SSE write',
   unit: 'ms',
 });
 
 const app = express();
 
 app.get('/events', (req, res) => {
+  const connectionStartedAt = Date.now();
+
   // Start a span for the SSE connection lifecycle
   const connectionSpan = tracer.startSpan('sse.connection', {
     kind: SpanKind.SERVER,
@@ -82,9 +84,12 @@ app.get('/events', (req, res) => {
     });
 
     const payload = `id: ${eventId}\nevent: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
-    res.write(payload);
+    const queuedInKernelBuffer = res.write(payload);
+    if (!queuedInKernelBuffer) {
+      eventSpan.addEvent('sse.backpressure');
+    }
 
-    // Measure delivery latency
+    // Measure server-side write queue latency
     const latency = Date.now() - eventCreatedAt;
     eventDeliveryLatency.record(latency, {
       'sse.event.type': eventType,
@@ -112,7 +117,7 @@ app.get('/events', (req, res) => {
     activeStreams.add(-1);
 
     connectionSpan.setAttribute('sse.total_events', eventCount);
-    connectionSpan.setAttribute('sse.connection.duration_ms', Date.now() - connectionSpan.startTime[0] * 1000);
+    connectionSpan.setAttribute('sse.connection.duration_ms', Date.now() - connectionStartedAt);
     connectionSpan.end();
   });
 });
@@ -120,7 +125,7 @@ app.get('/events', (req, res) => {
 
 ## Measuring End-to-End Event Latency
 
-The real delivery latency is not just the time to write to the response stream. It includes the time from when the event was produced (e.g., a database change) to when it reaches the client. Track this with timestamps in the event payload:
+The real delivery latency is not just the time to write to the response stream. It includes the time from when the event was produced (e.g., a database change) to when it is queued for the SSE response, plus network and browser processing time. Track the server-side part before writing the event, and include timestamps in the event payload so the client can calculate receive latency when it handles the message:
 
 ```typescript
 // event-producer.ts
