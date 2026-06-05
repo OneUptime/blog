@@ -14,27 +14,32 @@ Here is the reference table you will need. Each `OTEL_*` variable maps to a spec
 
 ```text
 OTEL_SERVICE_NAME
-  -> resource.attributes.service.name
+  -> resource.attributes[] entry named service.name
 
 OTEL_RESOURCE_ATTRIBUTES
-  -> resource.attributes (key-value pairs)
+  -> resource.attributes_list (comma-separated key-value list)
+  -> resource.attributes[] entries
 
 OTEL_EXPORTER_OTLP_ENDPOINT
-  -> tracer_provider.processors[].batch.exporter.otlp.endpoint
-  -> meter_provider.readers[].periodic.exporter.otlp.endpoint
-  -> logger_provider.processors[].batch.exporter.otlp.endpoint
+  -> tracer_provider.processors[].batch.exporter.otlp_grpc.endpoint
+  -> meter_provider.readers[].periodic.exporter.otlp_grpc.endpoint
+  -> logger_provider.processors[].batch.exporter.otlp_grpc.endpoint
+  -> or the corresponding otlp_http.endpoint fields with /v1/traces,
+     /v1/metrics, and /v1/logs paths
 
 OTEL_EXPORTER_OTLP_PROTOCOL
-  -> *.otlp.protocol
+  -> choose the otlp_grpc or otlp_http exporter key
+  -> for http/json, set otlp_http.encoding
 
 OTEL_EXPORTER_OTLP_HEADERS
-  -> *.otlp.headers (as key-value map)
+  -> *.otlp_grpc.headers_list or *.otlp_http.headers_list
+  -> or *.headers[] entries
 
 OTEL_EXPORTER_OTLP_COMPRESSION
-  -> *.otlp.compression
+  -> *.otlp_grpc.compression or *.otlp_http.compression
 
 OTEL_EXPORTER_OTLP_TIMEOUT
-  -> *.otlp.timeout
+  -> *.otlp_grpc.timeout or *.otlp_http.timeout (milliseconds)
 
 OTEL_TRACES_SAMPLER
   -> tracer_provider.sampler
@@ -43,7 +48,8 @@ OTEL_TRACES_SAMPLER_ARG
   -> tracer_provider.sampler (nested under sampler type)
 
 OTEL_PROPAGATORS
-  -> propagator.composite
+  -> propagator.composite_list
+  -> or propagator.composite[] entries
 
 OTEL_TRACES_EXPORTER
   -> tracer_provider.processors[].*.exporter
@@ -55,7 +61,7 @@ OTEL_LOGS_EXPORTER
   -> logger_provider.processors[].*.exporter
 
 OTEL_ATTRIBUTE_COUNT_LIMIT
-  -> tracer_provider.limits.attribute_count_limit
+  -> attribute_limits.attribute_count_limit
 
 OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT
   -> tracer_provider.limits.attribute_count_limit
@@ -99,10 +105,12 @@ Sample output:
 
 ```text
 cart-service/app: OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+cart-service/app: OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 cart-service/app: OTEL_RESOURCE_ATTRIBUTES=service.name=cart-service,deployment.environment=production
 cart-service/app: OTEL_TRACES_SAMPLER=parentbased_traceidratio
 cart-service/app: OTEL_TRACES_SAMPLER_ARG=0.1
 order-service/app: OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+order-service/app: OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 order-service/app: OTEL_RESOURCE_ATTRIBUTES=service.name=order-service,deployment.environment=production
 ```
 
@@ -120,39 +128,61 @@ import yaml
 
 def build_config():
     """Build an OTel config dict from current environment variables."""
-    config = {"file_format": "0.3"}
+    config = {"file_format": "1.0"}
 
     # Resource attributes
     service_name = os.environ.get("OTEL_SERVICE_NAME", "")
     resource_attrs_str = os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "")
 
     resource_attrs = {}
-    if service_name:
-        resource_attrs["service.name"] = service_name
     if resource_attrs_str:
         for pair in resource_attrs_str.split(","):
             if "=" in pair:
                 key, value = pair.split("=", 1)
                 resource_attrs[key.strip()] = value.strip()
+    if service_name:
+        resource_attrs["service.name"] = service_name
 
     if resource_attrs:
-        config["resource"] = {"attributes": resource_attrs}
+        config["resource"] = {
+            "attributes": [
+                {"name": key, "value": value}
+                for key, value in resource_attrs.items()
+            ]
+        }
 
     # OTLP exporter settings
-    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
-    protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+    protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+    default_endpoint = "http://localhost:4317" if protocol == "grpc" else "http://localhost:4318"
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", default_endpoint)
 
-    otlp_config = {
+    exporter_name = "otlp_grpc" if protocol == "grpc" else "otlp_http"
+    exporter_config = {
         "endpoint": endpoint,
-        "protocol": protocol,
     }
+    if protocol == "http/json":
+        exporter_config["encoding"] = "json"
 
     compression = os.environ.get("OTEL_EXPORTER_OTLP_COMPRESSION")
     if compression:
-        otlp_config["compression"] = compression
+        exporter_config["compression"] = compression
+
+    timeout = os.environ.get("OTEL_EXPORTER_OTLP_TIMEOUT")
+    if timeout:
+        exporter_config["timeout"] = int(timeout)
+
+    headers = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS")
+    if headers:
+        exporter_config["headers_list"] = headers
+
+    def exporter_for_signal(signal):
+        signal_config = dict(exporter_config)
+        if exporter_name == "otlp_http":
+            signal_config["endpoint"] = f"{endpoint.rstrip('/')}/v1/{signal}"
+        return {exporter_name: signal_config}
 
     # Tracer provider
-    sampler_name = os.environ.get("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+    sampler_name = os.environ.get("OTEL_TRACES_SAMPLER", "parentbased_always_on")
     sampler_arg = os.environ.get("OTEL_TRACES_SAMPLER_ARG", "1.0")
 
     sampler = {}
@@ -168,25 +198,33 @@ def build_config():
         }
     elif sampler_name == "always_on":
         sampler = {"always_on": {}}
+    elif sampler_name == "always_off":
+        sampler = {"always_off": {}}
+    elif sampler_name == "traceidratio":
+        sampler = {"trace_id_ratio_based": {"ratio": float(sampler_arg)}}
+    elif sampler_name == "parentbased_always_on":
+        sampler = {"parent_based": {"root": {"always_on": {}}}}
+    elif sampler_name == "parentbased_always_off":
+        sampler = {"parent_based": {"root": {"always_off": {}}}}
 
     config["tracer_provider"] = {
-        "processors": [{"batch": {"exporter": {"otlp": dict(otlp_config)}}}],
+        "processors": [{"batch": {"exporter": exporter_for_signal("traces")}}],
         "sampler": sampler,
     }
 
     # Meter provider
     config["meter_provider"] = {
-        "readers": [{"periodic": {"exporter": {"otlp": dict(otlp_config)}}}]
+        "readers": [{"periodic": {"exporter": exporter_for_signal("metrics")}}]
     }
 
     # Logger provider
     config["logger_provider"] = {
-        "processors": [{"batch": {"exporter": {"otlp": dict(otlp_config)}}}]
+        "processors": [{"batch": {"exporter": exporter_for_signal("logs")}}]
     }
 
     # Propagators
     propagators = os.environ.get("OTEL_PROPAGATORS", "tracecontext,baggage")
-    config["propagator"] = {"composite": propagators.split(",")}
+    config["propagator"] = {"composite_list": propagators}
 
     return config
 
@@ -211,7 +249,7 @@ The safest migration path is running the config file alongside existing env vars
 # Kubernetes deployment - transition period
 env:
   # New: point to the config file
-  - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+  - name: OTEL_CONFIG_FILE
     value: "/etc/otel/otel-config.yaml"
   # Old: keep env vars as fallback documentation
   # These are ignored when config file is present
@@ -219,6 +257,8 @@ env:
     value: "order-service"
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
     value: "http://collector:4317"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "grpc"
 ```
 
 ## Step 4: Validate Telemetry Output
@@ -240,7 +280,7 @@ Once you have confirmed everything works, remove the old environment variables i
 ```yaml
 # Kubernetes deployment - after migration
 env:
-  - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+  - name: OTEL_CONFIG_FILE
     value: "/etc/otel/otel-config.yaml"
   # All OTEL_* env vars removed
 ```
