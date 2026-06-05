@@ -6,31 +6,31 @@ Tags: OpenTelemetry, Ruby, Rails, ActiveRecord, Database, SQL Tracing
 
 Description: Comprehensive guide to instrumenting ActiveRecord database queries with OpenTelemetry in Rails for detailed SQL performance monitoring and optimization insights.
 
-Database queries often account for the largest portion of response time in Rails applications. OpenTelemetry's ActiveRecord instrumentation automatically captures SQL queries, execution times, and connection pool metrics, giving you the visibility needed to identify and fix performance bottlenecks.
+Database queries often account for the largest portion of response time in Rails applications. OpenTelemetry's ActiveRecord instrumentation captures ActiveRecord model operations, and the ActiveSupport instrumentation can subscribe to Rails' `sql.active_record` notifications to capture SQL statements, execution times, and query payload details. Together, they give you the visibility needed to identify and fix performance bottlenecks.
 
 ## Understanding ActiveRecord Instrumentation
 
-The OpenTelemetry ActiveRecord instrumentation hooks into Rails' ActiveSupport::Notifications system to capture database operations. Every query generates a span with detailed information about the SQL statement, database connection, and timing.
+The OpenTelemetry ActiveRecord instrumentation patches ActiveRecord methods to create spans around model operations. Rails also emits an `sql.active_record` ActiveSupport notification every time ActiveRecord uses SQL, and OpenTelemetry's ActiveSupport instrumentation can turn those notifications into spans with SQL attributes.
 
 ```mermaid
 graph TD
-    A[ActiveRecord Query] --> B[ActiveSupport Notification]
-    B --> C[OpenTelemetry Instrumentation]
+    A[ActiveRecord Query] --> B[ActiveSupport sql.active_record Notification]
+    B --> C[OpenTelemetry ActiveSupport Instrumentation]
     C --> D[Create Span]
     D --> E[Add SQL Attributes]
     E --> F[Record Timing]
     F --> G[Export to Backend]
 
     H[Query Details] --> E
-    I[Connection Info] --> E
-    J[Table Name] --> E
+    I[Operation Name] --> E
+    J[Database System] --> E
 ```
 
-This automatic instrumentation requires no code changes in your models or controllers. Simply configure the instrumentation and every database query becomes visible in your traces.
+This automatic instrumentation requires no code changes in your models or controllers. Configure the instrumentation once, and database activity becomes visible in your traces.
 
 ## Installing ActiveRecord Instrumentation
 
-Add the OpenTelemetry ActiveRecord instrumentation gem to your Gemfile:
+Add the OpenTelemetry ActiveRecord and ActiveSupport instrumentation gems to your Gemfile:
 
 ```ruby
 # Gemfile
@@ -38,6 +38,7 @@ Add the OpenTelemetry ActiveRecord instrumentation gem to your Gemfile:
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
 gem 'opentelemetry-instrumentation-active_record'
+gem 'opentelemetry-instrumentation-active_support'
 ```
 
 Install the gems:
@@ -46,11 +47,11 @@ Install the gems:
 bundle install
 ```
 
-The `opentelemetry-instrumentation-active_record` gem specifically targets ActiveRecord, providing focused instrumentation without pulling in dependencies for other frameworks.
+The `opentelemetry-instrumentation-active_record` gem specifically targets ActiveRecord model operations. Current releases require modern Ruby and ActiveRecord versions, so check the gem version constraints if your app is on an older Rails release. The `opentelemetry-instrumentation-active_support` gem lets you subscribe to Rails notifications such as `sql.active_record` for SQL-level spans.
 
 ## Basic Configuration
 
-Configure ActiveRecord instrumentation in your Rails initializer with default settings:
+Configure ActiveRecord and SQL notification instrumentation in your Rails initializer:
 
 ```ruby
 # config/initializers/opentelemetry.rb
@@ -58,36 +59,101 @@ Configure ActiveRecord instrumentation in your Rails initializer with default se
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/active_record'
+require 'opentelemetry/instrumentation/active_support'
+
+module SqlTraceAttributes
+  module_function
+
+  def call(payload)
+    sql = payload[:sql].to_s
+
+    {
+      'db.system.name' => adapter_name,
+      'db.query.text' => sql,
+      'db.operation.name' => sql.split.first.to_s.upcase,
+      'db.query.name' => payload[:name].to_s
+    }.compact
+  end
+
+  def adapter_name
+    case ActiveRecord::Base.connection.adapter_name.downcase
+    when /postgres/
+      'postgresql'
+    when /mysql/
+      'mysql'
+    when /sqlite/
+      'sqlite'
+    else
+      'other_sql'
+    end
+  end
+end
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
-  # Enable ActiveRecord instrumentation with defaults
+  # Enable ActiveRecord model-operation instrumentation
   c.use 'OpenTelemetry::Instrumentation::ActiveRecord'
+
+  # Enable ActiveSupport notification instrumentation
+  c.use 'OpenTelemetry::Instrumentation::ActiveSupport'
 end
+
+tracer = OpenTelemetry.tracer_provider.tracer('rails.sql')
+
+OpenTelemetry::Instrumentation::ActiveSupport.subscribe(
+  tracer,
+  'sql.active_record',
+  SqlTraceAttributes,
+  kind: :client,
+  span_name_formatter: ->(_name) { 'active_record.sql' }
+)
 ```
 
-This basic configuration creates a span for every database query, capturing the SQL statement and execution time.
+This configuration creates a span for each `sql.active_record` notification, capturing the SQL statement and execution time.
 
 ## Enabling SQL Obfuscation
 
-Production applications must protect sensitive data in SQL queries. Enable SQL obfuscation to replace parameter values with placeholders:
+Production applications must protect sensitive data in SQL queries. OpenTelemetry Ruby's ActiveRecord instrumentation does not provide an `enable_sql_obfuscation` option, so sanitize query text before storing it in span attributes or remove the query text attribute entirely.
 
 ```ruby
 # config/initializers/opentelemetry.rb
 
-require 'opentelemetry/sdk'
-require 'opentelemetry/exporter/otlp'
-require 'opentelemetry/instrumentation/active_record'
+module SqlTraceAttributes
+  module_function
 
-OpenTelemetry::SDK.configure do |c|
-  c.service_name = 'rails-app'
+  STRING_LITERAL = /'(?:''|[^'])*'/.freeze
+  NUMBER_LITERAL = /(?<!\$)\b\d+(?:\.\d+)?\b/.freeze
 
-  # Enable ActiveRecord instrumentation with SQL obfuscation
-  c.use 'OpenTelemetry::Instrumentation::ActiveRecord', {
-    enable_sql_obfuscation: true,
-    db_statement: :include
-  }
+  def call(payload)
+    sql = sanitize_sql(payload[:sql].to_s)
+
+    {
+      'db.system.name' => adapter_name,
+      'db.query.text' => sql,
+      'db.operation.name' => sql.split.first.to_s.upcase,
+      'db.query.name' => payload[:name].to_s
+    }.compact
+  end
+
+  def adapter_name
+    case ActiveRecord::Base.connection.adapter_name.downcase
+    when /postgres/
+      'postgresql'
+    when /mysql/
+      'mysql'
+    when /sqlite/
+      'sqlite'
+    else
+      'other_sql'
+    end
+  end
+
+  def sanitize_sql(sql)
+    sql
+      .gsub(STRING_LITERAL, '?')
+      .gsub(NUMBER_LITERAL, '?')
+  end
 end
 ```
 
@@ -103,11 +169,11 @@ Becomes:
 SELECT * FROM users WHERE email = ? AND age > ?
 ```
 
-This protects personally identifiable information (PII) and credentials while still showing query structure for debugging.
+This protects personally identifiable information (PII) and credentials while still showing query structure for debugging. Rails parameterized queries often already report placeholders in the SQL text, but sanitizing is still useful for raw SQL or literal values.
 
 ## Capturing Detailed Query Information
 
-Configure the instrumentation to capture comprehensive query details:
+Configure the SQL notification subscriber to capture useful query details:
 
 ```ruby
 # config/initializers/opentelemetry.rb
@@ -115,54 +181,86 @@ Configure the instrumentation to capture comprehensive query details:
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/active_record'
+require 'opentelemetry/instrumentation/active_support'
+
+module SqlTraceAttributes
+  module_function
+
+  def call(payload)
+    sql = sanitize_sql(payload[:sql].to_s)
+
+    attributes = {
+      'db.system.name' => adapter_name,
+      'db.namespace' => ActiveRecord::Base.connection_db_config.database,
+      'db.query.text' => sql,
+      'db.operation.name' => sql.split.first.to_s.upcase,
+      'db.query.name' => payload[:name].to_s,
+      'db.response.returned_rows' => payload[:row_count]
+    }
+
+    attributes.compact
+  end
+
+  def adapter_name
+    case ActiveRecord::Base.connection.adapter_name.downcase
+    when /postgres/
+      'postgresql'
+    when /mysql/
+      'mysql'
+    when /sqlite/
+      'sqlite'
+    else
+      'other_sql'
+    end
+  end
+
+  def sanitize_sql(sql)
+    sql
+      .gsub(/'(?:''|[^'])*'/, '?')
+      .gsub(/(?<!\$)\b\d+(?:\.\d+)?\b/, '?')
+  end
+end
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-
-  c.use 'OpenTelemetry::Instrumentation::ActiveRecord', {
-    # Include SQL statements in spans (obfuscated)
-    db_statement: :include,
-
-    # Enable SQL obfuscation for security
-    enable_sql_obfuscation: true,
-
-    # Include database connection pool information
-    enable_connection_pool_metrics: true
-  }
-
-  c.resource = OpenTelemetry::SDK::Resources::Resource.create({
-    'service.name' => 'rails-app',
-    'db.system' => 'postgresql',  # or 'mysql', 'sqlite3'
-    'db.name' => ENV['DATABASE_NAME']
-  })
+  c.use 'OpenTelemetry::Instrumentation::ActiveRecord'
+  c.use 'OpenTelemetry::Instrumentation::ActiveSupport'
 end
+
+tracer = OpenTelemetry.tracer_provider.tracer('rails.sql')
+
+OpenTelemetry::Instrumentation::ActiveSupport.subscribe(
+  tracer,
+  'sql.active_record',
+  SqlTraceAttributes,
+  kind: :client,
+  span_name_formatter: ->(_name) { 'active_record.sql' }
+)
 ```
 
-This configuration captures SQL statements, connection pool metrics, and database system information, providing a complete picture of database interactions.
+This configuration captures sanitized SQL statements, operation names, database namespace, and row counts when Rails includes them in the notification payload.
 
 ## Understanding Span Attributes
 
-ActiveRecord instrumentation adds these attributes to each database span:
+SQL notification instrumentation can add these attributes to each database span:
 
 ```ruby
-# Example span attributes created by ActiveRecord instrumentation:
+# Example span attributes created from a sql.active_record notification:
 {
-  'db.system' => 'postgresql',
-  'db.name' => 'production_db',
-  'db.statement' => 'SELECT * FROM users WHERE id = ?',
-  'db.operation' => 'SELECT',
-  'db.sql.table' => 'users',
-  'db.connection_id' => 70339925226840,
-  'net.peer.name' => 'localhost',
-  'net.peer.port' => 5432
+  'db.system.name' => 'postgresql',
+  'db.namespace' => 'production_db',
+  'db.query.text' => 'SELECT * FROM users WHERE id = ?',
+  'db.operation.name' => 'SELECT',
+  'db.query.name' => 'User Load',
+  'db.response.returned_rows' => 1
 }
 ```
 
-These attributes enable powerful filtering and analysis in your observability platform. You can query for slow queries on specific tables, analyze connection pool usage, or identify queries to particular database hosts.
+These attributes enable powerful filtering and analysis in your observability platform. You can query for slow operations, analyze returned row counts, or identify repeated SQL shapes.
 
 ## Tracing Complex Queries
 
-ActiveRecord instrumentation automatically captures all query types, including complex joins and subqueries:
+SQL notification instrumentation automatically captures queries emitted by ActiveRecord, including complex joins and subqueries:
 
 ```ruby
 # app/models/user.rb
@@ -175,7 +273,7 @@ end
 class UsersController < ApplicationController
   def show
     # This eager loading generates multiple SQL queries
-    # OpenTelemetry captures each one as a separate span
+    # OpenTelemetry captures each sql.active_record notification as a span
     @user = User
       .includes(:orders, :reviews)
       .where(id: params[:id])
@@ -189,7 +287,7 @@ class UsersController < ApplicationController
 end
 ```
 
-The trace shows all three queries as child spans under the controller action span, revealing the N+1 query pattern or validating that eager loading works correctly.
+The trace shows the queries under the current controller action span when Rails request instrumentation is also enabled, revealing the N+1 query pattern or validating that eager loading works correctly.
 
 ## Monitoring N+1 Queries
 
@@ -210,7 +308,7 @@ class PostsController < ApplicationController
 end
 ```
 
-The trace reveals dozens of individual `SELECT * FROM users WHERE id = ?` spans, making the N+1 problem immediately visible.
+The trace reveals dozens of individual `active_record.sql` spans with the same `db.query.text` shape, making the N+1 problem immediately visible.
 
 Fix it with eager loading:
 
@@ -243,13 +341,13 @@ module ConnectionPoolTracking
       tracer = OpenTelemetry.tracer_provider.tracer('activerecord')
 
       tracer.in_span('activerecord.connection_pool') do |span|
-        pool = ActiveRecord::Base.connection_pool
+        pool_stats = ActiveRecord::Base.connection_pool.stat
 
         # Add connection pool metrics as span attributes
-        span.set_attribute('db.connection_pool.size', pool.size)
-        span.set_attribute('db.connection_pool.connections', pool.connections.size)
-        span.set_attribute('db.connection_pool.available', pool.available_connection_count)
-        span.set_attribute('db.connection_pool.waiting', pool.num_waiting_in_queue)
+        span.set_attribute('rails.connection_pool.size', pool_stats[:size])
+        span.set_attribute('rails.connection_pool.connections', pool_stats[:connections])
+        span.set_attribute('rails.connection_pool.idle', pool_stats[:idle])
+        span.set_attribute('rails.connection_pool.waiting', pool_stats[:waiting])
 
         block.call
       end
@@ -271,7 +369,7 @@ class ReportsController < ApplicationController
 end
 ```
 
-The trace shows connection pool state before and after the operation, helping identify connection exhaustion problems.
+The trace shows connection pool state at the start of the operation, helping identify connection exhaustion problems.
 
 ## Filtering Noisy Queries
 
@@ -283,11 +381,12 @@ Some queries generate excessive spans that clutter traces. Filter them out with 
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/active_record'
+require 'opentelemetry/instrumentation/active_support'
 
 # Custom processor to filter out noisy queries
 class QueryFilterProcessor < OpenTelemetry::SDK::Trace::SpanProcessor
   FILTERED_QUERIES = [
-    /SELECT 1/,  # Health checks
+    /SELECT 1/,
     /SHOW TABLES/,
     /schema_migrations/
   ].freeze
@@ -302,7 +401,8 @@ class QueryFilterProcessor < OpenTelemetry::SDK::Trace::SpanProcessor
 
   def on_finish(span)
     # Check if this is a database span with a filtered query
-    statement = span.attributes['db.statement']
+    attributes = span.attributes || {}
+    statement = attributes['db.query.text']
 
     if statement && FILTERED_QUERIES.any? { |pattern| statement =~ pattern }
       # Don't export this span
@@ -323,9 +423,8 @@ end
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
-  c.use 'OpenTelemetry::Instrumentation::ActiveRecord', {
-    enable_sql_obfuscation: true
-  }
+  c.use 'OpenTelemetry::Instrumentation::ActiveRecord'
+  c.use 'OpenTelemetry::Instrumentation::ActiveSupport'
 
   # Wrap the batch processor with query filtering
   exporter = OpenTelemetry::Exporter::OTLP::Exporter.new
@@ -395,23 +494,23 @@ Use trace data to identify slow queries and optimization opportunities:
 # Example trace analysis in your observability platform:
 
 # Find queries taking longer than 100ms
-db.statement EXISTS AND span.duration > 100ms
+db.query.text EXISTS AND span.duration > 100ms
 
-# Find queries on specific tables
-db.sql.table = "users" AND span.duration > 50ms
+# Find specific SQL operations
+db.operation.name = "SELECT" AND span.duration > 50ms
 
-# Find N+1 query patterns
-db.operation = "SELECT" AND span.count > 10 AND parent.name = "UsersController#index"
+# Find repeated query patterns
+span.name = "active_record.sql" AND db.operation.name = "SELECT"
 
 # Find connection pool exhaustion
-db.connection_pool.available = 0
+rails.connection_pool.waiting > 0
 ```
 
 These queries help you systematically identify and fix performance problems in production.
 
 ## Testing Database Instrumentation
 
-Verify ActiveRecord instrumentation works correctly in your test suite:
+Verify SQL notification instrumentation works correctly in your test suite:
 
 ```ruby
 # spec/instrumentation/active_record_spec.rb
@@ -431,36 +530,44 @@ RSpec.describe 'ActiveRecord Instrumentation' do
 
   it 'creates spans for database queries' do
     User.create!(name: 'Test User', email: 'test@example.com')
+    OpenTelemetry.tracer_provider.force_flush
 
     spans = exporter.finished_spans
-    db_spans = spans.select { |s| s.name.start_with?('INSERT') }
+    db_spans = spans.select { |s| s.name == 'active_record.sql' }
 
     expect(db_spans).not_to be_empty
-    expect(db_spans.first.attributes['db.statement']).to include('INSERT INTO users')
+    expect(db_spans.first.attributes['db.query.text']).to include('INSERT')
   end
 
   it 'obfuscates SQL parameters' do
     User.where(email: 'test@example.com').first
+    OpenTelemetry.tracer_provider.force_flush
 
     spans = exporter.finished_spans
-    select_span = spans.find { |s| s.name.start_with?('SELECT') }
+    select_span = spans.find do |s|
+      s.name == 'active_record.sql' &&
+        s.attributes['db.operation.name'] == 'SELECT'
+    end
 
-    expect(select_span.attributes['db.statement']).to include('?')
-    expect(select_span.attributes['db.statement']).not_to include('test@example.com')
+    expect(select_span.attributes['db.query.text']).to include('?')
+    expect(select_span.attributes['db.query.text']).not_to include('test@example.com')
   end
 
-  it 'captures table names' do
+  it 'captures operation names' do
     Post.all.to_a
+    OpenTelemetry.tracer_provider.force_flush
 
     spans = exporter.finished_spans
-    select_span = spans.find { |s| s.name.start_with?('SELECT') }
+    select_span = spans.find do |s|
+      s.name == 'active_record.sql' &&
+        s.attributes['db.operation.name'] == 'SELECT'
+    end
 
-    expect(select_span.attributes['db.sql.table']).to eq('posts')
+    expect(select_span).not_to be_nil
   end
 end
 ```
 
 These tests confirm that instrumentation creates the expected spans with proper obfuscation and attributes.
 
-ActiveRecord instrumentation gives you unprecedented visibility into database performance. With automatic query tracing, SQL obfuscation, and detailed span attributes, you can identify N+1 queries, optimize slow queries, and monitor connection pool health without modifying your application code. The traces provide the data needed to make informed optimization decisions and maintain database performance as your application scales.
-
+ActiveRecord and ActiveSupport instrumentation give you strong visibility into database performance. With automatic query tracing, SQL sanitization, and detailed span attributes, you can identify N+1 queries, optimize slow queries, and monitor connection pool health without modifying your application code. The traces provide the data needed to make informed optimization decisions and maintain database performance as your application scales.
