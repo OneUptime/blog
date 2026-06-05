@@ -370,6 +370,9 @@ class UserServiceServicer(user_service_pb2_grpc.UserServiceServicer):
 def serve():
     """Start the gRPC server with OpenTelemetry instrumentation"""
 
+    # Instrument gRPC server before creating server instances
+    GrpcInstrumentorServer().instrument()
+
     # Create server with thread pool
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
@@ -377,10 +380,6 @@ def serve():
     user_service_pb2_grpc.add_UserServiceServicer_to_server(
         UserServiceServicer(), server
     )
-
-    # Instrument the server before starting
-    # This must be called before server.start()
-    GrpcInstrumentorServer().instrument_server(server)
 
     # Start server
     port = '50051'
@@ -594,10 +593,20 @@ if __name__ == '__main__':
 Add custom logic alongside automatic instrumentation using interceptors.
 
 ```python
+from collections import namedtuple
 import grpc
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
+
+class _ClientCallDetails(
+    namedtuple(
+        "_ClientCallDetails",
+        ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
+    ),
+    grpc.ClientCallDetails,
+):
+    pass
 
 class CustomClientInterceptor(grpc.UnaryUnaryClientInterceptor,
                               grpc.UnaryStreamClientInterceptor,
@@ -624,11 +633,13 @@ class CustomClientInterceptor(grpc.UnaryUnaryClientInterceptor,
         current_span.set_attribute("custom.metadata.added", True)
 
         # Modify call details
-        client_call_details = grpc._interceptor._ClientCallDetails(
+        client_call_details = _ClientCallDetails(
             method=client_call_details.method,
             timeout=client_call_details.timeout,
             metadata=metadata,
-            credentials=client_call_details.credentials
+            credentials=client_call_details.credentials,
+            wait_for_ready=client_call_details.wait_for_ready,
+            compression=client_call_details.compression
         )
 
         return continuation(client_call_details, request)
