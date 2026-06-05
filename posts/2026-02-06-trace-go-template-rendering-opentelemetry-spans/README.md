@@ -20,7 +20,7 @@ graph TD
     B --> C[Prepare Template Data]
     C --> D[Execute Template]
     D --> E[Parse Template Actions]
-    E --> F[Range Loop Span]
+    E --> F[Range Loop Execution]
     F --> G[Template Function Calls]
     G --> H[Nested Template Include]
     H --> I[Render Output]
@@ -47,11 +47,12 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -115,7 +116,7 @@ func NewTemplateExecutor(name string, tmpl *template.Template) *TemplateExecutor
 
 // Execute renders the template with tracing
 func (te *TemplateExecutor) Execute(ctx context.Context, wr *bytes.Buffer, data interface{}) error {
-    ctx, span := te.tracer.Start(ctx, fmt.Sprintf("template.execute.%s", te.name),
+    _, span := te.tracer.Start(ctx, fmt.Sprintf("template.execute.%s", te.name),
         oteltrace.WithSpanKind(oteltrace.SpanKindInternal),
     )
     defer span.End()
@@ -141,8 +142,9 @@ func (te *TemplateExecutor) Execute(ctx context.Context, wr *bytes.Buffer, data 
     )
 
     if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         span.SetAttributes(
-            attribute.String("error.message", err.Error()),
             attribute.Bool("template.error", true),
         )
         return fmt.Errorf("executing template %s: %w", te.name, err)
@@ -153,7 +155,7 @@ func (te *TemplateExecutor) Execute(ctx context.Context, wr *bytes.Buffer, data 
 
 // ExecuteTemplate renders a named template with tracing
 func (te *TemplateExecutor) ExecuteTemplate(ctx context.Context, wr *bytes.Buffer, name string, data interface{}) error {
-    ctx, span := te.tracer.Start(ctx, fmt.Sprintf("template.execute.%s", name),
+    _, span := te.tracer.Start(ctx, fmt.Sprintf("template.execute.%s", name),
         oteltrace.WithSpanKind(oteltrace.SpanKindInternal),
     )
     defer span.End()
@@ -173,9 +175,8 @@ func (te *TemplateExecutor) ExecuteTemplate(ctx context.Context, wr *bytes.Buffe
     )
 
     if err != nil {
-        span.SetAttributes(
-            attribute.String("error.message", err.Error()),
-        )
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return err
     }
 
@@ -238,19 +239,19 @@ func (tfm *TracedFuncMap) FuncMap() template.FuncMap {
 // traceFunc wraps a simple function with tracing
 func (tfm *TracedFuncMap) traceFunc(name string, fn interface{}) interface{} {
     return func(args ...interface{}) interface{} {
-        ctx := context.Background()
+        ctx, callArgs := templateSpanContext(args...)
         ctx, span := tfm.tracer.Start(ctx, fmt.Sprintf("template.func.%s", name))
         defer span.End()
 
         span.SetAttributes(
             attribute.String("template.function.name", name),
-            attribute.Int("template.function.args.count", len(args)),
+            attribute.Int("template.function.args.count", len(callArgs)),
         )
 
         start := time.Now()
 
         // Call the original function using reflection or type assertion
-        result := callFunction(fn, args...)
+        result := callFunction(fn, callArgs...)
 
         duration := time.Since(start)
         span.SetAttributes(
@@ -264,7 +265,7 @@ func (tfm *TracedFuncMap) traceFunc(name string, fn interface{}) interface{} {
 // traceFuncCtx wraps a context-aware function with tracing
 func (tfm *TracedFuncMap) traceFuncCtx(name string, fn func(context.Context, ...interface{}) interface{}) interface{} {
     return func(args ...interface{}) interface{} {
-        ctx := context.Background()
+        ctx, callArgs := templateSpanContext(args...)
         ctx, span := tfm.tracer.Start(ctx, fmt.Sprintf("template.func.%s", name))
         defer span.End()
 
@@ -273,7 +274,7 @@ func (tfm *TracedFuncMap) traceFuncCtx(name string, fn func(context.Context, ...
         )
 
         start := time.Now()
-        result := fn(ctx, args...)
+        result := fn(ctx, callArgs...)
         duration := time.Since(start)
 
         span.SetAttributes(
@@ -282,6 +283,16 @@ func (tfm *TracedFuncMap) traceFuncCtx(name string, fn func(context.Context, ...
 
         return result
     }
+}
+
+func templateSpanContext(args ...interface{}) (context.Context, []interface{}) {
+    if len(args) > 0 {
+        if ctx, ok := args[0].(context.Context); ok {
+            return ctx, args[1:]
+        }
+    }
+
+    return context.Background(), args
 }
 
 // Example template functions
@@ -322,15 +333,26 @@ func fetchUserData(ctx context.Context, args ...interface{}) interface{} {
     }
 }
 
-func calculateTotal(items []interface{}) float64 {
+func calculateTotal(items interface{}) float64 {
     total := 0.0
-    for _, item := range items {
-        if m, ok := item.(map[string]interface{}); ok {
-            if price, ok := m["price"].(float64); ok {
+
+    switch v := items.(type) {
+    case []map[string]interface{}:
+        for _, item := range v {
+            if price, ok := item["price"].(float64); ok {
                 total += price
             }
         }
+    case []interface{}:
+        for _, item := range v {
+            if m, ok := item.(map[string]interface{}); ok {
+                if price, ok := m["price"].(float64); ok {
+                    total += price
+                }
+            }
+        }
     }
+
     return total
 }
 
@@ -345,13 +367,15 @@ func callFunction(fn interface{}, args ...interface{}) interface{} {
         return f(args[0].(string), args[1].(int))
     case func(string) template.HTML:
         return f(args[0].(string))
-    case func([]interface{}) float64:
-        return f(args[0].([]interface{}))
+    case func(interface{}) float64:
+        return f(args[0])
     default:
         return nil
     }
 }
 ```
+
+When you want template function spans to appear as children of the request trace, pass the active request context through the template data and supply it as the first argument to the traced functions, as shown in the example application below.
 
 Traced template functions reveal which functions are called most frequently and which ones consume the most time, helping you prioritize optimization efforts.
 
@@ -380,7 +404,7 @@ func NewTemplateManager() *TemplateManager {
 
 // ParseTemplate parses and caches a template with tracing
 func (tm *TemplateManager) ParseTemplate(ctx context.Context, name string, content string) error {
-    ctx, span := tm.tracer.Start(ctx, "template.parse")
+    _, span := tm.tracer.Start(ctx, "template.parse")
     defer span.End()
 
     span.SetAttributes(
@@ -392,9 +416,8 @@ func (tm *TemplateManager) ParseTemplate(ctx context.Context, name string, conte
 
     tmpl, err := template.New(name).Funcs(tm.funcMap).Parse(content)
     if err != nil {
-        span.SetAttributes(
-            attribute.String("error.message", err.Error()),
-        )
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return fmt.Errorf("parsing template %s: %w", name, err)
     }
 
@@ -410,7 +433,7 @@ func (tm *TemplateManager) ParseTemplate(ctx context.Context, name string, conte
 
 // ParseFiles parses template files with tracing
 func (tm *TemplateManager) ParseFiles(ctx context.Context, name string, files ...string) error {
-    ctx, span := tm.tracer.Start(ctx, "template.parse.files")
+    _, span := tm.tracer.Start(ctx, "template.parse.files")
     defer span.End()
 
     span.SetAttributes(
@@ -423,9 +446,8 @@ func (tm *TemplateManager) ParseFiles(ctx context.Context, name string, files ..
 
     tmpl, err := template.New(name).Funcs(tm.funcMap).ParseFiles(files...)
     if err != nil {
-        span.SetAttributes(
-            attribute.String("error.message", err.Error()),
-        )
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return fmt.Errorf("parsing template files: %w", err)
     }
 
@@ -451,14 +473,15 @@ func (tm *TemplateManager) Render(ctx context.Context, name string, data interfa
     executor, ok := tm.templates[name]
     if !ok {
         err := fmt.Errorf("template not found: %s", name)
-        span.SetAttributes(
-            attribute.String("error.message", err.Error()),
-        )
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return "", err
     }
 
     var buf bytes.Buffer
     if err := executor.Execute(ctx, &buf, data); err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return "", err
     }
 
@@ -546,11 +569,14 @@ func makeHandler(tm *TemplateManager, templateName string, dataFn func(context.C
         data := dataFn(dataCtx)
         dataSpan.End()
 
+        if m, ok := data.(map[string]interface{}); ok {
+            m["ctx"] = ctx
+        }
+
         // Render template
         if err := tm.RenderToWriter(ctx, w, templateName, data); err != nil {
-            span.SetAttributes(
-                attribute.String("error.message", err.Error()),
-            )
+            span.RecordError(err)
+            span.SetStatus(codes.Error, err.Error())
             http.Error(w, "Internal Server Error", http.StatusInternalServerError)
             return
         }
@@ -600,7 +626,7 @@ const homeTemplate = `
 <head><title>{{.title}}</title></head>
 <body>
     <h1>{{.message}}</h1>
-    <p>Today is {{formatDate .date}}</p>
+    <p>Today is {{formatDate .ctx .date}}</p>
 </body>
 </html>
 `
@@ -613,10 +639,10 @@ const productListTemplate = `
     <h1>{{.title}}</h1>
     <ul>
     {{range .products}}
-        <li>{{.name}} - {{formatCurrency .price}}</li>
+        <li>{{.name}} - {{formatCurrency $.ctx .price}}</li>
     {{end}}
     </ul>
-    <p>Total: {{formatCurrency (calculateTotal .products)}}</p>
+    <p>Total: {{formatCurrency .ctx (calculateTotal .ctx .products)}}</p>
 </body>
 </html>
 `
@@ -629,13 +655,13 @@ const userProfileTemplate = `
     <h1>User Profile</h1>
     <p>Name: {{.user.name}}</p>
     <p>Email: {{.user.email}}</p>
-    <p>Member since: {{formatDate .user.joined}}</p>
+    <p>Member since: {{formatDate .ctx .user.joined}}</p>
 </body>
 </html>
 `
 ```
 
-This application creates complete traces showing HTTP request handling, data preparation, template execution, and individual template function calls.
+This application creates traces showing HTTP request handling, data preparation, template execution, and individual template function calls.
 
 ## Analyzing Template Performance
 
@@ -645,7 +671,7 @@ The traces reveal several important patterns:
 
 **Function Call Overhead**: Template function spans show if functions like `markdownToHTML` or `fetchUserData` are causing bottlenecks. Moving expensive operations out of templates and into data preparation can dramatically improve rendering speed.
 
-**Range Loop Performance**: Templates with `{{range}}` loops create many child spans. If you're looping over 1000 items and calling template functions for each, the traces make it obvious that you need to either reduce the data size or optimize the per-item processing.
+**Range Loop Performance**: Templates with `{{range}}` loops can create many template function spans when they call instrumented functions for each item. If you're looping over 1000 items and calling template functions for each, the traces make it obvious that you need to either reduce the data size or optimize the per-item processing.
 
 **Data Preparation vs Rendering**: Separate spans for data preparation and template execution show whether your bottleneck is database queries or actual template processing.
 
