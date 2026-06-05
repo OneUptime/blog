@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Exit code 143, SIGTERM, Graceful Shutdown, Signal Handling, Container, Troubleshooting
 
-Description: Understand and fix Docker container exit code 143, which indicates SIGTERM was received but not handled properly for graceful shutdown.
+Description: Understand and fix Docker container exit code 143, which indicates SIGTERM was received during container shutdown.
 
 ---
 
@@ -43,7 +43,7 @@ Exit code 143 becomes a problem when:
 
 ## The PID 1 Problem
 
-The biggest source of SIGTERM handling issues in Docker is the PID 1 problem. The first process in a container runs as PID 1, and PID 1 has special signal handling behavior in Linux. By default, signals sent to PID 1 are ignored unless the process explicitly registers a handler.
+The biggest source of SIGTERM handling issues in Docker is the PID 1 problem. The first process in a container runs as PID 1, and PID 1 has special signal handling behavior in Linux. Signals whose default action would terminate a regular process may be ignored for PID 1 unless the process explicitly registers a handler.
 
 Check what runs as PID 1 in your container:
 
@@ -61,7 +61,7 @@ Common PID 1 problems:
 # Problem: shell form CMD wraps the command in /bin/sh -c
 # /bin/sh does NOT forward signals to child processes
 CMD npm start
-# PID 1 is /bin/sh, which ignores SIGTERM
+# PID 1 is /bin/sh, which does not forward SIGTERM
 # Your Node.js process never receives the signal
 
 # Fix: use exec form so your process IS PID 1
@@ -228,7 +228,7 @@ func main() {
 
 ## Fix 3: Use tini as an Init Process
 
-For applications that cannot easily add signal handling, use `tini` as a lightweight init system. Tini runs as PID 1 and properly forwards signals to child processes.
+For applications started through wrappers or applications that spawn child processes, use `tini` as a lightweight init system. Tini runs as PID 1, forwards signals to child processes, and reaps zombie processes. Your application still needs its own SIGTERM handler if it must do application-specific cleanup.
 
 ```dockerfile
 # Install tini and use it as the entrypoint
@@ -269,10 +269,10 @@ If your orchestrator treats exit code 143 as a failure and restarts the containe
 
 The signal handlers in the examples above already do this with `process.exit(0)` or `sys.exit(0)`. The key is catching SIGTERM and explicitly choosing your exit code.
 
-For Kubernetes, you can also configure the restart policy to not restart on 143:
+For Kubernetes, you can use `restartPolicy: OnFailure` so the container does not restart when your SIGTERM handler exits with code 0:
 
 ```yaml
-# Kubernetes pod spec - treat 143 as a success
+# Kubernetes pod spec - do not restart after a clean exit
 apiVersion: v1
 kind: Pod
 spec:
