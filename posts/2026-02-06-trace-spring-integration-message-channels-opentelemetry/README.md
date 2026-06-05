@@ -47,23 +47,23 @@ Add Spring Integration and OpenTelemetry dependencies:
         <artifactId>spring-integration-file</artifactId>
     </dependency>
 
-    <!-- OpenTelemetry API -->
+    <!-- OpenTelemetry Spring Boot starter for SDK autoconfiguration -->
     <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-api</artifactId>
-        <version>1.35.0</version>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
+        <version>2.28.1</version>
     </dependency>
 
     <!-- OpenTelemetry instrumentation annotations -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-instrumentation-annotations</artifactId>
-        <version>2.1.0</version>
+        <version>2.28.1</version>
     </dependency>
 </dependencies>
 ```
 
-Configure basic settings:
+Configure basic settings for the OpenTelemetry Spring Boot starter:
 
 ```yaml
 # application.yml
@@ -83,7 +83,8 @@ otel:
     exporter: otlp
   exporter:
     otlp:
-      endpoint: http://localhost:4317
+      protocol: http/protobuf
+      endpoint: http://localhost:4318
 ```
 
 ## Tracing Message Channels
@@ -98,10 +99,9 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.Scope;
-import org.springframework.integration.channel.interceptor.ChannelInterceptor;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
@@ -113,6 +113,7 @@ import org.springframework.stereotype.Component;
 public class TracingChannelInterceptor implements ChannelInterceptor {
 
     private static final String TRACE_CONTEXT_HEADER = "otel-trace-context";
+    private static final String SPAN_HEADER = "otel-span";
     private final Tracer tracer;
 
     public TracingChannelInterceptor(Tracer tracer) {
@@ -137,12 +138,10 @@ public class TracingChannelInterceptor implements ChannelInterceptor {
         span.setAttribute("messaging.message.payload.type",
             message.getPayload().getClass().getSimpleName());
 
-        // Store span for completion in postSend
-        message.getHeaders().put("otel-span", span);
-
         // Inject trace context into message headers for propagation
         Context currentContext = span.storeInContext(Context.current());
         Message<?> enrichedMessage = MessageBuilder.fromMessage(message)
+            .setHeader(SPAN_HEADER, span)
             .setHeader(TRACE_CONTEXT_HEADER, currentContext)
             .build();
 
@@ -153,7 +152,7 @@ public class TracingChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent, Exception ex) {
-        Span span = (Span) message.getHeaders().get("otel-span");
+        Span span = (Span) message.getHeaders().get(SPAN_HEADER);
 
         if (span == null) {
             return;
@@ -174,42 +173,35 @@ public class TracingChannelInterceptor implements ChannelInterceptor {
     }
 
     @Override
-    public Message<?> preReceive(MessageChannel channel) {
-        // Create span for receive operation
-        Span span = tracer.spanBuilder("integration.channel.receive")
-            .setSpanKind(SpanKind.CONSUMER)
-            .setAttribute("messaging.system", "spring-integration")
-            .setAttribute("messaging.destination", getChannelName(channel))
-            .startSpan();
-
-        span.addEvent("receive.started");
-        span.makeCurrent();
-
-        return null; // Returning null means interceptor doesn't modify the message
+    public boolean preReceive(MessageChannel channel) {
+        return true; // Returning true allows the receive operation to proceed
     }
 
     @Override
     public Message<?> postReceive(Message<?> message, MessageChannel channel) {
-        Span span = Span.current();
+        Context parentContext = message.getHeaders().get(TRACE_CONTEXT_HEADER, Context.class);
 
-        if (message != null) {
+        Span span = tracer.spanBuilder("integration.channel.receive")
+            .setSpanKind(SpanKind.CONSUMER)
+            .setParent(parentContext != null ? parentContext : Context.current())
+            .setAttribute("messaging.system", "spring-integration")
+            .setAttribute("messaging.destination", getChannelName(channel))
+            .startSpan();
+
+        try {
             span.setAttribute("messaging.message.id", message.getHeaders().getId().toString());
             span.setAttribute("messaging.message.payload.type",
                 message.getPayload().getClass().getSimpleName());
 
-            // Extract parent trace context if present
-            Context parentContext = (Context) message.getHeaders().get(TRACE_CONTEXT_HEADER);
             if (parentContext != null) {
                 span.addEvent("trace.context.propagated");
             }
 
             span.addEvent("message.received");
-        } else {
-            span.addEvent("no.message.available");
+            return message;
+        } finally {
+            span.end();
         }
-
-        span.end();
-        return message;
     }
 
     /**
@@ -228,6 +220,7 @@ Register this interceptor globally for all channels:
 package com.company.integration.config;
 
 import com.company.integration.tracing.TracingChannelInterceptor;
+import io.opentelemetry.api.trace.Tracer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.config.GlobalChannelInterceptor;
@@ -257,6 +250,7 @@ import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 /**
@@ -280,8 +274,8 @@ public class TracedOrderProcessor {
         Span span = Span.current();
         Order order = message.getPayload();
 
-        span.setAttribute("order.id", order.getId());
-        span.setAttribute("order.customer.id", order.getCustomerId());
+        span.setAttribute("order.id", String.valueOf(order.getId()));
+        span.setAttribute("order.customer.id", String.valueOf(order.getCustomerId()));
         span.setAttribute("order.items.count", order.getItems().size());
         span.setAttribute("order.total", order.getTotal());
 
@@ -294,7 +288,7 @@ public class TracedOrderProcessor {
             // Process order
             ProcessedOrder processed = orderService.process(order);
 
-            span.setAttribute("order.processed.id", processed.getId());
+            span.setAttribute("order.processed.id", String.valueOf(processed.getId()));
             span.setAttribute("order.processing.time.ms", processed.getProcessingTime());
             span.addEvent("order.processing.completed");
             span.setStatus(StatusCode.OK);
@@ -317,7 +311,7 @@ public class TracedOrderProcessor {
      */
     private void validateOrderWithTracing(Order order) {
         Span span = tracer.spanBuilder("integration.validate.order")
-            .setAttribute("order.id", order.getId())
+            .setAttribute("order.id", String.valueOf(order.getId()))
             .startSpan();
 
         try (Scope scope = span.makeCurrent()) {
@@ -356,8 +350,10 @@ import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.springframework.integration.annotation.Transformer;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MimeTypeUtils;
 
 /**
  * Message transformer with OpenTelemetry tracing.
@@ -397,7 +393,7 @@ public class TracedOrderTransformer {
 
             return MessageBuilder.withPayload(jsonPayload)
                 .copyHeaders(message.getHeaders())
-                .setHeader("content-type", "application/json")
+                .setHeader(MessageHeaders.CONTENT_TYPE, MimeTypeUtils.APPLICATION_JSON)
                 .build();
 
         } catch (Exception e) {
@@ -456,8 +452,8 @@ public class TracedOrderRouter {
         Span span = Span.current();
         Order order = message.getPayload();
 
-        span.setAttribute("order.id", order.getId());
-        span.setAttribute("order.priority", order.getPriority());
+        span.setAttribute("order.id", String.valueOf(order.getId()));
+        span.setAttribute("order.priority", String.valueOf(order.getPriority()));
 
         String targetChannel;
 
@@ -529,6 +525,7 @@ import org.springframework.integration.annotation.Aggregator;
 import org.springframework.integration.annotation.CorrelationStrategy;
 import org.springframework.integration.annotation.ReleaseStrategy;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -597,9 +594,9 @@ public class TracedOrderAggregator {
 }
 ```
 
-## Complete Integration Flow Example
+## Integration Channel Configuration Example
 
-Wire all traced components together in a complete integration flow:
+Define the channels used by the traced components:
 
 ```java
 package com.company.integration.config;
@@ -608,29 +605,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.channel.QueueChannel;
-import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.messaging.MessageChannel;
 
 /**
- * Complete integration flow with OpenTelemetry tracing.
- * Demonstrates traced message flow through multiple components.
+ * Message channels used by the traced integration components.
  */
 @Configuration
 public class OrderProcessingFlowConfig {
-
-    @Bean
-    public IntegrationFlow orderProcessingFlow(
-            TracedOrderTransformer transformer,
-            TracedOrderRouter router,
-            TracedOrderProcessor processor) {
-
-        return IntegrationFlow
-            .from("xmlOrderChannel")
-            .transform(transformer::transformXmlToJson)
-            .channel("jsonOrderChannel")
-            .route(router::routeOrder)
-            .get();
-    }
 
     @Bean
     public MessageChannel xmlOrderChannel() {
@@ -640,6 +621,31 @@ public class OrderProcessingFlowConfig {
     @Bean
     public MessageChannel jsonOrderChannel() {
         return new DirectChannel();
+    }
+
+    @Bean
+    public MessageChannel incomingOrderChannel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public MessageChannel orderChannel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public MessageChannel processedOrderChannel() {
+        return new QueueChannel(100);
+    }
+
+    @Bean
+    public MessageChannel orderItemChannel() {
+        return new QueueChannel(500);
+    }
+
+    @Bean
+    public MessageChannel aggregatedOrderChannel() {
+        return new QueueChannel(100);
     }
 
     @Bean
@@ -656,28 +662,32 @@ public class OrderProcessingFlowConfig {
     public MessageChannel lowPriorityOrderChannel() {
         return new QueueChannel(500);
     }
+
+    @Bean
+    public MessageChannel defaultOrderChannel() {
+        return new QueueChannel(100);
+    }
 }
 ```
 
 ## Integration Flow Trace Visualization
 
-A complete message flow through Spring Integration creates this span hierarchy:
+A message flow through Spring Integration can create span relationships like these, depending on the channel types and endpoints in the flow:
 
 ```mermaid
 graph TD
     A[integration.gateway.submitOrder] --> B[integration.channel.send]
-    B --> C[integration.channel.receive]
-    C --> D[integration.transformer.xmlToJson]
-    D --> E[integration.convert]
-    D --> F[integration.channel.send]
-    F --> G[integration.router.routeByPriority]
-    G --> H[integration.channel.send]
-    H --> I[integration.serviceActivator.processOrder]
+    B --> I[integration.serviceActivator.processOrder]
     I --> J[integration.validate.order]
     I --> K[integration.channel.send]
+    C[integration.channel.receive] --> D[integration.transformer.xmlToJson]
+    D --> E[integration.convert]
+    D --> F[integration.channel.send]
+    G[integration.router.routeByPriority]
+    G --> H[integration.channel.send]
 ```
 
-This visualization shows the complete message journey from gateway submission through transformation, routing, and processing.
+This visualization shows the common parent-child relationships from gateway submission, channel sends and receives, transformation, routing, and processing.
 
 ## Tracer Configuration
 
