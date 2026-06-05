@@ -36,7 +36,7 @@ receivers:
   kubeletstats:
     collection_interval: 15s
     auth_type: serviceAccount
-    endpoint: "https://${K8S_NODE_NAME}:10250"
+    endpoint: "https://${env:K8S_NODE_NAME}:10250"
     insecure_skip_verify: true
     metric_groups:
       - container
@@ -68,6 +68,8 @@ processors:
 
 exporters:
   prometheusremotewrite:
+    # Prometheus must be started with --web.enable-remote-write-receiver
+    # for this endpoint to accept remote write traffic.
     endpoint: http://prometheus:9090/api/v1/write
     resource_to_telemetry_conversion:
       enabled: true
@@ -119,36 +121,62 @@ gc_collections = meter.create_counter(
     name="process.gc.collections",
     description="Number of garbage collection cycles",
 )
+
+def record_gc_collection(phase, info):
+    if phase == "stop":
+        gc_collections.add(1, {"generation": info["generation"]})
+
+gc.callbacks.append(record_gc_collection)
 ```
 
 ## Analyzing Usage Patterns
 
-The key to right-sizing is understanding usage patterns over time, not just averages. A pod might average 100m CPU but spike to 400m during periodic batch jobs. Setting the request to 100m would cause throttling during those spikes.
+The key to right-sizing is understanding usage patterns over time, not just averages. A pod might average 100m CPU but spike to 400m during periodic batch jobs. Setting the request to 100m could leave the pod underweighted during CPU contention; CPU throttling happens when a CPU limit is set too low.
 
-Here are the PromQL queries that reveal the full picture.
+Here are the PromQL queries that reveal the full picture. These examples assume the Collector's default Prometheus name translation for OpenTelemetry metrics and `resource_to_telemetry_conversion` enabled, so Kubernetes resource attributes become labels such as `k8s_namespace_name`, `k8s_pod_name`, and `k8s_container_name`.
 
 ```promql
 # Actual CPU usage p99 over the last 7 days per container
 # This is your baseline for CPU requests
 quantile_over_time(0.99,
-  rate(container_cpu_usage_seconds_total{namespace="default"}[5m])[7d:5m]
+  rate(container_cpu_time_seconds_total{k8s_namespace_name="default"}[5m])[7d:5m]
 ) * 1000  # Convert to millicores
 
 # Actual memory usage max over the last 7 days
 # Memory requests should cover the maximum, not the average
 max_over_time(
-  container_memory_working_set_bytes{namespace="default"}[7d]
+  container_memory_working_set_bytes{k8s_namespace_name="default"}[7d]
 ) / 1024 / 1024  # Convert to MiB
 
 # Current requests vs actual usage - the waste ratio
 kube_pod_container_resource_requests{resource="cpu", unit="core"}
 /
-rate(container_cpu_usage_seconds_total[5m])
+on(namespace, pod, container)
+label_replace(
+  label_replace(
+    label_replace(
+      rate(container_cpu_time_seconds_total[5m]),
+      "namespace", "$1", "k8s_namespace_name", "(.*)"
+    ),
+    "pod", "$1", "k8s_pod_name", "(.*)"
+  ),
+  "container", "$1", "k8s_container_name", "(.*)"
+)
 
 # Memory waste per container
 (
   kube_pod_container_resource_requests{resource="memory"}
-  - container_memory_working_set_bytes
+  - on(namespace, pod, container)
+    label_replace(
+      label_replace(
+        label_replace(
+          container_memory_working_set_bytes,
+          "namespace", "$1", "k8s_namespace_name", "(.*)"
+        ),
+        "pod", "$1", "k8s_pod_name", "(.*)"
+      ),
+      "container", "$1", "k8s_container_name", "(.*)"
+    )
 )
 / 1024 / 1024  # Wasted MiB
 ```
@@ -160,7 +188,6 @@ This script queries Prometheus and generates concrete resource request recommend
 ```python
 # rightsizing_recommendations.py
 import requests
-import json
 
 PROMETHEUS_URL = "http://prometheus:9090"
 
@@ -180,7 +207,7 @@ def get_recommendations(namespace):
     # Query p99 CPU usage over the last 14 days
     cpu_query = f'''
     quantile_over_time(0.99,
-      rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[5m])[14d:5m]
+      rate(container_cpu_time_seconds_total{{k8s_namespace_name="{namespace}"}}[5m])[14d:5m]
     ) * 1000
     '''
     cpu_results = query_prometheus(cpu_query)
@@ -188,25 +215,30 @@ def get_recommendations(namespace):
     # Query max memory usage over the last 14 days
     mem_query = f'''
     max_over_time(
-      container_memory_working_set_bytes{{namespace="{namespace}"}}[14d]
+      container_memory_working_set_bytes{{k8s_namespace_name="{namespace}"}}[14d]
     ) / 1024 / 1024
     '''
     mem_results = query_prometheus(mem_query)
 
     # Query current requests for comparison
     cpu_req_query = f'''
-    kube_pod_container_resource_requests{{namespace="{namespace}", resource="cpu"}} * 1000
+    kube_pod_container_resource_requests{{namespace="{namespace}", resource="cpu", unit="core"}} * 1000
     '''
     cpu_req_results = query_prometheus(cpu_req_query)
 
     for container in cpu_results:
-        container_name = container["metric"]["container"]
-        pod_name = container["metric"]["pod"]
+        metric = container["metric"]
+        container_name = metric["k8s_container_name"]
+        pod_name = metric["k8s_pod_name"]
+        namespace_name = metric["k8s_namespace_name"]
         current_cpu_p99 = float(container["value"][1])
 
         # Find matching memory data
-        current_mem_max = find_matching_metric(mem_results, container_name)
-        current_cpu_request = find_matching_metric(cpu_req_results, container_name)
+        current_mem_max = find_matching_metric(mem_results, namespace_name, pod_name, container_name)
+        current_cpu_request = find_matching_metric(cpu_req_results, namespace_name, pod_name, container_name)
+
+        if current_mem_max is None or current_cpu_request is None:
+            continue
 
         # Calculate recommended values
         recommended_cpu = max(current_cpu_p99 * CPU_BUFFER, MIN_CPU_MILLICORES)
@@ -215,6 +247,8 @@ def get_recommendations(namespace):
         savings_cpu = current_cpu_request - recommended_cpu
 
         recommendations.append({
+            "namespace": namespace_name,
+            "pod": pod_name,
             "container": container_name,
             "current_cpu_request_m": round(current_cpu_request),
             "recommended_cpu_request_m": round(recommended_cpu),
@@ -225,8 +259,21 @@ def get_recommendations(namespace):
 
     return recommendations
 
+def find_matching_metric(results, namespace, pod, container):
+    for result in results:
+        metric = result["metric"]
+        result_namespace = metric.get("namespace") or metric.get("k8s_namespace_name")
+        result_pod = metric.get("pod") or metric.get("k8s_pod_name")
+        result_container = metric.get("container") or metric.get("k8s_container_name")
+
+        if (result_namespace, result_pod, result_container) == (namespace, pod, container):
+            return float(result["value"][1])
+
+    return None
+
 def query_prometheus(query):
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
+    resp.raise_for_status()
     return resp.json()["data"]["result"]
 ```
 
@@ -244,4 +291,4 @@ The right-sizing dashboard should prioritize showing where the biggest savings a
 
 ## Implementing Changes Safely
 
-Do not apply all recommendations at once. Start with the containers that have the largest over-provisioning gap and are not on the critical path. Apply changes gradually, monitor for 48 hours after each change, and watch for OOM kills (memory set too low) or CPU throttling (CPU set too low). The OpenTelemetry metrics will show both of these conditions, closing the feedback loop between recommendation and validation.
+Do not apply all recommendations at once. Start with the containers that have the largest over-provisioning gap and are not on the critical path. Apply changes gradually, monitor for 48 hours after each change, and watch for OOM kills (memory set too low), latency from CPU contention (CPU request set too low), or CPU throttling if you also changed CPU limits. The OpenTelemetry metrics will show these conditions, closing the feedback loop between recommendation and validation.
