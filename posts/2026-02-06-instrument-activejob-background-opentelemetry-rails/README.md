@@ -18,9 +18,9 @@ Common observability challenges include:
 - Cascading job failures that are hard to trace back to root causes
 - Performance degradation that affects user-facing features
 - Missing correlation between HTTP requests and the jobs they trigger
-- Difficulty measuring job queue depth and processing times
+- Difficulty measuring processing times and relating them to queue behavior
 
-OpenTelemetry solves these problems by creating distributed traces that span from the initial request through all background jobs, providing end-to-end visibility.
+OpenTelemetry helps solve these problems by creating distributed traces that connect the initial request to the background jobs it enqueues, providing end-to-end visibility.
 
 ## Setting Up OpenTelemetry for ActiveJob
 
@@ -31,6 +31,7 @@ First, add the necessary gems to your Gemfile:
 
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
+gem 'opentelemetry-instrumentation-all'
 gem 'opentelemetry-instrumentation-active_job'
 gem 'opentelemetry-instrumentation-active_support'
 gem 'opentelemetry-instrumentation-rails'
@@ -47,7 +48,7 @@ Create an OpenTelemetry initializer to configure instrumentation:
 ```ruby
 # config/initializers/opentelemetry.rb
 require 'opentelemetry/sdk'
-require 'opentelemetry/exporter/otlp'
+require 'opentelemetry-exporter-otlp'
 require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
@@ -57,7 +58,6 @@ OpenTelemetry::SDK.configure do |c|
   # Configure OTLP exporter to send to your collector
   c.use_all({
     'OpenTelemetry::Instrumentation::ActiveJob' => {
-      # Capture job arguments for better debugging
       span_naming: :job_class,
       propagation_style: :link,
     },
@@ -87,11 +87,12 @@ end
 
 When this job executes, OpenTelemetry automatically creates a span with attributes like:
 
-- `messaging.system`: The queue adapter (sidekiq, delayed_job, etc.)
+- `messaging.system`: `active_job`
 - `messaging.destination`: The queue name
-- `messaging.operation`: enqueue or process
+- `messaging.message.id`: The ActiveJob job ID
+- `messaging.active_job.adapter.name`: The queue adapter implementation
+- `messaging.active_job.message.provider_job_id`: The backend-specific job ID, when available
 - `code.namespace`: SendWelcomeEmailJob
-- `code.function`: perform
 
 ## Adding Custom Spans and Context
 
@@ -156,7 +157,7 @@ class UserOnboardingJob < ApplicationJob
       span.set_attribute('user.id', user_id)
       span.set_attribute('user.email', user.email)
 
-      # These jobs will be linked to the parent trace
+      # These jobs will be linked to the enqueuing span
       SendWelcomeEmailJob.perform_later(user_id)
       SetupDefaultPreferencesJob.perform_later(user_id)
       AssignOnboardingTasksJob.perform_later(user_id)
@@ -169,17 +170,17 @@ class UserOnboardingJob < ApplicationJob
 end
 ```
 
-The OpenTelemetry instrumentation automatically propagates trace context through job serialization, so all child jobs appear in the same distributed trace.
+The OpenTelemetry instrumentation automatically propagates trace context through job serialization. With the default `propagation_style: :link`, each job execution starts a separate trace linked back to the enqueuing span. If you want child jobs to appear in the same trace as the enqueuing work, configure `propagation_style: :child`.
 
 ## Monitoring Job Performance and Errors
 
-Add custom metrics and error tracking to jobs:
+Add custom span attributes, events, and error tracking to jobs:
 
 ```ruby
 # app/jobs/data_import_job.rb
 class DataImportJob < ApplicationJob
   queue_as :imports
-  retry_on StandardError, wait: :exponentially_longer, attempts: 5
+  retry_on StandardError, wait: :polynomially_longer, attempts: 5
 
   def perform(import_id)
     tracer = OpenTelemetry.tracer_provider.tracer('data-import')
@@ -255,7 +256,7 @@ graph TD
     K --> L[Enqueue TrackingNotificationJob]
 ```
 
-This workflow creates a trace tree where each node is a span, making it easy to identify slow operations or failures.
+This workflow creates a set of related spans, making it easy to identify slow operations or failures. If ActiveJob propagation is configured with `propagation_style: :child`, the related job spans appear in the same trace tree.
 
 ## Advanced Patterns for Job Observability
 
@@ -349,32 +350,23 @@ end
 
 ## Configuration for Different Queue Adapters
 
-Different queue adapters need specific configuration:
+Most queue adapters work with the same ActiveJob instrumentation settings. For adapters that fork worker processes, such as Resque, enable synchronous flushing at the end of each job:
 
 ```ruby
 # config/initializers/opentelemetry.rb
 OpenTelemetry::SDK.configure do |c|
   c.service_name = ENV.fetch('OTEL_SERVICE_NAME', 'rails-app')
 
-  # Adapter-specific configuration
   adapter_config = case Rails.application.config.active_job.queue_adapter
-  when :sidekiq
-    {
-      peer_service: 'sidekiq',
-      span_naming: :job_class,
-    }
-  when :delayed_job
-    {
-      peer_service: 'delayed_job',
-      span_naming: :job_class,
-    }
   when :resque
     {
-      peer_service: 'resque',
       span_naming: :job_class,
+      force_flush: true,
     }
   else
-    {}
+    {
+      span_naming: :job_class,
+    }
   end
 
   c.use_all({
@@ -387,27 +379,10 @@ end
 
 Instrumentation adds overhead, so configure sampling for high-volume jobs:
 
-```ruby
-# config/initializers/opentelemetry.rb
-OpenTelemetry::SDK.configure do |c|
-  c.service_name = 'rails-background-jobs'
-
-  # Use parent-based sampling to inherit decisions
-  c.add_span_processor(
-    OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
-      OpenTelemetry::Exporter::OTLP::Exporter.new
-    )
-  )
-
-  # Configure sampler based on environment
-  c.sampler = if Rails.env.production?
-    # Sample 10% of traces in production
-    OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
-  else
-    # Sample everything in development
-    OpenTelemetry::SDK::Trace::Samplers::ALWAYS_ON
-  end
-end
+```bash
+# Sample 10% of root traces and keep child spans consistent with the parent decision
+export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
+export OTEL_TRACES_SAMPLER_ARG="0.1"
 ```
 
 With comprehensive OpenTelemetry instrumentation, your ActiveJob background processes become transparent and debuggable. You can trace the complete lifecycle of every job, understand performance characteristics, and quickly identify the root cause of failures. This visibility is essential for maintaining reliable background processing in production Rails applications.
