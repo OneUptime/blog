@@ -37,26 +37,31 @@ class ErrorTracker {
   // Report an error as an exception span
   reportError(error, context = {}) {
     this.errorCount++;
+    const exception = this.normalizeError(error);
+    const attributes = {
+      'exception.type': exception.name || 'Error',
+      'exception.message': exception.message,
+      'error.count': this.errorCount,
+      ...this.sanitizeContext(context),
+    };
+
+    if (exception.stack) {
+      attributes['exception.stacktrace'] = exception.stack;
+    }
 
     // Create a new span for the error
     const span = this.tracer.startSpan('exception', {
       kind: SpanKind.INTERNAL,
-      attributes: {
-        'exception.type': error.name || 'Error',
-        'exception.message': error.message,
-        'exception.stacktrace': error.stack,
-        'error.count': this.errorCount,
-        ...this.sanitizeContext(context),
-      },
+      attributes,
     });
 
     // Record the exception in the span
-    span.recordException(error);
+    span.recordException(exception);
 
     // Set error status
     span.setStatus({
       code: SpanStatusCode.ERROR,
-      message: error.message,
+      message: exception.message,
     });
 
     // End the span immediately
@@ -68,13 +73,14 @@ class ErrorTracker {
   // Report error to active span if one exists
   reportToActiveSpan(error, context = {}) {
     const activeSpan = trace.getActiveSpan();
+    const exception = this.normalizeError(error);
 
     if (activeSpan) {
       // Add error to existing span
-      activeSpan.recordException(error);
+      activeSpan.recordException(exception);
       activeSpan.setStatus({
         code: SpanStatusCode.ERROR,
-        message: error.message,
+        message: exception.message,
       });
 
       // Add context as attributes
@@ -83,7 +89,24 @@ class ErrorTracker {
       });
     } else {
       // No active span, create a new one
-      this.reportError(error, context);
+      this.reportError(exception, context);
+    }
+  }
+
+  // Normalize thrown values so recordException always receives an Error
+  normalizeError(error) {
+    if (error instanceof Error) {
+      return error;
+    }
+
+    if (typeof error === 'string') {
+      return new Error(error);
+    }
+
+    try {
+      return new Error(JSON.stringify(error));
+    } catch {
+      return new Error(String(error));
     }
   }
 
@@ -147,7 +170,7 @@ Set up Vue's global error handler to catch all component errors:
 // src/main.js
 import { createApp } from 'vue';
 import App from './App.vue';
-import { initTracing } from './utils/tracing';
+import { initTracing, getTracer } from './utils/tracing';
 import { errorTracker } from './utils/error-tracking';
 
 // Initialize tracing
@@ -166,7 +189,7 @@ app.config.errorHandler = (error, instance, info) => {
   const context = {
     'vue.component': instance?.$options?.name || 'UnknownComponent',
     'vue.lifecycle': info,
-    'vue.props': instance?.$.props ? JSON.stringify(instance.$.props) : undefined,
+    'vue.props': instance?.$props,
   };
 
   // Report error to OpenTelemetry
@@ -216,7 +239,7 @@ Build a reusable error boundary component that catches errors in its subtree:
 
 <script>
 import { ref, onErrorCaptured, getCurrentInstance } from 'vue';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 import { errorTracker } from '../utils/error-tracking';
 import { getTracer } from '../utils/tracing';
 
@@ -283,7 +306,7 @@ export default {
         props.onError(error, errorInstance, info);
       }
 
-      // Return false to prevent error from propagating further
+      // Return false to prevent parent errorCaptured hooks and app.config.errorHandler from running for this error
       return false;
     });
 
@@ -372,12 +395,11 @@ export default {
 
 ## Tracking Async Errors
 
-Vue's error handlers don't catch errors in async code or unhandled promise rejections. Set up additional handlers for these:
+Vue's error handlers catch errors from Vue-managed sources such as renders, event handlers, lifecycle hooks, `setup()`, watchers, directives, and transitions. For unhandled promise rejections or errors that happen outside Vue's component lifecycle, set up additional handlers:
 
 ```javascript
 // src/utils/async-error-handler.js
 import { errorTracker } from './error-tracking';
-import { trace } from '@opentelemetry/api';
 
 export function setupAsyncErrorHandling() {
   // Catch unhandled promise rejections
@@ -403,6 +425,10 @@ export function setupAsyncErrorHandling() {
   window.addEventListener('error', (event) => {
     console.error('Uncaught error:', event.error);
 
+    const error = event.error instanceof Error
+      ? event.error
+      : new Error(event.message || 'Uncaught error');
+
     const context = {
       'error.type': 'uncaught_error',
       'error.filename': event.filename,
@@ -410,7 +436,7 @@ export function setupAsyncErrorHandling() {
       'error.colno': event.colno,
     };
 
-    errorTracker.reportError(event.error, context);
+    errorTracker.reportError(error, context);
 
     // Prevent default browser behavior
     event.preventDefault();
@@ -433,7 +459,7 @@ Create a composable that makes error tracking easy throughout your application:
 
 ```javascript
 // src/composables/useErrorTracking.js
-import { getCurrentInstance, onMounted } from 'vue';
+import { getCurrentInstance } from 'vue';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { errorTracker } from '../utils/error-tracking';
 import { getTracer } from '../utils/tracing';
@@ -460,9 +486,12 @@ export function useErrorTracking() {
             message: error.message,
           });
 
-          errorTracker.reportToActiveSpan(error, {
+          // Add context attributes without recording the same exception twice
+          Object.entries(errorTracker.sanitizeContext({
             'component.name': componentName,
             'function.name': fn.name,
+          })).forEach(([key, value]) => {
+            span.setAttribute(key, value);
           });
 
           throw error;
@@ -540,7 +569,7 @@ export default {
     },
   },
   setup(props) {
-    const { withErrorTracking, trackError } = useErrorTracking();
+    const { withErrorTracking } = useErrorTracking();
     const data = ref(null);
     const columns = ref([]);
 
@@ -556,9 +585,8 @@ export default {
 
     onMounted(() => {
       fetchData().catch(error => {
-        // Error is already tracked, but we can add additional handling
+        // Error is already tracked by withErrorTracking, but we can add additional handling
         console.error('Failed to fetch data:', error);
-        trackError(error, { 'endpoint': props.endpoint });
       });
     });
 
