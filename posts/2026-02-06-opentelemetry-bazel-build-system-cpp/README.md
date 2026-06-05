@@ -26,7 +26,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # OpenTelemetry C++ SDK
 http_archive(
     name = "io_opentelemetry_cpp",
-    sha256 = "your_sha256_hash_here",
+    sha256 = "c7e7801c9f6228751cdb9dd4724d0f04777ed53f524c8828e73bf4c9f894e0bd",
     strip_prefix = "opentelemetry-cpp-1.14.2",
     urls = ["https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.14.2.tar.gz"],
 )
@@ -38,6 +38,13 @@ opentelemetry_cpp_deps()
 # Load additional transitive dependencies
 load("@io_opentelemetry_cpp//bazel:extra_deps.bzl", "opentelemetry_extra_deps")
 opentelemetry_extra_deps()
+
+# Load gRPC dependencies after OpenTelemetry dependencies
+load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
+grpc_deps()
+
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
+grpc_extra_deps()
 ```
 
 The `strip_prefix` removes the top-level directory from the archive, making paths consistent. Always verify the SHA256 hash to ensure build reproducibility and security.
@@ -178,8 +185,10 @@ Bazel makes it easy to pin specific versions of OpenTelemetry, but you should es
 
 ```python
 # //bazel/deps.bzl - centralized dependency management
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 OPENTELEMETRY_VERSION = "1.14.2"
-OPENTELEMETRY_SHA256 = "your_sha256_here"
+OPENTELEMETRY_SHA256 = "c7e7801c9f6228751cdb9dd4724d0f04777ed53f524c8828e73bf4c9f894e0bd"
 
 def opentelemetry_dependencies():
     """Load OpenTelemetry with pinned version."""
@@ -224,13 +233,13 @@ Bazel's caching mechanism can significantly speed up builds, but you need to con
 ```python
 # .bazelrc - build optimization settings
 build --disk_cache=~/.cache/bazel
-build --experimental_remote_cache_compression
+build --remote_cache_compression
 
 # Use multiple jobs for parallel compilation
 build --jobs=auto
 
-# Enable persistent workers for faster rebuilds
-build --strategy=CppCompile=worker
+# Enable persistent workers for rules that support them
+build --strategy=Javac=worker,local
 build --worker_sandboxing
 
 # Remote caching for team builds (optional)
