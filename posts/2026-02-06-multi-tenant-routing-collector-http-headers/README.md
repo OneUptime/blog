@@ -16,7 +16,7 @@ When multiple tenants share a single Collector deployment, you need a way to kee
 
 ## Prerequisites
 
-You will need the OpenTelemetry Collector Contrib distribution, since the routing connector ships in contrib. Make sure you are running version 0.92.0 or later.
+You will need the OpenTelemetry Collector Contrib distribution, since the routing connector ships in contrib. Make sure you are using a recent contrib release; the examples below use the current routing connector syntax.
 
 ## Setting Up the OTLP Receiver with Header Extraction
 
@@ -48,17 +48,21 @@ connectors:
   routing:
     # The default route handles tenants that do not match any rule
     default_pipelines: [traces/default]
-    # We want to match on the X-Tenant-ID header from gRPC metadata
-    match_once: true
     table:
       # Route tenant-a to a dedicated pipeline
-      - statement: request["X-Tenant-ID"] == "tenant-a"
+      - context: request
+        condition: request["X-Tenant-ID"] == "tenant-a"
         pipelines: [traces/tenant-a]
       # Route tenant-b to its own pipeline
-      - statement: request["X-Tenant-ID"] == "tenant-b"
+      - context: request
+        condition: request["X-Tenant-ID"] == "tenant-b"
         pipelines: [traces/tenant-b]
       # You can also match multiple tenants to a shared pipeline
-      - statement: request["X-Tenant-ID"] == "tenant-c" or request["X-Tenant-ID"] == "tenant-d"
+      - context: request
+        condition: request["X-Tenant-ID"] == "tenant-c"
+        pipelines: [traces/shared-tier]
+      - context: request
+        condition: request["X-Tenant-ID"] == "tenant-d"
         pipelines: [traces/shared-tier]
 ```
 
@@ -164,6 +168,6 @@ If a request arrives without the `X-Tenant-ID` header, it falls through to the `
 
 ## Performance Considerations
 
-The routing connector evaluates conditions in order and stops at the first match when `match_once: true` is set. Put your most common tenants first in the routing table to minimize evaluation overhead. If you have hundreds of tenants, consider grouping them by tier and routing at the tier level instead of per-tenant.
+The routing connector evaluates conditions in order. With the default `move` action, matched data is moved to the target pipeline and removed from later route evaluation. Put your most common tenants first in the routing table to minimize evaluation overhead. If you have hundreds of tenants, consider grouping them by tier and routing at the tier level instead of per-tenant.
 
 Multi-tenant routing with the Collector is a clean way to isolate tenant data without running separate Collector instances per tenant. It centralizes your routing logic in configuration rather than spreading it across application code.
