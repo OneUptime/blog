@@ -14,7 +14,7 @@ SUSE Linux Enterprise Server (SLES) is a major player in enterprise Linux enviro
 
 - A SLES 15 SP4+ system with an active SUSE subscription
 - Root or sudo access
-- An internet connection (or access to a SUSE Package Hub mirror)
+- An internet connection (or access to mirrored SUSE repositories)
 - The SUSEConnect tool for module activation
 
 ## Step 1: Activate the Containers Module
@@ -54,10 +54,12 @@ With the Containers Module active, Docker is available through zypper.
 
 ```bash
 # Install Docker
-sudo zypper install -y docker docker-compose
+sudo zypper install -y docker
 ```
 
 SLES provides Docker through SUSE's own packaging, which includes compatibility patches and support from SUSE.
+
+If you also need Docker Compose, install the `docker-compose` package from SUSE Package Hub after enabling that repository.
 
 ## Step 4: Start and Enable Docker
 
@@ -87,7 +89,7 @@ sudo docker run hello-world
 
 ```bash
 # Create the docker group (may already exist)
-sudo groupadd docker
+sudo groupadd -f docker
 
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -102,7 +104,7 @@ docker info
 
 ## Understanding SLES Docker vs Docker CE
 
-SLES packages its own version of Docker, which may differ from Docker CE (Community Edition) in version number and available features. SUSE's Docker package receives backported security fixes and is covered under the SLES support contract.
+SLES packages its own version of Docker, based on the upstream Moby project, which may differ from Docker CE (Community Edition) in version number and available features. SUSE's Docker package receives security fixes through SUSE's update channels and is covered under the SLES support contract.
 
 Key differences:
 
@@ -110,7 +112,7 @@ Key differences:
 - **Support**: SUSE provides enterprise support for their Docker package.
 - **Compatibility**: SLES Docker is tested specifically against SLES kernel versions.
 
-If you need the absolute latest Docker CE, you can install it from Docker's repository instead, but you lose SUSE support coverage.
+If you need Docker CE rather than SUSE's packaged Docker, check Docker's current installation documentation and repository support first. Docker's official installation overview does not provide a supported SLES installation procedure, so using Docker-provided packages or binaries on SLES can put you outside SUSE support coverage.
 
 ```bash
 # Optional: Add Docker CE repository for the latest version
@@ -132,9 +134,7 @@ sudo tee /etc/docker/daemon.json <<'EOF'
     "max-size": "20m",
     "max-file": "5"
   },
-  "storage-driver": "overlay2",
   "exec-opts": ["native.cgroupdriver=systemd"],
-  "live-restore": true,
   "default-ulimits": {
     "nofile": {
       "Name": "nofile",
@@ -146,7 +146,7 @@ sudo tee /etc/docker/daemon.json <<'EOF'
 EOF
 ```
 
-The `live-restore` option keeps containers running during Docker daemon restarts, which is important for production environments.
+Configure the storage driver separately based on the filesystem that backs `/var/lib/docker`.
 
 Apply the changes.
 
@@ -179,6 +179,11 @@ For Btrfs (common on SLES):
 # Configure Docker for Btrfs
 sudo tee /etc/docker/daemon.json <<'EOF'
 {
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "5"
+  },
   "storage-driver": "btrfs"
 }
 EOF
@@ -262,8 +267,8 @@ sudo systemctl restart docker
 Verify the proxy settings.
 
 ```bash
-# Check that Docker sees the proxy configuration
-docker info | grep -i proxy
+# Check that systemd loaded the proxy configuration
+systemctl show --property=Environment docker
 ```
 
 ## Monitoring and Logging
@@ -280,8 +285,7 @@ sudo tee /etc/docker/daemon.json <<'EOF'
   "log-opts": {
     "max-size": "20m",
     "max-file": "5"
-  },
-  "storage-driver": "overlay2"
+  }
 }
 EOF
 
