@@ -60,7 +60,7 @@ exporters:
     endpoint: metrics-backend:4317
 
 connectors:
-  servicegraph:
+  service_graph:
     # How long to cache spans waiting for their pair
     latency_histogram_buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s, 15s]
 
@@ -82,19 +82,20 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     # Metrics pipeline receives generated service graph metrics
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
 
-This configuration generates three key metrics:
+This configuration generates several key metrics:
 - `traces_service_graph_request_total`: Total requests between service pairs
 - `traces_service_graph_request_failed_total`: Failed requests between service pairs
-- `traces_service_graph_request_server_seconds`: Server-side latency histogram
+- `traces_service_graph_request_server`: Server-side latency histogram
+- `traces_service_graph_request_client`: Client-side latency histogram
 
 ## Configuring Latency Buckets
 
@@ -102,7 +103,7 @@ Customize histogram buckets to match your service latency characteristics:
 
 ```yaml
 connectors:
-  servicegraph:
+  service_graph:
     # Fine-grained buckets for low-latency services (microseconds to milliseconds)
     latency_histogram_buckets: [
       100us, 250us, 500us, 750us,
@@ -139,10 +140,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -155,7 +156,7 @@ Include additional dimensions to segment service graph metrics:
 
 ```yaml
 connectors:
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 2s, 5s, 10s]
 
     # Add multiple dimensions for detailed analysis
@@ -189,6 +190,9 @@ processors:
         value: ${CLOUD_PROVIDER}
         action: upsert
 
+  batch:
+    timeout: 10s
+
 receivers:
   otlp:
     protocols:
@@ -206,10 +210,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -222,7 +226,7 @@ The Service Graph Connector maintains an in-memory store to correlate client and
 
 ```yaml
 connectors:
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [10ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s]
 
     dimensions:
@@ -258,15 +262,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
 
-Monitor the `traces_service_graph_unmatched_spans` metric to determine if TTL needs adjustment. High unmatched spans indicate spans arrive too far apart or the store size is insufficient.
+Monitor the `traces_service_graph_unpaired_spans_total` and `traces_service_graph_dropped_spans_total` metrics to determine if TTL or store size needs adjustment. High unpaired or dropped spans indicate spans arrive too far apart or the store size is insufficient.
 
 ## Multi-Environment Service Graphs
 
@@ -274,16 +278,25 @@ Generate separate service graphs for different environments:
 
 ```yaml
 processors:
-  # Ensure environment attribute exists
-  resource/environment:
-    attributes:
-      - key: deployment.environment
-        value: ${ENVIRONMENT}
-        action: upsert
+  # Drop traces that do not belong to the pipeline's environment
+  filter/production:
+    trace_conditions:
+      - 'resource.attributes["deployment.environment"] != "production"'
+
+  filter/staging:
+    trace_conditions:
+      - 'resource.attributes["deployment.environment"] != "staging"'
+
+  filter/development:
+    trace_conditions:
+      - 'resource.attributes["deployment.environment"] != "development"'
+
+  batch:
+    timeout: 10s
 
 connectors:
   # Separate connector for each environment
-  servicegraph/production:
+  service_graph/production:
     latency_histogram_buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - service.namespace
@@ -292,7 +305,7 @@ connectors:
       ttl: 2s
       max_items: 20000
 
-  servicegraph/staging:
+  service_graph/staging:
     latency_histogram_buckets: [10ms, 50ms, 100ms, 500ms, 1s, 5s, 10s]
     dimensions:
       - service.namespace
@@ -300,7 +313,7 @@ connectors:
       ttl: 3s
       max_items: 5000
 
-  servicegraph/development:
+  service_graph/development:
     latency_histogram_buckets: [50ms, 100ms, 500ms, 1s, 5s, 10s, 30s]
     dimensions:
       - service.namespace
@@ -326,23 +339,33 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/production:
       receivers: [otlp]
-      processors: [resource/environment, batch]
-      exporters: [servicegraph/production, servicegraph/staging, servicegraph/development, otlp/traces]
+      processors: [filter/production, batch]
+      exporters: [service_graph/production, otlp/traces]
+
+    traces/staging:
+      receivers: [otlp]
+      processors: [filter/staging, batch]
+      exporters: [service_graph/staging, otlp/traces]
+
+    traces/development:
+      receivers: [otlp]
+      processors: [filter/development, batch]
+      exporters: [service_graph/development, otlp/traces]
 
     metrics/production:
-      receivers: [servicegraph/production]
+      receivers: [service_graph/production]
       processors: [batch]
       exporters: [otlp/metrics-prod]
 
     metrics/staging:
-      receivers: [servicegraph/staging]
+      receivers: [service_graph/staging]
       processors: [batch]
       exporters: [otlp/metrics-staging]
 
     metrics/development:
-      receivers: [servicegraph/development]
+      receivers: [service_graph/development]
       processors: [batch]
       exporters: [otlp/metrics-dev]
 ```
@@ -355,13 +378,15 @@ Generate service graphs only for critical services to reduce cardinality:
 processors:
   # Filter traces to only critical services
   filter/critical:
-    traces:
-      span:
-        - 'resource.attributes["service.namespace"] == "production"'
-        - 'resource.attributes["service.criticality"] == "high"'
+    trace_conditions:
+      - 'resource.attributes["service.namespace"] != "production"'
+      - 'resource.attributes["service.criticality"] != "high"'
+
+  batch:
+    timeout: 10s
 
 connectors:
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s]
 
     dimensions:
@@ -378,10 +403,6 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
 
 exporters:
   otlp/traces:
@@ -401,10 +422,10 @@ service:
     traces/critical:
       receivers: [otlp]
       processors: [filter/critical, batch]
-      exporters: [servicegraph]
+      exporters: [service_graph]
 
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -421,16 +442,19 @@ processors:
       - context: span
         statements:
           # Create virtual nodes for databases
-          - set(attributes["peer.service"], Concat(["db-", attributes["db.system"]])) where attributes["db.system"] != nil and attributes["peer.service"] == nil
+          - set(attributes["peer.service"], Concat(["db-", attributes["db.system"]], "")) where attributes["db.system"] != nil and attributes["peer.service"] == nil
 
           # Create virtual nodes for message queues
-          - set(attributes["peer.service"], Concat(["queue-", attributes["messaging.system"]])) where attributes["messaging.system"] != nil and attributes["peer.service"] == nil
+          - set(attributes["peer.service"], Concat(["queue-", attributes["messaging.system"]], "")) where attributes["messaging.system"] != nil and attributes["peer.service"] == nil
 
           # Create virtual nodes for HTTP external calls
           - set(attributes["peer.service"], "external-api") where attributes["http.url"] != nil and IsMatch(attributes["http.url"], "^https://external") and attributes["peer.service"] == nil
 
+  batch:
+    timeout: 10s
+
 connectors:
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
 
     dimensions:
@@ -448,10 +472,6 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
-  batch:
-    timeout: 10s
-
 exporters:
   otlp/traces:
     endpoint: traces-backend:4317
@@ -463,10 +483,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform/virtual-nodes, batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     metrics:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -478,7 +498,7 @@ Use the Service Graph Connector alongside the Span Metrics Connector for compreh
 ```yaml
 connectors:
   # Service graph for topology
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
       - deployment.environment
@@ -488,12 +508,14 @@ connectors:
       max_items: 10000
 
   # Span metrics for RED metrics per service
-  spanmetrics:
-    latency_histogram_buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
-      - http.method
-      - http.status_code
-      - service.namespace
+      - name: http.method
+      - name: http.status_code
+      - name: service.namespace
     namespace: span.metrics
 
 receivers:
@@ -518,17 +540,17 @@ service:
       receivers: [otlp]
       processors: [batch]
       # Generate both service graph and span metrics
-      exporters: [servicegraph, spanmetrics, otlp/traces]
+      exporters: [service_graph, span_metrics, otlp/traces]
 
     # Service graph metrics
-    metrics/servicegraph:
-      receivers: [servicegraph]
+    metrics/service_graph:
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
 
     # Span metrics (RED metrics)
-    metrics/spanmetrics:
-      receivers: [spanmetrics]
+    metrics/span_metrics:
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
@@ -575,19 +597,19 @@ processors:
       - context: span
         statements:
           # Database virtual nodes
-          - set(attributes["peer.service"], Concat(["db.", attributes["db.system"]])) where attributes["db.system"] != nil and attributes["peer.service"] == nil
+          - set(attributes["peer.service"], Concat(["db.", attributes["db.system"]], "")) where attributes["db.system"] != nil and attributes["peer.service"] == nil
 
           # Cache virtual nodes
           - set(attributes["peer.service"], "cache.redis") where attributes["db.system"] == "redis" and attributes["peer.service"] == nil
 
           # Message queue virtual nodes
-          - set(attributes["peer.service"], Concat(["mq.", attributes["messaging.system"]])) where attributes["messaging.system"] != nil and attributes["peer.service"] == nil
+          - set(attributes["peer.service"], Concat(["mq.", attributes["messaging.system"]], "")) where attributes["messaging.system"] != nil and attributes["peer.service"] == nil
 
           # External HTTP services
           - set(attributes["peer.service"], "external.api") where attributes["http.url"] != nil and IsMatch(attributes["http.url"], "https://api\\.external\\.com") and attributes["peer.service"] == nil
 
 connectors:
-  servicegraph:
+  service_graph:
     # Latency buckets aligned with SLOs
     latency_histogram_buckets: [
       5ms, 10ms, 20ms, 50ms, 100ms,
@@ -623,10 +645,6 @@ exporters:
       enabled: true
       max_elapsed_time: 300s
 
-  prometheus:
-    endpoint: 0.0.0.0:8889
-    namespace: otel_collector
-
 service:
   telemetry:
     logs:
@@ -635,7 +653,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -645,18 +668,12 @@ service:
         - resource/enrich
         - transform/virtual-nodes
         - batch
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
-    metrics/servicegraph:
-      receivers: [servicegraph]
+    metrics/service_graph:
+      receivers: [service_graph]
       processors: [batch]
       exporters: [otlp/metrics]
-
-    # Export collector's own metrics
-    metrics/internal:
-      receivers: []
-      processors: []
-      exporters: [prometheus]
 ```
 
 ## Visualizing Service Graphs
@@ -689,16 +706,21 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to monitor:
-- `traces_service_graph_unmatched_spans`: Spans without matching client/server pairs
-- `traces_service_graph_edges`: Number of unique service relationships
+- `traces_service_graph_unpaired_spans_total`: Spans without matching client/server pairs
+- `traces_service_graph_dropped_spans_total`: Spans dropped when the store is full
 - `otelcol_connector_accepted_spans`: Spans processed by the connector
 - `otelcol_processor_batch_batch_send_size`: Batch sizes for generated metrics
 
-High unmatched spans may indicate:
+High unpaired or dropped spans may indicate:
 - TTL too short for your trace latency
 - Store size too small
 - Incomplete traces missing client or server spans
@@ -713,7 +735,7 @@ The Service Graph Connector works well with other OpenTelemetry connectors. Use 
 
 2. **Minimize Dimensions**: Each dimension increases cardinality. Only include dimensions essential for analysis.
 
-3. **Size the Store Appropriately**: Monitor unmatched spans and adjust TTL and max_items based on your trace volume and timing.
+3. **Size the Store Appropriately**: Monitor unpaired and dropped spans and adjust TTL and max_items based on your trace volume and timing.
 
 4. **Create Virtual Nodes**: Represent external dependencies as virtual services for complete topology visibility.
 
