@@ -43,6 +43,8 @@ Here is a standard Python setup for a search service. If you are using Go or Jav
 ```python
 # pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 
+import time
+
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -57,7 +59,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "search-service",
     "service.version": "3.1.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Set up tracing
@@ -108,6 +110,8 @@ zero_result_queries = meter.create_counter(
 
 def handle_search(query_text, user_context):
     """Main search handler that traces through each pipeline stage."""
+    start_time = time.perf_counter()
+
     with tracer.start_as_current_span(
         "search.query",
         attributes={
@@ -138,6 +142,7 @@ def handle_search(query_text, user_context):
 
         # Record top-level metrics
         root_span.set_attribute("search.total_results", len(response.results))
+        search_latency.record((time.perf_counter() - start_time) * 1000)
         result_count.record(len(response.results))
 
         if len(response.results) == 0:
@@ -257,7 +262,11 @@ def ml_rerank(candidates, user_context):
 
         # Run model inference
         with tracer.start_as_current_span("search.ml_rerank.inference") as inf_span:
+            inference_started = time.perf_counter()
             scores = model.predict(features)
+            model_inference_latency.record(
+                (time.perf_counter() - inference_started) * 1000
+            )
             inf_span.set_attribute("search.ml.batch_size", len(scores))
 
         # Sort by model scores
