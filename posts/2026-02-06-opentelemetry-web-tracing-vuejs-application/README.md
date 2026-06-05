@@ -14,7 +14,7 @@ Traditional backend tracing tells you what happened on the server, but the story
 
 Without frontend tracing, you're missing half the picture. Users report slow experiences, but your backend metrics look fine. The problem is client-side, and you need visibility there.
 
-OpenTelemetry for web gives you:
+OpenTelemetry's browser instrumentation is still experimental, but it gives you:
 
 - Automatic instrumentation for document loads, XHR, and fetch calls
 - Custom spans for Vue-specific operations like component lifecycle and reactivity
@@ -28,6 +28,7 @@ Start with the core OpenTelemetry packages for web applications:
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-document-load \
   @opentelemetry/instrumentation-fetch \
@@ -48,7 +49,7 @@ Build a dedicated module to initialize and configure OpenTelemetry. This keeps t
 ```javascript
 // src/utils/tracing.js
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
@@ -56,8 +57,12 @@ import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-docu
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { UserInteractionInstrumentation } from '@opentelemetry/instrumentation-user-interaction';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 let tracerProvider;
 let vueTracer;
@@ -69,18 +74,14 @@ export function initTracing(config = {}) {
     serviceVersion = '1.0.0',
     collectorUrl = 'http://localhost:4318/v1/traces',
     environment = 'development',
+    sampling = { probability: 1.0 },
   } = config;
 
   // Create a resource that identifies your service
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment,
-  });
-
-  // Initialize the tracer provider
-  tracerProvider = new WebTracerProvider({
-    resource,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
   });
 
   // Configure OTLP exporter to send spans to your collector
@@ -91,15 +92,20 @@ export function initTracing(config = {}) {
     },
   });
 
-  // Use BatchSpanProcessor for better performance
-  // It batches spans before sending to reduce network calls
-  tracerProvider.addSpanProcessor(
-    new BatchSpanProcessor(exporter, {
-      maxQueueSize: 100,
-      maxExportBatchSize: 10,
-      scheduledDelayMillis: 500,
-    })
-  );
+  // Initialize the tracer provider
+  tracerProvider = new WebTracerProvider({
+    resource,
+    sampler: new TraceIdRatioBasedSampler(sampling.probability),
+    // Use BatchSpanProcessor for better performance
+    // It batches spans before sending to reduce network calls
+    spanProcessors: [
+      new BatchSpanProcessor(exporter, {
+        maxQueueSize: 100,
+        maxExportBatchSize: 10,
+        scheduledDelayMillis: 500,
+      }),
+    ],
+  });
 
   // Register the tracer provider globally
   tracerProvider.register({
@@ -119,8 +125,14 @@ export function initTracing(config = {}) {
         clearTimingResources: true,
         applyCustomAttributesOnSpan: (span, request, result) => {
           // Add custom attributes to fetch spans
-          if (request.url) {
-            const url = new URL(request.url);
+          const requestUrl = request instanceof Request
+            ? request.url
+            : result instanceof Response
+              ? result.url
+              : undefined;
+
+          if (requestUrl) {
+            const url = new URL(requestUrl, window.location.origin);
             span.setAttribute('http.host', url.host);
             span.setAttribute('http.path', url.pathname);
           }
@@ -272,7 +284,7 @@ export function setupRouterTracing(router) {
   const navigationSpans = new Map();
 
   // Start span before each navigation
-  router.beforeEach((to, from, next) => {
+  router.beforeEach((to, from) => {
     const span = tracer.startSpan('vue.router.navigation', {
       attributes: {
         'route.from': from.path,
@@ -286,17 +298,23 @@ export function setupRouterTracing(router) {
     // Store span using navigation hash
     const navKey = `${from.path}->${to.path}`;
     navigationSpans.set(navKey, span);
-
-    next();
   });
 
   // End span after navigation completes
-  router.afterEach((to, from) => {
+  router.afterEach((to, from, failure) => {
     const navKey = `${from.path}->${to.path}`;
     const span = navigationSpans.get(navKey);
 
     if (span) {
-      span.setStatus({ code: SpanStatusCode.OK });
+      if (failure) {
+        span.recordException(failure);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: failure.message,
+        });
+      } else {
+        span.setStatus({ code: SpanStatusCode.OK });
+      }
       span.end();
       navigationSpans.delete(navKey);
     }
@@ -314,6 +332,7 @@ export function setupRouterTracing(router) {
         message: error.message,
       });
       span.end();
+      navigationSpans.clear();
     }
   });
 }
@@ -357,7 +376,7 @@ Vue components go through a well-defined lifecycle. Tracing these hooks helps id
 
 ```javascript
 // src/composables/useComponentTracing.js
-import { onBeforeMount, onMounted, onBeforeUpdate, onUpdated, onBeforeUnmount, onUnmounted, getCurrentInstance } from 'vue';
+import { onBeforeMount, onMounted, onBeforeUpdate, onUpdated, onBeforeUnmount, getCurrentInstance } from 'vue';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../utils/tracing';
 
@@ -416,8 +435,8 @@ export function useComponentTracing(componentName) {
   // Return tracer for custom spans
   return {
     tracer,
-    createSpan: (name, fn) => {
-      const span = tracer.startSpan(`${componentName}.${name}`);
+    createSpan: (spanName, fn) => {
+      const span = tracer.startSpan(`${name}.${spanName}`);
       return context.with(trace.setSpan(context.active(), span), async () => {
         try {
           const result = await fn(span);
@@ -456,7 +475,7 @@ export default {
   name: 'UserProfile',
   setup() {
     const { createSpan } = useComponentTracing('UserProfile');
-    const user = ref({ name: '', email: '' });
+    const user = ref({ id: '123', name: '', email: '' });
 
     const updateProfile = () => {
       createSpan('updateProfile', async (span) => {
@@ -481,12 +500,12 @@ export default {
 
 ## Tracing API Calls with Axios
 
-If you're using Axios instead of fetch, you'll need to manually instrument it since there's no automatic instrumentation:
+If you're using Axios, the XMLHttpRequest instrumentation can trace browser requests, but you can also manually instrument Axios interceptors for higher-level client spans:
 
 ```javascript
 // src/api/client.js
 import axios from 'axios';
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, context, propagation, SpanStatusCode } from '@opentelemetry/api';
 import { getTracer } from '../utils/tracing';
 
 const apiClient = axios.create({
@@ -500,7 +519,7 @@ apiClient.interceptors.request.use(
   (config) => {
     const span = tracer.startSpan('http.request', {
       attributes: {
-        'http.method': config.method.toUpperCase(),
+        'http.method': (config.method || 'GET').toUpperCase(),
         'http.url': config.url,
         'http.target': config.url,
       },
@@ -513,9 +532,16 @@ apiClient.interceptors.request.use(
     const activeContext = trace.setSpan(context.active(), span);
     context.with(activeContext, () => {
       // Inject trace context into request headers
-      const traceHeaders = {};
-      // You would typically use a propagator here
-      config.headers = { ...config.headers, ...traceHeaders };
+      config.headers = config.headers || {};
+      propagation.inject(context.active(), config.headers, {
+        set: (headers, key, value) => {
+          if (typeof headers.set === 'function') {
+            headers.set(key, value);
+          } else {
+            headers[key] = value;
+          }
+        },
+      });
     });
 
     return config;
@@ -587,18 +613,22 @@ export function createTracingPlugin() {
     });
 
     // Wrap dispatch to trace actions
-    const originalDispatch = store.dispatch;
-    store.dispatch = function(type, payload) {
-      const span = tracer.startSpan(`vuex.action.${type}`, {
+    const originalDispatch = store.dispatch.bind(store);
+    store.dispatch = function(...args) {
+      const action = args[0];
+      const actionType = typeof action === 'string' ? action : action.type;
+      const payload = typeof action === 'string' ? args[1] : action;
+
+      const span = tracer.startSpan(`vuex.action.${actionType}`, {
         attributes: {
-          'vuex.action': type,
+          'vuex.action': actionType,
           'vuex.payload': JSON.stringify(payload),
         },
       });
 
       return context.with(trace.setSpan(context.active(), span), async () => {
         try {
-          const result = await originalDispatch.call(this, type, payload);
+          const result = await originalDispatch(...args);
           span.setStatus({ code: SpanStatusCode.OK });
           return result;
         } catch (error) {
@@ -619,6 +649,7 @@ Add the plugin to your store:
 ```javascript
 // src/store/index.js
 import { createStore } from 'vuex';
+import apiClient from '../api/client';
 import { createTracingPlugin } from './plugins/tracing';
 
 const store = createStore({
@@ -661,7 +692,7 @@ graph TD
 
 ## Performance Considerations
 
-OpenTelemetry adds minimal overhead to your application, typically under 5ms per operation. However, there are some best practices to follow:
+OpenTelemetry is designed to add low overhead, but you should still measure its impact in your own application. There are some best practices to follow:
 
 **Use Batch Processing**: Always use BatchSpanProcessor in production. It reduces network overhead by batching multiple spans into single export requests.
 
