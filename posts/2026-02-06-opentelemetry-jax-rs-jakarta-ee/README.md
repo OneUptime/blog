@@ -273,8 +273,10 @@ public class OpenTelemetryTracingFilter implements ContainerRequestFilter, Conta
             requestContext.getUriInfo().getRequestUri().toString());
         span.setAttribute(SemanticAttributes.URL_PATH,
             requestContext.getUriInfo().getPath());
-        span.setAttribute(SemanticAttributes.URL_QUERY,
-            requestContext.getUriInfo().getRequestUri().getQuery());
+        String query = requestContext.getUriInfo().getRequestUri().getQuery();
+        if (query != null) {
+            span.setAttribute(SemanticAttributes.URL_QUERY, query);
+        }
         span.setAttribute(SemanticAttributes.SERVER_ADDRESS,
             requestContext.getUriInfo().getBaseUri().getHost());
         span.setAttribute(SemanticAttributes.SERVER_PORT,
@@ -310,10 +312,6 @@ public class OpenTelemetryTracingFilter implements ContainerRequestFilter, Conta
                 // Set span status based on HTTP status code
                 if (statusCode >= 500) {
                     span.setStatus(StatusCode.ERROR, "Server error");
-                } else if (statusCode >= 400) {
-                    span.setStatus(StatusCode.ERROR, "Client error");
-                } else {
-                    span.setStatus(StatusCode.OK);
                 }
 
                 // Add content type if present
@@ -340,14 +338,14 @@ public class OpenTelemetryTracingFilter implements ContainerRequestFilter, Conta
             return "/" + requestContext.getUriInfo().getMatchedURIs().get(0);
         }
 
-        return path;
+        return "/" + path;
     }
 }
 ```
 
 ## Creating Custom Span Annotations
 
-Define a custom annotation for tracing specific JAX-RS resource methods:
+Define a custom annotation to mark specific JAX-RS resource methods for tracing. This annotation is a marker unless you add a CDI interceptor or other code that reads it:
 
 ```java
 package com.example.telemetry;
@@ -613,7 +611,6 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.client.Invocation;
-import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 
 public class ExternalServiceClient {
@@ -627,8 +624,12 @@ public class ExternalServiceClient {
     private final Client client = ClientBuilder.newClient();
 
     // TextMapSetter for injecting context into HTTP headers
-    private static final TextMapSetter<MultivaluedMap<String, Object>> setter =
-        (carrier, key, value) -> carrier.putSingle(key, value);
+    private static final TextMapSetter<Invocation.Builder> setter =
+        (carrier, key, value) -> {
+            if (carrier != null) {
+                carrier.header(key, value);
+            }
+        };
 
     public String callExternalService(String endpoint) {
         // Create span for external call
@@ -645,10 +646,8 @@ public class ExternalServiceClient {
                 .request();
 
             // Inject trace context into headers
-            MultivaluedMap<String, Object> headers =
-                request.getHeaders();
             openTelemetry.getPropagators().getTextMapPropagator()
-                .inject(Context.current(), headers, setter);
+                .inject(Context.current(), request, setter);
 
             // Execute request
             Response response = request.get();
