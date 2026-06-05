@@ -77,8 +77,8 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 # Enable the extension in the service section
 service:
@@ -88,7 +88,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 With this configuration, pprof endpoints are available at:
@@ -105,18 +105,17 @@ extensions:
     # Only allow access through kubectl port-forward or SSH tunnel
     endpoint: 127.0.0.1:1777
 
-    # Configure block profile rate (nanoseconds)
-    # Higher values = less overhead but less detail
+    # Configure block profile rate
+    # 0 = disabled, 1 = all blocking events, higher values sample less
     block_profile_fraction: 0
 
     # Configure mutex profile rate
     # 0 = disabled, 1 = all events, higher = sampling
     mutex_profile_fraction: 0
 
-    # Save profiles to disk periodically (optional)
-    save_to_file:
-      enabled: false
-      directory: /var/log/otelcol/profiles
+    # Save a CPU profile to disk when the Collector shuts down (optional).
+    # Uncomment only while actively profiling; profiling starts when the Collector starts.
+    # save_to_file: /var/log/otelcol/cpu.pprof
 
 receivers:
   otlp:
@@ -174,10 +173,6 @@ extensions:
   zpages:
     endpoint: 127.0.0.1:55679
 
-  # Prometheus metrics for monitoring
-  prometheus:
-    endpoint: 0.0.0.0:8888
-
 receivers:
   otlp:
     protocols:
@@ -213,14 +208,19 @@ exporters:
 
 service:
   # Enable all diagnostic extensions
-  extensions: [pprof, health_check, zpages, prometheus]
+  extensions: [pprof, health_check, zpages]
 
   telemetry:
     logs:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -277,7 +277,8 @@ spec:
 
         volumeMounts:
         - name: config
-          mountPath: /etc/otelcol
+          mountPath: /etc/otelcol-contrib/config.yaml
+          subPath: config.yaml
 
       volumes:
       - name: config
@@ -286,6 +287,7 @@ spec:
 
 ---
 # Service for pprof access (ClusterIP for security)
+# Use this only when the collector pprof endpoint is bound to 0.0.0.0:1777.
 apiVersion: v1
 kind: Service
 metadata:
@@ -455,9 +457,9 @@ extensions:
     endpoint: 127.0.0.1:1777
 
     # Enable block profiling
-    # Value is the fraction of blocking events to record
+    # The value is passed to Go's runtime.SetBlockProfileRate.
     # 1 = record all blocking events (high overhead)
-    # Higher values = less overhead but less detail
+    # Higher values sample roughly one event per N nanoseconds blocked
     block_profile_fraction: 5
 ```
 
@@ -522,23 +524,9 @@ extensions:
     block_profile_fraction: 5
     mutex_profile_fraction: 5
 
-    # Periodically save profiles to disk
-    save_to_file:
-      enabled: true
-      directory: /var/log/otelcol/profiles
-      interval: 5m
-
-      # Which profiles to save
-      profiles:
-        - cpu
-        - heap
-        - goroutine
-        - block
-        - mutex
-
-      # Retention policy
-      max_age: 24h
-      max_files: 288  # 24h * 12 per hour
+    # Save one CPU profile to disk when the Collector shuts down
+    # Profiling starts when the Collector starts
+    save_to_file: /var/log/otelcol/profiles/cpu.pprof
 ```
 
 Create a script to automatically collect and upload profiles:
@@ -658,19 +646,14 @@ Common scenarios and how to use pprof:
 
 ## Integration with Observability Platforms
 
-Send pprof data to observability platforms:
+Upload saved pprof data to observability platforms using their supported upload tools:
 
 ```bash
-# Pyroscope continuous profiling
-# Configure collector to send profiles to Pyroscope
-curl -X POST http://pyroscope-server:4040/ingest \
-  -H "Content-Type: application/json" \
-  -d @<(curl -s http://localhost:1777/debug/pprof/profile?seconds=30)
+# Capture a CPU profile
+curl -s http://localhost:1777/debug/pprof/profile?seconds=30 > cpu.prof
 
-# Grafana Phlare
-# Upload profile to Phlare
-curl -X POST http://phlare-server:4100/ingest \
-  --data-binary @<(curl -s http://localhost:1777/debug/pprof/profile?seconds=30)
+# Upload to Grafana Pyroscope with profilecli
+profilecli upload --extra-labels=service_name=otel-collector cpu.prof
 ```
 
 ## Best Practices
