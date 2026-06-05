@@ -28,10 +28,8 @@ Create an abstraction that separates "safe to observe" metadata from sensitive d
 package anticheat
 
 import (
-    "context"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("anticheat-pipeline")
@@ -49,10 +47,10 @@ const (
 )
 
 // SafeAttributes returns only the attributes that are safe to include in traces.
-// Never include thresholds, confidence scores, or algorithm details.
-func SafeAttributes(playerId string, category DetectionCategory, region string) []attribute.KeyValue {
+// Never include raw player IDs, thresholds, confidence scores, or algorithm details.
+func SafeAttributes(playerHash string, category DetectionCategory, region string) []attribute.KeyValue {
     return []attribute.KeyValue{
-        attribute.String("player.id", playerId),
+        attribute.String("player.hash", playerHash),
         attribute.String("detection.category", string(category)),
         attribute.String("server.region", region),
     }
@@ -67,10 +65,10 @@ The pipeline typically runs: event ingestion, feature extraction, detection modu
 func ProcessPlayerEvent(ctx context.Context, event PlayerEvent) (*Verdict, error) {
     ctx, span := tracer.Start(ctx, "anticheat.process_event",
         trace.WithAttributes(
-            attribute.String("player.id", event.PlayerID),
+            attribute.String("player.hash", hashPlayerID(event.PlayerID)),
             attribute.String("event.type", event.Type),
             attribute.String("server.region", event.Region),
-            // Do NOT include: event payload, movement vectors, input data
+            // Do NOT include: raw player IDs, event payload, movement vectors, input data
         ),
     )
     defer span.End()
@@ -187,16 +185,31 @@ Track operational metrics that do not expose detection logic:
 
 ```go
 var (
-    eventsProcessed = meter.Int64Counter("anticheat.events.processed",
-        metric.WithDescription("Total events processed by the anti-cheat pipeline"))
+    eventsProcessed  metric.Int64Counter
+    processingLatency metric.Float64Histogram
+    verdictCounts     metric.Int64Counter
+)
 
-    processingLatency = meter.Float64Histogram("anticheat.processing.duration_ms",
+func initMetrics(meter metric.Meter) error {
+    var err error
+
+    eventsProcessed, err = meter.Int64Counter("anticheat.events.processed",
+        metric.WithDescription("Total events processed by the anti-cheat pipeline"))
+    if err != nil {
+        return err
+    }
+
+    processingLatency, err = meter.Float64Histogram("anticheat.processing.duration_ms",
         metric.WithDescription("Event processing latency in milliseconds"),
         metric.WithUnit("ms"))
+    if err != nil {
+        return err
+    }
 
-    verdictCounts = meter.Int64Counter("anticheat.verdicts",
+    verdictCounts, err = meter.Int64Counter("anticheat.verdicts",
         metric.WithDescription("Count of verdicts by action type"))
-)
+    return err
+}
 ```
 
 These tell you if the pipeline is healthy without revealing what it looks for.
