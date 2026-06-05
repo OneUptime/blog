@@ -138,6 +138,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://your-oneuptime-instance.com/otlp
+    encoding: json
+    headers:
+      x-oneuptime-token: YOUR_ONEUPTIME_TOKEN
 
 service:
   pipelines:
@@ -161,7 +164,7 @@ Datadog's agent configuration is simpler out of the box because it only sends da
 
 ## Cost Comparison
 
-Datadog's pricing is based on hosts, custom metrics, log volume, and spans ingested. For a mid-size team running 50 hosts with moderate log and trace volume, the monthly bill can easily reach $15,000 to $30,000. Custom metrics are particularly expensive, often adding $5 per metric per month.
+Datadog's pricing is based on hosts, custom metrics, log volume, and spans ingested. For a mid-size team running 50 hosts with high log, trace, and custom metric volume, the monthly bill can easily reach five figures. Custom metrics are particularly expensive at scale, with published pricing based on blocks of 100 custom metrics per month.
 
 OpenTelemetry itself is free. The cost depends entirely on which backend you choose. Open-source backends like Jaeger or Prometheus can run on your own infrastructure. Managed platforms like OneUptime offer predictable pricing without per-host or per-metric charges that escalate quickly.
 
@@ -172,8 +175,8 @@ Here is a rough comparison for a team with 50 hosts:
 | Infrastructure monitoring | $18/host/month | Self-hosted or included |
 | APM (traces) | $31/host/month | Self-hosted or included |
 | Log management (per GB) | $0.10/GB ingested | Self-hosted or included |
-| Custom metrics | $5/metric/month | Self-hosted or included |
-| Estimated monthly total | $15,000 - $30,000 | $500 - $5,000 (infra costs) |
+| Custom metrics | $5/100 custom metrics/month | Self-hosted or included |
+| Estimated monthly total | Depends heavily on logs, indexed spans, and custom metric cardinality | $500 - $5,000 (infra costs) |
 
 The exact numbers vary based on your usage patterns, but the structural difference is clear. Datadog charges per unit of telemetry, which means costs scale with your application's growth. OpenTelemetry with a self-hosted or flat-rate backend gives you more predictable cost scaling.
 
@@ -183,9 +186,9 @@ The exact numbers vary based on your usage patterns, but the structural differen
 
 With Datadog, your telemetry data lives on Datadog's platform. You can export it through their APIs, but the data format is Datadog-specific. If you cancel your subscription, you lose access to historical data.
 
-OpenTelemetry uses the OTLP (OpenTelemetry Protocol) standard. Your data is stored in whatever backend you choose, and you can migrate between backends without losing data fidelity. You own the data because you control where it lives.
+OpenTelemetry uses the OTLP (OpenTelemetry Protocol) standard. Your data is stored in whatever backend you choose, and future telemetry can be routed to another backend without rewriting application instrumentation. You own the data because you control where it lives.
 
-This matters more than most teams realize upfront. When you have two years of trace data and performance baselines in Datadog, walking away from that investment is painful. With OpenTelemetry, the data format is portable from day one.
+This matters more than most teams realize upfront. When you have two years of trace data and performance baselines in Datadog, walking away from that investment is painful. With OpenTelemetry, the instrumentation and telemetry protocol are portable from day one.
 
 ---
 
@@ -216,9 +219,12 @@ If you are currently on Datadog and want to evaluate OpenTelemetry, you can run 
 exporters:
   otlphttp/oneuptime:
     endpoint: https://your-oneuptime-instance.com/otlp
+    encoding: json
+    headers:
+      x-oneuptime-token: YOUR_ONEUPTIME_TOKEN
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
 service:
   pipelines:
