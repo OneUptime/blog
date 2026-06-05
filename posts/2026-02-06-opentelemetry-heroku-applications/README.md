@@ -61,8 +61,8 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Configure the OTLP exporter to send traces to your collector
 const traceExporter = new OTLPTraceExporter({
@@ -79,10 +79,10 @@ const metricReader = new PeriodicExportingMetricReader({
 
 // Initialize the SDK with auto-instrumentation and resource attributes
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'heroku-app',
-    [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'production',
-    'heroku.dyno_id': process.env.DYNO || 'unknown',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'production',
+    'heroku.dyno.name': process.env.DYNO || 'unknown',
   }),
   traceExporter,
   metricReader,
@@ -142,7 +142,7 @@ Auto-instrumentation captures HTTP requests, database queries, and other common 
 
 ```javascript
 // Adding custom spans to trace specific business operations
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 // Get a tracer instance for your application module
 const tracer = trace.getTracer('heroku-app.orders');
@@ -162,7 +162,7 @@ async function processOrder(orderId) {
     } catch (error) {
       // Record the error on the span so it shows up in your trace viewer
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       // Always end the span, even if an error occurred
@@ -176,20 +176,25 @@ async function processOrder(orderId) {
 
 ### Dyno Restarts and Data Loss
 
-Heroku dynos restart at least once every 24 hours. This means any in-memory telemetry buffer gets wiped. To minimize data loss, configure a shorter batch export interval.
+Heroku dynos restart at least once every 24 hours. This means any in-memory telemetry buffer gets wiped. The OpenTelemetry JavaScript `BatchSpanProcessor` defaults to a 5-second export delay, and you can set that explicitly or tune the batch settings for your application.
 
 ```javascript
-// Use a shorter export interval to reduce data loss during dyno restarts
+// Set batch export options for dyno restarts
 const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
 });
 
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
-// Export spans every 5 seconds instead of the default 30
+// Export spans every 5 seconds
 const spanProcessor = new BatchSpanProcessor(traceExporter, {
   scheduledDelayMillis: 5000,
   maxExportBatchSize: 256,
+});
+
+const sdk = new NodeSDK({
+  spanProcessors: [spanProcessor],
+  // Add the rest of your SDK options here
 });
 ```
 
@@ -200,18 +205,21 @@ Heroku provides a labs feature called runtime-dyno-metadata that exposes useful 
 ```bash
 # Enable Heroku's runtime dyno metadata for richer telemetry context
 heroku labs:enable runtime-dyno-metadata -a your-app-name
+
+# Optional: enable build metadata if you want the build commit
+heroku labs:enable runtime-dyno-build-metadata -a your-app-name
 ```
 
 Then add those values to your resource configuration:
 
 ```javascript
 // Enrich telemetry with Heroku-specific metadata
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'heroku-app',
   'heroku.app.name': process.env.HEROKU_APP_NAME || 'unknown',
   'heroku.release.version': process.env.HEROKU_RELEASE_VERSION || 'unknown',
-  'heroku.slug.commit': process.env.HEROKU_SLUG_COMMIT || 'unknown',
-  'heroku.dyno_id': process.env.DYNO || 'unknown',
+  'heroku.build.commit': process.env.HEROKU_BUILD_COMMIT || 'unknown',
+  'heroku.dyno.name': process.env.DYNO || 'unknown',
 });
 ```
 
@@ -253,7 +261,7 @@ Setting up OpenTelemetry on Heroku is straightforward once you understand the pl
 
 - Load the tracing configuration before your application code using `--require`
 - Handle `SIGTERM` gracefully to flush telemetry before dyno shutdown
-- Use shorter batch export intervals to account for dyno restarts
+- Tune batch export intervals to account for dyno restarts
 - Enable runtime-dyno-metadata for richer context in your traces
 - Disable noisy instrumentations like `fs` that generate too many spans on Heroku
 
