@@ -168,8 +168,9 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-traces
-    encoding: otlp_proto
+    traces:
+      topic: otlp-traces
+      encoding: otlp_proto
     # Use snappy compression to reduce network bandwidth
     # between agents and Kafka
     producer:
@@ -184,8 +185,9 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-metrics
-    encoding: otlp_proto
+    metrics:
+      topic: otlp-metrics
+      encoding: otlp_proto
     producer:
       compression: snappy
       max_message_bytes: 10000000
@@ -197,8 +199,9 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-logs
-    encoding: otlp_proto
+    logs:
+      topic: otlp-logs
+      encoding: otlp_proto
     producer:
       compression: snappy
       max_message_bytes: 10000000
@@ -238,17 +241,26 @@ receivers:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-traces
+    traces:
+      topics: [otlp-traces]
+      encoding: otlp_proto
     group_id: otel-gateway-traces
-    encoding: otlp_proto
     # Start from the earliest unprocessed message if this is a
     # new consumer group or after an offset reset
     initial_offset: earliest
-    # Commit offsets every 5 seconds to avoid reprocessing
-    # too much data after a restart
-    auto_commit:
+    # Mark messages only after the downstream pipeline succeeds,
+    # then commit offsets every 5 seconds
+    autocommit:
       enable: true
       interval: 5s
+    message_marking:
+      after: true
+      on_error: false
+    error_backoff:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 0
 
   # Kafka receiver for metrics
   kafka/metrics:
@@ -256,13 +268,22 @@ receivers:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-metrics
+    metrics:
+      topics: [otlp-metrics]
+      encoding: otlp_proto
     group_id: otel-gateway-metrics
-    encoding: otlp_proto
     initial_offset: earliest
-    auto_commit:
+    autocommit:
       enable: true
       interval: 5s
+    message_marking:
+      after: true
+      on_error: false
+    error_backoff:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 0
 
   # Kafka receiver for logs
   kafka/logs:
@@ -270,13 +291,22 @@ receivers:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otlp-logs
+    logs:
+      topics: [otlp-logs]
+      encoding: otlp_proto
     group_id: otel-gateway-logs
-    encoding: otlp_proto
     initial_offset: earliest
-    auto_commit:
+    autocommit:
       enable: true
       interval: 5s
+    message_marking:
+      after: true
+      on_error: false
+    error_backoff:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 0
 
 processors:
   batch:
@@ -306,7 +336,7 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 60s
-      max_elapsed_time: 300s
+      max_elapsed_time: 0
     sending_queue:
       enabled: true
       num_consumers: 10
@@ -322,6 +352,7 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 60s
+      max_elapsed_time: 0
     sending_queue:
       enabled: true
       num_consumers: 10
@@ -337,6 +368,7 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 60s
+      max_elapsed_time: 0
     sending_queue:
       enabled: true
       num_consumers: 10
@@ -445,7 +477,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             requests:
