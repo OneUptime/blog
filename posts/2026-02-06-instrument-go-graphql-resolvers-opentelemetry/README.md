@@ -93,14 +93,16 @@ import (
 
     "github.com/99designs/gqlgen/graphql"
     "github.com/99designs/gqlgen/graphql/handler"
+    "github.com/99designs/gqlgen/graphql/handler/transport"
     "github.com/99designs/gqlgen/graphql/playground"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -179,23 +181,22 @@ func (t *OperationTracer) InterceptOperation(ctx context.Context, next graphql.O
         operationType = string(oc.Operation.Operation)
     }
 
-    operationName := "anonymous"
-    if oc.OperationName != "" {
-        operationName = oc.OperationName
-    }
+    operationName := oc.OperationName
+    spanName := operationType
 
-    spanName := fmt.Sprintf("%s %s", operationType, operationName)
     ctx, span := t.tracer.Start(ctx, spanName,
         oteltrace.WithSpanKind(oteltrace.SpanKindServer),
     )
-    defer span.End()
 
     // Add operation details to span
-    span.SetAttributes(
+    attrs := []attribute.KeyValue{
         attribute.String("graphql.operation.type", operationType),
-        attribute.String("graphql.operation.name", operationName),
-        attribute.String("graphql.query", oc.RawQuery),
-    )
+        attribute.Int("graphql.document.length", len(oc.RawQuery)),
+    }
+    if operationName != "" {
+        attrs = append(attrs, attribute.String("graphql.operation.name", operationName))
+    }
+    span.SetAttributes(attrs...)
 
     // Add variables if present
     if len(oc.Variables) > 0 {
@@ -204,10 +205,16 @@ func (t *OperationTracer) InterceptOperation(ctx context.Context, next graphql.O
         )
     }
 
-    // Store span in context for field resolvers
-    ctx = context.WithValue(ctx, "otel.operation.span", span)
-
-    return next(ctx)
+    responseHandler := next(ctx)
+    ended := false
+    return func(ctx context.Context) *graphql.Response {
+        resp := responseHandler(ctx)
+        if !ended && (resp == nil || resp.HasNext == nil || (resp.HasNext != nil && !*resp.HasNext)) {
+            span.End()
+            ended = true
+        }
+        return resp
+    }
 }
 
 // InterceptResponse captures operation results and errors
@@ -221,6 +228,7 @@ func (t *OperationTracer) InterceptResponse(ctx context.Context, next graphql.Re
             span.SetAttributes(
                 attribute.Int("graphql.errors.count", len(response.Errors)),
             )
+            span.SetStatus(codes.Error, "GraphQL response errors")
 
             for i, err := range response.Errors {
                 span.AddEvent(fmt.Sprintf("graphql.error.%d", i), oteltrace.WithAttributes(
@@ -269,8 +277,9 @@ func (t *OperationTracer) InterceptField(ctx context.Context, next graphql.Resol
     )
 
     if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         span.SetAttributes(
-            attribute.String("error.message", err.Error()),
             attribute.Bool("graphql.field.error", true),
         )
     }
@@ -306,7 +315,8 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 
     user, err := r.userRepo.FindByID(ctx, id)
     if err != nil {
-        span.SetAttributes(attribute.String("error", err.Error()))
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return nil, err
     }
 
@@ -315,10 +325,7 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
         return nil, fmt.Errorf("user not found")
     }
 
-    span.SetAttributes(
-        attribute.String("user.name", user.Name),
-        attribute.String("user.email", user.Email),
-    )
+    span.SetAttributes(attribute.Bool("user.found", true))
 
     return user, nil
 }
@@ -337,6 +344,8 @@ func (r *queryResolver) Users(ctx context.Context, limit *int) ([]*User, error) 
 
     users, err := r.userRepo.FindAll(ctx, queryLimit)
     if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return nil, err
     }
 
@@ -353,8 +362,8 @@ type mutationResolver struct{ *Resolver }
 func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput) (*User, error) {
     span := oteltrace.SpanFromContext(ctx)
     span.SetAttributes(
-        attribute.String("input.name", input.Name),
-        attribute.String("input.email", input.Email),
+        attribute.Bool("input.name_provided", input.Name != ""),
+        attribute.Bool("input.email_provided", input.Email != ""),
     )
 
     user := &User{
@@ -365,7 +374,8 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput
     }
 
     if err := r.userRepo.Create(ctx, user); err != nil {
-        span.SetAttributes(attribute.String("error", err.Error()))
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return nil, err
     }
 
@@ -385,6 +395,13 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input Upda
 
     user, err := r.userRepo.FindByID(ctx, id)
     if err != nil || user == nil {
+        if err != nil {
+            span.RecordError(err)
+            span.SetStatus(codes.Error, err.Error())
+        } else {
+            span.SetAttributes(attribute.Bool("user.not_found", true))
+            span.SetStatus(codes.Error, "user not found")
+        }
         return nil, fmt.Errorf("user not found")
     }
 
@@ -402,6 +419,8 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input Upda
 
     if updated {
         if err := r.userRepo.Update(ctx, user); err != nil {
+            span.RecordError(err)
+            span.SetStatus(codes.Error, err.Error())
             return nil, err
         }
     }
@@ -421,6 +440,8 @@ func (r *userResolver) Posts(ctx context.Context, obj *User) ([]*Post, error) {
 
     posts, err := r.postRepo.FindByUserID(ctx, obj.ID)
     if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return nil, err
     }
 
@@ -458,7 +479,6 @@ func (l *UserLoader) LoadBatch(ctx context.Context, ids []string) ([]interface{}
 
     span.SetAttributes(
         attribute.Int("dataloader.batch.size", len(ids)),
-        attribute.StringSlice("dataloader.batch.ids", ids),
     )
 
     start := time.Now()
@@ -470,7 +490,8 @@ func (l *UserLoader) LoadBatch(ctx context.Context, ids []string) ([]interface{}
     )
 
     if err != nil {
-        span.SetAttributes(attribute.String("error", err.Error()))
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         errors := make([]error, len(ids))
         for i := range errors {
             errors[i] = err
@@ -498,10 +519,15 @@ func (l *UserLoader) LoadBatch(ctx context.Context, ids []string) ([]interface{}
         }
     }
 
+    efficiency := 0.0
+    if len(ids) > 0 {
+        efficiency = float64(foundCount) / float64(len(ids))
+    }
+
     span.SetAttributes(
         attribute.Int("dataloader.results.found", foundCount),
         attribute.Int("dataloader.results.missing", len(ids)-foundCount),
-        attribute.Float64("dataloader.batch.efficiency", float64(foundCount)/float64(len(ids))),
+        attribute.Float64("dataloader.batch.efficiency", efficiency),
     )
 
     return results, errors
@@ -590,9 +616,12 @@ func main() {
     }
 
     // Create GraphQL server with tracing
-    srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{
+    srv := handler.New(generated.NewExecutableSchema(generated.Config{
         Resolvers: resolver,
     }))
+    srv.AddTransport(transport.Options{})
+    srv.AddTransport(transport.GET{})
+    srv.AddTransport(transport.POST{})
 
     // Add OpenTelemetry tracer extension
     srv.Use(NewOperationTracer())
