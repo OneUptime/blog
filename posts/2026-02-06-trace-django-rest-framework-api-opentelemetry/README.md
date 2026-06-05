@@ -30,8 +30,8 @@ Each of these stages can be instrumented to provide granular performance data.
 Install OpenTelemetry alongside Django REST Framework:
 
 ```bash
-pip install djangorestframework
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+pip install djangorestframework django-filter
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http
 pip install opentelemetry-instrumentation-django
 ```
 
@@ -40,10 +40,14 @@ If you haven't already set up the OpenTelemetry SDK, initialize it in your Djang
 ```python
 # myproject/telemetry.py
 
-from opentelemetry import trace
+from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.instrumentation.django import DjangoInstrumentor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 
 def initialize_telemetry():
@@ -62,6 +66,19 @@ def initialize_telemetry():
     provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
     trace.set_tracer_provider(provider)
 
+    metric_exporter = OTLPMetricExporter(
+        endpoint="https://oneuptime.com/otlp/v1/metrics",
+        headers={"x-oneuptime-service-token": "your-token"}
+    )
+    metrics.set_meter_provider(
+        MeterProvider(
+            resource=resource,
+            metric_readers=[PeriodicExportingMetricReader(metric_exporter)]
+        )
+    )
+
+    DjangoInstrumentor().instrument()
+
 initialize_telemetry()
 ```
 
@@ -73,7 +90,7 @@ Create a base APIView class that adds tracing to all your API endpoints:
 # myapp/views/base.py
 
 from rest_framework.views import APIView
-from rest_framework.response import Response
+from rest_framework.renderers import JSONRenderer
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 import time
@@ -85,6 +102,12 @@ class TracedAPIView(APIView):
 
     def dispatch(self, request, *args, **kwargs):
         """Override dispatch to add tracing around the entire request lifecycle."""
+
+        self.args = args
+        self.kwargs = kwargs
+        request = self.initialize_request(request, *args, **kwargs)
+        self.request = request
+        self.headers = self.default_response_headers
 
         # Create a span for the API endpoint
         operation_name = f"{self.__class__.__name__}.{request.method.lower()}"
@@ -118,15 +141,21 @@ class TracedAPIView(APIView):
                         span.set_attribute("user.id", str(request.user.id))
 
                 # Execute the actual handler method (get, post, put, etc.)
-                response = super().dispatch(request, *args, **kwargs)
+                if request.method.lower() in self.http_method_names:
+                    handler = getattr(
+                        self, request.method.lower(), self.http_method_not_allowed
+                    )
+                else:
+                    handler = self.http_method_not_allowed
+
+                response = handler(request, *args, **kwargs)
 
                 # Add response attributes
                 span.set_attribute("http.status_code", response.status_code)
 
                 if hasattr(response, 'data'):
                     # Measure response payload size
-                    import json
-                    response_size = len(json.dumps(response.data))
+                    response_size = len(JSONRenderer().render(response.data))
                     span.set_attribute("api.response.size_bytes", response_size)
 
                 # Set span status based on response
@@ -135,17 +164,19 @@ class TracedAPIView(APIView):
                 else:
                     span.set_status(Status(StatusCode.ERROR))
 
-                return response
-
             except Exception as exc:
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise
+                response = self.handle_exception(exc)
 
-            finally:
-                # Record total duration
-                duration = (time.time() - start_time) * 1000
-                span.set_attribute("api.duration_ms", duration)
+            # Record total duration
+            duration = (time.time() - start_time) * 1000
+            span.set_attribute("api.duration_ms", duration)
+
+            self.response = self.finalize_response(
+                request, response, *args, **kwargs
+            )
+            return self.response
 
     def get_api_version(self, request):
         """Extract API version from header or URL."""
@@ -184,6 +215,7 @@ ViewSets are the most common DRF pattern. Here's how to add tracing:
 # myapp/viewsets/base.py
 
 from rest_framework import viewsets
+from rest_framework.response import Response
 from opentelemetry import trace
 import time
 
@@ -195,7 +227,7 @@ class TracedModelViewSet(viewsets.ModelViewSet):
     def dispatch(self, request, *args, **kwargs):
         """Add tracing to the entire request."""
         # Determine action name (list, retrieve, create, update, destroy)
-        action = self.action or 'unknown'
+        action = getattr(self, 'action_map', {}).get(request.method.lower(), 'unknown')
         operation_name = f"{self.__class__.__name__}.{action}"
 
         with self.tracer.start_as_current_span(operation_name) as span:
@@ -222,7 +254,10 @@ class TracedModelViewSet(viewsets.ModelViewSet):
         # Trace serialization
         with self.tracer.start_as_current_span("serialize_response") as ser_span:
             start = time.time()
-            serializer = self.get_serializer(page or queryset, many=True)
+            serializer = self.get_serializer(
+                page if page is not None else queryset,
+                many=True
+            )
             data = serializer.data
             ser_span.set_attribute("serializer.duration_ms", (time.time() - start) * 1000)
             ser_span.set_attribute("serializer.object_count", len(data))
@@ -558,18 +593,21 @@ class TracedPageNumberPagination(PageNumberPagination):
         with self.tracer.start_as_current_span("paginate_queryset") as page_span:
             start = time.time()
 
-            # Get total count (can be expensive)
-            with self.tracer.start_as_current_span("count_queryset"):
-                count = queryset.count()
+            result = super().paginate_queryset(queryset, request, view)
+
+            if result is None:
+                page_span.set_attribute("pagination.enabled", False)
+                return result
+
+            # DRF's paginator has already counted the queryset.
+            count = self.page.paginator.count
 
             page_span.set_attribute("pagination.total_count", count)
             page_span.set_attribute("pagination.page_size", self.page_size)
 
-            # Calculate page count
-            page_count = (count + self.page_size - 1) // self.page_size
+            # Get page count
+            page_count = self.page.paginator.num_pages
             page_span.set_attribute("pagination.page_count", page_count)
-
-            result = super().paginate_queryset(queryset, request, view)
 
             duration = (time.time() - start) * 1000
             page_span.set_attribute("pagination.duration_ms", duration)
@@ -588,24 +626,27 @@ Track filter and search operations:
 ```python
 # myapp/filters.py
 
-from django_filters import FilterSet
+from django_filters.rest_framework import DjangoFilterBackend
 from opentelemetry import trace
 import time
 
-class TracedFilterSet(FilterSet):
-    """FilterSet with tracing."""
+class TracedDjangoFilterBackend(DjangoFilterBackend):
+    """DjangoFilterBackend with tracing."""
 
     tracer = trace.get_tracer(__name__)
 
-    @classmethod
-    def filter_queryset(cls, request, queryset, view):
+    def filter_queryset(self, request, queryset, view):
         """Trace filter application."""
-        with cls.tracer.start_as_current_span("apply_filters") as span:
-            span.set_attribute("filter.class", cls.__name__)
+        with self.tracer.start_as_current_span("apply_filters") as span:
+            filterset_class = self.get_filterset_class(view, queryset)
+            span.set_attribute(
+                "filter.class",
+                filterset_class.__name__ if filterset_class else "unknown"
+            )
 
             # Get filter parameters from request
             filter_params = {k: v for k, v in request.query_params.items()
-                           if k in cls.get_filters().keys()}
+                           if filterset_class and k in filterset_class.get_filters()}
 
             span.set_attribute("filter.param_count", len(filter_params))
             span.set_attribute("filter.params", str(filter_params))
@@ -616,9 +657,8 @@ class TracedFilterSet(FilterSet):
 
             span.set_attribute("filter.duration_ms", duration)
 
-            # Count results (be careful, this evaluates the query)
-            # Only do this if you're already counting for pagination
-            if hasattr(view, 'paginator_class'):
+            # Count results only when you accept the extra query evaluation.
+            if getattr(view, 'pagination_class', None) is None:
                 count = filtered.count()
                 span.set_attribute("filter.result_count", count)
 
