@@ -10,11 +10,11 @@ Description: Instrument Prisma Client with OpenTelemetry to trace every database
 
 Prisma is one of the most popular ORMs in the Node.js and TypeScript ecosystem. It generates a type-safe client from your database schema and handles query building, connection pooling, and migrations. But like any ORM, Prisma adds a layer of abstraction between your application code and the database. When something is slow, you need to know whether the bottleneck is in Prisma's query engine, the network, or the database itself.
 
-OpenTelemetry tracing cuts through that abstraction layer. Prisma has built-in support for OpenTelemetry starting from version 4.2, which means you can get detailed spans for every database operation without writing custom wrapper code. This guide walks through enabling and configuring Prisma's OpenTelemetry integration.
+OpenTelemetry tracing cuts through that abstraction layer. Prisma has built-in support for OpenTelemetry starting from version 4.2, and tracing is generally available in Prisma ORM 6.1 and later. This means you can get detailed spans for every database operation without writing custom wrapper code. This guide walks through enabling and configuring Prisma's OpenTelemetry integration.
 
 ## How Prisma Tracing Works
 
-Prisma's architecture includes a query engine (written in Rust) that sits between your TypeScript code and the database. When you enable tracing, Prisma creates spans at multiple levels: the client operation, the query engine processing, the serialization step, and the actual database query execution.
+Prisma's architecture includes a query engine layer that sits between your TypeScript code and the database. When you enable tracing, Prisma creates spans at multiple levels: the client operation, query processing, the serialization step, and the actual database query execution.
 
 ```mermaid
 graph TD
@@ -32,13 +32,20 @@ This multi-level tracing lets you see exactly where time is spent. If serializat
 
 ## Prerequisites
 
-You need Prisma version 4.2 or later and a Node.js application with the OpenTelemetry SDK configured. Let's start with the required packages.
+You need Prisma ORM 6.1 or later and a Node.js application with the OpenTelemetry SDK configured. The examples below use Prisma ORM 7 with PostgreSQL. If you are on Prisma ORM 4.2 through 6.0, tracing is still a preview feature and you must enable the `tracing` preview flag in your Prisma schema. Let's start with the required packages.
 
 ```bash
 # Install Prisma's OpenTelemetry integration and the OTel SDK
 
 npm install @prisma/instrumentation \
+    @prisma/client \
+    @prisma/adapter-pg \
+    prisma \
+    pg \
+    dotenv \
+    @opentelemetry/api \
     @opentelemetry/sdk-node \
+    @opentelemetry/sdk-trace-base \
     @opentelemetry/sdk-trace-node \
     @opentelemetry/exporter-trace-otlp-grpc \
     @opentelemetry/resources \
@@ -48,19 +55,17 @@ npm install @prisma/instrumentation \
 
 ## Enabling Tracing in Your Prisma Schema
 
-First, enable the `tracing` preview feature in your Prisma schema. This tells the Prisma query engine to produce OpenTelemetry spans.
+For Prisma ORM 7, tracing no longer requires a preview feature flag. Configure your Prisma Client generator as usual.
 
 ```prisma
-// schema.prisma - Enable the tracing preview feature
+// schema.prisma
 generator client {
-  provider        = "prisma-client-js"
-  // Enable OpenTelemetry tracing support in the generated client
-  previewFeatures = ["tracing"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // Example models for the code samples below
@@ -83,6 +88,30 @@ model Post {
 }
 ```
 
+In Prisma ORM 7, put the database connection URL in `prisma.config.ts` instead of the schema file:
+
+```typescript
+// prisma.config.ts
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+    schema: 'prisma/schema.prisma',
+    datasource: {
+        url: env('DATABASE_URL'),
+    },
+});
+```
+
+If you are using Prisma ORM 4.2 through 6.0, enable the `tracing` preview feature in your generator block before regenerating the client:
+
+```prisma
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["tracing"]
+}
+```
+
 After modifying the schema, regenerate the Prisma client.
 
 ```bash
@@ -98,10 +127,10 @@ The OpenTelemetry setup must happen before any other imports in your application
 // tracing.ts - OpenTelemetry setup file, must be imported first
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 // Configure the OTLP exporter to send traces to your collector
 const traceExporter = new OTLPTraceExporter({
@@ -112,7 +141,7 @@ const traceExporter = new OTLPTraceExporter({
 // Initialize the OpenTelemetry Node SDK with Prisma instrumentation
 const sdk = new NodeSDK({
     // Resource attributes identify your service in the backend
-    resource: new Resource({
+    resource: resourceFromAttributes({
         [ATTR_SERVICE_NAME]: 'my-api-service',
         [ATTR_SERVICE_VERSION]: '1.0.0',
     }),
@@ -147,11 +176,15 @@ Now set up your application entry point to import tracing before anything else.
 import './tracing';
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from './generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 // Prisma Client is created after tracing is initialized,
 // so all queries will be automatically instrumented
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+});
+const prisma = new PrismaClient({ adapter });
 const app = express();
 
 app.use(express.json());
@@ -186,8 +219,8 @@ app.get('/users/:id', async (req, res) => {
 app.post('/posts', async (req, res) => {
     // This create operation will produce spans for:
     // 1. prisma:client:operation - the high-level Prisma call
-    // 2. prisma:engine:query - the SQL query execution
-    // 3. prisma:engine:serialize - result serialization
+    // 2. prisma:engine:query - query processing in the engine layer
+    // 3. prisma:engine:db_query - SQL execution against the database
     const post = await prisma.post.create({
         data: {
             title: req.body.title,
@@ -211,18 +244,22 @@ Prisma produces several types of spans. Understanding what each one represents h
 ```mermaid
 graph TD
     A["prisma:client:operation<br/>(findMany, create, etc.)"] --> B["prisma:client:serialize<br/>(serialize parameters)"]
-    B --> C["prisma:engine:connection<br/>(acquire DB connection)"]
-    C --> D["prisma:engine:query<br/>(execute SQL)"]
-    D --> E["prisma:engine:serialize<br/>(deserialize results)"]
+    B --> C["prisma:engine:query<br/>(query engine processing)"]
+    C --> D["prisma:engine:connection<br/>(acquire DB connection)"]
+    C --> E["prisma:engine:db_query<br/>(execute SQL)"]
+    C --> F["prisma:engine:serialize<br/>(deserialize results)"]
+    C --> G["prisma:engine:response_json_serialization<br/>(serialize response JSON)"]
 ```
 
 Here is what each span type tells you:
 
 - **prisma:client:operation** - The top-level span representing your Prisma call. The span name includes the model and operation (e.g., `prisma:client:operation findMany User`).
 - **prisma:client:serialize** - Time spent serializing your query parameters into the format the query engine expects. Usually fast, but can be slow with large input data.
-- **prisma:engine:connection** - Time spent acquiring a database connection from the pool. If this span is long, your connection pool is exhausted.
-- **prisma:engine:query** - The actual SQL execution. This span includes the generated SQL as an attribute. This is the span you want to examine when debugging slow queries.
+- **prisma:engine:query** - Time spent processing the query in the engine layer. It contains child spans for connection acquisition, database queries, and result serialization.
+- **prisma:engine:connection** - Time spent acquiring a database connection from the pool. If this span is long, your connection pool may be exhausted.
+- **prisma:engine:db_query** - The actual SQL execution. This span includes the generated SQL as an attribute. This is the span you want to examine when debugging slow queries.
 - **prisma:engine:serialize** - Time spent deserializing database results back into JavaScript objects. Large result sets make this span longer.
+- **prisma:engine:response_json_serialization** - Time spent serializing the database response to JSON for Prisma Client.
 
 ## Adding Custom Context to Prisma Spans
 
@@ -230,7 +267,7 @@ Sometimes the automatic spans are not enough. You might want to group related Pr
 
 ```typescript
 // Adding custom parent spans to group related database operations
-import { trace, SpanKind } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('my-api-service');
 
@@ -282,40 +319,54 @@ async function getUserDashboard(userId: number) {
 }
 ```
 
-## Middleware for Query-Level Logging
+## Query Extensions for Query-Level Logging
 
-Prisma's middleware feature can complement OpenTelemetry tracing by adding custom attributes or logging to spans.
+Prisma Client query extensions can complement OpenTelemetry tracing by adding custom attributes or logging to spans.
 
 ```typescript
-// Add Prisma middleware to enrich spans with query metadata
-prisma.$use(async (params, next) => {
-    // Record the start time to measure total ORM overhead
-    const startTime = Date.now();
+// Add a query extension to enrich spans with query metadata
+import { trace } from '@opentelemetry/api';
+import { PrismaClient } from './generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-    // Get the current active span from OpenTelemetry context
-    const currentSpan = trace.getActiveSpan();
+const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+});
 
-    if (currentSpan) {
-        // Add the Prisma model and action as span attributes
-        currentSpan.setAttribute('prisma.model', params.model || 'unknown');
-        currentSpan.setAttribute('prisma.action', params.action);
+const prisma = new PrismaClient({ adapter }).$extends({
+    query: {
+        $allModels: {
+            async $allOperations({ model, operation, args, query }) {
+                // Record the start time to measure total ORM overhead
+                const startTime = Date.now();
 
-        // Flag potentially expensive operations
-        if (params.action === 'findMany' && !params.args?.take) {
-            currentSpan.setAttribute('prisma.warning', 'unbounded-query');
-        }
-    }
+                // Get the current active span from OpenTelemetry context
+                const currentSpan = trace.getActiveSpan();
 
-    // Execute the actual Prisma operation
-    const result = await next(params);
+                if (currentSpan) {
+                    // Add the Prisma model and action as span attributes
+                    currentSpan.setAttribute('prisma.model', model || 'unknown');
+                    currentSpan.setAttribute('prisma.action', operation);
 
-    // Record the total middleware execution time
-    const duration = Date.now() - startTime;
-    if (currentSpan) {
-        currentSpan.setAttribute('prisma.total_duration_ms', duration);
-    }
+                    // Flag potentially expensive operations
+                    if (operation === 'findMany' && !args?.take) {
+                        currentSpan.setAttribute('prisma.warning', 'unbounded-query');
+                    }
+                }
 
-    return result;
+                // Execute the actual Prisma operation
+                const result = await query(args);
+
+                // Record the total extension execution time
+                const duration = Date.now() - startTime;
+                if (currentSpan) {
+                    currentSpan.setAttribute('prisma.total_duration_ms', duration);
+                }
+
+                return result;
+            },
+        },
+    },
 });
 ```
 
@@ -340,35 +391,37 @@ processors:
     timeout: 5s
     send_batch_size: 256
 
-  # Filter out very fast database operations to reduce volume
-  # Keep only spans longer than 5ms or error spans
+  # Filter out very fast successful spans to reduce volume
   filter/slow:
-    spans:
-      min_duration: 5ms
+    error_mode: ignore
+    trace_conditions:
+      - (span.end_time - span.start_time) < Duration("5ms") and span.status.code != STATUS_CODE_ERROR
 
 exporters:
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/oneuptime]
+      processors: [filter/slow, batch]
+      exporters: [otlphttp/oneuptime]
 ```
 
 ## Identifying Common Prisma Performance Issues
 
 With tracing enabled, you can diagnose several common Prisma performance problems:
 
-**N+1 Queries**: The classic ORM problem. If a single request produces dozens of `prisma:engine:query` spans that each fetch one record, you have an N+1 issue. Fix it by using `include` or `select` to eager-load related data.
+**N+1 Queries**: The classic ORM problem. If a single request produces dozens of `prisma:engine:db_query` spans that each fetch one record, you have an N+1 issue. Fix it by using `include` or `select` to eager-load related data.
 
-**Missing Indexes**: Look for `prisma:engine:query` spans with long durations. The SQL in the span attributes will show which query is slow. Run `EXPLAIN` against that SQL to check for missing indexes.
+**Missing Indexes**: Look for `prisma:engine:db_query` spans with long durations. The SQL in the span attributes will show which query is slow. Run `EXPLAIN` against that SQL to check for missing indexes.
 
-**Connection Pool Exhaustion**: Long `prisma:engine:connection` spans mean the pool is full. Increase `connection_limit` in your database URL or reduce the number of concurrent operations.
+**Connection Pool Exhaustion**: Long `prisma:engine:connection` spans mean the pool is full. In Prisma ORM 7, tune the underlying driver adapter's pool settings or reduce the number of concurrent operations. In Prisma ORM 6 and earlier, you can also adjust `connection_limit` in your database URL.
 
 **Over-fetching**: If `prisma:engine:serialize` takes a long time, you might be loading more data than needed. Use `select` to pick only the fields your application actually uses.
 
@@ -396,7 +449,7 @@ In high-traffic applications, tracing every single Prisma query generates too mu
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
 
 const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
         [ATTR_SERVICE_NAME]: 'my-api-service',
     }),
     // Sample 10% of traces in production
