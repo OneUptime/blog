@@ -31,36 +31,43 @@ The Round Robin connector excels in several scenarios:
 The Round Robin connector follows the standard OpenTelemetry Collector configuration pattern. Here's the basic structure:
 
 ```yaml
+receivers:
+  otlp:
+
+exporters:
+  otlp/backend-1:
+    endpoint: backend-1:4317
+  otlp/backend-2:
+    endpoint: backend-2:4317
+  otlp/backend-3:
+    endpoint: backend-3:4317
+
 connectors:
   # Define the Round Robin connector
-  roundrobin:
-    # The table parameter specifies which pipelines to distribute to
-    table:
-      - pipelines: [traces/backend-1, traces/backend-2]
-      - pipelines: [traces/backend-3]
+  round_robin:
 
 service:
   pipelines:
     # Input pipeline that feeds the connector
     traces/input:
       receivers: [otlp]
-      exporters: [roundrobin]
+      exporters: [round_robin]
 
     # Output pipelines that receive distributed data
     traces/backend-1:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       exporters: [otlp/backend-1]
 
     traces/backend-2:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       exporters: [otlp/backend-2]
 
     traces/backend-3:
-      receivers: [roundrobin]
+      receivers: [round_robin]
       exporters: [otlp/backend-3]
 ```
 
-In this configuration, traces arrive via the OTLP receiver and are distributed across three backend pipelines. The connector cycles through backend-1, backend-2, and backend-3 in sequence.
+In this configuration, traces arrive via the OTLP receiver and are distributed across the three backend pipelines that use the connector as their receiver. The connector cycles through the available downstream pipelines in sequence.
 
 ## Pipeline Flow Architecture
 
@@ -98,13 +105,10 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 connectors:
-  roundrobin/traces:
-    table:
-      # Define the distribution table
-      # Traces will cycle through these pipelines
-      - pipelines: [traces/jaeger]
-      - pipelines: [traces/tempo]
-      - pipelines: [traces/zipkin]
+  round_robin/traces:
+
+processors:
+  batch:
 
 exporters:
   # Configure exporters for each backend
@@ -126,26 +130,26 @@ service:
     # Input pipeline receives all traces
     traces/input:
       receivers: [otlp]
-      exporters: [roundrobin/traces]
+      exporters: [round_robin/traces]
 
     # Output pipelines for each backend
     traces/jaeger:
-      receivers: [roundrobin/traces]
+      receivers: [round_robin/traces]
       processors: [batch]
       exporters: [otlp/jaeger]
 
     traces/tempo:
-      receivers: [roundrobin/traces]
+      receivers: [round_robin/traces]
       processors: [batch]
       exporters: [otlp/tempo]
 
     traces/zipkin:
-      receivers: [roundrobin/traces]
+      receivers: [round_robin/traces]
       processors: [batch]
       exporters: [zipkin]
 ```
 
-Each trace batch arriving at the OTLP receiver will be sent to one of the three backends in rotation. The first batch goes to Jaeger, the second to Tempo, the third to Zipkin, then the cycle repeats.
+Each trace batch arriving at the OTLP receiver will be sent to one of the three downstream trace pipelines in rotation, then the cycle repeats.
 
 ### Distributing Metrics for Parallel Processing
 
@@ -162,29 +166,10 @@ receivers:
             - targets: ['app:8080']
 
 processors:
-  # Processor for high-cardinality metrics
-  filter/high-cardinality:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - '.*_bucket'
-          - '.*_count'
-
-  # Processor for simple metrics
-  filter/aggregates:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - '.*_sum'
-          - '.*_total'
+  batch:
 
 connectors:
-  roundrobin/metrics:
-    table:
-      - pipelines: [metrics/high-cardinality]
-      - pipelines: [metrics/aggregates]
+  round_robin/metrics:
 
 exporters:
   prometheusremotewrite/timescale:
@@ -197,41 +182,51 @@ service:
   pipelines:
     metrics/input:
       receivers: [prometheus]
-      exporters: [roundrobin/metrics]
+      exporters: [round_robin/metrics]
 
-    metrics/high-cardinality:
-      receivers: [roundrobin/metrics]
-      processors: [filter/high-cardinality, batch]
+    metrics/timescale:
+      receivers: [round_robin/metrics]
+      processors: [batch]
       exporters: [prometheusremotewrite/timescale]
 
-    metrics/aggregates:
-      receivers: [roundrobin/metrics]
-      processors: [filter/aggregates, batch]
+    metrics/victoria:
+      receivers: [round_robin/metrics]
+      processors: [batch]
       exporters: [prometheusremotewrite/victoria]
 ```
 
-This configuration distributes metrics between two specialized pipelines, each handling different metric types with appropriate backends.
+This configuration distributes metric batches between two parallel pipelines, each exporting a subset of the incoming data to a different backend.
 
 ## Advanced Configuration Patterns
 
-### Weighted Distribution with Table Configuration
+### Even Distribution Across Pipelines
 
-The table parameter allows you to control distribution patterns. By listing a pipeline multiple times, you can create weighted distribution:
+The Round Robin connector does not have configuration settings for weights or an explicit routing table. It distributes data evenly across downstream pipelines that use the connector as their receiver:
 
 ```yaml
 connectors:
-  roundrobin/weighted:
-    table:
-      # Pipeline 1 appears twice, gets 50% of traffic
-      - pipelines: [traces/primary]
-      - pipelines: [traces/primary]
-      # Pipeline 2 appears once, gets 25% of traffic
-      - pipelines: [traces/secondary]
-      # Pipeline 3 appears once, gets 25% of traffic
-      - pipelines: [traces/archive]
+  round_robin:
+
+service:
+  pipelines:
+    traces/input:
+      receivers: [otlp]
+      exporters: [round_robin]
+
+    traces/primary:
+      receivers: [round_robin]
+      exporters: [otlp/primary]
+
+    traces/secondary:
+      receivers: [round_robin]
+      exporters: [otlp/secondary]
+
+    traces/archive:
+      receivers: [round_robin]
+      exporters: [otlp/archive]
 ```
 
-This creates a 2:1:1 distribution ratio, where the primary pipeline receives twice as much data as the others.
+This creates an even distribution across the primary, secondary, and archive pipelines. If you need weighted or condition-based routing, use a routing-capable component instead.
 
 ### Combining with Other Connectors
 
@@ -246,10 +241,7 @@ connectors:
       - name: http.method
 
   # Then distribute those metrics
-  roundrobin/metrics:
-    table:
-      - pipelines: [metrics/prometheus]
-      - pipelines: [metrics/influxdb]
+  round_robin/metrics:
 
 service:
   pipelines:
@@ -259,14 +251,14 @@ service:
 
     metrics/from-traces:
       receivers: [spanmetrics]
-      exporters: [roundrobin/metrics]
+      exporters: [round_robin/metrics]
 
     metrics/prometheus:
-      receivers: [roundrobin/metrics]
+      receivers: [round_robin/metrics]
       exporters: [prometheusremotewrite]
 
     metrics/influxdb:
-      receivers: [roundrobin/metrics]
+      receivers: [round_robin/metrics]
       exporters: [influxdb]
 ```
 
@@ -289,22 +281,20 @@ The Round Robin connector is designed for high-throughput scenarios, but there a
 To ensure your Round Robin connector operates correctly, monitor these metrics:
 
 ```yaml
-exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8888
-
 service:
   telemetry:
     logs:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
-
-  pipelines:
-    metrics/internal:
-      receivers: [prometheus]
-      exporters: [prometheus]
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to watch:
@@ -315,11 +305,11 @@ Key metrics to watch:
 
 ## Troubleshooting Common Issues
 
-**Uneven Distribution**: If you notice uneven distribution, verify that your table configuration is correct and that all output pipelines are functioning properly.
+**Uneven Distribution**: If you notice uneven distribution, verify that all output pipelines receiving from the connector are functioning properly.
 
 **Dropped Data**: Check for backpressure in slower pipelines. Consider adding memory limiters or adjusting batch sizes.
 
-**Configuration Errors**: Ensure pipeline names in the table match exactly with defined pipeline names in the service configuration.
+**Configuration Errors**: Ensure the connector is configured with the `round_robin` component type and that each downstream pipeline uses that connector as its receiver.
 
 ## Real-World Example: Multi-Region Distribution
 
@@ -342,11 +332,7 @@ processors:
     limit_mib: 512
 
 connectors:
-  roundrobin/regional:
-    table:
-      - pipelines: [traces/us-east]
-      - pipelines: [traces/eu-west]
-      - pipelines: [traces/ap-south]
+  round_robin/regional:
 
 exporters:
   otlp/us-east:
@@ -366,20 +352,20 @@ service:
     traces/input:
       receivers: [otlp]
       processors: [memory_limiter]
-      exporters: [roundrobin/regional]
+      exporters: [round_robin/regional]
 
     traces/us-east:
-      receivers: [roundrobin/regional]
+      receivers: [round_robin/regional]
       processors: [batch]
       exporters: [otlp/us-east]
 
     traces/eu-west:
-      receivers: [roundrobin/regional]
+      receivers: [round_robin/regional]
       processors: [batch]
       exporters: [otlp/eu-west]
 
     traces/ap-south:
-      receivers: [roundrobin/regional]
+      receivers: [round_robin/regional]
       processors: [batch]
       exporters: [otlp/ap-south]
 ```
