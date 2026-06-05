@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Trace, Metric, Log, Observability, Signal
 
 Description: A practical guide to understanding when to use traces, metrics, or logs in OpenTelemetry, with real examples and decision frameworks for each signal type.
 
-OpenTelemetry provides three signal types: traces, metrics, and logs. Each serves a different purpose. Choosing the wrong signal leads to expensive storage, slow queries, or missing information when you need it most.
+OpenTelemetry's core telemetry signals are traces, metrics, and logs. Each serves a different purpose. Choosing the wrong signal leads to expensive storage, slow queries, or missing information when you need it most.
 
 This guide explains what each signal does well, where it falls short, and how to decide which to use for specific scenarios. You'll learn practical patterns from real production systems.
 
@@ -98,8 +98,10 @@ activeConnections.addCallback((observableResult) => {
   observableResult.observe(connectionCount);
 });
 
-server.on('connection', () => connectionCount++);
-server.on('close', () => connectionCount--);
+server.on('connection', (socket) => {
+  connectionCount++;
+  socket.on('close', () => connectionCount--);
+});
 ```
 
 ### Metric Attributes and Cardinality
@@ -164,7 +166,7 @@ sdk.start();
 Manual spans capture business logic:
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('payment-service');
 
@@ -181,10 +183,10 @@ async function processPayment(orderId, amount) {
     await chargeCard(amount);
     await sendConfirmation(orderId);
 
-    span.setStatus({ code: 1 }); // OK
+    span.setStatus({ code: SpanStatusCode.OK });
   } catch (error) {
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message }); // ERROR
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     throw error;
   } finally {
     span.end();
@@ -384,7 +386,7 @@ requestDuration.record(durationMs, {
 });
 ```
 
-Query for `histogram_quantile(0.95, http_server_duration)` to get p95.
+For Prometheus-style histograms, query something like `histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le))` to get p95.
 
 ### Scenario: Record Detailed Audit Trail for Compliance
 
@@ -423,7 +425,7 @@ Service B:
 
 ```javascript
 // OpenTelemetry automatically extracts trace context from incoming headers
-app.get('/api/users', (req, res) => {
+app.get('/api/users', async (req, res) => {
   // This span is automatically a child of the span in Service A
   const user = await getUserFromDatabase(req.headers['x-user-id']);
   res.json(user);
@@ -477,13 +479,14 @@ When a metric value is recorded, attach an exemplar: a sample trace ID represent
 
 If p95 latency spikes, the exemplar gives you a trace ID for a slow request. Jump directly from the metric graph to a specific trace showing what was slow.
 
-OpenTelemetry supports this automatically:
+OpenTelemetry SDKs support this through exemplars. The specification recommends a trace-based exemplar filter by default, but exporter and backend support varies:
 
 ```javascript
-const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { MeterProvider } = require('@opentelemetry/sdk-metrics');
 
 const meterProvider = new MeterProvider({
-  // Exemplars are enabled by default with trace-based sampling
+  // Use a metric reader/exporter that preserves exemplars, and record
+  // measurements while a sampled span is active.
 });
 ```
 
@@ -581,9 +584,10 @@ Alert on metrics (cheap, fast, aggregated). When an alert fires, jump to traces 
 errorCounter.add(1, { 'error.type': 'payment_failure' });
 
 // Trace for debugging
+const { SpanStatusCode } = require('@opentelemetry/api');
 const span = tracer.startSpan('payment.charge');
 span.recordException(error);
-span.setStatus({ code: 2 });
+span.setStatus({ code: SpanStatusCode.ERROR });
 span.end();
 ```
 
