@@ -10,7 +10,7 @@ Your observability backend going down at the same time as a production incident 
 
 ## How the Failover Connector Works
 
-The failover connector monitors export errors on the primary pipeline. When the error rate exceeds a threshold, it reroutes all telemetry to the backup pipeline. Once the primary recovers, it switches back. This happens transparently, with no manual intervention needed.
+The failover connector routes telemetry through pipelines listed in priority order. If the active downstream pipeline returns an error, that priority level is considered unhealthy and the connector moves to the next level. It periodically retries higher-priority levels and switches back when a higher-priority pipeline is healthy again. This happens transparently, with no manual intervention needed.
 
 ```text
                                  +--> [Primary Pipeline] --> [OneUptime]
@@ -36,12 +36,8 @@ connectors:
     priority_levels:
       - [traces/primary]
       - [traces/backup]
-    # How many consecutive failures before switching
-    max_retries: 3
     # How often to check if the primary is back
     retry_interval: 30s
-    # Time gap between recovery checks
-    retry_gap: 5s
 
 processors:
   batch/primary:
@@ -135,24 +131,22 @@ connectors:
       - [traces/primary]    # Level 1: main backend
       - [traces/secondary]  # Level 2: DR region backend
       - [traces/emergency]  # Level 3: local file dump
-    max_retries: 3
     retry_interval: 30s
 ```
 
 ## Alerting on Failover Events
 
-You should know when failover happens. Monitor the collector's internal metrics:
+You should know when failover happens. Monitor the collector's logs and internal exporter metrics:
 
 ```bash
-# Check current failover state
-curl -s http://localhost:8888/metrics | grep failover
+# Check exporter failures for the primary pipeline
+curl -s http://localhost:8888/metrics | grep 'otelcol_exporter_send_failed_spans'
 
-# Key metrics:
-# otelcol_connector_failover_current_level{connector="failover"} 0
-#   (0 = primary, 1 = backup, etc.)
+# You can also check sent spans by exporter to confirm backup traffic
+curl -s http://localhost:8888/metrics | grep 'otelcol_exporter_sent_spans'
 ```
 
-Set up an alert when the level changes from 0:
+Set up an alert when the primary exporter keeps failing:
 
 ```yaml
 # Prometheus alerting rule
@@ -160,45 +154,43 @@ groups:
   - name: otel-failover
     rules:
       - alert: OtelFailoverActive
-        expr: otelcol_connector_failover_current_level > 0
+        expr: rate(otelcol_exporter_send_failed_spans_total{exporter="otlp/primary"}[5m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "OpenTelemetry collector has failed over to backup backend"
+          summary: "OpenTelemetry collector primary trace exporter is failing"
 ```
 
 ## Replaying Backup Data
 
-If you used the file exporter as backup, you will want to replay that data once the primary recovers. Here is a simple replay script:
+If you used the file exporter as backup, you will want to replay that data once the primary recovers. Use the OTLP JSON File receiver to read file-exporter JSON output back into a collector:
 
-```bash
-#!/bin/bash
-# replay-backup.sh
-# Replay backed-up telemetry to the primary backend
+```yaml
+receivers:
+  otlp_json_file:
+    include:
+      - /var/otel/backup/traces*.jsonl
+    start_at: beginning
 
-BACKUP_DIR="/var/otel/backup"
-COLLECTOR_ENDPOINT="https://otlp.oneuptime.com:4318/v1/traces"
+processors:
+  batch:
 
-for file in ${BACKUP_DIR}/traces*.jsonl; do
-  echo "Replaying ${file}..."
+exporters:
+  otlp/primary:
+    endpoint: "https://otlp.oneuptime.com:4317"
+    headers:
+      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
-  # Send each line (each is a complete export request)
-  while IFS= read -r line; do
-    curl -s -X POST "${COLLECTOR_ENDPOINT}" \
-      -H "Content-Type: application/json" \
-      -H "x-oneuptime-token: ${ONEUPTIME_TOKEN}" \
-      -d "${line}" > /dev/null
-
-    # Throttle to avoid overwhelming the backend
-    sleep 0.01
-  done < "${file}"
-
-  # Move replayed file to processed directory
-  mv "${file}" "${BACKUP_DIR}/processed/"
-  echo "Completed ${file}"
-done
+service:
+  pipelines:
+    traces:
+      receivers: [otlp_json_file]
+      processors: [batch]
+      exporters: [otlp/primary]
 ```
+
+Run a separate replay collector with this config, then archive or delete the backup files after you confirm the data has been exported.
 
 ## Testing Failover
 
@@ -213,8 +205,8 @@ iptables -A OUTPUT -d primary-backend.internal -j DROP
 
 # Step 3: Wait for failover (check metrics)
 sleep 60
-curl -s http://localhost:8888/metrics | grep failover_current_level
-# Should show level 1 (backup)
+curl -s http://localhost:8888/metrics | grep 'otelcol_exporter_send_failed_spans'
+# Should show failures for the primary exporter
 
 # Step 4: Verify traces are flowing to backup
 ls -la /var/otel/backup/
@@ -224,10 +216,10 @@ iptables -D OUTPUT -d primary-backend.internal -j DROP
 
 # Step 6: Wait for recovery (retry_interval)
 sleep 60
-curl -s http://localhost:8888/metrics | grep failover_current_level
-# Should show level 0 (primary) again
+curl -s http://localhost:8888/metrics | grep 'otelcol_exporter_sent_spans'
+# Should show spans flowing through the primary exporter again
 ```
 
 ## Wrapping Up
 
-The failover connector is your safety net for backend outages. It ensures you never lose telemetry data during the critical moments when you need it most. Configure at least two levels (primary and backup), set up alerting on failover events, and have a replay strategy ready for when the primary comes back online. This is one of those things that feels like over-engineering until the day it saves you during an incident.
+The failover connector is your safety net for backend outages. It helps keep telemetry flowing during the critical moments when you need it most. Configure at least two levels (primary and backup), set up alerting on failover events, and have a replay strategy ready for when the primary comes back online. This is one of those things that feels like over-engineering until the day it saves you during an incident.
