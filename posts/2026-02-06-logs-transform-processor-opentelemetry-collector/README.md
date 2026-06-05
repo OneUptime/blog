@@ -61,6 +61,7 @@ processors:
 
   # Batch for efficiency
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -97,24 +98,25 @@ processors:
         statements:
           # Example log: 192.168.1.1 - - [06/Feb/2024:10:30:45 +0000] "GET /api/users HTTP/1.1" 200 1234
           # Extract IP address
-          - set(attributes["client.ip"], ExtractPatterns(body, "^(\\S+)")[0])
+          - set(attributes["client.ip"], ExtractPatterns(body, "^(?P<client_ip>\\S+)")["client_ip"])
 
           # Extract timestamp
-          - set(attributes["timestamp"], ExtractPatterns(body, "\\[([^\\]]+)\\]")[0])
+          - set(attributes["timestamp"], ExtractPatterns(body, "\\[(?P<timestamp>[^\\]]+)\\]")["timestamp"])
 
           # Extract HTTP method
-          - set(attributes["http.method"], ExtractPatterns(body, "\"(\\S+)")[0])
+          - set(attributes["http.method"], ExtractPatterns(body, "\"(?P<method>\\S+)")["method"])
 
           # Extract URL path
-          - set(attributes["http.target"], ExtractPatterns(body, "\"\\S+\\s+(\\S+)")[0])
+          - set(attributes["http.target"], ExtractPatterns(body, "\"\\S+\\s+(?P<target>\\S+)")["target"])
 
           # Extract status code and convert to integer
-          - set(attributes["http.status_code"], Int(ExtractPatterns(body, "\" (\\d+)")[0]))
+          - set(attributes["http.status_code"], Int(ExtractPatterns(body, "\" (?P<status>\\d+)")["status"]))
 
           # Extract response size
-          - set(attributes["http.response.size"], Int(ExtractPatterns(body, "\" \\d+ (\\d+)")[0]))
+          - set(attributes["http.response.size"], Int(ExtractPatterns(body, "\" \\d+ (?P<size>\\d+)")["size"]))
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -132,7 +134,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The `ExtractPatterns()` function uses regex to extract parts of the log message. Each regex returns an array of matches, and `[0]` selects the first match. The `Int()` function converts string numbers to integers.
+The `ExtractPatterns()` function uses regex with named capture groups to extract parts of the log message. It returns a map of capture group names to values. The `Int()` function converts string numbers to integers.
 
 After transformation, the unstructured log text is parsed into structured attributes that can be queried and analyzed efficiently.
 
@@ -168,6 +170,7 @@ processors:
           - replace_pattern(attributes["http.request.header.authorization"], "Bearer\\s+.+", "Bearer REDACTED")
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -204,15 +207,16 @@ processors:
           - set(attributes["requires_incident"], true) where severity_number >= 17
 
           # Only for HTTP logs: normalize status code
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"])) where attributes["http.status_code"] != nil
+          - set(attributes["http.status_class"], Concat([Substring(String(attributes["http.status_code"]), 0, 1), "xx"], "")) where attributes["http.status_code"] != nil
 
           # Only for database logs: extract query type
-          - set(attributes["db.operation"], ExtractPatterns(body, "^(SELECT|INSERT|UPDATE|DELETE)")[0]) where attributes["db.statement"] != nil
+          - set(attributes["db.operation"], ExtractPatterns(body, "^(?P<operation>SELECT|INSERT|UPDATE|DELETE)")["operation"]) where attributes["db.statement"] != nil and IsMatch(body, "^(SELECT|INSERT|UPDATE|DELETE)")
 
           # Only for slow logs: flag for investigation
           - set(attributes["performance_issue"], true) where attributes["duration_ms"] > 1000
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -249,8 +253,8 @@ processors:
           - set(attributes["cloud.region"], Substring(attributes["cloud.availability_zone"], 0, 9)) where attributes["cloud.availability_zone"] != nil
 
           # Add environment based on service name suffix
-          - set(attributes["deployment.environment"], "production") where resource["service.name"] matches ".*-prod$"
-          - set(attributes["deployment.environment"], "staging") where resource["service.name"] matches ".*-staging$"
+          - set(attributes["deployment.environment"], "production") where IsMatch(resource.attributes["service.name"], ".*-prod$")
+          - set(attributes["deployment.environment"], "staging") where IsMatch(resource.attributes["service.name"], ".*-staging$")
 
           # Add status category based on HTTP status code
           - set(attributes["http.status_category"], "success") where attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
@@ -259,9 +263,10 @@ processors:
           - set(attributes["http.status_category"], "server_error") where attributes["http.status_code"] >= 500
 
           # Add business hours flag
-          - set(attributes["business_hours"], true) where Int(Substring(String(time_unix_nano), 11, 2)) >= 9 and Int(Substring(String(time_unix_nano), 11, 2)) < 17
+          - set(attributes["business_hours"], true) where Hour(time) >= 9 and Hour(time) < 17
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -298,27 +303,28 @@ processors:
           - set(attributes["user.id"], attributes["userId"]) where attributes["userId"] != nil
           - set(attributes["user.id"], attributes["user_id"]) where attributes["user_id"] != nil
           - set(attributes["user.id"], attributes["uid"]) where attributes["uid"] != nil
-          - delete(attributes["userId"])
-          - delete(attributes["user_id"])
-          - delete(attributes["uid"])
+          - delete_key(attributes, "userId")
+          - delete_key(attributes, "user_id")
+          - delete_key(attributes, "uid")
 
           # Normalize request ID fields
           - set(attributes["request.id"], attributes["requestId"]) where attributes["requestId"] != nil
           - set(attributes["request.id"], attributes["request_id"]) where attributes["request_id"] != nil
           - set(attributes["request.id"], attributes["req_id"]) where attributes["req_id"] != nil
-          - delete(attributes["requestId"])
-          - delete(attributes["request_id"])
-          - delete(attributes["req_id"])
+          - delete_key(attributes, "requestId")
+          - delete_key(attributes, "request_id")
+          - delete_key(attributes, "req_id")
 
           # Normalize error message fields
           - set(attributes["error.message"], attributes["errorMessage"]) where attributes["errorMessage"] != nil
           - set(attributes["error.message"], attributes["error_msg"]) where attributes["error_msg"] != nil
           - set(attributes["error.message"], attributes["err"]) where attributes["err"] != nil
-          - delete(attributes["errorMessage"])
-          - delete(attributes["error_msg"])
-          - delete(attributes["err"])
+          - delete_key(attributes, "errorMessage")
+          - delete_key(attributes, "error_msg")
+          - delete_key(attributes, "err")
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -360,10 +366,11 @@ processors:
           - set(attributes["http.status_code"], attributes["response"]["status"]) where attributes["response"]["status"] != nil
 
           # Clean up nested structures we've extracted
-          - delete(attributes["request"])
-          - delete(attributes["response"])
+          - delete_key(attributes, "request")
+          - delete_key(attributes, "response")
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -412,9 +419,10 @@ processors:
 
           # Ensure required fields exist with defaults
           - set(attributes["severity"], "INFO") where attributes["severity"] == nil
-          - set(attributes["service.version"], "unknown") where resource["service.version"] == nil
+          - set(resource.attributes["service.version"], "unknown") where resource.attributes["service.version"] == nil
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -449,17 +457,18 @@ processors:
       - context: resource
         statements:
           # Normalize service name to lowercase
-          - set(attributes["service.name"], ToLower(attributes["service.name"]))
+          - set(attributes["service.name"], ToLowerCase(attributes["service.name"]))
 
           # Add service tier based on service name pattern
-          - set(attributes["service.tier"], "frontend") where attributes["service.name"] matches ".*-web|.*-ui|.*-app"
-          - set(attributes["service.tier"], "backend") where attributes["service.name"] matches ".*-api|.*-service"
-          - set(attributes["service.tier"], "data") where attributes["service.name"] matches ".*-db|.*-cache|.*-queue"
+          - set(attributes["service.tier"], "frontend") where IsMatch(attributes["service.name"], ".*-web|.*-ui|.*-app")
+          - set(attributes["service.tier"], "backend") where IsMatch(attributes["service.name"], ".*-api|.*-service")
+          - set(attributes["service.tier"], "data") where IsMatch(attributes["service.name"], ".*-db|.*-cache|.*-queue")
 
           # Derive cluster name from hostname
-          - set(attributes["k8s.cluster.name"], ExtractPatterns(attributes["host.name"], "cluster-([^-]+)")[0]) where attributes["host.name"] matches "cluster-.*"
+          - set(attributes["k8s.cluster.name"], ExtractPatterns(attributes["host.name"], "cluster-(?P<cluster>[^-]+)")["cluster"]) where IsMatch(attributes["host.name"], "cluster-.*")
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -494,28 +503,29 @@ processors:
         statements:
           # Step 1: Parse structured data from unstructured logs
           - set(attributes["raw_message"], body)
-          - set(attributes["level"], ExtractPatterns(body, "\\[(DEBUG|INFO|WARN|ERROR|FATAL)\\]")[0]) where body matches "\\[(DEBUG|INFO|WARN|ERROR|FATAL)\\]"
+          - set(attributes["level"], ExtractPatterns(body, "\\[(?P<level>DEBUG|INFO|WARN|ERROR|FATAL)\\]")["level"]) where IsMatch(body, "\\[(DEBUG|INFO|WARN|ERROR|FATAL)\\]")
 
           # Step 2: Redact sensitive information
           - replace_pattern(body, "password=[^&\\s]+", "password=REDACTED")
           - replace_pattern(body, "token=[^&\\s]+", "token=REDACTED")
 
           # Step 3: Extract and structure error information
-          - set(attributes["error.type"], ExtractPatterns(body, "Exception:\\s+(\\S+)")[0]) where body matches "Exception:"
-          - set(attributes["error.message"], ExtractPatterns(body, "Exception:.*?-\\s+(.+)")[0]) where body matches "Exception:"
+          - set(attributes["error.type"], ExtractPatterns(body, "Exception:\\s+(?P<type>\\S+)")["type"]) where IsMatch(body, "Exception:")
+          - set(attributes["error.message"], ExtractPatterns(body, "Exception:.*?-\\s+(?P<message>.+)")["message"]) where IsMatch(body, "Exception:")
 
           # Step 4: Add contextual enrichment
           - set(attributes["is_error"], true) where severity_number >= 17
-          - set(attributes["alert_priority"], "high") where attributes["is_error"] == true and resource["deployment.environment"] == "production"
+          - set(attributes["alert_priority"], "high") where attributes["is_error"] == true and resource.attributes["deployment.environment"] == "production"
 
           # Step 5: Normalize and validate
-          - set(attributes["level"], ToUpper(attributes["level"])) where attributes["level"] != nil
+          - set(attributes["level"], ToUpperCase(attributes["level"])) where attributes["level"] != nil
           - set(severity_text, attributes["level"]) where attributes["level"] != nil
 
           # Step 6: Clean up temporary fields
-          - delete(attributes["raw_message"]) where attributes["error.type"] != nil
+          - delete_key(attributes, "raw_message") where attributes["error.type"] != nil
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -545,6 +555,7 @@ Here is a performance-optimized configuration:
 processors:
   # Protect collector from excessive CPU usage
   memory_limiter:
+    check_interval: 5s
     limit_mib: 1024
     spike_limit_mib: 256
 
@@ -554,18 +565,19 @@ processors:
       - context: log
         statements:
           # Use simple string operations instead of regex when possible
-          - set(attributes["service_short"], Substring(resource["service.name"], 0, 10)) where Len(resource["service.name"]) > 10
+          - set(attributes["service_short"], Substring(resource.attributes["service.name"], 0, 10)) where Len(resource.attributes["service.name"]) > 10
 
           # Cache expensive regex results
-          - set(attributes["has_error"], true) where body matches "error|exception|fatal"
+          - set(attributes["has_error"], true) where IsMatch(body, "error|exception|fatal")
 
           # Skip transformation if result already exists
           - set(attributes["normalized_status"], Int(attributes["status_code"])) where attributes["normalized_status"] == nil and attributes["status_code"] != nil
 
           # Use where clauses to skip unnecessary work
-          - replace_pattern(body, "password=[^&\\s]+", "password=REDACTED") where body matches "password="
+          - replace_pattern(body, "password=[^&\\s]+", "password=REDACTED") where IsMatch(body, "password=")
 
   batch:
+    send_batch_size: 2048
     send_batch_max_size: 2048   # Larger batches = fewer processing cycles
     timeout: 5s
 
@@ -611,6 +623,7 @@ processors:
           - set(attributes["duration_float"], Double(attributes["duration"]))
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
@@ -620,9 +633,9 @@ exporters:
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
-  # Add logging exporter for debugging
-  logging:
-    loglevel: debug
+  # Add debug exporter for debugging
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 0
 
@@ -635,10 +648,10 @@ service:
     logs:
       receivers: [otlp]
       processors: [transform, batch]
-      exporters: [otlphttp, logging]  # Add logging for debugging
+      exporters: [otlphttp, debug]  # Add debug output during development
 ```
 
-The `error_mode` parameter controls how transformation errors are handled. Use "ignore" in production to log errors without dropping logs. Use the logging exporter during development to see transformation results.
+The `error_mode` parameter controls how transformation errors are handled. Use "ignore" in production to log errors without dropping logs. Use the debug exporter during development to see transformation results.
 
 ## Integration with OneUptime
 
@@ -657,6 +670,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 5s
     limit_mib: 1024
     spike_limit_mib: 256
 
@@ -671,17 +685,18 @@ processors:
           - replace_pattern(body, "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b", "REDACTED_CC")
 
           # Parse and structure
-          - set(attributes["http.method"], ExtractPatterns(body, "\"(GET|POST|PUT|DELETE|PATCH)")[0]) where body matches "GET|POST|PUT|DELETE|PATCH"
-          - set(attributes["http.status_code"], Int(ExtractPatterns(body, "\" (\\d{3})")[0])) where body matches "\" \\d{3}"
+          - set(attributes["http.method"], ExtractPatterns(body, "\"(?P<method>GET|POST|PUT|DELETE|PATCH)")["method"]) where IsMatch(body, "GET|POST|PUT|DELETE|PATCH")
+          - set(attributes["http.status_code"], Int(ExtractPatterns(body, "\" (?P<status>\\d{3})")["status"])) where IsMatch(body, "\" \\d{3}")
 
           # Enrich with context
           - set(attributes["is_error"], true) where severity_number >= 17
-          - set(attributes["requires_alert"], true) where attributes["is_error"] == true and resource["deployment.environment"] == "production"
+          - set(attributes["requires_alert"], true) where attributes["is_error"] == true and resource.attributes["deployment.environment"] == "production"
 
           # Normalize
-          - set(attributes["service.name"], ToLower(resource["service.name"]))
+          - set(attributes["service.name"], ToLowerCase(resource.attributes["service.name"]))
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
