@@ -21,10 +21,11 @@ OPC UA servers handle several types of operations that each need monitoring:
 
 ## Instrumenting an OPC UA Server (Python)
 
-Using the `opcua` library (asyncua), here is how to add OpenTelemetry instrumentation:
+Using the synchronous `opcua` library, here is how to add OpenTelemetry instrumentation:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -104,19 +105,24 @@ class InstrumentedOPCUAHandler:
             span.set_attribute("opcua.client_id", client_id)
 
             try:
-                results = self.server.read_values(node_ids)
+                results = [
+                    self.server.get_node(node_id).get_value()
+                    for node_id in node_ids
+                ]
 
                 duration_ms = (time.monotonic() - start) * 1000
                 read_latency.record(duration_ms, {"client_id": client_id})
 
                 # Track per-node read performance for large batch reads
                 span.set_attribute("opcua.read.duration_ms", duration_ms)
-                span.set_attribute("opcua.read.avg_per_node_ms", duration_ms / len(node_ids))
+                if node_ids:
+                    span.set_attribute("opcua.read.avg_per_node_ms", duration_ms / len(node_ids))
 
                 return results
             except Exception as e:
                 request_errors.add(1, {"operation": "read", "error_type": type(e).__name__})
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
                 raise
 
     def handle_write(self, node_id, value, client_id):
@@ -128,7 +134,8 @@ class InstrumentedOPCUAHandler:
             span.set_attribute("opcua.client_id", client_id)
 
             try:
-                result = self.server.write_value(node_id, value)
+                node = self.server.get_node(node_id)
+                result = node.set_value(value)
 
                 duration_ms = (time.monotonic() - start) * 1000
                 write_latency.record(duration_ms, {"client_id": client_id})
@@ -137,7 +144,8 @@ class InstrumentedOPCUAHandler:
                 return result
             except Exception as e:
                 request_errors.add(1, {"operation": "write", "error_type": type(e).__name__})
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
                 raise
 ```
 
@@ -162,6 +170,10 @@ class InstrumentedSubscriptionManager:
         """Called when a monitored item is added to a subscription."""
         monitored_items_total.add(1, {"subscription_id": subscription_id})
 
+    def on_monitored_item_removed(self, subscription_id, node_id):
+        """Called when a monitored item is removed from a subscription."""
+        monitored_items_total.add(-1, {"subscription_id": subscription_id})
+
     def on_notification_sent(self, subscription_id, item_count):
         """Called each time a notification is published to a client."""
         notification_rate.add(item_count, {"subscription_id": subscription_id})
@@ -182,9 +194,9 @@ def on_session_created(session_id, client_address, auth_method):
         span.set_attribute("opcua.client_address", client_address)
         span.set_attribute("opcua.auth_method", auth_method)
 
-def on_session_closed(session_id, reason):
+def on_session_closed(session_id, reason, auth_method):
     """Track session closure."""
-    active_sessions.add(-1)
+    active_sessions.add(-1, {"auth_method": auth_method})
     with tracer.start_as_current_span("opcua.session.close") as span:
         span.set_attribute("opcua.session_id", session_id)
         span.set_attribute("opcua.close_reason", reason)
