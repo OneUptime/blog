@@ -55,7 +55,7 @@ Here is a Python library that wraps chaos experiments in OpenTelemetry spans:
 import time
 from contextlib import contextmanager
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("chaos-engineering")
 meter = metrics.get_meter("chaos-engineering")
@@ -100,7 +100,7 @@ def chaos_experiment(name, hypothesis, fault_type, target_service):
         try:
             yield result
         except Exception as e:
-            experiment_span.set_status(StatusCode.ERROR, str(e))
+            experiment_span.set_status(Status(StatusCode.ERROR, str(e)))
             experiment_span.record_exception(e)
             result["hypothesis_validated"] = False
             raise
@@ -118,10 +118,12 @@ def chaos_experiment(name, hypothesis, fault_type, target_service):
 def experiment_phase(phase_name):
     """Track individual phases of the experiment as child spans"""
     start = time.time()
-    with tracer.start_as_current_span(f"chaos.phase.{phase_name}") as span:
-        yield span
-    duration = time.time() - start
-    phase_duration.record(duration, {"chaos.phase": phase_name})
+    try:
+        with tracer.start_as_current_span(f"chaos.phase.{phase_name}") as span:
+            yield span
+    finally:
+        duration = time.time() - start
+        phase_duration.record(duration, {"chaos.phase": phase_name})
 ```
 
 ---
@@ -136,11 +138,9 @@ Here is a complete example of running a latency injection experiment against a p
 # and verify that checkout success rate stays above 99%
 
 import time
-import requests
+from kubernetes import client, config
 from chaos_experiment import chaos_experiment, experiment_phase
-from opentelemetry import metrics
 
-meter = metrics.get_meter("chaos-engineering")
 
 def run_payment_latency_experiment():
     with chaos_experiment(
@@ -206,12 +206,18 @@ def run_payment_latency_experiment():
             )
 
 
-def inject_latency_fault(service, delay_ms, percentage):
+def kubernetes_api():
+    """Create a Kubernetes API client using in-cluster credentials"""
+    config.load_incluster_config()
+    return client.CustomObjectsApi()
+
+
+def inject_latency_fault(service, delay_ms, percentage, namespace="default"):
     """Apply an Istio VirtualService fault injection rule"""
     fault_config = {
-        "apiVersion": "networking.istio.io/v1beta1",
+        "apiVersion": "networking.istio.io/v1",
         "kind": "VirtualService",
-        "metadata": {"name": f"{service}-chaos"},
+        "metadata": {"name": f"{service}-chaos", "namespace": namespace},
         "spec": {
             "hosts": [service],
             "http": [{
@@ -226,16 +232,23 @@ def inject_latency_fault(service, delay_ms, percentage):
         },
     }
     # Apply via Kubernetes API
-    requests.post(
-        "http://kubernetes.default/apis/networking.istio.io/v1beta1/virtualservices",
-        json=fault_config,
+    kubernetes_api().create_namespaced_custom_object(
+        group="networking.istio.io",
+        version="v1",
+        namespace=namespace,
+        plural="virtualservices",
+        body=fault_config,
     )
 
 
-def remove_latency_fault(service):
+def remove_latency_fault(service, namespace="default"):
     """Remove the fault injection rule"""
-    requests.delete(
-        f"http://kubernetes.default/apis/networking.istio.io/v1beta1/virtualservices/{service}-chaos"
+    kubernetes_api().delete_namespaced_custom_object(
+        group="networking.istio.io",
+        version="v1",
+        namespace=namespace,
+        plural="virtualservices",
+        name=f"{service}-chaos",
     )
 
 
@@ -308,10 +321,11 @@ def validate_experiment_results(
         # Check availability target
         if "availability" in slo_targets:
             error_rate = metrics_client.query(
-                f'sum(rate(http_server_request_errors_total{{'
+                f'sum(rate(http_server_request_duration_seconds_count{{'
                 f'service_name="{service_name}"'
+                f',http_response_status_code=~"5.."'
                 f'}}[{experiment_end - experiment_start}s]))'
-                f' / sum(rate(http_server_request_total{{'
+                f' / sum(rate(http_server_request_duration_seconds_count{{'
                 f'service_name="{service_name}"'
                 f'}}[{experiment_end - experiment_start}s]))',
                 time=experiment_end,
@@ -330,22 +344,23 @@ def validate_experiment_results(
 
         # Check latency target
         if "p99_latency_ms" in slo_targets:
-            p99 = metrics_client.query(
+            p99_seconds = metrics_client.query(
                 f'histogram_quantile(0.99, sum(rate('
-                f'http_server_request_duration_bucket{{'
+                f'http_server_request_duration_seconds_bucket{{'
                 f'service_name="{service_name}"'
                 f'}}[{experiment_end - experiment_start}s])) by (le))',
                 time=experiment_end,
             )
+            p99_ms = p99_seconds * 1000
             target = slo_targets["p99_latency_ms"]
-            passed = p99 <= target
+            passed = p99_ms <= target
 
             results["p99_latency"] = {
                 "target_ms": target,
-                "actual_ms": p99,
+                "actual_ms": p99_ms,
                 "passed": passed,
             }
-            span.set_attribute("chaos.validation.p99_latency_ms", p99)
+            span.set_attribute("chaos.validation.p99_latency_ms", p99_ms)
             span.set_attribute("chaos.validation.p99_passed", passed)
 
         # Overall result
