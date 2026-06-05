@@ -8,7 +8,7 @@ Description: Learn how to trace CircleCI workflows with OpenTelemetry for full v
 
 ---
 
-CircleCI workflows orchestrate your build, test, and deploy jobs. When a workflow takes 30 minutes instead of the usual 10, finding the bottleneck means clicking through the CircleCI UI job by job. When builds start failing intermittently, you end up comparing logs across multiple runs. OpenTelemetry tracing gives you a structured view of your entire workflow execution, with timing data, error context, and job dependencies captured in a single trace.
+CircleCI workflows orchestrate your build, test, and deploy jobs. When a workflow takes 30 minutes instead of the usual 10, finding the bottleneck means clicking through the CircleCI UI job by job. When builds start failing intermittently, you end up comparing logs across multiple runs. OpenTelemetry tracing gives you a structured view of your entire workflow execution, with timing data and error context captured in a single trace.
 
 This guide shows how to instrument CircleCI workflows so every job and step emits OpenTelemetry spans that you can analyze in your observability backend.
 
@@ -32,11 +32,11 @@ flowchart LR
     Collector --> Backend["Observability Backend"]
 ```
 
-Each CircleCI job runs in its own container. To build a unified trace across jobs, you need to propagate trace context between them. The approach uses CircleCI workspaces to pass the traceparent header from one job to the next.
+Each CircleCI job runs in its own container. To build a unified trace across jobs, you need to propagate trace context between them. The approach uses CircleCI workspaces to pass the traceparent header from the setup job to downstream jobs.
 
 ---
 
-## The Tracing Orb Approach
+## The Tracing Helper Approach
 
 The cleanest way to add tracing to CircleCI is with a reusable script that each job sources. First, let us create the helper script:
 
@@ -48,7 +48,7 @@ The cleanest way to add tracing to CircleCI is with a reusable script that each 
 # It uses curl to send spans directly to the collector in OTLP/HTTP format.
 # This avoids needing to install language-specific SDKs in every job.
 
-OTEL_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}"
+OTEL_ENDPOINT="${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}/v1/traces}"
 TRACE_FILE="/tmp/workspace/trace-context/traceparent.txt"
 
 # Generate a trace ID if one does not already exist
@@ -61,7 +61,7 @@ init_trace() {
     else
         # Generate new trace ID (32 hex chars)
         export TRACE_ID=$(openssl rand -hex 16)
-        export PARENT_SPAN_ID="0000000000000000"
+        export PARENT_SPAN_ID=""
     fi
 }
 
@@ -78,8 +78,13 @@ send_span() {
     local start_time="$4"
     local end_time="$5"
     local status="$6"
+    local parent_field=""
 
-    curl -s -X POST "${OTEL_ENDPOINT}/v1/traces" \
+    if [ -n "$parent_id" ]; then
+        parent_field="\"parentSpanId\": \"${parent_id}\","
+    fi
+
+    curl -s -X POST "${OTEL_ENDPOINT}" \
         -H "Content-Type: application/json" \
         -d "{
             \"resourceSpans\": [{
@@ -94,7 +99,7 @@ send_span() {
                     \"spans\": [{
                         \"traceId\": \"${TRACE_ID}\",
                         \"spanId\": \"${span_id}\",
-                        \"parentSpanId\": \"${parent_id}\",
+                        ${parent_field}
                         \"name\": \"${span_name}\",
                         \"kind\": 1,
                         \"startTimeUnixNano\": \"${start_time}\",
@@ -140,6 +145,9 @@ executors:
   default:
     docker:
       - image: cimg/python:3.12
+  deploy:
+    docker:
+      - image: cimg/deploy:stable
 
 jobs:
   checkout-code:
@@ -160,11 +168,14 @@ jobs:
             END=$(date +%s%N)
             send_span "checkout" "$SPAN_ID" "$PARENT_SPAN_ID" "$START" "$END" 1
             save_trace_context "$SPAN_ID"
+
+            mkdir -p /tmp/workspace
+            cp -a . /tmp/workspace/project
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
             - trace-context
-            - .
+            - project
 
   run-tests:
     executor: default
@@ -174,13 +185,13 @@ jobs:
       - run:
           name: Run tests with tracing
           command: |
-            source .circleci/otel_trace.sh
+            source /tmp/workspace/project/.circleci/otel_trace.sh
             init_trace
             SPAN_ID=$(new_span_id)
             START=$(date +%s%N)
 
             # Run the test suite
-            cd /tmp/workspace
+            cd /tmp/workspace/project
             python -m pytest tests/ -v --junitxml=test-results.xml
             TEST_EXIT=$?
 
@@ -193,52 +204,43 @@ jobs:
                 send_span "tests" "$SPAN_ID" "$PARENT_SPAN_ID" "$START" "$END" 2
             fi
 
-            save_trace_context "$SPAN_ID"
             exit $TEST_EXIT
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - trace-context
       - store_test_results:
-          path: /tmp/workspace/test-results.xml
+          path: /tmp/workspace/project/test-results.xml
 
   build:
     executor: default
     steps:
       - attach_workspace:
           at: /tmp/workspace
+      - setup_remote_docker
       - run:
           name: Build with tracing
           command: |
-            source .circleci/otel_trace.sh
+            source /tmp/workspace/project/.circleci/otel_trace.sh
             init_trace
             SPAN_ID=$(new_span_id)
             START=$(date +%s%N)
 
             # Build the application
-            cd /tmp/workspace
+            cd /tmp/workspace/project
             docker build -t myapp:${CIRCLE_SHA1} .
             BUILD_EXIT=$?
 
             END=$(date +%s%N)
             STATUS=$( [ $BUILD_EXIT -eq 0 ] && echo 1 || echo 2 )
             send_span "build" "$SPAN_ID" "$PARENT_SPAN_ID" "$START" "$END" "$STATUS"
-            save_trace_context "$SPAN_ID"
             exit $BUILD_EXIT
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - trace-context
 
   deploy:
-    executor: default
+    executor: deploy
     steps:
       - attach_workspace:
           at: /tmp/workspace
       - run:
           name: Deploy with tracing
           command: |
-            source .circleci/otel_trace.sh
+            source /tmp/workspace/project/.circleci/otel_trace.sh
             init_trace
             SPAN_ID=$(new_span_id)
             START=$(date +%s%N)
@@ -272,7 +274,7 @@ workflows:
               only: main
 ```
 
-The workspace mechanism is what ties the trace together. Each job reads the trace context from the workspace, creates a new span with the correct parent, and saves the updated context back for downstream jobs.
+The workspace mechanism is what ties the trace together. The setup job saves the initial trace context, and downstream jobs read that context from the workspace before creating their spans. Avoid having parallel jobs persist the same trace context file, because CircleCI workspaces are additive and attaching a workspace can fail when concurrent upstream jobs write the same filename.
 
 ---
 
@@ -288,9 +290,10 @@ For jobs that do complex work, you might prefer the Python SDK over the shell ap
 
 import subprocess
 import os
-import json
+import sys
 import time
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -344,26 +347,29 @@ def run_traced_command(name, command):
         span.set_attribute("exit_code", result.returncode)
 
         if result.returncode != 0:
-            span.set_status(trace.StatusCode.ERROR, result.stderr[:500])
+            span.set_status(Status(StatusCode.ERROR, result.stderr[:500]))
             span.set_attribute("error.output", result.stderr[:1000])
 
         return result
 
 # Run test phases as individual spans
 with tracer.start_as_current_span("test-suite") as root:
-    run_traced_command("install-deps", "pip install -r requirements.txt")
-    run_traced_command("unit-tests", "pytest tests/unit/ -v")
-    run_traced_command("integration-tests", "pytest tests/integration/ -v")
-    run_traced_command("lint", "flake8 src/")
+    results = [
+        run_traced_command("install-deps", "pip install -r requirements.txt"),
+        run_traced_command("unit-tests", "pytest tests/unit/ -v"),
+        run_traced_command("integration-tests", "pytest tests/integration/ -v"),
+        run_traced_command("lint", "flake8 src/"),
+    ]
 
-# Save updated trace context
-carrier = {}
-propagator.inject(carrier)
-os.makedirs("/tmp/workspace/trace-context", exist_ok=True)
-with open(trace_file, "w") as f:
-    f.write(carrier.get("traceparent", ""))
+    # Save updated trace context while the test-suite span is current
+    carrier = {}
+    propagator.inject(carrier)
+    os.makedirs("/tmp/workspace/trace-context", exist_ok=True)
+    with open(trace_file, "w") as f:
+        f.write(carrier.get("traceparent", ""))
 
 provider.shutdown()
+sys.exit(1 if any(result.returncode != 0 for result in results) else 0)
 ```
 
 This gives you a trace where the test job span has children for dependency installation, unit tests, integration tests, and linting. You can immediately see that integration tests take 8 minutes while unit tests take 30 seconds.
