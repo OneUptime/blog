@@ -6,13 +6,13 @@ Tags: OpenTelemetry, Swift, IOS, OTLP, HTTP, Exporter, Mobile
 
 Description: Configure the OTLP HTTP exporter to send OpenTelemetry traces from your iOS app to a backend collector for storage, analysis, and visualization in production.
 
-Collecting traces locally with the stdout exporter works fine during development, but production apps need to send telemetry data to a backend system. The OpenTelemetry Protocol (OTLP) provides a standardized way to export traces, metrics, and logs to any compatible backend. The HTTP variant of OTLP works particularly well for mobile applications, handling network interruptions and providing reliable delivery of telemetry data.
+Collecting traces locally with the stdout exporter works fine during development, but production apps need to send telemetry data to a backend system. The OpenTelemetry Protocol (OTLP) provides a standardized way to export traces, metrics, and logs to any compatible backend. The HTTP variant of OTLP works particularly well for mobile applications because it uses standard HTTP infrastructure and can be configured with timeouts, compression, and headers.
 
 ## Understanding OTLP HTTP
 
 OTLP defines both gRPC and HTTP/protobuf transport mechanisms. While gRPC offers better performance, HTTP is simpler to configure and works more reliably across different network conditions. Mobile networks frequently block or throttle non-standard ports and protocols, making HTTP the practical choice for iOS applications.
 
-The OTLP HTTP exporter sends batches of spans to an endpoint via HTTP POST requests. It handles retries, compression, and authentication, making it production-ready out of the box. The protocol uses protobuf encoding for efficient data transfer, reducing bandwidth consumption on cellular networks.
+The OTLP HTTP exporter sends batches of spans to an endpoint via HTTP POST requests. It supports compression and custom headers, making it suitable for production backends that require efficient transport and authentication metadata. The protocol uses protobuf encoding for efficient data transfer, reducing bandwidth consumption on cellular networks.
 
 ## Installing the OTLP HTTP Exporter
 
@@ -22,8 +22,12 @@ Add the OTLP HTTP exporter package to your project through Swift Package Manager
 // Package.swift dependencies
 dependencies: [
     .package(
+        url: "https://github.com/open-telemetry/opentelemetry-swift-core",
+        from: "2.4.1"
+    ),
+    .package(
         url: "https://github.com/open-telemetry/opentelemetry-swift",
-        from: "1.5.0"
+        from: "2.4.1"
     )
 ]
 
@@ -31,9 +35,9 @@ dependencies: [
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift"),
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift"),
-        .product(name: "OtlpHttpTraceExporter", package: "opentelemetry-swift"),
+        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
         .product(name: "ResourceExtension", package: "opentelemetry-swift")
     ]
 )
@@ -44,7 +48,8 @@ Import the exporter alongside the core OpenTelemetry modules in your telemetry c
 ```swift
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
 ```
 
@@ -56,7 +61,8 @@ Configure the exporter with your backend endpoint. This example assumes you're s
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
 
 class TelemetryConfiguration {
@@ -73,6 +79,7 @@ class TelemetryConfiguration {
 
         let configuration = OtlpConfiguration(
             timeout: TimeInterval(10), // 10 second timeout
+            compression: .none,
             headers: [
                 ("Content-Type", "application/x-protobuf")
             ]
@@ -126,7 +133,8 @@ Production backends typically require authentication. Add API keys or authorizat
 
 ```swift
 import Foundation
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 class SecureTelemetryConfiguration {
     // Load the API key from a secure location
@@ -145,6 +153,7 @@ class SecureTelemetryConfiguration {
 
         let configuration = OtlpConfiguration(
             timeout: TimeInterval(15),
+            compression: .none,
             headers: [
                 ("Content-Type", "application/x-protobuf"),
                 ("X-API-Key", apiKey),
@@ -168,8 +177,10 @@ Store sensitive credentials in the iOS Keychain rather than in plain text config
 The batch span processor controls when and how spans are exported. Fine-tune these settings to balance timeliness with efficiency.
 
 ```swift
+import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 class OptimizedTelemetryConfiguration {
     static func initialize() {
@@ -195,6 +206,7 @@ class OptimizedTelemetryConfiguration {
     private static func createExporter() -> OtlpHttpTraceExporter {
         let configuration = OtlpConfiguration(
             timeout: TimeInterval(30),
+            compression: .none,
             headers: [("Content-Type", "application/x-protobuf")]
         )
 
@@ -216,12 +228,14 @@ Larger batch sizes reduce network overhead but increase memory usage and delay t
 
 ## Handling Network Failures
 
-Mobile apps lose connectivity frequently. The OTLP HTTP exporter handles retries automatically, but you should configure appropriate timeouts and understand the retry behavior.
+Mobile apps lose connectivity frequently. The OTLP HTTP exporter can keep failed spans pending for a later export attempt, but delivery is still best effort. Configure appropriate timeouts and flush when connectivity returns.
 
 ```swift
 import Foundation
+import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 import Network
 
 class ResilientTelemetryConfiguration {
@@ -229,18 +243,17 @@ class ResilientTelemetryConfiguration {
     private static var isNetworkAvailable = true
 
     static func initialize() {
-        // Monitor network status
-        startNetworkMonitoring()
-
-        // Create exporter with aggressive retry settings
+        // Create exporter with a longer timeout for poor networks
         let exporter = createResilientExporter()
 
-        // Use a custom span processor that respects network status
-        let processor = NetworkAwareBatchProcessor(
+        let processor = BatchSpanProcessor(
             spanExporter: exporter,
             scheduleDelay: TimeInterval(10),
             maxQueueSize: 4096  // Larger queue for offline scenarios
         )
+
+        // Force an export attempt when connectivity returns
+        startNetworkMonitoring(processor: processor)
 
         let tracerProvider = TracerProviderBuilder()
             .with(resource: createResource())
@@ -250,9 +263,13 @@ class ResilientTelemetryConfiguration {
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
     }
 
-    private static func startNetworkMonitoring() {
+    private static func startNetworkMonitoring(processor: BatchSpanProcessor? = nil) {
         networkMonitor.pathUpdateHandler = { path in
             isNetworkAvailable = path.status == .satisfied
+
+            if path.status == .satisfied {
+                processor?.forceFlush()
+            }
         }
 
         networkMonitor.start(queue: DispatchQueue.global(qos: .utility))
@@ -261,6 +278,7 @@ class ResilientTelemetryConfiguration {
     private static func createResilientExporter() -> OtlpHttpTraceExporter {
         let configuration = OtlpConfiguration(
             timeout: TimeInterval(60), // Longer timeout for poor networks
+            compression: .none,
             headers: [("Content-Type", "application/x-protobuf")]
         )
 
@@ -277,42 +295,6 @@ class ResilientTelemetryConfiguration {
     }
 }
 
-// Custom processor that checks network status before exporting
-class NetworkAwareBatchProcessor: BatchSpanProcessor {
-    private let networkMonitor = NWPathMonitor()
-    private var isOnline = true
-
-    override init(
-        spanExporter: SpanExporter,
-        scheduleDelay: TimeInterval = 5,
-        maxQueueSize: Int = 2048,
-        maxExportBatchSize: Int = 512,
-        exportTimeout: TimeInterval = 30
-    ) {
-        super.init(
-            spanExporter: spanExporter,
-            scheduleDelay: scheduleDelay,
-            maxQueueSize: maxQueueSize,
-            maxExportBatchSize: maxExportBatchSize,
-            exportTimeout: exportTimeout
-        )
-
-        startMonitoring()
-    }
-
-    private func startMonitoring() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            self?.isOnline = path.status == .satisfied
-
-            // If we just came online, force an export
-            if path.status == .satisfied {
-                self?.forceFlush()
-            }
-        }
-
-        networkMonitor.start(queue: DispatchQueue.global(qos: .utility))
-    }
-}
 ```
 
 ## Compression for Bandwidth Optimization
@@ -321,28 +303,28 @@ OTLP supports gzip compression to reduce bandwidth usage. This is particularly i
 
 ```swift
 import Foundation
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 class CompressedTelemetryConfiguration {
     static func createCompressedExporter() -> OtlpHttpTraceExporter {
         let configuration = OtlpConfiguration(
             timeout: TimeInterval(30),
+            compression: .gzip,
             headers: [
-                ("Content-Type", "application/x-protobuf"),
-                ("Content-Encoding", "gzip")  // Enable compression
+                ("Content-Type", "application/x-protobuf")
             ]
         )
 
         return OtlpHttpTraceExporter(
             endpoint: URL(string: "https://otel-collector.example.com:4318/v1/traces")!,
-            config: configuration,
-            useCompression: true  // Enable gzip compression
+            config: configuration
         )
     }
 }
 ```
 
-Compression reduces data transfer by 70-90% for typical trace payloads. The CPU overhead is minimal compared to the bandwidth savings, making it beneficial for nearly all production deployments.
+Compression can substantially reduce data transfer for typical trace payloads. The CPU overhead is usually small compared to the bandwidth savings, making it beneficial for many production deployments.
 
 ## Environment-Specific Configuration
 
@@ -350,8 +332,10 @@ Use different endpoints and settings for development, staging, and production en
 
 ```swift
 import Foundation
+import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 enum DeploymentEnvironment {
     case development
@@ -398,9 +382,9 @@ class EnvironmentAwareTelemetryConfiguration {
             endpoint: URL(string: environment.otlpEndpoint)!,
             config: OtlpConfiguration(
                 timeout: TimeInterval(30),
+                compression: .gzip,
                 headers: [("Content-Type", "application/x-protobuf")]
-            ),
-            useCompression: true
+            )
         )
 
         let processor = BatchSpanProcessor(
@@ -446,8 +430,10 @@ When traces aren't appearing in your backend, debugging the export pipeline help
 
 ```swift
 import Foundation
+import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 class DebuggableTelemetryConfiguration {
     static func initialize() {
@@ -470,6 +456,7 @@ class DebuggableTelemetryConfiguration {
             endpoint: URL(string: "https://otel-collector.example.com:4318/v1/traces")!,
             config: OtlpConfiguration(
                 timeout: TimeInterval(30),
+                compression: .none,
                 headers: [("Content-Type", "application/x-protobuf")]
             )
         )
@@ -483,7 +470,7 @@ class DebuggableTelemetryConfiguration {
 }
 
 // Wrapper exporter that logs export attempts
-class DebuggingExporter: SpanExporter {
+final class DebuggingExporter: SpanExporter, @unchecked Sendable {
     private let wrappedExporter: SpanExporter
 
     init(wrapping exporter: SpanExporter) {
@@ -527,7 +514,10 @@ Mobile apps can be terminated suddenly by the system or user. Flush pending span
 
 ```swift
 import UIKit
+import OpenTelemetryApi
 import OpenTelemetrySdk
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 
 class AppDelegate: UIResponder, UIApplicationDelegate {
     private var tracerProvider: TracerProviderSdk?
@@ -582,6 +572,7 @@ extension TelemetryConfiguration {
             endpoint: URL(string: "https://otel-collector.example.com:4318/v1/traces")!,
             config: OtlpConfiguration(
                 timeout: TimeInterval(30),
+                compression: .none,
                 headers: [("Content-Type", "application/x-protobuf")]
             )
         )
@@ -600,7 +591,9 @@ extension TelemetryConfiguration {
 Test your OTLP exporter configuration to ensure traces reach your backend.
 
 ```swift
+import Foundation
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 class TelemetryValidator {
     static func sendTestTrace() {
@@ -620,14 +613,8 @@ class TelemetryValidator {
 
         // Force flush to send immediately
         if let provider = OpenTelemetry.instance.tracerProvider as? TracerProviderSdk {
-            let result = provider.forceFlush(timeout: 10.0)
-
-            switch result {
-            case .success:
-                print("Test trace sent successfully")
-            case .failure:
-                print("Failed to send test trace")
-            }
+            provider.forceFlush(timeout: 10.0)
+            print("Test trace flushed; check your backend for the test trace")
         }
     }
 }
@@ -654,7 +641,8 @@ Here's a complete production-ready configuration combining all the best practice
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import OtlpHttpTraceExporter
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
 
 class ProductionTelemetryConfiguration {
@@ -667,13 +655,12 @@ class ProductionTelemetryConfiguration {
             endpoint: URL(string: environment.otlpEndpoint)!,
             config: OtlpConfiguration(
                 timeout: TimeInterval(30),
+                compression: .gzip,
                 headers: [
                     ("Content-Type", "application/x-protobuf"),
-                    ("Content-Encoding", "gzip"),
                     ("X-API-Key", getAPIKey())
                 ]
-            ),
-            useCompression: true
+            )
         )
 
         let processor = BatchSpanProcessor(
@@ -733,4 +720,4 @@ class ProductionTelemetryConfiguration {
 
 The OTLP HTTP exporter transforms locally collected traces into a distributed observability system. Your iOS app becomes part of a larger telemetry ecosystem, where mobile traces can be correlated with backend service traces, creating end-to-end visibility across your entire application stack.
 
-Configure the exporter carefully to balance observability needs with resource consumption. Use compression, batching, and sampling to minimize overhead while maintaining useful visibility into your app's behavior. With proper configuration, the OTLP HTTP exporter reliably delivers telemetry data even in challenging mobile network conditions.
+Configure the exporter carefully to balance observability needs with resource consumption. Use compression, batching, and sampling to minimize overhead while maintaining useful visibility into your app's behavior. With proper configuration, the OTLP HTTP exporter gives your app a practical, best-effort path for delivering telemetry data even in challenging mobile network conditions.
