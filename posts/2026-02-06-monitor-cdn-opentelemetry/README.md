@@ -48,7 +48,7 @@ from flask import Flask, request
 resource = Resource.create({
     "service.name": "cdn-origin-server",
     "service.version": "1.4.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 provider = TracerProvider(resource=resource)
@@ -156,13 +156,12 @@ By breaking down cache metrics by POP location and content type, you can quickly
 
 ## Processing CDN Logs with the OpenTelemetry Collector
 
-Most CDN providers offer real-time log streaming or periodic log exports. You can use the OpenTelemetry Collector to ingest these logs, extract metrics, and forward everything to your observability backend.
+Most CDN providers offer real-time log streaming or periodic log exports. You can use the OpenTelemetry Collector to ingest these logs, normalize their attributes, and forward everything to your observability backend.
 
 ```yaml
 # otel-collector-config.yaml - CDN log processing pipeline
 receivers:
-  # Receive CDN logs via HTTP endpoint
-  # Your CDN provider sends log batches here
+  # Receive CDN logs via HTTP endpoint after they have been converted to OTLP
   otlp:
     protocols:
       http:
@@ -187,8 +186,7 @@ processors:
         value: cdn-edge
         action: upsert
 
-  # Extract metrics from log attributes
-  # This turns log volume into actionable metrics
+  # Normalize CDN log attributes
   attributes:
     actions:
       - key: cdn.cache_status
@@ -212,7 +210,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [filelog]
+      receivers: [filelog, otlp]
       processors: [resource, attributes, batch]
       exporters: [otlp]
 ```
@@ -252,9 +250,10 @@ async def purge_cdn_cache(purge_request):
         span.set_attribute("cdn.purge.regions_affected", str(result.regions))
 
         # Record a metric for purge tracking
+        purge_scope = "broad" if purge_request.purge_type == "wildcard" else "targeted"
         purge_counter.add(1, {
             "cdn.purge.type": purge_request.purge_type,
-            "cdn.purge.scope": purge_request.purge_type,
+            "cdn.purge.scope": purge_scope,
         })
 
         return result
