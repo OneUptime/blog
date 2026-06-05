@@ -42,11 +42,11 @@ Notice you need to manually copy CA certificates if your application makes HTTPS
 
 Google's distroless images (`gcr.io/distroless/*`) sit one step above scratch. They include a minimal set of runtime libraries but still exclude shells, package managers, and most OS utilities. The project provides variants for several languages:
 
-- `gcr.io/distroless/static-debian12` - for statically compiled binaries
-- `gcr.io/distroless/base-debian12` - includes glibc for dynamically linked binaries
-- `gcr.io/distroless/java21-debian12` - includes the Java 21 runtime
-- `gcr.io/distroless/python3-debian12` - includes the Python 3 runtime
-- `gcr.io/distroless/nodejs22-debian12` - includes Node.js 22
+- `gcr.io/distroless/static-debian13` - for statically compiled binaries
+- `gcr.io/distroless/base-debian13` - includes glibc for dynamically linked binaries
+- `gcr.io/distroless/java21-debian13` - includes the Java 21 runtime
+- `gcr.io/distroless/python3-debian13` - includes the Python 3 runtime
+- `gcr.io/distroless/nodejs22-debian13` - includes Node.js 22
 
 Here is the same Go application using distroless:
 
@@ -60,7 +60,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/server .
 
 # Runtime stage: distroless includes CA certs and timezone data
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 COPY --from=builder /app/server /server
 EXPOSE 8080
 ENTRYPOINT ["/server"]
@@ -113,7 +113,7 @@ docker scout cves myapp:distroless
 
 ## Debugging Challenges
 
-Here is where the practical differences bite. With scratch, you cannot exec into the container at all:
+Here is where the practical differences bite. With scratch, you cannot exec into a shell unless you copied one into the image:
 
 ```bash
 # This will fail because there is no shell
@@ -125,7 +125,7 @@ Distroless provides a `debug` variant that includes busybox:
 ```bash
 # Use the debug tag for troubleshooting
 # This variant includes a busybox shell at /busybox/sh
-FROM gcr.io/distroless/static-debian12:debug
+FROM gcr.io/distroless/static-debian13:debug
 ```
 
 ```bash
@@ -186,10 +186,10 @@ COPY src ./src
 RUN mvn package -DskipTests
 
 # Runtime: distroless Java image includes JRE 21
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 COPY --from=builder /app/target/myapp.jar /app/myapp.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/myapp.jar"]
+CMD ["/app/myapp.jar"]
 ```
 
 ## Decision Flowchart
@@ -211,7 +211,7 @@ Some teams use scratch in production and distroless debug images in staging. You
 
 ```dockerfile
 # Allow switching base images via build argument
-ARG BASE_IMAGE=gcr.io/distroless/static-debian12
+ARG BASE_IMAGE=gcr.io/distroless/static-debian13
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
 COPY . .
@@ -227,7 +227,7 @@ ENTRYPOINT ["/server"]
 docker build --build-arg BASE_IMAGE=scratch -t myapp:prod .
 
 # Staging: use distroless debug for troubleshooting
-docker build --build-arg BASE_IMAGE=gcr.io/distroless/static-debian12:debug -t myapp:staging .
+docker build --build-arg BASE_IMAGE=gcr.io/distroless/static-debian13:debug -t myapp:staging .
 ```
 
 ## Final Recommendations
