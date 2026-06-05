@@ -8,7 +8,7 @@ Description: How to containerize Zig applications with Docker, including cross-c
 
 ---
 
-Zig is a systems programming language that aims to replace C while providing better safety guarantees and a simpler build system. It produces small, fast, statically-linked binaries with no runtime dependencies, making it ideal for Docker containers. This guide covers building and deploying Zig applications in Docker, from basic setups to optimized production images.
+Zig is a systems programming language that aims to replace C while providing better safety guarantees and a simpler build system. It can produce small, fast, statically-linked binaries with minimal runtime dependencies, making it ideal for Docker containers. This guide covers building and deploying Zig applications in Docker, from basic setups to optimized production images.
 
 ## Prerequisites
 
@@ -151,7 +151,7 @@ CMD ["/server"]
 
 ## Optimized Scratch-Based Build
 
-Zig excels at producing static binaries with zero runtime dependencies. This is perfect for scratch images.
+Zig excels at producing static binaries with no external runtime dependencies. This is perfect for scratch images.
 
 ```dockerfile
 # Stage 1: Build a static binary targeting musl
@@ -181,7 +181,7 @@ EXPOSE 8080
 CMD ["/server"]
 ```
 
-The resulting image is typically 1-3 MB total. Zig produces some of the smallest Docker images of any language.
+The resulting image is typically only a few megabytes total. Zig produces some of the smallest Docker images of any language.
 
 ## Cross-Compilation
 
@@ -195,23 +195,35 @@ zig build -Doptimize=ReleaseFast -Dtarget=aarch64-linux-musl
 zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl
 ```
 
-Multi-architecture Docker images become trivial:
+With Docker Buildx, multi-architecture Docker images can use Docker's target platform arguments to choose the Zig target:
 
 ```dockerfile
 # Multi-architecture build
-FROM alpine:3.19 AS builder-amd64
+FROM --platform=$BUILDPLATFORM alpine:3.19 AS builder
+ARG TARGETARCH
 RUN apk add --no-cache curl xz && \
     curl -L https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz | \
     tar -xJ -C /usr/local && \
     ln -s /usr/local/zig-linux-x86_64-0.13.0/zig /usr/local/bin/zig
 WORKDIR /app
 COPY . .
-RUN zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl
+RUN case "$TARGETARCH" in \
+      amd64) ZIG_TARGET=x86_64-linux-musl ;; \
+      arm64) ZIG_TARGET=aarch64-linux-musl ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    zig build -Doptimize=ReleaseFast -Dtarget=$ZIG_TARGET
 
 FROM scratch
-COPY --from=builder-amd64 /app/zig-out/bin/server /server
+COPY --from=builder /app/zig-out/bin/server /server
 EXPOSE 8080
 CMD ["/server"]
+```
+
+Build and publish both variants with:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t yourname/zig-app:latest --push .
 ```
 
 ## The .dockerignore File
@@ -260,10 +272,12 @@ Zig's package manager uses `build.zig.zon` for dependency declarations:
     .name = "zig-docker-demo",
     .version = "0.1.0",
     .dependencies = .{
-        .httpz = .{
-            .url = "https://github.com/zig-zap/superhtml/archive/refs/tags/v0.1.0.tar.gz",
-            .hash = "1220abc123...",
-        },
+        // Add dependencies with: zig fetch --save <url>
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
     },
 }
 ```
@@ -281,7 +295,6 @@ RUN zig build -Doptimize=ReleaseSafe
 
 ```yaml
 # docker-compose.yml - development setup
-version: "3.8"
 services:
   app:
     build:
@@ -307,7 +320,7 @@ zig build -Doptimize=Debug && ./zig-out/bin/server
 
 ## Health Checks
 
-For scratch-based images without shell utilities, use Docker's native health check with a custom approach:
+For images with shell utilities, use Docker's native health check with a custom approach:
 
 ```dockerfile
 # For Alpine-based images
@@ -331,12 +344,12 @@ docker run -d \
   zig-app:latest
 ```
 
-A Zig HTTP server typically uses under 2 MB of RAM at idle. The 32 MB limit is generous and provides ample room for handling concurrent connections.
+A Zig HTTP server can use around 2 MB of RAM at idle. The 32 MB limit is generous and provides ample room for handling concurrent connections.
 
 ## Monitoring
 
-Even ultra-lightweight Zig services need monitoring. [OneUptime](https://oneuptime.com) can monitor your `/health` endpoint and alert on downtime. Zig's deterministic performance (no garbage collector, no runtime overhead) means response time deviations almost certainly indicate infrastructure problems rather than application-level issues.
+Even ultra-lightweight Zig services need monitoring. [OneUptime](https://oneuptime.com) can monitor your `/health` endpoint and alert on downtime. Zig's deterministic performance and lack of a garbage collector can make runtime overhead easier to reason about, but response time deviations should still be investigated across both application and infrastructure causes.
 
 ## Summary
 
-Zig produces the smallest Docker images of practically any programming language. Static linking to musl, combined with scratch base images, yields containers under 3 MB. Built-in cross-compilation eliminates the need for complex multi-platform build setups. The four optimization modes give you fine-grained control over the trade-off between safety, speed, and binary size. For systems-level services where every megabyte counts, Zig with Docker is hard to beat.
+Zig can produce some of the smallest Docker images of practically any programming language. Static linking to musl, combined with scratch base images, yields containers that are often only a few megabytes. Built-in cross-compilation simplifies multi-platform build setups. The four optimization modes give you fine-grained control over the trade-off between safety, speed, and binary size. For systems-level services where every megabyte counts, Zig with Docker is hard to beat.
