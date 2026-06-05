@@ -10,7 +10,7 @@ Description: Learn how to trace Apache Cassandra CQL queries using OpenTelemetry
 
 > Apache Cassandra powers some of the largest production workloads on the planet. Its distributed architecture handles massive write throughput and scales horizontally with ease. But when a CQL query takes longer than expected, finding the root cause can be surprisingly difficult without proper tracing in place.
 
-OpenTelemetry gives you the ability to trace every CQL query from your application through the Cassandra driver, capturing timing, consistency levels, coordinator nodes, and errors. This guide covers how to set up CQL query tracing for both Java and Python applications, two of the most popular languages in the Cassandra ecosystem.
+OpenTelemetry gives you the ability to trace CQL queries from your application through the Cassandra driver, capturing timing, consistency levels, coordinator nodes, and errors when the instrumentation exposes those fields. This guide covers how to set up CQL query tracing for both Java and Python applications, two of the most popular languages in the Cassandra ecosystem.
 
 ---
 
@@ -68,26 +68,26 @@ Add the OpenTelemetry Cassandra instrumentation to your project. If you use Mave
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.35.0</version>
+        <version>1.62.0</version>
     </dependency>
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-sdk</artifactId>
-        <version>1.35.0</version>
+        <version>1.62.0</version>
     </dependency>
 
     <!-- OTLP exporter for sending traces to the collector -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-exporter-otlp</artifactId>
-        <version>1.35.0</version>
+        <version>1.62.0</version>
     </dependency>
 
     <!-- Cassandra driver instrumentation -->
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-cassandra-4.4</artifactId>
-        <version>2.1.0-alpha</version>
+        <version>2.28.1-alpha</version>
     </dependency>
 
     <!-- DataStax Java driver for Cassandra -->
@@ -101,18 +101,21 @@ Add the OpenTelemetry Cassandra instrumentation to your project. If you use Mave
 
 ### Configuration
 
-Set up the OpenTelemetry SDK and connect it to the Cassandra driver. The instrumentation wraps each CQL execution in a span.
+Set up the OpenTelemetry SDK and wrap the Cassandra driver session. The instrumentation wraps each CQL execution through the wrapped session in a span.
 
 ```java
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.instrumentation.cassandra.v4_4.CassandraTelemetry;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.semconv.ResourceAttributes;
+import com.datastax.oss.driver.api.core.DefaultConsistencyLevel;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.SimpleStatement;
@@ -129,8 +132,9 @@ public class CassandraTracingExample {
 
         // Define the service identity for trace attribution
         Resource resource = Resource.getDefault().merge(
-            Resource.create(io.opentelemetry.api.common.Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "cassandra-app"
+            Resource.create(Attributes.of(
+                io.opentelemetry.api.common.AttributeKey.stringKey("service.name"),
+                "cassandra-app"
             ))
         );
 
@@ -149,18 +153,19 @@ public class CassandraTracingExample {
         Tracer tracer = openTelemetry.getTracer("cassandra-client");
 
         // Connect to the Cassandra cluster
-        CqlSession session = CqlSession.builder()
+        CqlSession rawSession = CqlSession.builder()
             .withKeyspace("my_keyspace")
             .build();
+        CqlSession session = CassandraTelemetry.create(openTelemetry).wrap(rawSession);
 
         // Create a parent span representing the business operation
         Span parentSpan = tracer.spanBuilder("process-user-request")
             .startSpan();
 
-        try {
+        try (Scope scope = parentSpan.makeCurrent()) {
             // Execute a CQL query within the parent span context
-            // This creates a child span with query details
-            executeTracedQuery(session, tracer, parentSpan,
+            // The wrapped session creates a child span with query details
+            executeQuery(session,
                 "SELECT * FROM users WHERE user_id = ?", "user-12345");
         } finally {
             parentSpan.end();
@@ -169,49 +174,20 @@ public class CassandraTracingExample {
         session.close();
     }
 
-    // Execute a CQL query and record it as a traced span
-    private static void executeTracedQuery(
-            CqlSession session, Tracer tracer, Span parent,
-            String cql, Object... params) {
+    // Execute a CQL query through the wrapped session
+    private static void executeQuery(CqlSession session, String cql, Object... params) {
+        SimpleStatement stmt = SimpleStatement.builder(cql)
+            .addPositionalValues(params)
+            .setConsistencyLevel(DefaultConsistencyLevel.LOCAL_QUORUM)
+            .build();
 
-        // Start a child span for the database query
-        Span span = tracer.spanBuilder("db.cassandra.query")
-            .setParent(io.opentelemetry.context.Context.current().with(parent))
-            .startSpan();
+        ResultSet rs = session.execute(stmt);
 
-        try {
-            // Set standard database span attributes
-            span.setAttribute("db.system", "cassandra");
-            span.setAttribute("db.statement", cql);
-            span.setAttribute("db.cassandra.keyspace", "my_keyspace");
-            span.setAttribute("db.cassandra.consistency_level", "LOCAL_QUORUM");
-
-            // Build and execute the statement
-            SimpleStatement stmt = SimpleStatement.builder(cql)
-                .addPositionalValues(params)
-                .build();
-
-            ResultSet rs = session.execute(stmt);
-
-            // Record the coordinator node that handled the query
-            span.setAttribute("db.cassandra.coordinator.id",
-                rs.getExecutionInfo().getCoordinator().toString());
-
-            // Record the number of rows returned
-            int rowCount = 0;
-            for (Row row : rs) {
-                rowCount++;
-            }
-            span.setAttribute("db.cassandra.rows_returned", rowCount);
-
-        } catch (Exception e) {
-            // Record any errors on the span
-            span.recordException(e);
-            span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR,
-                e.getMessage());
-        } finally {
-            span.end();
+        int rowCount = 0;
+        for (Row row : rs) {
+            rowCount++;
         }
+        System.out.println("Rows returned: " + rowCount);
     }
 }
 ```
@@ -228,6 +204,7 @@ curl -L -o opentelemetry-javaagent.jar \
 
 # Run your application with the agent attached
 # The agent automatically instruments the Cassandra driver
+OTEL_SEMCONV_STABILITY_OPT_IN=database \
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=cassandra-app \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
@@ -235,13 +212,13 @@ java -javaagent:opentelemetry-javaagent.jar \
   -jar my-cassandra-app.jar
 ```
 
-The Java agent captures these attributes automatically for every CQL execution:
-- `db.system` (cassandra)
-- `db.statement` (the CQL query)
-- `db.cassandra.keyspace`
-- `db.cassandra.consistency_level`
-- `db.cassandra.coordinator.id`
-- `db.cassandra.page_size`
+With stable database semantic conventions enabled, the Java agent captures attributes like these for CQL executions:
+- `db.system.name` (cassandra)
+- `db.query.text` (the CQL query, depending on statement sanitization settings)
+- `db.namespace` (the keyspace)
+- `cassandra.consistency.level`
+- `cassandra.coordinator.id`
+- `cassandra.page.size`
 
 ---
 
@@ -267,8 +244,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.cassandra import CassandraInstrumentor
+from cassandra import ConsistencyLevel
 from cassandra.cluster import Cluster
-from cassandra.query import SimpleStatement, ConsistencyLevel
+from cassandra.query import SimpleStatement
 
 # Configure the OpenTelemetry tracer
 resource = Resource.create({"service.name": "cassandra-python-app"})
@@ -349,13 +327,6 @@ processors:
   batch:
     timeout: 10s
 
-  # Add Cassandra-specific resource attributes
-  resource:
-    attributes:
-      - key: db.system
-        value: cassandra
-        action: upsert
-
 exporters:
   otlp:
     endpoint: https://oneuptime.com/otlp
@@ -366,7 +337,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [batch]
       exporters: [otlp]
     metrics:
       receivers: [prometheus]
@@ -389,10 +360,10 @@ def insert_user_events_batch(session, events):
     """Insert multiple events in a batch with tracing."""
     with tracer.start_as_current_span("db.cassandra.batch") as span:
         # Record batch metadata
-        span.set_attribute("db.cassandra.batch_size", len(events))
+        span.set_attribute("db.operation.batch.size", len(events))
         span.set_attribute("db.cassandra.batch_type", "UNLOGGED")
-        span.set_attribute("db.operation", "INSERT")
-        span.set_attribute("db.cassandra.table", "user_events")
+        span.set_attribute("db.operation.name", "INSERT")
+        span.set_attribute("db.collection.name", "user_events")
 
         # Prepare the insert statement once, reuse for each event
         prepared = session.prepare(
@@ -446,7 +417,7 @@ sequenceDiagram
     Driver-->>App: Return rows
 ```
 
-The span captures the total time from the driver sending the request to receiving the response. The coordinator node attribute (`db.cassandra.coordinator.id`) tells you which node handled the request, which is useful for diagnosing node-specific latency issues.
+The span captures the total time from the driver sending the request to receiving the response. The coordinator node attribute (`cassandra.coordinator.id`) tells you which node handled the request, which is useful for diagnosing node-specific latency issues.
 
 ---
 
@@ -464,4 +435,4 @@ The span captures the total time from the driver sending the request to receivin
 
 ## Conclusion
 
-Tracing CQL queries with OpenTelemetry brings visibility into one of the most opaque parts of a Cassandra-based architecture. Whether you use the Java agent for zero-code instrumentation or manual Python instrumentation for fine-grained control, the result is the same: every query gets a span with timing, consistency level, coordinator node, and error information. Combined with JMX metrics scraped through the collector and a backend like [OneUptime](https://oneuptime.com), you get full observability across your Cassandra stack.
+Tracing CQL queries with OpenTelemetry brings visibility into one of the most opaque parts of a Cassandra-based architecture. Whether you use the Java agent for zero-code instrumentation or Python auto-instrumentation with parent spans for business context, the result is the same: queries get spans with timing, consistency level, coordinator node, and error information when those fields are available from the driver instrumentation. Combined with JMX metrics scraped through the collector and a backend like [OneUptime](https://oneuptime.com), you get full observability across your Cassandra stack.
