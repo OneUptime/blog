@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Metric, Delta, Cumulative, Aggregation
 
-Description: Learn how to configure the delta-to-cumulative processor in OpenTelemetry Collector to convert delta metrics into cumulative metrics, handle counter resets.
+Description: Learn how to configure the delta-to-cumulative processor in OpenTelemetry Collector to convert delta metrics into cumulative metrics and handle stale metric streams.
 
 ---
 
@@ -32,7 +32,7 @@ graph TD
     B -->|10s: +52 requests| C[Delta: 52]
     C -->|10s: +38 requests| D[Delta: 38]
 
-    E[After deltato_cumulative Processor] -->|Converts| F[Cumulative: 45]
+    E[After deltatocumulative Processor] -->|Converts| F[Cumulative: 45]
     F -->|Adds delta| G[Cumulative: 97]
     G -->|Adds delta| H[Cumulative: 135]
 ```
@@ -45,17 +45,17 @@ The delta-to-cumulative processor solves several real-world problems:
 
 **Backend Compatibility**: Backends like Prometheus, Cortex, and Thanos expect cumulative counters. If your SDKs or instrumentation emit delta metrics, this processor bridges the gap.
 
-**Counter Reset Detection**: When services restart, cumulative counters reset to zero. The processor detects these resets and handles them gracefully, maintaining accurate cumulative values across restarts.
+**Stateful Accumulation**: The processor keeps cumulative state for each metric stream in memory, using `max_stale` to remove streams that have stopped reporting.
 
 **Unified Metric Format**: In heterogeneous environments where some services emit delta and others emit cumulative metrics, this processor normalizes everything to cumulative, simplifying downstream analysis.
 
-**Storage Optimization**: Cumulative metrics compress better in time-series databases because they form monotonic sequences, enabling efficient delta-of-delta encoding.
+**Prometheus-Style Querying**: Cumulative monotonic counters work naturally with Prometheus-style rate and increase functions, which calculate changes from cumulative samples.
 
 ## Basic Configuration
 
-The processor configuration is straightforward. At minimum, you specify which metrics to convert.
+The processor configuration is straightforward. At minimum, you add it to the metrics pipeline.
 
-Here is a basic configuration that converts all delta sum metrics to cumulative:
+Here is a basic configuration that converts delta metrics to cumulative:
 
 ```yaml
 # RECEIVERS: Accept metrics via OTLP
@@ -70,17 +70,17 @@ receivers:
 processors:
   # Convert all delta temporality metrics to cumulative
   deltatocumulative:
-    # By default, converts all delta sum and histogram metrics
+    # By default, converts all delta samples
 
   # Batch for efficiency
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 # EXPORTERS: Send to Prometheus-compatible backend
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/metrics
+  otlp_http:
+    metrics_endpoint: https://oneuptime.com/otlp/v1/metrics
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
@@ -90,10 +90,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [deltatocumulative, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-This configuration receives metrics via OTLP, converts any delta metrics to cumulative, batches them, and exports to OneUptime. The processor automatically detects delta temporality and converts it.
+This configuration receives metrics via OTLP, converts delta samples to cumulative, batches them, and exports to OneUptime. The processor automatically detects delta temporality and converts it.
 
 ## Advanced Configuration with Max Staleness
 
@@ -120,7 +120,7 @@ processors:
     check_interval: 1s
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 service:
@@ -128,23 +128,23 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, deltatocumulative, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The `max_stale` parameter controls when the processor "forgets" about a metric stream. If a metric stops being reported for longer than this duration, its cumulative state is cleared. When the metric reappears, it starts fresh from the new delta value.
 
-The `max_streams` parameter protects against memory exhaustion from high-cardinality metrics. If you have thousands of unique metric series (different label combinations), this limit prevents unbounded memory growth.
+The `max_streams` parameter protects against memory exhaustion from high-cardinality metrics. If you have thousands of unique metric series (different label combinations), this limit prevents unbounded memory growth by dropping new streams after the limit is reached.
 
-## Handling Service Restarts and Counter Resets
+## Handling Service Restarts and Stale Streams
 
-When a service restarts, its delta metrics reset to zero and start counting again. The processor needs to detect this and avoid treating the first post-restart value as a continuation of the pre-restart cumulative total.
+The processor accumulates delta points in memory for each stream. It does not persist state across Collector restarts, and it treats a stream as the same stream while its metric identity remains the same and it has not exceeded `max_stale`.
 
-Here is how the processor handles resets:
+Here is how the processor handles active streams and stale streams:
 
 ```mermaid
 sequenceDiagram
     participant App as Application
-    participant Proc as deltato_cumulative
+    participant Proc as deltatocumulative
     participant Backend as Backend
 
     App->>Proc: Delta: 100 (startup)
@@ -153,17 +153,19 @@ sequenceDiagram
     App->>Proc: Delta: 50
     Proc->>Backend: Cumulative: 150
 
-    Note over App: Service Restart
+    Note over App: Service stops emitting
 
-    App->>Proc: Delta: 20 (first value after restart)
-    Note over Proc: Detects new series or reset
-    Proc->>Backend: Cumulative: 20 (starts fresh)
+    Note over Proc: max_stale expires and state is removed
+
+    App->>Proc: Delta: 20 (first value after stale period)
+    Note over Proc: Treats stream as new
+    Proc->>Backend: Cumulative: 20
 
     App->>Proc: Delta: 30
     Proc->>Backend: Cumulative: 50
 ```
 
-The processor tracks metric identity using the combination of metric name, attributes, and resource labels. When it sees a metric for the first time (or after max_stale expiration), it treats the delta value as the starting cumulative value.
+The processor tracks metric identity using the combination of metric metadata, scope, resource attributes, and datapoint attributes. When it sees a metric for the first time (or after `max_stale` expiration), it treats the delta value as the starting cumulative value.
 
 ## Selective Conversion with Filtering
 
@@ -175,25 +177,23 @@ This configuration converts only HTTP request metrics to cumulative:
 processors:
   # Filter to select only HTTP request metrics
   filter/http_only:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - ^http\..*requests.*$
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^http\\..*requests.*$")'
 
   # Convert the filtered metrics
   deltatocumulative:
     max_stale: 5m
     max_streams: 5000
 
-  # Separate pipeline for other metrics (no conversion)
+  # Batch the selected metrics
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp/cumulative:
-    endpoint: https://oneuptime.com/otlp/v1/metrics
+  otlp_http/cumulative:
+    metrics_endpoint: https://oneuptime.com/otlp/v1/metrics
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
@@ -203,7 +203,7 @@ service:
     metrics/http:
       receivers: [otlp]
       processors: [filter/http_only, deltatocumulative, batch]
-      exporters: [otlphttp/cumulative]
+      exporters: [otlp_http/cumulative]
 ```
 
 This pattern is useful when you have mixed metric types and only need to convert specific subsets for compatibility with particular backends.
@@ -224,7 +224,7 @@ receivers:
 processors:
   # Clone metrics for dual export
   batch/delta:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
   # Convert for cumulative backend
@@ -233,19 +233,19 @@ processors:
     max_streams: 10000
 
   batch/cumulative:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
   # Backend that prefers delta metrics
-  otlphttp/delta_backend:
-    endpoint: https://delta-metrics.example.com/v1/metrics
+  otlp_http/delta_backend:
+    metrics_endpoint: https://delta-metrics.example.com/v1/metrics
     headers:
       authorization: Bearer ${DELTA_TOKEN}
 
   # Backend that requires cumulative metrics (Prometheus-compatible)
-  otlphttp/cumulative_backend:
-    endpoint: https://oneuptime.com/otlp/v1/metrics
+  otlp_http/cumulative_backend:
+    metrics_endpoint: https://oneuptime.com/otlp/v1/metrics
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
@@ -255,13 +255,13 @@ service:
     metrics/delta:
       receivers: [otlp]
       processors: [batch/delta]
-      exporters: [otlphttp/delta_backend]
+      exporters: [otlp_http/delta_backend]
 
     # Convert and send to cumulative-compatible backend
     metrics/cumulative:
       receivers: [otlp]
       processors: [deltatocumulative, batch/cumulative]
-      exporters: [otlphttp/cumulative_backend]
+      exporters: [otlp_http/cumulative_backend]
 ```
 
 This configuration receives metrics once but exports them twice: once in their original delta form and once converted to cumulative. This pattern is common during backend migrations or when maintaining multiple monitoring systems.
@@ -283,7 +283,7 @@ processors:
   # Convert with cardinality controls
   deltatocumulative:
     max_stale: 3m            # Shorter staleness window
-    max_streams: 50000       # Limit tracked streams
+    max_streams: 50000       # Drop new streams after this limit is reached
 
   # Reduce cardinality before conversion (optional)
   resource/drop_high_cardinality:
@@ -294,7 +294,7 @@ processors:
         action: delete
 
   batch:
-    send_batch_max_size: 2048
+    send_batch_size: 2048
     timeout: 5s
 
 service:
@@ -306,7 +306,7 @@ service:
         - resource/drop_high_cardinality
         - deltatocumulative
         - batch
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The memory_limiter processor runs first to protect the entire collector. The resource processor drops high-cardinality labels before conversion, reducing the number of unique streams the delta-to-cumulative processor needs to track.
@@ -327,14 +327,14 @@ service:
     metrics:
       receivers: [otlp]
       processors: [deltatocumulative, batch]
-      exporters: [otlphttp, logging]  # Add logging exporter
+      exporters: [otlp_http, debug]  # Add debug exporter
 
 exporters:
-  logging:
-    loglevel: debug   # Print metrics to console for verification
+  debug:
+    verbosity: detailed   # Print metrics to console for verification
 ```
 
-The logging exporter prints processed metrics to stdout, allowing you to verify that delta metrics are being converted to cumulative with monotonically increasing values.
+The debug exporter prints processed metrics to the collector logs, allowing you to verify that delta metrics are being converted to cumulative with monotonically increasing values.
 
 ## Common Pitfalls and Solutions
 
@@ -344,15 +344,15 @@ The logging exporter prints processed metrics to stdout, allowing you to verify 
 
 **Problem**: Collector memory usage keeps growing.
 
-**Solution**: Set `max_streams` to prevent unbounded growth. Also investigate whether you have unexpectedly high cardinality in your metrics (too many unique label combinations). Use the resource or attributes processor to drop or aggregate high-cardinality labels.
+**Solution**: Set `max_streams` to prevent unbounded growth. New streams beyond this limit are dropped, so also investigate whether you have unexpectedly high cardinality in your metrics (too many unique label combinations). Use the resource or attributes processor to drop high-cardinality labels.
 
 **Problem**: Backend shows duplicate data or incorrect values after conversion.
 
-**Solution**: Ensure you're not running multiple instances of the collector that all perform delta-to-cumulative conversion on the same metrics. Each instance maintains its own cumulative state, leading to multiple divergent cumulative series. Either centralize conversion in a single collector instance or ensure metrics are consistently routed to the same instance.
+**Solution**: Ensure you're not running multiple instances of the collector that all perform delta-to-cumulative conversion on the same metrics without stable routing. Each instance maintains its own cumulative state, leading to multiple divergent cumulative series. Either centralize conversion in a single collector instance or ensure metrics are consistently routed to the same instance.
 
 ## Integration with OneUptime
 
-OneUptime natively supports both delta and cumulative metrics via OTLP. However, for Prometheus-compatible querying and long-term storage optimization, cumulative metrics are preferred.
+OneUptime natively supports both delta and cumulative metrics via OTLP. However, for Prometheus-compatible querying, cumulative metrics are often preferred.
 
 Here is a complete configuration for sending converted metrics to OneUptime:
 
@@ -369,18 +369,19 @@ processors:
   memory_limiter:
     limit_mib: 512
     spike_limit_mib: 128
+    check_interval: 1s
 
   deltatocumulative:
     max_stale: 5m
     max_streams: 10000
 
   batch:
-    send_batch_max_size: 1024
+    send_batch_size: 1024
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/metrics
+  otlp_http:
+    metrics_endpoint: https://oneuptime.com/otlp/v1/metrics
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
     retry_on_failure:
@@ -394,10 +395,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, deltatocumulative, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-This configuration provides a robust pipeline that converts delta metrics to cumulative format optimized for OneUptime's storage and querying capabilities.
+This configuration provides a robust pipeline that converts delta metrics to cumulative format before sending them to OneUptime.
 
 ## Related Resources
 
@@ -409,6 +410,6 @@ For more information on OpenTelemetry Collector processors and metrics handling:
 
 ## Conclusion
 
-The delta-to-cumulative processor is a specialized but essential tool when working with metrics in OpenTelemetry. It bridges the gap between instrumentation that emits delta metrics and backends that require cumulative counters, handling the complexity of counter resets, staleness, and memory management.
+The delta-to-cumulative processor is a specialized but essential tool when working with metrics in OpenTelemetry. It bridges the gap between instrumentation that emits delta metrics and backends that require cumulative counters, handling the complexity of stateful accumulation, staleness, and memory management.
 
-Configure it with appropriate max_stale and max_streams values for your environment, monitor its memory usage, and combine it with other processors like filtering and batching for a production-ready metrics pipeline. With OneUptime as your backend, you get native OTLP support with efficient storage for cumulative metrics, making this processor configuration straightforward and reliable.
+Configure it with appropriate max_stale and max_streams values for your environment, monitor its memory usage, and combine it with other processors like filtering and batching for a production-ready metrics pipeline. With OneUptime as your backend, you get native OTLP support, making this processor configuration straightforward and reliable.
