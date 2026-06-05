@@ -58,13 +58,13 @@ data_access_counter = meter.create_counter(
 request_payload_size = meter.create_histogram(
     "security.request_payload_size",
     description="Size of incoming request payloads",
-    unit="bytes",
+    unit="By",
 )
 
 response_payload_size = meter.create_histogram(
     "security.response_payload_size",
     description="Size of outgoing response payloads",
-    unit="bytes",
+    unit="By",
 )
 ```
 
@@ -73,6 +73,8 @@ response_payload_size = meter.create_histogram(
 ```python
 # signal_collector.py
 from opentelemetry import trace
+
+from security_metrics import data_access_counter, request_counter, request_payload_size
 
 tracer = trace.get_tracer("security.signals")
 
@@ -168,6 +170,9 @@ class BaselineComputer:
 # anomaly_detector.py
 from opentelemetry import trace
 
+from alerting import send_security_alert
+from baseline_computer import BaselineComputer
+
 tracer = trace.get_tracer("security.anomaly_detector")
 
 class AnomalyDetector:
@@ -235,6 +240,14 @@ Schedule the anomaly detection to run at regular intervals, processing metrics f
 
 ```python
 # pipeline_runner.py
+import logging
+
+from anomaly_detector import AnomalyDetector
+from baseline_computer import BaselineComputer
+from metrics_backend import fetch_metrics_window
+
+baseline_computer = BaselineComputer()
+
 async def run_detection_cycle():
     """Run one cycle of anomaly detection."""
     # Fetch last 5 minutes of aggregated metrics
