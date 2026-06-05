@@ -41,6 +41,7 @@ The first step is ensuring you have enough historical data with the right granul
 # traffic_metrics.py - Metrics for traffic pattern analysis
 
 from opentelemetry import metrics
+from datetime import datetime, timezone
 
 meter = metrics.get_meter("traffic.patterns")
 
@@ -52,7 +53,7 @@ request_counter = meter.create_counter(
 )
 
 # Track request arrival rate at fine granularity
-# This histogram captures the distribution of inter-arrival times
+# Record request rates from a periodic aggregation loop
 arrival_rate = meter.create_histogram(
     name="http.server.arrival_rate",
     description="Requests per second measured at 10-second intervals",
@@ -60,15 +61,21 @@ arrival_rate = meter.create_histogram(
 )
 
 def track_request(request):
+    now = datetime.now(timezone.utc)
     labels = {
         "service.name": "api-gateway",
         "http.route": request.route,
         # Include day_of_week and hour for pattern analysis
         # (These are also available in the timestamp, but having them
         # as labels makes PromQL queries simpler)
+        "day_of_week": now.strftime("%A"),
+        "hour": now.hour,
         "traffic.source": request.headers.get("X-Traffic-Source", "organic"),
     }
-    request_counter.add(1, labels)
+    request_counter.add(1, attributes=labels)
+
+def record_arrival_rate(current_rps):
+    arrival_rate.record(current_rps, attributes={"service.name": "api-gateway"})
 ```
 
 ## Collector Configuration for Historical Data
@@ -121,8 +128,9 @@ from prophet import Prophet
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
+import os
 
-PROMETHEUS_URL = "http://thanos-query:9090"
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://thanos-query:9090")
 
 def fetch_historical_traffic(service, lookback_days=90):
     """Pull hourly request rates from Prometheus/Thanos."""
@@ -224,6 +232,7 @@ The prescaler script patches the HPA to adjust minimum replicas based on the for
 ```python
 # prescale.py - Adjust HPA min replicas based on forecast
 from kubernetes import client, config
+from traffic_forecast import forecast_traffic, compute_required_replicas
 import os
 
 def apply_prescaling(namespace, hpa_name, min_replicas):
@@ -248,7 +257,8 @@ def apply_prescaling(namespace, hpa_name, min_replicas):
 # Run the forecast and apply
 service = os.getenv("TARGET_DEPLOYMENT")
 forecast = forecast_traffic(service, forecast_hours=2)
-recommendations = compute_required_replicas(forecast)
+rps_per_pod = int(os.getenv("RPS_PER_POD", "100"))
+recommendations = compute_required_replicas(forecast, rps_per_pod=rps_per_pod)
 
 # Use the max recommended replicas for the next 2 hours
 next_min_replicas = max(r["recommended_replicas"] for r in recommendations)
