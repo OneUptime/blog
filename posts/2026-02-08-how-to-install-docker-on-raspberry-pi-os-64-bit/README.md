@@ -30,7 +30,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 ## Step 2: Install Docker Using the Convenience Script
 
-Docker provides an official convenience script that detects your OS and architecture, then installs the appropriate packages. This is the recommended method for Raspberry Pi.
+Docker provides an official convenience script that detects your OS and architecture, then installs the appropriate packages. For 64-bit Raspberry Pi OS, Docker's supported package path uses the Debian `arm64` packages; the convenience script is a quick option for development or test systems.
 
 ```bash
 # Download and run the official Docker installation script
@@ -38,7 +38,7 @@ curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 ```
 
-The script adds Docker's repository, imports the GPG key, and installs `docker-ce`, `docker-ce-cli`, and `containerd.io`. It detects the ARM64 architecture automatically.
+The script adds Docker's repository, imports the GPG key, and installs `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, and `docker-compose-plugin`. It detects the ARM64 architecture automatically.
 
 After installation, remove the script.
 
@@ -91,7 +91,7 @@ Not every Docker image on Docker Hub supports ARM64. When pulling images, check 
 docker manifest inspect nginx | grep architecture
 ```
 
-If an image only supports `linux/amd64`, it will not run on your Pi. You will see an "exec format error" if you try.
+If an image only supports `linux/amd64`, it will not run natively on your Pi by default. You will see an "exec format error" if you try.
 
 For images that do not support ARM64, you have two options:
 
@@ -114,7 +114,7 @@ The Raspberry Pi has limited RAM. Configure Docker to be conservative with memor
 docker run -d --memory=256m --memory-swap=512m nginx
 ```
 
-You can also set default resource limits in the daemon configuration.
+You can also set conservative logging defaults in the daemon configuration.
 
 ```bash
 # Create a resource-conscious daemon configuration
@@ -175,6 +175,8 @@ Verify Docker is using the SSD.
 # Check Docker's data root
 docker info | grep "Docker Root Dir"
 ```
+
+On fresh Docker Engine 29 or later installations, Docker may use the containerd image store by default. In that case, `data-root` does not move image contents and container snapshots stored under containerd's own root.
 
 ### Temperature Management
 
@@ -286,12 +288,11 @@ Unexpected shutdowns can corrupt Docker's data. If Docker refuses to start, chec
 sudo journalctl -u docker --no-pager -n 50
 ```
 
-You may need to remove corrupted container data.
+After Docker starts again, you may need to remove stopped containers and rebuild them from your Compose files or `docker run` commands.
 
 ```bash
-# Remove corrupted containers (images are usually fine)
-sudo rm -rf /var/lib/docker/containers/*
-sudo systemctl restart docker
+# Remove stopped containers after Docker is running
+docker container prune
 ```
 
 ## Summary
