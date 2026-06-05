@@ -86,7 +86,7 @@ fleet_status = meter.create_gauge(
 battery_level = meter.create_gauge(
     "agv.battery.level_percent",
     description="Current battery level per AGV",
-    unit="percent"
+    unit="%"
 )
 ```
 
@@ -131,9 +131,10 @@ def execute_transport_mission(mission_id, agv_id, pickup_location, dropoff_locat
             root_span.set_attribute("agv.mission.duration_s", total_seconds)
 
         except MissionAbortError as e:
+            failure_reason = getattr(e, "reason_code", e.__class__.__name__)
             mission_failures.add(1, {
                 "agv_id": agv_id,
-                "failure_reason": str(e)
+                "failure_reason": failure_reason
             })
             root_span.set_status(trace.StatusCode.ERROR, str(e))
             raise
