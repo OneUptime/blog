@@ -10,7 +10,7 @@ Python processes can exit in several ways: normal completion, unhandled exceptio
 
 ## Default Behavior
 
-When you create a TracerProvider with a BatchSpanProcessor, the SDK automatically registers an `atexit` hook that calls `shutdown()`. This works for:
+When you create a `TracerProvider` or `MeterProvider`, the SDK automatically registers an `atexit` hook that calls `shutdown()` by default. This works for:
 
 - Normal script completion
 - `sys.exit()` calls
@@ -18,22 +18,22 @@ When you create a TracerProvider with a BatchSpanProcessor, the SDK automaticall
 
 It does NOT work for:
 
-- SIGTERM (default signal from `docker stop` and `kubectl delete pod`)
+- unhandled SIGTERM (default signal from `docker stop` and `kubectl delete pod`)
 - SIGKILL (cannot be caught)
 - `os._exit()` (bypasses atexit hooks)
 
 ## The SIGTERM Problem in Containers
 
-When Kubernetes sends SIGTERM to your pod, the default Python behavior is to raise `SystemExit`. If your code catches this exception but does not flush the SDK, you lose the final batch of telemetry:
+When Kubernetes sends SIGTERM to your pod, the default action is to terminate the process. Python does not convert SIGTERM into `SystemExit` unless you install a signal handler that raises it. Without a handler, `atexit` hooks are not part of the shutdown path and you can lose the final batch of telemetry:
 
 ```python
 # This is what happens by default with SIGTERM
 
-# Python converts SIGTERM to SystemExit
-# atexit hooks DO run for SystemExit, but only if the main thread completes
+# The OS sends SIGTERM to the process
+# The default SIGTERM action terminates the process
+# Python atexit hooks do not run for an unhandled signal termination
 
-# In a threaded web server, the main thread might not exit cleanly
-# when SIGTERM arrives, so atexit hooks may not run
+# Install a SIGTERM handler if you need to flush before exiting
 ```
 
 ## Complete Shutdown Setup
@@ -178,6 +178,7 @@ otel_manager = OTelManager()
 ```python
 # app.py
 from flask import Flask
+from opentelemetry import trace
 from otel_setup import otel_manager
 
 # Initialize OpenTelemetry before creating the Flask app
@@ -231,9 +232,9 @@ gunicorn -c gunicorn_config.py app:app
 
 There are a few important things to know about signal handling in Python:
 
-1. **Signal handlers only run in the main thread.** If your web framework runs the main loop in a non-main thread, signal handlers will not fire. This is rare but can happen with some async frameworks.
+1. **Signal handlers run in the main thread.** Python executes signal handlers in the main Python thread of the main interpreter, and only that thread can register new signal handlers. If you call `initialize()` from a non-main thread, `signal.signal()` raises `ValueError`.
 
-2. **Calling `shutdown()` from a signal handler must be safe.** The shutdown method should not acquire locks that might already be held when the signal arrives. The OpenTelemetry SDK's shutdown is generally safe to call from signal handlers.
+2. **Calling `shutdown()` from a signal handler can block.** Python handlers run between bytecode instructions rather than inside the low-level C signal handler, but the handler still interrupts normal control flow. Keep the handler small, and make sure your container grace period is long enough for exporters to flush.
 
 3. **The `_shutdown_called` flag prevents double-flush.** Since both `atexit` and the signal handler might call `shutdown()`, the flag ensures we only flush once.
 
@@ -275,4 +276,4 @@ def test_shutdown_flushes_spans():
     assert len(exporter.get_finished_spans()) == 1
 ```
 
-Handling all exit paths in Python requires a combination of atexit hooks and signal handlers. The pattern shown here covers normal exits, SIGTERM from container orchestrators, and SIGINT from interactive sessions, ensuring your telemetry data makes it to the Collector regardless of how the process ends.
+Handling common exit paths in Python requires a combination of atexit hooks and signal handlers. The pattern shown here covers normal exits, SIGTERM from container orchestrators, and SIGINT from interactive sessions, giving the SDK a chance to flush telemetry before the process exits.
