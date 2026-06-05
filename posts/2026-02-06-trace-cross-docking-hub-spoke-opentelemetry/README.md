@@ -153,6 +153,14 @@ Dwell time is the key metric for cross-docking: how long does a package sit betw
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 meter = metrics.get_meter("distribution.center")
 
