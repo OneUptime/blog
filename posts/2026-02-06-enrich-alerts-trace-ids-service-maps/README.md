@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Alert Enrichment, Trace Context, Service Map, Observability
 
 Description: Enrich your alert notifications with trace IDs, service dependency maps, and dashboard deep links from OpenTelemetry data.
 
-An alert that says "P99 latency > 500ms on checkout-service" tells you something is wrong. An alert that includes a trace ID for the slowest request, a link to the service dependency map, and a direct link to the relevant Grafana dashboard gets you to the root cause in minutes instead of hours.
+An alert that says "P99 latency > 500ms on checkout-service" tells you something is wrong. An alert that includes a trace search link for slow requests, a link to the service dependency map, and a direct link to the relevant Grafana dashboard gets you to the root cause in minutes instead of hours.
 
 This post covers practical techniques for enriching alert payloads with contextual data from your OpenTelemetry pipeline.
 
@@ -17,34 +17,37 @@ The difference between a good alert and a great alert is the context it carries.
 ```mermaid
 flowchart LR
     A[Basic Alert] --> B["P99 > 500ms on checkout"]
-    C[Enriched Alert] --> D["P99 > 500ms on checkout\n---\nTrace: abc123\nDashboard: link\nService Map: link\nRunbook: link\nRecent Deploy: v2.4.1"]
+    C[Enriched Alert] --> D["P99 > 500ms on checkout\n---\nTrace Search: link\nDashboard: link\nService Map: link\nRunbook: link\nRecent Deploy: v2.4.1"]
 ```
 
 ## Step 1: Include Exemplar Trace IDs in Alerts
 
-OpenTelemetry supports exemplars - sample trace IDs attached to metric data points. When Prometheus stores these exemplars, you can reference them in alert annotations to link directly to the trace that triggered the alert.
+OpenTelemetry supports exemplars - sample trace and span IDs attached to metric data points. When Prometheus stores these exemplars, Grafana can use them to link dashboard data points to traces. Prometheus alert rule templates do not expose exemplar labels directly, so use alert annotations for trace search links or add a separate webhook enrichment step if you need to attach a specific exemplar trace ID to a notification.
 
 First, enable exemplars in your OpenTelemetry SDK:
 
 ```python
 # Python SDK with exemplar support
 
-from opentelemetry import metrics, trace
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider, TraceBasedExemplarFilter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-# The SDK automatically attaches trace context as exemplars
-# when both tracing and metrics are active in the same process
+# The trace-based exemplar filter makes measurements recorded in the
+# context of a sampled span eligible to be exported as exemplars.
 exporter = OTLPMetricExporter(endpoint="otel-collector:4317")
 reader = PeriodicExportingMetricReader(exporter)
-provider = MeterProvider(metric_readers=[reader])
+provider = MeterProvider(
+    metric_readers=[reader],
+    exemplar_filter=TraceBasedExemplarFilter(),
+)
 metrics.set_meter_provider(provider)
 
-meter = provider.get_meter("checkout-service")
+meter = metrics.get_meter("checkout-service")
 
-# Histogram metrics automatically capture exemplars
-# linking the metric data point to the active trace
+# Histogram recordings made while a sampled span is active can carry
+# exemplar trace and span IDs through the metrics pipeline.
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
     description="HTTP request duration",
@@ -91,15 +94,15 @@ groups:
 
           # Direct link to the service's Grafana dashboard
           dashboard_url: >-
-            https://grafana.example.com/d/otel-service-overview?var-service={{ $labels.service_name }}&from=now-1h&to=now
+            https://grafana.example.com/d/otel-service-overview?var-service={{ $labels.service_name | urlQueryEscape }}&from=now-1h&to=now
 
           # Link to trace search filtered by service and high latency
           trace_search_url: >-
-            https://grafana.example.com/explore?orgId=1&left={"datasource":"Tempo","queries":[{"queryType":"traceqlSearch","serviceName":"{{ $labels.service_name }}","minDuration":"500ms"}]}
+            https://grafana.example.com/explore?orgId=1&left=%7B%22datasource%22:%22Tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceqlSearch%22,%22serviceName%22:%22{{ $labels.service_name | urlQueryEscape }}%22,%22minDuration%22:%22500ms%22%7D%5D%7D
 
           # Link to the service map showing dependencies
           service_map_url: >-
-            https://grafana.example.com/d/service-map?var-service={{ $labels.service_name }}
+            https://grafana.example.com/d/service-map?var-service={{ $labels.service_name | urlQueryEscape }}
 
           # Runbook link based on alert name
           runbook_url: >-
@@ -107,7 +110,7 @@ groups:
 
           # Recent deployments link
           deployments_url: >-
-            https://argocd.example.com/applications/{{ $labels.service_name }}?view=timeline
+            https://argocd.example.com/applications/{{ $labels.service_name | urlQueryEscape }}?view=timeline
 ```
 
 ## Step 3: Format Rich Notifications in Alertmanager
@@ -164,7 +167,7 @@ For PagerDuty, use custom details to include the same links:
 
 ## Step 4: Attach Recent Deployment Info via External Labels
 
-If your deployment pipeline writes metadata to Prometheus (via a pushgateway or a custom exporter), you can include the last deployment version in alert context.
+If your deployment pipeline writes metadata to Prometheus (via a pushgateway or a custom exporter), you can include the last deployment version in alert context. In this example, `deploy_info` is a gauge whose sample value is the successful deployment timestamp and whose labels include `service_name`, `version`, and `status`.
 
 This recording rule captures the most recent deployment version:
 
@@ -175,7 +178,7 @@ groups:
     rules:
       - record: service:last_deploy_version:info
         expr: |
-          max by (service_name) (
+          topk by (service_name) (1,
             deploy_info{status="success"}
           )
 ```
@@ -185,7 +188,7 @@ Reference it in alert annotations:
 ```yaml
 annotations:
   last_deploy: >-
-    Last deploy: {{ with printf "service:last_deploy_version:info{service_name='%s'}" .Labels.service_name | query }}
+    Last deploy: {{ with printf "service:last_deploy_version:info{service_name=\"%s\"}" .Labels.service_name | query }}
       {{ . | first | label "version" }}
     {{ end }}
 ```
