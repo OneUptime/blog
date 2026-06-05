@@ -12,7 +12,7 @@ The collector exposes internal telemetry about its own operation - things like h
 
 ## Enabling Internal Telemetry
 
-By default, the collector exposes its own metrics on a Prometheus endpoint. You need to configure the `telemetry` section in the collector config to control this behavior.
+By default, the collector exposes its own metrics on a Prometheus endpoint. You need to configure the `telemetry` section in the collector config to control this behavior. In current Collector versions, use a Prometheus pull reader to choose the interface and port.
 
 ```yaml
 # otel-collector-config.yaml
@@ -21,10 +21,17 @@ By default, the collector exposes its own metrics on a Prometheus endpoint. You 
 service:
   telemetry:
     metrics:
-      # Expose internal metrics on this address
-      address: "0.0.0.0:8888"
       # Level can be: none, basic, normal, detailed
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                # Expose internal metrics on this interface and port
+                host: "0.0.0.0"
+                port: 8888
+                # Keep the shorter otelcol_* names for unit-suffixed metrics
+                without_units: true
     logs:
       level: info
 
@@ -85,6 +92,8 @@ The critical metrics to track:
 - `otelcol_exporter_queue_capacity` - Maximum queue capacity
 - `otelcol_processor_batch_batch_send_size` - Batch sizes being sent
 
+When scraped through Prometheus, counter metrics are usually exposed with a `_total` suffix, such as `otelcol_receiver_accepted_spans_total`. The PromQL examples below use those Prometheus metric names.
+
 ## Building the Dashboard Panels
 
 **Throughput Overview** - A time series showing data flowing through each stage of the pipeline:
@@ -99,11 +108,11 @@ rate(otelcol_receiver_accepted_spans_total[5m])
 rate(otelcol_exporter_sent_spans_total[5m])
 ```
 
-**Data Loss Indicator** - The difference between received and exported data reveals drops:
+**Pipeline Balance Indicator** - The difference between received and exported data can show a backlog or imbalance, but it is not a precise data loss calculation if you have multiple exporters, filters, sampling, or retries:
 
 ```promql
 # Difference between accepted and sent spans per second
-# A growing gap indicates data loss in the pipeline
+# A growing gap can indicate backlog, filtering, sampling, or dropped data
 rate(otelcol_receiver_accepted_spans_total[5m])
   - rate(otelcol_exporter_sent_spans_total[5m])
 ```
@@ -149,8 +158,8 @@ groups:
         annotations:
           summary: "Collector exporter queue is {{ $value | humanizePercentage }} full"
 
-      # Alert when spans are being dropped
-      - alert: OtelCollectorDroppingSpans
+      # Alert when span exports are failing
+      - alert: OtelCollectorExportFailures
         expr: >
           rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
         for: 2m
