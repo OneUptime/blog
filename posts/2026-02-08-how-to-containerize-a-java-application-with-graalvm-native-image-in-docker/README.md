@@ -68,8 +68,16 @@ Configure the Maven build for native image support:
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.0</version>
+    <version>3.5.14</version>
 </parent>
+
+<groupId>com.example</groupId>
+<artifactId>app</artifactId>
+<version>1.0.0</version>
+
+<properties>
+    <java.version>21</java.version>
+</properties>
 
 <dependencies>
     <dependency>
@@ -83,6 +91,7 @@ Configure the Maven build for native image support:
 </dependencies>
 
 <build>
+    <finalName>app</finalName>
     <plugins>
         <plugin>
             <groupId>org.graalvm.buildtools</groupId>
@@ -108,6 +117,8 @@ This Dockerfile compiles the application to a native binary and packages it in a
 FROM ghcr.io/graalvm/native-image-community:21 AS builder
 
 WORKDIR /build
+
+ARG MAVEN_OPTS
 
 # Install Maven (the GraalVM image does not include it)
 RUN microdnf install -y maven && microdnf clean all
@@ -135,10 +146,6 @@ COPY --from=builder /build/target/app /app/app
 
 # Expose the application port
 EXPOSE 8080
-
-# Health check using the native binary itself
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-  CMD ["/app/app", "--health-check"]
 
 # Run the native binary directly - no JVM needed
 ENTRYPOINT ["/app/app"]
@@ -226,9 +233,14 @@ Reference the configuration in your native image build arguments:
 If you are not sure what reflection configuration you need, use the GraalVM tracing agent to generate it automatically:
 
 ```bash
+# Build the executable JAR that the agent will run on a regular JVM
+mvn -DskipTests package
+
 # Run the application with the tracing agent to collect configuration
-docker run --rm \
+docker run --rm --name agent-test -p 8080:8080 \
+  -v $(pwd)/target:/workspace/target:ro \
   -v $(pwd)/src/main/resources/META-INF/native-image:/config \
+  -w /workspace \
   ghcr.io/graalvm/native-image-community:21 \
   java -agentlib:native-image-agent=config-output-dir=/config \
   -jar target/app.jar &
@@ -240,7 +252,7 @@ curl http://localhost:8080/api/users
 # ... test all endpoints and features
 
 # Stop the application
-docker stop $(docker ps -q --filter ancestor=ghcr.io/graalvm/native-image-community:21)
+docker stop agent-test
 ```
 
 The agent generates `reflect-config.json`, `resource-config.json`, and other configuration files in the specified directory.
@@ -263,21 +275,39 @@ For faster builds during development, use the quick build mode:
 ```dockerfile
 # Development-focused native build (faster but less optimized)
 RUN mvn -Pnative native:compile -DskipTests -B \
-  -Dspring-boot.native-image.argline="-Ob"
+  -DquickBuild=true
 ```
 
-The `-Ob` flag reduces build time significantly by skipping some optimizations. Use it for development, not for production images.
+Quick build mode reduces build time significantly by skipping some optimizations. Use it for development, not for production images.
 
 ## Using Alpine Linux for Smaller Images
 
-For even smaller images, compile a statically linked binary and use Alpine:
+For even smaller images, compile a statically linked musl binary and use Alpine. In the builder stage, use the musl toolchain image and pass the static linking options:
+
+```dockerfile
+FROM ghcr.io/graalvm/native-image-community:21-muslib AS builder
+```
+
+Add the static linking options to the native Maven plugin configuration:
+
+```xml
+<plugin>
+    <groupId>org.graalvm.buildtools</groupId>
+    <artifactId>native-maven-plugin</artifactId>
+    <configuration>
+        <buildArgs>
+            <buildArg>--static</buildArg>
+            <buildArg>--libc=musl</buildArg>
+        </buildArgs>
+    </configuration>
+</plugin>
+```
+
+Then use Alpine as the runtime stage:
 
 ```dockerfile
 # Stage 2 with Alpine instead of distroless
 FROM alpine:3.19
-
-# Add required runtime libraries
-RUN apk add --no-cache libstdc++
 
 WORKDIR /app
 
@@ -297,8 +327,6 @@ Run the native image container alongside its dependencies:
 
 ```yaml
 # docker-compose.yml - Native image application with dependencies
-version: "3.9"
-
 services:
   app:
     image: myapp-native:1.0
@@ -314,12 +342,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 128M   # Native images need far less memory than JVM
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s  # Much shorter than JVM containers
 
   postgres:
     image: postgres:16-alpine
@@ -334,7 +356,7 @@ volumes:
   pgdata:
 ```
 
-Notice the memory limit is 128MB, which would be far too low for a JVM-based container but is generous for a native image.
+Notice the memory limit is 128MB, which would be far too low for a JVM-based container but is generous for a native image. For distroless images, configure HTTP health probes in your orchestrator or add a small health-check binary to the image instead of relying on `curl` inside the container.
 
 ## When to Use Native Image vs JVM
 
