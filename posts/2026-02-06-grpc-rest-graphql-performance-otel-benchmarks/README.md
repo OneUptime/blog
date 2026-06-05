@@ -24,8 +24,8 @@ const app = express();
 
 app.get('/api/products/:id', async (req, res) => {
   const span = trace.getActiveSpan();
-  span.setAttribute('protocol', 'rest');
-  span.setAttribute('payload.type', 'json');
+  span?.setAttribute('protocol', 'rest');
+  span?.setAttribute('payload.type', 'json');
 
   const product = await fetchProduct(req.params.id);
 
@@ -33,21 +33,21 @@ app.get('/api/products/:id', async (req, res) => {
   const serStart = performance.now();
   const body = JSON.stringify(product);
   const serDuration = performance.now() - serStart;
-  span.setAttribute('serialization.duration_ms', serDuration);
-  span.setAttribute('response.body_size', Buffer.byteLength(body));
+  span?.setAttribute('serialization.duration_ms', serDuration);
+  span?.setAttribute('response.body_size', Buffer.byteLength(body));
 
   res.json(product);
 });
 
 app.get('/api/products', async (req, res) => {
   const span = trace.getActiveSpan();
-  span.setAttribute('protocol', 'rest');
+  span?.setAttribute('protocol', 'rest');
 
-  const products = await fetchProducts(req.query.limit || 50);
+  const products = await fetchProducts(Number(req.query.limit) || 50);
 
   const body = JSON.stringify(products);
-  span.setAttribute('response.body_size', Buffer.byteLength(body));
-  span.setAttribute('response.item_count', products.length);
+  span?.setAttribute('response.body_size', Buffer.byteLength(body));
+  span?.setAttribute('response.item_count', products.length);
 
   res.json(products);
 });
@@ -74,8 +74,8 @@ server.addService(productProto.ProductService.service, {
       kind: SpanKind.SERVER,
       attributes: {
         'protocol': 'grpc',
-        'rpc.system': 'grpc',
-        'rpc.method': 'GetProduct',
+        'rpc.system.name': 'grpc',
+        'rpc.method': 'product.ProductService/GetProduct',
       },
     }, async (span) => {
       try {
@@ -94,12 +94,22 @@ server.addService(productProto.ProductService.service, {
   listProducts: async (call, callback) => {
     return tracer.startActiveSpan('grpc.ListProducts', {
       kind: SpanKind.SERVER,
-      attributes: { 'protocol': 'grpc' },
+      attributes: {
+        'protocol': 'grpc',
+        'rpc.system.name': 'grpc',
+        'rpc.method': 'product.ProductService/ListProducts',
+      },
     }, async (span) => {
-      const products = await fetchProducts(call.request.limit);
-      span.setAttribute('response.item_count', products.length);
-      callback(null, { products });
-      span.end();
+      try {
+        const products = await fetchProducts(call.request.limit);
+        span.setAttribute('response.item_count', products.length);
+        callback(null, { products });
+      } catch (err) {
+        span.recordException(err);
+        callback(err);
+      } finally {
+        span.end();
+      }
     });
   },
 });
@@ -109,12 +119,14 @@ server.addService(productProto.ProductService.service, {
 
 ```javascript
 // graphql-server.js
-const { ApolloServer, gql } = require('apollo-server-express');
+const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@as-integrations/express4');
+const express = require('express');
 const { trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('protocol-benchmark');
 
-const typeDefs = gql`
+const typeDefs = `#graphql
   type Product {
     id: ID!
     name: String!
@@ -133,22 +145,34 @@ const resolvers = {
   Query: {
     product: async (_, { id }) => {
       const span = trace.getActiveSpan();
-      span.setAttribute('protocol', 'graphql');
-      span.setAttribute('graphql.operation', 'product');
+      span?.setAttribute('protocol', 'graphql');
+      span?.setAttribute('graphql.operation', 'product');
 
       const product = await fetchProduct(id);
       return product;
     },
     products: async (_, { limit = 50 }) => {
       const span = trace.getActiveSpan();
-      span.setAttribute('protocol', 'graphql');
-      span.setAttribute('graphql.operation', 'products');
-      span.setAttribute('response.item_count', limit);
+      span?.setAttribute('protocol', 'graphql');
+      span?.setAttribute('graphql.operation', 'products');
 
-      return fetchProducts(limit);
+      const products = await fetchProducts(limit);
+      span?.setAttribute('response.item_count', products.length);
+      return products;
     },
   },
 };
+
+const app = express();
+const server = new ApolloServer({ typeDefs, resolvers });
+
+async function startGraphQLServer() {
+  await server.start();
+  app.use('/graphql', express.json(), expressMiddleware(server));
+  app.listen(4000);
+}
+
+startGraphQLServer();
 ```
 
 ## The Benchmark Runner
@@ -161,9 +185,9 @@ Run identical workloads against all three protocols:
 import grpc
 import requests
 import time
-import json
-from concurrent.futures import ThreadPoolExecutor
 from opentelemetry import trace, metrics
+import product_pb2
+import product_pb2_grpc
 
 tracer = trace.get_tracer("benchmark-client")
 meter = metrics.get_meter("benchmark-client")
@@ -205,6 +229,7 @@ def benchmark_grpc(endpoint, product_id, iterations=1000):
             "protocol": "grpc",
             "operation": "get_product",
         })
+        bench_size.record(response.ByteSize(), {"protocol": "grpc"})
 
     channel.close()
     return durations
@@ -262,10 +287,12 @@ histogram_quantile(0.95,
 )
 
 # Average response size comparison
-avg(benchmark_response_size_bytes) by (protocol)
+sum by (protocol) (rate(benchmark_response_size_bytes_sum[5m]))
+/
+sum by (protocol) (rate(benchmark_response_size_bytes_count[5m]))
 
-# Throughput comparison (requests handled per second on the server side)
-sum(rate(http_server_duration_seconds_count[5m])) by (protocol)
+# Throughput comparison (client-observed requests per second)
+sum(rate(benchmark_request_duration_milliseconds_count[5m])) by (protocol)
 ```
 
 ## What the Numbers Typically Show
