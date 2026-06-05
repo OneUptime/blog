@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Podman, Systemd, Filelog Receiver
 
 Description: Configure Podman containers managed by systemd to export structured logs to the OpenTelemetry Collector filelog receiver for centralized logging.
 
-Podman integrates tightly with systemd. You can generate systemd unit files for your containers and manage them with `systemctl`. When containers run under systemd, their logs flow through the journal. The OpenTelemetry Collector can read these logs using either the filelog receiver (for file-based logs) or the journald receiver (for journal entries).
+Podman integrates tightly with systemd. You can generate systemd unit files for your containers and manage them with `systemctl`, although current Podman documentation recommends Quadlet for new systemd-managed containers. With Podman's default `journald` log driver, container stdout and stderr flow through the journal. The OpenTelemetry Collector can read these logs using either the filelog receiver (for file-based logs) or the journald receiver (for journal entries).
 
 ## Setting Up Podman Containers with systemd
 
@@ -31,7 +31,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now container-web-server.service
 ```
 
-The `--new` flag tells Podman to recreate the container each time the service starts, pulling the latest configuration.
+The `--new` flag tells Podman to generate a unit that creates the container when the service starts and removes it when the service stops, based on the container's existing configuration.
 
 ## Understanding Where Logs Go
 
@@ -41,12 +41,12 @@ When Podman runs under systemd, container stdout and stderr go to the systemd jo
 journalctl --user -u container-web-server.service --no-pager -n 20
 ```
 
-Alternatively, Podman can write logs to files. Configure the log driver:
+Alternatively, Podman can write logs to files. Configure the `k8s-file` log driver; `json-file` is supported as an alias for scripting compatibility:
 
 ```bash
 podman create \
   --name web-server \
-  --log-driver=json-file \
+  --log-driver=k8s-file \
   --log-opt path=/var/log/containers/web-server.log \
   -p 8080:80 \
   docker.io/nginx:latest
@@ -63,9 +63,9 @@ receivers:
     directory: /run/user/1000/journal
     # Filter to only Podman container units
     units:
-      - container-web-server
-      - container-api-server
-    # Parse priority levels
+      - container-web-server.service
+      - container-api-server.service
+    # Filter by journal priority
     priority: info
 
 processors:
@@ -102,13 +102,14 @@ receivers:
   filelog:
     include:
       - /var/log/containers/*.log
+    include_file_path: true
     start_at: end
     operators:
       # Parse JSON log lines from Podman
       - type: json_parser
         timestamp:
           parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout: '%Y-%m-%dT%H:%M:%S.%sZ'
       # Move the log message to the body
       - type: move
         from: attributes.log
@@ -154,13 +155,13 @@ For best results, configure your applications to output structured JSON logs. He
 ```python
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class StructuredLogFormatter(logging.Formatter):
     """Format log records as JSON for structured collection."""
     def format(self, record):
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -190,7 +191,7 @@ operators:
     parse_from: body
     timestamp:
       parse_from: attributes.timestamp
-      layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+      layout: '%Y-%m-%dT%H:%M:%S.%fZ'
     severity:
       parse_from: attributes.level
 ```
@@ -227,7 +228,7 @@ After=container-otel-collector.service
 Requires=container-otel-collector.service
 ```
 
-This ensures logs are collected from the moment your applications start.
+This helps the Collector be ready before your applications start.
 
 ## Summary
 
