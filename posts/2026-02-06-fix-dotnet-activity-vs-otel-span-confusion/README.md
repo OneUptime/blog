@@ -14,7 +14,7 @@ Here is how the concepts align:
 
 | OpenTelemetry Concept | .NET Equivalent |
 |----------------------|-----------------|
-| TracerProvider | ActivitySource + ActivityListener |
+| TracerProvider | OpenTelemetry SDK configuration that subscribes to ActivitySource |
 | Tracer | ActivitySource |
 | Span | Activity |
 | SpanContext | ActivityContext |
@@ -24,7 +24,7 @@ The .NET team built `System.Diagnostics.Activity` before OpenTelemetry existed. 
 
 ## The Common Mistake
 
-Developers new to .NET OpenTelemetry often try to use the OpenTelemetry API directly, creating spans with `Tracer.StartActiveSpan()`. While this works, it is not the idiomatic .NET approach and can cause issues:
+Developers new to .NET OpenTelemetry sometimes try to use the OpenTelemetry API shim directly, creating spans with `Tracer.StartActiveSpan()`. While this can work when the shim is configured, it is not the idiomatic .NET approach and can cause issues:
 
 ```csharp
 // This works but is not the recommended .NET pattern
@@ -53,7 +53,7 @@ public void ProcessOrder(Order order)
 }
 ```
 
-Notice the `?.` null-conditional operator. This is important because `StartActivity` returns `null` when no listener is sampling the activity. If the OpenTelemetry SDK is not configured, or if the sampler decides not to sample this trace, `StartActivity` returns `null` instead of creating an object.
+Notice the `?.` null-conditional operator. This is important because `StartActivity` returns `null` when there are no registered listeners or the registered listeners are not interested in the activity. If the OpenTelemetry SDK is not configured, or if the source is not registered with the SDK, `StartActivity` returns `null` instead of creating an object.
 
 ## Why This Matters for Instrumentation
 
@@ -90,7 +90,7 @@ builder.Services.AddOpenTelemetry()
     });
 ```
 
-If the names do not match, activities are created but never exported. There is no error or warning.
+If the names do not match, the OpenTelemetry SDK will not subscribe to that source, so `StartActivity` typically returns `null` and nothing is exported. There is no error or warning.
 
 ## Working with Activity Context Propagation
 
