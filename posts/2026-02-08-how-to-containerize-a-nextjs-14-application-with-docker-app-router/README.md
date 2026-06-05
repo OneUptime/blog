@@ -8,7 +8,7 @@ Description: Complete guide to containerizing a Next.js 14+ App Router applicati
 
 ---
 
-Next.js 14+ with the App Router introduces server components, server actions, and a new rendering model that affects how you containerize the application. The standalone output mode is essential for Docker deployments, and getting it right means the difference between a 1GB image that takes minutes to start and a 150MB image that starts in seconds. This guide covers the full setup from Dockerfile to production-ready configuration.
+Next.js 14+ with the App Router introduces server components, server actions, and a new rendering model that affects how you containerize the application. The standalone output mode is one of the most useful optimizations for Docker deployments, and getting it right can mean the difference between a 1GB image that takes minutes to start and a 150MB image that starts in seconds. This guide covers the full setup from Dockerfile to production-ready configuration.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ const nextConfig = {
 export default nextConfig;
 ```
 
-The `standalone` mode creates a self-contained build that includes only the necessary files and a minimal Node.js server. Without it, you would need to copy the entire `node_modules` directory into the Docker image.
+The `standalone` mode creates a self-contained build that includes the traced files needed at runtime and a minimal Node.js server. Without it, Docker deployments often need to copy the full application and installed dependencies into the runtime image.
 
 ## The Dockerfile
 
@@ -135,7 +135,7 @@ Three things get copied from the builder:
 2. **`/app/.next/standalone`** - The standalone Node.js server with bundled dependencies
 3. **`/app/.next/static`** - Compiled CSS, JS chunks, and webpack assets
 
-The standalone output includes its own `node_modules` with only production dependencies, already tree-shaken to include just what the application imports.
+The standalone output includes a `node_modules` directory with the traced dependency files needed by the production server, instead of copying the full dependency tree into the runtime image.
 
 ## The .dockerignore File
 
@@ -167,10 +167,10 @@ next-env.d.ts
 
 ## Handling Environment Variables
 
-Next.js has two types of environment variables:
+Next.js has two common environment variable patterns:
 
 - `NEXT_PUBLIC_*` variables are embedded at build time
-- Server-side variables are read at runtime
+- Server-side variables are available only to server code, and request-time server code can read runtime values
 
 For build-time variables, pass them as build arguments:
 
@@ -286,11 +286,11 @@ docker images nextapp --format "{{.Size}}"
 # node:20-alpine + standalone: ~170MB
 ```
 
-The standalone output mode is the single biggest optimization. Without it, you would copy the entire `node_modules` directory (often 300-500MB). With standalone, Next.js bundles only the imported code and required dependencies.
+The standalone output mode is the single biggest optimization. Without it, many Docker setups copy the entire `node_modules` directory (often 300-500MB). With standalone, Next.js uses output file tracing to copy the files and dependency files required by the production server.
 
 ## Health Check Configuration
 
-Add a health check for orchestrators like Kubernetes or Docker Swarm:
+Add a health check for Docker or Docker Swarm:
 
 ```dockerfile
 # Add to the runner stage
@@ -298,7 +298,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 ```
 
-Or create a dedicated health endpoint in your Next.js app:
+Or create a dedicated health endpoint in your Next.js app. In Kubernetes, configure a liveness or readiness probe against this endpoint instead of relying on the Dockerfile `HEALTHCHECK` instruction:
 
 ```typescript
 // app/api/health/route.ts - Health check endpoint
@@ -316,7 +316,7 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
 
 **Static files not loading:** Make sure you copy `.next/static` to the correct path in the runner stage. The standalone server expects static files at `.next/static` relative to `server.js`.
 
-**Image optimization not working:** The standalone server handles image optimization, but if you use external images, list the domains in `next.config.mjs`:
+**Image optimization not working:** The standalone server can run Next.js image optimization, but production standalone image optimization requires `sharp` to be installed in your project. If you use external images, list the allowed remote patterns in `next.config.mjs`:
 
 ```javascript
 const nextConfig = {
