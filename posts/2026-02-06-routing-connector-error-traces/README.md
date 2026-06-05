@@ -28,10 +28,11 @@ receivers:
 connectors:
   routing/errors:
     default_pipelines: [traces/normal]
-    match_once: true
+    error_mode: ignore
     table:
       # Route spans with ERROR status to the error backend
-      - condition: status.code == STATUS_CODE_ERROR
+      - context: span
+        condition: status.code == STATUS_CODE_ERROR
         pipelines: [traces/errors]
 
 exporters:
@@ -65,17 +66,19 @@ Sometimes you want more granularity than just error/not-error. You might want to
 connectors:
   routing/http-status:
     default_pipelines: [traces/normal]
-    match_once: false
+    error_mode: ignore
     table:
       # 5xx server errors go to the critical error pipeline
-      - condition: attributes["http.response.status_code"] >= 500
+      - context: span
+        condition: attributes["http.response.status_code"] >= 500
         pipelines: [traces/server-errors]
       # 4xx client errors go to a separate pipeline
-      - condition: attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500
+      - context: span
+        condition: attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500
         pipelines: [traces/client-errors]
 ```
 
-Note `match_once: false` here. This lets a single span match multiple conditions if needed. In most cases with mutually exclusive conditions like status code ranges, this does not change behavior, but it is good to be explicit about your intent.
+These conditions use `context: span` because HTTP status codes are span attributes. With the current routing connector, matched data is moved by default, so a span that matches the 5xx condition is removed from later route evaluation. That is fine for mutually exclusive ranges like these.
 
 ## Sending Errors to Both Backends
 
@@ -85,10 +88,11 @@ A common pattern is to send error traces to both the error-specific backend and 
 connectors:
   routing/errors-fanout:
     default_pipelines: [traces/normal]
-    match_once: true
+    error_mode: ignore
     table:
       # Errors go to BOTH the error pipeline and normal pipeline
-      - condition: status.code == STATUS_CODE_ERROR
+      - context: span
+        condition: status.code == STATUS_CODE_ERROR
         pipelines: [traces/errors, traces/normal]
 
 service:
@@ -156,16 +160,19 @@ You can also route based on specific exception types or messages:
 connectors:
   routing/exceptions:
     default_pipelines: [traces/normal]
-    match_once: true
+    error_mode: ignore
     table:
       # Route OutOfMemoryError to a specific pipeline
-      - condition: IsMatch(attributes["exception.type"], ".*OutOfMemoryError.*")
+      - context: span
+        condition: IsMatch(attributes["exception.type"], ".*OutOfMemoryError.*")
         pipelines: [traces/oom-errors]
       # Route timeout exceptions separately
-      - condition: IsMatch(attributes["exception.type"], ".*TimeoutException.*")
+      - context: span
+        condition: IsMatch(attributes["exception.type"], ".*TimeoutException.*")
         pipelines: [traces/timeout-errors]
       # Catch-all for other errors
-      - condition: status.code == STATUS_CODE_ERROR
+      - context: span
+        condition: status.code == STATUS_CODE_ERROR
         pipelines: [traces/general-errors]
 ```
 
