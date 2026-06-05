@@ -8,13 +8,13 @@ Description: A hands-on guide to containerizing Echo framework applications in G
 
 ---
 
-Echo is a high-performance, minimalist Go web framework. It provides a clean routing API, middleware support, and built-in features like data binding and validation. Like all Go frameworks, Echo benefits enormously from Docker containerization because the compiled binary can run in an ultra-minimal container. This guide covers the entire process, from project setup through production deployment with multi-stage builds.
+Echo is a high-performance, minimalist Go web framework. It provides a clean routing API, middleware support, and built-in features like data binding and configurable validation hooks. Like all Go frameworks, Echo benefits enormously from Docker containerization because the compiled binary can run in an ultra-minimal container. This guide covers the entire process, from project setup through production deployment with multi-stage builds.
 
 ## Prerequisites
 
 You need:
 
-- Go 1.21+
+- Go 1.25+
 - Docker Engine 20.10+
 - Familiarity with Go modules
 
@@ -47,7 +47,7 @@ func main() {
 	e := echo.New()
 
 	// Middleware
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
@@ -103,7 +103,7 @@ This Dockerfile produces a minimal production image:
 ```dockerfile
 # Stage 1: Build the application
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /app
 
@@ -140,7 +140,7 @@ If you need shell access for debugging or require additional system tools:
 
 ```dockerfile
 # Alternative production stage with Alpine
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk --no-cache add ca-certificates tzdata
 
@@ -196,8 +196,6 @@ With `scratch`, expect something around 8-12MB. With Alpine, around 15-20MB.
 A Compose file with a database for a complete development environment:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -303,8 +301,8 @@ func setupMiddleware(e *echo.Echo) {
 	// Request ID for tracing across microservices
 	e.Use(echomiddleware.RequestID())
 
-	// Timeout middleware prevents slow requests from tying up resources
-	e.Use(echomiddleware.TimeoutWithConfig(echomiddleware.TimeoutConfig{
+	// Context timeout middleware prevents slow requests from tying up resources
+	e.Use(echomiddleware.ContextTimeoutWithConfig(echomiddleware.ContextTimeoutConfig{
 		Timeout: 30 * time.Second,
 	}))
 
@@ -364,7 +362,7 @@ For automatic rebuilds during development:
 
 ```dockerfile
 # Dockerfile.dev
-FROM golang:1.22-alpine
+FROM golang:1.25-alpine
 
 WORKDIR /app
 RUN go install github.com/air-verse/air@latest
