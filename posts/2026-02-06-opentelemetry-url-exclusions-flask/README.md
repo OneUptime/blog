@@ -20,7 +20,7 @@ Production Flask applications typically expose several types of endpoints that d
 
 **Internal Diagnostics**: Debug endpoints, admin panels, and internal tools might not need production tracing.
 
-Excluding these URLs reduces your telemetry data volume by 40-60% in typical applications, directly lowering costs while keeping your traces focused on actual application behavior.
+Excluding these URLs can significantly reduce your telemetry data volume, directly lowering costs while keeping your traces focused on actual application behavior.
 
 ## Basic URL Exclusion Syntax
 
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     app.run()
 ```
 
-The pattern `health|ready|metrics` matches any URL containing these strings. The pattern `/static/.*` matches all URLs starting with `/static/`, regardless of what follows.
+The pattern `health|ready|metrics` matches any URL containing these strings. The pattern `/static/.*` matches URLs whose path contains `/static/`, regardless of what follows.
 
 ## Excluding URL Patterns by Prefix
 
@@ -156,7 +156,7 @@ This configuration excludes everything under `/internal/` and `/admin/`, while t
 
 ## Dynamic URL Exclusions
 
-Sometimes you need to decide at runtime whether to exclude a URL, based on request headers, query parameters, or other context. While `excluded_urls` uses static patterns, you can implement dynamic filtering with request hooks.
+Sometimes you need to decide at runtime whether to filter a span, based on request headers, query parameters, or other context. While `excluded_urls` uses static patterns, you can implement dynamic marking with request hooks.
 
 ```python
 from flask import Flask, request
@@ -166,10 +166,10 @@ from opentelemetry import trace
 app = Flask(__name__)
 
 def request_hook(span, environ):
-    """Skip tracing based on runtime conditions"""
+    """Mark spans based on runtime conditions"""
     # Check for internal traffic header
     if environ.get('HTTP_X_INTERNAL_REQUEST') == 'true':
-        # Mark span to be dropped
+        # Mark span for downstream filtering
         span.set_attribute("internal.request", True)
         # You can't directly drop a span, but you can mark it
         # Your backend can filter based on this attribute
@@ -204,7 +204,7 @@ While this approach doesn't prevent span creation, it marks spans for filtering 
 
 ## Combining Multiple Exclusion Strategies
 
-Real-world applications often need multiple exclusion strategies. Combine static URL patterns with dynamic filtering for comprehensive control.
+Real-world applications often need multiple filtering strategies. Combine static URL patterns with dynamic marking for comprehensive control.
 
 ```python
 from flask import Flask, request
@@ -217,14 +217,14 @@ app = Flask(__name__)
 # Static exclusions for known endpoints
 STATIC_EXCLUSIONS = "health|ready|metrics|/static/.*|/assets/.*"
 
-# Additional dynamic exclusion patterns
+# Additional dynamic patterns for marking spans
 DYNAMIC_PATTERNS = [
     re.compile(r'/api/v[0-9]+/internal/.*'),
     re.compile(r'.*\.(css|js|png|jpg|ico|woff)$')
 ]
 
 def request_hook(span, environ):
-    """Apply dynamic exclusion logic"""
+    """Apply dynamic marking logic"""
     path = environ.get('PATH_INFO', '')
 
     # Check against dynamic patterns
@@ -256,12 +256,12 @@ def health():
 
 @app.route('/api/v1/internal/metrics')
 def internal_metrics():
-    # Excluded by dynamic pattern
+    # Marked by dynamic pattern for downstream filtering
     return {"metrics": {}}
 
 @app.route('/api/v1/users')
 def get_users():
-    # This IS traced
+    # This is traced without the dynamic marker
     return {"users": []}
 
 if __name__ == '__main__':
@@ -278,7 +278,7 @@ graph TD
     B -->|Yes| C[Skip Tracing]
     B -->|No| D[Create Span]
     D --> E[Execute request_hook]
-    E --> F{Dynamic Exclusion?}
+    E --> F{Dynamic Marker?}
     F -->|Yes| G[Mark Span]
     F -->|No| H[Normal Processing]
     G --> H
@@ -287,9 +287,9 @@ graph TD
     C --> J
 ```
 
-## Excluding Based on HTTP Methods
+## Marking Based on HTTP Methods
 
-Some endpoints might need tracing for certain HTTP methods but not others. For example, you might want to trace POST requests to an endpoint but exclude GET requests used for polling.
+Some endpoints might need trace filtering for certain HTTP methods but not others. For example, you might want to keep POST request traces for an endpoint but mark GET requests used for polling so your backend can filter them.
 
 ```python
 from flask import Flask, request
@@ -298,16 +298,16 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 app = Flask(__name__)
 
 def request_hook(span, environ):
-    """Exclude specific HTTP methods for certain endpoints"""
+    """Mark specific HTTP methods for certain endpoints"""
     path = environ.get('PATH_INFO', '')
     method = environ.get('REQUEST_METHOD', '')
 
-    # Exclude GET requests to the status endpoint
+    # Mark GET requests to the status endpoint
     if path == '/api/status' and method == 'GET':
         span.set_attribute("excluded.polling", True)
         return
 
-    # Exclude HEAD requests globally
+    # Mark HEAD requests globally
     if method == 'HEAD':
         span.set_attribute("excluded.head_request", True)
         return
@@ -320,10 +320,10 @@ FlaskInstrumentor().instrument_app(
 @app.route('/api/status', methods=['GET', 'POST'])
 def status():
     if request.method == 'GET':
-        # Excluded from tracing
+        # Marked for downstream filtering
         return {"status": "active"}
     else:
-        # POST requests ARE traced
+        # POST requests are traced without the polling marker
         return {"status": "updated"}
 
 if __name__ == '__main__':
@@ -341,8 +341,9 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 app = Flask(__name__)
 
-# Determine environment
-environment = os.getenv('FLASK_ENV', 'development')
+# Determine environment. Use an application-specific variable instead of
+# FLASK_ENV, which was removed in Flask 2.3.
+environment = os.getenv('APP_ENV', 'development')
 
 # Configure exclusions based on environment
 if environment == 'production':
@@ -427,7 +428,7 @@ class TestURLExclusions(unittest.TestCase):
         self.assertEqual(len(spans), 1, "API endpoint should create a span")
 
         span = spans[0]
-        self.assertEqual(span.name, "HTTP GET /api/data")
+        self.assertEqual(span.name, "GET /api/data")
 
 if __name__ == '__main__':
     unittest.main()
@@ -468,7 +469,7 @@ URL exclusions happen early in the request processing pipeline, before most inst
 3. Attribute collection
 4. Span ending and export
 
-In high-traffic scenarios with many health checks, proper exclusions can reduce instrumentation CPU overhead by 30-50% and eliminate corresponding network and storage costs.
+In high-traffic scenarios with many health checks, proper exclusions can reduce instrumentation CPU overhead and eliminate corresponding network and storage costs for those requests.
 
 ## Monitoring Exclusion Effectiveness
 
