@@ -20,11 +20,11 @@ Symfony's architecture with its event system and service container makes it an i
 - Cache operations
 - Template rendering with Twig
 
-This automatic instrumentation captures context that would be tedious to add manually, like query parameters, response codes, and timing information.
+This automatic instrumentation captures context that would be tedious to add manually, like route names, response codes, and timing information.
 
 ## Installation and Initial Setup
 
-Start by installing the bundle through Composer. The bundle requires PHP 8.1 or higher and Symfony 6.0 or later.
+Start by installing the bundle through Composer. The current beta releases require PHP 8.2 or higher and Symfony 7.4 components.
 
 ```bash
 # Install the FriendsOfOpenTelemetry bundle
@@ -34,11 +34,11 @@ composer require friendsofopentelemetry/opentelemetry-bundle
 # Install the OTLP exporter for sending data to collectors
 composer require open-telemetry/exporter-otlp
 
-# Install Guzzle for HTTP transport
-composer require guzzlehttp/guzzle
+# Install Symfony's PSR-18 HTTP client for HTTP telemetry transports
+composer require symfony/http-client
 ```
 
-If you're using Symfony Flex (recommended), the bundle registers itself automatically. For manual registration, add it to `config/bundles.php`:
+The bundle is not yet available through Symfony Flex, so register it manually in `config/bundles.php`:
 
 ```php
 // config/bundles.php
@@ -54,85 +54,84 @@ return [
 Create a configuration file that defines how the bundle should instrument your application.
 
 ```yaml
-# config/packages/opentelemetry.yaml
+# config/packages/open_telemetry.yaml
 
-opentelemetry:
-  # Resource attributes that identify your service
-  resource:
-    service.name: '%env(OTEL_SERVICE_NAME)%'
-    service.version: '%env(OTEL_SERVICE_VERSION)%'
-    deployment.environment: '%kernel.environment%'
+open_telemetry:
+  # Service attributes that identify your application
+  service:
+    namespace: '%env(OTEL_SERVICE_NAMESPACE)%'
+    name: '%env(OTEL_SERVICE_NAME)%'
+    version: '%env(OTEL_SERVICE_VERSION)%'
+    environment: '%kernel.environment%'
+
+  # Uses Symfony's Psr18Client when symfony/http-client is installed
+  transport_http_client: null
 
   # Trace configuration
   traces:
-    enabled: true
+    tracers:
+      main:
+        provider: 'open_telemetry.traces.providers.default'
 
-    # Sampling configuration
-    sampler:
-      type: 'traceidratio'
-      options:
-        ratio: '%env(float:OTEL_TRACES_SAMPLER_RATIO)%'
+    providers:
+      default:
+        type: default
+        sampler:
+          type: 'trace_id_ratio'
+          options:
+            ratio: '%env(float:OTEL_TRACES_SAMPLER_RATIO)%'
+        processors:
+          - 'open_telemetry.traces.processors.simple'
 
     # Span processors
     processors:
-      batch:
-        enabled: true
-        max_queue_size: 2048
-        schedule_delay: 5000
-        export_batch_size: 512
-        export_timeout: 30000
+      simple:
+        type: simple
+        exporter: 'open_telemetry.traces.exporters.otlp'
 
-  # Exporter configuration
-  exporters:
-    otlp:
-      enabled: true
-      endpoint: '%env(OTEL_EXPORTER_OTLP_ENDPOINT)%'
-      protocol: '%env(OTEL_EXPORTER_OTLP_PROTOCOL)%'
-      headers:
-        Authorization: '%env(OTEL_EXPORTER_OTLP_AUTH_HEADER)%'
-      compression: 'gzip'
-      timeout: 10
+    # Exporter configuration
+    exporters:
+      otlp:
+        dsn: '%env(OTEL_EXPORTER_OTLP_TRACES_DSN)%'
+        options:
+          format: protobuf
+          compression: gzip
+          headers:
+            Authorization: '%env(OTEL_EXPORTER_OTLP_AUTH_HEADER)%'
+          timeout: 10
 
   # Instrumentation configuration
   instrumentation:
     http_kernel:
-      enabled: true
-      # Include request/response details in spans
-      capture_headers: true
-      # List of headers to capture (avoid sensitive data)
-      allowed_headers: ['content-type', 'user-agent', 'accept']
+      type: auto
+      tracing:
+        enabled: true
 
     doctrine:
-      enabled: true
-      # Include query parameters in spans
-      capture_query_parameters: true
-      # Capture stack traces for slow queries
-      slow_query_threshold: 1000 # milliseconds
+      tracing:
+        enabled: true
 
     http_client:
-      enabled: true
-      # Capture request and response headers
-      capture_headers: true
+      tracing:
+        enabled: true
 
     messenger:
-      enabled: true
-      # Capture message payload (be careful with sensitive data)
-      capture_payload: false
+      type: auto
+      tracing:
+        enabled: true
 
     console:
-      enabled: true
-      # Capture command arguments and options
-      capture_arguments: true
+      type: auto
+      tracing:
+        enabled: true
 
     cache:
-      enabled: true
-      # Capture cache keys
-      capture_keys: true
+      tracing:
+        enabled: true
 
     twig:
-      enabled: true
-      # Capture template names and rendering time
-      capture_template_name: true
+      tracing:
+        enabled: true
 ```
 
 ## Environment Variables Configuration
@@ -143,12 +142,12 @@ Set up environment variables for different deployment environments.
 # .env
 
 # Service identification
+OTEL_SERVICE_NAMESPACE=MyCompany
 OTEL_SERVICE_NAME=symfony-app
 OTEL_SERVICE_VERSION=1.0.0
 
 # OTLP exporter configuration
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_TRACES_DSN=http+otlp://localhost:4318/v1/traces
 OTEL_EXPORTER_OTLP_AUTH_HEADER=
 
 # Sampling ratio (1.0 = 100%, 0.1 = 10%)
@@ -162,8 +161,8 @@ For production environments, create a separate configuration:
 
 OTEL_SERVICE_NAME=symfony-app
 OTEL_SERVICE_VERSION=1.0.0
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.prod.example.com:4318/v1/traces
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_SERVICE_NAMESPACE=MyCompany
+OTEL_EXPORTER_OTLP_TRACES_DSN=https+otlp://otel-collector.prod.example.com:4318/v1/traces
 OTEL_EXPORTER_OTLP_AUTH_HEADER=Bearer your-secret-token-here
 OTEL_TRACES_SAMPLER_RATIO=0.1
 ```
@@ -177,16 +176,15 @@ Create a simple controller to test that spans are being created and exported cor
 
 namespace App\Controller;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
-use OpenTelemetry\API\Trace\SpanKind;
+use OpenTelemetry\API\Trace\TracerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 class TelemetryTestController extends AbstractController
 {
     public function __construct(
-        private TracerProviderInterface $tracerProvider
+        private TracerInterface $tracer
     ) {}
 
     #[Route('/telemetry/test', name: 'telemetry_test')]
@@ -195,10 +193,7 @@ class TelemetryTestController extends AbstractController
         // The HTTP request span is created automatically by the bundle
         // Let's create a custom span to verify manual instrumentation works too
 
-        $tracer = $this->tracerProvider->getTracer('app.telemetry_test');
-
-        $span = $tracer->spanBuilder('custom-operation')
-            ->setSpanKind(SpanKind::KIND_INTERNAL)
+        $span = $this->tracer->spanBuilder('custom-operation')
             ->setAttribute('test.attribute', 'test-value')
             ->startSpan();
 
@@ -229,41 +224,49 @@ Visit `/telemetry/test` in your browser and check your observability backend for
 You may want different instrumentation settings for development versus production.
 
 ```yaml
-# config/packages/dev/opentelemetry.yaml
+# config/packages/dev/open_telemetry.yaml
 
-opentelemetry:
+open_telemetry:
   traces:
-    sampler:
-      type: 'always_on' # Capture all traces in development
+    providers:
+      default:
+        sampler:
+          type: 'always_on' # Capture all traces in development
 
   instrumentation:
     doctrine:
-      capture_query_parameters: true # Verbose query info for debugging
-      slow_query_threshold: 100 # Lower threshold in dev
+      tracing:
+        enabled: true
 
     messenger:
-      capture_payload: true # See full message content in dev
+      tracing:
+        enabled: true
 ```
 
 ```yaml
-# config/packages/prod/opentelemetry.yaml
+# config/packages/prod/open_telemetry.yaml
 
-opentelemetry:
+open_telemetry:
   traces:
-    sampler:
-      type: 'traceidratio'
-      options:
-        ratio: 0.1 # Sample only 10% in production
+    providers:
+      default:
+        sampler:
+          type: 'trace_id_ratio'
+          options:
+            ratio: 0.1 # Sample only 10% in production
 
   instrumentation:
     doctrine:
-      capture_query_parameters: false # Don't capture potentially sensitive data
+      tracing:
+        enabled: false # Disable database spans if query details are sensitive
 
     messenger:
-      capture_payload: false # Protect sensitive message content
+      tracing:
+        enabled: true
 
     http_kernel:
-      capture_headers: false # Reduce overhead and protect privacy
+      tracing:
+        enabled: true
 ```
 
 ## Advanced Configuration with Custom Services
@@ -276,18 +279,11 @@ The bundle allows you to override default services for advanced customization.
 services:
   # Custom span processor for additional processing
   app.telemetry.custom_processor:
+    decorates: 'open_telemetry.traces.processors.simple'
     class: App\Telemetry\CustomSpanProcessor
     arguments:
-      - '@opentelemetry.trace.exporter'
+      - '@app.telemetry.custom_processor.inner'
       - '@logger'
-
-  # Decorate the default tracer provider
-  app.telemetry.tracer_provider:
-    decorates: 'opentelemetry.trace.tracer_provider'
-    class: App\Telemetry\CustomTracerProvider
-    arguments:
-      - '@.inner'
-      - '@app.telemetry.custom_processor'
 ```
 
 Create a custom span processor that enriches spans with application-specific context:
@@ -369,7 +365,7 @@ Capture authentication information in your traces to correlate telemetry with us
 
 namespace App\EventSubscriber;
 
-use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\API\Trace\TracerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Symfony\Component\Security\Http\Event\LoginFailureEvent;
@@ -377,7 +373,7 @@ use Symfony\Component\Security\Http\Event\LoginFailureEvent;
 class TelemetrySecuritySubscriber implements EventSubscriberInterface
 {
     public function __construct(
-        private TracerProviderInterface $tracerProvider
+        private TracerInterface $tracer
     ) {}
 
     public static function getSubscribedEvents(): array
@@ -390,9 +386,7 @@ class TelemetrySecuritySubscriber implements EventSubscriberInterface
 
     public function onLoginSuccess(LoginSuccessEvent $event): void
     {
-        $tracer = $this->tracerProvider->getTracer('app.security');
-
-        $span = $tracer->spanBuilder('authentication.success')
+        $span = $this->tracer->spanBuilder('authentication.success')
             ->setAttribute('user.email', $event->getUser()->getUserIdentifier())
             ->setAttribute('auth.method', $event->getAuthenticator()::class)
             ->startSpan();
@@ -402,9 +396,7 @@ class TelemetrySecuritySubscriber implements EventSubscriberInterface
 
     public function onLoginFailure(LoginFailureEvent $event): void
     {
-        $tracer = $this->tracerProvider->getTracer('app.security');
-
-        $span = $tracer->spanBuilder('authentication.failure')
+        $span = $this->tracer->spanBuilder('authentication.failure')
             ->setAttribute('error', true)
             ->setAttribute('exception.message', $event->getException()->getMessage())
             ->startSpan();
@@ -483,30 +475,18 @@ class SensitiveDataFilter
 
 ## Troubleshooting Common Issues
 
-**Bundle not registering**: Ensure Symfony Flex is installed or manually register the bundle in `config/bundles.php`.
+**Bundle not registering**: Manually register the bundle in `config/bundles.php`.
 
-**No spans appearing**: Check that the exporter endpoint is correct and accessible. Use the test controller to verify trace IDs are being generated.
+**No spans appearing**: Check that the exporter DSN is correct and accessible. Use the test controller to verify trace IDs are being generated.
 
-**High memory usage**: Reduce the `max_queue_size` in the batch processor configuration. Also consider increasing the sampling ratio to reduce trace volume.
+**High memory usage**: Reduce the sampling ratio to reduce trace volume, or switch noisy instrumentation components off in production.
 
 **Spans missing attributes**: Verify that the specific instrumentation component is enabled in the configuration and that you're using compatible versions of dependencies.
 
-**Performance degradation**: Disable verbose options like `capture_query_parameters` and `capture_headers` in production. Increase the sampling ratio to reduce overhead.
+**Performance degradation**: Disable instrumentation components you do not need in production. Reduce the sampling ratio to reduce overhead.
 
 ## Visualizing Your Traces
 
-The bundle integrates seamlessly with the Symfony profiler in development mode, adding a new panel that displays OpenTelemetry information.
-
-```yaml
-# config/packages/dev/opentelemetry.yaml
-
-opentelemetry:
-  profiler:
-    enabled: true
-    # Show trace information in the Symfony debug toolbar
-    toolbar: true
-```
-
-This adds a dedicated panel to the Symfony profiler showing the trace ID, span hierarchy, and timing information for the current request.
+Use your OpenTelemetry backend to inspect the exported trace ID, span hierarchy, and timing information for each request. In development, the test controller above also returns the trace ID and span ID so you can correlate a Symfony request with the exported trace.
 
 The FriendsOfOpenTelemetry bundle transforms Symfony's built-in observability into production-grade distributed tracing. By leveraging Symfony's event system and service container, it provides comprehensive automatic instrumentation while maintaining the flexibility to customize behavior for your specific needs.
