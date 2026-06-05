@@ -10,7 +10,7 @@ Envoy Proxy access logs record details about every request. By injecting the Ope
 
 ## Configuring Access Logging with Trace Fields
 
-Envoy supports custom access log formats. Add trace ID and span ID fields using Envoy's format variables:
+Envoy supports custom access log formats. Add trace ID and trace context fields using Envoy's format variables:
 
 ```yaml
 # envoy.yaml - access_log section within http_connection_manager
@@ -60,7 +60,8 @@ static_resources:
                           client_ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
                           user_agent: "%REQ(USER-AGENT)%"
                           # Trace correlation fields
-                          trace_id: "%REQ(TRACEPARENT)%"
+                          trace_id: "%TRACE_ID%"
+                          traceparent: "%REQ(TRACEPARENT)%"
                           request_id: "%REQ(X-REQUEST-ID)%"
                 route_config:
                   name: local_route
@@ -96,12 +97,12 @@ receivers:
           parse_from: attributes.timestamp
           layout: '%Y-%m-%dT%H:%M:%S.%LZ'
 
-      # Extract trace ID from the traceparent header value
+      # Extract trace ID and span ID from the traceparent header value
       # traceparent format: 00-<trace-id>-<span-id>-<flags>
       - type: regex_parser
-        regex: '00-(?P<trace_id>[a-f0-9]{32})-(?P<span_id>[a-f0-9]{16})-(?P<trace_flags>[a-f0-9]{2})'
-        parse_from: attributes.trace_id
-        if: 'attributes.trace_id != nil and attributes.trace_id != "-"'
+        regex: '^00-(?P<trace_id>[a-f0-9]{32})-(?P<span_id>[a-f0-9]{16})-(?P<trace_flags>[a-f0-9]{2})$'
+        parse_from: attributes.traceparent
+        if: 'attributes.traceparent != nil and attributes.traceparent != "-"'
 
       # Set the trace context on the log record
       - type: trace_parser
@@ -163,12 +164,10 @@ access_log:
   - name: envoy.access_loggers.open_telemetry
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
-      common_config:
-        log_name: envoy_access
-        grpc_service:
-          envoy_grpc:
-            cluster_name: otel_collector
-        transport_api_version: V3
+      log_name: envoy_access
+      grpc_service:
+        envoy_grpc:
+          cluster_name: otel_collector
       body:
         string_value: "%REQ(:METHOD)% %REQ(:PATH)% %PROTOCOL% %RESPONSE_CODE%"
       attributes:
@@ -206,13 +205,14 @@ A JSON access log entry with trace correlation looks like:
   "duration_ms": "45",
   "upstream_host": "10.0.0.5:8080",
   "upstream_cluster": "user_service",
-  "trace_id": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
   "request_id": "abc-123-def-456"
 }
 ```
 
-From this log entry, you can extract the trace ID `4bf92f3577b34da6a3ce929d0e0e4736` and look it up directly in your tracing backend.
+From this log entry, you can use the trace ID `4bf92f3577b34da6a3ce929d0e0e4736` directly, or extract the trace ID and span ID from the `traceparent` header and look them up in your tracing backend.
 
 ## Summary
 
-Injecting trace IDs into Envoy access logs bridges the gap between log-based debugging and trace-based debugging. Use Envoy's JSON format variables to include the `traceparent` header in access logs, then parse them in the Collector with trace context extraction. Alternatively, use the OpenTelemetry access logger extension to send logs directly to the Collector with trace context automatically attached.
+Injecting trace IDs into Envoy access logs bridges the gap between log-based debugging and trace-based debugging. Use Envoy's JSON format variables to include the trace ID and `traceparent` header in access logs, then parse them in the Collector with trace context extraction. Alternatively, use the OpenTelemetry access logger extension to send logs directly to the Collector with trace context automatically attached.
