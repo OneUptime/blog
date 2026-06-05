@@ -14,9 +14,9 @@ FastAPIInstrumentor provides three types of hooks that execute at different stag
 
 **server_request_hook**: Runs when a request arrives, before any application code executes. Use this to extract request metadata, validate headers, or set up request-scoped context.
 
-**client_request_hook**: Fires when your application makes outgoing HTTP requests. This helps trace calls to external services.
+**client_request_hook**: Fires for the internal ASGI receive span when the application receives an ASGI message, such as request body data.
 
-**client_response_hook**: Executes when responses arrive from external services, allowing you to capture response metadata.
+**client_response_hook**: Fires for the internal ASGI send span when the application sends an ASGI response message, such as response start or body data.
 
 Understanding when each hook fires is critical for implementing the right logic in the right place.
 
@@ -25,13 +25,12 @@ graph TD
     A[Request Arrives] --> B[server_request_hook]
     B --> C[FastAPI Routing]
     C --> D[Path Operation]
-    D --> E{Makes External Call?}
-    E -->|Yes| F[client_request_hook]
-    F --> G[External Service]
-    G --> H[client_response_hook]
-    H --> I[Continue Processing]
-    E -->|No| I
-    I --> J[Response Sent]
+    D --> E{Reads Request Body?}
+    E -->|Yes| F[client_request_hook on receive]
+    E -->|No| G[Continue Processing]
+    F --> G
+    G --> H[client_response_hook on send]
+    H --> I[Response Sent]
 ```
 
 ## Basic Server Request Hook
@@ -41,8 +40,6 @@ The server request hook receives the span and ASGI scope dictionary. The scope c
 ```python
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry import trace
-
 app = FastAPI()
 
 def server_request_hook(span, scope):
@@ -226,7 +223,6 @@ While you shouldn't log entire request bodies (potential security and performanc
 ```python
 from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-import json
 
 app = FastAPI()
 
@@ -334,58 +330,45 @@ async def checkout():
     return {"checkout": "data"}
 ```
 
-## Client Request Hook for Outgoing Calls
+## Client Hooks for ASGI Receive and Send Events
 
-Track outgoing HTTP requests to external services.
+FastAPI's client hooks are inherited from the ASGI instrumentation layer. They do not instrument outgoing HTTP calls made with libraries such as `httpx`; use `opentelemetry-instrumentation-httpx` for that. In FastAPI instrumentation, `client_request_hook` receives ASGI `receive` events and `client_response_hook` receives ASGI `send` events.
 
 ```python
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-import httpx
+from typing import Any
 
 app = FastAPI()
 
-def client_request_hook(span, scope):
-    """Customize spans for outgoing requests"""
+def client_request_hook(span, scope: dict[str, Any], message: dict[str, Any]):
+    """Customize internal spans for ASGI receive events"""
     if not span or not span.is_recording():
         return
 
-    # Extract URL and method from scope
-    method = scope.get("method", "")
-    url = scope.get("url", "")
+    message_type = message.get("type", "")
+    span.set_attribute("asgi.receive.type", message_type)
 
-    span.set_attribute("http.client.method", method)
-    span.set_attribute("http.client.url", str(url))
+    if message_type == "http.request":
+        body = message.get("body", b"")
+        span.set_attribute("asgi.receive.body_size", len(body))
+        span.set_attribute("asgi.receive.more_body", message.get("more_body", False))
 
-    # Parse URL to extract service information
-    if url:
-        # Identify external service
-        if "api.stripe.com" in str(url):
-            span.set_attribute("external.service", "stripe")
-            span.set_attribute("external.service.type", "payment")
-        elif "api.sendgrid.com" in str(url):
-            span.set_attribute("external.service", "sendgrid")
-            span.set_attribute("external.service.type", "email")
-        elif "s3.amazonaws.com" in str(url):
-            span.set_attribute("external.service", "s3")
-            span.set_attribute("external.service.type", "storage")
-
-def client_response_hook(span, message):
-    """Process responses from external services"""
+def client_response_hook(span, scope: dict[str, Any], message: dict[str, Any]):
+    """Customize internal spans for ASGI send events"""
     if not span or not span.is_recording():
         return
 
-    # Extract status code
-    status = message.get("status", 0)
-    span.set_attribute("http.client.status_code", status)
+    message_type = message.get("type", "")
+    span.set_attribute("asgi.send.type", message_type)
 
-    # Categorize response
-    if 200 <= status < 300:
-        span.set_attribute("http.client.result", "success")
-    elif 400 <= status < 500:
-        span.set_attribute("http.client.result", "client_error")
-    elif 500 <= status < 600:
-        span.set_attribute("http.client.result", "server_error")
+    if message_type == "http.response.start":
+        status = message.get("status", 0)
+        span.set_attribute("http.response.status_code", status)
+    elif message_type == "http.response.body":
+        body = message.get("body", b"")
+        span.set_attribute("asgi.send.body_size", len(body))
+        span.set_attribute("asgi.send.more_body", message.get("more_body", False))
 
 FastAPIInstrumentor.instrument_app(
     app,
@@ -393,15 +376,10 @@ FastAPIInstrumentor.instrument_app(
     client_response_hook=client_response_hook
 )
 
-@app.get("/api/charge")
-async def charge_payment():
-    """Make external payment API call"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.stripe.com/v1/charges",
-            json={"amount": 1000}
-        )
-    return {"status": "charged"}
+@app.post("/api/process")
+async def process_payload(payload: dict):
+    """Read a request body and send a JSON response"""
+    return {"status": "processed", "keys": list(payload.keys())}
 ```
 
 ## Implementing Performance Budgets
@@ -411,6 +389,7 @@ Track whether requests meet performance budgets.
 ```python
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry import trace
 import time
 
 app = FastAPI()
@@ -423,18 +402,12 @@ PERFORMANCE_BUDGETS = {
     "/api/checkout": 500
 }
 
-request_start_times = {}
-
 def server_request_hook(span, scope):
-    """Record request start time"""
+    """Record the request performance budget"""
     if not span or not span.is_recording():
         return
 
     path = scope.get("path", "")
-
-    # Store start time
-    span_id = span.get_span_context().span_id
-    request_start_times[span_id] = time.time()
 
     # Add performance budget to span
     budget = PERFORMANCE_BUDGETS.get(path, 1000)
