@@ -25,19 +25,32 @@ Each stage has a start time, end time, and metadata. That is exactly what a span
 Here is how to initiate a trace when a shipment is created:
 
 ```python
-from opentelemetry import trace, context
+from datetime import datetime, timezone
+
+from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 provider = TracerProvider()
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+    )
 )
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("supply-chain-tracker")
 propagator = TraceContextTextMapPropagator()
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 def create_shipment(order_id, origin, destination, items):
     """
@@ -115,7 +128,7 @@ When something goes wrong, such as a customs hold or a weather delay, add span e
 
 ```python
 def record_delay(shipment_id, delay_reason, estimated_impact_hours):
-    """Record a delay event on the current shipment span."""
+    """Record a delay span and event within the shipment trace."""
     shipment = get_shipment(shipment_id)
     parent_context = propagator.extract(shipment["trace_context"])
 
@@ -126,11 +139,18 @@ def record_delay(shipment_id, delay_reason, estimated_impact_hours):
         span.set_attribute("shipment.id", shipment_id)
         span.set_attribute("delay.reason", delay_reason)
         span.set_attribute("delay.impact_hours", estimated_impact_hours)
-        span.set_attribute("delay.reported_at", datetime.utcnow().isoformat())
+        span.set_attribute("delay.reported_at", datetime.now(timezone.utc).isoformat())
+        span.add_event(
+            "shipment.delay.reported",
+            {
+                "delay.reason": delay_reason,
+                "delay.impact_hours": estimated_impact_hours,
+            },
+        )
 
         # Mark the span status as error if the delay is significant
         if estimated_impact_hours > 24:
-            span.set_status(trace.StatusCode.ERROR, f"Major delay: {delay_reason}")
+            span.set_status(Status(StatusCode.ERROR, f"Major delay: {delay_reason}"))
 ```
 
 ## Metrics for Supply Chain KPIs
