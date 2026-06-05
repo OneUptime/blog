@@ -44,7 +44,7 @@ gantt
     Child Span          :b1, 10, 80
 ```
 
-In the skewed example, the child span appears to start 40 units before the parent span, which is physically impossible since the parent has to make the request that creates the child. This happens because Service B's clock is running ahead of Service A's clock by roughly 40 units.
+In the skewed example, the child span appears to start 40 units before the parent span, which is physically impossible since the parent has to make the request that creates the child. This happens because Service B's clock is running behind Service A's clock by roughly 40 units.
 
 ## Understanding the Root Causes
 
@@ -193,8 +193,8 @@ driftfile /var/lib/chrony/drift
 Containers share the host's kernel clock, so fixing the host fixes all containers on that host. However, in Kubernetes environments, you might have nodes from different providers or configurations.
 
 ```yaml
-# Kubernetes DaemonSet to ensure NTP synchronization on all nodes
-# This runs chrony on every node in the cluster
+# Kubernetes DaemonSet to check NTP synchronization on all nodes
+# This enters the host namespaces and queries the node's time sync service
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -218,12 +218,18 @@ spec:
         command:
         - /bin/sh
         - -c
-        # Periodically check NTP sync status and log warnings if skew is detected
+        # Periodically check host NTP sync status and log warnings if skew is detected
         - |
-          apk add --no-cache chrony
+          apk add --no-cache util-linux
           while true; do
-            offset=$(chronyc tracking | grep "Last offset" | awk '{print $4}')
-            echo "NTP offset on $(hostname): ${offset} seconds"
+            if nsenter -t 1 -m -u -i -n -- chronyc tracking >/tmp/chrony 2>&1; then
+              offset=$(awk -F: '/Last offset/ {print $2}' /tmp/chrony | awk '{print $1}')
+              echo "NTP offset on $(hostname): ${offset} seconds"
+            elif nsenter -t 1 -m -u -i -n -- timedatectl status >/tmp/timedate 2>&1; then
+              grep -E "NTP service|System clock synchronized" /tmp/timedate
+            else
+              echo "Unable to query host NTP status on $(hostname)"
+            fi
             sleep 300
           done
         securityContext:
@@ -249,7 +255,7 @@ vmware-toolbox-cmd timesync disable
 
 Even with perfect NTP synchronization, you will still see a few milliseconds of skew occasionally. Your tracing backend should be configured to handle small amounts of skew gracefully.
 
-Most tracing backends have a clock skew correction feature that adjusts child span timestamps to fit within their parent's time window. In Jaeger, for example:
+Some tracing backends have a clock skew correction feature that adjusts child span timestamps to fit within their parent's time window. In Jaeger, for example:
 
 ```yaml
 # Jaeger query service configuration with clock skew adjustment
@@ -263,20 +269,24 @@ QUERY_MAX_CLOCK_SKEW_ADJUSTMENT: "5s"
 # Set this based on the maximum skew you observe in your environment
 ```
 
-If you are using the OpenTelemetry Collector, you can add a span processor that detects and logs clock skew issues:
+If you are using the OpenTelemetry Collector, you can add a transform processor to enrich spans with host time-sync metadata so skew issues are easier to correlate:
 
 ```yaml
-# OpenTelemetry Collector configuration with attributes processor
-# to flag spans that might be affected by clock skew
+# OpenTelemetry Collector configuration with transform processor
+# to annotate spans with host time-sync metadata
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 processors:
-  # The transform processor can add metadata about potential clock skew
+  # The transform processor can add metadata for clock skew investigations
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Add a resource attribute indicating the host's time source
-          # This helps correlate clock skew with specific machines
-          - set(attributes["host.ntp.synced"], "true")
+      # Add a span attribute indicating the expected host time-sync state
+      # This helps correlate clock skew with specific machines
+      - set(span.attributes["host.ntp.synced"], "true")
 
   batch:
     timeout: 10s
@@ -301,7 +311,7 @@ If you create manual spans in your application code, use monotonic clocks for du
 // Use performance.now() (monotonic) for duration measurements
 // instead of Date.now() (wall clock) which can jump due to NTP corrections
 
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 function instrumentedOperation() {
   const tracer = trace.getTracer('my-app');
@@ -319,10 +329,10 @@ function instrumentedOperation() {
       const durationMs = performance.now() - startTime;
       span.setAttribute('operation.duration_ms', durationMs);
 
-      span.setStatus({ code: 1 }); // OK
+      span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
-      span.setStatus({ code: 2, message: error.message }); // ERROR
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -362,7 +372,7 @@ Rather than waiting for clock skew to show up in broken traces, set up proactive
 # Prometheus-compatible metric exporter for NTP offset
 # Add this to your node exporter configuration or a custom exporter
 
-# The node_exporter for Prometheus already exposes NTP metrics:
+# The node_exporter for Prometheus exposes kernel time synchronization metrics on Linux:
 # node_timex_offset_seconds - Current NTP offset
 # node_timex_sync_status - Whether NTP is synchronized (1 = yes)
 
