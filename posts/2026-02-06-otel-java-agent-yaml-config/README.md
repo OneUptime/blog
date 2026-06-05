@@ -22,9 +22,9 @@ java \
   -Dotel.traces.sampler.arg=0.2 \
   -Dotel.metrics.exporter=otlp \
   -Dotel.logs.exporter=otlp \
-  -Dotel.resource.attributes=deployment.environment=production,service.version=3.1.0 \
+  -Dotel.resource.attributes=deployment.environment.name=production,service.version=3.1.0 \
   -Dotel.instrumentation.http.server.capture-request-headers=X-Request-ID,X-Tenant-ID \
-  -Dotel.instrumentation.jdbc.statement-sanitizer.enabled=true \
+  -Dotel.instrumentation.common.db-statement-sanitizer.enabled=true \
   -jar inventory-service.jar
 ```
 
@@ -37,7 +37,7 @@ With declarative configuration, all of the above collapses into a YAML file and 
 ```bash
 java \
   -javaagent:/opt/opentelemetry-javaagent.jar \
-  -Dotel.experimental.config.file=/etc/otel/agent-config.yaml \
+  -Dotel.config.file=/etc/otel/agent-config.yaml \
   -jar inventory-service.jar
 ```
 
@@ -46,13 +46,16 @@ Here is the YAML file:
 ```yaml
 # /etc/otel/agent-config.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "inventory-service"
-    service.version: "3.1.0"
-    deployment.environment: "production"
+    - name: service.name
+      value: "inventory-service"
+    - name: service.version
+      value: "3.1.0"
+    - name: deployment.environment.name
+      value: "production"
 
 tracer_provider:
   processors:
@@ -61,9 +64,8 @@ tracer_provider:
         max_queue_size: 2048
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
   sampler:
     parent_based:
       root:
@@ -75,37 +77,39 @@ meter_provider:
     - periodic:
         interval: 60000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://collector:4317"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 
-# Java agent specific: instrumentation configuration
-instrumentation:
-  java:
+# Java agent specific: instrumentation configuration uses /development keys
+instrumentation/development:
+  general:
     http:
       server:
-        capture_request_headers:
+        request_captured_headers:
           - "X-Request-ID"
           - "X-Tenant-ID"
-    jdbc:
-      statement_sanitizer:
-        enabled: true
+  java:
+    common:
+      database:
+        statement_sanitizer:
+          enabled: true
 ```
 
 ## Java Agent Version Requirements
 
-Declarative configuration support was added in the OpenTelemetry Java agent version 2.x series. Make sure you are running a recent version:
+Declarative configuration support is documented for the OpenTelemetry Java agent version 2.26.0 and later. Make sure you are running a recent version:
 
 ```bash
 # Check your agent version
@@ -116,50 +120,47 @@ curl -L -o opentelemetry-javaagent.jar \
   https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
 ```
 
+You can also use the standard `OTEL_CONFIG_FILE` environment variable instead of a JVM system property:
+
+```bash
+OTEL_CONFIG_FILE=/etc/otel/agent-config.yaml \
+java -javaagent:/opt/opentelemetry-javaagent.jar -jar inventory-service.jar
+```
+
 ## Configuring Instrumentation-Specific Settings
 
 One of the biggest advantages of the YAML format for the Java agent is how cleanly it handles instrumentation-specific settings. With system properties, these get deeply nested and hard to parse visually:
 
 ```yaml
 # Instrumentation-specific configuration
-instrumentation:
-  java:
+instrumentation/development:
+  general:
     # HTTP client and server settings
     http:
       server:
-        capture_request_headers:
+        request_captured_headers:
           - "X-Request-ID"
           - "X-Correlation-ID"
-        capture_response_headers:
+        response_captured_headers:
           - "X-Cache-Status"
       client:
-        capture_request_headers:
-          - "Authorization"  # captured but redacted in the agent
+        request_captured_headers:
+          - "Authorization"  # captured as a span attribute; avoid sensitive headers in production
 
+  java:
     # Database instrumentation
-    jdbc:
-      statement_sanitizer:
-        enabled: true  # replaces literal values with ?
+    common:
+      database:
+        statement_sanitizer:
+          enabled: true  # replaces literal values with ?
 
-    # Kafka instrumentation
-    kafka:
-      producer:
-        propagation:
-          enabled: true
-      consumer:
-        propagation:
-          enabled: true
-
-    # gRPC instrumentation
-    grpc:
-      capture_metadata:
-        server:
-          request: ["x-tenant-id"]
-
-    # Suppress specific instrumentations entirely
-    disabled_instrumentations:
-      - "spring-scheduling"  # noisy periodic tasks
-      - "aws-sdk-2.2-sqs"   # handled by custom instrumentation
+# Suppress specific instrumentations entirely
+distribution:
+  javaagent:
+    instrumentation:
+      disabled:
+        - "spring_scheduling"  # noisy periodic tasks
+        - "aws_sdk_2_2_sqs"    # handled by custom instrumentation
 ```
 
 ## Using Environment Variables for Secrets
@@ -171,10 +172,11 @@ tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT}"
             headers:
-              Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+              - name: Authorization
+                value: "Bearer ${OTEL_AUTH_TOKEN}"
 ```
 
 Then pass only the sensitive values as environment variables or Kubernetes secrets:
@@ -193,43 +195,44 @@ env:
 
 ## Spring Boot Integration
 
-For Spring Boot applications, you can load the config file path from your `application.yml`:
+For Spring Boot applications using the Java agent, the declarative config file is still loaded by the agent before your application starts. Keep the path in an environment variable and reference it from the JVM arguments:
 
-```yaml
-# application.yml
-otel:
-  config-file: "${OTEL_CONFIG_FILE:/etc/otel/agent-config.yaml}"
+```bash
+export OTEL_CONFIG_FILE="${OTEL_CONFIG_FILE:-/etc/otel/agent-config.yaml}"
 ```
 
-Then reference it in your JVM arguments:
+Then pass the agent as usual:
 
 ```bash
 java \
   -javaagent:/opt/opentelemetry-javaagent.jar \
-  -Dotel.experimental.config.file=${OTEL_CONFIG_FILE} \
+  -Dotel.config.file=${OTEL_CONFIG_FILE} \
   -jar my-spring-app.jar
 ```
 
-## Gradle and Maven Development Setup
+If you use the OpenTelemetry Spring Boot starter instead of the Java agent, declarative configuration goes inside `application.yaml` under `otel:` and uses Spring's `${VAR:default}` placeholder syntax.
+
+## Gradle Development Setup
 
 During local development, you want a different configuration than production. Set up a dev-specific config:
 
 ```yaml
 # config/otel-dev.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "inventory-service"
-    deployment.environment: "development"
+    - name: service.name
+      value: "inventory-service"
+    - name: deployment.environment.name
+      value: "development"
 
 tracer_provider:
   processors:
     - simple:  # no batching in dev for immediate export
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://localhost:4317"
-            protocol: "grpc"
   sampler:
     always_on: {}  # sample everything in dev
 
@@ -247,11 +250,11 @@ Configure Gradle to use it:
 tasks.named('bootRun') {
     jvmArgs = [
         "-javaagent:${project.rootDir}/libs/opentelemetry-javaagent.jar",
-        "-Dotel.experimental.config.file=${project.rootDir}/config/otel-dev.yaml"
+        "-Dotel.config.file=${project.rootDir}/config/otel-dev.yaml"
     ]
 }
 ```
 
 ## Wrapping Up
 
-Switching the OpenTelemetry Java agent from system properties to YAML declarative configuration is straightforward and immediately improves readability. Your observability configuration becomes version-controlled, reviewable, and consistent across your JVM services. Start with a single service, validate the YAML against the schema in CI, and roll it out gradually. The agent falls back to environment variables and system properties for any settings not covered in the file, so you can migrate incrementally.
+Switching the OpenTelemetry Java agent from system properties to YAML declarative configuration is straightforward and immediately improves readability. Your observability configuration becomes version-controlled, reviewable, and consistent across your JVM services. Start with a single service, validate the YAML against the schema in CI, and roll it out gradually. Environment variables are ignored unless you reference them explicitly in the YAML with substitution syntax, so include any values you still want to supply at deployment time.
