@@ -36,7 +36,10 @@ export PROJECT_ID=your-gcp-project-id
 
 # Create a bucket for registry storage
 # Choose a region close to your registry server
-gsutil mb -p $PROJECT_ID -l us-central1 -c standard gs://my-docker-registry-storage
+gsutil mb -p $PROJECT_ID -l us-central1 -c STANDARD gs://my-docker-registry-storage
+
+# Create the rootdirectory prefix used by the registry configuration
+gcloud storage folders create gs://my-docker-registry-storage/docker/registry/v2/
 
 # Verify the bucket exists
 gsutil ls gs://my-docker-registry-storage
@@ -79,7 +82,7 @@ storage:
     keyfile: /etc/docker/registry/gcs-key.json
     # Root directory within the bucket
     rootdirectory: /docker/registry/v2
-    # Chunk size for multipart uploads (5MB minimum)
+    # Chunk size for resumable uploads (must be a multiple of 256KiB)
     chunksize: 5242880
   # Enable image deletion
   delete:
@@ -211,7 +214,7 @@ docker pull localhost:5000/test/alpine:latest
 
 ### Chunk Size
 
-The `chunksize` setting controls the size of multipart upload chunks. Larger chunks mean fewer API calls but more memory usage per upload.
+The `chunksize` setting controls the size of resumable upload chunks. Larger chunks mean fewer API calls but more memory usage per upload. The value must be a multiple of 256KiB.
 
 ```yaml
 # Default: 5MB - good for most cases
@@ -279,7 +282,7 @@ Use Nearline or Coldline storage classes for images that are rarely pulled:
 
 ```bash
 # Change storage class for cost savings on infrequently accessed images
-gsutil rewrite -s nearline gs://my-docker-registry-storage/**
+gsutil rewrite -s NEARLINE gs://my-docker-registry-storage/**
 ```
 
 ## Garbage Collection
@@ -288,11 +291,13 @@ Even with GCS, you need to run garbage collection to clean up unreferenced layer
 
 ```bash
 # Dry run to see what would be deleted
-docker compose exec registry bin/registry garbage-collect /etc/docker/registry/config.yml --dry-run
+docker compose exec registry bin/registry garbage-collect --dry-run /etc/docker/registry/config.yml
 
 # Actually delete unreferenced blobs
 docker compose exec registry bin/registry garbage-collect /etc/docker/registry/config.yml
 ```
+
+Run garbage collection while the registry is stopped or in read-only mode so new uploads cannot be deleted while the mark-and-sweep process is running.
 
 ## Migrating from Filesystem to GCS
 
