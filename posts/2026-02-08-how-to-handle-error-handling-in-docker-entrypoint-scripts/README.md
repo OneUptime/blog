@@ -180,8 +180,10 @@ cleanup() {
         echo "Forwarding SIGTERM to application (PID: $CHILD_PID)"
         kill -TERM "$CHILD_PID"
         # Wait for the application to exit gracefully
+        set +e
         wait "$CHILD_PID"
         exit_code=$?
+        set -e
         echo "Application exited with code $exit_code"
         exit "$exit_code"
     fi
@@ -198,8 +200,11 @@ echo "Running initialization..."
 CHILD_PID=$!
 
 # Wait for the application to exit
+set +e
 wait "$CHILD_PID"
-exit $?
+exit_code=$?
+set -e
+exit "$exit_code"
 ```
 
 This pattern is useful when you need the entrypoint to remain active (for logging, health checks, etc.) while still forwarding signals to the main process.
@@ -299,7 +304,7 @@ fi
 exec "$@"
 ```
 
-In Kubernetes, you can configure restart policies based on exit codes. Docker Compose's `restart: on-failure` also respects non-zero exit codes.
+In Kubernetes, `restartPolicy: OnFailure` restarts containers that exit with a non-zero status. Docker Compose's `restart: on-failure` also respects non-zero exit codes.
 
 ## Logging Best Practices
 
@@ -307,20 +312,20 @@ In Kubernetes, you can configure restart policies based on exit codes. Docker Co
 #!/bin/bash
 set -euo pipefail
 
-# Log to both stdout and a file for persistence
+# Log to stdout/stderr; redirection below also writes output to a file
 LOG_FILE="/var/log/entrypoint.log"
 
 log() {
     local message="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    echo "$message" | tee -a "$LOG_FILE"
+    echo "$message"
 }
 
 log_error() {
     local message="[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*"
-    echo "$message" | tee -a "$LOG_FILE" >&2
+    echo "$message" >&2
 }
 
-# Redirect all script output to the log as well
+# Redirect all script output to the log file as well
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 log "Entrypoint starting"
