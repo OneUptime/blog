@@ -72,8 +72,9 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
+      unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     dimensions:
@@ -103,9 +104,9 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp, spanmetrics]
+      exporters: [otlphttp, span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheus]
 ```
@@ -123,7 +124,7 @@ groups:
         expr: |
           sum by (service_name) (
             rate(sli_calls_total{
-              status_code!~"5.."
+              http_response_status_code!~"5.."
             }[5m])
           )
           /
@@ -165,7 +166,7 @@ groups:
 # sla_reporter.py
 import yaml
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import List
 
@@ -254,6 +255,32 @@ def check_sla_compliance(sla_def: dict) -> List[SLAResult]:
             ) if target_ms > 0 else 0,
         ))
 
+    # Check latency P50
+    if "latency_p50" in objectives:
+        target_ms = objectives["latency_p50"]["target_ms"]
+        window = objectives["latency_p50"]["window"]
+
+        query = (
+            f'quantile_over_time(0.50, '
+            f'sli:latency_p50:seconds{{service_name="{service}"}}'
+            f'[{window}]) * 1000'
+        )
+        result = query_prometheus(query)
+        actual_ms = 0.0
+        if result.get("data", {}).get("result"):
+            actual_ms = float(result["data"]["result"][0]["value"][1])
+
+        results.append(SLAResult(
+            service=service,
+            objective="latency_p50",
+            target=target_ms,
+            actual=round(actual_ms, 2),
+            compliant=actual_ms <= target_ms,
+            error_budget_remaining_pct=max(
+                0, (1 - actual_ms / target_ms) * 100
+            ) if target_ms > 0 else 0,
+        ))
+
     return results
 
 
@@ -262,7 +289,7 @@ def generate_report():
     with open("sla-definitions.yaml") as f:
         config = yaml.safe_load(f)
 
-    report_date = datetime.utcnow().strftime("%Y-%m-%d")
+    report_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     print(f"SLA Compliance Report - {report_date}")
     print("=" * 70)
 
