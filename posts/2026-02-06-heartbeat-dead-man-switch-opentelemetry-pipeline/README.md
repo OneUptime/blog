@@ -44,7 +44,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
     logs:
       level: info
 
@@ -175,8 +182,8 @@ Route this alert to a dedicated receiver in Alertmanager:
 route:
   receiver: 'default'
   routes:
-    - match:
-        purpose: deadman
+    - matchers:
+        - purpose="deadman"
       receiver: 'deadman-watchdog'
       group_wait: 0s
       group_interval: 1m
@@ -208,7 +215,19 @@ groups:
         expr: |
           absent_over_time(
             http_server_request_duration_seconds_count{
-              service_name=~"checkout-service|payments-service|auth-service"
+              service_name="checkout-service"
+            }[10m]
+          ) == 1
+          or
+          absent_over_time(
+            http_server_request_duration_seconds_count{
+              service_name="payments-service"
+            }[10m]
+          ) == 1
+          or
+          absent_over_time(
+            http_server_request_duration_seconds_count{
+              service_name="auth-service"
             }[10m]
           ) == 1
         for: 5m
