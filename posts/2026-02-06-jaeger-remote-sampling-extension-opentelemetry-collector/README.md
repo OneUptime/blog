@@ -6,23 +6,23 @@ Tags: OpenTelemetry, Collector, Extension, Jaeger, Sampling, Distributed Tracing
 
 Description: Master the configuration of Jaeger Remote Sampling extension in OpenTelemetry Collector to implement dynamic, centralized sampling strategies for distributed tracing systems.
 
-Sampling is critical for managing the volume and cost of distributed tracing in production systems. The Jaeger Remote Sampling extension enables centralized, dynamic sampling configuration that can be adjusted without redeploying applications, providing fine-grained control over which traces are collected.
+Sampling is critical for managing the volume and cost of distributed tracing in production systems. The Jaeger Remote Sampling extension enables centralized, dynamic sampling strategy configuration that can be adjusted without redeploying applications, providing fine-grained control over which traces are collected.
 
 ## Understanding Jaeger Remote Sampling
 
-The Jaeger Remote Sampling extension implements the Jaeger remote sampling protocol, allowing OpenTelemetry-instrumented applications to retrieve sampling decisions from a central configuration service. This approach separates sampling policy from application code, enabling runtime adjustments to sampling rates based on traffic patterns, system load, or debugging needs.
+The Jaeger Remote Sampling extension implements the Jaeger remote sampling protocol, allowing OpenTelemetry-instrumented applications configured with a compatible Jaeger remote sampler to retrieve sampling strategies from a central configuration service and make sampling decisions locally. This approach separates sampling policy from application code, enabling runtime adjustments to sampling rates based on traffic patterns, system load, or debugging needs.
 
-Remote sampling is particularly valuable in microservices architectures where consistent sampling decisions across services are essential for trace completeness. By centralizing sampling configuration, you can ensure that when a trace is sampled, all participating services record their spans.
+Remote sampling is particularly valuable in microservices architectures where consistent head-sampling behavior is essential for trace completeness. By centralizing sampling configuration and propagating the sampled trace flag with requests, you can ensure that when a trace is sampled, downstream services record their spans.
 
 ## Why Use Remote Sampling?
 
-Traditional head-based sampling makes sampling decisions at trace initiation, but these decisions are static and embedded in application configuration. Remote sampling provides several advantages:
+Traditional head-based sampling makes sampling decisions at trace initiation, and those policies are often embedded in application configuration. Remote sampling provides several advantages:
 
-**Dynamic adjustment**: Change sampling rates in real-time without redeploying applications.
+**Dynamic adjustment**: Change sampling rates without redeploying applications, with updates propagating on the configured polling or reload interval.
 
 **Service-specific policies**: Apply different sampling strategies to different services based on their importance or traffic volume.
 
-**Operation-level granularity**: Sample specific endpoints or operations at different rates.
+**Operation-level granularity**: Sample specific endpoints or operations at different probabilistic rates.
 
 **Centralized management**: Maintain sampling configuration in one place rather than across multiple application deployments.
 
@@ -37,7 +37,7 @@ Here's a minimal configuration to enable the Jaeger Remote Sampling extension:
 
 extensions:
   # Configure Jaeger Remote Sampling extension
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     # HTTP endpoint for sampling configuration queries
     http:
       endpoint: 0.0.0.0:5778
@@ -69,7 +69,7 @@ exporters:
       insecure: true
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -77,7 +77,7 @@ service:
       exporters: [otlp]
 ```
 
-The extension exposes an HTTP endpoint at port 5778 where applications query for sampling decisions. The sampling configuration is loaded from a file and automatically reloaded when changes are detected.
+The extension exposes an HTTP endpoint at port 5778 where applications query for sampling strategies. The sampling configuration is loaded from a file and polled according to `reload_interval`.
 
 ## Sampling Configuration File
 
@@ -133,15 +133,15 @@ This configuration demonstrates several sampling strategies:
 
 ## Sampling Strategy Types
 
-The Jaeger Remote Sampling extension supports multiple sampling strategy types:
+The Jaeger Remote Sampling strategy file supports these sampling strategy types:
 
 **Probabilistic Sampling**: Samples traces based on a probability value between 0.0 (0%) and 1.0 (100%). This is the most common strategy for reducing trace volume proportionally.
 
-**Rate Limiting Sampling**: Samples up to a specified number of traces per second. Useful for controlling costs while ensuring minimum trace collection.
+**Rate Limiting Sampling**: Samples up to a specified number of traces per second at the service level. Useful for controlling costs while ensuring representative trace collection.
 
-**Const Sampling**: Always samples (param: 1) or never samples (param: 0). Used for debugging or excluding specific services/operations.
+Use probabilistic sampling with `param: 1.0` to always sample or `param: 0.0` to never sample specific services or operations.
 
-Here's a comprehensive example demonstrating all strategy types:
+Here's a comprehensive example demonstrating the strategy types:
 
 ```json
 {
@@ -153,18 +153,18 @@ Here's a comprehensive example demonstrating all strategy types:
       "operation_strategies": [
         {
           "operation": "GET /health",
-          "type": "const",
-          "param": 0
+          "type": "probabilistic",
+          "param": 0.0
         },
         {
           "operation": "GET /metrics",
-          "type": "const",
-          "param": 0
+          "type": "probabilistic",
+          "param": 0.0
         },
         {
           "operation": "POST /api/orders",
-          "type": "const",
-          "param": 1
+          "type": "probabilistic",
+          "param": 1.0
         },
         {
           "operation": "GET /api/products",
@@ -206,13 +206,13 @@ sequenceDiagram
     A->>C: GET /sampling?service=frontend
     C->>F: Read sampling config
     F->>C: Return config
-    C->>C: Evaluate strategy
-    C->>A: Return sampling decision
+    C->>C: Select service strategy
+    C->>A: Return sampling strategy
 
-    Note over A: Cache decision (default 1 min)
+    Note over A: Cache strategy until next poll
 
     A->>A: Create trace
-    A->>A: Apply sampling decision
+    A->>A: Apply sampler decision
 
     alt Sampled
         A->>C: Send trace data
@@ -220,13 +220,13 @@ sequenceDiagram
         A->>A: Drop trace
     end
 
-    Note over A: Decision expires
+    Note over A: Strategy refresh interval expires
 
     A->>C: GET /sampling?service=frontend
-    C->>A: Return updated decision
+    C->>A: Return updated strategy
 ```
 
-Applications periodically query the sampling endpoint and cache decisions locally. This reduces network overhead while allowing sampling configuration to propagate within the cache timeout period (typically 60 seconds).
+Applications periodically query the sampling endpoint and cache strategies locally. This reduces network overhead while allowing sampling configuration to propagate within the sampler's configured polling interval.
 
 ## Advanced Configuration with gRPC
 
@@ -234,7 +234,7 @@ In addition to HTTP, the extension supports gRPC for sampling queries:
 
 ```yaml
 extensions:
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     # HTTP endpoint for legacy clients
     http:
       endpoint: 0.0.0.0:5778
@@ -248,7 +248,6 @@ extensions:
         cert_file: "/etc/certs/server-cert.pem"
         key_file: "/etc/certs/server-key.pem"
         client_ca_file: "/etc/certs/client-ca.pem"
-        client_auth_type: "RequireAndVerifyClientCert"
 
     source:
       file: "/etc/otel/sampling-config.json"
@@ -271,7 +270,7 @@ exporters:
       insecure: true
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -283,29 +282,19 @@ The gRPC endpoint provides better performance and supports TLS mutual authentica
 
 ## Remote Configuration Source
 
-Instead of file-based configuration, you can fetch sampling strategies from a remote service:
+Instead of a local file, you can proxy sampling strategies from a remote Jaeger sampling gRPC service:
 
 ```yaml
 extensions:
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     http:
       endpoint: 0.0.0.0:5778
 
     source:
-      # Fetch configuration from remote endpoint
+      # Fetch configuration from a Jaeger remote sampling gRPC endpoint
+      reload_interval: 30s
       remote:
-        endpoint: "http://config-service:8080/sampling/strategies"
-
-        # Refresh interval
-        refresh_interval: 30s
-
-        # Timeout for remote requests
-        timeout: 10s
-
-        # Authentication
-        headers:
-          - key: "Authorization"
-            value: "Bearer ${CONFIG_SERVICE_TOKEN}"
+        endpoint: "jaeger-collector:14250"
 
 receivers:
   otlp:
@@ -324,7 +313,7 @@ exporters:
       insecure: true
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -332,7 +321,7 @@ service:
       exporters: [otlp]
 ```
 
-Remote configuration enables dynamic updates from a central management system, allowing sampling strategies to be adjusted based on real-time conditions.
+Remote configuration enables dynamic updates from an upstream Jaeger sampling service, allowing sampling strategies to be adjusted centrally. If you need to load strategy JSON over HTTP/S instead, configure that URL as the `file` source.
 
 ## Integration with Tail Sampling
 
@@ -340,7 +329,7 @@ Combine remote sampling (head-based) with tail sampling (decision after trace co
 
 ```yaml
 extensions:
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     http:
       endpoint: 0.0.0.0:5778
 
@@ -394,7 +383,7 @@ exporters:
       insecure: true
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -402,7 +391,7 @@ service:
       exporters: [otlp]
 ```
 
-This configuration uses remote sampling for initial decisions at trace creation, then applies tail sampling to ensure all errors and slow traces are captured regardless of the initial sampling decision.
+This configuration uses remote sampling for initial decisions at trace creation, then applies tail sampling to traces that reach the collector. Tail sampling cannot recover traces that were dropped by the head sampler, so use a high enough head-sampling rate for services where errors and slow traces must be visible.
 
 ## Per-Service Sampling Architecture
 
@@ -434,7 +423,7 @@ Create a script to update sampling rates based on system conditions:
 
 ```yaml
 extensions:
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     http:
       endpoint: 0.0.0.0:5778
 
@@ -460,7 +449,7 @@ exporters:
       insecure: true
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -504,19 +493,13 @@ Track sampling metrics to optimize your configuration:
 
 ```yaml
 extensions:
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     http:
       endpoint: 0.0.0.0:5778
 
     source:
       file: "/etc/otel/sampling-config.json"
       reload_interval: 10s
-
-    # Enable metrics
-    telemetry:
-      metrics:
-        enabled: true
-        address: ":8888"
 
 receivers:
   otlp:
@@ -546,11 +529,19 @@ exporters:
     endpoint: "http://prometheus:9090/api/v1/write"
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
 
   telemetry:
     metrics:
-      address: ":8888"
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -564,7 +555,7 @@ service:
       exporters: [prometheusremotewrite]
 ```
 
-Monitor metrics like sampling_requests_total, sampling_decisions_sampled, and sampling_decisions_not_sampled to understand sampling effectiveness.
+Monitor collector metrics such as `otelcol_receiver_accepted_spans`, `otelcol_exporter_sent_spans`, and the HTTP or gRPC server request metrics for the sampling endpoint to understand strategy traffic and trace-volume changes.
 
 ## Best Practices
 
@@ -576,7 +567,7 @@ Monitor metrics like sampling_requests_total, sampling_decisions_sampled, and sa
 
 **Use rate limiting for high-volume services**: Protect storage costs while ensuring some trace representation from every service.
 
-**Monitor trace completeness**: Track the percentage of complete traces (all spans present) to ensure sampling decisions propagate correctly.
+**Monitor trace completeness**: Track the percentage of complete traces (all spans present) to ensure sampled trace context propagates correctly.
 
 **Version your configuration**: Keep sampling configurations in version control to track changes and enable rollback.
 
@@ -584,9 +575,9 @@ Monitor metrics like sampling_requests_total, sampling_decisions_sampled, and sa
 
 ## Troubleshooting
 
-**Applications not respecting sampling decisions**: Verify applications are configured to query the remote sampling endpoint. Check network connectivity to port 5778.
+**Applications not respecting sampling strategies**: Verify applications are configured to query the remote sampling endpoint. Check network connectivity to port 5778.
 
-**Incomplete traces**: Ensure all services in the trace path query the same sampling service and receive consistent decisions.
+**Incomplete traces**: Ensure all services in the trace path propagate trace context correctly and use compatible sampling configuration.
 
 **Configuration not updating**: Check the reload_interval setting and verify the file modification timestamp changes when updating the configuration.
 
