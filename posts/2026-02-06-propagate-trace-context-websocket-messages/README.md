@@ -80,7 +80,7 @@ On the browser side, wrap the native WebSocket with a tracing layer that automat
 
 ```javascript
 // traced-websocket.js - Browser WebSocket wrapper with OpenTelemetry tracing
-import { trace, context, propagation } from '@opentelemetry/api';
+import { trace, context, propagation, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('websocket-client');
 
@@ -123,6 +123,11 @@ class TracedWebSocket {
     this.handlers.set(type, handler);
   }
 
+  // Run code after the underlying WebSocket is ready to send.
+  onOpen(handler) {
+    this.ws.addEventListener('open', handler);
+  }
+
   // Process incoming messages with context extraction
   _handleIncoming(envelope) {
     const handler = this.handlers.get(envelope.type);
@@ -145,7 +150,7 @@ class TracedWebSocket {
           handler(envelope.payload);
         } catch (error) {
           span.recordException(error);
-          span.setStatus({ code: 2, message: error.message });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         } finally {
           span.end();
         }
@@ -166,9 +171,11 @@ import TracedWebSocket from './traced-websocket';
 const ws = new TracedWebSocket('wss://api.example.com/ws');
 
 // Sending a message creates a span and embeds trace context
-ws.send('order.create', {
-  items: [{ sku: 'WIDGET-1', quantity: 2 }],
-  customerId: 'cust-123',
+ws.onOpen(() => {
+  ws.send('order.create', {
+    items: [{ sku: 'WIDGET-1', quantity: 2 }],
+    customerId: 'cust-123',
+  });
 });
 
 // Receiving a message extracts trace context and creates a linked span
@@ -185,7 +192,7 @@ The server side needs to extract context from incoming messages and inject it in
 ```javascript
 // ws-server.js - WebSocket server with OpenTelemetry tracing
 const WebSocket = require('ws');
-const { trace, context, propagation, ROOT_CONTEXT } = require('@opentelemetry/api');
+const { trace, context, propagation, ROOT_CONTEXT, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('websocket-server');
 const wss = new WebSocket.Server({ port: 8080 });
@@ -247,7 +254,7 @@ function handleMessage(ws, envelope) {
       sendWithContext(ws, `${envelope.type}.response`, response);
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       sendWithContext(ws, 'error', { message: error.message });
     } finally {
       span.end();
@@ -279,7 +286,7 @@ When WebSockets connect backend services (for example, a real-time data pipeline
 # ws_processor.py - Python WebSocket service with trace propagation
 
 import json
-import asyncio
+import time
 import websockets
 from opentelemetry import trace, context, propagate
 
@@ -311,7 +318,7 @@ async def process_messages(websocket):
             outgoing = {
                 "traceContext": carrier,
                 "type": f"{envelope['type']}.processed",
-                "timestamp": int(asyncio.get_event_loop().time() * 1000),
+                "timestamp": int(time.time() * 1000),
                 "payload": result,
             }
 
@@ -326,6 +333,7 @@ Many WebSocket protocols implement a request-response pattern using message IDs.
 ```javascript
 // request-response-tracing.js - Correlate request/response over WebSocket
 const { trace, context, propagation, SpanKind } = require('@opentelemetry/api');
+const { randomUUID } = require('node:crypto');
 
 const tracer = trace.getTracer('ws-rpc');
 const pendingRequests = new Map();
@@ -333,7 +341,7 @@ const pendingRequests = new Map();
 function sendRequest(ws, method, params) {
   return new Promise((resolve) => {
     // Generate a unique request ID
-    const requestId = crypto.randomUUID();
+    const requestId = randomUUID();
 
     tracer.startActiveSpan(`ws.request.${method}`, {
       kind: SpanKind.CLIENT,
@@ -377,6 +385,17 @@ function handleResponse(envelope) {
     context.active(),
     envelope.traceContext || {}
   );
+  const serverSpanContext = trace.getSpanContext(serverContext);
+
+  const links = [{ context: pending.spanContext }];
+  if (serverSpanContext) {
+    links.push({ context: serverSpanContext });
+  }
+
+  tracer.startActiveSpan(`ws.response.${id}`, { links }, (responseSpan) => {
+    responseSpan.setAttribute('rpc.response.received', true);
+    responseSpan.end();
+  });
 
   // End the original request span now that we have the response
   pending.span.setAttribute('rpc.response.received', true);
