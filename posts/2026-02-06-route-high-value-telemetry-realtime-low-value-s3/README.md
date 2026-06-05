@@ -14,7 +14,7 @@ The concept is straightforward: high-value signals go to your real-time observab
 
 ```mermaid
 flowchart TD
-    A[OTel Collector - Receiver] --> B{Routing Processor}
+    A[OTel Collector - Receiver] --> B{Routing Connector}
     B -->|Error traces, SLO metrics, alert-related logs| C[Real-Time Backend]
     B -->|Debug logs, health checks, batch job traces| D[S3 Cold Storage]
     C --> E[Dashboards & Alerts]
@@ -39,7 +39,7 @@ Before configuring anything, you need clear rules for what constitutes "high val
 
 ## Collector Configuration with Routing
 
-The OpenTelemetry Collector's `routing` connector handles signal classification and fan-out. Here is a complete configuration:
+The OpenTelemetry Collector's `routing` connector handles signal classification and fan-out. Here is a configuration for traces and logs:
 
 ```yaml
 # Collector config that routes telemetry to hot or cold storage
@@ -67,10 +67,12 @@ connectors:
     error_mode: ignore
     table:
       # Route error traces to hot storage
-      - condition: attributes["otel.status_code"] == "ERROR"
+      - context: span
+        condition: status.code == STATUS_CODE_ERROR
         pipelines: [traces/hot]
       # Route traces from critical services to hot storage
-      - condition: resource.attributes["service.tier"] == "critical"
+      - context: resource
+        condition: attributes["service.tier"] == "critical"
         pipelines: [traces/hot]
 
   routing/logs:
@@ -78,10 +80,12 @@ connectors:
     error_mode: ignore
     table:
       # Route WARN and above to hot storage
-      - condition: severity_number >= 13
+      - context: log
+        condition: severity_number >= SEVERITY_NUMBER_WARN
         pipelines: [logs/hot]
       # Route logs from critical services regardless of level
-      - condition: resource.attributes["service.tier"] == "critical"
+      - context: resource
+        condition: attributes["service.tier"] == "critical"
         pipelines: [logs/hot]
 
 exporters:
@@ -90,14 +94,14 @@ exporters:
     endpoint: https://otel-backend.internal:4318
     compression: zstd
 
-  # Cold path - S3-compatible storage via the file exporter
+  # Cold path - S3-compatible storage via the AWS S3 exporter
   # paired with a lifecycle policy for cost management
   awss3/cold:
     s3uploader:
       region: us-east-1
       s3_bucket: telemetry-cold-storage
       s3_prefix: "otel"
-      s3_partition: "minute"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
     marshaler: otlp_json
 
 service:
@@ -179,12 +183,12 @@ CREATE EXTERNAL TABLE cold_traces (
   >>
 )
 ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-LOCATION 's3://telemetry-cold-storage/otel/traces/'
+LOCATION 's3://telemetry-cold-storage/otel/'
 ```
 
 ## Cost Impact
 
-The numbers are compelling. Real-time storage typically costs between $0.50 and $2.00 per GB ingested (depending on vendor). S3 Standard costs $0.023 per GB stored per month, and S3 Glacier drops to $0.004 per GB. If 60% of your telemetry is low-value, moving it to cold storage cuts your observability bill by 40-50%.
+The numbers are compelling. Real-time storage typically costs between $0.50 and $2.00 per GB ingested (depending on vendor). S3 Standard in us-east-1 costs $0.023 per GB stored per month, and S3 Glacier Instant Retrieval drops to $0.004 per GB. If 60% of your telemetry is low-value, moving it to cold storage cuts your observability bill by 40-50%.
 
 ## Watch Out For
 
