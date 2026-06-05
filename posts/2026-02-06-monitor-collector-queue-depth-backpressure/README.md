@@ -10,18 +10,16 @@ Queue management in the OpenTelemetry Collector is critical for reliable telemet
 
 ## Understanding Collector Queue Architecture
 
-The OpenTelemetry Collector uses multiple queues at different stages of the pipeline to buffer telemetry data.
+The OpenTelemetry Collector can buffer telemetry at a few stages of the pipeline, most commonly in the batch processor and the exporter sending queue.
 
 ```mermaid
 graph LR
-    A[Receiver] --> B[Receiver Buffer]
-    B --> C[Processor 1]
+    A[Receiver] --> C[Processor 1]
     C --> D[Processor 2]
-    D --> E[Exporter Queue]
-    E --> F[Sending Queue]
+    D --> E[Batch Processor]
+    E --> F[Exporter Sending Queue]
     F --> G[Backend]
 
-    H[Memory Limiter] -.monitors.-> B
     H -.monitors.-> E
     H -.monitors.-> F
 
@@ -30,14 +28,13 @@ graph LR
     style H fill:#f99,stroke:#333
 ```
 
-Each queue serves a specific purpose:
+Each buffering stage serves a specific purpose:
 
-- **Receiver buffers** temporarily hold incoming data before processing
-- **Processor buffers** maintain data between transformation steps
-- **Exporter queues** buffer data waiting to be sent to backends
-- **Sending queues** handle retry logic for failed exports
+- **Batch processor buffers** group telemetry before export to reduce request volume
+- **Exporter sending queues** buffer data waiting to be sent to backends
+- **Persistent sending queues** can store queued batches through collector restarts when configured with a storage extension
 
-When any queue fills to capacity, backpressure propagates upstream, eventually causing receivers to refuse new connections or drop data.
+When a sending queue fills to capacity, the exporter rejects new data for that queue. That backpressure can propagate upstream, eventually causing receivers to report refused data or clients to see errors.
 
 ## Key Metrics for Queue Monitoring
 
@@ -53,7 +50,12 @@ service:
     # Enable detailed internal metrics
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: 0.0.0.0
+              port: 8888
 
 exporters:
   otlp:
@@ -62,7 +64,7 @@ exporters:
     # Configure sending queue with metrics
     sending_queue:
       enabled: true
-      # Queue capacity
+      # Queue capacity in batches with the default sizer
       queue_size: 10000
       # Number of parallel consumers
       num_consumers: 10
@@ -81,10 +83,10 @@ exporters:
 Critical metrics to monitor:
 
 ```promql
-# Current queue size (items waiting to be sent)
+# Current queue size
 otelcol_exporter_queue_size
 
-# Queue capacity (maximum items)
+# Queue capacity
 otelcol_exporter_queue_capacity
 
 # Queue utilization percentage
@@ -103,14 +105,15 @@ rate(otelcol_exporter_sent_spans[5m])
 ### Processor Queue Metrics
 
 ```promql
-# Batch processor queue size
+# Batch processor sends triggered by batch size
 otelcol_processor_batch_batch_size_trigger_send
 
 # Batch processor timeout trigger
 otelcol_processor_batch_timeout_trigger_send
 
-# Memory limiter decisions (data refused due to memory pressure)
-rate(otelcol_processor_refused_spans[5m])
+# Processor input/output rates (a gap can indicate filtering, sampling, or refused data)
+rate(otelcol_processor_incoming_items[5m])
+rate(otelcol_processor_outgoing_items[5m])
 ```
 
 ### Receiver Metrics
@@ -214,8 +217,8 @@ Create a comprehensive dashboard to visualize queue health.
         "type": "graph",
         "targets": [
           {
-            "expr": "rate(otelcol_exporter_enqueue_sent_spans[5m])",
-            "legendFormat": "Enqueue - {{exporter}}"
+            "expr": "rate(otelcol_receiver_accepted_spans[5m])",
+            "legendFormat": "Accepted - {{receiver}}"
           },
           {
             "expr": "rate(otelcol_exporter_sent_spans[5m])",
@@ -380,8 +383,10 @@ exporters:
       enabled: true
 
       # Queue size calculation:
+      # With sizer: items:
       # queue_size = peak_spans_per_second * max_export_delay_seconds
       # Example: 10,000 spans/sec * 30 sec delay = 300,000
+      sizer: items
       queue_size: 300000
 
       # Number of parallel consumers
@@ -389,9 +394,8 @@ exporters:
       # Start with 10 and increase if export rate is bottlenecked
       num_consumers: 10
 
-      # Storage type: memory or persistent (experimental)
-      # Persistent queues survive collector restarts but slower
-      storage: memory
+      # Omit storage for the default in-memory queue.
+      # Set storage to a configured storage extension for persistent queues.
 
     # Timeout must be shorter than backend timeout
     timeout: 30s
@@ -439,12 +443,10 @@ processors:
   memory_limiter:
     check_interval: 1s
 
-    # Soft limit: start refusing new data
-    # Set to 80% of container memory limit
+    # Hard limit: set below the container memory limit
     limit_mib: 1600
 
-    # Spike limit: additional headroom for bursts
-    # Set to 20% of container memory limit
+    # Spike limit: soft limit is limit_mib - spike_limit_mib
     spike_limit_mib: 400
 
 service:
@@ -481,6 +483,7 @@ exporters:
     sending_queue:
       enabled: true
       # Larger queue for critical telemetry
+      sizer: items
       queue_size: 500000
       num_consumers: 20
     timeout: 30s
@@ -490,6 +493,7 @@ exporters:
     endpoint: "backend.observability.svc.cluster.local:4317"
     sending_queue:
       enabled: true
+      sizer: items
       queue_size: 200000
       num_consumers: 10
     timeout: 30s
@@ -608,7 +612,7 @@ rules:
     matches: "^otelcol_exporter_queue_size$"
     as: "otelcol_exporter_queue_utilization_percent"
   metricsQuery: |
-    (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) * 100
+    avg(otelcol_exporter_queue_size{<<.LabelMatchers>>} / otelcol_exporter_queue_capacity{<<.LabelMatchers>>} * 100) by (<<.GroupBy>>)
 ```
 
 ### Load Shedding Strategy
@@ -652,22 +656,22 @@ processors:
 
   # Attribute processor to add priority tags
   attributes/priority:
+    include:
+      match_type: regexp
+      services: ["^(payment|checkout|auth).*"]
     actions:
     - key: telemetry.priority
       value: high
       action: insert
-      # Add priority based on service name
-      match:
-        regexp:
-          service.name: "^(payment|checkout|auth).*"
 
   # Filter processor to drop low-priority data under pressure
   filter/load_shed:
+    error_mode: ignore
     # Drop traces without priority tag when queue is full
-    traces:
-      span:
-      - 'attributes["telemetry.priority"] == nil'
-    # Only activate filter based on external signal (requires custom extension)
+    trace_conditions:
+    - 'span.attributes["telemetry.priority"] == nil'
+    # Add filter/load_shed to the pipeline only when an external controller
+    # switches the collector to load-shedding mode.
 
 service:
   pipelines:
@@ -683,7 +687,7 @@ service:
 
 ### Persistent Queue Configuration
 
-For critical telemetry that must not be lost, use persistent queues (experimental feature).
+For critical telemetry that must survive collector restarts, use persistent queues with a storage extension.
 
 ```yaml
 # otel-collector-config.yaml
@@ -699,11 +703,19 @@ exporters:
       # Enable persistent queue (requires storage extension)
       storage: file_storage
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 extensions:
   # File storage extension for persistent queues
   file_storage:
     # Directory for queue data
     directory: /var/lib/otelcol/queue
+    # Create storage and compaction directories if they do not exist
+    create_directory: true
     # Timeout for storage operations
     timeout: 10s
     # Compact storage periodically
@@ -726,11 +738,12 @@ Mount persistent volume for queue storage:
 ```yaml
 # deployment-with-persistent-queue.yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: otel-collector
   namespace: observability
 spec:
+  serviceName: otel-collector
   replicas: 3
   selector:
     matchLabels:
@@ -742,11 +755,13 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
+        args:
+        - --config=/conf/otel-collector-config.yaml
 
         volumeMounts:
         - name: queue-storage
-          mountPath: /var/lib/otelcol/queue
+          mountPath: /var/lib/otelcol
         - name: config
           mountPath: /conf
 
@@ -762,24 +777,18 @@ spec:
       - name: config
         configMap:
           name: otel-collector-config
-      - name: queue-storage
-        persistentVolumeClaim:
-          claimName: otel-collector-queue-pvc
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: otel-collector-queue-pvc
-  namespace: observability
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      # Size depends on queue_size and average span size
-      # Estimate: 100,000 spans * 1KB = 100MB (add 10x safety margin)
-      storage: 1Gi
-  storageClassName: fast-ssd
+  volumeClaimTemplates:
+  - metadata:
+      name: queue-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          # Size depends on queue_size and average span size
+          # Estimate: 100,000 spans * 1KB = 100MB (add 10x safety margin)
+          storage: 1Gi
+      storageClassName: fast-ssd
 ```
 
 ## Queue Health Runbook
@@ -800,8 +809,8 @@ curl -s http://otel-collector.observability.svc.cluster.local:8888/metrics | \
 # Which exporter has the fullest queue?
 topk(5, otelcol_exporter_queue_size / otelcol_exporter_queue_capacity)
 
-# Is the bottleneck sending or receiving?
-rate(otelcol_exporter_enqueue_sent_spans[5m]) - rate(otelcol_exporter_sent_spans[5m])
+# Is the queue growing?
+deriv(otelcol_exporter_queue_size[5m])
 ```
 
 ### 3. Check Backend Health
@@ -845,7 +854,7 @@ Based on root cause:
 4. **Configure appropriate timeouts** to fail fast on backend issues
 5. **Implement auto-scaling** based on queue depth metrics
 6. **Test backpressure scenarios** in staging before production deployment
-7. **Use persistent queues** for critical telemetry that cannot be lost
+7. **Use persistent queues** for critical telemetry that should survive collector restarts
 8. **Separate pipelines** for different priority levels of telemetry
 9. **Monitor memory usage** alongside queue depth
 10. **Document expected queue behavior** for your traffic patterns
