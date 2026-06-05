@@ -247,8 +247,30 @@ if err != nil {
 ## Testing Graceful Shutdown
 
 ```go
+type recordingExporter struct {
+    mu    sync.Mutex
+    spans []sdktrace.ReadOnlySpan
+}
+
+func (e *recordingExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+    e.mu.Lock()
+    defer e.mu.Unlock()
+    e.spans = append(e.spans, spans...)
+    return nil
+}
+
+func (e *recordingExporter) Shutdown(ctx context.Context) error {
+    return nil
+}
+
+func (e *recordingExporter) GetSpans() []sdktrace.ReadOnlySpan {
+    e.mu.Lock()
+    defer e.mu.Unlock()
+    return append([]sdktrace.ReadOnlySpan(nil), e.spans...)
+}
+
 func TestGracefulShutdown(t *testing.T) {
-    exporter := tracetest.NewInMemoryExporter()
+    exporter := &recordingExporter{}
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
     )
@@ -269,7 +291,7 @@ func TestGracefulShutdown(t *testing.T) {
     // Now all spans should be in the exporter
     spans := exporter.GetSpans()
     assert.Len(t, spans, 1)
-    assert.Equal(t, "test-span", spans[0].Name)
+    assert.Equal(t, "test-span", spans[0].Name())
 }
 ```
 
