@@ -57,6 +57,8 @@ require 'opentelemetry/instrumentation/rack'
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'sinatra-api'
 
+  c.use 'OpenTelemetry::Instrumentation::Rack', use_rack_events: false
+
   c.add_span_processor(
     OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
       OpenTelemetry::Exporter::OTLP::Exporter.new
@@ -75,7 +77,7 @@ require_relative 'config/instrumentation'
 
 # Register the Rack middleware
 
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
+use(*OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args)
 
 get '/' do
   'Hello World'
@@ -92,6 +94,7 @@ The Rack middleware accepts configuration options that control its behavior:
 # config/instrumentation.rb
 
 require 'opentelemetry/sdk'
+require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/rack'
 
 # Configure the instrumentation library before using it
@@ -100,22 +103,21 @@ OpenTelemetry::SDK.configure do |c|
 
   # Configure Rack instrumentation with custom options
   c.use 'OpenTelemetry::Instrumentation::Rack', {
-    # Propagate trace context from incoming requests
-    # This is essential for distributed tracing
-    propagation_style: :w3c,
-
-    # Record HTTP request and response details
+    # Create an additional proxy/frontend span when X-Request-Start is present
     record_frontend_span: true,
 
-    # Automatically detect and record the original client IP
-    # even when behind load balancers
-    retain_middleware_names: true,
-
-    # Custom function to determine if a request should be traced
+    # Exact request paths that should not be traced
     untraced_endpoints: ['/health', '/metrics'],
 
-    # Add custom attributes to every span
-    response_propagators: []
+    # Predicate for more flexible request filtering
+    untraced_requests: ->(env) { env['PATH_INFO'].start_with?('/assets/') },
+
+    # Headers to record as span attributes
+    allowed_request_headers: ['user-agent', 'x-request-id'],
+    allowed_response_headers: ['content-length', 'x-cache-status'],
+
+    # Keep manual Rack middleware registration for this Sinatra example
+    use_rack_events: false
   }
 
   # Add span processors and exporters
@@ -137,7 +139,7 @@ In your Sinatra app, simply register the middleware without options since config
 require 'sinatra'
 require_relative 'config/instrumentation'
 
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
+use(*OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args)
 
 get '/health' do
   # This endpoint won't be traced due to untraced_endpoints config
@@ -160,6 +162,7 @@ Create a custom middleware wrapper that filters data:
 # lib/filtered_tracer_middleware.rb
 
 require 'opentelemetry/instrumentation/rack'
+require 'uri'
 
 class FilteredTracerMiddleware
   # Headers that should never be recorded
@@ -182,21 +185,26 @@ class FilteredTracerMiddleware
 
   def initialize(app)
     @app = app
-    @middleware = OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware.new(app)
+
+    traced_app = lambda do |filtered_env|
+      original_env = filtered_env.delete('otel.original_env') || filtered_env
+      status, headers, body = @app.call(original_env)
+      span = OpenTelemetry::Trace.current_span
+      add_safe_attributes(span, original_env) if span && span.recording?
+      [status, headers, body]
+    end
+
+    middleware, *args = OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+    @middleware = middleware.new(traced_app, *args)
   end
 
   def call(env)
     # Filter sensitive data before tracing
     filtered_env = filter_environment(env)
+    filtered_env['otel.original_env'] = env
 
     # Call the OpenTelemetry middleware with filtered env
-    status, headers, body = @middleware.call(filtered_env)
-
-    # Get current span and add filtered attributes
-    span = OpenTelemetry::Trace.current_span
-    add_safe_attributes(span, env) if span && span.recording?
-
-    [status, headers, body]
+    @middleware.call(filtered_env)
   end
 
   private
@@ -232,9 +240,9 @@ class FilteredTracerMiddleware
 
   def add_safe_attributes(span, env)
     # Add useful non-sensitive attributes
-    span.set_attribute('http.user_agent', env['HTTP_USER_AGENT']) if env['HTTP_USER_AGENT']
-    span.set_attribute('http.client_ip', extract_client_ip(env))
-    span.set_attribute('http.request_id', env['HTTP_X_REQUEST_ID']) if env['HTTP_X_REQUEST_ID']
+    span.set_attribute('user_agent.original', env['HTTP_USER_AGENT']) if env['HTTP_USER_AGENT']
+    span.set_attribute('client.address', extract_client_ip(env))
+    span.set_attribute('http.request.header.x_request_id', [env['HTTP_X_REQUEST_ID']]) if env['HTTP_X_REQUEST_ID']
   end
 
   def extract_client_ip(env)
@@ -263,7 +271,7 @@ post '/login' do
   # Even though this receives password in params,
   # it won't be recorded in traces
   username = params[:username]
-  password = params[:password]  # This will be [FILTERED] in traces
+  password = params[:password]  # The application still receives the original value
 
   # Authentication logic
   if authenticate(username, password)
@@ -282,23 +290,29 @@ Beyond the default HTTP attributes, you often want to add business-specific data
 ```ruby
 # lib/enhanced_tracer_middleware.rb
 
+require 'opentelemetry/instrumentation/rack'
+
 class EnhancedTracerMiddleware
   def initialize(app)
     @app = app
-    @tracer_middleware = OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware.new(app)
+
+    traced_app = lambda do |env|
+      status, headers, body = @app.call(env)
+      span = OpenTelemetry::Trace.current_span
+
+      if span && span.recording?
+        enrich_span(span, env, status, headers)
+      end
+
+      [status, headers, body]
+    end
+
+    middleware, *args = OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+    @tracer_middleware = middleware.new(traced_app, *args)
   end
 
   def call(env)
-    status, headers, body = @tracer_middleware.call(env)
-
-    # Get the span created by the tracer middleware
-    span = OpenTelemetry::Trace.current_span
-
-    if span && span.recording?
-      enrich_span(span, env, status, headers)
-    end
-
-    [status, headers, body]
+    @tracer_middleware.call(env)
   end
 
   private
@@ -321,17 +335,17 @@ class EnhancedTracerMiddleware
 
     # Add response size
     if headers['Content-Length']
-      span.set_attribute('http.response_size', headers['Content-Length'].to_i)
+      span.set_attribute('http.response.body.size', headers['Content-Length'].to_i)
     end
 
     # Record request timing from custom headers
     if env['HTTP_X_REQUEST_START']
       queue_time = calculate_queue_time(env['HTTP_X_REQUEST_START'])
-      span.set_attribute('http.queue_time_ms', queue_time)
+      span.set_attribute('request.queue_time_ms', queue_time)
     end
 
     # Tag expensive operations
-    if status == 200 && span.attributes['http.route']&.include?('/export')
+    if status == 200 && env['PATH_INFO']&.include?('/export')
       span.set_attribute('operation.expensive', true)
     end
   end
@@ -352,6 +366,8 @@ Not all requests deserve the same level of tracing. You might want different sam
 ```ruby
 # lib/adaptive_tracer_middleware.rb
 
+require 'opentelemetry/instrumentation/rack'
+
 class AdaptiveTracerMiddleware
   # Configuration for path-specific tracing rules
   TRACING_RULES = {
@@ -364,7 +380,22 @@ class AdaptiveTracerMiddleware
 
   def initialize(app)
     @app = app
-    @tracer_middleware = OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware.new(app)
+
+    traced_app = lambda do |env|
+      status, headers, body = @app.call(env)
+      span = OpenTelemetry::Trace.current_span
+      rules = env['otel.tracing_rules']
+
+      if span && span.recording? && rules&.fetch(:expensive, false)
+        span.set_attribute('operation.expensive', true)
+        span.set_attribute('operation.sample_rate', rules[:sample_rate])
+      end
+
+      [status, headers, body]
+    end
+
+    middleware, *args = OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+    @tracer_middleware = middleware.new(traced_app, *args)
   end
 
   def call(env)
@@ -382,16 +413,10 @@ class AdaptiveTracerMiddleware
     end
 
     # Trace the request
-    status, headers, body = @tracer_middleware.call(env)
-
-    # Add rule-based attributes
-    span = OpenTelemetry::Trace.current_span
-    if span && span.recording? && rules[:expensive]
-      span.set_attribute('operation.expensive', true)
-      span.set_attribute('operation.sample_rate', rules[:sample_rate])
-    end
-
-    [status, headers, body]
+    env['otel.tracing_rules'] = rules
+    @tracer_middleware.call(env)
+  ensure
+    env.delete('otel.tracing_rules')
   end
 
   private
@@ -418,12 +443,32 @@ Many applications use request IDs to correlate logs, metrics, and traces. Ensure
 ```ruby
 # lib/request_id_tracer_middleware.rb
 
+require 'opentelemetry/instrumentation/rack'
+require 'securerandom'
+
 class RequestIdTracerMiddleware
   REQUEST_ID_HEADER = 'HTTP_X_REQUEST_ID'.freeze
 
   def initialize(app)
     @app = app
-    @tracer_middleware = OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware.new(app)
+
+    traced_app = lambda do |env|
+      status, headers, body = @app.call(env)
+      request_id = env[REQUEST_ID_HEADER]
+      span = OpenTelemetry::Trace.current_span
+
+      headers['X-Request-ID'] = request_id
+
+      if span && span.recording?
+        span.set_attribute('request.id', request_id)
+        headers['X-Trace-ID'] = span.context.hex_trace_id
+      end
+
+      [status, headers, body]
+    end
+
+    middleware, *args = OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+    @tracer_middleware = middleware.new(traced_app, *args)
   end
 
   def call(env)
@@ -432,23 +477,7 @@ class RequestIdTracerMiddleware
     env[REQUEST_ID_HEADER] = request_id
 
     # Process request with tracing
-    status, headers, body = @tracer_middleware.call(env)
-
-    # Add request ID to span and response headers
-    span = OpenTelemetry::Trace.current_span
-    if span && span.recording?
-      span.set_attribute('request.id', request_id)
-
-      # Link span ID to request ID for log correlation
-      trace_id = span.context.hex_trace_id
-      span.set_attribute('trace.id', trace_id)
-    end
-
-    # Include both IDs in response headers
-    headers['X-Request-ID'] = request_id
-    headers['X-Trace-ID'] = span.context.hex_trace_id if span
-
-    [status, headers, body]
+    @tracer_middleware.call(env)
   end
 end
 ```
@@ -511,7 +540,7 @@ class QueueTimeMiddleware
     span = OpenTelemetry::Trace.current_span
     if span && span.recording?
       if queue_time
-        span.set_attribute('http.queue_time_ms', queue_time)
+        span.set_attribute('request.queue_time_ms', queue_time)
         span.add_event('Request queued', attributes: {
           'queue_time_ms' => queue_time
         })
@@ -519,7 +548,7 @@ class QueueTimeMiddleware
 
       # Record processing time separately from total time
       processing_time = ((Time.now.to_f - processing_start) * 1000).round(2)
-      span.set_attribute('http.processing_time_ms', processing_time)
+      span.set_attribute('request.processing_time_ms', processing_time)
     end
 
     [status, headers, body]
@@ -542,18 +571,18 @@ class QueueTimeMiddleware
 end
 ```
 
-Use it before the tracer middleware:
+Use it after the tracer middleware in the Rack stack so it runs while the OpenTelemetry span is current:
 
 ```ruby
 # app.rb
 
+use(*OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args)
 use QueueTimeMiddleware
-use OpenTelemetry::Instrumentation::Rack::Middlewares::TracerMiddleware
 ```
 
 ## Complete Production Configuration
 
-Here's a production-ready configuration combining all the concepts:
+Here's a production-ready configuration combining the core concepts:
 
 ```ruby
 # config/instrumentation.rb
@@ -562,8 +591,11 @@ require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/rack'
 require_relative '../lib/filtered_tracer_middleware'
-require_relative '../lib/request_id_tracer_middleware'
 require_relative '../lib/queue_time_middleware'
+
+# Configure sampling through the SDK environment variables
+ENV['OTEL_TRACES_SAMPLER'] ||= 'parentbased_traceidratio'
+ENV['OTEL_TRACES_SAMPLER_ARG'] ||= ENV.fetch('OTEL_TRACE_SAMPLE_RATE', '0.1')
 
 # Configure OpenTelemetry SDK
 OpenTelemetry::SDK.configure do |c|
@@ -575,16 +607,16 @@ OpenTelemetry::SDK.configure do |c|
     'service.namespace' => ENV.fetch('SERVICE_NAMESPACE', 'default')
   })
 
-  # Configure sampling
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::ParentBased.new(
-    root: OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(
-      ENV.fetch('OTEL_TRACE_SAMPLE_RATE', '0.1').to_f
-    )
-  )
+  c.use 'OpenTelemetry::Instrumentation::Rack', {
+    untraced_endpoints: ['/health', '/metrics'],
+    allowed_request_headers: ['user-agent', 'x-request-id'],
+    allowed_response_headers: ['content-length', 'x-cache-status'],
+    use_rack_events: false
+  }
 
   # Configure exporter
   exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
-    endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT'),
+    endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
     headers: { 'Authorization' => ENV['OTEL_AUTH_HEADER'] }.compact
   )
 
@@ -605,18 +637,17 @@ require 'sinatra'
 require_relative 'config/instrumentation'
 
 # Middleware stack (order matters)
-use QueueTimeMiddleware
-use RequestIdTracerMiddleware
 use FilteredTracerMiddleware
+use QueueTimeMiddleware
 
 # Your Sinatra routes
 get '/api/v1/users/:id' do
-  # Fully traced with all the enhancements
+  # Traced with filtering and queue timing
   user = User.find(params[:id])
   user.to_json
 end
 ```
 
-The middleware stack processes requests from top to bottom and responses from bottom to top. This order ensures queue time is measured first, then request IDs are assigned, filtering happens, and finally tracing captures everything.
+The middleware stack processes requests from top to bottom and responses from bottom to top. This order ensures filtering happens before OpenTelemetry creates the span, then queue timing runs inside the active traced request.
 
 With proper Rack middleware configuration, your Sinatra application gains production-grade observability without sacrificing performance or cluttering application code. Every request is traced, sensitive data is filtered, and you get the context needed to debug issues quickly.
