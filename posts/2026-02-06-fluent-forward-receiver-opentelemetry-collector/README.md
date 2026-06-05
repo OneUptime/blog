@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Fluent Forward, Fluentd, Logging, Observability
 
 Description: Learn how to configure the Fluent Forward receiver in OpenTelemetry Collector to ingest logs from Fluentd and Fluent Bit with practical YAML examples and best practices.
 
-The Fluent Forward receiver enables the OpenTelemetry Collector to receive logs via the Fluentd Forward protocol. This receiver is particularly useful when migrating from Fluentd or Fluent Bit to OpenTelemetry, or when you need to integrate existing Fluentd-based logging infrastructure with your OpenTelemetry pipeline.
+The Fluent Forward receiver enables the OpenTelemetry Collector to receive logs via the Fluentd Forward protocol. This receiver is particularly useful when migrating from Fluentd or Fluent Bit to OpenTelemetry, or when you need to integrate existing Fluentd-based logging infrastructure with your OpenTelemetry pipeline. In current Collector releases, the receiver type is `fluent_forward`; the older `fluentforward` name is a deprecated alias.
 
 ## Understanding the Fluent Forward Protocol
 
@@ -26,15 +26,15 @@ graph LR
 
 ## Basic Configuration
 
-The minimal configuration for the Fluent Forward receiver requires only the receiver declaration. By default, it listens on `0.0.0.0:8006`.
+The minimal configuration for the Fluent Forward receiver requires the receiver declaration and an endpoint. The OpenTelemetry documentation commonly uses `0.0.0.0:8006` in examples.
 
 Here's a basic configuration:
 
 ```yaml
 receivers:
-  # Fluent Forward receiver with default settings
-  fluentforward:
-    # Listen on all interfaces on port 8006 (default)
+  # Fluent Forward receiver
+  fluent_forward:
+    # Listen on all interfaces on port 8006
     endpoint: 0.0.0.0:8006
 
 processors:
@@ -45,15 +45,15 @@ processors:
 
 exporters:
   # Export logs to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     logs:
-      receivers: [fluentforward]
+      receivers: [fluent_forward]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration creates a log pipeline that receives Fluent Forward messages, batches them for efficiency, and exports them to the console for verification.
@@ -68,59 +68,28 @@ You can customize the network settings to control how the receiver accepts conne
 
 ```yaml
 receivers:
-  fluentforward:
+  fluent_forward:
     # Listen on a specific interface and port
     endpoint: 0.0.0.0:24224
 
     # Unix socket listener (alternative to TCP)
     # Useful for same-host communication with better performance
     # endpoint: unix:///var/run/fluent-forward.sock
-
-    # TCP server settings
-    tcp:
-      # Maximum size of a single message (default: 64 MiB)
-      max_recv_msg_size_mib: 128
-
-      # Keep-alive settings
-      keep_alive:
-        enabled: true
-        idle_time: 30s
-        interval: 15s
-        max_probe_count: 3
 ```
 
-The `max_recv_msg_size_mib` parameter is crucial when dealing with large log messages. If your logs frequently exceed the default size, increase this value to prevent dropped messages.
+The `endpoint` parameter controls whether the receiver listens on TCP or a Unix domain socket. When using TCP, the receiver also starts a UDP listener on the same port for Forward protocol heartbeat responses.
 
 ### Authentication and Security
 
-For production environments, you should enable authentication to prevent unauthorized log submissions:
+The upstream Fluent Forward receiver does not support TLS or the handshake portion of the Forward protocol, including shared key authentication. If you need to prevent unauthorized log submissions, place the receiver behind trusted network controls or a separate TLS/authentication proxy:
 
 ```yaml
 receivers:
-  fluentforward:
+  fluent_forward:
     endpoint: 0.0.0.0:24224
-
-    # Enable shared key authentication
-    # This matches Fluentd's secure_forward configuration
-    auth:
-      shared_key: "your-secure-shared-key-here"
-      username: "log-collector"
-      password: "secure-password"
-
-    # TLS configuration for encrypted transport
-    tls:
-      # Path to server certificate and key
-      cert_file: /etc/otel/certs/server.crt
-      key_file: /etc/otel/certs/server.key
-
-      # Require client certificates for mutual TLS
-      client_ca_file: /etc/otel/certs/ca.crt
-
-      # Minimum TLS version
-      min_version: "1.2"
 ```
 
-When using authentication, ensure your Fluentd or Fluent Bit clients are configured with matching credentials. The shared key provides basic authentication, while TLS adds encryption and can provide mutual authentication when client certificates are required.
+Do not configure Fluentd or Fluent Bit Forward shared key authentication or TLS directly against this receiver, because the Collector will not complete the secure Forward handshake.
 
 ## Configuring Fluentd to Send Logs
 
@@ -149,12 +118,6 @@ To send logs from Fluentd to the OpenTelemetry Collector, configure a forward ou
     host otel-collector.example.com
     port 24224
   </server>
-
-  # Enable authentication if configured on receiver
-  <security>
-    self_hostname ${hostname}
-    shared_key your-secure-shared-key-here
-  </security>
 
   # Buffer configuration for reliability
   <buffer>
@@ -194,40 +157,16 @@ Fluent Bit can also forward logs using the Forward protocol:
     # Retry settings
     Retry_Limit   5
 
-    # Use shared key authentication
-    Shared_Key    your-secure-shared-key-here
-
-    # Enable TLS if configured on receiver
-    tls           on
-    tls.verify    on
-    tls.ca_file   /etc/fluent-bit/certs/ca.crt
 ```
 
 ## Production-Ready Configuration
 
-Here's a complete production configuration that includes error handling, resource detection, and multiple export destinations:
+Here's a complete production configuration that includes memory protection, resource attributes, and multiple export destinations:
 
 ```yaml
 receivers:
-  fluentforward:
+  fluent_forward:
     endpoint: 0.0.0.0:24224
-
-    # Production network settings
-    tcp:
-      max_recv_msg_size_mib: 256
-      keep_alive:
-        enabled: true
-        idle_time: 60s
-        interval: 30s
-
-    # Security configuration
-    auth:
-      shared_key: "${env:FLUENT_SHARED_KEY}"
-
-    tls:
-      cert_file: /etc/otel/certs/server.crt
-      key_file: /etc/otel/certs/server.key
-      min_version: "1.2"
 
 processors:
   # Add resource attributes for better context
@@ -270,57 +209,43 @@ exporters:
     compression: gzip
 
   # Keep console export for debugging
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
 service:
   pipelines:
     logs:
-      receivers: [fluentforward]
+      receivers: [fluent_forward]
       processors: [memory_limiter, resource, attributes, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 
   # Enable telemetry for collector monitoring
   telemetry:
     logs:
       level: info
     metrics:
-      address: :8888
+      level: detailed
 ```
 
 ## Monitoring and Troubleshooting
 
-The Fluent Forward receiver exposes several metrics to help you monitor its health and performance. Enable the Prometheus exporter to collect these metrics:
+The Fluent Forward receiver exposes several metrics to help you monitor its health and performance. The Collector exposes internal Prometheus-format metrics at `http://127.0.0.1:8888/metrics` by default; you can adjust the internal telemetry level like this:
 
 ```yaml
-exporters:
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-    namespace: otelcol
-
 service:
   telemetry:
     metrics:
-      address: :8888
-
-  pipelines:
-    logs:
-      receivers: [fluentforward]
-      processors: [batch]
-      exporters: [otlp]
-
-    # Separate pipeline for collector metrics
-    metrics:
-      receivers: [prometheus]
-      exporters: [prometheus]
+      level: detailed
 ```
 
 Key metrics to monitor include:
 
 - `otelcol_receiver_accepted_log_records`: Number of log records successfully received
 - `otelcol_receiver_refused_log_records`: Number of log records rejected
+- `otelcol_fluent_events_parsed`: Number of Fluent events parsed successfully
+- `otelcol_fluent_parse_failures`: Number of times Fluent messages failed to be decoded
 - `otelcol_processor_batch_timeout_trigger_send`: How often batches are sent due to timeout
 - `otelcol_exporter_send_failed_log_records`: Number of logs that failed to export
 
@@ -334,22 +259,18 @@ If Fluentd or Fluent Bit cannot connect to the collector, verify:
 2. Firewall rules allow traffic on the configured port
 3. The collector is running and listening on the correct interface
 
-### Authentication Failures
+### Secure Forward Handshake Failures
 
-When using shared key authentication, ensure:
+If Fluentd or Fluent Bit is configured with Forward shared key authentication or TLS, the connection will fail because the OpenTelemetry Collector Fluent Forward receiver does not support TLS or the Forward protocol handshake. Remove those settings from clients that connect directly to the Collector, or terminate TLS/authentication before traffic reaches the receiver.
 
-1. The shared key matches exactly between sender and receiver
-2. Special characters in the key are properly escaped
-3. Environment variables are correctly interpolated
 
 ### High Memory Usage
 
 If the collector consumes excessive memory:
 
 1. Reduce `send_batch_size` in the batch processor
-2. Lower `max_recv_msg_size_mib` if you're receiving very large messages
-3. Enable and tune the memory limiter processor
-4. Increase export frequency to reduce buffering
+2. Enable and tune the memory limiter processor
+3. Increase export frequency to reduce buffering
 
 ## Integration with OneUptime
 
@@ -366,7 +287,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [fluentforward]
+      receivers: [fluent_forward]
       processors: [batch]
       exporters: [otlp]
 ```
@@ -377,6 +298,6 @@ For more information on OpenTelemetry Collector exporters, see our guide on [con
 
 The Fluent Forward receiver provides a seamless migration path from Fluentd-based logging infrastructure to OpenTelemetry. By supporting the Fluent Forward protocol, it allows you to incrementally adopt OpenTelemetry while maintaining compatibility with existing Fluentd and Fluent Bit deployments.
 
-Start with a basic configuration and gradually add authentication, TLS, and advanced processing as your requirements grow. Monitor the receiver metrics to ensure healthy operation and tune configuration parameters based on your specific workload characteristics.
+Start with a basic configuration and gradually add network controls, proxy-based security, and advanced processing as your requirements grow. Monitor the receiver metrics to ensure healthy operation and tune configuration parameters based on your specific workload characteristics.
 
 For more OpenTelemetry Collector receivers, explore our guides on the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) and [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view).
