@@ -22,7 +22,6 @@ When writing tests for instrumented code, random trace and span IDs make asserti
 # deterministic_id_generator.py
 
 from opentelemetry.sdk.trace.id_generator import IdGenerator
-import struct
 
 
 class DeterministicIdGenerator(IdGenerator):
@@ -59,9 +58,8 @@ class DeterministicIdGenerator(IdGenerator):
 ```python
 # test_checkout_service.py
 import pytest
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from deterministic_id_generator import DeterministicIdGenerator
 
@@ -74,17 +72,16 @@ def setup_tracing():
 
     provider = TracerProvider(id_generator=id_generator)
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
 
-    yield exporter, id_generator
+    yield provider, exporter, id_generator
 
     # Clean up
     provider.shutdown()
 
 
 def test_checkout_creates_expected_spans(setup_tracing):
-    exporter, id_gen = setup_tracing
-    tracer = trace.get_tracer("test")
+    provider, exporter, id_gen = setup_tracing
+    tracer = provider.get_tracer("test")
 
     # Run the code under test
     with tracer.start_as_current_span("checkout") as parent:
@@ -108,8 +105,8 @@ def test_checkout_creates_expected_spans(setup_tracing):
 
 
 def test_independent_traces_get_different_ids(setup_tracing):
-    exporter, id_gen = setup_tracing
-    tracer = trace.get_tracer("test")
+    provider, exporter, id_gen = setup_tracing
+    tracer = provider.get_tracer("test")
 
     with tracer.start_as_current_span("request_1"):
         pass
@@ -215,13 +212,15 @@ class SeededIdGenerator(IdGenerator):
 
     def generate_trace_id(self) -> int:
         # Generate a 128-bit value that looks random but is reproducible
-        return self._rng.getrandbits(128)
+        value = self._rng.getrandbits(128)
+        # Ensure non-zero
+        return value if value != 0 else self.generate_trace_id()
 
     def generate_span_id(self) -> int:
         # Generate a 64-bit value
         value = self._rng.getrandbits(64)
         # Ensure non-zero
-        return value if value != 0 else self._rng.getrandbits(64)
+        return value if value != 0 else self.generate_span_id()
 ```
 
 ## Important Caveats
