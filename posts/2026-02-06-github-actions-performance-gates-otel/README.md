@@ -22,13 +22,13 @@ Keep your performance thresholds version-controlled alongside your code:
 gates:
   - name: "API Response Time"
     metric: "http_request_duration_seconds"
-    query_template: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service_name="api-service", deployment_env="staging"}[5m])) by (le))'
+    query_template: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service_name="api-service", deployment_environment_name="staging"}[5m])) by (le))'
     max_value: 0.5  # P95 must be under 500ms
     unit: "seconds"
 
   - name: "Error Rate"
     metric: "http_errors_total"
-    query_template: 'sum(rate(http_errors_total{service_name="api-service", deployment_env="staging"}[5m])) / sum(rate(http_requests_total{service_name="api-service", deployment_env="staging"}[5m]))'
+    query_template: 'sum(rate(http_errors_total{service_name="api-service", deployment_environment_name="staging"}[5m])) / sum(rate(http_requests_total{service_name="api-service", deployment_environment_name="staging"}[5m]))'
     max_value: 0.01  # error rate must be under 1%
     unit: "ratio"
 
@@ -40,10 +40,12 @@ gates:
 
   - name: "Memory Usage"
     metric: "process_resident_memory_bytes"
-    query_template: 'max(process_resident_memory_bytes{service_name="api-service", deployment_env="staging"})'
+    query_template: 'max(process_resident_memory_bytes{service_name="api-service", deployment_environment_name="staging"})'
     max_value: 536870912  # must be under 512MB
     unit: "bytes"
 ```
+
+These queries assume Prometheus is ingesting OpenTelemetry metrics and promoting the `service.name` and `deployment.environment.name` resource attributes to labels with the default underscore escaping.
 
 ## The Performance Gate Check Script
 
@@ -56,9 +58,11 @@ import requests
 import sys
 import os
 import time
+import json
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 THRESHOLDS_FILE = os.environ.get("THRESHOLDS_FILE", ".github/perf-thresholds.yaml")
+RESULTS_FILE = os.environ.get("PERF_RESULTS_FILE", "perf-results.json")
 
 def load_thresholds():
     with open(THRESHOLDS_FILE) as f:
@@ -150,6 +154,11 @@ def write_github_summary(results):
             status_icon = "Pass" if r["status"] == "PASS" else "Fail" if r["status"] == "FAIL" else "Skip"
             f.write(f"| {r['name']} | {status_icon} | {r.get('actual', 'N/A')} | {r.get('threshold', 'N/A')} |\n")
 
+def write_results_json(results):
+    """Write results to a JSON file for later workflow steps."""
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(results, f, indent=2)
+
 if __name__ == "__main__":
     # Wait for metrics to stabilize after deployment
     wait_time = int(os.environ.get("STABILIZATION_WAIT_SECONDS", "120"))
@@ -158,6 +167,7 @@ if __name__ == "__main__":
 
     passed, results = run_gates()
     write_github_summary(results)
+    write_results_json(results)
 
     if passed:
         print("\nAll performance gates PASSED")
@@ -223,6 +233,8 @@ Performance metrics have natural variance. A gate that passes 95% of the time bu
 
 ```python
 # Retry logic for flaky metrics
+import statistics
+
 def query_with_retries(query, max_retries=3, delay_seconds=30):
     """Query a metric multiple times and return the median to reduce noise."""
     values = []
@@ -237,10 +249,10 @@ def query_with_retries(query, max_retries=3, delay_seconds=30):
         return None
 
     # Use the median to reduce the impact of outlier measurements
-    values.sort()
-    mid = len(values) // 2
-    return values[mid]
+    return statistics.median(values)
 ```
+
+Then replace the direct `query_metric(query)` call inside `run_gates()` with `query_with_retries(query)`.
 
 ## Posting Results as PR Comments
 
@@ -258,7 +270,7 @@ For pull request workflows, post the gate results directly on the PR:
               `| ${r.name} | ${r.status} | ${r.actual} | ${r.threshold} |`
             ).join('\n');
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
