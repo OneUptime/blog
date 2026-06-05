@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Collector, Processor, Schema, Telemetry, Data Transformatio
 
 Description: Learn how to configure the Schema Processor in OpenTelemetry Collector to transform telemetry data between different semantic convention versions and maintain compatibility across instrumentation.
 
-OpenTelemetry semantic conventions evolve over time. Attribute names change, span names get updated, and resource conventions are refined. When you upgrade instrumentation libraries or migrate backends, you often face mismatched telemetry schemas. The Schema Processor solves this by automatically transforming telemetry data between different semantic convention versions.
+OpenTelemetry semantic conventions evolve over time. Attribute names change, metric names get updated, and resource conventions are refined. When you upgrade instrumentation libraries or migrate backends, you often face mismatched telemetry schemas. The Schema Processor solves this by automatically transforming telemetry data between different semantic convention versions.
 
 ## What Is the Schema Processor?
 
-The Schema Processor applies OpenTelemetry schema transformations to traces, metrics, and logs as they flow through the Collector. It reads a schema URL from telemetry data and applies the corresponding transformation rules to normalize attributes, resource fields, and metric names to a target schema version.
+The Schema Processor applies OpenTelemetry schema transformations to traces, metrics, and logs as they flow through the Collector. In current Collector contrib releases, it is an alpha component. It reads the schema URL carried with OTLP resource and scope data and applies the corresponding transformation rules to normalize attributes, resource fields, and metric names to a target schema version.
 
 This is particularly useful when:
 
@@ -32,7 +32,7 @@ graph LR
     style B fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-The processor reads the `schema_url` from resource attributes and applies transformations defined in OpenTelemetry schema files to bring all telemetry to a common version.
+The processor reads the `schema_url` field from OTLP resource and scope data and applies transformations defined in OpenTelemetry schema files to bring matching telemetry to a common version.
 
 ## Basic Configuration
 
@@ -53,7 +53,7 @@ receivers:
 processors:
   # The schema processor transforms telemetry between semantic convention versions
   schema:
-    # Target schema version - all telemetry will be transformed to this version
+    # Target schema version - matching telemetry will be transformed to this version
     # This should match the semantic conventions your backend expects
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
@@ -65,10 +65,10 @@ processors:
 
 # Configure export destination
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # Wire everything together in pipelines
 service:
@@ -77,24 +77,24 @@ service:
     traces:
       receivers: [otlp]
       processors: [schema, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     # Metrics pipeline with schema transformation
     metrics:
       receivers: [otlp]
       processors: [schema, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     # Logs pipeline with schema transformation
     logs:
       receivers: [otlp]
       processors: [schema, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Understanding Schema Transformations
 
-OpenTelemetry schema files define how attributes, metrics, and spans change between versions. Common transformations include:
+OpenTelemetry schema files define how attributes, metrics, span events, and logs change between versions. Common transformations include:
 
 ### Attribute Renaming
 
@@ -106,50 +106,42 @@ processors:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-# This configuration will automatically apply transformations like:
+# When translating from older matching schema versions, this can apply transformations like:
 # - "http.method" → "http.request.method"
 # - "http.status_code" → "http.response.status_code"
-# - "net.peer.name" → "server.address"
-# - "net.peer.port" → "server.port"
+# - "net.host.name" → "server.address"
+# - "net.host.port" → "server.port"
 ```
 
 ### Metric Renaming
 
-Metric names and units are also transformed:
+Metric names and metric attributes can also be transformed:
 
 ```yaml
-# The schema processor handles metric transformations such as:
-# - "http.server.duration" → "http.server.request.duration"
-# - Units converted from ms to s where applicable
-# - Histogram bucket boundaries adjusted to match new conventions
+# The schema processor handles schema-defined metric transformations such as:
+# - "process.runtime.jvm.cpu.utilization" → "process.runtime.jvm.cpu.recent_utilization"
+# - Metric attribute renames
+# - Schema-defined metric splits
 ```
 
 ## Advanced Configuration
 
-### Multiple Target Schemas
+### Multiple Schema Families
 
-You can specify multiple target schemas for different signal types:
+You can specify multiple target schemas when they belong to different schema families. Each schema family can have only one target:
 
 ```yaml
 processors:
   schema:
-    # Transform traces to one version
+    # Transform OpenTelemetry semantic conventions to one version
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
-
-    # Override settings for specific signal types
-    traces:
-      targets:
-        - "https://opentelemetry.io/schemas/1.20.0"
-
-    metrics:
-      targets:
-        - "https://opentelemetry.io/schemas/1.21.0"
+      - "https://example.com/telemetry/schemas/2.0.0"
 ```
 
 ### Schema-Aware Resource Transformation
 
-The processor also transforms resource attributes:
+The processor also transforms resource attributes when the matching schema file defines resource attribute renames:
 
 ```yaml
 processors:
@@ -157,19 +149,14 @@ processors:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-    # Enable resource attribute transformation
-    # This ensures resource conventions are also updated
-    resources:
-      # Transform cloud provider attributes
-      # "cloud.provider" values are normalized
-      # "cloud.platform" values are standardized
-      # "deployment.environment" replaces older conventions
-      enabled: true
+    # Optional: fetch and cache likely source schemas at startup
+    prefetch:
+      - "https://opentelemetry.io/schemas/1.20.0"
 ```
 
 ## Production Configuration Example
 
-Here's a complete production-ready configuration with schema processing, error handling, and monitoring:
+Here's a complete production-style configuration with schema processing, error handling, and monitoring:
 
 ```yaml
 receivers:
@@ -195,26 +182,18 @@ processors:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-    # Transform all signal types consistently
-    traces:
-      enabled: true
-    metrics:
-      enabled: true
-    logs:
-      enabled: true
-
-    # Apply resource transformations
-    resources:
-      enabled: true
+    # Fetch likely source schemas at startup instead of waiting for first use
+    prefetch:
+      - "https://opentelemetry.io/schemas/1.20.0"
 
   # Resource processor adds deployment metadata after schema transformation
   resource:
     attributes:
       - key: deployment.environment
-        value: ${DEPLOY_ENV}
+        value: ${env:DEPLOY_ENV}
         action: upsert
       - key: service.version
-        value: ${SERVICE_VERSION}
+        value: ${env:SERVICE_VERSION}
         action: upsert
 
   # Batch processor optimizes network usage
@@ -225,17 +204,17 @@ processors:
 
   # Filter out health check endpoints after transformation
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/metrics"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/metrics"'
 
 exporters:
   # Primary backend export
-  otlphttp/primary:
+  otlp_http/primary:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -244,8 +223,8 @@ exporters:
       max_elapsed_time: 300s
 
   # Debug exporter for troubleshooting schema transformations
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -257,17 +236,17 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, schema, resource, batch, filter]
-      exporters: [otlphttp/primary, logging]
+      exporters: [otlp_http/primary, debug]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, schema, resource, batch]
-      exporters: [otlphttp/primary]
+      exporters: [otlp_http/primary]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, schema, resource, batch]
-      exporters: [otlphttp/primary]
+      exporters: [otlp_http/primary]
 
 extensions:
   health_check:
@@ -310,21 +289,21 @@ data:
         send_batch_size: 1024
 
     exporters:
-      otlphttp:
+      otlp_http:
         endpoint: https://oneuptime.com/otlp
         headers:
-          x-oneuptime-token: ${ONEUPTIME_TOKEN}
+          x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, schema, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, schema, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -343,7 +322,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/collector.yaml"
         env:
@@ -396,13 +375,13 @@ spec:
 
 ## Validating Schema Transformations
 
-To verify that the Schema Processor is working correctly, enable debug logging and inspect the transformed telemetry:
+To verify that the Schema Processor is working correctly, add the debug exporter and inspect the transformed telemetry:
 
 ```yaml
 exporters:
-  # Add logging exporter to see transformed data
-  logging:
-    loglevel: debug
+  # Add debug exporter to see transformed data
+  debug:
+    verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 20
 
@@ -411,20 +390,21 @@ service:
     traces:
       receivers: [otlp]
       processors: [schema, batch]
-      # Include logging exporter for validation
-      exporters: [otlphttp, logging]
+      # Include debug exporter for validation
+      exporters: [otlp_http, debug]
 ```
 
-Check the Collector logs to see before and after attribute names:
+Check the Collector logs to inspect the output written by the debug exporter:
 
 ```bash
 # View Collector logs
-kubectl logs -n observability deployment/otel-collector -f | grep -A 5 "schema"
+kubectl logs -n observability deployment/otel-collector -f | grep -A 20 "ResourceSpans"
 
-# Expected output showing transformations:
-# Transformed attribute: http.method -> http.request.method
-# Transformed attribute: http.status_code -> http.response.status_code
-# Transformed attribute: net.peer.name -> server.address
+# Look for the target SchemaURL and transformed attribute names:
+# Resource SchemaURL: https://opentelemetry.io/schemas/1.21.0
+# -> http.request.method: Str(GET)
+# -> http.response.status_code: Int(200)
+# -> server.address: Str(example.com)
 ```
 
 ## Common Use Cases
@@ -437,7 +417,7 @@ When upgrading instrumentation libraries across multiple services:
 processors:
   schema:
     # Accept telemetry from any schema version
-    # Transform everything to latest version
+    # Transform matching OpenTelemetry schemas to the selected version
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
@@ -455,11 +435,11 @@ processors:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-  # Add tenant identification after schema transformation
+  # Add tenant identification from an existing resource attribute after schema transformation
   resource:
     attributes:
       - key: tenant.id
-        from_attribute: http.request.header.x-tenant-id
+        from_attribute: service.namespace
         action: insert
 
 # This ensures consistent attribute names across all tenants
@@ -476,25 +456,33 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
 # Monitor these metrics:
-# - otelcol_processor_schema_transformations_total
-# - otelcol_processor_schema_transformation_errors_total
-# - otelcol_processor_schema_processing_time_seconds
+# - otelcol_processor_schema.translated
+# - otelcol_processor_schema_cache.hits
+# - otelcol_processor_schema_cache.misses
+# - otelcol_processor_schema_traces.failed
+# - otelcol_processor_schema_metrics.failed
+# - otelcol_processor_schema_logs.failed
 ```
 
 Query these metrics in your observability platform to track:
 
 - Number of transformations applied per signal type
 - Errors during transformation
-- Processing latency introduced by schema transformations
+- Failed, skipped, and cached schema translation activity
 
 ## Troubleshooting
 
 ### Schema URL Not Found
 
-If telemetry doesn't contain a schema URL, the processor skips transformation:
+If telemetry doesn't contain a schema URL, the processor skips transformation. Fix the instrumentation or upstream Collector so the source schema URL is present; you can also prefetch known schemas to reduce startup-time fetches:
 
 ```yaml
 processors:
@@ -502,9 +490,9 @@ processors:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-    # Set default schema for telemetry without schema_url
-    default_schema:
-      url: "https://opentelemetry.io/schemas/1.7.0"
+    # Fetch likely source schemas at startup
+    prefetch:
+      - "https://opentelemetry.io/schemas/1.7.0"
 ```
 
 ### Incompatible Schema Versions
@@ -513,13 +501,14 @@ If the source schema is too old, some transformations may not be possible:
 
 ```yaml
 processors:
-  # Enable detailed logging to diagnose schema issues
   schema:
     targets:
       - "https://opentelemetry.io/schemas/1.21.0"
 
-    # Log warnings for failed transformations
-    log_unmapped: true
+    # Preserve both old and new attribute names for a migration window
+    migration:
+      - target: "https://opentelemetry.io/schemas/1.21.0"
+        from: "https://opentelemetry.io/schemas/1.20.0"
 ```
 
 ## Best Practices
@@ -532,11 +521,11 @@ processors:
 
 ## Performance Considerations
 
-The Schema Processor adds minimal overhead:
+The Schema Processor is designed to be used early in the pipeline:
 
-- Transformation rules are loaded once at startup
-- Attribute lookups use efficient hash maps
-- Processing time typically adds less than 1ms per span/metric/log
+- Schema files are fetched on demand and cached
+- The `prefetch` option can download likely schemas at startup
+- Internal metrics report translations, cache hits, cache misses, skipped signals, and failed translations
 
 For high-throughput environments, place the Schema Processor early in the pipeline:
 
@@ -566,4 +555,4 @@ processors:
 
 The Schema Processor is essential for maintaining telemetry consistency in environments with mixed instrumentation versions. By centralizing schema transformations in the Collector, you decouple service upgrades from backend compatibility requirements. This enables gradual migrations, reduces coordination overhead, and ensures your observability data remains queryable and comparable across your entire infrastructure.
 
-Start with a target schema version that matches your backend requirements, enable transformations for all signal types, and monitor the processor metrics to validate that transformations are applied correctly. With the Schema Processor, you gain the flexibility to evolve your instrumentation without disrupting your observability pipeline.
+Start with a target schema version that matches your backend requirements, confirm your telemetry carries schema URLs, and monitor the processor metrics to validate that transformations are applied correctly. With the Schema Processor, you gain the flexibility to evolve your instrumentation without disrupting your observability pipeline.
