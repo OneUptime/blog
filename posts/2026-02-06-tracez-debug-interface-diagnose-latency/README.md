@@ -8,26 +8,18 @@ Description: Learn how to use the OpenTelemetry TraceZ debug interface to identi
 
 ---
 
-When a service starts responding slowly, the first question is always "where is the time going?" Traditional approaches involve adding timing logs, shipping them to a log aggregator, and piecing together what happened. The TraceZ debug interface gives you a faster path. It is a built-in web page served by the OpenTelemetry Collector or SDK that shows you live span data, grouped by latency buckets, so you can immediately see which operations are taking too long.
+When a service starts responding slowly, the first question is always "where is the time going?" Traditional approaches involve adding timing logs, shipping them to a log aggregator, and piecing together what happened. The TraceZ debug interface gives you a faster path. It is a built-in web page served by the OpenTelemetry Collector zPages extension, or by language SDKs that provide a zPages implementation, that shows recent in-process span samples grouped by latency buckets.
 
-TraceZ is part of the zPages extension. Unlike an external observability backend that involves network hops and processing delays, TraceZ runs inside the instrumented process itself. You get zero-latency access to span data, which is exactly what you need when diagnosing an active incident.
+TraceZ is part of the zPages extension. Unlike an external observability backend that involves network hops and processing delays, TraceZ runs inside the process that exposes it. In the Collector, that means TraceZ shows spans created by instrumented Collector components. In an application process, it can show the application spans recorded by that process if your language SDK includes zPages support.
 
 ## What TraceZ Shows You
 
-TraceZ organizes spans into three categories: running spans (in-flight operations that have not completed), error spans (completed with an error status), and latency-bucketed spans (completed successfully, grouped by how long they took).
+TraceZ organizes spans into three categories: running spans (in-flight operations that have not completed), error samples, and latency-bucketed span samples grouped by how long they took.
 
-The latency buckets follow a predefined set of ranges:
+The Collector zPages documentation describes the latency bucket scale as:
 
 ```text
-[0us, 10us)
-[10us, 100us)
-[100us, 1ms)
-[1ms, 10ms)
-[10ms, 100ms)
-[100ms, 1s)
-[1s, 10s)
-[10s, 100s)
-[100s, +inf)
+(0us, 10us, 100us, 1ms, 10ms, 100ms, 1s, 10s, 1m]
 ```
 
 Each bucket shows a count of spans that fell into that range. If you normally see most spans in the [1ms, 10ms) bucket and suddenly the [1s, 10s) bucket starts filling up, you know exactly where to look.
@@ -40,7 +32,7 @@ TraceZ comes as part of the zPages extension. You can enable it in the Collector
 # collector-config.yaml
 
 extensions:
-  # Enable zPages which includes TraceZ, ServiceZ, and PipelineZ
+  # Enable zPages which includes TraceZ, ServiceZ, PipelineZ, ExtensionZ, and FeatureZ
   zpages:
     # The HTTP endpoint where zPages will be served
     endpoint: 0.0.0.0:55679
@@ -71,41 +63,50 @@ service:
       exporters: [otlp]
 ```
 
-Once the Collector starts, TraceZ is available at `http://localhost:55679/debug/tracez`. No additional dependencies or configuration needed.
+Once the Collector starts, TraceZ is available at `http://localhost:55679/debug/tracez`. Use this view to inspect Collector-internal trace operations, such as slow receiver or exporter work. It does not replace your tracing backend for browsing arbitrary application traces flowing through the Collector.
 
 ## Enabling TraceZ in Application Code
 
-You do not need the Collector to use TraceZ. The OpenTelemetry SDK for most languages includes a zPages implementation that you can embed directly in your application.
+You do not need the Collector to use TraceZ when your language has a zPages implementation. For example, the OpenTelemetry Go contrib zPages package provides a span processor and HTTP handler that you can embed directly in a Go application.
 
-```python
-# app.py - Python application with embedded TraceZ
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
+```go
+// main.go - Go application with embedded TraceZ
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+
+    "go.opentelemetry.io/contrib/zpages"
+    "go.opentelemetry.io/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-# Import the zPages extension for Python
-from opentelemetry.ext.zpages import ZPagesSpanProcessor
+func main() {
+    // Create the zPages span processor.
+    zpagesProcessor := zpages.NewSpanProcessor()
 
-# Create the tracer provider
-provider = TracerProvider()
+    // Add the processor to your tracer provider.
+    provider := sdktrace.NewTracerProvider(
+        sdktrace.WithSpanProcessor(zpagesProcessor),
+    )
+    otel.SetTracerProvider(provider)
+    defer func() {
+        _ = provider.Shutdown(context.Background())
+    }()
 
-# Add the zPages processor which serves the TraceZ interface
-# This starts an HTTP server on the specified port
-zpages_processor = ZPagesSpanProcessor(
-    # TraceZ will be available at http://localhost:8888/debug/tracez
-    endpoint="localhost:8888"
-)
-provider.add_span_processor(zpages_processor)
+    // Serve TraceZ at http://localhost:8888/debug/tracez.
+    mux := http.NewServeMux()
+    mux.Handle("/debug/tracez", zpages.NewTracezHandler(zpagesProcessor))
 
-# Also add a regular exporter for sending data to your backend
-provider.add_span_processor(
-    BatchSpanProcessor(ConsoleSpanExporter())
-)
+    go func() {
+        log.Fatal(http.ListenAndServe("localhost:8888", mux))
+    }()
 
-trace.set_tracer_provider(provider)
+    // Start the rest of your application here.
+    select {}
+}
 ```
 
 With this setup, your application serves TraceZ directly. This is particularly useful for debugging latency in a specific service without needing to inspect the Collector.
@@ -127,13 +128,13 @@ graph LR
     A[Open TraceZ UI] --> B[Review Span Name Table]
     B --> C[Identify Spans in High Latency Buckets]
     C --> D[Click Span Name for Details]
-    D --> E[Examine Individual Span Attributes]
+    D --> E[Use Trace ID in Backend]
     E --> F[Identify Root Cause]
 ```
 
-Step two: click on the span name that shows counts in the [1s, 10s) bucket. TraceZ will show you the individual spans in that bucket, including their attributes, events, and timing details.
+Step two: click on the span name that shows counts in the [1s, 10s) bucket. TraceZ will show sampled spans in that bucket with timing information and trace/span identifiers.
 
-Step three: look at the span attributes. In our example, you might see something like this in the span details:
+Step three: use the trace ID from TraceZ to inspect the full span in your tracing backend, or correlate it with structured logs that include the trace ID. In our example, you might see something like this in the backend span details:
 
 ```text
 Span Name: HTTP GET /api/users
@@ -149,9 +150,9 @@ Attributes:
 
 The `db.duration_ms` attribute reveals that the database query took 3.15 seconds out of the 3.2 second total span duration. The latency is in the database, not in the application logic.
 
-## Using TraceZ to Compare Normal and Slow Spans
+## Using TraceZ to Compare Normal and Slow Operations
 
-One of the most powerful things about TraceZ is that you can compare spans from different latency buckets side by side. Look at a normal span from the [10ms, 100ms) bucket and a slow span from the [1s, 10s) bucket for the same operation.
+One of the most powerful things about TraceZ is that you can quickly identify normal and slow samples from different latency buckets. Use a normal trace ID from the [10ms, 100ms) bucket and a slow trace ID from the [1s, 10s) bucket for the same operation, then compare the full spans in your backend.
 
 ```python
 # Instrument your code with attributes that help compare spans
@@ -189,7 +190,7 @@ def get_users(page, limit):
         return result
 ```
 
-When you compare the normal and slow spans in TraceZ, the attributes tell the story. Normal spans have `cache.hit: true`. Slow spans have `cache.hit: false` and `db.pool.waiting: 12`, meaning the request had to wait for a database connection from an exhausted pool. Now you know the fix: increase the connection pool size or add caching for this query pattern.
+When you compare the normal and slow spans in your backend, the attributes tell the story. Normal spans have `cache.hit: true`. Slow spans have `cache.hit: false` and `db.pool.waiting: 12`, meaning the request had to wait for a database connection from an exhausted pool. TraceZ helped you find the slow samples quickly; the backend gives you the full span detail. Now you know the fix: increase the connection pool size or add caching for this query pattern.
 
 ## Monitoring Running Spans
 
@@ -211,7 +212,7 @@ def process_large_batch(items):
         span.set_attribute("batch.type", "full_reindex")
 
         for i, item in enumerate(items):
-            # Add progress events so TraceZ shows what is happening
+            # Add progress events so your backend can show what is happening
             if i % 100 == 0:
                 span.add_event("progress", {
                     "items.processed": i,
@@ -224,7 +225,7 @@ def process_large_batch(items):
         span.add_event("complete", {"items.processed": len(items)})
 ```
 
-When you check TraceZ and see this span in the "Running" column, the events will show you exactly how far through the batch it is. That context helps you decide whether to wait, scale up, or investigate further.
+When you check TraceZ and see this span in the "Running" column, you know the operation is still in flight. The progress events become useful when the span is exported to your backend or when you correlate the trace ID with application logs. That context helps you decide whether to wait, scale up, or investigate further.
 
 ## TraceZ vs. Full Observability Backend
 
@@ -243,13 +244,13 @@ graph TD
     D --> J[Correlate with Deployment Events]
 ```
 
-Use TraceZ when you need immediate, real-time visibility during an active incident. Use your observability backend when you need historical trends, cross-service correlation, or alerting. The best debugging workflows use both: TraceZ for the initial triage, and the backend for deeper analysis and tracking the fix over time.
+Use TraceZ when you need immediate, real-time visibility during an active incident. Use your observability backend when you need full span attributes, events, historical trends, cross-service correlation, or alerting. The best debugging workflows use both: TraceZ for the initial triage, and the backend for deeper analysis and tracking the fix over time.
 
 ## Practical Tips
 
 A few things to keep in mind when using TraceZ in production.
 
-First, TraceZ keeps a limited number of spans in memory. By default, it retains the most recent spans per bucket per span name. This means that in high-throughput services, older spans get evicted quickly. If you need to capture a specific slow span, check TraceZ promptly.
+First, TraceZ keeps a limited number of spans in memory. It retains samples per bucket per span name rather than acting as durable trace storage. This means that in high-throughput services, older samples get evicted quickly. If you need to capture a specific slow span, check TraceZ promptly.
 
 Second, restrict access to the TraceZ endpoint. Span data can contain sensitive information like database queries, user IDs, and internal URLs. Bind the zPages endpoint to localhost or put it behind authentication.
 
@@ -257,6 +258,6 @@ Third, use meaningful span names. TraceZ groups everything by span name. If all 
 
 ## Wrapping Up
 
-TraceZ gives you a debugger-like view into your distributed tracing data without any external dependencies. When latency spikes hit, you can open a browser tab, look at the latency buckets, drill into slow spans, and identify the root cause in minutes. It is not a replacement for a full observability stack, but it is the fastest tool in your kit for answering "where is the time going right now?"
+TraceZ gives you a debugger-like view into recent in-process tracing activity without any external dependencies. When latency spikes hit, you can open a browser tab, look at the latency buckets, find slow span samples, and decide where to investigate next. It is not a replacement for a full observability stack, but it is a fast tool in your kit for answering "where is the time going right now?"
 
-Enable zPages in your Collector or embed them in your application code. The next time a latency issue shows up, you will be glad you did.
+Enable zPages in your Collector for Collector-internal diagnostics, or embed a supported zPages implementation in your application code. The next time a latency issue shows up, you will be glad you did.
