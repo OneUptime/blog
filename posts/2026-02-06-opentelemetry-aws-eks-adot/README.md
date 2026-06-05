@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, AWS, EKS, ADOT, Kubernetes, Observability
 
-Description: A practical guide to deploying the AWS Distro for OpenTelemetry (ADOT) on Amazon EKS for collecting traces, metrics, and logs from your Kubernetes workloads.
+Description: A practical guide to deploying the AWS Distro for OpenTelemetry (ADOT) on Amazon EKS for collecting traces and metrics from your Kubernetes workloads.
 
 ---
 
@@ -31,9 +31,7 @@ Here is how the components fit together in a typical ADOT on EKS deployment:
 graph LR
     A[Application Pods] -->|OTLP| B[ADOT Collector DaemonSet]
     B -->|Traces| C[AWS X-Ray]
-    B -->|Metrics| D[Amazon CloudWatch]
-    B -->|Metrics| E[Amazon Managed Prometheus]
-    B -->|Logs| F[CloudWatch Logs]
+    B -->|Metrics via EMF| D[Amazon CloudWatch]
     G[ADOT Operator] -->|Manages| B
 ```
 
@@ -43,9 +41,8 @@ The ADOT Operator watches for custom resources and manages the collector deploym
 
 Before you begin, make sure you have:
 
-- An EKS cluster running Kubernetes 1.25 or later
+- An EKS cluster running a Kubernetes version that is supported by your selected ADOT add-on and cert-manager versions
 - kubectl configured to talk to your cluster
-- Helm 3 installed
 - The AWS CLI configured with appropriate permissions
 - eksctl installed (optional but helpful)
 
@@ -56,7 +53,7 @@ The ADOT Operator relies on cert-manager for webhook TLS certificates. Install i
 ```bash
 # Install cert-manager, which handles TLS certificates for the ADOT Operator webhooks
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager pods to be ready before proceeding
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s
@@ -72,7 +69,6 @@ The ADOT Operator is an EKS add-on. You can install it through eksctl, the AWS c
 aws eks create-addon \
   --cluster-name my-cluster \
   --addon-name adot \
-  --addon-version v0.92.1-eksbuild.1 \
   --region us-east-1
 ```
 
@@ -113,11 +109,14 @@ First, create an IAM policy:
         "xray:PutTelemetryRecords",
         "xray:GetSamplingRules",
         "xray:GetSamplingTargets",
-        "cloudwatch:PutMetricData",
+        "xray:GetSamplingStatisticSummaries",
         "logs:PutLogEvents",
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
-        "logs:DescribeLogStreams"
+        "logs:DescribeLogStreams",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "ssm:GetParameters"
       ],
       "Resource": "*"
     }
@@ -130,6 +129,8 @@ Then create the IRSA association:
 ```bash
 # Create an IAM service account that the ADOT collector will use
 # This links a Kubernetes service account to an IAM role via OIDC
+kubectl create namespace opentelemetry --dry-run=client -o yaml | kubectl apply -f -
+
 eksctl create iamserviceaccount \
   --name adot-collector \
   --namespace opentelemetry \
@@ -147,7 +148,7 @@ Now create the collector instance using the OpenTelemetryCollector custom resour
 ```yaml
 # adot-collector.yaml
 # This defines a DaemonSet collector that runs on every node in the cluster
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: adot-collector
@@ -155,8 +156,9 @@ metadata:
 spec:
   mode: daemonset  # One collector pod per node for low-latency local collection
   serviceAccount: adot-collector
-  image: public.ecr.aws/aws-observability/aws-otel-collector:v0.39.0
-  config: |
+  hostNetwork: true  # Exposes OTLP ports on the node IP used by application pods
+  image: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
+  config:
     receivers:
       # Accept OTLP data over both gRPC and HTTP
       otlp:
@@ -204,8 +206,7 @@ spec:
 Apply the manifest:
 
 ```bash
-# Create the namespace if it does not exist, then apply the collector configuration
-kubectl create namespace opentelemetry --dry-run=client -o yaml | kubectl apply -f -
+# Apply the collector configuration
 kubectl apply -f adot-collector.yaml
 ```
 
