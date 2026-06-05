@@ -1,4 +1,4 @@
-# How to Use Uptrends Synthetic Monitoring with OpenTelemetry for Real-Browser
+# How to Use Uptrends Synthetic Monitoring with OpenTelemetry for Real-Browser Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -6,186 +6,154 @@ Tags: OpenTelemetry, Uptrends, Synthetic Monitoring, Real Browser Testing, Perfo
 
 Description: Integrate Uptrends synthetic monitoring with OpenTelemetry to combine real-browser test results with backend trace data for complete visibility.
 
-Uptrends provides real-browser synthetic monitoring from locations around the world. It loads your pages in actual Chrome browsers and measures timing, rendering, and availability. By connecting Uptrends test results with your OpenTelemetry backend traces, you can see exactly what happens server-side when a synthetic check reports slow performance from Tokyo or Frankfurt.
+Uptrends provides real-browser synthetic monitoring from locations around the world. It loads your pages in Chrome browsers and measures timing, rendering, and availability. By exporting Uptrends test results with OpenTelemetry and propagating Uptrends' correlation ID through your backend, you can see what happens server-side when a synthetic check reports slow performance from Tokyo or Frankfurt.
 
 ## Why Real-Browser Synthetic Monitoring Matters
 
-HTTP-level synthetic checks (just hitting an endpoint and measuring response time) miss a lot. They do not render JavaScript, they do not load images, and they do not execute client-side code. Real-browser checks run your full page in a headless Chrome instance, giving you the same performance data that real users experience. Uptrends runs these checks from dozens of global locations, so you can catch performance issues that only affect specific regions.
+HTTP-level synthetic checks (just hitting an endpoint and measuring response time) miss a lot. They do not render JavaScript, they do not load images, and they do not execute client-side code. Real-browser checks run your full page in Chrome, giving you the same kind of performance data that real users experience. Uptrends runs these checks from dozens of global locations, so you can catch performance issues that only affect specific regions.
 
 ## Setting Up Uptrends Checks
 
-Configure an Uptrends transaction check that captures the trace ID from your backend:
+Configure an Uptrends transaction monitor that exercises the user journey you want to measure. A transaction monitor is built from page interaction actions such as Navigate and Click, plus wait or content-check actions that make the script resilient:
 
-```javascript
-// Uptrends transaction script
-// Step 1: Navigate to the page
-navigate("https://myapp.com/products");
+```yaml
+# Example Uptrends transaction outline
+steps:
+  - name: Product list
+    actions:
+      - type: Navigate
+        url: https://myapp.com/products
+      - type: Content check
+        selector: css=#product-list
 
-// Step 2: Wait for the main content to load
-waitForElement("css=#product-list");
+  - name: Product detail
+    actions:
+      - type: Click
+        selector: css=.product-card:first-child
+        wait_until: element is visible and enabled
+      - type: Content check
+        selector: css=#product-detail
 
-// Step 3: Click on a product
-click("css=.product-card:first-child");
-waitForElement("css=#product-detail");
+  - name: Add to cart
+    actions:
+      - type: Click
+        selector: css=#add-to-cart-button
+        wait_until: element is visible and enabled
+      - type: Content check
+        selector: css=.cart-notification
+```
 
-// Step 4: Add to cart
-click("css=#add-to-cart-button");
-waitForElement("css=.cart-notification");
+For trace correlation, your application should read the `X-Correlation-ID` HTTP header sent by Uptrends and add it to backend spans or logs. Do not rely on extracting a backend trace ID from the rendered page; Uptrends' documented OpenTelemetry flow uses a correlation ID per synthetic check.
 
-// Step 5: Extract the trace ID from the page for correlation
-// Your app should expose this in a meta tag or data attribute
-var traceId = getElementAttribute("css=meta[name='server-trace-id']", "content");
-setCustomMetric("server_trace_id", traceId);
+```python
+# Flask example: attach Uptrends correlation ID to the active span
+from flask import Flask, request
+from opentelemetry import trace
+
+app = Flask(__name__)
+
+@app.before_request
+def add_uptrends_correlation_id():
+    correlation_id = request.headers.get("X-Correlation-ID")
+    if correlation_id:
+        trace.get_current_span().set_attribute(
+            "uptrends.correlation_id",
+            correlation_id,
+        )
 ```
 
 ## Forwarding Uptrends Results to OpenTelemetry
 
-Uptrends has a webhook/API that reports check results. Set up a small service that receives these results and converts them to OpenTelemetry metrics:
+Uptrends has a first-party OpenTelemetry export for Enterprise-level accounts. Configure an OpenTelemetry connection, rule set, and monitor group in Uptrends, then point the export at a publicly reachable HTTPS OTLP endpoint. Uptrends supports OTLP over gRPC and HTTP/Protobuf.
 
-```python
-# uptrends_otel_bridge.py
+```yaml
+# otel-collector.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
-from flask import Flask, request, jsonify
-from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+processors:
+  batch:
 
-# Initialize OpenTelemetry metrics
-exporter = OTLPMetricExporter(endpoint="otel-collector:4317", insecure=True)
-reader = PeriodicExportingMetricReader(exporter)
-provider = MeterProvider(metric_readers=[reader])
-metrics.set_meter_provider(provider)
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:9464
 
-meter = metrics.get_meter("uptrends-synthetic")
-
-# Create metrics for Uptrends check results
-check_duration = meter.create_histogram(
-    "synthetic.check.duration",
-    unit="ms",
-    description="Total duration of synthetic browser check",
-)
-dns_duration = meter.create_histogram(
-    "synthetic.dns.duration",
-    unit="ms",
-    description="DNS resolution time",
-)
-connect_duration = meter.create_histogram(
-    "synthetic.connect.duration",
-    unit="ms",
-    description="TCP connection time",
-)
-ttfb_duration = meter.create_histogram(
-    "synthetic.ttfb.duration",
-    unit="ms",
-    description="Time to first byte",
-)
-dom_load_duration = meter.create_histogram(
-    "synthetic.dom_load.duration",
-    unit="ms",
-    description="DOM content loaded time",
-)
-page_load_duration = meter.create_histogram(
-    "synthetic.page_load.duration",
-    unit="ms",
-    description="Full page load time",
-)
-
-app = Flask(__name__)
-
-@app.route("/webhook/uptrends", methods=["POST"])
-def receive_uptrends_result():
-    data = request.get_json()
-
-    attrs = {
-        "check.name": data.get("MonitorName", "unknown"),
-        "check.location": data.get("ServerName", "unknown"),
-        "check.location.city": data.get("ServerCity", "unknown"),
-        "check.location.country": data.get("ServerCountry", "unknown"),
-        "check.status": "pass" if data.get("IsUp") else "fail",
-        # Link to the backend trace if available
-        "server.trace_id": data.get("CustomMetrics", {}).get("server_trace_id", ""),
-    }
-
-    # Record all timing phases
-    timings = data.get("Timings", {})
-    check_duration.record(timings.get("TotalTime", 0), attrs)
-    dns_duration.record(timings.get("DnsTime", 0), attrs)
-    connect_duration.record(timings.get("ConnectTime", 0), attrs)
-    ttfb_duration.record(timings.get("TimeToFirstByte", 0), attrs)
-    dom_load_duration.record(timings.get("DomContentLoaded", 0), attrs)
-    page_load_duration.record(timings.get("PageLoadTime", 0), attrs)
-
-    return jsonify({"status": "recorded"}), 200
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
 ```
+
+In production, terminate TLS at the collector or at a load balancer in front of it, protect the endpoint with the authentication method you configure in Uptrends, and allow inbound traffic from Uptrends.
 
 ## Correlating Synthetic Results with Backend Traces
 
-With the trace ID captured from Uptrends and stored as a metric attribute, you can look up the corresponding backend trace:
+With the correlation ID captured from Uptrends and stored as a span attribute, you can look up backend traces that handled the same synthetic request. If you already know a Tempo trace ID, Tempo exposes `GET /api/traces/<traceID>`:
 
 ```python
 # correlate_synthetic_trace.py
 import requests
 
 TEMPO_URL = "http://tempo:3200"
-PROMETHEUS_URL = "http://prometheus:9090"
-
-def get_slow_synthetic_checks(min_duration_ms=3000):
-    """Find synthetic checks that were slow."""
-    query = f'synthetic_check_duration_milliseconds > {min_duration_ms}'
-    resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
-    results = resp.json().get("data", {}).get("result", [])
-    return results
 
 def get_backend_trace(trace_id):
-    """Fetch the backend trace for a specific synthetic check."""
-    resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}")
+    """Fetch the backend trace for a specific Tempo trace ID."""
+    resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=10)
     if resp.status_code == 200:
         return resp.json()
     return None
 
-def analyze_slow_checks():
-    slow_checks = get_slow_synthetic_checks()
-
-    for check in slow_checks:
-        location = check["metric"].get("check_location_city", "unknown")
-        duration = float(check["value"][1])
-        trace_id = check["metric"].get("server_trace_id", "")
-
-        print(f"\nSlow check from {location}: {duration:.0f}ms")
-
-        if trace_id:
-            trace_data = get_backend_trace(trace_id)
-            if trace_data:
-                # Find the slowest spans in the backend trace
-                spans = extract_spans(trace_data)
-                sorted_spans = sorted(spans, key=lambda s: s["duration"], reverse=True)
-                print("  Backend trace breakdown:")
-                for span in sorted_spans[:5]:
-                    print(f"    {span['name']}: {span['duration']:.0f}ms")
+def analyze_trace(trace_id):
+    trace_data = get_backend_trace(trace_id)
+    if trace_data:
+        spans = extract_spans(trace_data)
+        sorted_spans = sorted(spans, key=lambda s: s["duration"], reverse=True)
+        print("Backend trace breakdown:")
+        for span in sorted_spans[:5]:
+            print(f"  {span['name']}: {span['duration']:.0f}ms")
 ```
+
+If you only have the Uptrends correlation ID, search your trace backend by the `uptrends.correlation_id` span attribute and use the returned trace ID for the lookup. The exact search query depends on your trace backend and indexing configuration.
 
 ## Building a Unified Dashboard
 
-Create a Grafana dashboard that combines Uptrends synthetic data with backend traces:
+Create a Grafana dashboard that combines Uptrends synthetic data with backend traces. The exact metric names depend on how your collector and backend translate OpenTelemetry metric names. When metrics are exported to Prometheus, OpenTelemetry metric names are commonly translated to Prometheus naming conventions with underscores and unit or type suffixes.
 
 ```promql
-# Synthetic page load time by location
-avg(synthetic_page_load_duration_milliseconds) by (check_location_city)
+# Synthetic page load P95 by location
+histogram_quantile(
+  0.95,
+  sum(rate(synthetic_page_load_duration_milliseconds_bucket[5m])) by (le, check_location_city)
+)
 
 # TTFB from synthetic checks vs backend P95
 # Panel A: Synthetic TTFB
-avg(synthetic_ttfb_duration_milliseconds) by (check_location_city)
+histogram_quantile(
+  0.95,
+  sum(rate(synthetic_ttfb_duration_milliseconds_bucket[5m])) by (le, check_location_city)
+)
 # Panel B: Backend response time P95
 histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le))
 
 # Synthetic check pass rate by location
-avg(synthetic_check_duration_milliseconds{check_status="pass"}) by (check_location_country)
+sum(rate(synthetic_check_total{check_status="pass"}[5m])) by (check_location_country)
 /
-count(synthetic_check_duration_milliseconds) by (check_location_country)
+sum(rate(synthetic_check_total[5m])) by (check_location_country)
 ```
 
 ## Alerting on Regional Performance Issues
@@ -199,15 +167,20 @@ groups:
     rules:
       - alert: RegionalPerformanceDegradation
         expr: |
-          avg(synthetic_page_load_duration_milliseconds) by (check_location_country)
-          > 5000
+          histogram_quantile(
+            0.95,
+            sum(rate(synthetic_page_load_duration_milliseconds_bucket[5m])) by (le, check_location_country)
+          ) > 5000
         for: 15m
         annotations:
           summary: "Page load time exceeds 5s from {{ $labels.check_location_country }}"
 
       - alert: SyntheticCheckHighTTFB
         expr: |
-          avg(synthetic_ttfb_duration_milliseconds) by (check_location_city) > 1000
+          histogram_quantile(
+            0.95,
+            sum(rate(synthetic_ttfb_duration_milliseconds_bucket[5m])) by (le, check_location_city)
+          ) > 1000
           and
           histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le)) < 0.2
         for: 10m
@@ -217,4 +190,4 @@ groups:
 
 ## Wrapping Up
 
-Combining Uptrends real-browser synthetic monitoring with OpenTelemetry backend traces gives you visibility from the user's browser all the way to your database. When a synthetic check from a specific location is slow, you can immediately look up the backend trace to see if the server was the bottleneck or if the problem lies in the network path. This eliminates guesswork and speeds up root cause analysis for performance issues that only affect certain regions or user flows.
+Combining Uptrends real-browser synthetic monitoring with OpenTelemetry backend traces gives you visibility from the user's browser all the way to your database. When a synthetic check from a specific location is slow, you can use the Uptrends correlation ID to find backend spans for the same request and determine whether the server was the bottleneck or if the problem lies in the network path. This eliminates guesswork and speeds up root cause analysis for performance issues that only affect certain regions or user flows.
