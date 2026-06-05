@@ -16,7 +16,7 @@ When you configure the Jaeger receiver, you're essentially setting up endpoints 
 
 ## Basic Configuration
 
-Here's a minimal configuration to get the Jaeger receiver running with default settings:
+Here's a minimal configuration to get the Jaeger receiver running on the standard Jaeger ports:
 
 ```yaml
 receivers:
@@ -37,7 +37,7 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -45,10 +45,10 @@ service:
     traces:
       receivers: [jaeger]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration sets up all four Jaeger protocols on their standard ports. The collector listens on all network interfaces (0.0.0.0) and forwards received traces through a batch processor to a logging exporter.
+This configuration sets up all four Jaeger protocols on their standard ports. The collector listens on all network interfaces (0.0.0.0) and forwards received traces through a batch processor to a debug exporter.
 
 ## Protocol-Specific Configuration
 
@@ -91,7 +91,7 @@ receivers:
 
 ### Thrift HTTP Protocol
 
-Thrift HTTP is widely used for Jaeger agent-to-collector communication. It's a good choice when you need HTTP-based communication.
+Thrift HTTP is widely used for sending Jaeger spans directly to a collector over HTTP. It's a good choice when you need HTTP-based communication.
 
 ```yaml
 receivers:
@@ -147,25 +147,42 @@ receivers:
 
 ### Remote Sampling Configuration
 
-The Jaeger receiver can serve sampling strategies to Jaeger clients. This allows centralized control of sampling decisions.
+Current OpenTelemetry Collector versions serve Jaeger sampling strategies with the Jaeger remote sampling extension rather than the Jaeger receiver. This allows centralized control of sampling decisions.
 
 ```yaml
+extensions:
+  jaegerremotesampling:
+    http:
+      endpoint: 0.0.0.0:5778
+    grpc:
+      # Use a different port from the Jaeger receiver's gRPC endpoint.
+      endpoint: 0.0.0.0:14260
+    source:
+      # Strategy file location
+      file: /etc/otel/sampling-strategies.json
+
+      # Reload interval for file changes
+      reload_interval: 30s
+
 receivers:
   jaeger:
     protocols:
       grpc:
         endpoint: 0.0.0.0:14250
 
-    # Remote sampling configuration
-    remote_sampling:
-      # Strategy file location
-      strategy_file: /etc/otel/sampling-strategies.json
+processors:
+  batch:
 
-      # Host:port for the sampling strategy endpoint
-      host_endpoint: 0.0.0.0:5778
+exporters:
+  debug:
 
-      # gRPC endpoint for sampling strategies
-      grpc_host_endpoint: 0.0.0.0:14250
+service:
+  extensions: [jaegerremotesampling]
+  pipelines:
+    traces:
+      receivers: [jaeger]
+      processors: [batch]
+      exporters: [debug]
 ```
 
 The sampling strategy file might look like this:
@@ -232,7 +249,7 @@ graph LR
     C --> D[Memory Limiter]
     D --> E[Attributes Processor]
     E --> F[OTLP Exporter]
-    E --> G[Jaeger Exporter]
+    E --> G[OTLP Exporter to Jaeger]
 
     style B fill:#f9f,stroke:#333,stroke-width:2px
     style F fill:#bbf,stroke:#333,stroke-width:2px
@@ -279,10 +296,13 @@ receivers:
         max_packet_size: 65000
         workers: 20
 
-    # Remote sampling configuration
-    remote_sampling:
-      strategy_file: /etc/otel/sampling-strategies.json
-      host_endpoint: 0.0.0.0:5778
+extensions:
+  jaegerremotesampling:
+    http:
+      endpoint: 0.0.0.0:5778
+    source:
+      file: /etc/otel/sampling-strategies.json
+      reload_interval: 30s
 
 processors:
   # Protect against memory overload
@@ -318,25 +338,32 @@ exporters:
     compression: gzip
     timeout: 10s
 
-  # Fallback Jaeger exporter
-  jaeger:
-    endpoint: jaeger-collector.example.com:14250
+  # Export to Jaeger over OTLP
+  otlp/jaeger:
+    endpoint: jaeger-collector.example.com:4317
     tls:
       insecure: false
 
 service:
+  extensions: [jaegerremotesampling]
+
   pipelines:
     traces:
       receivers: [jaeger]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, jaeger]
+      exporters: [otlp, otlp/jaeger]
 
   # Enable telemetry
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Performance Tuning
