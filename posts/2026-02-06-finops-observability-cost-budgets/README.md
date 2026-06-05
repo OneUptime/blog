@@ -67,8 +67,6 @@ Build a tool that estimates the cost impact of a deployment:
 # cost_estimator.py
 import yaml
 import sys
-import json
-import subprocess
 from dataclasses import dataclass
 
 @dataclass
@@ -137,14 +135,17 @@ class ObservabilityCostEstimator:
         """Query Prometheus for current month spend."""
         import requests
         query = (
-            f'sum(increase(spans_per_team_total{{team_name="{team}"}}[30d]))'
-            f' * {self.rates["span_cost_per_million"]} / 1e6'
+            f'(sum(increase(spans_per_team_total{{team_name="{team}"}}[30d]))'
+            f' * {self.rates["span_cost_per_million"]} / 1e6) + '
+            f'(sum(increase(logs_per_team_total{{team_name="{team}"}}[30d]))'
+            f' * {self.rates["log_cost_per_million"]} / 1e6)'
         )
         try:
             resp = requests.get(
                 f"{self.prometheus_url}/api/v1/query",
                 params={"query": query}
             )
+            resp.raise_for_status()
             result = resp.json()["data"]["result"]
             if result:
                 return float(result[0]["value"][1])
@@ -234,7 +235,7 @@ jobs:
           PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
         run: |
           python cost_estimator.py \
-            --team ${{ github.event.repository.custom_properties.team }} \
+            --team ${{ vars.TEAM }} \
             --service ${{ github.event.repository.name }} \
             --manifest k8s/deployment.yaml \
             --budgets budgets.yaml \
@@ -244,6 +245,7 @@ jobs:
     needs: cost-check
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Deploy to Kubernetes
         run: kubectl apply -f k8s/
 ```
@@ -257,10 +259,11 @@ groups:
     rules:
       - alert: TeamNearObservabilityBudget
         expr: |
-          (sum by (team_name)(
-            increase(spans_per_team_total[30d]) * 0.0000005 +
-            increase(logs_per_team_total[30d]) * 0.0000003
-          )) / on(team_name) group_left
+          (
+            sum by (team_name)(increase(spans_per_team_total[30d])) * 0.0000005
+            +
+            sum by (team_name)(increase(logs_per_team_total[30d])) * 0.0000003
+          ) / on(team_name)
           observability_budget_usd > 0.75
         for: 1h
         labels:
