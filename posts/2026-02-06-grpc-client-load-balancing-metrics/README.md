@@ -19,15 +19,13 @@ package main
 
 import (
     "context"
-    "sync"
     "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer"
-    "google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/peer"
 )
 
 var meter = otel.Meter("grpc.client.loadbalancing")
@@ -86,9 +84,9 @@ func lbMonitoringInterceptor() grpc.UnaryClientInterceptor {
         invoker grpc.UnaryInvoker,
         opts ...grpc.CallOption,
     ) error {
-        // Use a peer to capture the resolved address
-        var peer grpc.Peer
-        opts = append(opts, grpc.Peer(&peer))
+        // Use peer.Peer to capture the selected transport peer.
+        var peerInfo peer.Peer
+        opts = append(opts, grpc.Peer(&peerInfo))
 
         start := time.Now()
         err := invoker(ctx, method, req, reply, cc, opts...)
@@ -96,14 +94,14 @@ func lbMonitoringInterceptor() grpc.UnaryClientInterceptor {
 
         // Extract the backend address from the peer
         backendAddr := "unknown"
-        if peer.Addr != nil {
-            backendAddr = peer.Addr.String()
+        if peerInfo.Addr != nil {
+            backendAddr = peerInfo.Addr.String()
         }
 
         attrs := []attribute.KeyValue{
             attribute.String("grpc.backend.address", backendAddr),
             attribute.String("grpc.method", method),
-            attribute.String("grpc.lb.policy", cc.Target()),
+            attribute.String("grpc.target", cc.Target()),
         }
 
         if err != nil {
@@ -124,7 +122,7 @@ func lbMonitoringInterceptor() grpc.UnaryClientInterceptor {
 
 ## Python Implementation
 
-Here is the equivalent in Python:
+Python's synchronous client interceptor API does not expose the selected transport peer directly. If you need the backend address in Python, have the server add a backend identifier to response metadata and record it from the Call/Future:
 
 ```python
 import grpc
@@ -151,29 +149,29 @@ class LoadBalancingMetricsInterceptor(grpc.UnaryUnaryClientInterceptor):
         start = time.time()
 
         # Make the RPC call
-        response = continuation(client_call_details, request)
+        call = continuation(client_call_details, request)
 
-        elapsed_ms = (time.time() - start) * 1000
+        def record_metrics(response_future):
+            elapsed_ms = (time.time() - start) * 1000
 
-        # Extract the peer (backend address) from the response
-        # The peer information is in the trailing metadata
-        peer = "unknown"
-        try:
-            # Get the peer from call metadata
-            metadata = dict(response.initial_metadata())
-            peer = metadata.get("x-backend-address", "unknown")
-        except Exception:
-            pass
+            # Get the backend address from application-provided metadata.
+            peer = "unknown"
+            try:
+                metadata = dict(response_future.initial_metadata() or [])
+                peer = metadata.get("x-backend-address", "unknown")
+            except Exception:
+                pass
 
-        attrs = {
-            "grpc.backend.address": peer,
-            "grpc.method": client_call_details.method,
-        }
+            attrs = {
+                "grpc.backend.address": peer,
+                "grpc.method": client_call_details.method,
+            }
 
-        requests_per_backend.add(1, attrs)
-        backend_latency.record(elapsed_ms, attrs)
+            requests_per_backend.add(1, attrs)
+            backend_latency.record(elapsed_ms, attrs)
 
-        return response
+        call.add_done_callback(record_metrics)
+        return call
 ```
 
 ## Monitoring Backend Health States
@@ -181,7 +179,7 @@ class LoadBalancingMetricsInterceptor(grpc.UnaryUnaryClientInterceptor):
 Track how the load balancer sees each backend's connectivity state:
 
 ```go
-func monitorSubconnStates(cc *grpc.ClientConn) {
+func monitorSubconnStates(getSubconnStates func() map[string]int64) {
     // Create an observable gauge that reports backend states
     meter.Int64ObservableGauge(
         "grpc.client.lb.backend_state",
@@ -189,9 +187,9 @@ func monitorSubconnStates(cc *grpc.ClientConn) {
         metric.WithInt64Callback(func(ctx context.Context, obs metric.Int64Observer) error {
             // In practice, you would track subconn state changes
             // through a custom balancer or resolver
-            states := getSubconnStates(cc)
+            states := getSubconnStates()
             for addr, state := range states {
-                obs.Observe(int64(state), metric.WithAttributes(
+                obs.Observe(state, metric.WithAttributes(
                     attribute.String("grpc.backend.address", addr),
                 ))
             }
