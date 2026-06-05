@@ -24,16 +24,16 @@ The gateway is the first point where you can inject tracing. Here is a Python-ba
 import json
 import time
 import paho.mqtt.client as mqtt
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.trace.propagation import set_span_in_context
+from opentelemetry.trace import Status, StatusCode
 
 # Initialize the tracer
 
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint="localhost:4317")))
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317")))
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("device-gateway", "1.0.0")
 
@@ -65,9 +65,9 @@ def on_device_message(client, userdata, msg):
         # Normalize and forward to the message queue
         if validated:
             normalized = normalize_to_fhir_observation(device_data)
-            publish_to_queue(normalized, trace.get_current_span())
+            publish_to_queue(normalized)
         else:
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Validation failed"))
+            span.set_status(Status(StatusCode.ERROR, "Validation failed"))
             span.add_event("validation_failure", {
                 "device.id": device_id,
                 "reason": "Data outside expected range"
@@ -99,12 +99,12 @@ The hardest part of tracing a device pipeline is maintaining trace context acros
 from opentelemetry.propagate import inject, extract
 from confluent_kafka import Producer, Consumer
 
-def publish_to_queue(normalized_data, current_span):
+def publish_to_queue(normalized_data):
     """Publish normalized device data to Kafka with trace context."""
     with tracer.start_as_current_span("queue.publish") as span:
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.destination", "device-data-normalized")
-        span.set_attribute("messaging.operation", "publish")
+        span.set_attribute("messaging.destination.name", "device-data-normalized")
+        span.set_attribute("messaging.operation.type", "send")
 
         # Inject trace context into Kafka headers so the consumer
         # can continue the same trace
@@ -135,6 +135,8 @@ def consume_device_data():
         msg = consumer.poll(1.0)
         if msg is None:
             continue
+        if msg.error():
+            continue
 
         # Extract trace context from Kafka headers to continue the trace
         headers_dict = {k: v.decode() for k, v in msg.headers() or []}
@@ -142,7 +144,8 @@ def consume_device_data():
 
         with tracer.start_as_current_span("queue.consume", context=ctx) as span:
             span.set_attribute("messaging.system", "kafka")
-            span.set_attribute("messaging.operation", "consume")
+            span.set_attribute("messaging.destination.name", "device-data-normalized")
+            span.set_attribute("messaging.operation.type", "process")
 
             data = json.loads(msg.value())
             route_to_clinical_system(data)
@@ -153,15 +156,22 @@ def consume_device_data():
 The final hop sends the data into the EHR or clinical data repository:
 
 ```python
+import requests
+
 def route_to_clinical_system(observation_data):
     """Route the FHIR Observation to the appropriate clinical system."""
     with tracer.start_as_current_span("clinical.route") as span:
-        data_type = observation_data.get("category", "unknown")
-        span.set_attribute("clinical.data_type", data_type)
+        category_codes = [
+            coding.get("code")
+            for category in observation_data.get("category", [])
+            for coding in category.get("coding", [])
+            if coding.get("code")
+        ]
+        span.set_attribute("clinical.data_type", ",".join(category_codes) or "unknown")
 
-        if data_type == "vital-signs":
+        if "vital-signs" in category_codes:
             destination = "ehr-vitals-api"
-        elif data_type == "laboratory":
+        elif "laboratory" in category_codes:
             destination = "lis-results-api"
         else:
             destination = "clinical-data-repo"
@@ -170,15 +180,15 @@ def route_to_clinical_system(observation_data):
 
         # Send to the clinical system and measure response time
         with tracer.start_as_current_span("clinical.api.post") as api_span:
-            api_span.set_attribute("http.method", "POST")
-            api_span.set_attribute("http.url", f"https://{destination}/api/Observation")
+            api_span.set_attribute("http.request.method", "POST")
+            api_span.set_attribute("url.full", f"https://{destination}/api/Observation")
 
             response = requests.post(
                 f"https://{destination}/api/Observation",
                 json=observation_data,
                 timeout=10,
             )
-            api_span.set_attribute("http.status_code", response.status_code)
+            api_span.set_attribute("http.response.status_code", response.status_code)
 
             # Calculate total end-to-end latency
             device_timestamp = observation_data.get("device_timestamp", 0)
