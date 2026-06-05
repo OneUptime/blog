@@ -75,6 +75,8 @@ Market risk pipelines compute Value at Risk (VaR), stress test results, and Gree
 
 ```python
 # market_risk.py
+from opentelemetry import trace
+
 tracer = trace.get_tracer("risk.market")
 
 def calculate_portfolio_var(portfolio, params):
@@ -135,6 +137,8 @@ Liquidity risk pipelines assess whether an institution can meet its cash flow ob
 
 ```python
 # liquidity_risk.py
+from opentelemetry import trace
+
 tracer = trace.get_tracer("risk.liquidity")
 
 def assess_liquidity_coverage(entity_id: str, horizon_days: int):
