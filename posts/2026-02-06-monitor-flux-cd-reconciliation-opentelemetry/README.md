@@ -129,7 +129,7 @@ This configuration uses Kubernetes service discovery to find Flux controller pod
 
 ## Key Flux Metrics to Monitor
 
-Flux controllers expose several metrics that are critical for reconciliation monitoring. Here are the most important ones:
+Flux controllers expose several metrics that are critical for reconciliation monitoring. For resource readiness and suspension state, use kube-state-metrics with Flux custom resource metrics such as `gotk_resource_info`. Here are the most important ones:
 
 ```yaml
 # Reference: Key Flux CD metrics and their meanings
@@ -138,14 +138,10 @@ Flux controllers expose several metrics that are critical for reconciliation mon
 # How long each reconciliation takes. Rising durations often indicate
 # cluster issues or complex resource graphs.
 
-# gotk_reconcile_condition (gauge)
-# The current condition of each reconciled resource.
-# Labels include: type (Ready, Healthy), status (True, False, Unknown),
-# kind (Kustomization, HelmRelease, GitRepository), name, namespace.
-
-# gotk_suspend_status (gauge)
-# Whether a resource is suspended (1) or active (0).
-# Suspended resources do not reconcile.
+# gotk_resource_info (info, from kube-state-metrics custom resource metrics)
+# The current state of each Flux custom resource.
+# Labels commonly include: customresource_kind, name, exported_namespace,
+# ready, suspended, and revision or source-specific labels.
 
 # controller_runtime_reconcile_total (counter)
 # Total number of reconciliations, labeled by result (success, error, requeue).
@@ -153,8 +149,9 @@ Flux controllers expose several metrics that are critical for reconciliation mon
 # controller_runtime_reconcile_errors_total (counter)
 # Total number of reconciliation errors per controller.
 
-# source_controller_artifact_in_storage (gauge)
-# Whether the source artifact is currently stored and available.
+# gotk_cache_events_total (counter)
+# Cache events observed by Flux controllers, labeled by event_type,
+# name, and namespace.
 ```
 
 ## Building a Custom Flux Event Watcher
@@ -165,7 +162,6 @@ For richer telemetry beyond what Prometheus metrics provide, you can build a Kub
 # flux_watcher.py
 # Watches Flux CD Kubernetes events and emits OpenTelemetry spans
 
-import time
 from kubernetes import client, config, watch
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -194,7 +190,7 @@ def watch_flux_events(tracer):
     except config.ConfigException:
         config.load_kube_config()
 
-    v1 = client.CoreV1Api()
+    events_v1 = client.EventsV1Api()
     w = watch.Watch()
 
     # Track active reconciliation spans by resource key
@@ -203,45 +199,58 @@ def watch_flux_events(tracer):
     print("Starting Flux event watcher...")
 
     for event in w.stream(
-        v1.list_namespaced_event,
+        events_v1.list_namespaced_event,
         namespace="flux-system",
         timeout_seconds=0,
     ):
         evt = event["object"]
-        event_type = event["type"]
 
         # Filter for Flux-related events
-        if not evt.source or not evt.source.component:
-            continue
-        component = evt.source.component
+        component = evt.reporting_controller or ""
         if component not in [
             "source-controller",
             "kustomize-controller",
             "helm-controller",
         ]:
             continue
+        involved = evt.regarding
+        if not involved:
+            continue
 
-        resource_key = f"{evt.involved_object.kind}/{evt.involved_object.namespace}/{evt.involved_object.name}"
+        controller_name = component
+        if controller_name not in [
+            "source-controller",
+            "kustomize-controller",
+            "helm-controller",
+        ]:
+            continue
+
+        resource_key = f"{involved.kind}/{involved.namespace}/{involved.name}"
         reason = evt.reason or "Unknown"
-        message = evt.message or ""
+        message = evt.note or ""
 
         # Create or update spans based on the event reason
-        if reason in ["ReconciliationStarted", "ArtifactUpToDate", "info"]:
+        if reason in ["Progressing"]:
             # Start a new reconciliation span
             span = tracer.start_span(
                 name=f"reconcile: {resource_key}",
                 attributes={
-                    "flux.controller": component,
-                    "flux.resource.kind": evt.involved_object.kind,
-                    "flux.resource.name": evt.involved_object.name,
-                    "flux.resource.namespace": evt.involved_object.namespace or "",
+                    "flux.controller": controller_name,
+                    "flux.resource.kind": involved.kind,
+                    "flux.resource.name": involved.name,
+                    "flux.resource.namespace": involved.namespace or "",
                     "flux.event.reason": reason,
                     "flux.event.message": message[:500],
                 },
             )
             active_spans[resource_key] = span
 
-        elif reason in ["ReconciliationSucceeded", "ArtifactInStorage"]:
+        elif reason in [
+            "ReconciliationSucceeded",
+            "Succeeded",
+            "GitOperationSucceeded",
+            "ArtifactUpToDate",
+        ]:
             # End the span successfully
             span = active_spans.pop(resource_key, None)
             if span:
@@ -253,7 +262,7 @@ def watch_flux_events(tracer):
                 with tracer.start_as_current_span(
                     f"reconcile-success: {resource_key}"
                 ) as s:
-                    s.set_attribute("flux.controller", component)
+                    s.set_attribute("flux.controller", controller_name)
                     s.set_attribute("flux.reconciliation.result", "success")
                     s.set_status(Status(StatusCode.OK))
 
@@ -275,7 +284,7 @@ def watch_flux_events(tracer):
                 with tracer.start_as_current_span(
                     f"reconcile-failed: {resource_key}"
                 ) as s:
-                    s.set_attribute("flux.controller", component)
+                    s.set_attribute("flux.controller", controller_name)
                     s.set_attribute("flux.reconciliation.result", "failure")
                     s.set_attribute("flux.error.reason", reason)
                     s.set_status(Status(StatusCode.ERROR, message[:200]))
@@ -286,7 +295,7 @@ if __name__ == "__main__":
     watch_flux_events(tracer)
 ```
 
-This watcher runs as a sidecar or standalone pod in your cluster. It listens for Kubernetes events from Flux controllers and creates OpenTelemetry spans that represent reconciliation cycles. Successful reconciliations get OK status, and failures include the error reason and message as span attributes.
+This watcher runs as a sidecar or standalone pod in your cluster. It listens for Kubernetes events from Flux controllers and creates OpenTelemetry spans that represent reconciliation activity. Because Kubernetes events are point-in-time records, use the scraped duration metrics as the authoritative source for reconciliation timing. Successful reconciliations get OK status, and failures include the error reason and message as span attributes.
 
 ## Deploying the Event Watcher
 
@@ -334,7 +343,7 @@ metadata:
   name: flux-otel-watcher
   namespace: flux-system
 rules:
-  - apiGroups: [""]
+  - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
@@ -364,11 +373,11 @@ The RBAC rules give the watcher read-only access to events in the `flux-system` 
 
 With Flux metrics and reconciliation spans flowing into your backend, configure alerts for the failure modes that matter:
 
-**Reconciliation failure alert**: Trigger when `gotk_reconcile_condition` shows `Ready=False` for any resource for more than 5 minutes. This catches stuck reconciliations that need human attention.
+**Reconciliation failure alert**: Trigger when kube-state-metrics exports `gotk_resource_info` with `ready="False"` for any resource for more than 5 minutes. This catches stuck reconciliations that need human attention.
 
 **Reconciliation duration alert**: Trigger when the p95 of `gotk_reconcile_duration_seconds` exceeds your baseline by 2x. This catches performance degradation before it becomes critical.
 
-**Suspended resource alert**: Trigger when `gotk_suspend_status` is 1 for more than 24 hours. Suspended resources are often forgotten after emergency debugging sessions.
+**Suspended resource alert**: Trigger when kube-state-metrics exports `gotk_resource_info` with `suspended="true"` for more than 24 hours. Suspended resources are often forgotten after emergency debugging sessions.
 
 **Source fetch failure alert**: Trigger when the source controller fails to fetch artifacts for more than 2 consecutive cycles. This usually indicates a Git authentication issue or network problem.
 
