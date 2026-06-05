@@ -52,7 +52,7 @@ source .venv/bin/activate
 
 ### Cause 2: Missing the Base Package
 
-Individual instrumentation packages depend on `opentelemetry-instrumentation` (the base package). If it is missing:
+Individual instrumentation packages depend on `opentelemetry-instrumentation` (the base package), and pip normally installs it automatically. If the dependency is missing because an install was interrupted or packages were copied between environments:
 
 ```bash
 pip install opentelemetry-instrumentation
@@ -68,7 +68,7 @@ OpenTelemetry uses Python namespace packages (`opentelemetry` is split across mu
 ```python
 import opentelemetry
 print(opentelemetry.__path__)
-# Should show multiple paths (one per sub-package)
+# Should point to the expected site-packages directory or directories
 ```
 
 **Fix:**
@@ -86,8 +86,10 @@ In Docker, if you install packages and then COPY a directory that overwrites the
 ```dockerfile
 # BROKEN
 FROM python:3.12
-RUN pip install opentelemetry-instrumentation-flask
-COPY . /app  # This might overwrite site-packages if /app contains a venv
+WORKDIR /app
+RUN python -m venv .venv
+RUN .venv/bin/pip install opentelemetry-instrumentation-flask
+COPY . .  # This might overwrite .venv if your build context contains a local .venv
 ```
 
 **Fix:**
@@ -97,7 +99,12 @@ FROM python:3.12
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .  # Copy app code, not virtual environments
+COPY . .  # Copy app code, with virtual environments excluded by .dockerignore
+```
+
+```dockerignore
+.venv
+venv
 ```
 
 ### Cause 5: Using opentelemetry-instrument Without Installation
@@ -148,12 +155,12 @@ python -c "from opentelemetry.instrumentation.flask import FlaskInstrumentor; pr
 pip list | grep opentelemetry
 
 # Expected output:
-# opentelemetry-api                    1.23.0
-# opentelemetry-sdk                    1.23.0
-# opentelemetry-semantic-conventions   0.44b0
-# opentelemetry-instrumentation        0.44b0
-# opentelemetry-instrumentation-flask  0.44b0
-# opentelemetry-exporter-otlp-proto-http 1.23.0
+# opentelemetry-api                    1.42.1
+# opentelemetry-sdk                    1.42.1
+# opentelemetry-semantic-conventions   0.63b1
+# opentelemetry-instrumentation        0.63b1
+# opentelemetry-instrumentation-flask  0.63b1
+# opentelemetry-exporter-otlp-proto-http 1.42.1
 ```
 
 If `opentelemetry-instrumentation` (without a suffix) is missing, install it:
@@ -166,23 +173,23 @@ pip install opentelemetry-instrumentation
 
 ```txt
 # Core
-opentelemetry-api>=1.23.0,<2.0
-opentelemetry-sdk>=1.23.0,<2.0
-opentelemetry-semantic-conventions>=0.44b0
+opentelemetry-api>=1.42.1,<2.0
+opentelemetry-sdk>=1.42.1,<2.0
+opentelemetry-semantic-conventions>=0.63b1
 
 # Exporter
-opentelemetry-exporter-otlp-proto-http>=1.23.0,<2.0
+opentelemetry-exporter-otlp-proto-http>=1.42.1,<2.0
 
 # Instrumentation base (required)
-opentelemetry-instrumentation>=0.44b0
+opentelemetry-instrumentation>=0.63b1
 
 # Individual instrumentations
-opentelemetry-instrumentation-flask>=0.44b0
-opentelemetry-instrumentation-requests>=0.44b0
-opentelemetry-instrumentation-sqlalchemy>=0.44b0
+opentelemetry-instrumentation-flask>=0.63b1
+opentelemetry-instrumentation-requests>=0.63b1
+opentelemetry-instrumentation-sqlalchemy>=0.63b1
 
 # Auto-instrumentation CLI
-opentelemetry-distro>=0.44b0
+opentelemetry-distro>=0.63b1
 ```
 
 The most common cause of this error is a mismatch between the Python environment where packages are installed and where your application runs. Always verify with `which python` and `pip list` that you are using the same environment.
