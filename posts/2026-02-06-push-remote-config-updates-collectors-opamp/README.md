@@ -10,7 +10,7 @@ Updating the configuration of a single OpenTelemetry Collector is trivial. You e
 
 ## How Remote Configuration Works in OpAMP
 
-When an OpAMP-managed collector connects to the server, it reports its current effective configuration. The server can then send a new configuration at any time through the persistent connection. The flow looks like this:
+When an OpAMP-managed collector connects to the server with remote configuration enabled, it reports its capabilities and can report its current effective configuration. The server can then send a new configuration through the persistent connection. The flow looks like this:
 
 1. The server sends a `ServerToAgent` message containing the new config
 2. The supervisor receives the config and writes it to disk
@@ -28,9 +28,17 @@ On the server side, you need to track which configuration each agent should be r
 package main
 
 import (
+    "context"
+    "crypto/sha256"
+
     "github.com/open-telemetry/opamp-go/protobufs"
     "github.com/open-telemetry/opamp-go/server/types"
 )
+
+func computeHash(configYAML string) []byte {
+    sum := sha256.Sum256([]byte(configYAML))
+    return sum[:]
+}
 
 // pushConfigToAgent sends a new collector configuration to a specific agent
 func pushConfigToAgent(conn types.Connection, configYAML string) error {
@@ -150,7 +158,7 @@ service:
       exporters: [otlp/primary, otlp/secondary]
 ```
 
-Push this configuration through your OpAMP server, and every collector in the fleet picks it up within seconds.
+Push this configuration through your OpAMP server, and connected collectors in the fleet can apply it as soon as they receive and process the update.
 
 ## Verifying Configuration Propagation
 
@@ -158,22 +166,17 @@ After pushing a config update, verify that all agents applied it successfully. E
 
 ```go
 // In your OnMessage callback
-OnMessageFunc: func(conn types.Connection, msg *protobufs.AgentToServer) *protobufs.ServerToAgent {
-    if msg.EffectiveConfig != nil {
-        // Compare the reported config hash with what we sent
-        reportedHash := msg.EffectiveConfig.ConfigMap.ConfigMap[""].Hash
-        if bytes.Equal(reportedHash, expectedHash) {
-            log.Printf("Agent %s successfully applied new config", msg.InstanceUid)
-        }
-    }
-
-    // Check for config application errors
+OnMessage: func(ctx context.Context, conn types.Connection, msg *protobufs.AgentToServer) *protobufs.ServerToAgent {
+    // Check the status of the last remote config the agent received
     if msg.RemoteConfigStatus != nil {
         status := msg.RemoteConfigStatus.Status
         if status == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_FAILED {
-            log.Printf("Agent %s failed to apply config: %s",
+            log.Printf("Agent %x failed to apply config: %s",
                 msg.InstanceUid,
                 msg.RemoteConfigStatus.ErrorMessage)
+        } else if status == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED &&
+            bytes.Equal(msg.RemoteConfigStatus.LastRemoteConfigHash, expectedHash) {
+            log.Printf("Agent %x successfully applied new config", msg.InstanceUid)
         }
     }
 
