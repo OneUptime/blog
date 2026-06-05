@@ -10,11 +10,11 @@ Description: How to instrument and monitor database connection pool metrics like
 
 Connection pools are the unsung heroes of database performance. They sit between your application and the database, reusing connections instead of creating new ones for every query. When the pool is healthy, everything runs smoothly. When it is not, you get connection timeouts, request queuing, and cascading failures that are notoriously hard to debug without the right metrics.
 
-Most connection pool libraries expose statistics about their internal state: how many connections are active, how many are idle, how many requests are waiting for a connection. The problem is that these statistics usually live inside your application process and never make it to your monitoring dashboard. OpenTelemetry fixes this by letting you export pool statistics as standard metrics.
+Most connection pool libraries expose statistics about their internal state: how many connections are active, how many are idle, how many requests are waiting for a connection. The problem is that these statistics usually live inside your application process and never make it to your monitoring dashboard. OpenTelemetry fixes this by letting you export pool statistics as metrics.
 
 ## What Connection Pool Metrics Tell You
 
-There are three core metrics that every pool exposes in some form.
+There are three core metrics that are useful to track when your pool exposes them.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
     A -->|New Request| B
 ```
 
-**Active connections** are currently executing a query. A high number means your database is under load.
+**Active connections** are checked out from the pool and in use by the application. They might be executing a query, sitting in a transaction, or being held by application code. A high number means your database access path is under load.
 
 **Idle connections** are open but not doing anything. They are ready to serve the next request without the overhead of establishing a new connection. Too many idle connections waste database resources. Too few means every burst of traffic requires creating new connections, which is slow.
 
@@ -67,7 +67,6 @@ Create a metrics collector that reads HikariCP pool statistics and reports them 
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
 import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributeKey;
 
@@ -83,7 +82,7 @@ public class HikariPoolMetrics {
             AttributeKey.stringKey("pool.name"), dataSource.getPoolName()
         );
 
-        // Register a gauge for active connections (currently executing queries)
+        // Register a gauge for active connections (checked out and in use)
         meter.gaugeBuilder("db.pool.active_connections")
             .setDescription("Number of connections currently in use")
             .setUnit("connections")
@@ -142,15 +141,15 @@ public class Application {
 
 ## Instrumenting psycopg2 Connection Pool (Python)
 
-For Python applications using psycopg2's built-in connection pool (or psycopg2-pool), here is how to export pool statistics.
+For Python applications using psycopg2's built-in connection pool, here is how to export pool statistics. The built-in pool exposes only `getconn()`, `putconn()`, and `closeall()` as public APIs, so this example wraps the pool to track waiting callers and reads the internal `_used` and `_pool` collections for connection counts.
 
 ```python
 # pool_metrics.py
 
 import threading
-import time
 from psycopg2 import pool
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -165,8 +164,8 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("connection-pool")
 
-# Create the connection pool with min/max bounds
-connection_pool = pool.ThreadedConnectionPool(
+# Create the raw connection pool with min/max bounds
+raw_connection_pool = pool.ThreadedConnectionPool(
     minconn=5,    # Minimum idle connections to maintain
     maxconn=20,   # Maximum total connections allowed
     host="localhost",
@@ -175,79 +174,90 @@ connection_pool = pool.ThreadedConnectionPool(
     password="secret",
 )
 
-# Track pool usage with observable gauges that sample on each collection
-active_gauge = meter.create_observable_gauge(
-    "db.pool.active_connections",
-    description="Connections currently checked out and in use",
-    unit="connections",
-)
-
-idle_gauge = meter.create_observable_gauge(
-    "db.pool.idle_connections",
-    description="Connections available in the pool",
-    unit="connections",
-)
-
-
 class PoolStatsCollector:
     """
-    Collects connection pool statistics and exposes them as
+    Wraps a psycopg2 pool so waiting callers can be tracked, then exposes
     OpenTelemetry observable gauge callbacks.
     """
     def __init__(self, pool_instance, pool_name="default"):
         self.pool = pool_instance
         self.pool_name = pool_name
-        # Track waiting requests manually since psycopg2 pool does not expose this
         self._waiting_count = 0
         self._lock = threading.Lock()
+        self._semaphore = threading.BoundedSemaphore(pool_instance.maxconn)
+
+    def getconn(self):
+        acquired = self._semaphore.acquire(blocking=False)
+        if not acquired:
+            with self._lock:
+                self._waiting_count += 1
+            self._semaphore.acquire()
+            with self._lock:
+                self._waiting_count -= 1
+
+        try:
+            return self.pool.getconn()
+        except Exception:
+            self._semaphore.release()
+            raise
+
+    def putconn(self, conn, close=False):
+        try:
+            self.pool.putconn(conn, close=close)
+        finally:
+            self._semaphore.release()
+
+    def active_count(self):
+        return len(getattr(self.pool, '_used', {}))
+
+    def idle_count(self):
+        return len(getattr(self.pool, '_pool', []))
 
     def get_active_callback(self, options):
         """Callback for the active connections gauge."""
         # psycopg2 pool tracks used connections in _used dict
-        used = len(getattr(self.pool, '_used', {}))
-        yield metrics.Observation(
-            value=used,
+        yield Observation(
+            value=self.active_count(),
             attributes={"pool.name": self.pool_name}
         )
 
     def get_idle_callback(self, options):
         """Callback for the idle connections gauge."""
         # Available connections are stored in the _pool list
-        available = len(getattr(self.pool, '_pool', []))
-        yield metrics.Observation(
-            value=available,
+        yield Observation(
+            value=self.idle_count(),
             attributes={"pool.name": self.pool_name}
         )
 
     def get_waiting_callback(self, options):
         """Callback for waiting requests gauge."""
         with self._lock:
-            yield metrics.Observation(
+            yield Observation(
                 value=self._waiting_count,
                 attributes={"pool.name": self.pool_name}
             )
 
 
 # Initialize the collector and register callbacks
-collector = PoolStatsCollector(connection_pool, pool_name="main-db")
+monitored_pool = PoolStatsCollector(raw_connection_pool, pool_name="main-db")
 
 meter.create_observable_gauge(
     "db.pool.active_connections",
-    callbacks=[collector.get_active_callback],
+    callbacks=[monitored_pool.get_active_callback],
     description="Active connections",
     unit="connections",
 )
 
 meter.create_observable_gauge(
     "db.pool.idle_connections",
-    callbacks=[collector.get_idle_callback],
+    callbacks=[monitored_pool.get_idle_callback],
     description="Idle connections",
     unit="connections",
 )
 
 meter.create_observable_gauge(
     "db.pool.waiting_requests",
-    callbacks=[collector.get_waiting_callback],
+    callbacks=[monitored_pool.get_waiting_callback],
     description="Requests waiting for a connection",
     unit="requests",
 )
@@ -289,6 +299,13 @@ meter.createObservableGauge('db.pool.idle_connections', {
   unit: 'connections',
 }).addCallback((result) => {
   result.observe(pool.idleCount, { 'pool.name': 'main-db' });
+});
+
+meter.createObservableGauge('db.pool.active_connections', {
+  description: 'Connections checked out and in use',
+  unit: 'connections',
+}).addCallback((result) => {
+  result.observe(pool.totalCount - pool.idleCount, { 'pool.name': 'main-db' });
 });
 
 meter.createObservableGauge('db.pool.waiting_requests', {
@@ -376,19 +393,21 @@ A practical approach is to add pool state as span attributes on every database q
 
 ```python
 # Add pool stats to every query span for correlation
+from opentelemetry import trace
+
 def execute_query(query, params):
     span = trace.get_current_span()
     # Snapshot pool state at query execution time
-    span.set_attribute("db.pool.active_at_query_time", len(pool._used))
-    span.set_attribute("db.pool.idle_at_query_time", len(pool._pool))
+    span.set_attribute("db.pool.active_at_query_time", monitored_pool.active_count())
+    span.set_attribute("db.pool.idle_at_query_time", monitored_pool.idle_count())
 
-    conn = pool.getconn()
+    conn = monitored_pool.getconn()
     try:
         cursor = conn.cursor()
         cursor.execute(query, params)
         return cursor.fetchall()
     finally:
-        pool.putconn(conn)
+        monitored_pool.putconn(conn)
 ```
 
 This way, when you find a slow query in your traces, you can see what the pool looked like when that query ran. If every slow query shows 20/20 active connections and 0 idle, you know pool exhaustion was part of the problem.
