@@ -15,61 +15,85 @@ Most database libraries do not expose pool metrics by default. You need to add i
 ```python
 from opentelemetry import metrics
 import time
-import threading
 
 meter = metrics.get_meter("connection-pool-monitor")
 
-# Create gauges for pool state
+# Track connection counts using the OpenTelemetry database pool semantic conventions
 
-pool_active = meter.create_up_down_counter(
-    name="db.pool.connections.active",
-    description="Number of connections currently checked out",
-    unit="connections",
-)
-
-pool_idle = meter.create_up_down_counter(
-    name="db.pool.connections.idle",
-    description="Number of connections sitting idle in the pool",
-    unit="connections",
+pool_connections = meter.create_up_down_counter(
+    name="db.client.connection.count",
+    description="Number of connections by pool state",
+    unit="{connection}",
 )
 
 pool_wait_time = meter.create_histogram(
-    name="db.pool.wait_time",
+    name="db.client.connection.wait_time",
     description="Time spent waiting to acquire a connection from the pool",
-    unit="ms",
+    unit="s",
 )
 
 pool_max = meter.create_up_down_counter(
-    name="db.pool.connections.max",
+    name="db.client.connection.max",
     description="Maximum pool size",
-    unit="connections",
+    unit="{connection}",
 )
 
 
 class InstrumentedConnectionPool:
-    def __init__(self, pool, pool_name="default"):
+    def __init__(self, pool, pool_name="default", max_size=10, idle_count=0):
         self.pool = pool
         self.pool_name = pool_name
-        self.attrs = {"db.pool.name": pool_name}
+        self.attrs = {"db.client.connection.pool.name": pool_name}
+        self.active_count = 0
+        self.idle_count = idle_count
+
+        pool_max.add(max_size, attributes=self.attrs)
+        pool_connections.add(
+            idle_count,
+            attributes={**self.attrs, "db.client.connection.state": "idle"},
+        )
+        pool_connections.add(
+            0,
+            attributes={**self.attrs, "db.client.connection.state": "used"},
+        )
 
     def acquire(self):
         """Acquire a connection, recording wait time and pool state."""
         start = time.monotonic()
 
-        connection = self.pool.getconn()  # This blocks if pool is exhausted
+        connection = self.pool.getconn()  # This blocks or times out if pool is exhausted
 
-        wait_ms = (time.monotonic() - start) * 1000
-        pool_wait_time.record(wait_ms, attributes=self.attrs)
-        pool_active.add(1, attributes=self.attrs)
-        pool_idle.add(-1, attributes=self.attrs)
+        wait_s = time.monotonic() - start
+        pool_wait_time.record(wait_s, attributes=self.attrs)
+
+        self.active_count += 1
+        pool_connections.add(
+            1,
+            attributes={**self.attrs, "db.client.connection.state": "used"},
+        )
+
+        if self.idle_count > 0:
+            self.idle_count -= 1
+            pool_connections.add(
+                -1,
+                attributes={**self.attrs, "db.client.connection.state": "idle"},
+            )
 
         return connection
 
     def release(self, connection):
         """Return a connection to the pool."""
         self.pool.putconn(connection)
-        pool_active.add(-1, attributes=self.attrs)
-        pool_idle.add(1, attributes=self.attrs)
+        self.active_count -= 1
+        self.idle_count += 1
+        pool_connections.add(
+            -1,
+            attributes={**self.attrs, "db.client.connection.state": "used"},
+        )
+        pool_connections.add(
+            1,
+            attributes={**self.attrs, "db.client.connection.state": "idle"},
+        )
 ```
 
 ## Correlating Pool Metrics with Span Duration
@@ -78,17 +102,18 @@ The key insight is that when pool wait time spikes, span durations also spike - 
 
 ```python
 from opentelemetry import trace
+import time
 
 tracer = trace.get_tracer("order-service")
 
 async def get_user_orders(user_id):
     with tracer.start_as_current_span("db.get_user_orders") as span:
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.operation", "SELECT")
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.operation.name", "SELECT")
 
         # Record pool state BEFORE acquiring
-        span.set_attribute("db.pool.active_before", pool.pool.active_count)
-        span.set_attribute("db.pool.idle_before", pool.pool.idle_count)
+        span.set_attribute("db.pool.active_before", pool.active_count)
+        span.set_attribute("db.pool.idle_before", pool.idle_count)
 
         # Time the connection acquisition separately
         acquire_start = time.monotonic()
@@ -162,7 +187,7 @@ def find_connection_hogs(spans, exhaustion_start, exhaustion_end):
     hogs = []
 
     for span in spans:
-        if span.get("attributes", {}).get("db.system") is None:
+        if span.get("attributes", {}).get("db.system.name") is None:
             continue
 
         span_start = span["startTime"]
@@ -175,7 +200,7 @@ def find_connection_hogs(spans, exhaustion_start, exhaustion_end):
                 "span_name": span["name"],
                 "trace_id": span["traceId"],
                 "duration_ms": round(hold_duration, 2),
-                "query": span.get("attributes", {}).get("db.statement", ""),
+                "query": span.get("attributes", {}).get("db.query.text", ""),
             })
 
     hogs.sort(key=lambda x: x["duration_ms"], reverse=True)
@@ -190,13 +215,16 @@ Create alerts that fire before full exhaustion occurs:
 # Alert when pool utilization exceeds 80%
 - alert: ConnectionPoolNearExhaustion
   expr: |
-    db_pool_connections_active /
-    db_pool_connections_max > 0.8
+    sum by (db_client_connection_pool_name) (
+      db_client_connection_count{db_client_connection_state="used"}
+    )
+    /
+    db_client_connection_max > 0.8
   for: 2m
   labels:
     severity: warning
   annotations:
-    summary: "Connection pool {{ $labels.db_pool_name }} is {{ $value | humanizePercentage }} utilized"
+    summary: "Connection pool {{ $labels.db_client_connection_pool_name }} is {{ $value | humanizePercentage }} utilized"
 ```
 
 ## Summary
