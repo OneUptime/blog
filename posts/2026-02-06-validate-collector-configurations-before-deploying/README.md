@@ -50,7 +50,7 @@ Let me walk through the most frequent configuration mistakes and what the valida
 
 ```yaml
 # ERROR: Referencing a component that does not exist
-# The validator will report: "processor \"memory_limiter\" is not configured"
+# The validator will report: "service::pipelines::traces: references processor \"memory_limiter\" which is not configured"
 service:
   pipelines:
     traces:
@@ -217,10 +217,14 @@ def check_tls_in_production(config):
             # Skip localhost endpoints
             if "localhost" in endpoint or "127.0.0.1" in endpoint:
                 continue
+            # Endpoints with an https:// scheme already request transport security
+            if endpoint.startswith("https://"):
+                continue
             if not tls.get("insecure", False) and not tls:
                 errors.append(
                     f"Exporter '{name}' targets '{endpoint}' without "
                     f"explicit TLS configuration. Set tls.insecure: true "
+                    f"for plaintext endpoints, use an https:// endpoint, "
                     f"or provide TLS certificates."
                 )
     return errors
@@ -280,8 +284,8 @@ jobs:
         run: |
           pip install yamllint pyyaml
           # Download the collector binary for validation
-          wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol_0.96.0_linux_amd64.tar.gz
-          tar xzf otelcol_0.96.0_linux_amd64.tar.gz
+          wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol_0.153.0_linux_amd64.tar.gz
+          tar xzf otelcol_0.153.0_linux_amd64.tar.gz
           chmod +x otelcol
 
       - name: YAML lint check
@@ -330,7 +334,7 @@ If you do not want to install the Collector binary locally, you can run validati
 # Mount your local config file into the container
 docker run --rm \
   -v $(pwd)/config.yaml:/etc/otelcol/config.yaml:ro \
-  otel/opentelemetry-collector-contrib:0.96.0 \
+  otel/opentelemetry-collector-contrib:0.153.0 \
   validate --config /etc/otelcol/config.yaml
 
 # Validate with environment variable substitution
@@ -338,7 +342,7 @@ docker run --rm \
   -v $(pwd)/config.yaml:/etc/otelcol/config.yaml:ro \
   -e OTEL_BACKEND_ENDPOINT="https://backend.example.com:4317" \
   -e OTEL_AUTH_TOKEN="placeholder-for-validation" \
-  otel/opentelemetry-collector-contrib:0.96.0 \
+  otel/opentelemetry-collector-contrib:0.153.0 \
   validate --config /etc/otelcol/config.yaml
 ```
 
