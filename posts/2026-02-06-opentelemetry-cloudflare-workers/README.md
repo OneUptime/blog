@@ -8,7 +8,7 @@ Description: A complete guide to integrating OpenTelemetry with Cloudflare Worke
 
 ---
 
-Cloudflare Workers run your code at the edge, close to your users, across Cloudflare's global network. They execute in a V8 isolate rather than a traditional Node.js environment, which makes them fast but also introduces some unique challenges for observability. Standard OpenTelemetry Node.js SDKs won't work here because Workers don't have access to Node.js APIs.
+Cloudflare Workers run your code at the edge, close to your users, across Cloudflare's global network. They execute in a V8 isolate rather than a traditional Node.js environment, which makes them fast but also introduces some unique challenges for observability. Standard OpenTelemetry Node.js SDKs won't work here because Workers are not a full Node.js runtime.
 
 In this guide, we'll walk through how to instrument Cloudflare Workers with OpenTelemetry using libraries built for the Workers runtime. You'll learn how to capture traces, add custom spans, and export telemetry data to any OTLP-compatible backend.
 
@@ -16,8 +16,8 @@ In this guide, we'll walk through how to instrument Cloudflare Workers with Open
 
 Cloudflare Workers use the V8 JavaScript engine directly, not Node.js. This means:
 
-- No `fs`, `net`, `http`, or other Node.js built-in modules
-- No `process` object or environment variables in the traditional sense
+- Node.js built-in modules are unavailable unless you enable Cloudflare's Node.js compatibility support, and even then Workers provide a subset of Node.js APIs
+- No traditional Node.js `process.env` environment variable model by default
 - The `fetch` API is the primary way to make HTTP requests
 - Execution contexts are isolated and short-lived
 
@@ -43,7 +43,7 @@ The `@microlabs/otel-cf-workers` package provides an OpenTelemetry SDK that work
 ```bash
 # Install the Cloudflare Workers OpenTelemetry SDK
 
-npm install @microlabs/otel-cf-workers
+npm install @microlabs/otel-cf-workers @opentelemetry/api
 ```
 
 If you're using Wrangler (Cloudflare's CLI tool for Workers development), your project should already be set up with a `wrangler.toml` configuration file.
@@ -73,7 +73,7 @@ const handler = {
 };
 
 // Configuration function that receives the environment bindings
-// This is called once when the Worker starts handling requests
+// This is called for each Worker invocation
 const config: ResolveConfigFn = (env: Env, _trigger) => {
   return {
     exporter: {
@@ -107,6 +107,7 @@ In Cloudflare Workers, environment variables are configured through `wrangler.to
 name = "my-worker"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 SERVICE_NAME = "my-cloudflare-worker"
@@ -147,15 +148,18 @@ const handler = {
 
           // Trace the upstream API call as a separate child span
           const enriched = await tracer.startActiveSpan('call-enrichment-api', async (apiSpan) => {
-            const response = await fetch('https://api.example.com/enrich', {
-              method: 'POST',
-              body: JSON.stringify(body),
-              headers: { 'Content-Type': 'application/json' },
-            });
+            try {
+              const response = await fetch('https://api.example.com/enrich', {
+                method: 'POST',
+                body: JSON.stringify(body),
+                headers: { 'Content-Type': 'application/json' },
+              });
 
-            apiSpan.setAttribute('http.status_code', response.status);
-            apiSpan.end();
-            return response.json();
+              apiSpan.setAttribute('http.status_code', response.status);
+              return response.json();
+            } finally {
+              apiSpan.end();
+            }
           });
 
           span.setAttribute('output.size', JSON.stringify(enriched).length);
@@ -186,34 +190,40 @@ Cloudflare Workers often use KV Store, R2, or Durable Objects for state manageme
 // Trace KV Store reads with custom spans
 async function getFromKV(env: Env, key: string): Promise<string | null> {
   return tracer.startActiveSpan('kv-get', async (span) => {
-    // Add KV-specific attributes to the span
-    span.setAttribute('kv.namespace', 'MY_KV');
-    span.setAttribute('kv.key', key);
+    try {
+      // Add KV-specific attributes to the span
+      span.setAttribute('kv.namespace', 'MY_KV');
+      span.setAttribute('kv.key', key);
 
-    const value = await env.MY_KV.get(key);
+      const value = await env.MY_KV.get(key);
 
-    // Record whether it was a cache hit or miss
-    span.setAttribute('kv.hit', value !== null);
-    span.end();
-    return value;
+      // Record whether it was a cache hit or miss
+      span.setAttribute('kv.hit', value !== null);
+      return value;
+    } finally {
+      span.end();
+    }
   });
 }
 
 // Trace Durable Object calls
 async function callDurableObject(env: Env, id: string, action: string): Promise<Response> {
   return tracer.startActiveSpan('durable-object-call', async (span) => {
-    span.setAttribute('do.id', id);
-    span.setAttribute('do.action', action);
+    try {
+      span.setAttribute('do.id', id);
+      span.setAttribute('do.action', action);
 
-    // Get a stub for the Durable Object
-    const objId = env.MY_DURABLE_OBJECT.idFromName(id);
-    const stub = env.MY_DURABLE_OBJECT.get(objId);
+      // Get a stub for the Durable Object
+      const objId = env.MY_DURABLE_OBJECT.idFromName(id);
+      const stub = env.MY_DURABLE_OBJECT.get(objId);
 
-    // Forward the request to the Durable Object
-    const response = await stub.fetch(new Request(`https://do/${action}`));
-    span.setAttribute('http.status_code', response.status);
-    span.end();
-    return response;
+      // Forward the request to the Durable Object
+      const response = await stub.fetch(new Request(`https://do/${action}`));
+      span.setAttribute('http.status_code', response.status);
+      return response;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -257,10 +267,10 @@ const handler = {
   },
 
   // The scheduled handler runs on a cron schedule
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     return tracer.startActiveSpan('scheduled-cleanup', async (span) => {
-      span.setAttribute('cron.trigger', event.cron);
-      span.setAttribute('scheduled.time', event.scheduledTime);
+      span.setAttribute('cron.trigger', controller.cron);
+      span.setAttribute('scheduled.time', controller.scheduledTime);
 
       try {
         // Run your scheduled task
