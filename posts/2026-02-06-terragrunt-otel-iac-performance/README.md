@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Terragrunt, IaC, Performance Analysis
 
 Description: Instrument Terragrunt runs with OpenTelemetry tracing and metrics for deep visibility into infrastructure-as-code performance.
 
-Terragrunt adds a layer of orchestration on top of Terraform, managing dependencies between modules and keeping configurations DRY. But this extra layer also makes it harder to understand where time is being spent during `terragrunt run-all apply`. By instrumenting Terragrunt with OpenTelemetry, you can see exactly which modules take the longest and where bottlenecks are.
+Terragrunt adds a layer of orchestration on top of Terraform, managing dependencies between modules and keeping configurations DRY. But this extra layer also makes it harder to understand where time is being spent during `terragrunt run --all -- apply`. By instrumenting Terragrunt with OpenTelemetry, you can see exactly which modules take the longest and where bottlenecks are.
 
 ## The Challenge with Terragrunt Observability
 
-When you run `terragrunt run-all plan` across 50 modules, some run in parallel and some wait for dependencies. Understanding the critical path through this dependency graph is nearly impossible without tracing. OpenTelemetry lets you visualize the entire execution as a trace with spans for each module.
+When you run `terragrunt run --all -- plan` across 50 modules, some run in parallel and some wait for dependencies. Understanding the critical path through this dependency graph is nearly impossible without tracing. OpenTelemetry lets you visualize the entire execution as a trace with spans for each module.
 
 ## Instrumenting Terragrunt with a Before/After Hook Wrapper
 
@@ -25,39 +25,45 @@ terraform {
     execute  = [
       "python3", "/opt/otel-hooks/start_span.py",
       "--module", get_terragrunt_dir(),
-      "--command", "plan"
+      "--command", get_env("TG_CTX_COMMAND", "unknown")
     ]
   }
 
   after_hook "otel_end" {
-    commands     = ["plan", "apply", "destroy"]
-    run_on_error = true
+    commands = ["plan", "apply", "destroy"]
     execute = [
       "python3", "/opt/otel-hooks/end_span.py",
       "--module", get_terragrunt_dir(),
-      "--command", "plan",
+      "--command", get_env("TG_CTX_COMMAND", "unknown"),
       "--exit-code", "0"
     ]
+  }
+
+  error_hook "otel_error" {
+    commands = ["plan", "apply", "destroy"]
+    execute = [
+      "python3", "/opt/otel-hooks/end_span.py",
+      "--module", get_terragrunt_dir(),
+      "--command", get_env("TG_CTX_COMMAND", "unknown"),
+      "--exit-code", "1"
+    ]
+    on_errors = [".*"]
   }
 }
 ```
 
 ## OpenTelemetry Hook Scripts
 
-Create the hook scripts that manage span lifecycle using a shared context file:
+Create the hook scripts that record the start time in a shared context file and emit a completed span from the after hook:
 
 ```python
 # /opt/otel-hooks/start_span.py
 
 import argparse
+import hashlib
 import json
 import os
 import time
-from opentelemetry import trace, context
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
 
 # Parse arguments
 parser = argparse.ArgumentParser()
@@ -65,57 +71,33 @@ parser.add_argument("--module", required=True)
 parser.add_argument("--command", required=True)
 args = parser.parse_args()
 
-# Initialize tracer
-resource = Resource.create({
-    "service.name": "terragrunt",
-    "terragrunt.root_dir": os.getenv("TERRAGRUNT_ROOT", os.getcwd()),
-})
-provider = TracerProvider(resource=resource)
-provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter())
-)
-trace.set_tracer_provider(provider)
-tracer = trace.get_tracer("terragrunt-hooks")
-
 # Extract module name from path
 module_name = os.path.basename(args.module)
 
-# Start a span and save context to a temp file
-# so the end_span script can close it
-span = tracer.start_span(
-    f"terragrunt.{args.command}.{module_name}",
-    attributes={
-        "terragrunt.module.path": args.module,
-        "terragrunt.module.name": module_name,
-        "terragrunt.command": args.command,
-        "terragrunt.start_time": time.time(),
-    }
-)
-
-# Save span context for the after hook
-context_file = f"/tmp/otel-tg-{module_name}-{args.command}.json"
-span_context = span.get_span_context()
+# Save start time for the after hook
+module_key = hashlib.sha256(args.module.encode("utf-8")).hexdigest()[:16]
+context_file = f"/tmp/otel-tg-{module_key}-{args.command}.json"
 with open(context_file, "w") as f:
     json.dump({
-        "trace_id": format(span_context.trace_id, "032x"),
-        "span_id": format(span_context.span_id, "016x"),
-        "start_time": time.time(),
+        "module_name": module_name,
+        "start_time_ns": time.time_ns(),
     }, f)
-
-provider.force_flush()
 ```
 
 ```python
 # /opt/otel-hooks/end_span.py
 import argparse
+import hashlib
 import json
 import os
 import time
 from opentelemetry import trace
+from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.trace import Status, StatusCode
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--module", required=True)
@@ -126,7 +108,8 @@ args = parser.parse_args()
 module_name = os.path.basename(args.module)
 
 # Read context from the start hook
-context_file = f"/tmp/otel-tg-{module_name}-{args.command}.json"
+module_key = hashlib.sha256(args.module.encode("utf-8")).hexdigest()[:16]
+context_file = f"/tmp/otel-tg-{module_key}-{args.command}.json"
 try:
     with open(context_file) as f:
         ctx = json.load(f)
@@ -144,43 +127,50 @@ provider.add_span_processor(
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("terragrunt-hooks")
 
-duration = time.time() - ctx["start_time"]
+end_time_ns = time.time_ns()
+duration = (end_time_ns - ctx["start_time_ns"]) / 1_000_000_000
 exit_code = int(args.exit_code)
+parent_context = extract({"traceparent": os.environ["TRACEPARENT"]}) if "TRACEPARENT" in os.environ else None
 
-# Create a completion span with the duration info
-with tracer.start_as_current_span(
-    f"terragrunt.{args.command}.{module_name}.complete",
+# Create one completed span with the original start time and final status
+span = tracer.start_span(
+    f"terragrunt.{args.command}.{module_name}",
+    context=parent_context,
+    start_time=ctx["start_time_ns"],
     attributes={
         "terragrunt.module.name": module_name,
         "terragrunt.module.path": args.module,
         "terragrunt.command": args.command,
         "terragrunt.duration_seconds": duration,
         "terragrunt.exit_code": exit_code,
-        "terragrunt.parent_trace_id": ctx["trace_id"],
     }
-) as span:
-    if exit_code != 0:
-        span.set_status(
-            trace.StatusCode.ERROR,
-            f"Module {module_name} failed with exit code {exit_code}"
-        )
+)
+if exit_code != 0:
+    span.set_status(
+        Status(StatusCode.ERROR, f"Module {module_name} failed with exit code {exit_code}")
+    )
+span.end(end_time=end_time_ns)
 
 provider.force_flush()
 ```
 
-## Full Wrapper Script for run-all
+## Full Wrapper Script for run --all
 
-For a better trace structure that captures the entire `run-all` operation as a parent span:
+For a better trace structure that keeps the entire `run --all` operation in one trace:
 
 ```bash
 #!/bin/bash
 # terragrunt-otel.sh - Wrapper for instrumented Terragrunt runs
 
 export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
+export TG_TELEMETRY_TRACE_EXPORTER="${TG_TELEMETRY_TRACE_EXPORTER:-otlpGrpc}"
+export TG_TELEMETRY_TRACE_EXPORTER_INSECURE_ENDPOINT="${TG_TELEMETRY_TRACE_EXPORTER_INSECURE_ENDPOINT:-true}"
 export TERRAGRUNT_ROOT="$(pwd)"
 
-# Generate a trace ID for the entire run
+# Generate a W3C trace context for the entire run
 export OTEL_TRACE_ID=$(python3 -c "import uuid; print(uuid.uuid4().hex)")
+export OTEL_PARENT_SPAN_ID=$(python3 -c "import secrets; print(secrets.token_hex(8))")
+export TRACEPARENT="00-${OTEL_TRACE_ID}-${OTEL_PARENT_SPAN_ID}-01"
 
 echo "Starting Terragrunt run with trace ID: ${OTEL_TRACE_ID}"
 echo "View trace at: https://your-backend.example.com/trace/${OTEL_TRACE_ID}"
@@ -188,21 +178,13 @@ echo "View trace at: https://your-backend.example.com/trace/${OTEL_TRACE_ID}"
 # Record the start time
 START_TIME=$(date +%s)
 
-# Run terragrunt with all arguments passed through
-terragrunt "$@"
+# Run terragrunt across all units with all Terraform/OpenTofu arguments passed through
+terragrunt run --all -- "$@"
 EXIT_CODE=$?
 
 # Record the end time and report
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
-
-# Send a summary span
-python3 /opt/otel-hooks/report_summary.py \
-  --trace-id "${OTEL_TRACE_ID}" \
-  --command "$1" \
-  --duration "${DURATION}" \
-  --exit-code "${EXIT_CODE}" \
-  --module-count "$(find . -name 'terragrunt.hcl' | wc -l)"
 
 echo "Terragrunt run complete in ${DURATION}s (exit code: ${EXIT_CODE})"
 exit ${EXIT_CODE}
@@ -215,7 +197,7 @@ Once traces are flowing, you can answer questions like:
 - Which module takes the longest to apply?
 - What is the critical path through the dependency graph?
 - How has the total plan/apply time changed over the past month?
-- Which provider API calls are the slowest?
+- Which Terraform/OpenTofu commands or API-bound modules are the slowest?
 
 ## Wrapping Up
 
