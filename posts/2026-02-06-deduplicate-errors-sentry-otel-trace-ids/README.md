@@ -25,7 +25,7 @@ All three services report to Sentry. Three issues. Three alerts. One root cause.
 
 ## Using Trace IDs for Correlation
 
-All three spans share the same OpenTelemetry trace ID because they are part of the same distributed trace. By attaching the trace ID to each Sentry event, you can identify that these three errors belong to the same request.
+All three spans share the same OpenTelemetry trace ID when trace context is propagated across the services. By attaching the trace ID to each Sentry event, you can identify that these three errors belong to the same request.
 
 ```python
 # sentry_otel_dedup.py - Attach trace context to Sentry events
@@ -55,11 +55,6 @@ def attach_trace_context(event, hint):
         event["tags"]["otel.trace_id"] = trace_id
         event["tags"]["otel.span_id"] = span_id
 
-        # Add as fingerprint component to help Sentry group
-        # events from the same trace together
-        event.setdefault("fingerprint", [])
-        event["fingerprint"].append(trace_id)
-
         # Add context for the event detail view
         event.setdefault("contexts", {})
         event["contexts"]["trace"] = {
@@ -77,6 +72,7 @@ You can build a deduplication layer that sits between your services and Sentry. 
 ```python
 # dedup_processor.py - Deduplicate errors by trace ID
 import time
+import sentry_sdk
 from collections import defaultdict
 from threading import Lock, Timer
 
@@ -172,6 +168,7 @@ If you prefer not to add a deduplication layer, you can deduplicate after the fa
 ```python
 # sentry_dedup_report.py - Find duplicate errors sharing the same trace
 import requests
+from collections import defaultdict
 
 def find_duplicates(org_slug, project_slug, api_token):
     """
@@ -184,14 +181,20 @@ def find_duplicates(org_slug, project_slug, api_token):
     response = requests.get(
         url,
         headers=headers,
-        params={"query": "has:otel.trace_id", "limit": 100},
+        params={"statsPeriod": "24h", "full": "true"},
     )
+    response.raise_for_status()
     events = response.json()
 
     # Group by trace ID
     trace_groups = defaultdict(list)
     for event in events:
-        trace_id = event.get("tags", {}).get("otel.trace_id")
+        tags = {
+            tag["key"]: tag["value"]
+            for tag in event.get("tags", [])
+            if "key" in tag and "value" in tag
+        }
+        trace_id = tags.get("otel.trace_id")
         if trace_id:
             trace_groups[trace_id].append({
                 "event_id": event["eventID"],
@@ -211,7 +214,7 @@ def find_duplicates(org_slug, project_slug, api_token):
 
 ## Results
 
-After implementing trace-based deduplication, teams typically see a 40-60% reduction in Sentry alert volume. The remaining alerts are more actionable because each one points to a unique root cause rather than a symptom of a cascade.
+After implementing trace-based deduplication, teams can reduce Sentry alert volume when many alerts come from cascading failures. The remaining alerts are more actionable because each one points to a unique root cause rather than a symptom of a cascade.
 
 ## Conclusion
 
