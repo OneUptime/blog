@@ -102,17 +102,17 @@ def process_order(order):
 
         total = calculate_total(order)
 
-        # Include in metric attributes for metric correlation
+        # Include only low-cardinality attributes on metrics.
+        # Exemplars link the metric point back to the current trace,
+        # which already has order.id and correlation.id as span attributes.
         order_value_histogram.record(total, {
-            "order.id": order_id,
-            "correlation.id": correlation_id,
             "order.type": order.type,
         })
         order_counter.add(1, {
             "order.type": order.type,
             # Note: do not include order_id in counter attributes
             # as it would create unbounded cardinality
-            # Use it only in histogram exemplars instead
+            # Use span attributes and exemplars to link back to the trace
         })
 
         logger.info(
@@ -147,12 +147,20 @@ public class OrderService {
 
         // Set on current span
         Span span = Span.current();
-        span.setAttribute("correlation.id", correlationId);
-        span.setAttribute("order.id", orderId);
+        if (correlationId != null) {
+            span.setAttribute("correlation.id", correlationId);
+        }
+        if (orderId != null) {
+            span.setAttribute("order.id", orderId);
+        }
 
         // Set in MDC for structured logging
-        MDC.put("correlation_id", correlationId);
-        MDC.put("order_id", orderId);
+        if (correlationId != null) {
+            MDC.put("correlation_id", correlationId);
+        }
+        if (orderId != null) {
+            MDC.put("order_id", orderId);
+        }
 
         try {
             logger.info("Processing order with {} items", order.getItems().size());
@@ -166,35 +174,28 @@ public class OrderService {
 }
 ```
 
-## Collector-Side Automation with Baggage Processor
+## Collector-Side Guardrails with Transform Processor
 
-Instead of manually reading baggage in every service, use the collector's baggage processor to automatically convert baggage entries into span, log, and metric attributes:
+Baggage is propagated in request context, but current OpenTelemetry Collector distributions do not provide a built-in processor that parses W3C baggage entries into span, log, and metric attributes. Keep copying baggage to span and log attributes in application instrumentation, and use the collector's transform processor as a guardrail to prevent high-cardinality business IDs from becoming metric attributes:
 
 ```yaml
 # collector-config.yaml
 processors:
-  baggage:
-    rules:
-      - baggage_key: "correlation.id"
-        attribute_key: "correlation.id"
-        action: "insert"
-      - baggage_key: "order.id"
-        attribute_key: "order.id"
-        action: "insert"
-      - baggage_key: "session.id"
-        attribute_key: "session.id"
-        action: "insert"
+  transform/safe_metrics:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "order.id")
+          - delete_key(attributes, "correlation.id")
+          - delete_key(attributes, "session.id")
 
 service:
   pipelines:
-    traces:
+    metrics:
       receivers: [otlp]
-      processors: [baggage, batch]
-      exporters: [otlp/traces]
-    logs:
-      receivers: [otlp]
-      processors: [baggage, batch]
-      exporters: [otlp/logs]
+      processors: [transform/safe_metrics, batch]
+      exporters: [otlp/metrics]
 ```
 
 ## Searching by Correlation ID
@@ -203,7 +204,7 @@ Once the correlation ID is in all three signals, searching becomes straightforwa
 
 ```text
 # Find traces for a specific order
-TraceQL: { span.order.id = "order-12345" }
+TraceQL: { span."order.id" = "order-12345" }
 
 # Find logs for a specific order
 LogQL: {service_name=~".+"} | json | order_id="order-12345"
@@ -221,8 +222,8 @@ Business correlation IDs are high-cardinality by nature. Every order has a uniqu
 # Strategy 1: Use correlation IDs only in exemplars, not labels
 order_counter.add(1, {
     "order.type": order.type,  # low cardinality: fine as label
-    # order.id is NOT a label, but it appears in the exemplar
-    # because a trace with that attribute is sampled
+    # order.id is NOT a label. Use the exemplar's trace/span link
+    # to jump to the trace that has order.id as a span attribute.
 })
 
 # Strategy 2: Use correlation IDs in histograms sparingly
@@ -238,6 +239,7 @@ order_value_histogram.record(total, {
 # Strategy 3: Collector-side filtering to prevent cardinality explosion
 processors:
   transform/safe_metrics:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
@@ -261,4 +263,4 @@ All of this is connected by the `order.id` attribute that flows through every si
 
 ## Wrapping Up
 
-Request-scoped correlation IDs with business meaning bridge the gap between engineering observability and business operations. Set the ID at the entry point, propagate it via baggage, and ensure it appears in spans, logs, and metric exemplars. Use the collector's baggage processor to automate the attribute injection. Be careful with metric cardinality by keeping high-cardinality IDs out of metric labels and relying on exemplars for the link instead. The result is a system where anyone can search for a specific business transaction and see its complete story across every service and every signal.
+Request-scoped correlation IDs with business meaning bridge the gap between engineering observability and business operations. Set the ID at the entry point, propagate it via baggage, and ensure it appears in spans, logs, and metric exemplars. Do the baggage-to-attribute mapping in application instrumentation, because the Collector does not parse baggage into telemetry attributes for you. Be careful with metric cardinality by keeping high-cardinality IDs out of metric labels and relying on exemplars for the link instead. The result is a system where anyone can search for a specific business transaction and see its complete story across every service and every signal.
