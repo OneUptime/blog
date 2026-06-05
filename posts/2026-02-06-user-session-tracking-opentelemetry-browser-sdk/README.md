@@ -10,7 +10,7 @@ Description: Learn how to implement user session tracking with the OpenTelemetry
 
 Understanding how users interact with your application over the course of a session is fundamental to debugging issues and optimizing performance. A session groups together all the page views, clicks, API calls, and errors that happen during a single visit. Without session tracking, each span and trace exists in isolation, and you lose the ability to ask questions like "what did this user do before the error occurred" or "how many API calls does a typical session generate."
 
-OpenTelemetry does not include a built-in session tracking concept, but the browser SDK gives you all the building blocks to implement one. This post covers creating a session manager, detecting user activity, propagating session context through spans, and building meaningful session-level metrics.
+OpenTelemetry defines session attributes such as `session.id`, but the browser SDK does not create or manage user sessions for you. It gives you the building blocks to implement that behavior yourself. This post covers creating a session manager, detecting user activity, adding session context to spans, and building meaningful session-level metrics.
 
 ## Defining a Session
 
@@ -106,6 +106,18 @@ class SessionManager {
 
   getSession() {
     return { ...this.session };
+  }
+
+  updateSession(updates) {
+    this.session = { ...this.session, ...updates };
+    this.persist(this.session);
+    return this.getSession();
+  }
+
+  incrementPageView() {
+    this.session.pageViewCount++;
+    this.persist(this.session);
+    return this.session.pageViewCount;
   }
 
   // Register a callback for session state changes
@@ -248,7 +260,7 @@ import { sessionManager } from './session-manager';
 // trace, whether it is a page load, API call, or user
 // interaction, carries the session identifier.
 export class SessionSpanProcessor {
-  onStart(span) {
+  onStart(span, parentContext) {
     const session = sessionManager.getSession();
 
     span.setAttribute('session.id', session.id);
@@ -260,6 +272,11 @@ export class SessionSpanProcessor {
     // Calculate how long this session has been running
     const durationMs = Date.now() - session.startTime;
     span.setAttribute('session.duration_ms', durationMs);
+
+    if (session.userId) {
+      span.setAttribute('enduser.id', session.userId);
+      span.setAttribute('enduser.plan', session.userPlan);
+    }
   }
 
   onEnd() {}
@@ -284,26 +301,24 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SessionSpanProcessor } from '../session/session-span-processor';
 
-const provider = new WebTracerProvider({
-  resource: new Resource({
-    'service.name': 'frontend-app',
-  }),
+const exporter = new OTLPTraceExporter({
+  url: '/api/v1/traces',
 });
 
-// Add the session processor first so session attributes
-// are available before spans are exported
-provider.addSpanProcessor(new SessionSpanProcessor());
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: '/api/v1/traces',
-    })
-  )
-);
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    'service.name': 'frontend-app',
+  }),
+  // Add the session processor first so session attributes
+  // are set before spans are exported.
+  spanProcessors: [
+    new SessionSpanProcessor(),
+    new BatchSpanProcessor(exporter),
+  ],
+});
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -320,7 +335,7 @@ Session state transitions are important events worth recording explicitly. When 
 
 ```javascript
 // src/session/session-events.js
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import { sessionManager } from './session-manager';
 
 const tracer = trace.getTracer('session-lifecycle', '1.0.0');
@@ -366,20 +381,26 @@ let previousUrl = null;
 
 // Record page views as spans and update the session page count.
 // This works for both traditional navigations and SPA route changes.
-export function trackPageView(url) {
+export function trackPageView(url, options = {}) {
+  const currentUrl = url == null
+    ? window.location.href
+    : new URL(url, window.location.href).href;
+  const pageViewNumber = options.initial
+    ? sessionManager.getSession().pageViewCount
+    : sessionManager.incrementPageView();
   const session = sessionManager.getSession();
 
   const span = tracer.startSpan('session.page_view', {
     attributes: {
-      'page.url': url || window.location.href,
+      'page.url': currentUrl,
       'page.title': document.title,
       'page.referrer': previousUrl || document.referrer,
       'session.id': session.id,
-      'session.page_view_number': session.pageViewCount,
+      'session.page_view_number': pageViewNumber,
     },
   });
 
-  previousUrl = url || window.location.href;
+  previousUrl = currentUrl;
   span.end();
 }
 
@@ -401,7 +422,7 @@ window.addEventListener('popstate', () => {
 });
 
 // Track the initial page load
-trackPageView();
+trackPageView(undefined, { initial: true });
 ```
 
 The History API overrides catch SPA navigations that do not trigger a full page reload. Combined with the `popstate` listener for back/forward navigation, this captures every page view in a single-page application.
@@ -421,12 +442,10 @@ const tracer = trace.getTracer('user-identity', '1.0.0');
 // to the current session. Avoid storing PII in span attributes
 // unless your data policies explicitly allow it.
 export function identifyUser(user) {
-  const session = sessionManager.getSession();
-  session.userId = user.id;
-  session.userPlan = user.plan || 'free';
-
-  // Persist the user info in the session
-  sessionManager.persist(session);
+  const session = sessionManager.updateSession({
+    userId: user.id,
+    userPlan: user.plan || 'free',
+  });
 
   // Create a span marking when the user was identified
   const span = tracer.startSpan('session.user_identified', {
@@ -441,8 +460,7 @@ export function identifyUser(user) {
   span.end();
 }
 
-// Enhance the session span processor to include user info
-// when available. This is called from the SessionSpanProcessor.
+// Use this helper if other instrumentation needs user attributes.
 export function getUserAttributes() {
   const session = sessionManager.getSession();
   if (session.userId) {
@@ -484,4 +502,4 @@ curl -s "http://localhost:16686/api/traces?service=frontend-app&operation=sessio
 
 User session tracking with OpenTelemetry brings structure to the stream of spans your browser application produces. The session manager creates and persists session identifiers, detects user activity to manage session lifecycle, and exposes state changes as explicit events. The span processor ensures every span carries session context, making it possible to group all traces from a single visit together. Page view tracking and user identity binding round out the implementation, giving you a complete picture of what each user did during their session.
 
-This data becomes especially powerful when combined with backend traces. Since the session ID propagates through trace context headers, you can follow a user's journey from their first page view through every API call to the backend services that processed their requests. The session is the thread that ties it all together.
+This data becomes especially powerful when combined with backend traces. Browser HTTP instrumentation can propagate W3C trace context headers so frontend API calls connect to backend traces, and the `session.id` attribute lets you group the frontend spans for the visit. If you also need the session identifier on backend spans, send it explicitly as application context, such as an allowed custom header, and copy it into backend span attributes.
