@@ -32,10 +32,9 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 import xml.etree.ElementTree as ET
-import time
 
 # Set up OTel metrics
-exporter = OTLPMetricExporter(endpoint="oneuptime-collector:4317")
+exporter = OTLPMetricExporter(endpoint="http://oneuptime-collector:4317")
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=15000)
 provider = MeterProvider(metric_readers=[reader])
 metrics.set_meter_provider(provider)
@@ -97,13 +96,14 @@ def parse_pm_xml(xml_path: str) -> list:
     tree = ET.parse(xml_path)
     root = tree.getroot()
     cells = []
+    ns = {"mc": "http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec"}
 
     # Navigate the 3GPP XML structure
-    for measured_entity in root.findall(".//{http://www.3gpp.org/ftp/specs}measValue"):
+    for measured_entity in root.findall(".//mc:measValue", ns):
         cell_id = measured_entity.get("measObjLdn")
 
         counters = {}
-        for result in measured_entity.findall("{http://www.3gpp.org/ftp/specs}r"):
+        for result in measured_entity.findall("mc:r", ns):
             counter_index = int(result.get("p"))
             counter_value = float(result.text)
             counters[counter_index] = counter_value
@@ -139,6 +139,13 @@ def collect_and_export(pm_data: list, site_id: str, gnb_id: str):
                 util = (used_prb / total_prb) * 100
                 prb_utilization_dl.set(util, attrs)
 
+        if 1003 in counters and 1004 in counters:
+            total_prb = counters[1004]
+            used_prb = counters[1003]
+            if total_prb > 0:
+                util = (used_prb / total_prb) * 100
+                prb_utilization_ul.set(util, attrs)
+
         if 2001 in counters:
             cell_throughput_dl.set(counters[2001], attrs)
 
@@ -155,6 +162,14 @@ def collect_and_export(pm_data: list, site_id: str, gnb_id: str):
             if attempts > 0:
                 rate = (successes / attempts) * 100
                 handover_success_rate.set(rate, attrs)
+
+        # RRC setup success rate calculation
+        if 6001 in counters and 6002 in counters:
+            attempts = counters[6001]
+            successes = counters[6002]
+            if attempts > 0:
+                rate = (successes / attempts) * 100
+                rrc_setup_success_rate.set(rate, attrs)
 
         if 5001 in counters:
             avg_cqi.set(counters[5001], attrs)
@@ -177,12 +192,18 @@ processors:
     timeout: 10s
     send_batch_size: 2048
 
-  # Enrich cell metrics with geographic data from a lookup table
-  # This uses the resource processor with a file-based lookup
+  # Add static location metadata for collectors dedicated to one site.
+  # For per-cell lookup tables, use the lookup processor or a custom processor.
   resource:
     attributes:
       - key: deployment.environment
         value: "production"
+        action: upsert
+      - key: ran.site.latitude
+        value: 37.7749
+        action: upsert
+      - key: ran.site.longitude
+        value: -122.4194
         action: upsert
 
   # Transform processor to compute derived metrics
@@ -191,14 +212,14 @@ processors:
       - context: datapoint
         statements:
           # Flag cells with high PRB utilization for capacity planning
-          - set(attributes["ran.cell.congested"], "true")
-            where metric.name == "ran.cell.prb_utilization.downlink" and Double() > 80.0
+          - set(datapoint.attributes["ran.cell.congested"], "true")
+            where metric.name == "ran.cell.prb_utilization.downlink" and datapoint.value_double > 80.0
 
 exporters:
   otlp:
     endpoint: "oneuptime-collector:4317"
     tls:
-      insecure: false
+      insecure: true
 
 service:
   pipelines:
