@@ -8,7 +8,7 @@ Description: Generate and manage Software Bills of Materials (SBOMs) for Docker 
 
 ---
 
-Regulatory bodies increasingly require organizations to know exactly what software runs inside their systems. Executive Order 14028 in the United States, the EU Cyber Resilience Act, and industry-specific frameworks like PCI DSS 4.0 all point in the same direction: you need a Software Bill of Materials (SBOM) for your software. If your applications run in Docker containers, generating SBOMs for those containers is now a compliance requirement, not optional.
+Regulatory bodies increasingly require organizations to know exactly what software runs inside their systems. Executive Order 14028 in the United States, the EU Cyber Resilience Act, and industry-specific frameworks like PCI DSS 4.0 all point in the same direction: you need an accurate inventory of the software you build and run. If your applications run in Docker containers, generating SBOMs for those containers is becoming a compliance expectation, and may be required depending on your regulatory scope.
 
 An SBOM lists every package, library, and dependency inside a container image. It answers the question: "What exactly is in this thing?" This guide shows you how to generate, store, verify, and integrate SBOMs into your Docker workflow.
 
@@ -31,7 +31,7 @@ Syft from Anchore is one of the most widely used SBOM generators for containers.
 ```bash
 # Install Syft
 
-curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
 
 # Generate an SBOM for a Docker image in SPDX JSON format
 syft registry.example.com/myapp:latest -o spdx-json > sbom-myapp-spdx.json
@@ -83,7 +83,7 @@ trivy sbom sbom-myapp.cdx.json
 
 ## Docker BuildKit Native SBOM Generation
 
-Docker BuildKit 0.11+ can generate SBOMs during the build process itself. This captures build-time dependencies more accurately than post-build scanning.
+Docker BuildKit 0.11+ can generate SBOMs during the build process itself. This attaches the SBOM to the image as a build attestation and can account for software used during the build that may not appear in a final-image-only scan.
 
 ```bash
 # Build an image and generate an SBOM as a build attestation
@@ -95,7 +95,7 @@ docker buildx build \
 # Inspect the SBOM attestation attached to the image
 docker buildx imagetools inspect \
   registry.example.com/myapp:latest \
-  --format '{{json .SBOM}}' | jq .
+  --format '{{json .SBOM.SPDX}}' | jq .
 ```
 
 ## Automating SBOM Generation in CI/CD
@@ -140,7 +140,8 @@ jobs:
       # Scan the SBOM for known vulnerabilities
       - name: Vulnerability check against SBOM
         run: |
-          trivy sbom sbom-cyclonedx.json --severity CRITICAL,HIGH --exit-code 1
+          trivy image --format cyclonedx --output sbom-trivy-cyclonedx.json myapp:${{ github.sha }}
+          trivy sbom sbom-trivy-cyclonedx.json --severity CRITICAL,HIGH --exit-code 1
 
       # Store SBOMs as build artifacts for compliance records
       - name: Upload SBOMs
@@ -150,6 +151,7 @@ jobs:
           path: |
             sbom-spdx.json
             sbom-cyclonedx.json
+            sbom-trivy-cyclonedx.json
           retention-days: 365
 ```
 
@@ -197,7 +199,7 @@ Track what changed between releases:
 ```bash
 #!/bin/bash
 # diff-sboms.sh
-# Compares two SBOMs and shows added, removed, and updated packages
+# Compares two CycloneDX or SPDX JSON SBOMs and shows added and removed package-version entries
 
 SBOM_OLD="$1"
 SBOM_NEW="$2"
@@ -209,20 +211,20 @@ fi
 
 echo "=== Packages added in new version ==="
 # Find packages in the new SBOM that are not in the old one
-diff <(jq -r '.components[]? | "\(.name) \(.version)"' "$SBOM_OLD" | sort) \
-     <(jq -r '.components[]? | "\(.name) \(.version)"' "$SBOM_NEW" | sort) | \
+diff <(jq -r '(.components[]? | "\(.name) \(.version // "NOASSERTION")"), (.packages[]? | "\(.name) \(.versionInfo // "NOASSERTION")")' "$SBOM_OLD" | sort) \
+     <(jq -r '(.components[]? | "\(.name) \(.version // "NOASSERTION")"), (.packages[]? | "\(.name) \(.versionInfo // "NOASSERTION")")' "$SBOM_NEW" | sort) | \
      grep "^>" | sed 's/^> /  + /'
 
 echo ""
 echo "=== Packages removed in new version ==="
-diff <(jq -r '.components[]? | "\(.name) \(.version)"' "$SBOM_OLD" | sort) \
-     <(jq -r '.components[]? | "\(.name) \(.version)"' "$SBOM_NEW" | sort) | \
+diff <(jq -r '(.components[]? | "\(.name) \(.version // "NOASSERTION")"), (.packages[]? | "\(.name) \(.versionInfo // "NOASSERTION")")' "$SBOM_OLD" | sort) \
+     <(jq -r '(.components[]? | "\(.name) \(.version // "NOASSERTION")"), (.packages[]? | "\(.name) \(.versionInfo // "NOASSERTION")")' "$SBOM_NEW" | sort) | \
      grep "^<" | sed 's/^< /  - /'
 
 echo ""
 echo "Package counts:"
-echo "  Old: $(jq '.components | length' "$SBOM_OLD")"
-echo "  New: $(jq '.components | length' "$SBOM_NEW")"
+echo "  Old: $(jq '.components // .packages // [] | length' "$SBOM_OLD")"
+echo "  New: $(jq '.components // .packages // [] | length' "$SBOM_NEW")"
 ```
 
 ## Validating SBOMs for Compliance
@@ -254,7 +256,7 @@ else
 fi
 
 # Check that components/packages are listed
-COMPONENT_COUNT=$(jq '.components // .packages | length' "$SBOM_FILE")
+COMPONENT_COUNT=$(jq '.components // .packages // [] | length' "$SBOM_FILE")
 if [ "$COMPONENT_COUNT" -eq 0 ]; then
     echo "FAIL: No components found in SBOM"
     PASS=false
@@ -263,7 +265,7 @@ else
 fi
 
 # Check that the tool information is present
-TOOL=$(jq -r '.metadata.tools[0].name // .creationInfo.creators[0] // "missing"' "$SBOM_FILE")
+TOOL=$(jq -r '((.metadata.tools? | if type == "array" then .[0].name elif type == "object" then .components[0].name else empty end) // .creationInfo.creators[0] // "missing")' "$SBOM_FILE")
 if [ "$TOOL" = "missing" ]; then
     echo "FAIL: Missing tool/creator information"
     PASS=false
@@ -272,7 +274,7 @@ else
 fi
 
 # Check for package version information
-MISSING_VERSIONS=$(jq '[.components[]? | select(.version == null or .version == "")] | length' "$SBOM_FILE")
+MISSING_VERSIONS=$(jq '[.components[]? | select(.version == null or .version == ""), .packages[]? | select(.versionInfo == null or .versionInfo == "")] | length' "$SBOM_FILE")
 if [ "$MISSING_VERSIONS" -gt 0 ]; then
     echo "WARN: $MISSING_VERSIONS components missing version information"
 fi
@@ -288,7 +290,7 @@ fi
 
 ## Mapping SBOMs to Known Vulnerabilities
 
-Once you have SBOMs, use them for ongoing vulnerability monitoring without rescanning images:
+Once you have SBOMs, use them for ongoing vulnerability monitoring without rescanning images. For the most accurate Trivy vulnerability results, use SBOMs generated by Trivy because Trivy records additional metadata in its SBOM output.
 
 ```bash
 # Scan a stored SBOM against the latest vulnerability database
@@ -302,18 +304,18 @@ This is particularly valuable when a new CVE drops. Instead of rescanning every 
 
 ## Compliance Framework Mapping
 
-Different regulations require different SBOM attributes:
+Different frameworks point to different levels of SBOM detail:
 
-| Requirement | NTIA Minimum | PCI DSS 4.0 | EU CRA |
-|------------|-------------|-------------|--------|
-| Component name | Required | Required | Required |
-| Version | Required | Required | Required |
-| Supplier | Required | Recommended | Required |
-| Unique ID | Required | Optional | Required |
-| Dependency relationship | Required | Optional | Required |
-| Timestamp | Required | Required | Required |
-| Author of SBOM | Required | Optional | Required |
+| Requirement | NTIA Minimum | PCI DSS 4.0/4.0.1 inventory support | EU CRA |
+|------------|-------------|--------------------------------------|--------|
+| Component name | Required | Needed for the software inventory | Required for documented components |
+| Version | Required | Needed for vulnerability and patch management | Expected for a useful machine-readable SBOM |
+| Supplier | Required | Useful for third-party component tracking | Not explicitly enumerated in the CRA text |
+| Unique ID | Required | Useful for vulnerability matching | Format and elements may be specified by implementing acts |
+| Dependency relationship | Required | Useful for impact analysis | Top-level dependencies must be covered at minimum |
+| Timestamp | Required | Useful for audit evidence | Not explicitly enumerated in the CRA text |
+| Author of SBOM | Required | Useful for audit evidence | Not explicitly enumerated in the CRA text |
 
 ## Summary
 
-SBOM generation for Docker containers is a compliance necessity that also strengthens your security posture. Use Syft or Trivy to generate SBOMs in SPDX or CycloneDX format. Automate generation in your CI/CD pipeline so every image ships with an SBOM. Store SBOMs alongside images using OCI artifacts, and validate them against your compliance requirements. When the next critical vulnerability is announced, your SBOMs let you identify affected images in seconds instead of hours.
+SBOM generation for Docker containers is often a compliance necessity that also strengthens your security posture. Use Syft or Trivy to generate SBOMs in SPDX or CycloneDX format. Automate generation in your CI/CD pipeline so every image ships with an SBOM. Store SBOMs alongside images using OCI artifacts, and validate them against your compliance requirements. When the next critical vulnerability is announced, your SBOMs let you identify affected images in seconds instead of hours.
