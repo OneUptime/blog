@@ -15,8 +15,6 @@ Build a compose file that mirrors your production setup: your services, an OpenT
 ```yaml
 # docker-compose.test.yaml
 
-version: '3.8'
-
 services:
   # Your application services
   api-gateway:
@@ -25,6 +23,7 @@ services:
       - "8080:8080"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=api-gateway
       - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=test
       - ORDER_SERVICE_URL=http://order-service:8081
@@ -38,6 +37,7 @@ services:
       - "8081:8081"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=order-service
       - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=test
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/orders
@@ -52,6 +52,7 @@ services:
       - "8082:8082"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=payment-service
       - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=test
     depends_on:
@@ -60,8 +61,10 @@ services:
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    user: "0:0"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel/config.yaml
+      - ./file-exporter:/file-exporter
     command: ["--config", "/etc/otel/config.yaml"]
     ports:
       - "4317:4317"
@@ -71,6 +74,8 @@ services:
   # Jaeger for trace visualization during testing
   jaeger:
     image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686"  # UI
       - "14250:14250"  # gRPC
@@ -112,7 +117,8 @@ exporters:
       insecure: true
 
   file:
-    path: /tmp/traces.json
+    path: /file-exporter/traces.json
+    create_directory: true
     rotation:
       max_megabytes: 10
 
