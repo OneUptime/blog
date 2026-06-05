@@ -26,14 +26,14 @@ processors:
   memory_limiter:
     # How often to check memory usage
     check_interval: 1s
-    # Hard limit: start dropping data at this point
+    # Hard limit: force garbage collection at this point
     limit_mib: 1024
-    # Soft limit: start applying backpressure at limit_mib - spike_limit_mib
+    # Soft limit: start refusing data at limit_mib - spike_limit_mib
     # In this case, backpressure starts at 768 MiB (1024 - 256)
     spike_limit_mib: 256
 ```
 
-When memory usage is between 768 MiB and 1024 MiB, the limiter tells receivers to slow down. Above 1024 MiB, it starts dropping data. This prevents the collector process from being killed by the OS.
+When memory usage exceeds 768 MiB, the limiter returns non-permanent errors to the previous component in the pipeline. Receivers that handle those errors correctly retry or apply backpressure to their own data sources. Above 1024 MiB, the limiter also forces garbage collection. If the preceding component cannot retry refused data, that data can still be lost, but this behavior helps prevent the collector process from being killed by the OS.
 
 ## Sending Queues: Buffering During Backend Slowdowns
 
@@ -90,15 +90,17 @@ exporters:
       enabled: true
       # First retry after 5 seconds
       initial_interval: 5s
-      # Double the interval each retry, up to this max
+      # Increase the interval each retry, up to this max
       max_interval: 30s
       # Give up after this total time
       max_elapsed_time: 300s
       # Multiplier for exponential backoff
+      multiplier: 1.5
+      # Add jitter to avoid retry storms
       randomization_factor: 0.5
 ```
 
-The `max_elapsed_time` is critical. Without it, a single failed batch could retry indefinitely, consuming a queue consumer slot forever.
+The `max_elapsed_time` is critical. The default is 300 seconds, and setting it to `0` means retries never stop. In that case, a single failed batch could keep retrying indefinitely, consuming a queue consumer slot forever.
 
 ## Persistent Queue Storage
 
@@ -108,6 +110,7 @@ By default, the queue lives in memory. If the collector restarts, queued data is
 extensions:
   file_storage/queue:
     directory: /var/otel/queue
+    create_directory: true
     timeout: 10s
     compaction:
       on_start: true
@@ -146,6 +149,7 @@ receivers:
 extensions:
   file_storage/queue:
     directory: /var/otel/queue
+    create_directory: true
     timeout: 10s
 
 processors:
@@ -188,7 +192,14 @@ service:
 
   telemetry:
     metrics:
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 ## Monitoring Backpressure
@@ -206,9 +217,9 @@ curl -s http://localhost:8888/metrics | grep queue_size
 curl -s http://localhost:8888/metrics | grep refused
 # otelcol_processor_refused_spans{processor="memory_limiter"} 0
 
-# Retry attempts - occasional retries are normal
-curl -s http://localhost:8888/metrics | grep retry
-# otelcol_exporter_retry_send_count{exporter="otlp"} 12
+# Export failures - occasional failures can be normal if retries recover
+curl -s http://localhost:8888/metrics | grep send_failed
+# otelcol_exporter_send_failed_spans{exporter="otlp"} 12
 ```
 
 If `queue_size / queue_capacity` stays above 80%, your backend cannot keep up and you need to either increase backend capacity, reduce data volume (add sampling), or add more collector instances.
