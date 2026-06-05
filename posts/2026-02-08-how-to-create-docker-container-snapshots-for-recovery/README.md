@@ -69,7 +69,7 @@ Docker commit works well for capturing application state that lives in the conta
 
 ## Method 2: Docker Export and Import
 
-The `docker export` command saves a container's entire filesystem as a tar archive. Unlike `docker commit`, it flattens all image layers into a single layer.
+The `docker export` command saves a container's filesystem as a tar archive, excluding the contents of mounted volumes. Unlike `docker commit`, it flattens all image layers into a single layer.
 
 ```bash
 # Export a container's filesystem to a tar archive
@@ -100,7 +100,7 @@ The key difference from `docker commit` is that export/import loses all image me
 
 ## Method 3: Docker Checkpoint (Experimental)
 
-Docker checkpoint uses CRIU (Checkpoint/Restore In Userspace) to freeze a running container and save its complete runtime state, including memory, process trees, and open files. This is the closest thing to a true VM snapshot.
+Docker checkpoint uses CRIU (Checkpoint/Restore In Userspace) to freeze a running container and save its runtime state, including memory, process trees, and open files. It does not checkpoint the container filesystem, so combine it with `docker commit` if you need to restore filesystem changes too.
 
 First, enable experimental features in the Docker daemon:
 
@@ -141,7 +141,7 @@ docker start --checkpoint checkpoint_20260208 my_container
 
 ### Limitations of Docker Checkpoint
 
-CRIU has real constraints you should know about. Network connections get dropped during checkpoint/restore. Applications with complex socket states may not restore cleanly. GPU workloads and containers with special device mappings often fail. Always test checkpoint/restore with your specific application before relying on it.
+CRIU has real constraints you should know about. Active network connections generally need special handling and may not survive checkpoint/restore. Applications with complex socket states may not restore cleanly. GPU workloads and containers with special device mappings often fail. Always test checkpoint/restore with your specific application before relying on it.
 
 ## Method 4: Volume Snapshots
 
@@ -192,7 +192,7 @@ Combine filesystem and volume snapshots into one comprehensive script:
 
 set -euo pipefail
 
-CONTAINER="$1"
+CONTAINER="${1:-}"
 SNAPSHOT_DIR="/opt/snapshots"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 SNAPSHOT_PREFIX="${CONTAINER}_${TIMESTAMP}"
@@ -206,9 +206,18 @@ mkdir -p "$SNAPSHOT_DIR"
 
 echo "[$(date)] Starting full snapshot of container: $CONTAINER"
 
+PAUSED=false
+cleanup() {
+    if [ "$PAUSED" = true ]; then
+        docker unpause "$CONTAINER" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
+
 # Step 1: Pause the container to get a consistent state
 echo "[$(date)] Pausing container..."
 docker pause "$CONTAINER"
+PAUSED=true
 
 # Step 2: Commit the container filesystem
 echo "[$(date)] Committing container filesystem..."
@@ -233,6 +242,8 @@ docker inspect "$CONTAINER" > "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}_inspect.json"
 # Step 5: Unpause the container
 echo "[$(date)] Unpausing container..."
 docker unpause "$CONTAINER"
+PAUSED=false
+trap - EXIT
 
 # Step 6: Save the committed image as a tar file
 echo "[$(date)] Exporting image..."
@@ -247,7 +258,7 @@ ls -lh "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}"*
 ```bash
 #!/bin/bash
 # restore-snapshot.sh
-# Restores a container from a full snapshot (image + volumes + config)
+# Restores a container from a full snapshot (image + volumes)
 
 SNAPSHOT_PREFIX="$1"
 SNAPSHOT_DIR="/opt/snapshots"
@@ -263,6 +274,8 @@ echo "Loading snapshot image..."
 docker load < "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}_image.tar"
 
 # Restore volumes
+shopt -s nullglob
+RUN_VOLUME_ARGS=()
 for VOLUME_ARCHIVE in "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}_vol_"*.tar.gz; do
     # Extract volume name from the archive filename
     VOLUME_NAME=$(basename "$VOLUME_ARCHIVE" | sed "s/${SNAPSHOT_PREFIX}_vol_//" | sed 's/.tar.gz//')
@@ -275,11 +288,19 @@ for VOLUME_ARCHIVE in "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}_vol_"*.tar.gz; do
         -v "${RESTORED_VOLUME}:/target" \
         -v "${SNAPSHOT_DIR}:/backup:ro" \
         alpine tar xzf "/backup/$(basename "$VOLUME_ARCHIVE")" -C /target
+
+    TARGET=$(jq -r --arg name "$VOLUME_NAME" \
+        '.[0].Mounts[] | select(.Type == "volume" and .Name == $name) | .Destination' \
+        "${SNAPSHOT_DIR}/${SNAPSHOT_PREFIX}_inspect.json" | head -1)
+    if [ -n "$TARGET" ]; then
+        RUN_VOLUME_ARGS+=("-v" "${RESTORED_VOLUME}:${TARGET}")
+    fi
 done
 
-# Start the restored container
+# Start the restored container. Recreate ports, networks, and other runtime options
+# from the saved inspect JSON as needed.
 echo "Starting restored container..."
-docker run -d --name "$NEW_CONTAINER" "${SNAPSHOT_PREFIX}:snapshot"
+docker run -d --name "$NEW_CONTAINER" "${RUN_VOLUME_ARGS[@]}" "${SNAPSHOT_PREFIX}:snapshot"
 
 echo "Restoration complete: $NEW_CONTAINER"
 ```
@@ -299,10 +320,10 @@ RETENTION_DAYS=7
 echo "Cleaning up snapshots older than $RETENTION_DAYS days..."
 
 # Remove old snapshot files from disk
-find "$SNAPSHOT_DIR" -name "*_snapshot_*" -mtime +$RETENTION_DAYS -delete
+find "$SNAPSHOT_DIR" -type f \( -name "*_image.tar" -o -name "*_inspect.json" -o -name "*_vol_*.tar.gz" \) -mtime +$RETENTION_DAYS -delete
 
 # Remove old snapshot images from Docker
-docker images --format '{{.Repository}}:{{.Tag}}' | grep ':snapshot' | while read IMAGE; do
+docker images --format '{{.Repository}}:{{.Tag}}' | grep ':snapshot' | while read -r IMAGE; do
     CREATED=$(docker inspect --format '{{.Created}}' "$IMAGE")
     AGE_DAYS=$(( ($(date +%s) - $(date -d "$CREATED" +%s)) / 86400 ))
     if [ "$AGE_DAYS" -gt "$RETENTION_DAYS" ]; then
@@ -318,7 +339,7 @@ done
 |--------|-----------|---------|-----------------|-------|
 | docker commit | Yes | No | No | Fast |
 | docker export | Yes (flat) | No | No | Medium |
-| docker checkpoint | Yes | No | Yes | Slow |
+| docker checkpoint | No | No | Yes | Slow |
 | Volume copy | No | Yes | No | Varies |
 | Full snapshot script | Yes | Yes | No | Slow |
 
