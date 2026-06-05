@@ -22,11 +22,11 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  spanmetrics:
+  span_metrics:
     dimensions:
       - name: service.name
       - name: http.route
-      - name: http.method
+      - name: http.request.method
     metrics_flush_interval: 15s
 
 exporters:
@@ -37,13 +37,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
-This generates `traces_spanmetrics_calls_total` with a `status_code` label, which is everything you need for error rate calculations.
+This generates `traces_span_metrics_calls_total` with a `status_code` label whose error value is `Error`, which is everything you need for error rate calculations.
 
 ## Defining Your SLOs
 
@@ -85,39 +85,52 @@ groups:
       - record: slo:error_rate:5m
         expr: |
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total{
-              status_code="STATUS_CODE_ERROR"
+            rate(traces_span_metrics_calls_total{
+              status_code="Error"
             }[5m])
           )
           /
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total[5m])
+            rate(traces_span_metrics_calls_total[5m])
+          )
+
+      # 30-minute error rate by service
+      - record: slo:error_rate:30m
+        expr: |
+          sum by (service_name) (
+            rate(traces_span_metrics_calls_total{
+              status_code="Error"
+            }[30m])
+          )
+          /
+          sum by (service_name) (
+            rate(traces_span_metrics_calls_total[30m])
           )
 
       # 1-hour error rate by service
       - record: slo:error_rate:1h
         expr: |
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total{
-              status_code="STATUS_CODE_ERROR"
+            rate(traces_span_metrics_calls_total{
+              status_code="Error"
             }[1h])
           )
           /
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total[1h])
+            rate(traces_span_metrics_calls_total[1h])
           )
 
       # 6-hour error rate by service
       - record: slo:error_rate:6h
         expr: |
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total{
-              status_code="STATUS_CODE_ERROR"
+            rate(traces_span_metrics_calls_total{
+              status_code="Error"
             }[6h])
           )
           /
           sum by (service_name) (
-            rate(traces_spanmetrics_calls_total[6h])
+            rate(traces_span_metrics_calls_total[6h])
           )
 ```
 
@@ -145,17 +158,16 @@ groups:
           summary: "API Gateway error budget burning at 14.4x rate"
           description: >
             The API Gateway is consuming error budget at 14.4x the
-            sustainable rate. At this pace, the entire 30-day budget
-            will be exhausted in {{ $value | humanizeDuration }}.
+            sustainable rate. Current burn rate is {{ $value | humanize }}x.
           runbook: "https://wiki.internal/runbooks/api-gateway-slo"
 
       # Warning: Slow burn detected in 30m and 6h windows
       # This catches gradual degradation that compounds over time
       - alert: SLOBurnRateWarning
         expr: |
-          (slo:error_rate:1h{service_name="api-gateway"} / 0.001 > 1)
+          (slo:error_rate:30m{service_name="api-gateway"} / 0.001 > 6)
           and
-          (slo:error_rate:6h{service_name="api-gateway"} / 0.001 > 1)
+          (slo:error_rate:6h{service_name="api-gateway"} / 0.001 > 6)
         for: 30m
         labels:
           severity: warning
@@ -163,9 +175,8 @@ groups:
         annotations:
           summary: "API Gateway error budget consumption unsustainable"
           description: >
-            The API Gateway error rate exceeds the SLO target over
-            the last 6 hours. If this continues, the error budget
-            will be exhausted before the window resets.
+            The API Gateway error budget is burning at more than 6x
+            the sustainable rate over the last 6 hours.
 ```
 
 ## Per-Endpoint Alerts
@@ -176,13 +187,13 @@ Some endpoints are more important than others. Add per-endpoint alerting for you
       # Critical endpoint specific alert
       - alert: PaymentEndpointErrorRate
         expr: |
-          sum(rate(traces_spanmetrics_calls_total{
+          sum(rate(traces_span_metrics_calls_total{
             service_name="api-gateway",
             http_route="/api/v1/payments",
-            status_code="STATUS_CODE_ERROR"
+            status_code="Error"
           }[5m]))
           /
-          sum(rate(traces_spanmetrics_calls_total{
+          sum(rate(traces_span_metrics_calls_total{
             service_name="api-gateway",
             http_route="/api/v1/payments"
           }[5m]))
@@ -204,12 +215,12 @@ Route different severities to different channels:
 route:
   receiver: "default"
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: "pagerduty"
       continue: true
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: "slack-warnings"
 
 receivers:
