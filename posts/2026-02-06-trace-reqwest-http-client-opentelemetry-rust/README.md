@@ -46,7 +46,7 @@ Add required crates to your `Cargo.toml`:
 [dependencies]
 # Reqwest HTTP client with OpenTelemetry integration
 
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "stream"] }
 reqwest-middleware = "0.2"
 reqwest-tracing = { version = "0.4", features = ["opentelemetry_0_22"] }
 
@@ -63,6 +63,7 @@ tracing-opentelemetry = "0.23"
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -71,6 +72,9 @@ serde_json = "1.0"
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
+
+[dev-dependencies]
+wiremock = "0.6"
 ```
 
 ## Initialize OpenTelemetry Tracer
@@ -78,17 +82,17 @@ thiserror = "1.0"
 Set up the tracing pipeline with HTTP semantic conventions:
 
 ```rust
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace::TracerProvider, Resource};
+use opentelemetry_sdk::{runtime, trace::Tracer, Resource};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
+fn init_tracer() -> Result<Tracer, Box<dyn std::error::Error>> {
     let exporter = opentelemetry_otlp::new_exporter()
         .tonic()
         .with_endpoint("http://localhost:4317");
 
-    let provider = opentelemetry_otlp::new_pipeline()
+    let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(exporter)
         .with_trace_config(
@@ -101,7 +105,7 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
         .install_batch(runtime::Tokio)?;
 
     let telemetry = tracing_opentelemetry::layer()
-        .with_tracer(provider.tracer("reqwest-client"));
+        .with_tracer(tracer.clone());
 
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
@@ -109,7 +113,7 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(provider)
+    Ok(tracer)
 }
 ```
 
@@ -147,6 +151,7 @@ use serde::{Deserialize, Serialize};
 struct CreatePostRequest {
     title: String,
     body: String,
+    #[serde(rename = "userId")]
     user_id: u32,
 }
 
@@ -155,11 +160,15 @@ struct Post {
     id: u32,
     title: String,
     body: String,
+    #[serde(rename = "userId")]
     user_id: u32,
 }
 
 #[instrument(skip(client))]
-async fn fetch_post(client: &ClientWithMiddleware, post_id: u32) -> Result<Post, reqwest::Error> {
+async fn fetch_post(
+    client: &ClientWithMiddleware,
+    post_id: u32,
+) -> Result<Post, reqwest_middleware::Error> {
     info!(post_id = post_id, "Fetching post from API");
 
     let url = format!("https://jsonplaceholder.typicode.com/posts/{}", post_id);
@@ -186,7 +195,7 @@ async fn fetch_post(client: &ClientWithMiddleware, post_id: u32) -> Result<Post,
 async fn create_post(
     client: &ClientWithMiddleware,
     request: CreatePostRequest,
-) -> Result<Post, reqwest::Error> {
+) -> Result<Post, reqwest_middleware::Error> {
     info!(title = %request.title, "Creating new post");
 
     let url = "https://jsonplaceholder.typicode.com/posts";
@@ -217,7 +226,7 @@ async fn authenticated_request(
     client: &ClientWithMiddleware,
     token: &str,
     user_id: u32,
-) -> Result<serde_json::Value, reqwest::Error> {
+) -> Result<serde_json::Value, reqwest_middleware::Error> {
     info!("Making authenticated API request");
 
     let mut headers = HeaderMap::new();
@@ -264,7 +273,10 @@ use tracing::{error, warn};
 #[derive(Error, Debug)]
 pub enum ApiError {
     #[error("HTTP request failed: {0}")]
-    RequestFailed(#[from] reqwest::Error),
+    RequestFailed(#[from] reqwest_middleware::Error),
+
+    #[error("HTTP response handling failed: {0}")]
+    ResponseFailed(#[from] reqwest::Error),
 
     #[error("Invalid response format: {0}")]
     InvalidResponse(String),
@@ -429,7 +441,7 @@ use futures::future::join_all;
 async fn fetch_multiple_posts(
     client: &ClientWithMiddleware,
     post_ids: Vec<u32>,
-) -> Vec<Result<Post, reqwest::Error>> {
+) -> Vec<Result<Post, reqwest_middleware::Error>> {
     info!(
         count = post_ids.len(),
         "Fetching multiple posts concurrently"
@@ -537,7 +549,6 @@ Trace streaming responses and large downloads:
 
 ```rust
 use futures::StreamExt;
-use reqwest::Response;
 
 #[instrument(skip(client))]
 async fn download_large_file(
@@ -638,7 +649,7 @@ Bring everything together in a working application:
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize OpenTelemetry
-    let provider = init_tracer()?;
+    let _tracer = init_tracer()?;
 
     info!("HTTP client application started");
 
@@ -651,7 +662,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Graceful shutdown
     info!("Shutting down");
     opentelemetry::global::shutdown_tracer_provider();
-    provider.shutdown()?;
 
     Ok(())
 }
@@ -710,7 +720,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_traced_request() {
-        let provider = init_tracer().unwrap();
+        let _tracer = init_tracer().unwrap();
 
         // Start mock server
         let mock_server = MockServer::start().await;
@@ -733,7 +743,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        provider.shutdown().unwrap();
+        opentelemetry::global::shutdown_tracer_provider();
     }
 }
 ```
