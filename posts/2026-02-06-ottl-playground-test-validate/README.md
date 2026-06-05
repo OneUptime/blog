@@ -29,8 +29,8 @@ processors:
       - context: span
         statements:
           # Your statements to test go here
-          - set(attributes["test.result"], "transformed")
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
+          - set(span.attributes["test.result"], "transformed")
+          - set(span.status.code, 2) where span.attributes["http.response.status_code"] >= 500
 
 exporters:
   debug:
@@ -217,41 +217,41 @@ echo "Testing complete. Check Collector output above for transformed data."
 ### Invalid Field Reference
 
 ```yaml
-# Wrong: "status_code" is not a top-level field
-- set(status_code, 2)
+# Wrong: "status_code" is not a span field
+- set(span.status_code, 2)
 
 # Right: use the correct path
-- set(status.code, 2)
+- set(span.status.code, 2)
 ```
 
 ### Missing Quotes on String Values
 
 ```yaml
 # Wrong: unquoted string value
-- set(attributes["key"], production)
+- set(span.attributes["key"], production)
 
 # Right: quoted string value
-- set(attributes["key"], "production")
+- set(span.attributes["key"], "production")
 ```
 
 ### Incorrect Function Name
 
 ```yaml
 # Wrong: "is_match" uses underscore
-- set(attributes["x"], "y") where is_match(name, ".*")
+- set(span.attributes["x"], "y") where is_match(span.name, ".*")
 
 # Right: "IsMatch" uses PascalCase
-- set(attributes["x"], "y") where IsMatch(name, ".*")
+- set(span.attributes["x"], "y") where IsMatch(span.name, ".*")
 ```
 
 ### Wrong Attribute Path
 
 ```yaml
 # Wrong: using dot notation for attribute lookup
-- set(attributes.http.method, "GET")
+- set(span.attributes.http.method, "GET")
 
 # Right: using bracket notation with the full key
-- set(attributes["http.method"], "GET")
+- set(span.attributes["http.method"], "GET")
 ```
 
 ## Testing Checklist
