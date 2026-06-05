@@ -104,8 +104,7 @@ COPY project.clj /app/
 RUN lein deps
 
 # Copy source and build the uberjar
-COPY src/ /app/src/
-COPY resources/ /app/resources/
+COPY . /app
 RUN lein uberjar
 
 # Stage 2: Run with a minimal JRE image
@@ -157,18 +156,18 @@ The JVM historically had trouble detecting container memory limits. Modern JVMs 
 
 ```bash
 # Run with explicit memory limits
-docker run -m 512m -e JAVA_OPTS="-XX:MaxRAMPercentage=75.0" clojure-docker-demo
+docker run -m 512m clojure-docker-demo \
+  java -XX:MaxRAMPercentage=75.0 -jar /app/app.jar
 ```
 
 The `-XX:MaxRAMPercentage=75.0` flag tells the JVM to use at most 75% of available container memory, leaving headroom for off-heap allocations.
 
 ## Docker Compose for Development
 
-During development, you want live reloading and a REPL. Docker Compose makes this practical:
+During development, you want interactive editing and a REPL. Docker Compose makes this practical:
 
 ```yaml
-# docker-compose.yml - development setup with volume mounts for live reloading
-version: "3.8"
+# docker-compose.yml - development setup with volume mounts for interactive editing
 services:
   app:
     build:
@@ -179,10 +178,8 @@ services:
       - "7888:7888"  # nREPL port
     volumes:
       - ./src:/app/src
-      - ./resources:/app/resources
     environment:
       - PORT=3000
-      - NREPL_PORT=7888
 ```
 
 Create a separate `Dockerfile.dev` for development:
@@ -200,8 +197,8 @@ COPY . /app
 
 EXPOSE 3000 7888
 
-# Start with a REPL that also launches the web server
-CMD ["lein", "run"]
+# Start a headless nREPL for interactive development
+CMD ["lein", "repl", ":headless", ":host", "0.0.0.0", ":port", "7888"]
 ```
 
 Start the development environment:
@@ -211,7 +208,7 @@ Start the development environment:
 docker compose up --build
 ```
 
-You can connect your editor's nREPL client to `localhost:7888` and evaluate code directly inside the running container.
+You can connect your editor's nREPL client to `localhost:7888` and evaluate or reload code directly inside the running container.
 
 ## Health Checks
 
@@ -258,12 +255,13 @@ For even smaller images and faster startup, consider compiling your Clojure app 
 
 ```dockerfile
 # Stage 1: Build native image with GraalVM
-FROM ghcr.io/graalvm/native-image:ol9-java21 AS builder
+FROM ghcr.io/graalvm/native-image-community:21 AS builder
 
 WORKDIR /app
 
 # Install Leiningen
-RUN curl -o /usr/local/bin/lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein && \
+RUN microdnf install -y curl && \
+    curl -o /usr/local/bin/lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein && \
     chmod +x /usr/local/bin/lein
 
 COPY project.clj /app/
@@ -287,7 +285,7 @@ EXPOSE 3000
 CMD ["/app"]
 ```
 
-This approach produces an image under 50 MB with startup times measured in milliseconds instead of seconds. The trade-off is longer build times and some Clojure libraries that rely on runtime reflection may need additional configuration.
+This approach can produce much smaller images with faster startup times. The trade-off is longer build times and some Clojure libraries that rely on runtime reflection may need additional configuration.
 
 ## Monitoring Your Containerized Clojure App
 
@@ -295,4 +293,4 @@ Once your application is running in production, you need visibility into its hea
 
 ## Summary
 
-Containerizing a Clojure application follows a predictable pattern: build the uberjar in a build stage, copy it to a minimal JRE runtime stage, and configure JVM flags for container awareness. The multi-stage approach keeps images small, and Docker Compose gives you a comfortable development workflow with REPL integration. For performance-critical services, GraalVM native images offer dramatic improvements in image size and startup time.
+Containerizing a Clojure application follows a predictable pattern: build the uberjar in a build stage, copy it to a minimal JRE runtime stage, and configure JVM flags for container awareness. The multi-stage approach keeps images small, and Docker Compose gives you a comfortable development workflow with REPL access. For performance-critical services, GraalVM native images can offer dramatic improvements in image size and startup time.
