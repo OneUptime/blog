@@ -52,6 +52,18 @@ from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+# Set up the OTel trace provider
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+    )
+)
+trace.set_tracer_provider(trace_provider)
 
 # Set up the OTel log provider
 log_provider = LoggerProvider()
@@ -86,8 +98,8 @@ If you want trace context in your console/file logs too (not just OTLP-exported 
 class TraceContextFormatter(logging.Formatter):
     def format(self, record):
         span = trace.get_current_span()
-        if span.is_recording():
-            ctx = span.get_span_context()
+        ctx = span.get_span_context()
+        if ctx.is_valid:
             record.trace_id = format(ctx.trace_id, '032x')
             record.span_id = format(ctx.span_id, '016x')
         else:
@@ -106,15 +118,11 @@ logging.getLogger().addHandler(handler)
 
 ## Fix for Java (SLF4J / Logback)
 
-Add the OpenTelemetry Logback appender:
+Add the OpenTelemetry Logback MDC appender:
 
 ```xml
 <!-- logback.xml -->
 <configuration>
-  <!-- Add the OTel appender -->
-  <appender name="OpenTelemetry" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
-  </appender>
-
   <!-- Your existing console appender with trace context in MDC -->
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
@@ -122,9 +130,13 @@ Add the OpenTelemetry Logback appender:
     </encoder>
   </appender>
 
-  <root level="INFO">
+  <!-- Wrap the console appender so trace context is injected into MDC -->
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.mdc.v1_0.OpenTelemetryAppender">
     <appender-ref ref="CONSOLE" />
-    <appender-ref ref="OpenTelemetry" />
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="OTEL" />
   </root>
 </configuration>
 ```
@@ -201,6 +213,8 @@ For zap:
 package main
 
 import (
+    "context"
+
     "go.opentelemetry.io/otel/trace"
     "go.uber.org/zap"
 )
