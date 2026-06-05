@@ -22,9 +22,10 @@ Start by deploying Tracetest alongside your production trace backend:
 type: DataStore
 spec:
   name: production-traces
-  type: otlp
-  otlp:
-    endpoint: otel-collector:4317
+  type: jaeger
+  default: true
+  jaeger:
+    endpoint: jaeger-query:16685
     tls:
       insecure: true
 ```
@@ -121,8 +122,11 @@ spec:
     cron: "*/5 * * * *"
   alerts:
     - type: webhook
+      events:
+        - FAILED
       webhook:
         url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+        method: POST
         headers:
           - key: Content-Type
             value: application/json
@@ -140,7 +144,7 @@ tracetest apply monitor -f monitors/order-placement-monitor.yaml
 
 ## Building Multi-Step Transaction Tests
 
-Real user flows involve multiple API calls. Chain them together using test outputs:
+Real user flows involve multiple API calls. Define each step as a test, expose outputs from one step, and run the steps in a TestSuite:
 
 ```yaml
 # tests/full-checkout-flow.yaml
@@ -180,17 +184,41 @@ spec:
       value: attr:cart.id
 ```
 
+```yaml
+# tests/full-checkout-suite.yaml
+type: TestSuite
+spec:
+  id: synthetic-full-checkout
+  name: "Synthetic: Full Checkout Flow"
+  steps:
+    - ./full-checkout-flow.yaml
+    - ./checkout-payment.yaml
+```
+
+Apply the suite:
+
+```bash
+tracetest apply testsuite -f tests/full-checkout-suite.yaml
+```
+
 ## Filtering Synthetic Traffic
 
-Make sure synthetic test traffic does not pollute your production metrics. Tag synthetic requests and filter them in your collector:
+Make sure synthetic test traffic does not pollute your production telemetry. Add a `synthetic_test=true` span or resource attribute for synthetic requests, then filter it in your collector:
 
 ```yaml
 # otel-collector-config.yaml
 processors:
   filter/synthetic:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["http.request.header.x_synthetic_test"] == "true"'
+        - 'attributes["synthetic_test"] == true or resource.attributes["synthetic_test"] == true'
+
+  filter/non-synthetic:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["synthetic_test"] != true and resource.attributes["synthetic_test"] != true'
 
   attributes/tag-synthetic:
     actions:
@@ -209,7 +237,7 @@ service:
     # Synthetic traces pipeline (for Tracetest)
     traces/synthetic:
       receivers: [otlp]
-      processors: [attributes/tag-synthetic, batch]
+      processors: [filter/non-synthetic, attributes/tag-synthetic, batch]
       exporters: [otlp/tracetest-backend]
 ```
 
@@ -222,6 +250,7 @@ Synthetic tests create real data in your system. Clean it up automatically:
 import requests
 import schedule
 import time
+import os
 
 API_URL = "https://api.example.com"
 CLEANUP_TOKEN = os.environ["CLEANUP_TOKEN"]
@@ -265,12 +294,11 @@ while True:
 Check monitor health via the Tracetest API:
 
 ```bash
-# Get recent monitor runs
-tracetest list runs --monitor order-placement-monitor --limit 20
+# List monitors, including run counts and last run state
+tracetest list monitor
 
-# Check failure rate
-tracetest get monitor order-placement-monitor --output json \
-  | jq '.runs | map(select(.state == "FAILED")) | length'
+# Inspect a monitor definition and summary
+tracetest get monitor --id order-placement-monitor --output json
 ```
 
 Synthetic transaction tests with Tracetest give you continuous validation that your system works end to end. Unlike traditional uptime checks that just ping an endpoint, these tests verify the entire internal behavior of your distributed system. When the monitor catches a failure, you already have the trace showing exactly what went wrong.
