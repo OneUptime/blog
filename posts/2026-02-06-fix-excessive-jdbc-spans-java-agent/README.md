@@ -38,7 +38,7 @@ You lose database query-level spans but still get HTTP, Spring, and other spans.
 
 ## Fix 2: Disable the JDBC Datasource Instrumentation
 
-The agent instruments both the JDBC driver and the datasource (connection pool). Disable the datasource instrumentation to reduce noise:
+The agent can also instrument `java.sql.DataSource#getConnection` calls, but this instrumentation is disabled by default because it can be noisy. If you have enabled it, disable it again to reduce noise:
 
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
@@ -48,56 +48,21 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 ## Fix 3: Use Statement Sanitization to Reduce Cardinality
 
-By default, the agent captures the full SQL statement. Sanitization replaces literal values with `?`:
+By default, the agent sanitizes database query text before setting the database query span attribute. Sanitization replaces literal values with `?`:
 
 ```bash
 # This is usually on by default, but verify
 
 java -javaagent:opentelemetry-javaagent.jar \
-     -Dotel.instrumentation.jdbc.statement-sanitizer.enabled=true \
+     -Dotel.instrumentation.jdbc.query-sanitization.enabled=true \
      -jar myapp.jar
 ```
 
 This does not reduce span count, but it reduces the cardinality of span attributes and the storage needed per span.
 
-## Fix 4: Suppress Short Queries with a Custom Sampler
+## Fix 4: Do Not Use a Custom Sampler for Short Queries
 
-Create a sampler that drops spans shorter than a threshold:
-
-```java
-// Custom sampler that filters out fast DB queries
-public class DatabaseQuerySampler implements Sampler {
-    private final Sampler delegate;
-
-    public DatabaseQuerySampler(Sampler delegate) {
-        this.delegate = delegate;
-    }
-
-    @Override
-    public SamplingResult shouldSample(
-            Context parentContext,
-            String traceId,
-            String name,
-            SpanKind spanKind,
-            Attributes attributes,
-            List<LinkData> links) {
-
-        // Always sample non-DB spans
-        String dbSystem = attributes.get(AttributeKey.stringKey("db.system"));
-        if (dbSystem == null) {
-            return delegate.shouldSample(parentContext, traceId, name, spanKind, attributes, links);
-        }
-
-        // For DB spans, delegate to the parent sampler
-        return delegate.shouldSample(parentContext, traceId, name, spanKind, attributes, links);
-    }
-
-    @Override
-    public String getDescription() {
-        return "DatabaseQuerySampler";
-    }
-}
-```
+OpenTelemetry samplers make their decision when a span is created, before the span duration is known. A sampler can reduce trace volume by trace ID ratio or by attributes that exist at span start, but it cannot reliably drop "queries shorter than 100ms." Use Collector filtering after spans finish if you need duration-based filtering.
 
 ## Fix 5: Use Sampling to Reduce Overall Volume
 
@@ -116,22 +81,19 @@ Use the Collector's filter processor to drop JDBC spans that are under a duratio
 
 ```yaml
 processors:
-  filter:
-    spans:
-      exclude:
-        match_type: regexp
-        attributes:
-          - key: db.system
-            value: ".*"
-        span_names:
-          - ".*"
-        # Only keep DB spans longer than 100ms
+  filter/fast-db:
+    error_mode: ignore
+    trace_conditions:
+      - |
+        (span.attributes["db.system"] != nil or span.attributes["db.system.name"] != nil) and
+        (span.end_time - span.start_time) < Duration("100ms") and
+        span.status.code != STATUS_CODE_ERROR
 
-  # Alternative: use tail_sampling to keep only slow queries
+  # Alternative: use tail_sampling to keep only slow or error traces
   tail_sampling:
     decision_wait: 10s
     policies:
-      - name: keep-slow-db-queries
+      - name: keep-slow-traces
         type: latency
         latency:
           threshold_ms: 100
@@ -148,23 +110,23 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [tail_sampling, batch]
+      processors: [filter/fast-db, tail_sampling, batch]
       exporters: [otlp]
 ```
 
 ## Fix 7: Use Hibernate-Level Instrumentation Instead
 
-Instead of per-query JDBC spans, use Hibernate instrumentation which creates spans at the session/transaction level:
+Instead of per-query JDBC spans, rely on Hibernate instrumentation, which creates spans for Hibernate ORM operations:
 
 ```bash
-# Enable Hibernate instrumentation
+# Hibernate instrumentation is enabled by default, but you can verify it
 -Dotel.instrumentation.hibernate.enabled=true
 
 # Disable raw JDBC instrumentation
 -Dotel.instrumentation.jdbc.enabled=false
 ```
 
-Hibernate spans group related queries under a single operation, reducing span count while maintaining useful visibility.
+Hibernate spans track ORM operations such as session methods, queries, and transaction commits. This can reduce span count compared with raw JDBC spans while maintaining useful visibility at the ORM layer.
 
 ## Estimating Span Volume
 
