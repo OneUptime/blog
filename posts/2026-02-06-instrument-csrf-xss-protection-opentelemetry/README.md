@@ -38,13 +38,17 @@ sdk.start();
 
 ## Instrumenting CSRF Protection
 
-Most Express apps use the `csurf` middleware or a custom CSRF token validator. Here is how to wrap that layer with OpenTelemetry spans and metrics:
+Some older Express apps use the now-deprecated `csurf` middleware, while newer apps often use framework-level or custom CSRF token validation. Here is how to wrap that layer with OpenTelemetry spans and metrics:
 
 ```javascript
 const { trace, metrics, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('security-middleware');
 const meter = metrics.getMeter('security-middleware');
+
+function getRouteTemplate(req) {
+  return typeof req.route?.path === 'string' ? req.route.path : undefined;
+}
 
 // Create counters for CSRF events
 const csrfBlockedCounter = meter.createCounter('security.csrf.blocked', {
@@ -57,11 +61,15 @@ const csrfValidatedCounter = meter.createCounter('security.csrf.validated', {
 
 function csrfProtectionMiddleware(req, res, next) {
   return tracer.startActiveSpan('csrf.validation', (span) => {
-    span.setAttribute('http.method', req.method);
-    span.setAttribute('http.route', req.route?.path || req.path);
+    const route = getRouteTemplate(req);
+
+    span.setAttribute('http.request.method', req.method);
+    if (route) {
+      span.setAttribute('http.route', route);
+    }
     span.setAttribute('security.check_type', 'csrf');
 
-    const token = req.headers['x-csrf-token'] || req.body._csrf;
+    const token = req.headers['x-csrf-token'] || req.body?._csrf;
     const sessionToken = req.session?.csrfToken;
 
     if (!token || token !== sessionToken) {
@@ -77,8 +85,8 @@ function csrfProtectionMiddleware(req, res, next) {
       });
 
       csrfBlockedCounter.add(1, {
-        'http.method': req.method,
-        'http.route': req.route?.path || req.path,
+        'http.request.method': req.method,
+        ...(route && { 'http.route': route }),
       });
 
       span.end();
@@ -88,8 +96,8 @@ function csrfProtectionMiddleware(req, res, next) {
     // CSRF validation passed
     span.setAttribute('security.csrf.result', 'passed');
     csrfValidatedCounter.add(1, {
-      'http.method': req.method,
-      'http.route': req.route?.path || req.path,
+      'http.request.method': req.method,
+      ...(route && { 'http.route': route }),
     });
 
     span.end();
@@ -100,7 +108,7 @@ function csrfProtectionMiddleware(req, res, next) {
 
 ## Instrumenting XSS Protection
 
-XSS protection typically involves sanitizing input and setting the right response headers. Here is a middleware that checks incoming request bodies for suspicious patterns and records those events:
+XSS protection typically involves context-aware output encoding, HTML sanitization when user-provided HTML is allowed, and response headers such as Content Security Policy as defense-in-depth. Here is a middleware that checks incoming request bodies for suspicious patterns and records those events:
 
 ```javascript
 // A basic set of XSS patterns to detect
@@ -122,8 +130,12 @@ const xssCleanCounter = meter.createCounter('security.xss.clean', {
 
 function xssProtectionMiddleware(req, res, next) {
   return tracer.startActiveSpan('xss.scan', (span) => {
-    span.setAttribute('http.method', req.method);
-    span.setAttribute('http.route', req.route?.path || req.path);
+    const route = getRouteTemplate(req);
+
+    span.setAttribute('http.request.method', req.method);
+    if (route) {
+      span.setAttribute('http.route', route);
+    }
     span.setAttribute('security.check_type', 'xss');
 
     // Collect all string values from the request body
@@ -150,7 +162,7 @@ function xssProtectionMiddleware(req, res, next) {
       });
 
       xssDetectedCounter.add(1, {
-        'http.route': req.route?.path || req.path,
+        ...(route && { 'http.route': route }),
       });
 
       span.end();
@@ -179,7 +191,7 @@ function extractStringValues(obj, values = []) {
 
 ## Wiring It All Together
 
-Apply both middlewares to your Express app:
+Apply both middlewares to the protected Express routes:
 
 ```javascript
 const express = require('express');
@@ -187,17 +199,16 @@ const app = express();
 
 app.use(express.json());
 
-// Apply security middlewares to all POST/PUT/PATCH routes
-app.use((req, res, next) => {
-  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-    csrfProtectionMiddleware(req, res, (err) => {
-      if (err) return next(err);
-      xssProtectionMiddleware(req, res, next);
-    });
-  } else {
-    next();
-  }
-});
+function securityMiddleware(req, res, next) {
+  csrfProtectionMiddleware(req, res, (err) => {
+    if (err) return next(err);
+    xssProtectionMiddleware(req, res, next);
+  });
+}
+
+app.post('/transfer', securityMiddleware, transferHandler);
+app.put('/profile', securityMiddleware, updateProfileHandler);
+app.patch('/settings', securityMiddleware, updateSettingsHandler);
 ```
 
 ## Querying the Data
