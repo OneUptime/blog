@@ -24,14 +24,14 @@ Whether you are generating MiFID II transaction reports, Basel III capital adequ
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -251,7 +251,7 @@ def validate_and_submit_report(report, report_type):
 
 ## Monitoring Deadline Compliance
 
-Regulatory reports have strict deadlines. MiFID II transaction reports must be submitted by close of business on T+1. Basel III reports have quarterly deadlines. Track how close you are cutting it.
+Regulatory reports have strict deadlines. MiFID II/MiFIR transaction reports must be submitted by close of business on T+1. Basel III Pillar 3 disclosure frequencies vary by requirement, including quarterly, semiannual, and annual cycles. Track how close you are cutting it.
 
 ```python
 deadline_buffer = meter.create_histogram(
