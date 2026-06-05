@@ -30,11 +30,11 @@ Run your app with: `node --require ./tracing.js app.js`
 Without `service.name`, your backend shows "unknown_service" for every trace. Always set it explicitly.
 
 ```javascript
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-order-service',
   }),
 });
@@ -75,7 +75,7 @@ service:
 
 ## 5. No memory_limiter Processor
 
-Without `memory_limiter` as the first processor in your pipeline, a spike in telemetry can cause the Collector to OOM-crash.
+Without `memory_limiter` as the first processor in your pipeline, a spike in telemetry can push the Collector toward an OOM crash before it can apply backpressure.
 
 ```yaml
 processors:
@@ -132,7 +132,7 @@ span.set_attribute("user.id", user_id)
 
 ## 8. Using the Debug Exporter in Production
 
-The debug exporter (formerly known as the logging exporter) writes every single telemetry item to stdout. In production with heavy traffic, this fills your disk and can crash the Collector.
+The debug exporter (formerly known as the logging exporter) writes telemetry to the Collector logs or configured output paths. In production with heavy traffic, especially with `normal` or `detailed` verbosity, this can fill your disk and destabilize the Collector.
 
 ```yaml
 # Production config - use OTLP exporter, not debug
@@ -143,9 +143,9 @@ exporters:
       insecure: false
 ```
 
-## 9. No Sending Queue Configuration
+## 9. Leaving Sending Queue Defaults Untuned
 
-Without a sending queue, temporary backend outages cause immediate data loss. The queue buffers telemetry during outages.
+Most Collector exporters that use the exporter helper enable an in-memory sending queue by default, but relying on a small default queue or disabling it can still drop data during backend outages. Tune the queue and retry settings for your traffic and outage tolerance.
 
 ```yaml
 exporters:
