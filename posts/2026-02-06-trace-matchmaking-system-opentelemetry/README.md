@@ -38,7 +38,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "matchmaking-service",
     "service.version": "2.4.1",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -76,6 +76,7 @@ class MatchmakingQueue:
         )
         self._spans[player_id] = span
         self._queue[player_id] = {
+            "player_id": player_id,
             "game_mode": game_mode,
             "region": region,
             "entered_at": time.time()
@@ -160,7 +161,7 @@ def create_lobby(self, group, game_mode):
 
 ## Propagating Context to the Game Server
 
-When the lobby is ready, the matchmaker requests a game server. Pass the trace context along so the server allocation appears in the same trace:
+When the lobby is ready, the matchmaker requests a game server. Pass the trace context along so the server allocation can appear in the same trace when the server allocation service extracts that context:
 
 ```python
 from opentelemetry.propagate import inject
