@@ -4,18 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Jaeger, Sampling, Tracing
 
-Description: Fix traces not appearing in Jaeger caused by spans being marked with sampling_type unknown due to missing sampling decisions.
+Description: Fix traces not appearing in Jaeger caused by missing OpenTelemetry sampling decisions or legacy Jaeger sampler metadata.
 
 You send traces from the OpenTelemetry Collector to Jaeger. The Collector logs confirm spans are being exported. But when you search in the Jaeger UI, the traces are missing. Digging into the Jaeger internals, you find spans tagged with `sampler.type: unknown` and `sampler.param: 0`.
 
 ## Why This Happens
 
-Jaeger has its own sampling model that predates OpenTelemetry. When Jaeger receives spans via the OpenTelemetry protocol, it tries to map the OpenTelemetry sampling flag to its internal sampling type. If the mapping fails or the sampling flag is not set correctly, Jaeger tags the span with `sampler.type: unknown`.
+Jaeger has its own sampling model that predates OpenTelemetry. The `sampler.type` and `sampler.param` tags are legacy Jaeger SDK metadata, while OpenTelemetry communicates the actual sampled decision through the W3C `traceparent` trace-flags byte.
 
-Depending on Jaeger's storage configuration, spans with unknown sampling type might be:
-- Stored but not indexed properly (making them unsearchable)
-- Dropped entirely if Jaeger's internal sampling filter is active
-- Visible only when queried by trace ID directly, not through the search UI
+If that sampled flag is not set, an OpenTelemetry SDK normally treats the span as not sampled and will not record and export it. If spans do reach Jaeger but have missing or unrecognized legacy sampler tags, Jaeger adaptive-sampling calculations can ignore those sampler tags, but the tags by themselves are not a general reason for Jaeger search to drop or de-index the trace.
+
+If a trace appears when queried by trace ID but not through the search UI, also check the service name, operation name, time range, tenant headers, and storage index configuration.
 
 ## Diagnosing the Problem
 
@@ -27,7 +26,7 @@ If you know a trace ID (from application logs), query it directly in Jaeger:
 http://jaeger:16686/trace/<trace-id>
 ```
 
-If the trace appears when queried by ID but not through the search UI, the spans are stored but not indexed correctly.
+If the trace appears when queried by ID but not through the search UI, the spans are stored, but the service name, operation name, time range, tenant headers, or storage index may not match your search.
 
 ### Step 2: Check Span Tags
 
@@ -42,7 +41,7 @@ Look at the span's tags in the Jaeger response. The relevant tags are:
 }
 ```
 
-If you see `sampler.type: unknown`, the issue is confirmed.
+If you see `sampler.type: unknown`, you have confirmed that the legacy Jaeger sampler metadata is missing or unrecognized. Check the W3C sampled flag next to confirm whether the OpenTelemetry sampling decision is also missing.
 
 ### Step 3: Check the W3C Trace Flags
 
@@ -53,7 +52,7 @@ OpenTelemetry uses the W3C trace context format. The trace flags byte indicates 
 span := trace.SpanFromContext(ctx)
 fmt.Println("TraceFlags:", span.SpanContext().TraceFlags())
 // Should print: TraceFlags: 01 (sampled)
-// If it prints: TraceFlags: 00 (not sampled), that's the problem
+// If it prints: TraceFlags: 00, the span context is not sampled
 ```
 
 ## Fix 1: Ensure the SDK Sampling Decision Propagates
@@ -88,30 +87,30 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 provider = TracerProvider(sampler=ALWAYS_ON)
 ```
 
-## Fix 2: Configure Jaeger to Accept All Incoming Spans
+## Fix 2: Configure Remote Sampling to Sample New Traces
 
-If you are doing sampling at the Collector level (tail sampling), you want Jaeger to accept everything the Collector sends. Update Jaeger's sampling configuration:
+If your clients use Jaeger remote sampling, configure the remote sampling strategy so new root traces are sampled. Jaeger's remote sampling strategy file supports `probabilistic` and `ratelimiting` strategy types, so use a probability of `1.0` to sample everything:
+
+```json
+{
+  "default_strategy": {
+    "type": "probabilistic",
+    "param": 1.0
+  }
+}
+```
+
+Then point Jaeger at that strategy file:
 
 ```yaml
 # Jaeger environment variables
-SAMPLING_CONFIG_TYPE: const
-SAMPLING_CONFIG_PARAM: 1
+SAMPLING_CONFIG_TYPE: file
+SAMPLING_STRATEGIES_FILE: /etc/jaeger/sampling-strategies.json
 ```
 
-Or if using Jaeger's collector component:
+## Fix 3: Use the Collector to Set Legacy Sampling Tags
 
-```yaml
-# jaeger-collector configuration
-collector:
-  sampling:
-    default-strategy:
-      type: const
-      param: 1
-```
-
-## Fix 3: Use the Collector to Set Sampling Tags
-
-If you cannot change the SDK, use the Collector's `attributes` processor to set the correct sampling tags:
+If you cannot change the SDK and you still depend on Jaeger's legacy adaptive-sampling logic, use the Collector's `attributes` processor to add the legacy sampling tags. This does not change the W3C sampled flag, so it is not a substitute for configuring the SDK or tail-sampling policy correctly.
 
 ```yaml
 processors:
@@ -134,7 +133,7 @@ service:
 
 ## Fix 4: Switch Jaeger to OTLP Native Ingestion
 
-Newer versions of Jaeger support native OTLP ingestion, which handles the sampling flag correctly without needing the legacy Jaeger sampling tags:
+Jaeger supports native OTLP ingestion, which reads OpenTelemetry trace data directly and does not require legacy Jaeger sampling tags:
 
 ```yaml
 # Collector exporter config - use OTLP directly
@@ -148,14 +147,10 @@ exporters:
 Make sure Jaeger is configured to accept OTLP:
 
 ```yaml
-# Jaeger configuration
-collector:
-  otlp:
-    enabled: true
-    grpc:
-      host-port: 4317
-    http:
-      host-port: 4318
+# Jaeger environment variables
+COLLECTOR_OTLP_ENABLED: "true"
+COLLECTOR_OTLP_GRPC_HOST_PORT: ":4317"
+COLLECTOR_OTLP_HTTP_HOST_PORT: ":4318"
 ```
 
 ## Verifying the Fix
@@ -173,7 +168,7 @@ otel-cli span \
 # http://jaeger:16686/search?service=test-service
 ```
 
-Also check that the sampling tags are correct:
+If you still rely on legacy Jaeger sampling tags, check that those tags are present:
 
 ```bash
 # Query Jaeger API directly
@@ -187,4 +182,4 @@ You should see:
 {"key": "sampler.param", "value": "1"}
 ```
 
-The root cause is almost always that the sampling decision is not being communicated correctly between OpenTelemetry and Jaeger. Setting the sampler to `AlwaysOn` in the SDK and using OTLP ingestion in Jaeger resolves the issue in most cases.
+The root cause is usually that the sampling decision is not being communicated correctly between OpenTelemetry components, or that legacy Jaeger sampler tags are being mistaken for the OpenTelemetry sampled flag. Setting the sampler to `AlwaysOn` in the SDK and using OTLP ingestion in Jaeger resolves the issue in most cases.
