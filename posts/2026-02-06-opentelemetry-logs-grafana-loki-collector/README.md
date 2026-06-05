@@ -12,7 +12,7 @@ Grafana Loki is a log aggregation system designed to be cost-effective and easy 
 
 ## How Loki Handles OpenTelemetry Logs
 
-Loki has native support for OpenTelemetry log ingestion. Starting with Loki 3.0, you can send OTLP logs directly to Loki's OTLP endpoint. Loki maps OpenTelemetry resource attributes and log attributes to Loki labels and structured metadata. This is a big improvement over earlier versions where you had to use the Collector's Loki exporter and manually map attributes to labels.
+Loki has native support for OpenTelemetry log ingestion. Starting with Loki 3.0, you can send OTLP logs directly to Loki's OTLP endpoint. Loki maps selected OpenTelemetry resource attributes to Loki labels and stores the remaining resource attributes, scope attributes, log attributes, and log fields as structured metadata. This is a big improvement over earlier versions where you had to use the Collector's Loki exporter and manually map attributes to labels.
 
 ```mermaid
 graph LR
@@ -23,7 +23,7 @@ graph LR
     style B fill:#f9f,stroke:#333
 ```
 
-You have two options for sending logs from the Collector to Loki. The first is using the `otlphttp` exporter to send logs in OTLP format directly to Loki's OTLP endpoint. The second is using the dedicated `loki` exporter, which translates OTel logs into Loki's native push format. We will cover both approaches.
+You have two options for sending logs from the Collector to Loki. The first is using the `otlphttp` exporter to send logs in OTLP format directly to Loki's OTLP endpoint. The second is using the deprecated dedicated `loki` exporter, which translates OTel logs into Loki's native push format. We will cover both approaches.
 
 ## Option 1: Using the OTLP Endpoint (Recommended for Loki 3.x)
 
@@ -91,11 +91,11 @@ service:
       exporters: [otlphttp/loki]
 ```
 
-When Loki receives OTLP logs, it automatically maps certain resource attributes to index labels. By default, `service.name`, `service.namespace`, and `service.instance.id` become labels. Everything else becomes structured metadata, which you can still query but is not indexed. This keeps the index small and Loki performant.
+When Loki receives OTLP logs, it automatically maps certain resource attributes to index labels and normalizes dots in attribute names to underscores. By default, Loki promotes a predefined set of resource attributes, including `service.name`, `service.namespace`, `service.instance.id`, `deployment.environment.name`, and common cloud and Kubernetes attributes, to labels such as `service_name`, `service_namespace`, and `service_instance_id`. Everything else becomes structured metadata, which you can still query but is not indexed. This keeps the index small and Loki performant.
 
 ## Option 2: Using the Loki Exporter
 
-If you are running an older version of Loki or need more control over label mapping, use the dedicated Loki exporter.
+If you are running an older version of Loki or already have a legacy Collector configuration, you may see the dedicated Loki exporter. It is deprecated, so prefer the OTLP endpoint for new Loki 3.x setups.
 
 ```yaml
 # otel-collector-config-loki.yaml
@@ -118,8 +118,8 @@ processors:
       - key: environment
         value: production
         action: upsert
-      # Promote this attribute to a Loki label using the loki.attribute.labels hint
-      - key: loki.attribute.labels
+      # Promote this resource attribute to a Loki label using the loki.resource.labels hint
+      - key: loki.resource.labels
         value: environment
         action: insert
 
@@ -142,7 +142,7 @@ service:
       exporters: [loki]
 ```
 
-The `default_labels_enabled` section controls which OpenTelemetry fields automatically become Loki labels. Setting `level: true` maps the log severity level to a `level` label, which is extremely useful for filtering logs by severity in LogQL. The `loki.attribute.labels` resource attribute is a hint that tells the exporter to promote specific attributes to Loki labels.
+The `default_labels_enabled` section controls which OpenTelemetry fields automatically become Loki labels. Setting `level: true` maps the log severity level to a `level` label, which is extremely useful for filtering logs by severity in LogQL. The `loki.resource.labels` resource attribute is a hint that tells the exporter to promote specific resource attributes to Loki labels.
 
 ## Loki Configuration
 
@@ -254,7 +254,7 @@ Here is how to configure the OpenTelemetry SDK to send logs from a Python applic
 # Configures Python logging to send structured logs via OpenTelemetry
 
 import logging
-from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
@@ -273,6 +273,7 @@ log_exporter = OTLPLogExporter(endpoint="localhost:4317", insecure=True)
 # Create the logger provider with a batch processor
 logger_provider = LoggerProvider(resource=resource)
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+set_logger_provider(logger_provider)
 
 # Create a logging handler that bridges Python logging to OTel
 handler = LoggingHandler(
@@ -288,16 +289,11 @@ logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("user-service")
 
 def handle_user_request(user_id):
-    # Get the current trace context so logs are correlated with traces
-    current_span = trace.get_current_span()
-    span_context = current_span.get_span_context()
-
     # Log with structured attributes - these become OTel log attributes
     logger.info(
         "Processing user request",
         extra={
             "user.id": user_id,
-            "trace_id": format(span_context.trace_id, '032x'),
         }
     )
 ```
@@ -336,16 +332,16 @@ datasources:
     access: proxy
     url: http://loki:3100
     jsonData:
-      # Enable derived fields to extract trace IDs from log lines
+      # Enable derived fields to extract trace IDs from labels or structured metadata
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: "trace_id=(\\w+)"
+          matcherRegex: "trace[_]?id"
           name: TraceID
           url: "$${__value.raw}"
           matcherType: label
 ```
 
-The `derivedFields` configuration creates clickable links from trace IDs in log lines to traces in Tempo. This is essential for the logs-to-traces correlation workflow.
+The `derivedFields` configuration creates clickable links from the `trace_id` label or structured metadata value to traces in a Tempo data source with the UID `tempo`. This is essential for the logs-to-traces correlation workflow.
 
 ## Dealing with Log Volume
 
