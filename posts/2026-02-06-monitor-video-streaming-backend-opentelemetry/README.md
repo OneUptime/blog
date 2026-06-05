@@ -37,7 +37,7 @@ Each stage has distinct performance characteristics. Ingest servers care about c
 Start by configuring OpenTelemetry with both tracing and metrics. Video backends typically run in Python, Go, or Node.js. Here is a Python setup that covers both signals:
 
 ```python
-# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
@@ -53,7 +53,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "video-streaming-backend",
     "service.version": "2.4.1",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Configure tracing with OTLP export
@@ -88,19 +88,19 @@ The ingest server is the first point of contact. It receives live video over RTM
 ingest_connections = meter.create_up_down_counter(
     name="video.ingest.active_connections",
     description="Number of active ingest connections",
-    unit="connections",
+    unit="{connection}",
 )
 
 ingest_bitrate = meter.create_histogram(
     name="video.ingest.bitrate",
     description="Incoming stream bitrate",
-    unit="kbps",
+    unit="kbit/s",
 )
 
 ingest_frame_drops = meter.create_counter(
     name="video.ingest.frame_drops_total",
     description="Total dropped frames during ingest",
-    unit="frames",
+    unit="{frame}",
 )
 
 def handle_ingest_connection(stream_id, stream_config):
@@ -153,20 +153,29 @@ Transcoding is usually the most resource-intensive stage. Each incoming stream g
 
 ```python
 # Metrics specific to transcoding performance
+import time
+
 transcode_duration = meter.create_histogram(
     name="video.transcode.duration",
     description="Time to transcode one segment",
-    unit="ms",
+    unit="s",
 )
 
 transcode_queue_depth = meter.create_up_down_counter(
     name="video.transcode.queue_depth",
     description="Number of segments waiting to be transcoded",
-    unit="segments",
+    unit="{segment}",
 )
+
+def enqueue_segment(stream_id, segment):
+    """Queue a segment for transcoding."""
+    transcode_queue_depth.add(1, {"video.stream_id": stream_id})
+    transcode_queue.put((stream_id, segment))
 
 def transcode_segment(stream_id, segment, output_profiles):
     """Transcode a single segment into multiple bitrate profiles."""
+    transcode_queue_depth.add(-1, {"video.stream_id": stream_id})
+
     with tracer.start_as_current_span(
         "video.transcode.segment",
         attributes={
@@ -193,9 +202,9 @@ def transcode_segment(stream_id, segment, output_profiles):
                 # Perform the actual transcoding
                 encoded = encoder.encode(segment.data, profile)
 
-                duration_ms = (time.monotonic() - start_time) * 1000
+                duration_s = time.monotonic() - start_time
                 transcode_duration.record(
-                    duration_ms,
+                    duration_s,
                     {
                         "video.profile.name": profile.name,
                         "video.profile.resolution": profile.resolution,
@@ -229,13 +238,13 @@ After transcoding, segments get packaged into HLS or DASH format and stored at t
 segment_serve_latency = meter.create_histogram(
     name="video.delivery.segment_latency",
     description="Latency to serve a segment from origin",
-    unit="ms",
+    unit="s",
 )
 
 manifest_serve_latency = meter.create_histogram(
     name="video.delivery.manifest_latency",
     description="Latency to serve a manifest/playlist",
-    unit="ms",
+    unit="s",
 )
 
 cache_hit_counter = meter.create_counter(
@@ -256,12 +265,12 @@ async def serve_segment(request):
             "video.stream_id": request.stream_id,
             "video.segment_number": request.segment_number,
             "video.profile": request.profile,
-            "http.method": "GET",
+            "http.request.method": "GET",
         },
     ) as span:
         # Check cache first
         cached = segment_cache.get(request.cache_key)
-        if cached:
+        if cached is not None:
             cache_hit_counter.add(1, {"video.profile": request.profile})
             span.set_attribute("video.cache_hit", True)
             return cached
@@ -275,7 +284,7 @@ async def serve_segment(request):
         )
 
         segment_serve_latency.record(
-            request.elapsed_ms(),
+            request.elapsed_ms() / 1000,
             {"video.profile": request.profile, "video.cache_hit": False},
         )
 
@@ -295,13 +304,13 @@ The backend metrics above tell you how your infrastructure is performing, but th
 buffer_ratio = meter.create_histogram(
     name="video.viewer.buffer_ratio",
     description="Percentage of playback time spent buffering",
-    unit="percent",
+    unit="%",
 )
 
 startup_time = meter.create_histogram(
     name="video.viewer.startup_time",
     description="Time from play request to first frame rendered",
-    unit="ms",
+    unit="s",
 )
 
 bitrate_switches = meter.create_counter(
@@ -331,7 +340,7 @@ def process_viewer_heartbeat(heartbeat):
 
         if heartbeat.is_startup:
             startup_time.record(
-                heartbeat.startup_ms,
+                heartbeat.startup_ms / 1000,
                 {"video.cdn_edge": heartbeat.edge_server},
             )
 
