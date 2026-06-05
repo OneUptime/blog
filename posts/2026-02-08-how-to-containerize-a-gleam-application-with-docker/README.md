@@ -23,47 +23,55 @@ Initialize the project:
 ```bash
 # Create a new Gleam project
 
-gleam new gleam_docker_demo
-cd gleam_docker_demo
+gleam new docker_demo
+cd docker_demo
 ```
 
 Update `gleam.toml`:
 
 ```toml
 # gleam.toml - project configuration
-name = "gleam_docker_demo"
+name = "docker_demo"
 version = "1.0.0"
 target = "erlang"
 
 [dependencies]
-gleam_stdlib = ">= 0.34.0 and < 2.0.0"
-gleam_http = ">= 3.5.0 and < 4.0.0"
-gleam_erlang = ">= 0.25.0 and < 1.0.0"
-mist = ">= 1.0.0 and < 2.0.0"
-wisp = ">= 0.14.0 and < 1.0.0"
-gleam_json = ">= 1.0.0 and < 2.0.0"
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+gleam_http = ">= 4.3.0 and < 5.0.0"
+gleam_erlang = ">= 1.3.0 and < 2.0.0"
+mist = ">= 6.0.3 and < 7.0.0"
+wisp = ">= 2.2.2 and < 3.0.0"
+gleam_json = ">= 3.1.0 and < 4.0.0"
+envoy = ">= 1.2.0 and < 2.0.0"
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
 ```
 
+Update the dependency manifest:
+
+```bash
+gleam deps download
+```
+
 Create the main application:
 
 ```gleam
-// src/gleam_docker_demo.gleam - main entry point
+// src/docker_demo.gleam - main entry point
+import envoy
 import gleam/erlang/process
 import gleam/io
 import gleam/int
 import gleam/result
-import gleam/erlang/os
 import mist
+import router
 import wisp
 import wisp/wisp_mist
 
 pub fn main() {
   // Get port from environment or default to 8080
-  let port = os.get_env("PORT")
-    |> result.then(int.parse)
+  let port = envoy.get("PORT")
+    |> result.try(int.parse)
     |> result.unwrap(8080)
 
   let secret_key_base = wisp.random_string(64)
@@ -71,10 +79,12 @@ pub fn main() {
   io.println("Starting Gleam server on port " <> int.to_string(port))
 
   let assert Ok(_) =
-    wisp_mist.handler(handle_request, secret_key_base)
+    router.handle_request
+    |> wisp_mist.handler(secret_key_base)
     |> mist.new
+    |> mist.bind("0.0.0.0")
     |> mist.port(port)
-    |> mist.start_http
+    |> mist.start
 
   process.sleep_forever()
 }
@@ -86,7 +96,6 @@ Create the request handler:
 // src/router.gleam - request routing and handlers
 import gleam/http.{Get}
 import gleam/json
-import gleam/string_builder
 import wisp.{type Request, type Response}
 
 pub fn handle_request(req: Request) -> Response {
@@ -104,12 +113,10 @@ pub fn handle_request(req: Request) -> Response {
         #("language", json.string("Gleam")),
         #("runtime", json.string("BEAM")),
       ])
-      |> json.to_string_builder
-      |> string_builder.to_string
+      |> json.to_string
 
       wisp.ok()
-      |> wisp.set_header("content-type", "application/json")
-      |> wisp.string_body(body)
+      |> wisp.json_body(body)
     }
 
     // Computation endpoint
@@ -128,12 +135,10 @@ fn handle_compute(req: Request) -> Response {
       let body = json.object([
         #("sum_1_to_100000", json.int(result)),
       ])
-      |> json.to_string_builder
-      |> string_builder.to_string
+      |> json.to_string
 
       wisp.ok()
-      |> wisp.set_header("content-type", "application/json")
-      |> wisp.string_body(body)
+      |> wisp.json_body(body)
     }
     _ -> wisp.method_not_allowed([Get])
   }
@@ -151,7 +156,7 @@ fn list_sum(from: Int, to: Int) -> Int {
 
 ```dockerfile
 # Basic Gleam Dockerfile
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
 
 WORKDIR /app
 
@@ -175,7 +180,7 @@ CMD ["gleam", "run"]
 
 ```dockerfile
 # Stage 1: Build the Gleam application
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine AS builder
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine AS builder
 
 WORKDIR /app
 
@@ -193,7 +198,7 @@ RUN gleam build
 RUN gleam export erlang-shipment
 
 # Stage 2: Minimal Erlang runtime
-FROM erlang:26-alpine
+FROM erlang:28.0.2.0-alpine
 
 WORKDIR /app
 
@@ -216,18 +221,19 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 CMD ["/app/entrypoint.sh", "run"]
 ```
 
-The `gleam export erlang-shipment` command creates a self-contained Erlang release that includes everything needed to run the application.
+The `gleam export erlang-shipment` command creates a precompiled Erlang shipment that includes your application and its dependencies. It still needs a compatible Erlang runtime in the final image.
 
 ## Understanding the Erlang Shipment
 
-The Erlang shipment includes compiled BEAM bytecode, the application's dependency tree, and a start script. It does not include the Gleam compiler or the Erlang compiler, just the runtime.
+The Erlang shipment includes compiled BEAM bytecode, the application's dependency tree, and start scripts. It does not include the Gleam compiler, Erlang compiler, or Erlang runtime.
 
 ```bash
 # Inspect the shipment contents
 ls build/erlang-shipment/
-# entrypoint.sh  - startup script
-# lib/           - compiled BEAM files
-# erl_args       - VM arguments
+# entrypoint.sh   - POSIX startup script
+# entrypoint.ps1  - PowerShell startup script
+# docker_demo/    - compiled application BEAM files
+# gleam_stdlib/   - compiled dependency BEAM files
 ```
 
 ## The .dockerignore File
@@ -240,14 +246,12 @@ _build/
 README.md
 Dockerfile
 docker-compose.yml
-test/
 ```
 
 ## Docker Compose for Development
 
 ```yaml
 # docker-compose.yml - development environment
-version: "3.8"
 services:
   app:
     build:
@@ -279,7 +283,7 @@ Development Dockerfile:
 
 ```dockerfile
 # Dockerfile.dev - development image with full toolchain
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
 
 WORKDIR /app
 
@@ -323,7 +327,7 @@ docker run -d \
 
 ```dockerfile
 # Test stage
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine AS test
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine AS test
 
 WORKDIR /app
 COPY . .
@@ -331,7 +335,7 @@ RUN gleam deps download
 RUN gleam test
 
 # Build stage
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine AS builder
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN gleam deps download
@@ -347,11 +351,11 @@ docker build --target test -t gleam-test .
 
 ## JavaScript Target
 
-Gleam can also compile to JavaScript. If you are targeting Node.js:
+Gleam can also compile to JavaScript. The Wisp and Mist server above is BEAM-specific, but if you are targeting Node.js with a JavaScript-compatible Gleam project:
 
 ```dockerfile
 # Gleam to JavaScript Dockerfile
-FROM ghcr.io/gleam-lang/gleam:v1.0.0-node-alpine AS builder
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-node-alpine AS builder
 
 WORKDIR /app
 COPY gleam.toml manifest.toml ./
@@ -361,17 +365,17 @@ COPY src/ src/
 RUN gleam build --target javascript
 
 # Stage 2: Node.js runtime
-FROM node:21-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY --from=builder /app/build/dev/javascript /app
 
-CMD ["node", "gleam_docker_demo/gleam_docker_demo.mjs"]
+CMD ["node", "docker_demo/docker_demo.mjs"]
 ```
 
 ## Fault Tolerance
 
-One of the BEAM's greatest strengths is fault tolerance. Processes that crash are automatically restarted by supervisors. In Docker, this means your application can handle individual request failures without the container going down. Configure your health check to detect systemic failures rather than individual errors:
+One of the BEAM's greatest strengths is fault tolerance. Processes that are part of a supervision tree can be restarted by supervisors when they crash. In Docker, this means your application can handle isolated supervised process failures without the container going down. Configure your health check to detect systemic failures rather than individual errors:
 
 ```dockerfile
 # Health check with higher retry tolerance
@@ -385,4 +389,4 @@ Gleam applications running on the BEAM benefit from the runtime's built-in obser
 
 ## Summary
 
-Containerizing Gleam applications leverages the BEAM's strengths in a portable package. The `gleam export erlang-shipment` command creates a clean, self-contained release that works well in multi-stage Docker builds. The BEAM VM's scheduler configuration should match your container's CPU allocation for optimal performance. Gleam's type safety catches errors at compile time, while the BEAM's fault tolerance handles runtime failures gracefully. Whether targeting Erlang or JavaScript, Docker provides a consistent deployment pipeline for Gleam applications.
+Containerizing Gleam applications leverages the BEAM's strengths in a portable package. The `gleam export erlang-shipment` command creates a clean precompiled shipment that works well in multi-stage Docker builds. The BEAM VM's scheduler configuration can be set to match your container's CPU allocation when you want explicit control. Gleam's type safety catches errors at compile time, while supervised BEAM processes help handle runtime failures gracefully. Whether targeting Erlang or JavaScript, Docker provides a consistent deployment pipeline for Gleam applications.
