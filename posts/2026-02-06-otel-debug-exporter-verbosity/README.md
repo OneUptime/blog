@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Debug Exporter, Collector, Debugging, Instrumentation
 
 Description: Learn how to use the OpenTelemetry Collector debug exporter with different verbosity levels to troubleshoot instrumentation issues.
 
-When your traces are not showing up in Jaeger, or your metrics look wrong in Grafana, the problem could be anywhere in the pipeline: your application, the collector, or the backend. The OpenTelemetry Collector's debug exporter is your first tool for isolating the issue. It prints telemetry data to the collector's stdout at different levels of detail. This post explains each verbosity level and when to use it.
+When your traces are not showing up in Jaeger, or your metrics look wrong in Grafana, the problem could be anywhere in the pipeline: your application, the collector, or the backend. The OpenTelemetry Collector's debug exporter is your first tool for isolating the issue. It prints telemetry data to the collector's log output at different levels of detail. This post explains each verbosity level and when to use it.
 
 ## What is the Debug Exporter?
 
-The debug exporter is a built-in exporter in the OpenTelemetry Collector that writes received telemetry to standard output. It replaced the older `logging` exporter. You add it to your collector configuration alongside your production exporters, and it prints what the collector receives and processes.
+The debug exporter is a built-in exporter in the OpenTelemetry Collector that writes received telemetry to the collector's log output. It replaced the older `logging` exporter. You add it to your collector configuration alongside your production exporters, and it prints what the collector receives and processes.
 
 ## Verbosity Levels
 
@@ -43,7 +43,7 @@ This tells you the collector received a batch with 1 resource and 5 spans. If yo
 
 ### Normal Verbosity
 
-`normal` is the default level. It shows resource attributes and span summaries:
+`normal` shows a compact line for each telemetry record, including resource and span information:
 
 ```yaml
 exporters:
@@ -54,21 +54,8 @@ exporters:
 Output:
 
 ```text
-2026-02-06T10:15:30Z info TracesExporter {"kind": "exporter", "data_type": "traces", "name": "debug"}
-    Resource SchemaURL:
-    Resource attributes:
-        -> service.name: Str(order-service)
-        -> deployment.environment: Str(staging)
-    ScopeSpans #0
-        InstrumentationScope opentelemetry.instrumentation.flask 0.43b0
-        Span #0
-            Trace ID: abc123def456...
-            Span ID: 789abc...
-            Name: GET /api/orders
-            Kind: Server
-            Start time: 2026-02-06 10:15:29.123
-            End time: 2026-02-06 10:15:29.456
-            Status: Ok
+2026-02-06T10:15:30Z info Traces {"otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "traces", "resource spans": 1, "spans": 1}
+2026-02-06T10:15:30Z info ResourceSpans #0 service.name=order-service deployment.environment=staging ScopeSpans #0 opentelemetry.instrumentation.flask GET /api/orders abc123def456... 789abc... http.request.method=GET url.path=/api/orders http.response.status_code=200 {"otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "traces"}
 ```
 
 This level is useful when you need to verify that the right service name and resource attributes are being sent. If your traces show up in Jaeger under the wrong service name, this output will show you exactly what the collector received.
@@ -99,8 +86,8 @@ Span #0
         -> http.request.method: Str(GET)
         -> url.path: Str(/api/orders)
         -> http.response.status_code: Int(200)
-        -> net.host.name: Str(order-service)
-        -> net.host.port: Int(8080)
+        -> server.address: Str(order-service)
+        -> server.port: Int(8080)
     Events:
         -> Name: order.validated
            Timestamp: 2026-02-06 10:15:29.200
@@ -191,7 +178,7 @@ service:
       exporters: [debug]
 ```
 
-For metrics, the detailed output shows metric names, types, data points, and labels. For logs, it shows the log body, severity, and associated trace context.
+For metrics, the detailed output shows metric names, types, data points, and attributes. For logs, it shows the log body, severity, and associated trace context.
 
 ## Performance Considerations
 
@@ -201,7 +188,7 @@ The debug exporter adds overhead because it serializes every piece of telemetry 
 exporters:
   debug:
     verbosity: basic
-    # Only sample 1% of data for debug output in production
+    # Reduce debug log volume after the first two messages each second
     sampling_initial: 2
     sampling_thereafter: 500
 ```
