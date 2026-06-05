@@ -159,7 +159,7 @@ def compare_alert_firings(old_alerts_api, new_alerts_api, alert_name, period="7d
     matched = 0
     for old_firing in old_firings:
         for new_firing in new_firings:
-            if abs(old_firing.start - new_firing.start).seconds < 300:
+            if abs((old_firing.start - new_firing.start).total_seconds()) < 300:
                 matched += 1
                 break
 
