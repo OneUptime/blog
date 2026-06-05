@@ -45,12 +45,12 @@ OTLP is not a single protocol. It's a specification with two transport implement
 
 ### OTLP/gRPC
 
-Uses gRPC as the transport layer. gRPC is built on HTTP/2, uses Protocol Buffers for serialization, and provides built-in streaming, flow control, and connection multiplexing.
+Uses gRPC as the transport layer. gRPC is built on HTTP/2, uses Protocol Buffers for serialization, and provides flow control and connection multiplexing.
 
 **Pros:**
 - Efficient binary encoding (protobuf)
-- Bidirectional streaming support
-- Built-in load balancing and retry logic
+- Works with gRPC ecosystem features such as client-side load balancing
+- Standardized retry behavior in OpenTelemetry exporters
 - Lower latency due to connection reuse
 - Better throughput for high-volume telemetry
 
@@ -71,7 +71,7 @@ Uses HTTP/1.1 or HTTP/2 as the transport layer. Supports both JSON and protobuf 
 
 **Cons:**
 - Higher overhead (especially with JSON encoding)
-- No built-in streaming (each export is a new request)
+- Exports are regular HTTP POST requests
 - Slightly higher latency compared to gRPC
 
 Both transports are fully specified and supported. The choice depends on your environment and performance requirements. We'll cover the tradeoffs in detail in a separate post.
@@ -205,7 +205,7 @@ POST /v1/metrics
 POST /v1/logs
 ```
 
-Most backends provide a single base URL. You configure it, and the SDK appends the appropriate path.
+Most backends provide a single base URL. When you configure the shared `OTEL_EXPORTER_OTLP_ENDPOINT` for OTLP/HTTP, SDKs append the appropriate per-signal path. Signal-specific endpoints are used as-is.
 
 ### Example configuration
 
@@ -241,7 +241,7 @@ export OTEL_METRICS_EXPORTER="otlp"
 export OTEL_LOGS_EXPORTER="otlp"
 ```
 
-The SDK automatically appends `/v1/traces`, `/v1/metrics`, `/v1/logs`.
+For the shared OTLP/HTTP endpoint, the SDK automatically appends `/v1/traces`, `/v1/metrics`, `/v1/logs`.
 
 Related reading: [How to Set Up OpenTelemetry with Environment Variables (Zero-Code Configuration)](https://oneuptime.com/blog/post/2026-02-06-opentelemetry-environment-variables-zero-code/view)
 
@@ -271,9 +271,9 @@ The response indicates success or failure. If the export fails (network error, b
 
 ### Backpressure and retries
 
-OTLP exporters implement backpressure. If the backend is slow or unavailable, the exporter queues batches in memory (up to a limit). If the queue fills, new spans are dropped (with a warning logged).
+OpenTelemetry processors and exporters implement bounded buffering and backpressure. If the backend is slow or unavailable, batches are queued in memory up to a limit. If the queue fills, new telemetry can be dropped with a warning logged.
 
-Retry logic varies by SDK implementation, but most follow exponential backoff: wait 1 second, then 2, then 4, etc., up to a max retry interval.
+Retry logic varies by SDK implementation, but retryable failures generally use exponential backoff with jitter and a maximum retry window.
 
 ## OTLP Compression
 
@@ -334,11 +334,11 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
 });
 
 // Configure OTLP exporters
@@ -357,10 +357,12 @@ const metricExporter = new OTLPMetricExporter({
 const sdk = new NodeSDK({
   resource,
   traceExporter,
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: 60000,
-  }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: 60000,
+    }),
+  ],
 });
 
 sdk.start();
@@ -369,6 +371,8 @@ sdk.start();
 ### Python
 
 ```python
+import os
+
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -376,11 +380,11 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 # Define resource attributes
 
-resource = Resource.create({"service.name": "my-service"})
+resource = Resource.create({SERVICE_NAME: "my-service"})
 
 # Configure OTLP trace exporter
 trace_exporter = OTLPSpanExporter(
@@ -421,7 +425,7 @@ import (
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initOTLP(ctx context.Context) error {
@@ -435,8 +439,7 @@ func initOTLP(ctx context.Context) error {
 
     // Configure OTLP trace exporter with authentication header
     traceExporter, err := otlptracehttp.New(ctx,
-        otlptracehttp.WithEndpoint("oneuptime.com"),
-        otlptracehttp.WithURLPath("/otlp/v1/traces"),
+        otlptracehttp.WithEndpointURL("https://oneuptime.com/otlp/v1/traces"),
         otlptracehttp.WithHeaders(map[string]string{
             "x-oneuptime-token": os.Getenv("ONEUPTIME_TOKEN"),
         }),
@@ -455,8 +458,7 @@ func initOTLP(ctx context.Context) error {
 
     // Configure OTLP metric exporter
     metricExporter, err := otlpmetrichttp.New(ctx,
-        otlpmetrichttp.WithEndpoint("oneuptime.com"),
-        otlpmetrichttp.WithURLPath("/otlp/v1/metrics"),
+        otlpmetrichttp.WithEndpointURL("https://oneuptime.com/otlp/v1/metrics"),
         otlpmetrichttp.WithHeaders(map[string]string{
             "x-oneuptime-token": os.Getenv("ONEUPTIME_TOKEN"),
         }),
@@ -577,7 +579,7 @@ This keeps your instrumentation vendor-neutral. Switching backends is a configur
 
 ## OTLP Maturity and Adoption
 
-OTLP reached stability (1.0) in February 2021 for traces, and shortly after for metrics and logs. It's production-ready and widely adopted.
+OTLP is stable for traces, metrics, and logs. It's production-ready and widely adopted.
 
 **Supported by backends:**
 - Open-source: Jaeger, Tempo, Loki, Prometheus (via Collector), Elastic APM, SigNoz
@@ -620,22 +622,24 @@ Never hardcode tokens in source code. Use environment variables or secret manage
 
 Before exporting, redact PII or secrets from span attributes.
 
-```javascript
-import { Span } from '@opentelemetry/sdk-trace-base';
+```yaml
+processors:
+  attributes/redact:
+    actions:
+      - key: http.request.header.authorization
+        action: update
+        value: "[REDACTED]"
+  batch: {}
 
-class RedactingSpanProcessor {
-  onStart(span: Span) {}
-
-  onEnd(span: Span) {
-    const attrs = span.attributes;
-    if (attrs['http.request.header.authorization']) {
-      span.setAttribute('http.request.header.authorization', '[REDACTED]');
-    }
-  }
-}
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/redact, batch]
+      exporters: [otlp]
 ```
 
-This processor runs before export and scrubs sensitive data.
+This processor runs in the Collector before export and scrubs sensitive data.
 
 ### Network isolation
 
