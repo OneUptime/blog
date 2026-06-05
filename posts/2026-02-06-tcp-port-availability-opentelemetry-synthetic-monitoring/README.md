@@ -8,7 +8,7 @@ Description: Configure TCP port availability monitoring using the OpenTelemetry 
 
 HTTP health checks are great for web services, but plenty of critical infrastructure communicates over raw TCP - databases, message brokers, cache servers, custom protocol services. Monitoring TCP port availability tells you whether these services are accepting connections, independent of any application-level protocol.
 
-The OpenTelemetry Collector supports TCP checks through its synthetic monitoring capabilities, letting you verify that critical ports are open and responding within acceptable timeframes.
+The OpenTelemetry Collector Contrib distribution supports TCP checks through the `tcp_check` receiver, letting you verify that critical ports are open and responding within acceptable timeframes.
 
 ## Why TCP Checks Matter
 
@@ -22,7 +22,7 @@ TCP checks catch network-layer and firewall issues that higher-level checks miss
 
 ## Configuring TCP Checks in the Collector
 
-The OpenTelemetry Collector Contrib distribution includes a `tcpcheck` receiver that probes TCP ports at regular intervals:
+The OpenTelemetry Collector Contrib distribution includes a `tcp_check` receiver that probes TCP ports at regular intervals:
 
 ```yaml
 # collector-tcpcheck.yaml
@@ -32,18 +32,33 @@ The OpenTelemetry Collector Contrib distribution includes a `tcpcheck` receiver 
 # The receiver reports connection success, failure, and duration.
 
 receivers:
-  tcpcheck:
+  tcp_check:
     targets:
       - endpoint: "postgres-primary.internal:5432"
+        dialer:
+          timeout: 10s
       - endpoint: "postgres-replica.internal:5432"
+        dialer:
+          timeout: 10s
       - endpoint: "redis-cluster.internal:6379"
+        dialer:
+          timeout: 10s
       - endpoint: "kafka-broker-1.internal:9092"
+        dialer:
+          timeout: 10s
       - endpoint: "kafka-broker-2.internal:9092"
+        dialer:
+          timeout: 10s
       - endpoint: "kafka-broker-3.internal:9092"
+        dialer:
+          timeout: 10s
       - endpoint: "elasticsearch.internal:9200"
+        dialer:
+          timeout: 10s
       - endpoint: "rabbitmq.internal:5672"
+        dialer:
+          timeout: 10s
     collection_interval: 30s
-    timeout: 10s
 
 processors:
   batch:
@@ -62,12 +77,12 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [tcpcheck]
+      receivers: [tcp_check]
       processors: [resource, batch]
       exporters: [otlp]
 ```
 
-The `timeout` setting controls how long the receiver waits for a TCP connection to establish before marking the check as failed. Ten seconds is generous - most internal services should accept connections within a few hundred milliseconds.
+The `dialer.timeout` setting controls how long the receiver waits for a TCP connection to establish before marking the check as failed. Ten seconds is generous - most internal services should accept connections within a few hundred milliseconds.
 
 ## Grouping Checks by Service Tier
 
@@ -79,29 +94,44 @@ In production, not all TCP endpoints are equally critical. Your primary database
 # different severity levels based on the importance of each target.
 
 receivers:
-  tcpcheck/tier1:
+  tcp_check/tier1:
     targets:
       - endpoint: "postgres-primary.internal:5432"
+        dialer:
+          timeout: 5s
       - endpoint: "kafka-broker-1.internal:9092"
+        dialer:
+          timeout: 5s
       - endpoint: "kafka-broker-2.internal:9092"
+        dialer:
+          timeout: 5s
       - endpoint: "kafka-broker-3.internal:9092"
+        dialer:
+          timeout: 5s
     collection_interval: 15s     # check critical services more frequently
-    timeout: 5s
 
-  tcpcheck/tier2:
+  tcp_check/tier2:
     targets:
       - endpoint: "postgres-replica.internal:5432"
+        dialer:
+          timeout: 10s
       - endpoint: "redis-cluster.internal:6379"
+        dialer:
+          timeout: 10s
       - endpoint: "elasticsearch.internal:9200"
+        dialer:
+          timeout: 10s
     collection_interval: 30s
-    timeout: 10s
 
-  tcpcheck/tier3:
+  tcp_check/tier3:
     targets:
       - endpoint: "dev-db.internal:5432"
+        dialer:
+          timeout: 15s
       - endpoint: "staging-api.internal:8080"
+        dialer:
+          timeout: 15s
     collection_interval: 60s
-    timeout: 15s
 
 processors:
   resource/tier1:
@@ -130,15 +160,15 @@ exporters:
 service:
   pipelines:
     metrics/tier1:
-      receivers: [tcpcheck/tier1]
+      receivers: [tcp_check/tier1]
       processors: [resource/tier1, batch]
       exporters: [otlp]
     metrics/tier2:
-      receivers: [tcpcheck/tier2]
+      receivers: [tcp_check/tier2]
       processors: [resource/tier2, batch]
       exporters: [otlp]
     metrics/tier3:
-      receivers: [tcpcheck/tier3]
+      receivers: [tcp_check/tier3]
       processors: [resource/tier3, batch]
       exporters: [otlp]
 ```
@@ -165,7 +195,7 @@ groups:
           severity: critical
           routing: pagerduty
         annotations:
-          summary: "CRITICAL: {{ $labels.tcp_endpoint }} is not accepting TCP connections"
+          summary: "CRITICAL: {{ $labels.tcpcheck_endpoint }} is not accepting TCP connections"
           description: "Tier 1 service port has been unreachable for 30 seconds."
 
       # Tier 2 - alert but do not page
@@ -176,16 +206,16 @@ groups:
           severity: warning
           routing: slack
         annotations:
-          summary: "WARNING: {{ $labels.tcp_endpoint }} is not accepting TCP connections"
+          summary: "WARNING: {{ $labels.tcpcheck_endpoint }} is not accepting TCP connections"
 
       # Connection latency degradation
       - alert: TCPConnectionSlow
-        expr: tcpcheck_duration_ms > 500
+        expr: tcpcheck_duration_milliseconds > 500
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "TCP connection to {{ $labels.tcp_endpoint }} taking {{ $value }}ms"
+          summary: "TCP connection to {{ $labels.tcpcheck_endpoint }} taking {{ $value }}ms"
           description: "Normal connection time is under 50ms. Possible network congestion or host overload."
 
       # Intermittent failures - flapping port
@@ -195,7 +225,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "TCP port {{ $labels.tcp_endpoint }} is flapping"
+          summary: "TCP port {{ $labels.tcpcheck_endpoint }} is flapping"
           description: "Port status changed more than 4 times in 10 minutes."
 ```
 
@@ -213,12 +243,10 @@ Here is a practical correlation approach using labels:
 # traces and metrics, enabling easy cross-referencing in dashboards.
 
 processors:
-  attributes:
-    actions:
-      - key: associated_service
-        value: "postgres"
-        action: upsert
-        # Apply only to postgres targets
+  transform/tcp_service:
+    error_mode: ignore
+    metric_statements:
+      - set(datapoint.attributes["associated_service"], "postgres") where datapoint.attributes["tcpcheck.endpoint"] == "postgres-primary.internal:5432" or datapoint.attributes["tcpcheck.endpoint"] == "postgres-replica.internal:5432"
 ```
 
 With consistent labeling, your dashboards can show TCP port status alongside application error rates for the same service, making root cause identification straightforward.
