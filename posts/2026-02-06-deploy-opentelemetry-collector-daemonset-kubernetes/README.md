@@ -116,6 +116,7 @@ data:
 
       # Collect host metrics
       hostmetrics:
+        root_path: /hostfs
         collection_interval: 30s
         scrapers:
           cpu:
@@ -151,27 +152,14 @@ data:
         include:
           - /var/log/pods/*/*/*.log
         exclude:
-          - /var/log/pods/*/otc-container/*.log
+          - /var/log/pods/opentelemetry_otel-collector-*/*/*.log
         start_at: beginning
         include_file_path: true
         include_file_name: false
         operators:
-          # Parse CRI-O / containerd logs
-          - type: regex_parser
-            id: parser-containerd
-            regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          # Extract Kubernetes metadata from file path
-          - type: regex_parser
-            id: extract-metadata-from-filepath
-            regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]+)\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
-            parse_from: attributes["log.file.path"]
-          # Move log content to body
-          - type: move
-            from: attributes.log
-            to: body
+          # Parse Kubernetes container logs
+          - type: container
+            id: container-parser
 
     processors:
       # Batch telemetry for efficient export
@@ -220,6 +208,10 @@ data:
         limit_percentage: 75
         spike_limit_percentage: 20
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     exporters:
       # Export to backend (replace with your backend)
       otlphttp:
@@ -227,12 +219,13 @@ data:
         compression: gzip
 
       # Debug exporter for testing
-      logging:
+      debug:
         verbosity: normal
         sampling_initial: 5
         sampling_thereafter: 200
 
     service:
+      extensions: [health_check]
       pipelines:
         # Metrics pipeline
         metrics:
@@ -251,7 +244,12 @@ data:
         logs:
           level: info
         metrics:
-          address: 0.0.0.0:8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -274,7 +272,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/config.yaml
         env:
@@ -301,9 +299,16 @@ spec:
         - name: metrics
           containerPort: 8888
           protocol: TCP
+        - name: health
+          containerPort: 13133
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /conf
+        - name: hostfs
+          mountPath: /hostfs
+          readOnly: true
+          mountPropagation: HostToContainer
         - name: varlog
           mountPath: /var/log
           readOnly: true
@@ -333,6 +338,9 @@ spec:
       - name: config
         configMap:
           name: otel-collector-config
+      - name: hostfs
+        hostPath:
+          path: /
       - name: varlog
         hostPath:
           path: /var/log
@@ -378,6 +386,7 @@ The DaemonSet deployment excels at collecting host-level metrics from each node.
 receivers:
   # Comprehensive host metrics collection
   hostmetrics:
+    root_path: /hostfs
     collection_interval: 30s
     scrapers:
       # CPU metrics
@@ -461,12 +470,12 @@ receivers:
       - volume
     metrics:
       # Node metrics
-      k8s.node.cpu.utilization:
+      k8s.node.cpu.usage:
         enabled: true
       k8s.node.memory.working_set:
         enabled: true
       # Container metrics
-      container.cpu.utilization:
+      container.cpu.usage:
         enabled: true
       container.memory.working_set:
         enabled: true
@@ -498,6 +507,8 @@ processors:
 exporters:
   prometheusremotewrite:
     endpoint: http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -526,45 +537,15 @@ receivers:
     include_file_path: true
     include_file_name: false
     operators:
-      # Parse container runtime format (CRI-O/containerd)
-      - type: regex_parser
-        id: parser-crio
-        regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-        timestamp:
-          parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-
-      # Extract Kubernetes metadata from file path
-      - type: regex_parser
-        id: extract-metadata
-        regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]+)\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
-        parse_from: attributes["log.file.path"]
-        on_error: send
-
-      # Move extracted metadata to resource attributes
-      - type: move
-        from: attributes.namespace
-        to: resource["k8s.namespace.name"]
-      - type: move
-        from: attributes.pod_name
-        to: resource["k8s.pod.name"]
-      - type: move
-        from: attributes.container_name
-        to: resource["k8s.container.name"]
-      - type: move
-        from: attributes.uid
-        to: resource["k8s.pod.uid"]
+      # Parse Kubernetes container logs
+      - type: container
+        id: container-parser
 
       # Parse JSON logs if applicable
       - type: json_parser
         id: parser-json
-        parse_from: attributes.log
+        parse_from: body
         on_error: send
-
-      # Move log content to body
-      - type: move
-        from: attributes.log
-        to: body
 
       # Add severity parsing
       - type: severity_parser
@@ -614,21 +595,15 @@ processors:
     timeout: 10s
 
 exporters:
-  loki:
-    endpoint: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
-    format: json
-    labels:
-      resource:
-        k8s.namespace.name: "namespace"
-        k8s.pod.name: "pod"
-        k8s.container.name: "container"
+  otlphttp/loki:
+    endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp
 
 service:
   pipelines:
     logs:
       receivers: [filelog]
       processors: [k8sattributes, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ## Node Selector and Tolerations
@@ -670,7 +645,7 @@ spec:
       # - operator: Exists
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         # ... rest of container spec
 ```
 
@@ -684,7 +659,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         resources:
           # Resource requests (guaranteed)
           requests:
@@ -705,10 +680,10 @@ Match the memory limiter processor configuration to your resource limits:
 processors:
   memory_limiter:
     check_interval: 1s
-    # Set to 75% of memory limit (512Mi = 537Mi, 75% = 403Mi)
-    limit_mib: 403
-    # Spike limit at 20% above limit
-    spike_limit_mib: 80
+    # Set to 75% of memory limit (512Mi, 75% = 384Mi)
+    limit_mib: 384
+    # Spike limit at 20% of memory limit (512Mi, 20% = 102Mi)
+    spike_limit_mib: 102
 ```
 
 ## Update Strategy
