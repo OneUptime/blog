@@ -76,7 +76,6 @@ func processPayment(ctx context.Context, paymentID string) error {
         return err
     }
 
-    span.SetStatus(codes.Ok, "")
     return nil
 }
 ```
@@ -137,29 +136,34 @@ A good rule of thumb: if an attribute can have more than 100 unique values, it s
 
 ## Guideline 5: Context Propagation
 
-When code crosses async boundaries or uses message queues, context propagation breaks silently. Reviewers should look for these patterns:
+When code crosses thread boundaries or uses message queues, context propagation breaks silently. Reviewers should look for these patterns:
 
 ```python
-import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from opentelemetry import context
 
-# REJECT: spawning a task without propagating context
-async def handle_request(order_id):
-    with tracer.start_as_current_span("order.process") as span:
-        # This task runs in a new context - the span will not be linked
-        asyncio.create_task(send_confirmation(order_id))
+executor = ThreadPoolExecutor()
 
-# ACCEPT: capture and attach context to the new task
-async def handle_request(order_id):
+# REJECT: submitting work to another thread without propagating context
+def handle_request(order_id):
+    with tracer.start_as_current_span("order.process") as span:
+        # This work runs in another thread, so the span will not be linked
+        executor.submit(send_confirmation, order_id)
+
+# ACCEPT: capture and attach context in the worker
+def handle_request(order_id):
     with tracer.start_as_current_span("order.process") as span:
         ctx = context.get_current()
-        asyncio.create_task(send_confirmation_with_context(order_id, ctx))
+        executor.submit(send_confirmation_with_context, order_id, ctx)
 
-async def send_confirmation_with_context(order_id, ctx):
-    context.attach(ctx)
-    with tracer.start_as_current_span("notification.send_confirmation") as span:
-        span.set_attribute("order.id", order_id)
-        await do_send(order_id)
+def send_confirmation_with_context(order_id, ctx):
+    token = context.attach(ctx)
+    try:
+        with tracer.start_as_current_span("notification.send_confirmation") as span:
+            span.set_attribute("order.id", order_id)
+            do_send(order_id)
+    finally:
+        context.detach(token)
 ```
 
 ## Automating What You Can
