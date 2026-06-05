@@ -92,11 +92,12 @@ service:
       # Log exporter details
       development: true
       encoding: console
-      # Show timestamps
-      disable_timestamp: false
+      # Include caller information and stack traces
+      disable_caller: false
+      disable_stacktrace: false
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     tls:
       insecure: false
@@ -153,19 +154,19 @@ kubectl exec -it otel-collector-0 -- curl -v https://backend:4317
 # config.yaml - Correct endpoint formats
 exporters:
   # gRPC endpoint (no protocol prefix)
-  otlp/grpc:
+  otlp_grpc:
     endpoint: backend.observability.svc.cluster.local:4317
     tls:
       insecure: false
 
   # HTTP endpoint (with protocol prefix)
-  otlp/http:
+  otlp_http:
     endpoint: https://backend.observability.svc.cluster.local:4318
     tls:
       insecure: false
 
   # External SaaS backend
-  otlp/external:
+  otlp_grpc/external:
     endpoint: api.observability-vendor.com:443
     tls:
       insecure: false
@@ -267,7 +268,7 @@ kubectl exec -it otel-collector-0 -- env | grep -i "api\|token\|key"
 ```yaml
 # config.yaml - Add authentication
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     # Static headers
     headers:
@@ -275,7 +276,7 @@ exporters:
       x-tenant-id: "your-tenant-id"
 
   # Using environment variables (recommended)
-  otlp/secure:
+  otlp_grpc/secure:
     endpoint: backend.example.com:4317
     headers:
       # Reference environment variable
@@ -304,11 +305,17 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         env:
         - name: BACKEND_API_KEY
           valueFrom:
@@ -320,6 +327,7 @@ spec:
             secretKeyRef:
               name: otel-backend-credentials
               key: api-token
+      restartPolicy: Always
 ```
 
 **Solution 3: OAuth2 authentication**
@@ -334,7 +342,7 @@ extensions:
     scopes: ["telemetry.write"]
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     # Use OAuth2 extension for authentication
     auth:
@@ -345,7 +353,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 ## Common Issue 3: TLS Certificate Problems
@@ -380,7 +388,7 @@ curl -k https://backend.example.com:4318/v1/traces
 ```yaml
 # config.yaml - TLS configuration
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     tls:
       # Verify server certificate (default: true)
@@ -394,7 +402,7 @@ exporters:
       server_name_override: backend.example.com
 
   # For development/testing only: disable TLS verification
-  otlp/insecure:
+  otlp_grpc/insecure:
     endpoint: backend:4317
     tls:
       insecure: true  # WARNING: Not for production!
@@ -422,7 +430,13 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: otel-collector
@@ -441,7 +455,7 @@ spec:
 ```yaml
 # config.yaml - Use system CA bundle
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend.example.com:4317
     tls:
       # Use system CA certificates
@@ -486,7 +500,7 @@ curl -s http://localhost:8888/metrics | grep "otelcol_exporter_enqueue_failed"
 ```yaml
 # config.yaml - Larger queues
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     sending_queue:
       enabled: true
@@ -503,11 +517,13 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     compaction:
-      directory: 50GiB
+      on_start: true
+      directory: /var/lib/otelcol/queue-compaction
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     sending_queue:
       enabled: true
@@ -538,7 +554,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 ## Common Issue 5: Backend Rate Limiting
@@ -570,7 +586,7 @@ watch -n 5 'curl -s http://localhost:8888/metrics | grep "otelcol_exporter_send_
 ```yaml
 # config.yaml - Exponential backoff for retries
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
     retry_on_failure:
       enabled: true
@@ -614,7 +630,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 **Solution 3: Scale horizontally**
@@ -630,7 +646,13 @@ metadata:
 spec:
   # Increase replicas
   replicas: 5
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: otel-collector
@@ -670,7 +692,7 @@ Exporter configuration is invalid or incompatible with backend.
 
 ```text
 Error: unknown exporter type "otlp"
-Error: exporter "otlp" is not configured
+Error: exporter "otlp_grpc" is not configured
 Error: invalid endpoint format
 ```
 
@@ -692,7 +714,7 @@ grep -A 20 "service:" config.yaml | grep "exporters:"
 # config.yaml - Proper configuration structure
 exporters:
   # Define exporter here
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
 
 service:
@@ -700,12 +722,12 @@ service:
     traces:
       receivers: [otlp]
       # Must reference exporter defined above
-      exporters: [otlp]  # Name must match
+      exporters: [otlp_grpc]  # Name must match
 
     metrics:
       receivers: [otlp]
       # Can use same or different exporter
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 **Solution 2: Use correct exporter type**
@@ -714,12 +736,12 @@ service:
 # config.yaml - Different exporters for different backends
 exporters:
   # OTLP exporter for OpenTelemetry-compatible backends
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
 
-  # Jaeger exporter for Jaeger
-  jaeger:
-    endpoint: jaeger:14250
+  # Jaeger supports OTLP ingestion in current versions
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -736,30 +758,30 @@ service:
     traces:
       receivers: [otlp]
       # Use appropriate exporter for your backend
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
-**Solution 3: Test with logging exporter**
+**Solution 3: Test with debug exporter**
 
 ```yaml
-# config.yaml - Debug with logging exporter
+# config.yaml - Debug with debug exporter
 exporters:
-  # Logging exporter for debugging
-  logging:
+  # Debug exporter for troubleshooting
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
 
   # Your actual exporter
-  otlp:
+  otlp_grpc:
     endpoint: backend:4317
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      # Export to both logging (for debug) and backend
-      exporters: [logging, otlp]
+      # Export to both debug and backend
+      exporters: [debug, otlp_grpc]
 ```
 
 ## Common Issue 7: Data Format Rejection
@@ -781,8 +803,8 @@ Error: schema validation failed
 # Enable detailed logging to see payload
 docker logs otel-collector 2>&1 | grep -A 20 "sending request"
 
-# Use logging exporter to inspect data
-# Add logging exporter to see what's being exported
+# Use debug exporter to inspect data
+# Add debug exporter to see what's being exported
 ```
 
 ### Solutions
@@ -794,18 +816,15 @@ docker logs otel-collector 2>&1 | grep -A 20 "sending request"
 processors:
   # Transform attributes to match backend requirements
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: resource
-        statements:
-          # Ensure required attributes exist
-          - set(attributes["service.name"], "unknown") where attributes["service.name"] == nil
-          - set(attributes["deployment.environment"], "production")
-      - context: span
-        statements:
-          # Remove problematic attributes
-          - delete_key(attributes, "internal.attribute")
-          # Rename attributes
-          - set(attributes["http.status_code"], attributes["http.response.status_code"])
+      # Ensure required attributes exist
+      - set(resource.attributes["service.name"], "unknown") where resource.attributes["service.name"] == nil
+      - set(resource.attributes["deployment.environment"], "production")
+      # Remove problematic attributes
+      - delete_key(span.attributes, "internal.attribute")
+      # Rename attributes
+      - set(span.attributes["http.status_code"], span.attributes["http.response.status_code"])
 
   batch:
     timeout: 1s
@@ -815,7 +834,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform, batch]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 **Solution 2: Filter invalid data**
@@ -823,20 +842,20 @@ service:
 ```yaml
 # config.yaml - Filter out invalid spans
 processors:
-  # Filter processor removes invalid data
+  # Filter processor drops telemetry when a condition matches
   filter:
-    traces:
-      span:
-        # Keep only valid spans
-        - 'attributes["http.status_code"] != nil'
-        - 'resource.attributes["service.name"] != nil'
+    error_mode: ignore
+    trace_conditions:
+      # Drop invalid spans
+      - 'span.attributes["http.status_code"] == nil'
+      - 'resource.attributes["service.name"] == nil'
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [filter, batch]
-      exporters: [otlp]
+      exporters: [otlp_grpc]
 ```
 
 ## Comprehensive Troubleshooting Script
@@ -897,12 +916,17 @@ fi
 
 # 4. Test backend connectivity
 echo "[4/8] Testing backend connectivity..."
-backend_host=$(grep "endpoint:" config.yaml | head -1 | awk '{print $2}' | sed 's/"//g')
-if [ ! -z "$backend_host" ]; then
-    if nc -zv $backend_host 2>&1 | grep -q "succeeded"; then
-        echo "✓ Backend reachable: $backend_host"
+backend_endpoint=$(grep "endpoint:" config.yaml | head -1 | awk '{print $2}' | sed 's/"//g')
+backend_endpoint=${backend_endpoint#http://}
+backend_endpoint=${backend_endpoint#https://}
+backend_endpoint=${backend_endpoint%%/*}
+backend_host=${backend_endpoint%:*}
+backend_port=${backend_endpoint##*:}
+if [ ! -z "$backend_host" ] && [ ! -z "$backend_port" ] && [ "$backend_host" != "$backend_port" ]; then
+    if nc -zv "$backend_host" "$backend_port" 2>&1 | grep -q "succeeded"; then
+        echo "✓ Backend reachable: $backend_host:$backend_port"
     else
-        echo "✗ Cannot reach backend: $backend_host"
+        echo "✗ Cannot reach backend: $backend_host:$backend_port"
     fi
 fi
 
