@@ -22,22 +22,26 @@ Here is how this looks when recording an exception manually in Python:
 # Recording an exception on the current span
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("order-service")
 
 def process_order(order_id):
-    with tracer.start_as_current_span("process_order") as span:
+    with tracer.start_as_current_span(
+        "process_order",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         try:
             result = database.execute_order(order_id)
             return result
         except Exception as exc:
             # Record the exception as a span event
             span.record_exception(exc)
+            # Add error.type as a span attribute so metrics can group by error type
+            span.set_attribute("error.type", type(exc).__name__)
             # Set the span status to ERROR
-            span.set_status(
-                trace.StatusCode.ERROR,
-                description=str(exc)
-            )
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise
 ```
 
@@ -48,16 +52,17 @@ To power dashboard panels, you need metrics derived from these error spans. The 
 ```yaml
 # otel-collector-config.yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
+      unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
     dimensions:
-      # Include exception type as a metric dimension
-      - name: exception.type
+      # Include error type as a metric dimension
+      - name: error.type
       - name: http.route
       - name: http.request.method
-    # The connector automatically includes status_code as a dimension
+    # The connector automatically includes status.code as a dimension
 
 receivers:
   otlp:
@@ -77,9 +82,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheusremotewrite]
 ```
 
@@ -103,7 +108,7 @@ The key insight is that Grafana can link metrics panels to trace views. When you
 
 ```promql
 # Error rate as a percentage across all services
-sum(rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR"}[5m]))
+sum(rate(duration_milliseconds_count{status_code="Error"}[5m]))
 /
 sum(rate(duration_milliseconds_count[5m]))
 * 100
@@ -114,7 +119,7 @@ sum(rate(duration_milliseconds_count[5m]))
 ```promql
 # Per-service error rate
 sum by (service_name) (
-  rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR"}[5m])
+  rate(duration_milliseconds_count{status_code="Error"}[5m])
 )
 ```
 
@@ -122,8 +127,8 @@ sum by (service_name) (
 
 ```promql
 # Count of errors grouped by exception type
-sum by (exception_type) (
-  rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR", exception_type!=""}[5m])
+sum by (error_type) (
+  rate(duration_milliseconds_count{status_code="Error", error_type!=""}[5m])
 )
 ```
 
@@ -132,7 +137,7 @@ sum by (exception_type) (
 ```promql
 # Error rate per endpoint
 sum by (http_route) (
-  rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR"}[5m])
+  rate(duration_milliseconds_count{status_code="Error"}[5m])
 )
 ```
 
@@ -142,7 +147,7 @@ sum by (http_route) (
 # P95 latency for error requests
 histogram_quantile(0.95,
   sum by (le) (
-    rate(duration_milliseconds_bucket{status_code="STATUS_CODE_ERROR"}[5m])
+    rate(duration_milliseconds_bucket{status_code="Error"}[5m])
   )
 )
 ```
@@ -154,7 +159,7 @@ Grafana supports data links that let you jump from a metrics panel to the trace 
 In the panel settings, add a data link with this URL template:
 
 ```text
-/explore?orgId=1&left={"datasource":"Tempo","queries":[{"queryType":"traceqlSearch","filters":[{"id":"status","tag":"status","operator":"=","value":["error"],"type":"static","scope":"intrinsic"},{"id":"service","tag":"service.name","operator":"=","value":["${__field.labels.service_name}"],"type":"static","scope":"resource"}]}]}
+/explore?orgId=1&schemaVersion=1&panes=%7B%22A%22%3A%7B%22datasource%22%3A%22Tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22Tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22%24%7B__field.labels.service_name%7D%5C%22%20%26%26%20status%20%3D%20error%20%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D
 ```
 
 This opens Grafana Explore with a TraceQL query pre-filtered to error traces for the selected service. From there, you can inspect the full trace waterfall, see the exception event with its stack trace, and understand the complete request context.
