@@ -46,10 +46,14 @@ processors:
     send_batch_size: 1000
 
   # Add host-level resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
     system:
       hostname_sources: [os]
+
+  # Preserve pod IPs so the gateway can enrich with Kubernetes metadata
+  k8sattributes:
+    passthrough: true
 
 exporters:
   otelarrow:
@@ -58,11 +62,11 @@ exporters:
       insecure: true
     arrow:
       num_streams: 2         # Keep low on agents to conserve resources
-      max_stream_lifetime: 10m
+      max_stream_lifetime: 9m30s
     sending_queue:
       enabled: true
       num_consumers: 2
-      queue_size: 500
+      queue_size: 10000
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -73,23 +77,24 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, k8sattributes, resource_detection, batch]
       exporters: [otelarrow]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, k8sattributes, resource_detection, batch]
       exporters: [otelarrow]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, k8sattributes, resource_detection, batch]
       exporters: [otelarrow]
 ```
 
 Key points for the agent config:
 
 - `num_streams: 2` keeps resource usage low on the agent. Each stream consumes memory for its Arrow encoder state.
-- `sending_queue` with `queue_size: 500` provides buffering if the gateway is temporarily unreachable.
-- `resourcedetection` adds host metadata so the gateway knows which host each telemetry record came from.
+- `sending_queue` with `queue_size: 10000` provides buffering if the gateway is temporarily unreachable.
+- `resource_detection` adds host metadata so the gateway knows which host each telemetry record came from.
+- `k8sattributes` in passthrough mode preserves pod IPs so the gateway can associate telemetry with Kubernetes pods.
 
 ## Gateway Collector Configuration
 
@@ -106,12 +111,12 @@ receivers:
         keepalive:
           server_parameters:
             max_connection_idle: 120s
-            max_connection_age: 600s
-            max_connection_age_grace: 30s
+            max_connection_age: 1m
+            max_connection_age_grace: 10m
           enforcement_policy:
             min_time: 10s
-        arrow:
-          memory_limit_mib: 256
+      arrow:
+        memory_limit_mib: 256
 
 processors:
   memory_limiter:
@@ -130,7 +135,7 @@ processors:
     pod_association:
       - sources:
           - from: resource_attribute
-            name: host.name
+            name: k8s.pod.ip
 
   batch:
     timeout: 10s
@@ -143,8 +148,8 @@ exporters:
       insecure: true
   prometheusremotewrite:
     endpoint: http://mimir:9009/api/v1/push
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
@@ -159,7 +164,7 @@ service:
     logs:
       receivers: [otelarrow]
       processors: [memory_limiter, k8sattributes, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ## Kubernetes Deployment
@@ -184,7 +189,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             requests:
@@ -226,7 +231,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             requests:
@@ -266,6 +271,6 @@ spec:
     app: otel-gateway
 ```
 
-With the OTel Arrow stream lifetime set to 10 minutes, agents will reconnect periodically, and the Kubernetes service will distribute new connections across gateway pods.
+With the OTel Arrow stream lifetime set slightly below the gateway connection grace period, agents will reconnect periodically, and the Kubernetes service will distribute new connections across gateway pods.
 
 This architecture gives you efficient bandwidth usage on the agent-to-gateway link, centralized processing at the gateway layer, and clean separation between collection and export concerns.
