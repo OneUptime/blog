@@ -33,9 +33,9 @@ graph TD
 
 Every component in this pipeline must execute within the overall latency budget. If the user profile lookup takes 40 milliseconds, you only have 60 milliseconds left for everything else.
 
-## Lightweight Tracing Configuration
+## Lightweight Telemetry Configuration
 
-The first priority in RTB monitoring is minimizing instrumentation overhead. We configure the OpenTelemetry SDK with aggressive settings that keep overhead under 1 millisecond.
+The first priority in RTB monitoring is minimizing instrumentation overhead. We configure the OpenTelemetry SDK with aggressive settings that keep overhead low.
 
 ```go
 // otel_setup.go - Low-overhead OpenTelemetry configuration for RTB
@@ -43,22 +43,33 @@ package otel
 
 import (
     "context"
+    "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
-    // Use gRPC exporter for lower overhead than HTTP
-    exporter, err := otlptracegrpc.New(ctx,
+func InitTelemetry(ctx context.Context) (*sdktrace.TracerProvider, *sdkmetric.MeterProvider, error) {
+    // Use OTLP/gRPC exporters for efficient binary telemetry export
+    traceExporter, err := otlptracegrpc.New(ctx,
         otlptracegrpc.WithEndpoint("otel-collector:4317"),
         otlptracegrpc.WithInsecure(),
     )
     if err != nil {
-        return nil, err
+        return nil, nil, err
+    }
+
+    metricExporter, err := otlpmetricgrpc.New(ctx,
+        otlpmetricgrpc.WithEndpoint("otel-collector:4317"),
+        otlpmetricgrpc.WithInsecure(),
+    )
+    if err != nil {
+        return nil, nil, err
     }
 
     res, err := resource.New(ctx,
@@ -69,15 +80,15 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
         ),
     )
     if err != nil {
-        return nil, err
+        return nil, nil, err
     }
 
     tp := sdktrace.NewTracerProvider(
-        sdktrace.WithBatcher(exporter,
+        sdktrace.WithBatcher(traceExporter,
             // Aggressive batching to minimize export overhead
             sdktrace.WithMaxQueueSize(10000),
             sdktrace.WithMaxExportBatchSize(1000),
-            sdktrace.WithBatchTimeout(5_000), // 5 second batch window
+            sdktrace.WithBatchTimeout(5 * time.Second),
         ),
         sdktrace.WithResource(res),
         // Sample only 1% of normal bid requests
@@ -87,12 +98,21 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
         )),
     )
 
+    mp := sdkmetric.NewMeterProvider(
+        sdkmetric.WithReader(sdkmetric.NewPeriodicReader(
+            metricExporter,
+            sdkmetric.WithInterval(5 * time.Second),
+        )),
+        sdkmetric.WithResource(res),
+    )
+
     otel.SetTracerProvider(tp)
-    return tp, nil
+    otel.SetMeterProvider(mp)
+    return tp, mp, nil
 }
 ```
 
-The 1% sampling rate might seem low, but at 100,000 requests per second, that still gives you 1,000 traced requests per second. That is more than enough to spot latency patterns, error rates, and performance anomalies. The batch exporter settings ensure that span export happens asynchronously and does not block the bid processing path.
+The 1% sampling rate might seem low, but at 100,000 requests per second, that still gives you 1,000 traced requests per second. That is more than enough to spot latency patterns, error rates, and performance anomalies. The batch exporter settings ensure that span export happens asynchronously and does not block the bid processing path, while the periodic metric reader exports metric data on a fixed interval outside the request hot path.
 
 ## Instrumenting the Bid Request Handler
 
@@ -358,6 +378,8 @@ processors:
 exporters:
   otlp:
     endpoint: oneuptime-collector:4317
+    tls:
+      insecure: true
     sending_queue:
       enabled: true
       num_consumers: 10
