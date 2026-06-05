@@ -48,8 +48,8 @@ Now instrument the endpoints you want to benchmark:
 
 ```python
 # order_handler.py
+from opentelemetry import trace
 from app_tracing import tracer
-import time
 
 @tracer.start_as_current_span("process_order")
 def process_order(order_data):
@@ -85,7 +85,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
@@ -98,6 +98,7 @@ connectors:
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
+    enable_open_metrics: true
   otlp/storage:
     endpoint: "tempo:4317"
     tls:
@@ -107,24 +108,24 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/storage]
+      exporters: [span_metrics, otlp/storage]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
 ## Building the Baseline Script
 
-Run this script after a controlled benchmark test to capture and store the baseline:
+Run this script after a controlled benchmark test, once Prometheus has scraped the Collector's metrics endpoint, to capture and store the baseline:
 
 ```python
 # capture_baseline.py
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
-PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:8889")
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
 BASELINE_FILE = "perf_baselines.json"
 
 ENDPOINTS_TO_TRACK = [
@@ -138,7 +139,7 @@ def query_percentile(span_name, percentile):
     """Query a specific percentile from the span metrics histogram."""
     query = (
         f'histogram_quantile({percentile}, '
-        f'sum(rate(duration_milliseconds_bucket{{span_name="{span_name}"}}[5m])) by (le))'
+        f'sum(rate(traces_span_metrics_duration_milliseconds_bucket{{span_name="{span_name}"}}[5m])) by (le))'
     )
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
     result = resp.json()["data"]["result"]
@@ -148,7 +149,7 @@ def query_percentile(span_name, percentile):
 
 def capture_baselines():
     baselines = {
-        "captured_at": datetime.utcnow().isoformat(),
+        "captured_at": datetime.now(timezone.utc).isoformat(),
         "git_sha": os.environ.get("GIT_SHA", "unknown"),
         "endpoints": {},
     }
