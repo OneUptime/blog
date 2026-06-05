@@ -47,14 +47,14 @@ Initialize tracing before your Express app:
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 
 export function initializeTracing() {
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'express-params-tracing',
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'express-params-tracing',
   });
 
   const sdk = new NodeSDK({
@@ -117,15 +117,15 @@ import { initializeTracing } from './tracing';
 initializeTracing();
 
 import express from 'express';
+import { trace } from '@opentelemetry/api';
 import { routeParamsTracingMiddleware } from './middleware/params-tracing';
 
 const app = express();
 
 app.use(express.json());
-app.use(routeParamsTracingMiddleware());
 
 // Route with parameters
-app.get('/users/:userId', (req, res) => {
+app.get('/users/:userId', routeParamsTracingMiddleware(), (req, res) => {
   const span = trace.getActiveSpan();
   if (span) {
     // Parameters are already added by middleware
@@ -136,7 +136,7 @@ app.get('/users/:userId', (req, res) => {
 });
 
 // Route with multiple parameters
-app.get('/users/:userId/posts/:postId', (req, res) => {
+app.get('/users/:userId/posts/:postId', routeParamsTracingMiddleware(), (req, res) => {
   const { userId, postId } = req.params;
 
   res.json({
@@ -160,7 +160,7 @@ import { Request, Response, NextFunction } from 'express';
 import { trace } from '@opentelemetry/api';
 
 // Keys that should never be traced (sensitive data)
-const EXCLUDED_QUERY_KEYS = ['password', 'token', 'secret', 'api_key', 'apiKey'];
+const EXCLUDED_QUERY_KEYS = ['password', 'token', 'secret', 'api_key', 'apikey'];
 
 // Common pagination and filtering keys to always capture
 const IMPORTANT_QUERY_KEYS = ['page', 'limit', 'offset', 'sort', 'order', 'q', 'search', 'filter'];
@@ -209,8 +209,8 @@ export function queryStringTracingMiddleware() {
 
       // Add event with full query string (sanitized)
       const sanitizedQuery = { ...req.query };
-      EXCLUDED_QUERY_KEYS.forEach((key) => {
-        if (sanitizedQuery[key]) {
+      Object.keys(sanitizedQuery).forEach((key) => {
+        if (EXCLUDED_QUERY_KEYS.includes(key.toLowerCase())) {
           sanitizedQuery[key] = '[REDACTED]';
         }
       });
@@ -233,7 +233,6 @@ Apply the middleware:
 
 import { queryStringTracingMiddleware } from './middleware/query-tracing';
 
-app.use(routeParamsTracingMiddleware());
 app.use(queryStringTracingMiddleware());
 
 // Route with query parameters
@@ -243,9 +242,9 @@ app.get('/search', (req, res) => {
   const span = trace.getActiveSpan();
   if (span) {
     span.addEvent('search.executing', {
-      query: q,
-      page: page || 1,
-      limit: limit || 10,
+      query: String(q || ''),
+      page: String(page || '1'),
+      limit: String(limit || '10'),
     });
   }
 
@@ -349,7 +348,7 @@ export function advancedParamsTracingMiddleware() {
       } catch (error) {
         span.setAttribute('filter.parse_error', true);
         span.addEvent('filter.parse.failed', {
-          error: error.message,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -566,7 +565,7 @@ app.get('/posts', (req, res) => {
   const span = trace.getActiveSpan();
   const tags = req.query.tags; // Can be string or string[]
 
-  const tagArray = Array.isArray(tags) ? tags : tags ? [tags] : [];
+  const tagArray = (Array.isArray(tags) ? tags : tags ? [tags] : []).map(String);
 
   if (span) {
     span.setAttribute('query.tags.processed', tagArray.join(','));
@@ -691,18 +690,17 @@ const app = express();
 app.use(express.json());
 
 // Apply tracing middleware in order
-app.use(routeParamsTracingMiddleware());
 app.use(queryStringTracingMiddleware());
 app.use(advancedParamsTracingMiddleware());
 app.use(arrayParamsTracingMiddleware());
 app.use(paramsSanitizerMiddleware());
 
 // Routes
-app.get('/api/users/:userId', (req, res) => {
+app.get('/api/users/:userId', routeParamsTracingMiddleware(), paramsSanitizerMiddleware(), (req, res) => {
   res.json({ userId: req.params.userId });
 });
 
-app.get('/api/users/:userId/posts/:postId', (req, res) => {
+app.get('/api/users/:userId/posts/:postId', routeParamsTracingMiddleware(), paramsSanitizerMiddleware(), (req, res) => {
   res.json({
     userId: req.params.userId,
     postId: req.params.postId,
@@ -726,21 +724,21 @@ app.listen(3000, () => {
 
 ## Querying Traces by Parameters
 
-Once you have parameters in your traces, you can filter by them:
+Once you have parameters in your traces, you can filter by them in your observability backend. The exact query syntax depends on the backend, but the filters are conceptually:
 
 ```text
-# Find all requests for user 123
+# Find all requests for user 123 by route.param.userId
 
-trace.where("route.param.userId", "123")
+route.param.userId = "123"
 
-# Find slow searches
-trace.where("search.query").and("duration > 1000ms")
+# Find slow searches where search.query exists
+search.query exists AND duration > 1000ms
 
 # Find paginated requests beyond page 10
-trace.where("pagination.page > 10")
+pagination.page > 10
 
 # Find filtered queries
-trace.where("filter.type", "json")
+filter.type = "json"
 ```
 
 Capturing route parameters and query strings transforms generic HTTP traces into rich, searchable data. By selectively tracing the right parameters while protecting sensitive data, you build an observability system that helps you understand not just what your application is doing, but exactly which resources and data it's processing.
