@@ -65,7 +65,7 @@ First, let's look at the typical New Relic startup configuration that you will b
 
 # New startup command with OpenTelemetry Java agent
 # The OTel agent auto-instruments common libraries (Spring, JDBC, gRPC, etc.)
-# Configuration is done through environment variables instead of a YAML file
+# Configuration is done through environment variables or system properties
 java -javaagent:/path/to/opentelemetry-javaagent.jar \
   -Dotel.service.name=my-java-service \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
@@ -98,7 +98,7 @@ Here is the transformation. The New Relic approach loads a single module that ha
 
 // After: OpenTelemetry instrumentation
 // Install these packages first:
-// npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
+// npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
 // npm install @opentelemetry/exporter-trace-otlp-grpc @opentelemetry/exporter-metrics-otlp-grpc
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
@@ -117,13 +117,15 @@ const sdk = new NodeSDK({
     url: 'http://localhost:4317',
   }),
   // Metric reader replaces New Relic's custom metrics
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: 'http://localhost:4317',
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: 'http://localhost:4317',
+      }),
+      // Export metrics every 60 seconds
+      exportIntervalMillis: 60000,
     }),
-    // Export metrics every 60 seconds
-    exportIntervalMillis: 60000,
-  }),
+  ],
   // Auto-instrumentation covers Express, HTTP, pg, mysql, redis, etc.
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -161,7 +163,7 @@ This example shows how custom transaction tracing translates between the two API
 
 // After: OpenTelemetry custom instrumentation
 // The span API is more explicit but follows the same parent-child model
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer instance for your module
 // The name helps identify where spans originate
@@ -179,7 +181,7 @@ async function processOrder(orderId) {
     } catch (error) {
       // Record exceptions on the span for error tracking
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
     } finally {
       // Always end the span when the operation completes
@@ -245,7 +247,8 @@ exporters:
       api-key: "${NEW_RELIC_LICENSE_KEY}"
   # Also send to your new backend
   otlphttp/oneuptime:
-    endpoint: https://otlp.oneuptime.com
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
