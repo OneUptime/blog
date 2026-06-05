@@ -43,7 +43,7 @@ graph LR
 
 **CONSUMER** spans represent the processing of a message received from an asynchronous source. When your service pulls a message from a queue and processes it, the span for that work is a CONSUMER span. PRODUCER and CONSUMER spans form pairs across asynchronous boundaries.
 
-**INTERNAL** spans represent operations that do not cross a service boundary. Database queries from within your service, local computations, cache lookups, and business logic are all INTERNAL spans. This is the default span kind if you do not specify one.
+**INTERNAL** spans represent operations that do not cross a service boundary. Local computations, in-process cache lookups, and business logic are all INTERNAL spans. This is the default span kind if you do not specify one.
 
 ## CLIENT and SERVER: Synchronous Communication
 
@@ -65,9 +65,9 @@ def handle_create_order(request):
         "POST /api/orders",
         kind=SpanKind.SERVER,
         attributes={
-            "http.method": "POST",
+            "http.request.method": "POST",
             "http.route": "/api/orders",
-            "http.scheme": "https",
+            "url.scheme": "https",
         },
     ) as span:
         order = validate_order(request.body)
@@ -75,7 +75,7 @@ def handle_create_order(request):
         # CLIENT span: making an outbound request
         inventory = check_inventory(order)
 
-        span.set_attribute("http.status_code", 201)
+        span.set_attribute("http.response.status_code", 201)
         return {"status": "created", "order_id": order.id}
 
 
@@ -85,21 +85,21 @@ def check_inventory(order):
         "GET /api/inventory/check",
         kind=SpanKind.CLIENT,
         attributes={
-            "http.method": "GET",
-            "http.url": "http://inventory-service/api/inventory/check",
+            "http.request.method": "GET",
+            "url.full": "http://inventory-service/api/inventory/check",
             "peer.service": "inventory-service",
         },
     ) as span:
-        # The trace context propagates automatically through headers
+        # HTTP client instrumentation injects the trace context into headers
         response = requests.get(
             "http://inventory-service/api/inventory/check",
             params={"sku": order.sku, "quantity": order.quantity},
         )
-        span.set_attribute("http.status_code", response.status_code)
+        span.set_attribute("http.response.status_code", response.status_code)
         return response.json()
 ```
 
-The critical detail is that CLIENT and SERVER spans have a parent-child relationship through context propagation. The CLIENT span's trace context gets injected into the outbound request headers. The receiving service extracts it and creates a SERVER span as a child of that CLIENT span. Your observability backend uses this pair to calculate the network latency between services (the time gap between the CLIENT span end and the SERVER span start, or more precisely, the difference in their durations).
+The critical detail is that CLIENT and SERVER spans have a parent-child relationship through context propagation. The CLIENT span's trace context gets injected into the outbound request headers. The receiving service extracts it and creates a SERVER span as a child of that CLIENT span. Your observability backend can use this pair to reason about service-to-service latency. The CLIENT span duration includes the caller-observed round trip, while the SERVER span duration covers the receiver's handling time; the difference between them approximates transport and client-side overhead when clocks are comparable.
 
 Most HTTP and gRPC auto-instrumentation libraries handle CLIENT and SERVER span creation automatically. You should rely on auto-instrumentation for these whenever possible. Manual creation is needed only when you have custom transport mechanisms.
 
@@ -124,7 +124,8 @@ def publish_order_event(order):
         attributes={
             "messaging.system": "kafka",
             "messaging.destination.name": "order-events",
-            "messaging.operation": "publish",
+            "messaging.operation.name": "send",
+            "messaging.operation.type": "send",
         },
     ) as span:
         # Build the message
@@ -163,8 +164,7 @@ def process_messages():
         ctx = extract(carrier)
 
         # CONSUMER span represents processing the received message
-        # Use the extracted context as the parent, creating a link
-        # back to the PRODUCER span
+        # Use the extracted context as the parent
         with tracer.start_as_current_span(
             "order.created process",
             context=ctx,
@@ -172,7 +172,8 @@ def process_messages():
             attributes={
                 "messaging.system": "kafka",
                 "messaging.destination.name": "order-events",
-                "messaging.operation": "process",
+                "messaging.operation.name": "process",
+                "messaging.operation.type": "process",
                 "messaging.message.id": message.key,
             },
         ) as span:
@@ -188,6 +189,7 @@ There is a subtlety with CONSUMER spans and context linking. You have two option
 
 ```python
 from opentelemetry.trace import Link
+from opentelemetry.context import Context
 
 def process_message_with_link(message):
     # Extract the producer's context
@@ -200,12 +202,14 @@ def process_message_with_link(message):
     # Create a new trace with a link to the producer
     with tracer.start_as_current_span(
         "order.created process",
+        context=Context(),
         kind=SpanKind.CONSUMER,
         links=[Link(producer_span_context)],
         attributes={
             "messaging.system": "kafka",
             "messaging.destination.name": "order-events",
-            "messaging.operation": "process",
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
         },
     ) as span:
         handle_order_event(json.loads(message.value))
@@ -258,10 +262,10 @@ with tracer.start_as_current_span(
     "SELECT orders",
     kind=SpanKind.CLIENT,
     attributes={
-        "db.system": "postgresql",
-        "db.name": "orders_db",
-        "db.operation": "SELECT",
-        "db.statement": "SELECT * FROM orders WHERE customer_id = ?",
+        "db.system.name": "postgresql",
+        "db.namespace": "orders_db",
+        "db.operation.name": "SELECT",
+        "db.query.text": "SELECT * FROM orders WHERE customer_id = ?",
     },
 ) as span:
     results = db.execute("SELECT * FROM orders WHERE customer_id = ?", [customer_id])
@@ -275,7 +279,7 @@ Understanding why span kinds matter requires knowing how backends interpret them
 
 **Service maps.** Your backend builds service dependency graphs by looking for CLIENT/SERVER and PRODUCER/CONSUMER pairs. A CLIENT span from Service A matched with a SERVER span in Service B creates an edge in the service map. Wrong span kinds produce incorrect service maps.
 
-**Latency calculation.** The time between a CLIENT span starting and its corresponding SERVER span starting approximates network latency. If you mark an INTERNAL span as CLIENT, the latency calculation includes processing time and becomes meaningless.
+**Latency calculation.** The CLIENT span duration captures the caller-observed round trip, while the corresponding SERVER span duration captures the receiver's handling time. The difference between those durations can approximate transport and client-side overhead when clocks are comparable. If you mark an INTERNAL span as CLIENT, this analysis includes unrelated local processing time and becomes misleading.
 
 **Throughput metrics.** Backends often count SERVER spans to determine service throughput (requests per second). If your service has INTERNAL spans incorrectly marked as SERVER, your throughput numbers will be inflated.
 
@@ -366,7 +370,7 @@ def handle_api_request(request):
                 "http://payment-service/api/payments/charge",
                 json={"amount": order.total},
             )
-            client_span.set_attribute("http.status_code", payment.status_code)
+            client_span.set_attribute("http.response.status_code", payment.status_code)
 
         # INTERNAL: save to database (auto-instrumented as CLIENT by DB library)
         save_order(order)
@@ -375,11 +379,15 @@ def handle_api_request(request):
         with tracer.start_as_current_span(
             "order.created publish",
             kind=SpanKind.PRODUCER,
-            attributes={"messaging.system": "kafka"},
+            attributes={
+                "messaging.system": "kafka",
+                "messaging.operation.name": "send",
+                "messaging.operation.type": "send",
+            },
         ) as producer_span:
             publish_event("order-events", {"order_id": order.id})
 
-        server_span.set_attribute("http.status_code", 201)
+        server_span.set_attribute("http.response.status_code", 201)
         return {"order_id": order.id}
 ```
 
