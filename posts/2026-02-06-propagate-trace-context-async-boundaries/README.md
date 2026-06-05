@@ -118,17 +118,17 @@ def propagate_context(func):
 
 def handle_request():
     with tracer.start_as_current_span("handle-request"):
-        executor = ThreadPoolExecutor(max_workers=4)
+        with ThreadPoolExecutor(max_workers=4) as executor:
 
-        # Wrap the task function to propagate context
-        @propagate_context
-        def process_item(item_id):
-            with tracer.start_as_current_span(f"process-{item_id}"):
-                return do_processing(item_id)
+            # Wrap the task function to propagate context
+            @propagate_context
+            def process_item(item_id):
+                with tracer.start_as_current_span(f"process-{item_id}"):
+                    return do_processing(item_id)
 
-        # Submit wrapped tasks - context propagates automatically
-        futures = [executor.submit(process_item(), i) for i in range(10)]
-        results = [f.result() for f in futures]
+            # Submit wrapped tasks - context propagates automatically
+            futures = [executor.submit(process_item(i)) for i in range(10)]
+            results = [f.result() for f in futures]
 ```
 
 The decorator snapshots the context at the moment the task is submitted, not when it eventually runs on the thread pool. This distinction matters because the thread pool might execute the task much later, after the original context has changed.
@@ -172,7 +172,7 @@ async function handleRequest(req: Request) {
 }
 ```
 
-The trouble starts when you do things that break out of the normal async chain. Event emitters, manual callbacks, and `setTimeout` can all cause problems:
+The trouble starts when you do things that break out of the normal async chain. Event emitters and manual callbacks can cause problems when they run from a different async scope. Timers usually keep context when they are scheduled inside the active context, but scheduled jobs created outside a request have no request context to inherit:
 
 ```typescript
 // broken_eventemitter.ts - Context lost through event emitters
@@ -181,6 +181,14 @@ import { EventEmitter } from "events";
 
 const tracer = trace.getTracer("my-service");
 const emitter = new EventEmitter();
+const pendingData: any[] = [];
+
+setInterval(() => {
+    const data = pendingData.shift();
+    if (data) {
+        emitter.emit("data-ready", data);
+    }
+}, 1000);
 
 // This listener loses context because the event is emitted
 // from a different async scope
@@ -196,7 +204,7 @@ function handleRequest() {
     tracer.startActiveSpan("handle-request", (span) => {
         // The event fires later, possibly outside this context
         fetchData().then((data) => {
-            emitter.emit("data-ready", data);
+            pendingData.push(data);
         });
         span.end();
     });
@@ -212,6 +220,14 @@ import { EventEmitter } from "events";
 
 const tracer = trace.getTracer("my-service");
 const emitter = new EventEmitter();
+const pendingData: any[] = [];
+
+setInterval(() => {
+    const data = pendingData.shift();
+    if (data) {
+        emitter.emit("data-ready", data);
+    }
+}, 1000);
 
 function handleRequest() {
     tracer.startActiveSpan("handle-request", (span) => {
@@ -226,10 +242,10 @@ function handleRequest() {
             });
         });
 
-        emitter.on("data-ready", boundListener);
+        emitter.once("data-ready", boundListener);
 
         fetchData().then((data) => {
-            emitter.emit("data-ready", data);
+            pendingData.push(data);
         });
 
         span.end();
