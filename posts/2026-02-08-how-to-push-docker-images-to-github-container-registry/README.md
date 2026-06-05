@@ -12,7 +12,7 @@ GitHub Container Registry (GHCR) stores Docker images alongside your source code
 
 ## How GHCR Works
 
-GHCR is part of GitHub Packages. It hosts OCI-compliant container images at `ghcr.io`. Images can be public (free, unlimited) or private (included in your GitHub plan's Packages allowance). Each image can be linked to a repository for better discoverability and access control.
+GHCR is part of GitHub Packages. It hosts OCI-compliant container images at `ghcr.io`. Images can be public or private, and GitHub currently does not bill for Container registry image storage or bandwidth. Each image can be linked to a repository for better discoverability and access control.
 
 The image naming convention:
 
@@ -36,11 +36,9 @@ Create a PAT with the `write:packages` scope:
 
 ```bash
 # Login to GHCR using your PAT
-
 echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
-# Verify the login
-docker pull ghcr.io/library/hello-world 2>/dev/null && echo "Login successful"
+# docker login prints "Login Succeeded" when authentication succeeds
 ```
 
 ### GitHub Actions Token (for CI/CD)
@@ -49,14 +47,14 @@ In GitHub Actions, use the built-in `GITHUB_TOKEN`:
 
 ```yaml
 - name: Login to GHCR
-  uses: docker/login-action@v3
+  uses: docker/login-action@v4
   with:
     registry: ghcr.io
     username: ${{ github.actor }}
     password: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The `GITHUB_TOKEN` has write:packages permission by default in workflows.
+Grant `packages: write` in your workflow permissions when you use `GITHUB_TOKEN` to publish images.
 
 ## Building and Pushing an Image
 
@@ -107,11 +105,11 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Login to GHCR
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -120,7 +118,7 @@ jobs:
       # Extract metadata for image tags and labels
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -132,11 +130,11 @@ jobs:
 
       # Set up Docker Buildx for advanced features
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Build and push with caching
       - name: Build and Push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -146,7 +144,7 @@ jobs:
           cache-to: type=gha,mode=max
 ```
 
-This workflow uses the metadata-action to generate smart tags. On a push to main, it tags as `latest` and with the commit SHA. On a release, it creates semantic version tags like `v1.2.3` and `v1.2`.
+This workflow uses the metadata-action to generate smart tags. On a push to main, it tags as `latest` and with the commit SHA. On a release, it creates semantic version tags like `1.2.3` and `1.2`.
 
 ## Linking Images to Repositories
 
@@ -161,24 +159,15 @@ This label tells GHCR which repository the image belongs to. The image then appe
 
 ## Visibility and Access Control
 
-By default, new images are private. Change visibility from the GitHub UI or CLI:
+By default, new images are private. Change visibility from the GitHub UI:
 
-```bash
-# Using the GitHub CLI to manage package visibility
-gh api -X PATCH /user/packages/container/myapp/versions \
-  --field visibility=public
-
-# Or from the Packages settings page on GitHub:
-# https://github.com/users/USERNAME/packages/container/myapp/settings
+```text
+https://github.com/users/USERNAME/packages/container/myapp/settings
 ```
 
 For private images, grant access to specific users or teams:
 
-```bash
-# Add a collaborator to a private image
-gh api -X PUT /user/packages/container/myapp/collaborators/USERNAME \
-  --field permission=read
-```
+Use the package settings page, then under "Manage access" or "Inherited access", invite teams or people and choose a read, write, or admin role.
 
 ## Pulling from GHCR
 
@@ -237,13 +226,13 @@ Build and push images for multiple platforms:
 ```yaml
 # In your GitHub Actions workflow
 - name: Set up QEMU
-  uses: docker/setup-qemu-action@v3
+  uses: docker/setup-qemu-action@v4
 
 - name: Set up Buildx
-  uses: docker/setup-buildx-action@v3
+  uses: docker/setup-buildx-action@v4
 
 - name: Build and Push Multi-Arch
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     platforms: linux/amd64,linux/arm64
@@ -298,6 +287,6 @@ jobs:
 
 ## Comparing GHCR with Docker Hub
 
-GHCR wins on cost for public images (entirely free with no pull rate limits) and on integration with GitHub Actions. Docker Hub wins on discoverability and community. Many teams use both: GHCR for their private application images and Docker Hub for base images and open-source projects.
+GHCR wins on cost for public images and on integration with GitHub Actions. Docker Hub wins on discoverability and community. Many teams use both: GHCR for their private application images and Docker Hub for base images and open-source projects.
 
 GitHub Container Registry is the simplest way to store Docker images when your code is on GitHub. The `GITHUB_TOKEN` authentication eliminates credential management, the metadata-action generates smart tags automatically, and the build cache through GitHub Actions speeds up builds significantly. For most GitHub-based projects, GHCR is the default choice.
