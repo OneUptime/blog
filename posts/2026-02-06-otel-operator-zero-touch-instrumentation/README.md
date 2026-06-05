@@ -44,13 +44,13 @@ helm install opentelemetry-operator \
   open-telemetry/opentelemetry-operator \
   --namespace otel-system \
   --create-namespace \
-  --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
+  --set "manager.collectorImage.repository=otel/opentelemetry-collector-k8s" \
   --set "admissionWebhooks.certManager.enabled=true"
 ```
 
 ## Creating an Instrumentation Resource
 
-The `Instrumentation` custom resource defines how auto-instrumentation behaves for each language. Create one resource per language you want to support.
+The `Instrumentation` custom resource defines how auto-instrumentation behaves for each language. Create a resource with the language settings you want to support in that namespace.
 
 ```yaml
 # instrumentation/python-instrumentation.yaml
@@ -79,6 +79,9 @@ spec:
   python:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
     env:
+      # Required because Python auto-instrumentation uses OTLP/HTTP by default
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://otel-collector.otel-system.svc.cluster.local:4318
       # Resource attributes applied to all telemetry from Python services
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "telemetry.auto_instrumented=true"
@@ -95,7 +98,7 @@ spec:
 
   # Node.js-specific settings
   nodejs:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-node:latest
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
     env:
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "telemetry.auto_instrumented=true"
@@ -136,7 +139,7 @@ spec:
               value: "team.name=commerce,service.tier=critical"
 ```
 
-## Platform-Wide Auto-Injection with Namespace Labels
+## Platform-Wide Auto-Injection with Namespace Annotations
 
 Instead of annotating every deployment, you can configure auto-instrumentation at the namespace level. This is useful when the platform team wants to ensure all services in a team's namespace are instrumented.
 
@@ -146,13 +149,12 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: team-alpha
-  labels:
-    # Custom label that your admission controller watches
-    platform.internal/auto-instrument: "true"
-    platform.internal/default-language: "python"
+  annotations:
+    # The operator applies this instrumentation to pods in the namespace
+    instrumentation.opentelemetry.io/inject-python: "otel-system/python-instrumentation"
 ```
 
-Then use a small admission webhook or a policy engine like Kyverno to automatically add annotations:
+For label-driven rollouts, use a small admission webhook or a policy engine like Kyverno to automatically add annotations:
 
 ```yaml
 # kyverno-policy/auto-instrument.yaml
@@ -186,7 +188,7 @@ The Operator also manages Collector deployments. Define a Collector as a custom 
 
 ```yaml
 # collector/gateway-collector.yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: gateway
@@ -194,7 +196,7 @@ metadata:
 spec:
   mode: deployment  # Can be deployment, daemonset, or sidecar
   replicas: 3
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
