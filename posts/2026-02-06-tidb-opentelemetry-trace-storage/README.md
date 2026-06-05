@@ -16,21 +16,22 @@ In this guide, we will walk through setting up TiDB as a trace storage backend f
 
 Most teams default to Jaeger with Cassandra or Elasticsearch for trace storage. These work fine at moderate scale, but they come with operational complexity. TiDB offers a different set of tradeoffs that are worth considering.
 
-TiDB supports standard SQL, so your team does not need to learn a new query language. It scales horizontally by adding more TiKV nodes, so you can grow storage and throughput without re-architecting. It also supports secondary indexes, which makes trace queries by service name, operation, or custom attributes fast without building separate indexing layers.
+TiDB supports standard SQL, so your team does not need to learn a new query language. It scales horizontally by adding more TiKV nodes, so you can grow storage and throughput without re-architecting. It also supports secondary indexes, which makes trace queries by service name or operation fast, and lets you index selected custom attributes without building separate indexing layers.
 
 The MySQL wire protocol compatibility means you can use existing MySQL client libraries and tools. This reduces the integration burden significantly.
 
 ## Architecture Overview
 
-The setup involves three main components: the OpenTelemetry Collector that receives and processes traces, TiDB that stores the trace data, and your query layer that reads traces back for visualization and analysis.
+The setup involves four main components: the OpenTelemetry Collector that receives and processes traces, a small writer service that batches inserts, TiDB that stores the trace data, and your query layer that reads traces back for visualization and analysis.
 
 ```mermaid
 graph LR
     A[Application with OTel SDK] -->|OTLP| B[OpenTelemetry Collector]
-    B -->|SQL Insert| C[TiDB Cluster]
-    C --> D[TiKV Storage Nodes]
-    C --> E[TiFlash Analytics Nodes]
-    F[Query UI / Grafana] -->|SQL Select| C
+    B -->|OTLP| C[Trace Writer Service]
+    C -->|SQL Insert| D[TiDB Cluster]
+    D --> E[TiKV Storage Nodes]
+    D --> F[Optional TiFlash Analytics Nodes]
+    G[Query UI / Grafana] -->|SQL Select| D
 ```
 
 TiDB separates its compute layer (TiDB servers) from its storage layer (TiKV for row storage, TiFlash for columnar analytics). This separation is useful for trace workloads because you can scale write throughput and read performance independently.
@@ -127,18 +128,20 @@ CREATE TABLE span_attributes (
 -- Indexes for common query patterns
 -- Service name lookups are the most frequent query type
 CREATE INDEX idx_service_time ON spans (service_name, start_time);
-CREATE INDEX idx_duration ON spans (service_name, duration_ns);
+CREATE INDEX idx_operation_time ON spans (operation_name, start_time);
+CREATE INDEX idx_duration ON spans (duration_ns);
+CREATE INDEX idx_attr_key_value ON span_attributes (attr_key, attr_value(256));
 ```
 
 The partitioning strategy is important. By partitioning on `start_time`, you can drop old partitions instead of running expensive DELETE queries. This keeps write performance stable over time.
 
 ## Configuring the OpenTelemetry Collector
 
-The OpenTelemetry Collector does not ship with a native TiDB exporter, but since TiDB speaks the MySQL protocol, you can use a custom exporter or the SQL-based exporter. Here is a collector configuration that uses the SQL exporter to write traces into TiDB.
+The OpenTelemetry Collector does not ship with a native TiDB exporter or a generic SQL trace exporter. Since TiDB speaks the MySQL protocol, a common approach is to export traces via OTLP to a small bridge service that uses a MySQL client library to batch-insert into TiDB.
 
 ```yaml
 # otel-collector-config.yaml
-# Collector configuration for TiDB trace export
+# Collector configuration for sending traces to a TiDB bridge service
 receivers:
   otlp:
     protocols:
@@ -162,40 +165,36 @@ processors:
     timeout: 5s
 
 exporters:
-  # Use the contrib SQL exporter targeting TiDB via MySQL protocol
-  sql:
-    driver: mysql
-    datasource: "otel_user:secure_password@tcp(10.0.1.1:4000)/otel_traces"
-    # Table and column mapping for spans
-    traces:
-      table_name: spans
-      attribute_table_name: span_attributes
+  # Send OTLP traces to a bridge service that batches inserts into TiDB
+  otlp:
+    endpoint: tidb-trace-writer:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [sql]
+      exporters: [otlp]
 ```
 
-If the SQL exporter does not fit your needs, another approach is to export traces via OTLP to a small bridge service that uses a MySQL client library to batch-insert into TiDB. This gives you more control over the insert logic and lets you handle backpressure more gracefully.
+This bridge-service approach gives you control over the insert logic and lets you handle retries and backpressure more gracefully.
 
 ## Tuning Write Performance
 
 TiDB performs best when you batch your writes. The collector's batch processor helps, but you should also tune TiDB itself.
 
 ```sql
--- Increase the transaction size limit for batch inserts
--- Default is 100MB which is usually sufficient for trace batches
+-- Increase the session memory quota used by larger batch inserts
 SET GLOBAL tidb_mem_quota_query = 2147483648;
 
 -- Enable prepared plan cache to speed up repeated insert patterns
--- The collector will issue the same INSERT structure repeatedly
+-- The writer service will issue the same INSERT structure repeatedly
 SET GLOBAL tidb_enable_prepared_plan_cache = ON;
 
 -- Tune the number of concurrent regions for write-heavy workloads
--- More regions means better write distribution across TiKV nodes
+-- Newly created table regions can be scattered across TiKV nodes
 SET GLOBAL tidb_scatter_region = ON;
 ```
 
