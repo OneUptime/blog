@@ -8,13 +8,13 @@ Description: Learn how to implement distributed tracing and metrics for ASP.NET 
 
 gRPC has become the go-to choice for inter-service communication in microservices architectures, offering efficient binary serialization, strong typing through Protocol Buffers, and excellent performance. However, debugging issues in distributed gRPC systems requires comprehensive observability. OpenTelemetry provides the instrumentation needed to trace requests across services and collect meaningful metrics about gRPC performance.
 
-ASP.NET Core's gRPC implementation integrates seamlessly with OpenTelemetry, automatically creating spans for incoming requests and outgoing calls. Combined with custom instrumentation, you get complete visibility into your gRPC services.
+ASP.NET Core's gRPC implementation integrates with OpenTelemetry, creating spans for incoming requests when gRPC support is enabled and for outgoing calls with the gRPC client instrumentation package. Combined with custom instrumentation, you get complete visibility into your gRPC services.
 
 ## Understanding gRPC Observability Challenges
 
 Traditional HTTP observability tools don't always translate well to gRPC. gRPC uses HTTP/2 with binary payloads, making traffic harder to inspect. Streaming RPCs add complexity since a single RPC can involve multiple messages flowing in both directions over an extended period.
 
-OpenTelemetry addresses these challenges by providing automatic instrumentation that understands gRPC semantics, creating appropriate spans for unary calls, server streaming, client streaming, and bidirectional streaming RPCs.
+OpenTelemetry addresses these challenges by providing instrumentation that understands gRPC semantics, creating appropriate spans for unary calls, server streaming, client streaming, and bidirectional streaming RPCs.
 
 ## Setting Up the gRPC Project
 
@@ -29,13 +29,14 @@ cd GrpcObservabilityDemo
 # Add OpenTelemetry packages
 dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
-dotnet add package OpenTelemetry.Instrumentation.GrpcNetClient
+dotnet add package OpenTelemetry.Instrumentation.GrpcNetClient --prerelease
+dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.Console
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package Grpc.Net.Client
 ```
 
-The GrpcNetClient package provides instrumentation for gRPC clients, while AspNetCore instrumentation handles server-side gRPC calls.
+The OpenTelemetry.Instrumentation.GrpcNetClient package provides instrumentation for gRPC clients, while AspNetCore instrumentation handles server-side gRPC calls. Grpc.Net.Client provides the .NET gRPC client implementation.
 
 ## Defining the Proto Service Contract
 
@@ -125,11 +126,18 @@ Set up comprehensive observability in your Program.cs:
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
+using GrpcObservabilityDemo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add gRPC services
 builder.Services.AddGrpc();
+
+// Enable experimental ASP.NET Core instrumentation support for gRPC server requests
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_ENABLE_GRPC_INSTRUMENTATION"] = "true"
+});
 
 // Configure OpenTelemetry
 builder.Services.AddOpenTelemetry()
@@ -145,17 +153,14 @@ builder.Services.AddOpenTelemetry()
             options.RecordException = true;
             options.EnrichWithHttpRequest = (activity, httpRequest) =>
             {
-                // Add gRPC-specific metadata
-                if (httpRequest.Headers.TryGetValue("grpc-status", out var status))
+                if (httpRequest.ContentType?.StartsWith("application/grpc", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    activity.SetTag("grpc.status_code", status.ToString());
+                    activity.SetTag("rpc.system", "grpc");
                 }
             };
         })
-        .AddGrpcClientInstrumentation(options =>
-        {
-            options.RecordException = true;
-        })
+        .AddGrpcClientInstrumentation()
+        .AddHttpClientInstrumentation()
         .AddSource("GrpcObservabilityDemo.*")
         .AddConsoleExporter()
         .AddOtlpExporter(otlpOptions =>
@@ -177,7 +182,7 @@ app.MapGet("/", () => "gRPC service is running. Use a gRPC client to communicate
 app.Run();
 ```
 
-This configuration automatically instruments both server and client gRPC calls, creating spans that capture timing, status codes, and errors.
+This configuration enables instrumentation for both server and client gRPC calls, creating spans that capture timing, status codes, and errors.
 
 ## Implementing the Instrumented gRPC Service
 
@@ -185,6 +190,7 @@ Create the order service implementation with custom instrumentation:
 
 ```csharp
 using Grpc.Core;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
@@ -197,7 +203,7 @@ public class OrderService : GrpcObservabilityDemo.OrderService.OrderServiceBase
     private readonly Meter _meter;
     private readonly Counter<long> _ordersCreatedCounter;
     private readonly Histogram<double> _orderProcessingDuration;
-    private readonly Dictionary<string, Order> _orders = new();
+    private static readonly ConcurrentDictionary<string, Order> _orders = new();
 
     public OrderService(ILogger<OrderService> logger, IMeterFactory meterFactory)
     {
@@ -452,6 +458,7 @@ Create a client to test the instrumented service:
 ```csharp
 using Grpc.Net.Client;
 using System.Diagnostics;
+using GrpcObservabilityDemo;
 
 namespace GrpcObservabilityDemo.Client;
 
@@ -597,13 +604,13 @@ public override async Task<Order> GetOrder(GetOrderRequest request, ServerCallCo
         }
 
         activity?.SetStatus(ActivityStatusCode.Ok);
-        activity?.SetTag("grpc.status_code", StatusCode.OK);
+        activity?.SetTag("rpc.grpc.status_code", (int)StatusCode.OK);
 
         return order;
     }
     catch (RpcException ex)
     {
-        activity?.SetTag("grpc.status_code", ex.StatusCode);
+        activity?.SetTag("rpc.grpc.status_code", (int)ex.StatusCode);
         throw;
     }
 }
@@ -616,7 +623,7 @@ Mapping gRPC status codes to span status and tags helps you filter and analyze f
 Bidirectional streaming RPCs require special attention since multiple messages flow in both directions:
 
 ```csharp
-public override async Task<BidirectionalStreamResponse> ProcessBidirectional(
+public override async Task ProcessBidirectional(
     IAsyncStreamReader<StreamRequest> requestStream,
     IServerStreamWriter<StreamResponse> responseStream,
     ServerCallContext context)
@@ -648,8 +655,6 @@ public override async Task<BidirectionalStreamResponse> ProcessBidirectional(
 
         activity?.SetTag("messages.processed", messageCount);
         activity?.SetStatus(ActivityStatusCode.Ok);
-
-        return new BidirectionalStreamResponse { ProcessedCount = messageCount };
     }
     catch (Exception ex)
     {
