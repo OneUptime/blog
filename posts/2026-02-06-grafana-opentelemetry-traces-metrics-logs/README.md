@@ -72,9 +72,9 @@ exporters:
     # Send metrics to Grafana Mimir using Prometheus remote write
     endpoint: http://mimir:9009/api/v1/push
 
-  loki:
-    # Send logs to Grafana Loki
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    # Send logs to Grafana Loki's native OTLP endpoint
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
@@ -89,14 +89,14 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
-The key thing here is that each pipeline maps one signal type to one exporter. Traces go to Tempo, metrics go to Mimir via Prometheus remote write, and logs go to Loki. The batch processor groups data before sending it out, which reduces the number of network calls and improves throughput.
+The key thing here is that each pipeline maps one signal type to one exporter. Traces go to Tempo, metrics go to Mimir via Prometheus remote write, and logs go to Loki using its native OTLP endpoint. The batch processor groups data before sending it out, which reduces the number of network calls and improves throughput.
 
 ## Docker Compose for the Full Stack
 
-Here is a Docker Compose file that brings up every component. This gives you a working local environment in a single command.
+Here is a Docker Compose file that brings up every component. With the referenced backend configuration files in place, this gives you a working local environment in a single command.
 
 ```yaml
 # docker-compose.yaml
@@ -175,18 +175,27 @@ apiVersion: 1
 datasources:
   - name: Tempo
     type: tempo
+    uid: tempo
     access: proxy
     # Points Grafana to the Tempo query frontend
     url: http://tempo:3200
     jsonData:
       tracesToMetrics:
         datasourceUid: mimir
-      tracesToLogs:
+        queries:
+          - name: Request rate
+            query: 'sum(rate(http_server_request_duration_seconds_count{$$__tags}[5m]))'
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ['service.name']
+        tags:
+          - key: service.name
+            value: service_name
+        filterByTraceID: true
+        filterBySpanID: false
 
   - name: Mimir
     type: prometheus
+    uid: mimir
     access: proxy
     # Mimir is Prometheus-compatible, so use the Prometheus data source type
     url: http://mimir:9009/prometheus
@@ -197,18 +206,20 @@ datasources:
 
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     # Points Grafana to the Loki API
     url: http://loki:3100
     jsonData:
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: "traceID=(\\w+)"
+          matcherType: label
+          matcherRegex: "trace[_]?id"
           name: TraceID
           url: "$${__value.raw}"
 ```
 
-This configuration does more than just connect data sources. It also sets up cross-signal correlation. The `tracesToMetrics` field on Tempo lets you jump from a trace to related metrics. The `tracesToLogs` field links traces to logs. The `exemplarTraceIdDestinations` on Mimir lets you click an exemplar on a metric chart and go straight to the trace. And the `derivedFields` on Loki extract trace IDs from log lines and link them back to Tempo.
+This configuration does more than just connect data sources. It also sets up cross-signal correlation. The `tracesToMetrics` field on Tempo lets you jump from a trace to related metrics. The `tracesToLogsV2` field links traces to logs. The `exemplarTraceIdDestinations` on Mimir lets you click an exemplar on a metric chart and go straight to the trace. And the `derivedFields` on Loki extract trace IDs from log labels or structured metadata and link them back to Tempo.
 
 ## Correlating Signals in Grafana
 
@@ -237,6 +248,11 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-grpc');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { SimpleLogRecordProcessor } = require('@opentelemetry/sdk-logs');
 
@@ -245,23 +261,27 @@ const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4317',
   }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: 'http://localhost:4317',
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: 'http://localhost:4317',
+      }),
+      // Export metrics every 15 seconds
+      exportIntervalMillis: 15000,
     }),
-    // Export metrics every 15 seconds
-    exportIntervalMillis: 15000,
-  }),
-  logRecordProcessor: new SimpleLogRecordProcessor(
-    new OTLPLogExporter({
-      url: 'http://localhost:4317',
-    })
-  ),
+  ],
+  logRecordProcessors: [
+    new SimpleLogRecordProcessor(
+      new OTLPLogExporter({
+        url: 'http://localhost:4317',
+      })
+    ),
+  ],
   // Resource attributes that tie all signals together
-  resourceAttributes: {
-    'service.name': 'my-web-app',
-    'service.version': '1.0.0',
-  },
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-web-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+  }),
 });
 
 // Start the SDK before your application code runs
