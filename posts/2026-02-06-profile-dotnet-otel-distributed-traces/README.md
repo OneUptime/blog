@@ -6,11 +6,11 @@ Tags: OpenTelemetry, .NET, Profiling, Distributed Trace
 
 Description: Profile .NET applications using OpenTelemetry and link profiling data to distributed traces for deep diagnostics.
 
-.NET applications have mature profiling support through the CLR's built-in diagnostics infrastructure. With OpenTelemetry, you can capture .NET CPU and allocation profiles continuously and link them directly to distributed traces. This gives you the ability to click on a slow span in your trace view and see exactly which .NET methods were consuming CPU or allocating memory during that span.
+.NET applications have mature profiling support through the CLR's built-in diagnostics infrastructure. With Pyroscope and OpenTelemetry, you can capture .NET profiles continuously and link CPU profiling data directly to distributed traces. This gives you the ability to click on a slow span in your trace view and see which .NET methods were consuming CPU during that span.
 
 ## .NET Profiling Fundamentals
 
-The .NET runtime exposes profiling data through EventPipe, a cross-platform diagnostics mechanism. It provides CPU sampling, GC allocation tracking, contention events, and more. The OpenTelemetry .NET profiling integration taps into EventPipe to capture this data and export it as OpenTelemetry profiles.
+The .NET runtime exposes diagnostic data through EventPipe, a cross-platform diagnostics mechanism. EventPipe can carry runtime events such as CPU sampling, GC allocation tracking, contention events, and more. Pyroscope's .NET profiler uses the CLR profiling APIs and native profiler libraries to capture profiles, while `Pyroscope.OpenTelemetry` links those profiles to OpenTelemetry traces.
 
 ## Installing the Profiling Package
 
@@ -18,7 +18,12 @@ Add the profiling packages to your .NET project:
 
 ```bash
 dotnet add package OpenTelemetry
+dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
+dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet add package OpenTelemetry.Instrumentation.Http
+dotnet add package OpenTelemetry.Instrumentation.SqlClient
+dotnet add package Pyroscope
 dotnet add package Pyroscope.OpenTelemetry
 ```
 
@@ -27,7 +32,6 @@ dotnet add package Pyroscope.OpenTelemetry
 Set up the profiling agent alongside your existing OpenTelemetry tracing configuration:
 
 ```csharp
-using OpenTelemetry;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using Pyroscope.OpenTelemetry;
@@ -54,23 +58,26 @@ builder.Services.AddOpenTelemetry()
             opts.Endpoint = new Uri("http://collector:4317");
         }));
 
-// Configure Pyroscope profiling
-Pyroscope.Profiler.Instance.Configure(new Pyroscope.ProfilerConfiguration
-{
-    ApplicationName = "order-service",
-    ServerAddress = "http://pyroscope:4040",
-    ProfilingEnabled = true,
-    CpuProfilingEnabled = true,
-    AllocationProfilingEnabled = true,
-    ContentionProfilingEnabled = true,
-    // Enable span-profile linking
-    SpanProfileLinkingEnabled = true
-});
-
 var app = builder.Build();
 ```
 
-The `PyroscopeSpanProcessor` intercepts span start and end events. When a span starts, it tags the current profiling session with the span's trace ID and span ID. All profiling samples captured during that span's lifetime are then associated with it.
+Configure the Pyroscope .NET profiler with environment variables when you start the application:
+
+```bash
+export CORECLR_ENABLE_PROFILING=1
+export CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A}
+export CORECLR_PROFILER_PATH=/dotnet/Pyroscope.Profiler.Native.so
+export LD_PRELOAD=/dotnet/Pyroscope.Linux.ApiWrapper.x64.so
+export LD_LIBRARY_PATH=/dotnet
+export PYROSCOPE_APPLICATION_NAME=order-service
+export PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
+export PYROSCOPE_PROFILING_ENABLED=1
+export PYROSCOPE_PROFILING_CPU_ENABLED=1
+export PYROSCOPE_PROFILING_ALLOCATION_ENABLED=1
+export PYROSCOPE_PROFILING_LOCK_ENABLED=1
+```
+
+The `PyroscopeSpanProcessor` intercepts span start and end events. For root spans, it sets the active Pyroscope profile ID from the span ID and adds a `pyroscope.profile.id` tag to the span. Profiling samples captured while that profile ID is active can then be associated with the trace in Grafana. Span profiles for .NET currently support CPU profiling; allocation and contention profiles are still useful as service-level continuous profiles.
 
 ## CPU Profiling for .NET
 
@@ -143,7 +150,7 @@ The allocation profile would show `CalculatePricing` as a hotspot, with allocati
 
 ## Contention Profiling
 
-.NET contention profiling tracks time spent waiting on locks. This is unique to .NET's profiling capabilities and extremely useful for diagnosing thread pool starvation:
+.NET contention profiling tracks time spent waiting on locks. This is one of the Pyroscope .NET profiler's supported profile types and is useful for diagnosing lock-related latency under load:
 
 ```csharp
 // Contention profiling would flag this pattern
@@ -168,6 +175,8 @@ The contention profile would show threads blocking on `_cacheLock`, giving you e
 
 ## Collector Configuration
 
+In this setup, the OpenTelemetry Collector receives traces from the .NET SDK and forwards them to Tempo. The Pyroscope .NET profiler sends profiles directly to Pyroscope using `PYROSCOPE_SERVER_ADDRESS`.
+
 ```yaml
 receivers:
   otlp:
@@ -180,17 +189,12 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope:4040
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       exporters: [otlp/tempo]
-    profiles:
-      receivers: [otlp]
-      exporters: [otlphttp/pyroscope]
 ```
 
 ## Viewing Connected Data
@@ -200,7 +204,7 @@ In Grafana with Tempo and Pyroscope both configured:
 1. Open the Explore view for Tempo.
 2. Find a trace with a slow span.
 3. Click on the span.
-4. Click the "Profiles" tab.
-5. The flame graph shows .NET method-level profiling data for exactly that span's duration.
+4. Open the linked profile view for the span.
+5. The flame graph shows .NET method-level CPU profiling data associated with that span.
 
-This workflow eliminates the guesswork. Instead of attaching a local profiler and trying to reproduce the issue, you have production profiling data linked directly to the trace that showed the problem. For .NET applications, the combination of CPU, allocation, and contention profiles connected to distributed traces gives you a thorough view of what your code is actually doing in production.
+This workflow eliminates the guesswork. Instead of attaching a local profiler and trying to reproduce the issue, you have production profiling data linked directly to the trace that showed the problem. For .NET applications, the combination of span-linked CPU profiles plus service-level allocation and contention profiles gives you a thorough view of what your code is actually doing in production.
