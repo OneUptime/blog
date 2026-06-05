@@ -12,7 +12,7 @@ This post walks through a concrete setup using the OpenTelemetry Collector to ac
 
 ## The Architecture
 
-The approach is straightforward. You configure two exporters in the collector - one for your primary backend and one for your secondary. You then use the `failover` connector or routing logic to direct data to the secondary when the primary is unhealthy.
+The approach is straightforward. You configure two exporters in the collector - one for your primary backend and one for your secondary. You then use the `failover` connector or routing logic to direct data to downstream pipelines that export to the secondary when the primary pipeline is unhealthy.
 
 In simpler setups, you can use the `sending_queue` and `retry_on_failure` settings aggressively on the primary exporter and configure the secondary exporter through a separate pipeline that activates based on health check results.
 
@@ -56,6 +56,13 @@ exporters:
       enabled: true
       num_consumers: 5
       queue_size: 5000
+
+extensions:
+  file_storage/primary_queue:
+    directory: /var/lib/otelcol/primary_queue
+
+service:
+  extensions: [file_storage/primary_queue]
 ```
 
 ## Using the Failover Connector
@@ -64,26 +71,22 @@ The OpenTelemetry Collector Contrib distribution includes a `failover` connector
 
 ```yaml
 # failover-config.yaml
-# The failover connector sends data to exporters in priority order.
-# It monitors export success rates and switches to the next exporter
-# when the current one fails beyond the configured threshold.
+# The failover connector sends data to downstream pipelines in priority order.
+# If the active pipeline starts returning errors, the connector marks that
+# priority level unhealthy and routes data to the next stable level.
 
 connectors:
   failover/traces:
     priority_levels:
-      - [otlp/primary]
-      - [otlp/secondary]
+      - [traces/primary]
+      - [traces/secondary]
     retry_interval: 30s      # how often to check if primary is back
-    retry_gap: 10s            # minimum gap between retry attempts
-    max_retries: 0            # 0 means keep retrying indefinitely
 
   failover/metrics:
     priority_levels:
-      - [otlp/primary]
-      - [otlp/secondary]
+      - [metrics/primary]
+      - [metrics/secondary]
     retry_interval: 30s
-    retry_gap: 10s
-    max_retries: 0
 
 service:
   pipelines:
@@ -118,8 +121,8 @@ If your secondary backend can handle the full load all the time, a simpler appro
 
 ```yaml
 # fan-out-config.yaml
-# Send data to both backends simultaneously. This gives you zero data loss
-# during failover because the secondary already has all the data.
+# Send data to both backends simultaneously. This reduces failover data loss
+# risk because the secondary is already receiving the same stream.
 # The tradeoff is double the egress bandwidth and storage cost.
 
 service:
@@ -138,7 +141,7 @@ service:
       exporters: [otlp/primary, otlp/secondary]
 ```
 
-This is expensive but simple. You always have a complete copy of your data in both backends. If one goes down, you just point your dashboards and alerts at the other.
+This is expensive but simple. When exports to both backends are succeeding, you have a complete copy of your data in both backends. If one goes down, you just point your dashboards and alerts at the other.
 
 ## Adding Health Check Logic
 
@@ -188,6 +191,8 @@ while True:
         print("Primary is back. Switching to primary config.")
         switch_config(CONFIG_PRIMARY)
         current_mode = "primary"
+        consecutive_failures = 0
+    elif healthy:
         consecutive_failures = 0
     elif not healthy:
         consecutive_failures += 1
