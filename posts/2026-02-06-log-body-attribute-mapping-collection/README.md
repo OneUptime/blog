@@ -37,7 +37,7 @@ JSON logs are the easiest to work with because they already have structure. The 
 # Collecting JSON-formatted application logs
 
 receivers:
-  filelog/json:
+  file_log/json:
     # Path to the log files to tail
     include:
       - /var/log/app/*.json
@@ -46,7 +46,7 @@ receivers:
     operators:
       # Parse the entire log line as JSON
       - type: json_parser
-        # The parsed JSON fields are placed into the log body as a map
+        # The parsed JSON fields are placed into log attributes
         timestamp:
           # Extract timestamp from the JSON "ts" field
           parse_from: attributes.ts
@@ -56,7 +56,7 @@ receivers:
           parse_from: attributes.level
 ```
 
-After the `json_parser` runs, each key from the JSON object becomes a log attribute. A log line like `{"ts": "2026-01-15T10:30:00Z", "level": "error", "msg": "connection refused", "host": "db-1"}` produces a log record with `msg`, `host`, `ts`, and `level` as attributes, with `ts` mapped to the OTLP timestamp and `level` mapped to severity.
+After the `json_parser` runs, each key from the JSON object becomes a log attribute. A log line like `{"ts": "2026-01-15T10:30:00.000Z", "level": "error", "msg": "connection refused", "host": "db-1"}` produces a log record with `msg`, `host`, `ts`, and `level` as attributes, with `ts` mapped to the OTLP timestamp and `level` mapped to severity.
 
 ## Moving Fields Between Body and Attributes
 
@@ -64,7 +64,7 @@ After initial parsing, you often need to reorganize where data lives. The `move`
 
 ```yaml
 receivers:
-  filelog/structured:
+  file_log/structured:
     include:
       - /var/log/app/*.json
     operators:
@@ -94,14 +94,14 @@ Not all logs come as JSON. Legacy applications, system logs, and third-party sof
 
 ```yaml
 receivers:
-  filelog/text:
+  file_log/text:
     include:
       - /var/log/legacy-app/*.log
     operators:
       # Parse structured text logs with regex
       # Example format: 2026-01-15 10:30:00 ERROR [request-handler] Failed to process request id=abc123 duration=1.5s
       - type: regex_parser
-        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<severity>\w+) \[(?P<component>[^\]]+)\] (?P<message>.*)'
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<severity>\w+) \[(?P<component>[^\]]+)\] (?P<message>.*?)(?: (?P<kvpairs>[A-Za-z_][A-Za-z0-9_]*=[^ ]+(?: [A-Za-z_][A-Za-z0-9_]*=[^ ]+)*))?$'
         timestamp:
           parse_from: attributes.timestamp
           layout: "%Y-%m-%d %H:%M:%S"
@@ -113,15 +113,19 @@ receivers:
         from: attributes.message
         to: body
 
-      # Parse key-value pairs from the message body
+      # Parse key-value pairs from the captured tail
       # This extracts "id=abc123 duration=1.5s" into separate attributes
       - type: key_value_parser
-        parse_from: body
-        # Only extract key-value pairs, leave the rest of the body intact
-        on_error: send
+        parse_from: attributes.kvpairs
+        if: 'attributes.kvpairs != nil'
+
+      # Remove the raw key-value tail after parsing
+      - type: remove
+        field: attributes.kvpairs
+        if: 'attributes.kvpairs != nil'
 ```
 
-The regex parser uses named capture groups to extract fields. Each group name becomes an attribute key. After regex parsing, the `key_value_parser` digs into the message body to pull out embedded key-value pairs, giving you queryable attributes like `id` and `duration` that were originally buried in plain text.
+The regex parser uses named capture groups to extract fields. Each group name becomes an attribute key. After regex parsing, the `key_value_parser` parses the captured key-value tail, giving you queryable attributes like `id` and `duration` that were originally buried in plain text.
 
 ## The Transform Processor for Advanced Mapping
 
@@ -130,29 +134,30 @@ When you need more complex transformations than the filelog operators provide, t
 ```yaml
 processors:
   transform/logs:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Set the body to a specific attribute value
-          - set(body, attributes["message"]) where attributes["message"] != nil
+          - set(log.body, log.attributes["message"]) where log.attributes["message"] != nil
 
           # Merge multiple fields into a structured body
-          - set(attributes["http.method"], attributes["method"])
-          - delete_key(attributes, "method")
+          - set(log.attributes["http.method"], log.attributes["method"])
+          - delete_key(log.attributes, "method")
 
           # Normalize severity text to uppercase
-          - set(severity_text, ConvertCase(severity_text, "upper"))
+          - set(log.severity_text, ToUpperCase(log.severity_text)) where log.severity_text != nil
 
           # Extract trace context from log attributes if present
-          - set(trace_id.string, attributes["trace_id"]) where attributes["trace_id"] != nil
-          - set(span_id.string, attributes["span_id"]) where attributes["span_id"] != nil
+          - set(log.trace_id, TraceID(log.attributes["trace_id"])) where log.attributes["trace_id"] != nil
+          - set(log.span_id, SpanID(log.attributes["span_id"])) where log.attributes["span_id"] != nil
 
           # Clean up raw fields after extraction
-          - delete_key(attributes, "trace_id")
-          - delete_key(attributes, "span_id")
+          - delete_key(log.attributes, "trace_id")
+          - delete_key(log.attributes, "span_id")
 
           # Add computed attributes
-          - set(attributes["log.source"], "legacy-app") where resource.attributes["service.name"] == "legacy-service"
+          - set(log.attributes["log.source"], "legacy-app") where resource.attributes["service.name"] == "legacy-service"
 ```
 
 OTTL gives you conditional logic, string manipulation, and field-level control that simple parsers cannot match. The `where` clauses mean transformations only apply to matching log records, so you can handle multiple log formats in a single pipeline.
@@ -163,7 +168,7 @@ Different logging frameworks use different severity schemes. The severity mappin
 
 ```yaml
 receivers:
-  filelog/multi_format:
+  file_log/multi_format:
     include:
       - /var/log/app/*.log
     operators:
@@ -200,7 +205,7 @@ receivers:
             - "50"
 ```
 
-This mapping handles the reality that Java's log4j uses "FATAL", Python's logging uses "CRITICAL", Go applications might use "PANIC", and syslog uses "EMERGENCY". After mapping, they all become the same OTLP severity number, so you can query across services regardless of language or framework.
+This mapping handles the reality that Java's log4j uses "FATAL", Python's logging uses "CRITICAL", Go applications might use "PANIC", and syslog uses "EMERGENCY". After mapping, equivalent framework-specific values become normalized OTLP severity numbers, so you can query across services regardless of language or framework.
 
 Resource Attribute Mapping
 
@@ -208,9 +213,10 @@ Log records also carry resource attributes that identify the producing service. 
 
 ```yaml
 receivers:
-  filelog/k8s:
+  file_log/k8s:
     include:
       - /var/log/pods/*/*/*.log
+    include_file_path: true
     operators:
       # Extract Kubernetes metadata from the file path
       # Path format: /var/log/pods/<namespace>_<pod>_<uid>/<container>/<restart_count>.log
@@ -241,7 +247,7 @@ Here is a complete collector configuration that handles multiple log formats wit
 
 ```yaml
 receivers:
-  filelog/app:
+  file_log/app:
     include:
       - /var/log/app/*.json
     operators:
@@ -263,17 +269,18 @@ receivers:
 
 processors:
   # Enrich with resource detection
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
 
   # Apply final transformations
   transform/logs:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Ensure service name is set from log attributes if available
-          - set(resource.attributes["service.name"], attributes["service"]) where resource.attributes["service.name"] == nil and attributes["service"] != nil
-          - delete_key(attributes, "service")
+          - set(resource.attributes["service.name"], log.attributes["service"]) where resource.attributes["service.name"] == nil and log.attributes["service"] != nil
+          - delete_key(log.attributes, "service")
 
   # Batch for efficient export
   batch:
@@ -287,8 +294,8 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [filelog/app]
-      processors: [resourcedetection, transform/logs, batch]
+      receivers: [file_log/app]
+      processors: [resource_detection, transform/logs, batch]
       exporters: [otlp]
 ```
 
