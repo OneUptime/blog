@@ -94,7 +94,7 @@ gunzip -c /tmp/myapp.tar.gz | docker load
 
 ## Method 2: Docker Export and Import (Container Filesystem)
 
-If you need to capture the current state of a container's filesystem (including modifications made since it started), use export/import.
+If you need to capture the current state of a container's writable filesystem layer (including modifications made since it started), use export/import. This does not include data stored in mounted volumes.
 
 ```bash
 # Export a running container's filesystem
@@ -104,7 +104,7 @@ docker export my_container > my_container_fs.tar
 scp my_container_fs.tar user@new-server:/tmp/
 
 # Import as a new image on the destination
-# Note: export/import loses CMD, ENTRYPOINT, ENV, and other metadata
+# Note: export/import loses CMD, ENTRYPOINT, ENV, and other image metadata
 docker import /tmp/my_container_fs.tar my_container_migrated:latest
 ```
 
@@ -178,7 +178,7 @@ echo "Volume migration complete: $VOLUME_NAME"
 
 ## Migrating Container Configuration
 
-Save complete container configurations so you can recreate them exactly on the new server.
+Save container configurations so you can recreate the important runtime settings on the new server.
 
 ```bash
 #!/bin/bash
@@ -195,7 +195,7 @@ for CONTAINER_ID in $(docker ps -q); do
     # Save the full inspection output
     docker inspect "$CONTAINER_ID" > "${OUTPUT_DIR}/${NAME}_inspect.json"
 
-    # Extract a Docker run command equivalent
+    # Extract a Docker run command with common runtime settings
     # This creates a script that can recreate the container
     IMAGE=$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_ID")
     ENV_VARS=$(docker inspect --format '{{range .Config.Env}}--env "{{.}}" {{end}}' "$CONTAINER_ID")
@@ -235,7 +235,7 @@ Combine everything into one comprehensive migration script:
 
 set -euo pipefail
 
-DEST_SERVER="$1"
+DEST_SERVER="${1:-}"
 DEST_USER="${2:-root}"
 COMPOSE_FILE="${3:-docker-compose.yml}"
 
@@ -255,8 +255,18 @@ IMAGES=$(docker ps --format '{{.Image}}' | sort -u)
 docker save $IMAGES | gzip > /tmp/migration-images.tar.gz
 echo "Images archived: $(echo $IMAGES | wc -w) images"
 
-# Step 2: Archive all volumes used by running containers
-echo "--- Step 2: Archiving volumes ---"
+# Step 2: Stop running containers for consistent volume state
+echo "--- Step 2: Stopping containers ---"
+RUNNING_CONTAINERS=$(docker ps -q)
+docker compose -f "$COMPOSE_FILE" down 2>/dev/null || {
+    if [ -n "$RUNNING_CONTAINERS" ]; then
+        docker stop $RUNNING_CONTAINERS
+    fi
+}
+
+# Step 3: Archive all volumes
+echo "--- Step 3: Archiving volumes ---"
+mkdir -p /tmp/migration-volumes
 VOLUMES=$(docker volume ls -q)
 for VOL in $VOLUMES; do
     echo "  Archiving volume: $VOL"
@@ -266,16 +276,13 @@ for VOL in $VOLUMES; do
         alpine tar czf "/backup/${VOL}.tar.gz" -C /source .
 done
 
-# Step 3: Stop running containers for consistent state
-echo "--- Step 3: Stopping containers ---"
-docker compose -f "$COMPOSE_FILE" down 2>/dev/null || docker stop $(docker ps -q) 2>/dev/null
-
 # Step 4: Transfer everything to the destination
 echo "--- Step 4: Transferring files ---"
 rsync -avz --progress /tmp/migration-images.tar.gz "${DEST_USER}@${DEST_SERVER}:/tmp/"
 rsync -avz --progress /tmp/migration-volumes/ "${DEST_USER}@${DEST_SERVER}:/tmp/migration-volumes/"
 
 if [ -f "$COMPOSE_FILE" ]; then
+    ssh "${DEST_USER}@${DEST_SERVER}" "mkdir -p /opt/app"
     rsync -avz "$COMPOSE_FILE" "${DEST_USER}@${DEST_SERVER}:/opt/app/"
 fi
 
