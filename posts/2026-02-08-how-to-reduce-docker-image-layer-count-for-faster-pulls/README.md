@@ -12,7 +12,7 @@ Every instruction in a Dockerfile that modifies the filesystem creates a new lay
 
 ## How Layers Affect Pull Speed
 
-When Docker pulls an image, it downloads each layer independently. For each layer, it makes at least two HTTP requests to the registry: one to check the manifest and one to download the layer blob. On an image with 30 layers, that is 60+ HTTP requests before any data transfers.
+When Docker pulls an image, it first resolves the image manifest, then downloads the layer blobs that are not already present locally. More layers can still mean more blob requests, more metadata to process, and more filesystem work during extraction.
 
 Check your current image layer count:
 
@@ -54,7 +54,7 @@ The second version creates one layer instead of five. More importantly, the `rm 
 
 ## Technique 2: Multi-Stage Builds
 
-Multi-stage builds are the most powerful way to reduce layers. The final image only contains layers from the last stage, plus any layers copied from previous stages.
+Multi-stage builds are the most powerful way to reduce layers. The final image contains the final stage's base image layers and the layers created in the final stage. `COPY --from` copies selected files from earlier stages into new layers in the final stage.
 
 ```dockerfile
 # Multi-stage build reduces final image to minimal layers
@@ -72,7 +72,7 @@ RUN npm run build
 # Final stage - only these layers end up in the image
 FROM node:20-alpine
 WORKDIR /app
-# These two COPY instructions create two layers
+# These COPY instructions create three layers
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
@@ -81,7 +81,7 @@ USER node
 CMD ["node", "dist/server.js"]
 ```
 
-The builder stages can have as many layers as they want. Only the final stage's layers count toward the pulled image.
+The builder stages can have as many layers as they want. Only the final stage's base image layers and the layers created in the final stage count toward the pulled image.
 
 ## Technique 3: Combine COPY Instructions
 
@@ -118,23 +118,23 @@ dist/
 
 ## Technique 4: Use COPY --link for Independent Layers
 
-BuildKit's `--link` flag creates layers that are independent of previous layers. This enables parallel pulling and layer reuse across images:
+BuildKit's `--link` flag creates layers that are independent of previous layers. This improves cache reuse and lets BuildKit reuse or rebase copied content without rebuilding earlier layers:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
 FROM nginx:1.25-alpine
 
-# These layers are independent - can be pulled in parallel
+# These layers are independent from previous filesystem state
 COPY --link dist/ /usr/share/nginx/html/
 COPY --link nginx.conf /etc/nginx/nginx.conf
 COPY --link ssl/ /etc/nginx/ssl/
 ```
 
-Without `--link`, each COPY depends on the previous layer. With `--link`, Docker can download and extract all three in parallel.
+Without `--link`, each `COPY` layer depends on the filesystem state produced by previous instructions. With `--link`, the copied content stays in an independent layer, which can make rebuilds and rebases more efficient.
 
 ## Technique 5: Squash Layers
 
-Docker's `--squash` flag combines all layers into one. This is a heavy-handed approach but effective for certain use cases:
+The legacy builder's experimental `--squash` flag combines the new layers from a build into one layer. This is a heavy-handed approach but effective for certain use cases:
 
 ```bash
 # Build with layer squashing (experimental feature)
@@ -142,16 +142,16 @@ DOCKER_BUILDKIT=0 docker build --squash -t myapp:latest .
 ```
 
 The downsides are significant:
-- Loses all layer sharing between images
-- Every pull downloads the entire image
-- Build cache is less effective
-- Requires experimental features enabled
+- Loses layer sharing for the squashed application layers
+- Cold pulls download one large application layer
+- The image may use more local storage because Docker keeps the cache layers and the squashed result
+- Requires experimental features enabled and the legacy builder
 
-A better alternative uses BuildKit to create efficient layers without squashing:
+A better alternative is to use multi-stage builds and BuildKit cache features to create efficient layers without squashing:
 
 ```bash
-# Export a single-layer image using BuildKit
-docker buildx build --output type=docker -t myapp:latest .
+# Build with BuildKit and load the result into the local image store
+docker buildx build --load -t myapp:latest .
 ```
 
 ## Technique 6: Heredocs for Multi-Line Operations
@@ -193,7 +193,7 @@ USER appuser
 CMD ["gunicorn", "app:create_app()", "-b", "0.0.0.0:8000"]
 ```
 
-This Dockerfile creates approximately 5 layers total (base image layers + 3 custom layers).
+This Dockerfile creates the base image layers plus 4 custom filesystem layers.
 
 ## Technique 7: Remove Temporary Files in the Same Layer
 
@@ -253,15 +253,15 @@ The ideal structure separates by change frequency:
 ```dockerfile
 FROM node:20-alpine
 
-# Layer 1: System dependencies (change rarely)
+# Cache group 1: System dependencies (change rarely)
 RUN apk add --no-cache curl tini
 
-# Layer 2: Application dependencies (change occasionally)
+# Cache group 2: Application dependencies (change occasionally)
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
-# Layer 3: Application code (changes frequently)
+# Cache group 3: Application code (changes frequently)
 COPY . .
 RUN npm run build
 
@@ -270,7 +270,7 @@ ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/server.js"]
 ```
 
-This gives you three meaningful layers, each cached independently based on change frequency. Merging these into one layer would force a full rebuild on every code change.
+This gives you three meaningful cache groups, each invalidated independently based on change frequency. Merging these into one layer would force a full rebuild on every code change.
 
 ## Practical Layer Count Targets
 
@@ -296,9 +296,6 @@ IMAGE=$1
 
 # Remove the image if it exists
 docker rmi "$IMAGE" 2>/dev/null
-
-# Clear the BuildKit cache
-docker builder prune -f 2>/dev/null
 
 # Measure pull time
 start=$(date +%s%N)
