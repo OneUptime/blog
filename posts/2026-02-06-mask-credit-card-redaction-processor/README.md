@@ -22,7 +22,7 @@ That card number should never reach your observability backend. PCI DSS requires
 
 ## Setting Up the Redaction Processor
 
-The redaction processor is available in the OpenTelemetry Collector Contrib distribution. It works by scanning attribute values against regex patterns and either blocking, masking, or hashing matches.
+The redaction processor is available in the OpenTelemetry Collector Contrib distribution. It works by retaining allowed attributes, removing attributes that are not allowed, and masking or hashing attribute values that match regex patterns.
 
 ```yaml
 processors:
@@ -42,7 +42,7 @@ processors:
       - "\\b6(?:011|5[0-9]{2})[0-9]{12}\\b"
 ```
 
-When the processor finds a match, it replaces the value with `****`.
+When the processor finds a blocked value match, it masks the matching part with fixed-length asterisks unless you configure a hash function.
 
 ## Complete Collector Configuration
 
@@ -155,8 +155,8 @@ processors:
       - "order.id"
       - "payment.amount"
       - "payment.currency"
-    # Keys matching these patterns are blocked entirely
-    blocked_keys:
+    # Values for keys matching these patterns are masked
+    blocked_key_patterns:
       - ".*card.*number.*"
       - ".*credit.*card.*"
       - ".*pan.*"
@@ -168,7 +168,7 @@ processors:
       - "\\b3[47][0-9]{13}\\b"
 ```
 
-This two-layer approach blocks keys that are obviously card-related and also scans allowed keys for accidental card number inclusion.
+This two-layer approach removes keys that are not explicitly allowed, masks values for card-related key patterns when those keys are allowed, and also scans allowed keys for accidental card number inclusion.
 
 ## Performance Considerations
 
