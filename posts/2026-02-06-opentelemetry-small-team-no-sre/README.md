@@ -22,7 +22,7 @@ Java has the most mature auto-instrumentation. The OpenTelemetry Java agent inst
 
 Here's how to start with auto-instrumentation:
 
-```python
+```bash
 # Python: Install auto-instrumentation packages
 
 pip install opentelemetry-distro
@@ -34,6 +34,7 @@ opentelemetry-instrument \
   --traces_exporter otlp \
   --metrics_exporter otlp \
   --service_name my-service \
+  --exporter_otlp_protocol http/protobuf \
   --exporter_otlp_endpoint http://localhost:4318 \
   python app.py
 ```
@@ -42,15 +43,19 @@ opentelemetry-instrument \
 // Node.js: Auto-instrumentation in a single file
 // Create instrumentation.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
-  serviceName: 'my-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+  }),
 });
 
 sdk.start();
@@ -66,6 +71,7 @@ curl -L -O https://github.com/open-telemetry/opentelemetry-java-instrumentation/
 # Add to your java command
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-service \
+  -Dotel.exporter.otlp.protocol=http/protobuf \
   -Dotel.exporter.otlp.endpoint=http://localhost:4318 \
   -jar myapp.jar
 ```
@@ -93,6 +99,7 @@ Configuration for managed backends is straightforward:
 # Environment variables work across languages
 OTEL_EXPORTER_OTLP_ENDPOINT=https://api.vendor.com
 OTEL_EXPORTER_OTLP_HEADERS=x-api-key=your-api-key
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_SERVICE_NAME=my-service
 OTEL_TRACES_EXPORTER=otlp
 OTEL_METRICS_EXPORTER=otlp
@@ -116,12 +123,13 @@ services:
     build: .
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_SERVICE_NAME=my-app
     depends_on:
       - otel-collector
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.91.0
+    image: otel/opentelemetry-collector:0.153.0
     command: ["--config=/etc/otel/config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel/config.yaml
@@ -150,26 +158,26 @@ processors:
     limit_mib: 512
 
 exporters:
-  otlp:
+  otlphttp:
     endpoint: https://api.yourbackend.com
     headers:
       x-api-key: ${BACKEND_API_KEY}
 
   # Useful for debugging
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 This configuration receives telemetry, batches it for efficiency, and exports to your backend. The memory limiter prevents the Collector from consuming excessive resources.
@@ -231,6 +239,7 @@ Store configuration in a shared repository. When you improve the configuration f
 # Required for all services
 OTEL_SERVICE_NAME: ${SERVICE_NAME}
 OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
 OTEL_TRACES_EXPORTER: otlp
 OTEL_METRICS_EXPORTER: otlp
 
@@ -251,6 +260,7 @@ metadata:
   name: otel-config
 data:
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"
 ---
