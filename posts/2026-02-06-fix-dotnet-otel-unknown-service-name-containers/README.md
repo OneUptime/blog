@@ -10,14 +10,13 @@ You deploy your .NET application in a Docker container, check your tracing backe
 
 ## Why This Happens
 
-The OpenTelemetry .NET SDK tries to determine the service name automatically. It follows this priority order:
+The OpenTelemetry .NET SDK includes a default resource. It reads the OpenTelemetry environment variables and, if no service name is set, falls back to the current process executable name:
 
 1. `OTEL_SERVICE_NAME` environment variable
 2. `OTEL_RESOURCE_ATTRIBUTES` environment variable (looks for `service.name` key)
-3. Programmatic configuration via `ConfigureResource`
-4. Assembly entry point name
+3. Process executable name
 
-In a container, option 4 often resolves to the .NET runtime executable name (like `dotnet`) rather than your application's name, especially when using `dotnet run` or when the entry point assembly is not clear.
+In a container, option 3 often resolves to the .NET runtime executable name (like `dotnet`) rather than your application's name, especially when using `dotnet run` or `ENTRYPOINT ["dotnet", "YourApp.dll"]`.
 
 ## Quick Fix: Set the Environment Variable
 
@@ -87,10 +86,10 @@ builder.Services.AddOpenTelemetry()
             )
             .AddAttributes(new Dictionary<string, object>
             {
-                ["deployment.environment"] = builder.Environment.EnvironmentName,
+                ["deployment.environment.name"] = builder.Environment.EnvironmentName,
                 ["host.name"] = Environment.MachineName,
             })
-            // Add container resource detector for Kubernetes metadata
+            // Add container resource detector for container metadata
             .AddContainerDetector()
             .AddEnvironmentVariableDetector();
     })
@@ -107,18 +106,18 @@ builder.Services.AddOpenTelemetry()
 Resource detectors automatically populate resource attributes from the environment. Install the detectors package:
 
 ```bash
-dotnet add package OpenTelemetry.ResourceDetectors.Container
-dotnet add package OpenTelemetry.ResourceDetectors.Host
+dotnet add package OpenTelemetry.Resources.Container --prerelease
+dotnet add package OpenTelemetry.Resources.Host --prerelease
 ```
 
 ```csharp
 resource
     .AddService("order-service")
     .AddContainerDetector()  // adds container.id
-    .AddHostDetector();      // adds host.name, host.arch, etc.
+    .AddHostDetector();      // adds host.name, host.arch, and host.id when available
 ```
 
-In Kubernetes, the container detector reads the container ID from `/proc/self/cgroup`. The host detector reads the hostname and OS information.
+In Kubernetes, the container detector reads the container ID from cgroup data such as `/proc/self/cgroup` or `/proc/self/mountinfo`. The host detector records host attributes such as `host.name`, `host.arch`, and `host.id` when available.
 
 ## Using OTEL_RESOURCE_ATTRIBUTES for Dynamic Configuration
 
@@ -128,27 +127,24 @@ If you want to keep the service name configurable per deployment without code ch
 # Kubernetes deployment
 env:
 - name: OTEL_RESOURCE_ATTRIBUTES
-  value: "service.name=order-service,deployment.environment=production,service.version=1.2.0"
+  value: "service.name=order-service,deployment.environment.name=production,service.version=1.2.0"
 ```
 
 The SDK parses this comma-separated list and adds each key-value pair as a resource attribute. This is useful when the same Docker image is deployed with different service names in different environments.
 
 ## Priority Resolution
 
-When multiple sources set the same attribute, here is the precedence (highest wins):
+When multiple sources set the same attribute, `OTEL_SERVICE_NAME` takes precedence over `service.name` in `OTEL_RESOURCE_ATTRIBUTES`. Programmatic configuration follows the `ResourceBuilder` merge order. In the default .NET builder, `ConfigureResource(resource => resource.AddService(...))` is added after the environment-variable detector, so it can override the environment-derived service name unless you add the environment-variable detector again after your code configuration:
 
 ```csharp
-// 1. OTEL_SERVICE_NAME env var (highest priority)
-// 2. service.name in OTEL_RESOURCE_ATTRIBUTES
-// 3. AddService() in code
-// 4. Auto-detected assembly name (lowest priority)
-
-// Example: if OTEL_SERVICE_NAME is set, it overrides AddService()
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource =>
     {
-        // This will be overridden if OTEL_SERVICE_NAME is set
-        resource.AddService("order-service");
+        resource
+            .AddService("order-service")
+            // Re-apply environment variables last if deployment config
+            // should override the service name in code
+            .AddEnvironmentVariableDetector();
     });
 ```
 
