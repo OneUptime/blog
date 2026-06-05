@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka, JMX Receiver, Broker Metrics
 
-Description: Monitor Kafka broker health metrics including under-replicated partitions, ISR shrink rate, and active controller count using the OpenTelemetry JMX receiver.
+Description: Monitor Kafka broker health metrics including under-replicated partitions, ISR shrink counts, and active controller count using the OpenTelemetry JMX receiver.
 
-Apache Kafka exposes its metrics through JMX (Java Management Extensions). The OpenTelemetry Collector's JMX receiver connects to Kafka brokers via JMX and collects critical health metrics like under-replicated partitions, ISR shrink/expand rates, and active controller count. These metrics are essential for detecting cluster health issues before they impact consumers.
+Apache Kafka exposes its metrics through JMX (Java Management Extensions). The OpenTelemetry Collector's JMX receiver connects to Kafka brokers via JMX and collects critical health metrics like under-replicated partitions, ISR shrink/expand counts, and active controller count. These metrics are essential for detecting cluster health issues before they impact consumers.
 
 ## Enabling JMX on Kafka Brokers
 
@@ -36,6 +36,8 @@ services:
 ```
 
 ## Collector JMX Receiver Configuration
+
+The OpenTelemetry Collector `jmxreceiver` is deprecated. For new deployments, run the standalone OpenTelemetry JMX Gatherer or JMX Scraper with the same Kafka target system. If you are maintaining an existing Collector receiver deployment, this configuration shows the equivalent receiver setup.
 
 ```yaml
 # otel-collector-config.yaml
@@ -79,7 +81,7 @@ The `target_system: kafka` tells the JMX receiver to use Kafka-specific metric d
 ### Under-Replicated Partitions
 
 ```text
-kafka.broker.under_replicated_partitions
+kafka.partition.under_replicated
 JMX: kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions
 ```
 
@@ -88,22 +90,22 @@ This is the single most important Kafka metric. A value above 0 means some parti
 - Disk I/O saturation on a broker
 - Network issues between brokers
 
-### ISR Shrink and Expand Rate
+### ISR Shrink and Expand Counts
 
 ```text
-kafka.broker.isr_shrinks_per_sec
+kafka.isr.operation.count{operation="shrink"}
 JMX: kafka.server:type=ReplicaManager,name=IsrShrinksPerSec
 
-kafka.broker.isr_expands_per_sec
+kafka.isr.operation.count{operation="expand"}
 JMX: kafka.server:type=ReplicaManager,name=IsrExpandsPerSec
 ```
 
-ISR (In-Sync Replica) shrinks indicate replicas falling behind. Frequent shrinks followed by expands suggest intermittent network or disk issues.
+ISR (In-Sync Replica) shrinks indicate replicas falling behind. Frequent shrink count increases followed by expand count increases suggest intermittent network or disk issues.
 
 ### Active Controller Count
 
 ```text
-kafka.broker.active_controller_count
+kafka.controller.active.count
 JMX: kafka.controller:type=KafkaController,name=ActiveControllerCount
 ```
 
@@ -112,16 +114,18 @@ Exactly one broker should be the active controller. If no broker reports `Active
 ### Request Handler Idle Ratio
 
 ```text
-kafka.broker.request_handler_avg_idle_percent
+kafka.request.handler.idle.ratio
 JMX: kafka.server:type=KafkaRequestHandlerPool,name=RequestHandlerAvgIdlePercent
 ```
 
-This shows what percentage of time the request handler threads are idle. Below 20% means the broker is overloaded.
+This Kafka JMX metric shows what fraction of time the request handler threads are idle. The built-in OpenTelemetry `target_system: kafka` mapping does not emit it, so add a custom JMX mapping before alerting on it. Below 0.2 means the broker is overloaded.
 
 ### Log Flush Rate and Time
 
 ```text
-kafka.broker.log_flush_rate_and_time
+kafka.logs.flush.time.count
+kafka.logs.flush.time.50p
+kafka.logs.flush.time.99p
 JMX: kafka.log:type=LogFlushStats,name=LogFlushRateAndTimeMs
 ```
 
@@ -137,11 +141,22 @@ receivers:
     jar_path: /opt/opentelemetry-jmx-metrics.jar
     endpoint: kafka-broker:9999
     target_system: kafka
+    jmx_configs: /etc/otel/kafka-custom-jmx.yaml
     collection_interval: 15s
-    # Additional custom metrics
-    additional_jars: []
     resource_attributes:
       broker.id: "1"
+```
+
+```yaml
+# /etc/otel/kafka-custom-jmx.yaml
+rules:
+  - bean: kafka.server:type=KafkaRequestHandlerPool,name=RequestHandlerAvgIdlePercent
+    mapping:
+      Value:
+        metric: kafka.request.handler.idle.ratio
+        type: gauge
+        desc: The average fraction of time Kafka request handler threads are idle
+        unit: "1"
 ```
 
 ## Monitoring Multiple Brokers
@@ -187,32 +202,32 @@ service:
 ```yaml
 # Under-replicated partitions
 - alert: KafkaUnderReplicatedPartitions
-  condition: kafka.broker.under_replicated_partitions > 0
+  condition: kafka.partition.under_replicated > 0
   for: 5m
   severity: critical
   message: "Broker {{ broker.id }} has {{ value }} under-replicated partitions"
 
 # No active controller
 - alert: KafkaNoActiveController
-  condition: sum(kafka.broker.active_controller_count) == 0
+  condition: sum(kafka.controller.active.count) == 0
   for: 1m
   severity: critical
   message: "No active Kafka controller. Cluster cannot elect partition leaders."
 
 # Request handler overloaded
 - alert: KafkaBrokerOverloaded
-  condition: kafka.broker.request_handler_avg_idle_percent < 0.2
+  condition: kafka.request.handler.idle.ratio < 0.2
   for: 5m
   severity: warning
-  message: "Broker {{ broker.id }} request handlers are {{ value }}% idle"
+  message: "Broker {{ broker.id }} request handlers have {{ value }} idle ratio"
 
 # Frequent ISR shrinks
 - alert: KafkaISRShrinks
-  condition: rate(kafka.broker.isr_shrinks_per_sec[5m]) > 1
+  condition: rate(kafka.isr.operation.count{operation="shrink"}[5m]) > 1
   for: 10m
   severity: warning
 ```
 
 ## Summary
 
-Kafka broker health depends on partition replication, controller election, and request handling capacity. The OpenTelemetry JMX receiver connects to Kafka brokers and collects these metrics without modifying broker configuration (beyond enabling JMX). Focus on under-replicated partitions as the primary health indicator, monitor ISR shrink/expand rates for replication stability, and track request handler idle percentage to detect overloaded brokers. Set up alerts on each metric to catch issues before they impact consumers.
+Kafka broker health depends on partition replication, controller election, and request handling capacity. The OpenTelemetry JMX receiver connects to Kafka brokers and collects these metrics without modifying broker configuration (beyond enabling JMX). Focus on under-replicated partitions as the primary health indicator, monitor ISR shrink/expand counts for replication stability, and track request handler idle ratio with a custom JMX mapping to detect overloaded brokers. Set up alerts on each metric to catch issues before they impact consumers.
