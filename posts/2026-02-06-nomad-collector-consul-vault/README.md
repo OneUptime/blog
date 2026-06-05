@@ -102,7 +102,9 @@ processors:
 
 exporters:
   otlp:
-    endpoint: "{{ range service "observability-backend" }}{{ .Address }}:{{ .Port }}{{ end }}"
+    endpoint: "{{ with service "observability-backend" }}{{ with index . 0 }}{{ .Address }}:{{ .Port }}{{ end }}{{ end }}"
+    tls:
+      insecure: true
     headers:
       {{ with secret "secret/data/otel/backend-auth" }}
       Authorization: "Bearer {{ .Data.data.api_key }}"
@@ -111,6 +113,7 @@ exporters:
 extensions:
   health_check:
     endpoint: "0.0.0.0:13133"
+    path: "/health"
 
 service:
   extensions: [health_check]
@@ -155,7 +158,7 @@ The template uses Consul Template syntax to discover the backend endpoint:
 ```hcl
 # Discover the backend service registered in Consul
 
-endpoint: "{{ range service "observability-backend" }}{{ .Address }}:{{ .Port }}{{ end }}"
+endpoint: "{{ with service "observability-backend" }}{{ with index . 0 }}{{ .Address }}:{{ .Port }}{{ end }}{{ end }}"
 ```
 
 This dynamically resolves the backend address from Consul, so if the backend moves to a different host or port, the Collector config updates automatically.
@@ -218,9 +221,11 @@ receivers:
         - job_name: "nomad-services"
           static_configs:
 {{ range services }}{{ if .Tags | contains "metrics-enabled" }}
-            - targets: [{{ range service .Name }}"{{ .Address }}:{{ .Port }}"{{ end }}]
+{{ $serviceName := .Name }}{{ range service .Name }}
+            - targets: ["{{ .Address }}:{{ .Port }}"]
               labels:
-                service_name: "{{ .Name }}"
+                service_name: "{{ $serviceName }}"
+{{ end }}
 {{ end }}{{ end }}
   EOF
 
