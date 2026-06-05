@@ -89,8 +89,8 @@ data:
             action: insert
 
     exporters:
-      otlphttp:
-        endpoint: "${OTLP_BACKEND_ENDPOINT}"
+      otlp_http:
+        endpoint: "${env:OTLP_BACKEND_ENDPOINT}"
 
     extensions:
       health_check:
@@ -102,11 +102,11 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
 ```
 
 ## Environment Overlays
@@ -115,7 +115,7 @@ Use Kustomize to apply environment-specific overrides:
 
 ```yaml
 # overlays/staging/kustomization.yaml
-# Staging overlay applies lower resource limits and higher sampling rates.
+# Staging overlay applies lower resource limits and environment-specific attributes.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -131,7 +131,7 @@ patches:
 ```yaml
 # overlays/staging/collector-patches.yaml
 # Staging-specific configuration overrides.
-# Higher sampling rate for better debugging, lower resource limits.
+# Lower resource limits and staging environment attributes.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -166,7 +166,7 @@ data:
             action: upsert
 
     exporters:
-      otlphttp:
+      otlp_http:
         endpoint: "https://staging-backend.yourdomain.com/otlp"
 
     extensions:
@@ -179,7 +179,11 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp_http]
 ```
 
 ## CI Validation Pipeline
@@ -203,11 +207,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install OpenTelemetry Collector
+      - name: Install Validation Tools
         run: |
           # Download the collector binary for validation
-          curl -L -o otelcol https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64
-          chmod +x otelcol
+          curl -fsSL -o otelcol.tar.gz https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol_0.153.0_linux_amd64.tar.gz
+          tar -xzf otelcol.tar.gz
+
+          # Download Kustomize for rendering overlays
+          curl -fsSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+          # Download OPA for policy checks
+          curl -fsSL -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/opa
 
       - name: Build Kustomize Overlays
         run: |
@@ -240,7 +254,7 @@ jobs:
           # Validate against organizational policies
           for env in staging production; do
             opa eval -d policies/ -i /tmp/$env-otel.yaml \
-              "data.otel.deny" --fail-defined
+              "data.otel.deny[_]" --fail-defined
           done
 ```
 
@@ -254,35 +268,44 @@ Use Open Policy Agent to enforce organizational rules about collector configurat
 # These prevent common misconfigurations from reaching production.
 package otel
 
+import rego.v1
+
 # Every pipeline must have a memory limiter processor
-deny[msg] {
+deny contains msg if {
+    some name
     pipeline := input.service.pipelines[name]
     not array_contains(pipeline.processors, "memory_limiter")
     msg := sprintf("Pipeline '%s' must include memory_limiter processor", [name])
 }
 
 # Batch timeout must be between 1s and 30s
-deny[msg] {
+deny contains msg if {
     timeout := input.processors.batch.timeout
     not valid_duration(timeout, 1, 30)
     msg := sprintf("Batch timeout '%s' must be between 1s and 30s", [timeout])
 }
 
 # Health check extension must be enabled
-deny[msg] {
+deny contains msg if {
     not array_contains(input.service.extensions, "health_check")
     msg := "health_check extension must be enabled"
 }
 
-# OTLP receivers must not use 0.0.0.0 without TLS in production
-deny[msg] {
+# OTLP gRPC receiver must not use 0.0.0.0 without TLS in production
+deny contains msg if {
     input.receivers.otlp.protocols.grpc.endpoint == "0.0.0.0:4317"
     not input.receivers.otlp.protocols.grpc.tls
     input.processors.resource.attributes[_].value == "production"
     msg := "OTLP gRPC receiver must use TLS in production"
 }
 
-array_contains(arr, elem) {
+valid_duration(timeout, min_seconds, max_seconds) if {
+    ns := time.parse_duration_ns(timeout)
+    ns >= min_seconds * 1000000000
+    ns <= max_seconds * 1000000000
+}
+
+array_contains(arr, elem) if {
     arr[_] == elem
 }
 ```
