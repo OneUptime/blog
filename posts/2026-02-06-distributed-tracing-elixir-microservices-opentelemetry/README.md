@@ -39,105 +39,81 @@ Each service extracts trace context from incoming requests, creates local spans 
 
 ## Setting Up the Foundation
 
-Start by adding OpenTelemetry dependencies to all services. Create a shared configuration module to ensure consistency:
+Start by adding OpenTelemetry dependencies to all services. Keep the exporter before `:opentelemetry` so it starts first:
 
 ```elixir
 # In each service's mix.exs
 
 defp deps do
   [
-    {:opentelemetry, "~> 1.3"},
-    {:opentelemetry_api, "~> 1.2"},
-    {:opentelemetry_exporter, "~> 1.6"},
-    {:opentelemetry_telemetry, "~> 1.0"},
-    {:opentelemetry_phoenix, "~> 1.1"},
+    {:opentelemetry_exporter, "~> 1.10"},
+    {:opentelemetry, "~> 1.7"},
+    {:opentelemetry_api, "~> 1.5"},
+    {:opentelemetry_telemetry, "~> 1.1"},
+    {:opentelemetry_phoenix, "~> 2.0"},
+    {:opentelemetry_cowboy, "~> 1.0"},
     {:opentelemetry_finch, "~> 0.2"}
   ]
 end
 ```
 
-Create a shared tracing configuration module:
+Create shared tracing configuration in each service's `config/runtime.exs`. The OpenTelemetry SDK and exporter read this configuration when the OTP applications start, so set it before your application supervision tree starts:
 
 ```elixir
-defmodule SharedConfig.Tracing do
-  @moduledoc """
-  Common OpenTelemetry configuration for all microservices.
-  """
+import Config
 
-  def setup(service_name, service_version \\ "1.0.0") do
-    # Configure resource attributes that identify this service
-    :opentelemetry.set_default_tracer({:opentelemetry_tracer, service_name})
+service_name = System.fetch_env!("OTEL_SERVICE_NAME")
+service_version = System.get_env("SERVICE_VERSION", "1.0.0")
+namespace = System.get_env("SERVICE_NAMESPACE", "default")
+environment = System.get_env("ENVIRONMENT", "development")
+collector_endpoint = System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+sample_ratio = System.get_env("OTEL_SAMPLE_RATIO", "1.0") |> String.to_float()
 
-    # Set up the OTLP exporter
-    configure_exporter(service_name, service_version)
-
-    # Configure sampling based on environment
-    configure_sampling()
-  end
-
-  defp configure_exporter(service_name, service_version) do
-    Application.put_env(:opentelemetry, :resource, [
-      service: [
-        name: service_name,
-        version: service_version,
-        namespace: get_namespace()
-      ],
-      deployment: [
-        environment: get_environment()
-      ],
-      host: [
-        name: node_name()
-      ]
-    ])
-
-    Application.put_env(:opentelemetry_exporter, :otlp_protocol, :http_protobuf)
-    Application.put_env(:opentelemetry_exporter, :otlp_endpoint, collector_endpoint())
-    Application.put_env(:opentelemetry_exporter, :otlp_headers, auth_headers())
-  end
-
-  defp configure_sampling do
-    # Use parent-based sampling to honor upstream sampling decisions
-    sampler = {:parent_based, %{
-      root: {:trace_id_ratio_based, sample_ratio()},
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp,
+  resource: %{
+    service: %{
+      name: service_name,
+      version: service_version,
+      namespace: namespace
+    },
+    deployment: %{
+      environment: environment
+    },
+    host: %{
+      name: Atom.to_string(node())
+    }
+  },
+  # Use parent-based sampling to honor upstream sampling decisions
+  sampler: {:parent_based,
+    %{
+      root: {:trace_id_ratio_based, sample_ratio},
       remote_parent_sampled: :always_on,
       remote_parent_not_sampled: :always_off,
       local_parent_sampled: :always_on,
       local_parent_not_sampled: :always_off
     }}
 
-    Application.put_env(:opentelemetry, :sampler, sampler)
-  end
-
-  defp get_namespace, do: System.get_env("SERVICE_NAMESPACE", "default")
-  defp get_environment, do: System.get_env("ENVIRONMENT", "development")
-  defp node_name, do: Atom.to_string(node())
-  defp collector_endpoint, do: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-
-  defp auth_headers do
+config :opentelemetry_exporter,
+  otlp_protocol: :http_protobuf,
+  otlp_endpoint: collector_endpoint,
+  otlp_headers:
     case System.get_env("OTEL_API_KEY") do
       nil -> []
       key -> [{"x-api-key", key}]
     end
-  end
-
-  defp sample_ratio do
-    case System.get_env("OTEL_SAMPLE_RATIO") do
-      nil -> 1.0
-      ratio -> String.to_float(ratio)
-    end
-  end
-end
 ```
 
-Initialize tracing in each service's application module:
+Initialize instrumentation handlers in each service's application module:
 
 ```elixir
 defmodule UserService.Application do
   use Application
 
   def start(_type, _args) do
-    # Initialize OpenTelemetry before starting supervision tree
-    SharedConfig.Tracing.setup("user-service", "1.2.3")
+    OpentelemetryPhoenix.setup(adapter: :cowboy2)
+    OpentelemetryFinch.setup()
 
     children = [
       UserService.Repo,
@@ -160,9 +136,7 @@ Phoenix applications act as HTTP servers that receive requests from other servic
 defmodule UserServiceWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :user_service
 
-  # Add OpenTelemetry plug early in the pipeline
-  plug OpentelemetryPhoenix
-
+  # Required for OpentelemetryPhoenix endpoint tracing
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
   plug Plug.Parsers,
@@ -176,7 +150,7 @@ defmodule UserServiceWeb.Endpoint do
 end
 ```
 
-The Phoenix instrumentation automatically extracts trace context from incoming HTTP headers and creates a span for each request. You can add custom attributes in your controllers:
+Initialize the Phoenix telemetry handler in your application start callback with `OpentelemetryPhoenix.setup(adapter: :cowboy2)`. If your Phoenix application uses Bandit instead of PlugCowboy, use `adapter: :bandit` and depend on `:opentelemetry_bandit` instead of `:opentelemetry_cowboy`. The Phoenix and adapter instrumentation extract trace context from incoming HTTP headers and create spans for each request. You can add custom attributes in your controllers:
 
 ```elixir
 defmodule UserServiceWeb.UserController do
@@ -230,7 +204,7 @@ defmodule UserService.Application do
   use Application
 
   def start(_type, _args) do
-    SharedConfig.Tracing.setup("user-service")
+    OpentelemetryFinch.setup()
 
     children = [
       UserService.Repo,
@@ -242,21 +216,13 @@ defmodule UserService.Application do
   end
 end
 
-# Attach Finch telemetry events to OpenTelemetry
-defmodule UserService.Telemetry do
-  def setup do
-    # This creates spans for all Finch requests
-    OpentelemetryFinch.setup()
-  end
-end
 ```
 
-Create an HTTP client module that automatically propagates trace context:
+Create an HTTP client module that manually propagates trace context:
 
 ```elixir
 defmodule UserService.AuthClient do
   require OpenTelemetry.Tracer, as: Tracer
-  alias OpenTelemetry.Propagator.TextMap
 
   @auth_service_url "http://auth-service:4000"
 
@@ -375,15 +341,19 @@ defmodule InventoryService.EventConsumer do
     context = extract_trace_context(message)
 
     # Attach the context before processing
-    Ctx.attach(context)
+    token = Ctx.attach(context)
 
-    Tracer.with_span "event_consumer.handle_order_created" do
-      Tracer.set_attributes([
-        {"event_type", message.event_type},
-        {"order_id", message.payload.id}
-      ])
+    try do
+      Tracer.with_span "event_consumer.handle_order_created" do
+        Tracer.set_attributes([
+          {"event_type", message.event_type},
+          {"order_id", message.payload.id}
+        ])
 
-      process_order_created(message.payload)
+        process_order_created(message.payload)
+      end
+    after
+      Ctx.detach(token)
     end
   end
 
@@ -394,9 +364,9 @@ defmodule InventoryService.EventConsumer do
         Ctx.new()
 
       context_map ->
-        # Convert map back to headers format and extract
+        # Convert map back to headers format and extract into a new context
         headers = Map.to_list(context_map)
-        :otel_propagator_text_map.extract(headers)
+        :otel_propagator_text_map.extract_to(Ctx.new(), headers)
     end
   end
 
@@ -567,7 +537,7 @@ Verify your tracing implementation with integration tests:
 defmodule OrderServiceTest.Integration.DistributedTracingTest do
   use ExUnit.Case
   require OpenTelemetry.Tracer, as: Tracer
-  alias OpenTelemetry.Ctx
+  require OpenTelemetry.Span, as: Span
 
   test "creates connected spans across services" do
     # Start a trace in the test
@@ -600,10 +570,9 @@ defmodule OrderServiceTest.Integration.DistributedTracingTest do
   end
 
   defp get_current_trace_id do
-    ctx = Ctx.get_current()
-    # Extract trace ID from context
-    {:ok, trace_id} = :otel_tracer.current_span_ctx(ctx)
-    trace_id
+    # Extract the hex-encoded trace ID from the current span context
+    Tracer.current_span_ctx()
+    |> Span.hex_trace_id()
   end
 
   defp fetch_spans_by_trace_id(_trace_id), do: []
