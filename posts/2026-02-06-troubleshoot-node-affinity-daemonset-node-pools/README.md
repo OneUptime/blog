@@ -6,7 +6,7 @@ Tags: OpenTelemetry, DaemonSet, Node Affinity, Kubernetes
 
 Description: Troubleshoot and fix node affinity and toleration issues that prevent Collector DaemonSet pods from running on all nodes.
 
-You deployed the OpenTelemetry Collector as a DaemonSet expecting it to run on every node, but some nodes have no Collector pod. Logs from pods on those nodes are not collected, and kubeletstats metrics are missing. The usual culprit is node affinity rules, taints, or tolerations that prevent scheduling.
+You deployed the OpenTelemetry Collector as a DaemonSet expecting it to run on every eligible node, but some nodes have no Collector pod. Logs from pods on those nodes are not collected, and kubeletstats metrics are missing. The usual culprit is node affinity rules, taints, or tolerations that prevent scheduling.
 
 ## Identifying the Problem
 
@@ -26,7 +26,7 @@ Look for events like:
 
 ```text
 Warning  FailedScheduling  0/5 nodes are available: 2 node(s) had untolerated taint
-{node-pool=gpu: NoSchedule}, 3 node(s) matched pod affinity/anti-affinity rules
+{node-pool=gpu: NoSchedule}, 3 node(s) didn't match Pod's node affinity/selector
 ```
 
 ## Common Cause 1: Node Taints Without Tolerations
@@ -72,14 +72,14 @@ spec:
           image: otel/opentelemetry-collector-contrib:latest
 ```
 
-To tolerate ALL taints (so the Collector runs on every node regardless):
+To tolerate ALL taints (so taints alone do not block the Collector from scheduling):
 
 ```yaml
 tolerations:
   - operator: Exists
 ```
 
-This is generally safe for a DaemonSet Collector since its purpose is to run everywhere.
+This can be appropriate for a DaemonSet Collector when its purpose is to run on every eligible node.
 
 ## Common Cause 2: Node Affinity Rules
 
@@ -114,7 +114,7 @@ Fix by removing the affinity or broadening it:
 spec:
   template:
     spec:
-      # No affinity section = runs on all nodes
+      # No affinity section = no node affinity restriction
 
 # Option 2: Include all node types
 affinity:
@@ -176,7 +176,7 @@ resources:
 
 ## Verifying Coverage
 
-After fixing the scheduling issues, verify the DaemonSet has a pod on every node:
+After fixing the scheduling issues, verify the DaemonSet has a pod on every eligible node:
 
 ```bash
 # Check DaemonSet status
@@ -187,7 +187,7 @@ kubectl get daemonset otel-collector -n observability
 # otel-collector   5         5         5       5            5
 
 # Verify pods are on all nodes
-kubectl get pods -n observability -l app=otel-collector -o wide | awk '{print $7}' | sort
+kubectl get pods -n observability -l app=otel-collector -o wide --no-headers | awk '{print $7}' | sort
 
 # Compare with all nodes
 kubectl get nodes --no-headers | awk '{print $1}' | sort
@@ -197,7 +197,7 @@ If the counts match, you have full coverage. If not, check the specific nodes th
 
 ## The Nuclear Option
 
-If you want the Collector to absolutely run everywhere, set tolerations for all taints and remove all affinity/nodeSelector constraints:
+If you want the Collector to run on every eligible node, set tolerations for all taints and remove all affinity/nodeSelector constraints:
 
 ```yaml
 spec:
@@ -207,7 +207,7 @@ spec:
         - operator: Exists  # Tolerate everything
       # No nodeSelector
       # No affinity
-      priorityClassName: system-node-critical  # High priority to prevent eviction
+      priorityClassName: system-node-critical  # Very high priority; use only for critical node-level monitoring
 ```
 
-The `system-node-critical` priority class ensures the Collector pod is one of the last to be evicted during resource pressure. This is appropriate for a monitoring DaemonSet that needs to run everywhere.
+The `system-node-critical` priority class gives the Collector pod very high scheduling and eviction priority. This is appropriate only when the monitoring DaemonSet is critical enough to run with system-level priority.
