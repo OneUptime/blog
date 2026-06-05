@@ -52,32 +52,30 @@ This example shows the safe pattern using parameterized queries. The OTel instru
 ```python
 # SAFE CODE - Use parameterized queries
 def get_user(username):
-    # The OTel instrumentation captures: "SELECT * FROM users WHERE name = ?"
+    # The OTel instrumentation captures: "SELECT * FROM users WHERE name = %s"
     # The actual parameter value is NOT included in db.statement by default
     query = "SELECT * FROM users WHERE name = %s"
     cursor.execute(query, (username,))
     return cursor.fetchone()
 ```
 
-Most OpenTelemetry database instrumentation libraries will record the parameterized form of the query. For example, the `opentelemetry-instrumentation-psycopg2` library for Python records the query template by default. But this behavior varies across languages and libraries, so you need to verify what your specific instrumentation does.
+Most OpenTelemetry database instrumentation libraries will record the parameterized form of the query. For example, the `opentelemetry-instrumentation-psycopg2` library for Python records statements by default without recording query parameters unless `capture_parameters=True` is enabled. But this behavior varies across languages and libraries, so you need to verify what your specific instrumentation does.
 
 ## Step 2: Configure SDK-Level Statement Sanitization
 
 Some instrumentation libraries offer options to sanitize or truncate the captured SQL statement. Check the specific instrumentation library you are using for available options.
 
-For the Python psycopg2 instrumentation, you can disable query capture entirely or enable sanitization.
+For the Python psycopg2 instrumentation, you can keep parameter capture disabled, which is the default behavior.
 
 This configuration shows how to control SQL statement capture at the instrumentation level.
 
 ```python
-# Configure the psycopg2 instrumentation to sanitize queries
+# Configure the psycopg2 instrumentation without capturing query parameters
 from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
-# Option 1: Disable capturing the SQL statement entirely
 Psycopg2Instrumentor().instrument(
-    enable_commenter=True,
-    # Set to True to avoid recording the full db.statement
-    sanitize_query=True
+    # Keep this False so db.statement.parameters is not recorded
+    capture_parameters=False
 )
 ```
 
@@ -89,24 +87,29 @@ These JVM flags configure the Java agent to sanitize database statements.
 # Start the Java application with statement sanitization enabled
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.instrumentation.common.db-statement-sanitizer.enabled=true \
-  -Dotel.instrumentation.jdbc.statement.sanitizer.enabled=true \
+  -Dotel.instrumentation.jdbc.statement-sanitizer.enabled=true \
   -jar myapp.jar
 ```
 
-For .NET applications, the instrumentation provides similar configuration options.
+For .NET applications, the SQL client instrumentation records database query attributes and keeps query parameter capture disabled by default. You can use the filter hook to skip tracing for specific commands.
 
 ```csharp
-// Configure SQL client instrumentation to sanitize queries
+// Configure SQL client instrumentation to skip specific query patterns
+using Microsoft.Data.SqlClient;
+using OpenTelemetry.Trace;
+
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddSqlClientInstrumentation(options =>
     {
-        // Record the SQL statement but sanitize parameter values
-        options.SetDbStatementForText = true;
-        // Filter function to redact sensitive patterns
-        options.Filter = (command) =>
+        // Filter receives the raw SqlCommand object and returns false to skip tracing
+        options.Filter = command =>
         {
-            // Skip tracing for specific query patterns
-            return !command.CommandText.Contains("information_schema");
+            if (command is SqlCommand sqlCommand)
+            {
+                return !sqlCommand.CommandText.Contains("information_schema");
+            }
+
+            return false;
         };
     })
     .Build();
@@ -114,7 +117,7 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
 
 ## Step 3: Redact SQL Statements at the Collector
 
-Even with SDK-level protections, defense in depth requires Collector-level sanitization. Use the attributes processor or the transform processor to redact or modify `db.statement` values before they reach your backend.
+Even with SDK-level protections, defense in depth requires Collector-level sanitization. Use the attributes processor or the transform processor to redact or modify `db.statement` values before they reach your backend. If your instrumentation emits the newer stable database semantic convention attribute `db.query.text`, apply the same rules to that attribute as well.
 
 This Collector configuration uses the transform processor to sanitize SQL statements matching suspicious patterns.
 
@@ -127,9 +130,9 @@ processors:
       - context: span
         statements:
           # Replace db.statement values containing common injection patterns
-          - replace_pattern(attributes["db.statement"], "(?i)(OR|AND)\\s+1\\s*=\\s*1", "[REDACTED-INJECTION]")
-          - replace_pattern(attributes["db.statement"], "(?i)UNION\\s+SELECT", "[REDACTED-INJECTION]")
-          - replace_pattern(attributes["db.statement"], "(?i)(--|#|/\\*)", "[REDACTED-COMMENT]")
+          - replace_pattern(attributes["db.statement"], "(?i)(OR|AND)\\s+1\\s*=\\s*1", "[REDACTED-INJECTION]") where attributes["db.statement"] != nil
+          - replace_pattern(attributes["db.statement"], "(?i)UNION\\s+SELECT", "[REDACTED-INJECTION]") where attributes["db.statement"] != nil
+          - replace_pattern(attributes["db.statement"], "(?i)(--|#|/\\*)", "[REDACTED-COMMENT]") where attributes["db.statement"] != nil
           # Truncate very long statements that might indicate injection attempts
           - truncate_all(attributes, 500)
 
@@ -154,7 +157,7 @@ processors:
       - context: span
         statements:
           # Extract just the operation type (SELECT, INSERT, UPDATE, DELETE)
-          - replace_pattern(attributes["db.statement"], "(?i)^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\\s.*$", "$$1 [REDACTED]")
+          - replace_pattern(attributes["db.statement"], "(?i)^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\\s.*$", "$1 [REDACTED]") where attributes["db.statement"] != nil
 
   # Alternative: delete the attribute entirely
   attributes/remove-sql:
@@ -178,14 +181,15 @@ processors:
       - context: span
         statements:
           # Check for common injection patterns and add a security flag
-          - set(attributes["security.sql_injection_detected"], "true") where IsMatch(attributes["db.statement"], "(?i)(union\\s+select|or\\s+1\\s*=\\s*1|drop\\s+table|;\\s*--)")
+          - set(attributes["security.sql_injection_detected"], true) where attributes["db.statement"] != nil and IsMatch(attributes["db.statement"], "(?i)(union\\s+select|or\\s+1\\s*=\\s*1|drop\\s+table|;\\s*--)")
 
 connectors:
   # Route flagged spans to a security pipeline
   routing:
     default_pipelines: [traces/default]
     table:
-      - statement: route() where attributes["security.sql_injection_detected"] == "true"
+      - context: span
+        condition: attributes["security.sql_injection_detected"] == true
         pipelines: [traces/security]
 
 service:
@@ -210,14 +214,13 @@ Beyond parameterized queries, you can configure your application to limit what d
 
 This OpenTelemetry SDK configuration limits the size of span attributes, which helps contain any injection data that slips through.
 
-```yaml
-# otel-sdk-limits.yaml
+```bash
 # Set global limits on attribute values to prevent large injection payloads
-OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=200
-OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=50
+export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=200
+export OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=50
 ```
 
-You can also implement a custom SpanProcessor that sanitizes attributes before they are exported.
+You can also implement a custom SpanProcessor that sanitizes attributes before the span ends.
 
 This Python custom SpanProcessor redacts SQL injection patterns from span attributes before export.
 
@@ -236,7 +239,7 @@ class SqlSanitizingProcessor(SpanProcessor):
         re.compile(r"(?i)(information_schema)", re.IGNORECASE),
     ]
 
-    def on_end(self, span):
+    def _on_ending(self, span):
         # Check if the span has a db.statement attribute
         statement = span.attributes.get("db.statement")
         if statement:
