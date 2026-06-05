@@ -56,10 +56,10 @@ RUN composer install \
 
 COPY . .
 
-# Run post-install scripts and generate optimized autoloader
+# Generate optimized autoloader
 RUN composer dump-autoload --optimize --classmap-authoritative --no-dev
 
-# === Stage 2: Frontend assets (if using Webpack Encore or AssetMapper) ===
+# === Stage 2: Frontend assets (if using Webpack Encore) ===
 FROM node:20-alpine AS frontend
 
 WORKDIR /app
@@ -230,7 +230,7 @@ echo "Starting Symfony application..."
 # Wait for database
 if [ -n "$DATABASE_URL" ]; then
     echo "Waiting for database..."
-    # Extract host and port from DATABASE_URL
+    # Use Doctrine DBAL to wait until the configured database accepts queries
     until php bin/console dbal:run-sql "SELECT 1" > /dev/null 2>&1; do
         sleep 2
     done
@@ -244,7 +244,7 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
 fi
 
 # Ensure cache is warm
-php bin/console cache:warmup --env=prod 2>/dev/null || true
+php bin/console cache:warmup --env="${APP_ENV:-prod}" 2>/dev/null || true
 
 # Fix permissions on var directory
 chown -R www-data:www-data var/
@@ -295,7 +295,7 @@ stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 
-; Messenger worker for the failed transport (retries)
+; Optional Messenger worker for the failed transport
 [program:messenger-failed]
 command=php /var/www/html/bin/console messenger:consume failed --time-limit=3600 --memory-limit=128M
 autostart=true
@@ -313,13 +313,11 @@ The `--time-limit=3600` flag restarts workers every hour, which helps them pick 
 
 ```yaml
 # docker-compose.yml - Symfony development environment
-version: "3.9"
-
 services:
   app:
     build:
       context: .
-      target: composer  # Use the composer stage for development
+      # Build the runnable PHP/Nginx image for development
     ports:
       - "8080:80"
     volumes:
@@ -370,8 +368,6 @@ volumes:
 
 ```yaml
 # docker-compose.prod.yml - Symfony production
-version: "3.9"
-
 services:
   app:
     image: mysymfonyapp:${VERSION:-latest}
@@ -420,7 +416,7 @@ namespace App\Controller;
 
 use Doctrine\DBAL\Connection;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 class HealthController
 {
