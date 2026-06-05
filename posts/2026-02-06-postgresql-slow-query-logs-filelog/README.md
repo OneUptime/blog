@@ -18,7 +18,7 @@ First, configure PostgreSQL to log slow queries. In `postgresql.conf`:
 log_min_duration_statement = 500
 
 # Use a parseable log format
-log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+log_line_prefix = '%m [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 log_destination = 'stderr'
 logging_collector = on
 log_directory = '/var/log/postgresql'
@@ -59,6 +59,7 @@ receivers:
     operators:
       # Step 1: Parse the log line prefix and message
       - type: regex_parser
+        id: parse_postgresql_log
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\]: \[\d+-\d+\] user=(?P<db_user>[^,]*),db=(?P<db_name>[^,]*),app=(?P<app_name>[^,]*),client=(?P<client_addr>[^\s]*) (?P<level>\w+):\s+(?P<message>[\s\S]*)'
         timestamp:
           parse_from: attributes.timestamp
@@ -74,39 +75,48 @@ receivers:
 
       # Step 2: Extract duration from the message
       - type: regex_parser
+        id: parse_slow_query
         parse_from: attributes.message
         regex: 'duration: (?P<duration_ms>[0-9.]+) ms\s+statement: (?P<sql_statement>[\s\S]*)'
         on_error: send
-        preserve_to: attributes.message
 
-      # Step 3: Map to semantic conventions
+      # Step 3: Map to OpenTelemetry and PostgreSQL attributes
       - type: move
+        id: move_db_user
         from: attributes.db_user
-        to: attributes["db.user"]
+        to: attributes["postgresql.user"]
       - type: move
+        id: move_db_name
         from: attributes.db_name
-        to: attributes["db.name"]
+        to: attributes["db.namespace"]
       - type: move
+        id: move_client_addr
         from: attributes.client_addr
         to: attributes["client.address"]
       - type: move
+        id: move_duration_ms
         from: attributes.duration_ms
-        to: attributes["db.operation.duration_ms"]
+        to: attributes["postgresql.query.duration_ms"]
         if: 'attributes.duration_ms != nil'
       - type: move
+        id: move_sql_statement
         from: attributes.sql_statement
-        to: attributes["db.statement"]
+        to: attributes["db.query.text"]
         if: 'attributes.sql_statement != nil'
       - type: move
+        id: move_message_to_body
         from: attributes.message
         to: body
 
       # Clean up
       - type: remove
+        id: remove_timestamp
         field: attributes.timestamp
       - type: remove
+        id: remove_level
         field: attributes.level
       - type: remove
+        id: remove_pid
         field: attributes.pid
 ```
 
@@ -122,30 +132,36 @@ receivers:
       line_start_pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
     operators:
       - type: regex_parser
+        id: parse_postgresql_log
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\]: \[\d+-\d+\] user=(?P<db_user>[^,]*),db=(?P<db_name>[^,]*),app=(?P<app_name>[^,]*),client=(?P<client_addr>[^\s]*) (?P<level>\w+):\s+(?P<message>[\s\S]*)'
         timestamp:
           parse_from: attributes.timestamp
           layout: "%Y-%m-%d %H:%M:%S.%L %Z"
       - type: regex_parser
+        id: parse_slow_query
         parse_from: attributes.message
         regex: 'duration: (?P<duration_ms>[0-9.]+) ms\s+statement: (?P<sql_statement>[\s\S]*)'
         on_error: send
-        preserve_to: attributes.message
       - type: move
+        id: move_db_user
         from: attributes.db_user
-        to: attributes["db.user"]
+        to: attributes["postgresql.user"]
       - type: move
+        id: move_db_name
         from: attributes.db_name
-        to: attributes["db.name"]
+        to: attributes["db.namespace"]
       - type: move
+        id: move_duration_ms
         from: attributes.duration_ms
-        to: attributes["db.operation.duration_ms"]
+        to: attributes["postgresql.query.duration_ms"]
         if: 'attributes.duration_ms != nil'
       - type: move
+        id: move_sql_statement
         from: attributes.sql_statement
-        to: attributes["db.statement"]
+        to: attributes["db.query.text"]
         if: 'attributes.sql_statement != nil'
       - type: move
+        id: move_message_to_body
         from: attributes.message
         to: body
 
@@ -158,10 +174,11 @@ processors:
 
   # Redact any PII that might appear in SQL statements
   transform/redact-sql:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
-          - replace_pattern(attributes["db.statement"], "'[^']*@[^']*'", "'[EMAIL]'") where attributes["db.statement"] != nil
+          - replace_pattern(log.attributes["db.query.text"], "'[^']*@[^']*'", "'[EMAIL]'") where log.attributes["db.query.text"] != nil
 
   batch:
     timeout: 5s
@@ -185,9 +202,9 @@ If PostgreSQL logs all queries (not just slow ones), you can filter at the Colle
 ```yaml
 processors:
   filter/slow-queries-only:
-    logs:
-      log_record:
-        - 'not IsMatch(body, "duration:")'
+    error_mode: ignore
+    log_conditions:
+      - 'not IsMatch(log.body, "duration:")'
 ```
 
 This drops log records that do not contain a duration field, keeping only the slow query entries.
@@ -203,8 +220,8 @@ connectors:
       postgresql.slow_queries:
         description: "Number of slow queries"
         attributes:
-          - key: db.name
-          - key: db.user
+          - key: db.namespace
+          - key: postgresql.user
 
 service:
   pipelines:
@@ -217,6 +234,6 @@ service:
       exporters: [otlp]
 ```
 
-This gives you a `postgresql.slow_queries` metric broken down by database and user, which is great for dashboards and alerting.
+This gives you a `postgresql.slow_queries` metric broken down by database and PostgreSQL user, which is great for dashboards and alerting.
 
 Parsing PostgreSQL slow query logs gives you visibility into database performance without needing to modify your application. Combined with the duration extraction, you can alert when queries exceed thresholds and track query performance trends over time.
