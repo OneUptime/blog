@@ -27,8 +27,8 @@ A standard UGC pipeline looks like this:
 The upload API endpoint creates the root span. This is the single trace that ties everything together.
 
 ```python
-from opentelemetry import trace, metrics, context
-from opentelemetry.trace.propagation import set_span_in_context
+from opentelemetry import trace, metrics
+from opentelemetry.propagate import inject, extract
 import time
 import uuid
 
@@ -56,6 +56,16 @@ pipeline_failures = meter.create_counter(
     name="ugc.pipeline.failures",
     description="Number of pipeline failures by stage and reason",
 )
+
+
+def serialize_trace_context():
+    carrier = {}
+    inject(carrier)
+    return carrier
+
+
+def deserialize_trace_context(trace_context):
+    return extract(trace_context)
 
 
 def handle_upload(request, user_id):
@@ -207,8 +217,11 @@ def process_media(content_id, staging_path, content_type):
     with tracer.start_as_current_span("ugc.media_process") as span:
         span.set_attribute("content.type", content_type)
         output_files = []
+        metadata = {}
 
         if content_type == "image":
+            metadata = extract_image_metadata(staging_path)
+
             # Generate multiple sizes
             sizes = [
                 ("thumbnail", 150, 150),
@@ -221,11 +234,13 @@ def process_media(content_id, staging_path, content_type):
                     r_span.set_attribute("output.size_bytes", output.size)
                     output_files.append(output)
 
-            # Extract EXIF data, strip GPS for privacy
+            # Strip GPS for privacy
             with tracer.start_as_current_span("ugc.strip_metadata"):
                 strip_location_metadata(staging_path)
 
         elif content_type == "video":
+            metadata = extract_video_metadata(staging_path)
+
             # Transcode to streaming formats
             with tracer.start_as_current_span("ugc.transcode") as tc_span:
                 renditions = transcode_video(staging_path, [
@@ -246,7 +261,7 @@ def process_media(content_id, staging_path, content_type):
             "stage": "media_process",
         })
 
-        return ProcessedContent(output_files=output_files)
+        return ProcessedContent(output_files=output_files, metadata=metadata)
 ```
 
 ## What Your Dashboard Should Show
