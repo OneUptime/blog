@@ -110,11 +110,21 @@ def generate_tenant_invoice(tenant_id: str):
             total = sum(item["amount"] for item in line_items)
             span.set_attribute("billing.invoice.total", total)
 
-        # Step 3: Create invoice in Stripe
+        # Step 3: Create invoice items and invoice in Stripe
+        stripe_customer_id = get_stripe_customer_id(tenant_id)
         with tracer.start_as_current_span("stripe.invoice.create") as stripe_span:
+            for item in line_items:
+                stripe.InvoiceItem.create(
+                    customer=stripe_customer_id,
+                    amount=item["amount"],
+                    currency=item["currency"],
+                    description=item["description"],
+                )
+
             stripe_invoice = stripe.Invoice.create(
-                customer=get_stripe_customer_id(tenant_id),
+                customer=stripe_customer_id,
                 auto_advance=True,
+                pending_invoice_items_behavior="include",
             )
             stripe_span.set_attribute("stripe.invoice.id", stripe_invoice.id)
 
@@ -127,24 +137,31 @@ If you use Chargebee instead of (or alongside) Stripe, the pattern is similar:
 
 ```python
 # chargebee_billing.py
-import chargebee
+from chargebee import Chargebee
 from opentelemetry import trace
 
 tracer = trace.get_tracer("billing.chargebee")
 
-def create_chargebee_subscription(tenant_id: str, plan_id: str):
+def create_chargebee_subscription(client: Chargebee, tenant_id: str, item_price_id: str):
     """Create a subscription in Chargebee with tracing."""
     with tracer.start_as_current_span(
         "chargebee.subscription.create",
         attributes={
             "tenant.id": tenant_id,
-            "billing.plan_id": plan_id,
+            "billing.item_price_id": item_price_id,
         }
     ) as span:
-        result = chargebee.Subscription.create({
-            "plan_id": plan_id,
-            "customer": {"id": tenant_id},
-        })
+        result = client.Subscription.create_with_items(
+            tenant_id,
+            client.Subscription.CreateWithItemsParams(
+                subscription_items=[
+                    client.Subscription.CreateWithItemsSubscriptionItemParams(
+                        item_price_id=item_price_id,
+                        quantity=1,
+                    )
+                ]
+            ),
+        )
 
         subscription = result.subscription
         span.set_attribute("chargebee.subscription.id", subscription.id)
