@@ -37,18 +37,18 @@ meter = metrics.get_meter("cdss-engine", "1.0.0")
 
 # Key metrics for CDSS performance
 cdss_response_time = meter.create_histogram(
-    "cdss.response_time_ms",
+    "cdss.response.duration",
     description="End-to-end CDSS evaluation time",
     unit="ms",
 )
 
 cdss_rules_evaluated = meter.create_counter(
-    "cdss.rules_evaluated_total",
+    "cdss.rules.evaluated",
     description="Total clinical rules evaluated",
 )
 
 cdss_alerts_generated = meter.create_counter(
-    "cdss.alerts_generated_total",
+    "cdss.alerts.generated",
     description="Total clinical alerts generated",
 )
 ```
@@ -65,7 +65,7 @@ def check_drug_interactions(patient_id_hash, new_medication_code, current_medica
     Check a new medication against the patient's current medication list
     for potential drug-drug interactions.
     """
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("cdss.drug_interaction.check") as span:
         span.set_attribute("cdss.check_type", "drug_interaction")
@@ -114,7 +114,7 @@ def check_drug_interactions(patient_id_hash, new_medication_code, current_medica
             })
 
         # Record the total response time
-        duration_ms = (time.time() - start) * 1000
+        duration_ms = (time.perf_counter() - start) * 1000
         span.set_attribute("cdss.response_time_ms", duration_ms)
         cdss_response_time.record(duration_ms, {
             "cdss.check_type": "drug_interaction",
@@ -145,21 +145,20 @@ def evaluate_clinical_rules(trigger_event, patient_context):
         # Evaluate each rule against the patient context
         fired_rules = []
         for rule in applicable_rules:
-            with tracer.start_as_current_span(f"cdss.rule.{rule.id}") as rule_span:
+            with tracer.start_as_current_span("cdss.rule.evaluate") as rule_span:
                 rule_span.set_attribute("cdss.rule.id", rule.id)
                 rule_span.set_attribute("cdss.rule.name", rule.name)
                 rule_span.set_attribute("cdss.rule.category", rule.category)
 
-                rule_start = time.time()
+                rule_start = time.perf_counter()
                 result = rule.evaluate(patient_context)
-                rule_duration = (time.time() - rule_start) * 1000
+                rule_duration = (time.perf_counter() - rule_start) * 1000
 
                 rule_span.set_attribute("cdss.rule.fired", result.fired)
                 rule_span.set_attribute("cdss.rule.evaluation_ms", rule_duration)
 
                 cdss_rules_evaluated.add(1, {
                     "cdss.rule.category": rule.category,
-                    "cdss.rule.id": rule.id,
                 })
 
                 if result.fired:
@@ -174,16 +173,18 @@ def evaluate_clinical_rules(trigger_event, patient_context):
 If your CDSS implements the CDS Hooks standard for integration with EHRs, trace the hook lifecycle:
 
 ```python
+import hashlib
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 @app.route("/cds-services/drug-interaction-check", methods=["POST"])
 def cds_hook_drug_check():
-    """CDS Hooks endpoint for medication-prescribe hook."""
-    with tracer.start_as_current_span("cds_hooks.medication_prescribe") as span:
+    """CDS Hooks endpoint for order-sign hook."""
+    with tracer.start_as_current_span("cds_hooks.order_sign") as span:
         hook_request = request.get_json()
-        span.set_attribute("cds_hooks.hook", "medication-prescribe")
+        context = hook_request.get("context", {})
+        span.set_attribute("cds_hooks.hook", "order-sign")
         span.set_attribute("cds_hooks.fhir_server", hook_request.get("fhirServer", ""))
 
         # Prefetch data provided by the EHR
@@ -203,8 +204,9 @@ def cds_hook_drug_check():
             medications = prefetch["medications"]
 
         # Run the interaction check
+        patient_id = context.get("patientId", "")
         result = check_drug_interactions(
-            patient_id_hash=hash(hook_request.get("patient", "")),
+            patient_id_hash=hashlib.sha256(patient_id.encode("utf-8")).hexdigest() if patient_id else "",
             new_medication_code=extract_medication_code(hook_request),
             current_medications=medications,
         )
@@ -218,4 +220,4 @@ def cds_hook_drug_check():
 
 ## Performance Budgets
 
-For CDSS systems, response time budgets are strict. Drug interaction checks during order entry need to complete in under 500ms or physicians will start ignoring the system. Clinical rule evaluation on new lab results should finish within 2 seconds. CDS Hooks responses have a practical limit of about 1 second before EHR timeouts kick in. By tracking these with OpenTelemetry histograms, you can set alerts at the p95 level and catch degradation before it impacts clinical adoption of your decision support tools.
+For CDSS systems, response time budgets are strict. Drug interaction checks during order entry need to complete in under 500ms or physicians will start ignoring the system. Clinical rule evaluation on new lab results should finish within 2 seconds. CDS Hooks services should respond quickly, on the order of 500ms, and actual client timeouts vary by EHR implementation. By tracking these with OpenTelemetry histograms, you can set alerts at the p95 level and catch degradation before it impacts clinical adoption of your decision support tools.
