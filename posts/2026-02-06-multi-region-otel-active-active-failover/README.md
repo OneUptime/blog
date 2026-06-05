@@ -92,8 +92,10 @@ exporters:
 extensions:
   file_storage/local:
     directory: /var/otel/queue/local
+    create_directory: true
   file_storage/cross_region:
     directory: /var/otel/queue/cross-region
+    create_directory: true
 
 service:
   extensions: [file_storage/local, file_storage/cross_region]
@@ -151,14 +153,14 @@ service:
 
 ## DNS-Based Global Load Balancing
 
-Use Route 53 health checks (or equivalent) to route queries to the nearest healthy region.
+Use Route 53 health checks (or equivalent) to route queries to the nearest healthy region. Standard Route 53 endpoint health checks must be able to reach the endpoint; for private query endpoints, use CloudWatch-alarm-based health checks or a VPC-based checker that publishes health to CloudWatch.
 
 ```yaml
 # terraform/global-dns.tf
 # Route 53 configuration for global telemetry query routing
 
 resource "aws_route53_health_check" "tempo_us_east" {
-  fqdn              = "tempo-query.us-east-1.internal.example.com"
+  fqdn              = "tempo-query-health.us-east-1.example.com"
   port               = 3200
   type               = "HTTP"
   resource_path      = "/ready"
@@ -167,7 +169,7 @@ resource "aws_route53_health_check" "tempo_us_east" {
 }
 
 resource "aws_route53_health_check" "tempo_eu_west" {
-  fqdn              = "tempo-query.eu-west-1.internal.example.com"
+  fqdn              = "tempo-query-health.eu-west-1.example.com"
   port               = 3200
   type               = "HTTP"
   resource_path      = "/ready"
@@ -212,19 +214,35 @@ resource "aws_route53_record" "tempo_global_eu" {
 }
 ```
 
-## Kubernetes Deployment with Anti-Affinity
+## Kubernetes StatefulSet with Zone-Aware Scheduling
 
 Spread Collector pods across availability zones within each region so a single AZ failure does not take out the fleet.
 
 ```yaml
-# k8s-collector-deployment.yaml
-# OTel Collector deployment with zone-aware scheduling
-apiVersion: apps/v1
-kind: Deployment
+# k8s-collector-statefulset.yaml
+# OTel Collector StatefulSet with zone-aware scheduling and per-pod queue storage
+apiVersion: v1
+kind: Service
 metadata:
   name: otel-collector
   namespace: monitoring
 spec:
+  clusterIP: None
+  ports:
+    - name: otlp-grpc
+      port: 4317
+    - name: otlp-http
+      port: 4318
+  selector:
+    app: otel-collector
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  serviceName: otel-collector
   replicas: 6
   selector:
     matchLabels:
@@ -244,7 +262,7 @@ spec:
               app: otel-collector
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               cpu: "500m"
@@ -255,15 +273,19 @@ spec:
           volumeMounts:
             - name: queue-storage
               mountPath: /var/otel/queue
-      volumes:
-        - name: queue-storage
-          persistentVolumeClaim:
-            claimName: otel-collector-queue
+  volumeClaimTemplates:
+    - metadata:
+        name: queue-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
 ```
 
 ## Monitoring the Multi-Region Setup
 
-Track cross-region replication lag and queue depth to catch problems early.
+Track cross-region exporter failures and queue depth to catch problems early.
 
 ```yaml
 # cross-region-alerts.yaml
@@ -277,7 +299,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Cross-region telemetry queue has {{ $value }} items"
+          summary: "Cross-region telemetry queue has {{ $value }} batches"
 
       # Alert when cross-region export is completely failing
       - alert: CrossRegionExportDown
