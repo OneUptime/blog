@@ -8,6 +8,8 @@ Description: A practical guide to implementing SLOs using OpenTelemetry metrics 
 
 Service Level Objectives define the target reliability for your service. An SLO states something like "99.9% of requests should succeed" or "95% of requests should complete within 200ms over a 30-day window." While SLIs give you the raw measurement, SLOs set the bar. This post walks through implementing SLOs using OpenTelemetry as the instrumentation layer and Prometheus recording rules for efficient, pre-computed SLO tracking.
 
+The PromQL examples below assume OpenTelemetry's stable HTTP server duration metric is exposed through the Collector's default Prometheus translation. That means `http.server.request.duration` is exported as `http_server_request_duration_seconds`, duration buckets use seconds, and the `service.name` resource attribute is available as the `service_name` label when resource-to-telemetry conversion is enabled.
+
 ## The Relationship Between SLIs and SLOs
 
 An SLO is simply an SLI with a target attached. If your availability SLI is currently at 99.95%, and your SLO target is 99.9%, you are meeting your objective. The gap between the current SLI and the SLO target determines your error budget, which is covered in a separate post on calculating error budgets from OpenTelemetry data at https://oneuptime.com/blog/post/2026-02-06-error-budgets-opentelemetry/view.
@@ -17,7 +19,7 @@ graph LR
     A[OpenTelemetry SDK] -->|OTLP| B[OTel Collector]
     B -->|Prometheus Remote Write| C[Prometheus]
     C -->|Recording Rules| D[Pre-computed SLO Metrics]
-    D -->|Alerting Rules| E[Alert Manager]
+    D -->|Alerting Rules| E[Alertmanager]
     D -->|Dashboards| F[Grafana]
 ```
 
@@ -35,10 +37,10 @@ slos:
     sli_type: "availability"
     target: 0.999          # 99.9%
     window: "30d"          # 30-day rolling window
-    metric_good: "http_server_request_total - http_server_request_errors_total"
-    metric_total: "http_server_request_total"
+    metric_good: "http_server_request_duration_seconds_count{http_response_status_code!~'5..'}"
+    metric_total: "http_server_request_duration_seconds_count"
     labels:
-      service: "payment-service"
+      service_name: "payment-service"
 
   - name: "payment-service-latency"
     description: "Payment API latency"
@@ -46,10 +48,10 @@ slos:
     target: 0.95           # 95% of requests under threshold
     threshold_ms: 200
     window: "30d"
-    metric_good: "http_server_request_duration_bucket{le='200'}"
-    metric_total: "http_server_request_duration_count"
+    metric_good: "http_server_request_duration_seconds_bucket{le='0.2'}"
+    metric_total: "http_server_request_duration_seconds_count"
     labels:
-      service: "payment-service"
+      service_name: "payment-service"
 ```
 
 ## Prometheus Recording Rules for Availability SLOs
@@ -66,23 +68,23 @@ groups:
       # Short-window error rate (5m) - used for burn rate alerts
       - record: slo:http_error_rate:ratio_rate5m
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[5m]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service", http_response_status_code=~"5.."}[5m]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[5m]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[5m]))
 
       # Medium-window error rate (1h)
       - record: slo:http_error_rate:ratio_rate1h
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[1h]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service", http_response_status_code=~"5.."}[1h]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[1h]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[1h]))
 
       # Long-window error rate (30d) - the actual SLO compliance metric
       - record: slo:http_error_rate:ratio_rate30d
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[30d]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service", http_response_status_code=~"5.."}[30d]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[30d]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[30d]))
 
       # Current SLI value (availability = 1 - error rate)
       - record: slo:http_availability:ratio_rate30d
@@ -111,23 +113,23 @@ groups:
       # Fraction of requests under 200ms over 5 minutes
       - record: slo:http_latency_good:ratio_rate5m
         expr: |
-          sum(rate(http_server_request_duration_bucket{service="payment-service", le="200"}[5m]))
+          sum(rate(http_server_request_duration_seconds_bucket{service_name="payment-service", le="0.2"}[5m]))
           /
-          sum(rate(http_server_request_duration_count{service="payment-service"}[5m]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[5m]))
 
       # Fraction of requests under 200ms over 1 hour
       - record: slo:http_latency_good:ratio_rate1h
         expr: |
-          sum(rate(http_server_request_duration_bucket{service="payment-service", le="200"}[1h]))
+          sum(rate(http_server_request_duration_seconds_bucket{service_name="payment-service", le="0.2"}[1h]))
           /
-          sum(rate(http_server_request_duration_count{service="payment-service"}[1h]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[1h]))
 
       # Fraction of requests under 200ms over 30 days
       - record: slo:http_latency_good:ratio_rate30d
         expr: |
-          sum(rate(http_server_request_duration_bucket{service="payment-service", le="200"}[30d]))
+          sum(rate(http_server_request_duration_seconds_bucket{service_name="payment-service", le="0.2"}[30d]))
           /
-          sum(rate(http_server_request_duration_count{service="payment-service"}[30d]))
+          sum(rate(http_server_request_duration_seconds_count{service_name="payment-service"}[30d]))
 
       # Remaining error budget for latency SLO
       - record: slo:http_latency:error_budget_remaining
@@ -163,8 +165,12 @@ exporters:
       enabled: true  # Converts OTel resource attributes to Prometheus labels
 
   # Option 2: Prometheus remote write - collector pushes to Prometheus
+  # Prometheus must be started with --web.enable-remote-write-receiver
+  # when using its built-in /api/v1/write receiver.
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
     resource_to_telemetry_conversion:
       enabled: true
 
