@@ -73,9 +73,8 @@ receivers:
       # Extract the exception type from the traceback
       - type: regex_parser
         parse_from: body
-        regex: '(?P<exception_type>[A-Za-z_.]+(?:Error|Exception|Warning)): (?P<exception_message>[^\n]+)'
+        regex: '(?ms).*^(?P<exception_type>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning)): (?P<exception_message>[^\n]+)$'
         on_error: send
-        preserve_to: body
 
       # Map to semantic conventions
       - type: move
@@ -161,7 +160,7 @@ receivers:
 
 ## Handling Chained Exceptions (Python 3)
 
-Python 3 supports exception chaining with "During handling of the above exception, another exception occurred:" syntax:
+Python 3 supports exception chaining, including the "During handling of the above exception, another exception occurred:" syntax for exceptions raised while handling another exception:
 
 ```text
 2026-02-06 14:23:45,123 ERROR app - Request failed
@@ -176,7 +175,7 @@ Traceback (most recent call last):
   File "/app/views.py", line 42, in get_users
     results = db.query("SELECT * FROM users")
   File "/app/db.py", line 15, in query
-    raise DatabaseError("Query failed") from e
+    raise DatabaseError("Query failed")
 app.errors.DatabaseError: Query failed
 ```
 
@@ -191,9 +190,8 @@ operators:
   # Extract the last file reference before the exception
   - type: regex_parser
     parse_from: body
-    regex: '(?s).*File "(?P<code_filepath>[^"]+)", line (?P<code_lineno>\d+), in (?P<code_function>\w+)\n[^\n]*$'
+    regex: '(?s).*File "(?P<code_filepath>[^"]+)", line (?P<code_lineno>\d+), in (?P<code_function>[^\n]+)\n(?:[^\n]*\n)?[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning): [^\n]+$'
     on_error: send
-    preserve_to: body
   - type: move
     from: attributes.code_filepath
     to: attributes["code.filepath"]
