@@ -12,7 +12,7 @@ Network slicing is one of the defining features of 5G. It lets operators run mul
 
 Each network slice is identified by an S-NSSAI (Single Network Slice Selection Assistance Information), which consists of:
 
-- **SST (Slice/Service Type)**: 1 = eMBB, 2 = URLLC, 3 = mMTC
+- **SST (Slice/Service Type)**: 1 = eMBB, 2 = URLLC, 3 = mMTC/MIoT
 - **SD (Slice Differentiator)**: An optional 3-byte hex value to distinguish slices of the same type
 
 Every metric and trace we collect should carry these attributes for proper slice-level analysis.
@@ -80,12 +80,10 @@ import (
     "context"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/metric"
 )
 
 var (
     tracer = otel.Tracer("smf.slice")
-    meter  = otel.Meter("smf.slice")
 )
 
 // SliceAttributes returns the standard OTel attributes for a given slice
@@ -132,7 +130,7 @@ func EstablishPDUSession(ctx context.Context, req PDUSessionRequest) error {
         span.RecordError(err)
         return err
     }
-    span.SetAttribute("upf.instance_id", upf.InstanceID)
+    span.SetAttributes(attribute.String("upf.instance_id", upf.InstanceID))
 
     // Apply slice-specific QoS policies
     qosProfile, err := applySliceQoS(ctx, req.SNSSAI, req.DNN)
@@ -140,9 +138,11 @@ func EstablishPDUSession(ctx context.Context, req PDUSessionRequest) error {
         span.RecordError(err)
         return err
     }
-    span.SetAttribute("qos.5qi", qosProfile.FiveQI)
-    span.SetAttribute("qos.max_bitrate_dl", qosProfile.MaxBitrateDL)
-    span.SetAttribute("qos.max_bitrate_ul", qosProfile.MaxBitrateUL)
+    span.SetAttributes(
+        attribute.Int("qos.5qi", qosProfile.FiveQI),
+        attribute.String("qos.max_bitrate_dl", qosProfile.MaxBitrateDL),
+        attribute.String("qos.max_bitrate_ul", qosProfile.MaxBitrateUL),
+    )
 
     return nil
 }
@@ -162,17 +162,16 @@ processors:
   batch:
     timeout: 5s
 
+connectors:
   # Route metrics to different backends based on slice type
   # URLLC metrics go to a low-latency pipeline for real-time alerting
-  routing:
-    from_attribute: slice.type
+  routing/slice:
+    default_pipelines: [metrics/standard]
     table:
-      - value: "URLLC"
-        exporters: [otlp/realtime, otlp/standard]
-      - value: "eMBB"
-        exporters: [otlp/standard]
-      - value: "mMTC"
-        exporters: [otlp/standard]
+      - context: datapoint
+        condition: attributes["slice.type"] == "URLLC"
+        action: copy
+        pipelines: [metrics/realtime]
 
 exporters:
   otlp/standard:
@@ -189,10 +188,16 @@ exporters:
 
 service:
   pipelines:
-    metrics:
+    metrics/in:
       receivers: [otlp]
-      processors: [batch, routing]
+      processors: [batch]
+      exporters: [routing/slice]
+    metrics/standard:
+      receivers: [routing/slice]
       exporters: [otlp/standard]
+    metrics/realtime:
+      receivers: [routing/slice]
+      exporters: [otlp/realtime]
     traces:
       receivers: [otlp]
       processors: [batch]
