@@ -23,9 +23,24 @@ The opentelemetry-swift SDK is distributed through Swift Package Manager, making
 dependencies: [
     .package(
         url: "https://github.com/open-telemetry/opentelemetry-swift",
-        from: "1.5.0"
+        from: "2.4.1"
+    ),
+    .package(
+        url: "https://github.com/open-telemetry/opentelemetry-swift-core.git",
+        from: "2.4.1"
     )
 ]
+
+// Target dependencies section
+.target(
+    name: "YourApp",
+    dependencies: [
+        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+        .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
+        .product(name: "ResourceExtension", package: "opentelemetry-swift")
+    ]
+)
 ```
 
 After adding the package, import the required modules into your code. The SDK is modular, so you only include what you need for tracing.
@@ -65,7 +80,7 @@ class TelemetryManager {
         // Create a simple console exporter for development
         let exporter = StdoutExporter()
 
-        // Create a span processor that batches spans
+        // Create a span processor that immediately exports ended spans
         let processor = SimpleSpanProcessor(spanExporter: exporter)
 
         // Initialize the tracer provider
@@ -254,9 +269,12 @@ iOS apps have a complex lifecycle with states like foreground, background, and s
 
 ```swift
 import UIKit
+import OpenTelemetryApi
 
 class AppDelegate: UIResponder, UIApplicationDelegate {
-    let tracer = TelemetryManager.shared.getTracer(instrumentationName: "app-lifecycle")
+    private var tracer: Tracer {
+        TelemetryManager.shared.getTracer(instrumentationName: "app-lifecycle")
+    }
 
     func application(
         _ application: UIApplication,
