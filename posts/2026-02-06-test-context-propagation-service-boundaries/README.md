@@ -23,26 +23,21 @@ import pytest
 import requests
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
 
-# Shared in-memory exporter that both services write to
+# Shared in-memory exporter for local test services running in this process
 exporter = InMemorySpanExporter()
 
 @pytest.fixture(autouse=True)
 def setup_tracing():
-    provider = TracerProvider()
-    provider.add_span_processor(
-        trace.get_tracer_provider()
-        .__class__.__module__  # Just to avoid circular imports
-    )
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     yield
     exporter.clear()
 
-def test_trace_context_propagates_across_http(service_a_url, service_b_url):
+def test_trace_context_propagates_across_http(service_a_url):
     """
     Service A calls Service B internally.
     Verify that both services produce spans with the same trace ID.
@@ -78,6 +73,8 @@ def test_trace_context_propagates_across_http(service_a_url, service_b_url):
     assert service_b_span.parent.trace_id == service_a_spans[0].context.trace_id
 ```
 
+If your services run in separate processes, point them at a test collector or tracing backend and query that backend instead of using an in-memory exporter in the test process.
+
 ## Testing gRPC Context Propagation
 
 gRPC uses interceptors for context propagation. Test that the interceptors are correctly installed:
@@ -89,6 +86,8 @@ from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry import trace
+from opentelemetry.instrumentation.grpc import client_interceptor
+from opentelemetry.trace import SpanKind
 
 # Import your generated protobuf stubs
 from proto import order_pb2, order_pb2_grpc
@@ -112,12 +111,18 @@ def test_grpc_context_propagation(grpc_server_address):
 
         # Make the gRPC call within the parent span context
         channel = grpc.insecure_channel(grpc_server_address)
+        channel = grpc.intercept_channel(channel, client_interceptor())
         stub = order_pb2_grpc.OrderServiceStub(channel)
         response = stub.GetOrder(order_pb2.GetOrderRequest(order_id="123"))
 
     # Check that server-side spans have the same trace ID
     spans = exporter.get_finished_spans()
-    server_spans = [s for s in spans if "grpc.server" in (s.name or "")]
+    server_spans = [
+        s for s in spans
+        if s.kind == SpanKind.SERVER and s.attributes.get("rpc.system") == "grpc"
+    ]
+
+    assert server_spans, "No gRPC server spans were recorded"
 
     for span in server_spans:
         assert span.context.trace_id == parent_trace_id, (
@@ -133,9 +138,8 @@ Message queues are where propagation most commonly breaks. The producer must inj
 ```python
 # test_kafka_propagation.py
 import json
-import time
 from confluent_kafka import Producer, Consumer
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
@@ -180,9 +184,14 @@ def test_kafka_context_propagation(kafka_broker):
 
     msg = consumer.poll(timeout=10.0)
     assert msg is not None, "No message received from Kafka"
+    assert msg.error() is None, f"Kafka consumer error: {msg.error()}"
 
     # Extract context from message headers
-    carrier = {h[0]: h[1].decode() for h in msg.headers()}
+    carrier = {
+        key: value.decode()
+        for key, value in (msg.headers() or [])
+        if value is not None
+    }
     extracted_ctx = extract(carrier)
 
     # Create a consumer span with the extracted context as parent
