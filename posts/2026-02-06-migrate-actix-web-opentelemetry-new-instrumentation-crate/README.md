@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Rust, Actix-web, Migration, Instrumentation
 
 Description: Complete migration guide from the deprecated actix-web-opentelemetry crate to modern OpenTelemetry instrumentation patterns with code examples.
 
-The `actix-web-opentelemetry` crate served the community well, but changes in the OpenTelemetry Rust ecosystem have made it obsolete. The newer approach uses the official `opentelemetry` and `tracing-opentelemetry` crates directly, giving you more control and better compatibility with the broader ecosystem.
+The `actix-web-opentelemetry` crate served the community well, but changes in the OpenTelemetry Rust ecosystem have made it obsolete. The replacement approach uses the `opentelemetry-instrumentation-actix-web` crate alongside the official `opentelemetry` SDK crates, giving you better compatibility with the broader ecosystem while preserving Actix-web specific middleware.
 
 ## Why Migrate?
 
@@ -46,20 +46,21 @@ Update your `Cargo.toml` to remove the old crate and add the new ones:
 [dependencies]
 # Remove this line:
 
-# actix-web-opentelemetry = "0.14"
+# actix-web-opentelemetry = "0.22"
 
 # Add these instead:
-actix-web = "4.5"
-opentelemetry = { version = "0.22", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace", "metrics"] }
-opentelemetry-otlp = { version = "0.15", features = ["tokio", "trace", "metrics"] }
+actix-web = "4"
+awc = "3"
+opentelemetry = { version = "0.31", features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.31", features = ["trace", "metrics", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "trace", "metrics"] }
+opentelemetry-instrumentation-actix-web = { version = "0.23", features = ["awc", "metrics"] }
 tracing = "0.1"
-tracing-opentelemetry = "0.23"
+tracing-opentelemetry = "0.32"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-actix-web = "0.7"
 ```
 
-The `tracing-actix-web` crate provides Actix-web specific instrumentation that integrates seamlessly with the OpenTelemetry bridge.
+The `opentelemetry-instrumentation-actix-web` crate provides Actix-web specific instrumentation for incoming requests, request metrics, and `awc` client requests. The `tracing-opentelemetry` crate is still useful when you also want spans created with `tracing` macros to be exported as OpenTelemetry spans.
 
 ## Implementing the New Instrumentation Pattern
 
@@ -68,36 +69,41 @@ Here's the modern way to instrument your Actix-web application:
 ```rust
 use actix_web::{web, App, HttpResponse, HttpServer};
 use opentelemetry::global;
-use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
-use opentelemetry_sdk::{runtime, Resource};
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_instrumentation_actix_web::RequestTracing;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, SdkTracerProvider};
+use opentelemetry_sdk::Resource;
 use opentelemetry::KeyValue;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-fn init_telemetry() -> Result<(), Box<dyn std::error::Error>> {
+fn init_telemetry() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     // Configure the OTLP exporter
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317")
-        )
-        .with_trace_config(
-            trace::config()
-                .with_sampler(Sampler::AlwaysOn)
-                .with_id_generator(RandomIdGenerator::default())
-                .with_max_events_per_span(64)
-                .with_max_attributes_per_span(128)
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "my-actix-service"),
-                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-                    KeyValue::new("deployment.environment", "production"),
-                ]))
-        )
-        .install_batch(runtime::Tokio)?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
 
-    // Create a tracing layer with the configured tracer
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_sampler(Sampler::AlwaysOn)
+        .with_id_generator(RandomIdGenerator::default())
+        .with_max_events_per_span(64)
+        .with_max_attributes_per_span(128)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("my-actix-service")
+                .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
+                .with_attribute(KeyValue::new("deployment.environment", "production"))
+                .build(),
+        )
+        .with_batch_exporter(exporter)
+        .build();
+
+    global::set_tracer_provider(tracer_provider.clone());
+
+    // Create a tracing layer with the configured tracer provider
+    let tracer = tracer_provider.tracer("my-actix-service");
     let telemetry_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer);
 
@@ -108,16 +114,16 @@ fn init_telemetry() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(())
+    Ok(tracer_provider)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    init_telemetry().expect("Failed to initialize telemetry");
+    let tracer_provider = init_telemetry().expect("Failed to initialize telemetry");
 
     HttpServer::new(|| {
         App::new()
-            .wrap(tracing_actix_web::TracingLogger::default())
+            .wrap(RequestTracing::new())
             .route("/api/users", web::get().to(get_users))
             .route("/api/users/{id}", web::get().to(get_user_by_id))
     })
@@ -126,7 +132,7 @@ async fn main() -> std::io::Result<()> {
     .await?;
 
     // Clean shutdown to flush remaining spans
-    global::shutdown_tracer_provider();
+    tracer_provider.shutdown().expect("Failed to shut down tracer provider");
 
     Ok(())
 }
@@ -144,7 +150,7 @@ async fn get_user_by_id(path: web::Path<String>) -> HttpResponse {
 }
 ```
 
-The `tracing_actix_web::TracingLogger` middleware automatically creates spans for HTTP requests and integrates with the OpenTelemetry layer.
+The `RequestTracing` middleware automatically creates OpenTelemetry spans for HTTP requests. The `tracing-opentelemetry` layer exports spans created with `tracing` macros through the same tracer provider.
 
 ## Migrating Custom Span Creation
 
@@ -195,33 +201,20 @@ The `#[instrument]` macro automatically creates spans with proper context propag
 The old crate automatically extracted and injected trace context. You can achieve the same with the new approach:
 
 ```rust
-use actix_web::{HttpRequest, HttpResponse, client::Client};
-use opentelemetry::global;
-use opentelemetry::propagation::Injector;
+use actix_web::{HttpRequest, HttpResponse};
+use awc::Client;
+use opentelemetry_instrumentation_actix_web::ClientExt;
 use tracing::instrument;
 
-#[instrument(name = "call_downstream_service")]
-async fn call_downstream(req: HttpRequest) -> HttpResponse {
+#[instrument(name = "call_downstream_service", skip(_req))]
+async fn call_downstream(_req: HttpRequest) -> HttpResponse {
     let client = Client::default();
 
-    // Create a new request to a downstream service
-    let mut downstream_req = client
+    // Create a new request to a downstream service and add tracing propagation
+    let downstream_req = client
         .get("http://downstream-service/api/data")
-        .insert_header(("user-agent", "my-service/1.0"));
-
-    // Inject the current trace context into outgoing headers
-    struct HeaderInjector<'a>(&'a mut actix_web::client::ClientRequest);
-
-    impl<'a> Injector for HeaderInjector<'a> {
-        fn set(&mut self, key: &str, value: String) {
-            self.0.insert_header((key.to_string(), value));
-        }
-    }
-
-    let mut injector = HeaderInjector(&mut downstream_req);
-    global::get_text_map_propagator(|propagator| {
-        propagator.inject(&mut injector)
-    });
+        .insert_header(("user-agent", "my-service/1.0"))
+        .trace_request();
 
     // Send the request with trace context
     match downstream_req.send().await {
@@ -244,7 +237,9 @@ This ensures distributed traces flow correctly across service boundaries.
 The new approach gives you more control over sampling:
 
 ```rust
-use opentelemetry_sdk::trace::{Sampler, SamplingResult, SamplingDecision};
+use opentelemetry::trace::{Link, SamplingDecision, SamplingResult, SpanKind, TraceId};
+use opentelemetry::KeyValue;
+use opentelemetry_sdk::trace::{Sampler, ShouldSample};
 
 // Simple ratio-based sampling
 let sampler = Sampler::TraceIdRatioBased(0.1); // Sample 10% of traces
@@ -255,17 +250,18 @@ let parent_sampler = Sampler::ParentBased(Box::new(
 ));
 
 // Custom sampling logic
+#[derive(Clone, Debug)]
 struct CustomSampler;
 
-impl opentelemetry_sdk::trace::ShouldSample for CustomSampler {
+impl ShouldSample for CustomSampler {
     fn should_sample(
         &self,
         parent_context: Option<&opentelemetry::Context>,
-        trace_id: opentelemetry::trace::TraceId,
+        trace_id: TraceId,
         name: &str,
-        span_kind: &opentelemetry::trace::SpanKind,
+        span_kind: &SpanKind,
         attributes: &[KeyValue],
-        links: &[opentelemetry::trace::Link],
+        links: &[Link],
     ) -> SamplingResult {
         // Sample all error requests
         if attributes.iter().any(|kv| {
@@ -304,34 +300,32 @@ Custom samplers let you implement sophisticated sampling strategies based on req
 Unlike the old crate, the new approach supports metrics alongside traces:
 
 ```rust
-use opentelemetry::{global, metrics::MeterProvider};
-use opentelemetry_sdk::metrics::{self, reader::DefaultTemporalitySelector};
+use actix_web::HttpResponse;
+use opentelemetry::{global, metrics::MeterProvider, KeyValue};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::metrics;
+use opentelemetry_sdk::Resource;
 
 fn init_metrics() -> Result<(), Box<dyn std::error::Error>> {
-    let export_config = opentelemetry_otlp::ExportConfig {
-        endpoint: "http://localhost:4317".to_string(),
-        ..Default::default()
-    };
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
 
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_export_config(export_config);
-
-    let reader = metrics::PeriodicReader::builder(
-        exporter,
-        runtime::Tokio,
-    )
-    .with_interval(std::time::Duration::from_secs(30))
-    .build();
+    let reader = metrics::PeriodicReader::builder(exporter)
+        .with_interval(std::time::Duration::from_secs(30))
+        .build();
 
     let provider = metrics::SdkMeterProvider::builder()
         .with_reader(reader)
-        .with_resource(Resource::new(vec![
-            KeyValue::new("service.name", "my-actix-service"),
-        ]))
+        .with_resource(
+            Resource::builder()
+                .with_service_name("my-actix-service")
+                .build(),
+        )
         .build();
 
-    global::set_meter_provider(provider);
+    global::set_meter_provider(provider.clone());
 
     Ok(())
 }
@@ -342,7 +336,7 @@ async fn metrics_handler() -> HttpResponse {
     let counter = meter
         .u64_counter("requests_total")
         .with_description("Total number of requests")
-        .init();
+        .build();
 
     counter.add(1, &[KeyValue::new("endpoint", "/api/users")]);
 
@@ -371,7 +365,7 @@ graph TD
 
 1. Update dependencies in `Cargo.toml`
 2. Initialize the tracing subscriber with OpenTelemetry layer
-3. Replace old middleware with `tracing_actix_web::TracingLogger`
+3. Replace old middleware with `opentelemetry_instrumentation_actix_web::RequestTracing`
 4. Convert manual span creation to `#[instrument]` macros
 5. Update context extraction and injection for downstream calls
 6. Configure appropriate sampling strategies
@@ -388,7 +382,7 @@ The new approach offers better performance characteristics:
 - Sampling happens earlier in the pipeline
 - Lower memory footprint due to optimized span storage
 
-In benchmarks, the new instrumentation adds less than 5% overhead to request processing, compared to 10-15% with the old crate.
+You should benchmark the migration in your own service before making performance claims, especially if you add request metrics or synchronous middleware instrumentation.
 
 ## Troubleshooting Common Issues
 
