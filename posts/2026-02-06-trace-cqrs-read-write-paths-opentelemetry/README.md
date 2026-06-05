@@ -57,7 +57,7 @@ The write side receives commands, validates them, executes business logic, persi
 
 ## Setting Up Separate Tracers
 
-The first step is to create separate tracers for the read and write paths. This isn't strictly required by OpenTelemetry, but it makes it much easier to filter and analyze traces later. Each tracer gets its own name, so you can immediately tell which path a span belongs to.
+The first step is to create separate tracers for the read and write paths. This isn't strictly required by OpenTelemetry, but it makes it much easier to filter and analyze traces later. Each tracer gets its own instrumentation scope name, so you can immediately tell which path created a span in backends that expose scope metadata.
 
 ```python
 # tracers.py - Separate tracers for CQRS read and write paths
@@ -82,7 +82,7 @@ provider.add_span_processor(BatchSpanProcessor(
 trace.set_tracer_provider(provider)
 
 # Create separate tracers for each CQRS path
-# The tracer name becomes an attribute on every span it creates
+# The tracer name becomes the instrumentation scope for spans it creates
 write_tracer = trace.get_tracer("cqrs.write", "3.1.0")
 read_tracer = trace.get_tracer("cqrs.read", "3.1.0")
 sync_tracer = trace.get_tracer("cqrs.sync", "3.1.0")
@@ -95,6 +95,7 @@ The write path handles commands. Each command goes through validation, authoriza
 ```python
 # command_handler.py - Write path instrumentation
 from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry.propagate import inject
 
 class OrderCommandHandler:
     def __init__(self, repository, event_publisher):
@@ -156,8 +157,8 @@ class OrderCommandHandler:
                     attributes={
                         "cqrs.aggregate.id": command.aggregate_id,
                         "cqrs.events.count": len(events),
-                        "db.system": "postgresql",
-                        "db.operation": "INSERT",
+                        "db.system.name": "postgresql",
+                        "db.operation.name": "INSERT",
                     }
                 ):
                     self.repository.save(aggregate, events)
@@ -170,10 +171,15 @@ class OrderCommandHandler:
                         "cqrs.events.count": len(events),
                         "cqrs.events.types": ",".join(e.type for e in events),
                         "messaging.system": "rabbitmq",
+                        "messaging.destination.name": "order.events",
+                        "messaging.operation.name": "publish",
+                        "messaging.operation.type": "send",
                     }
                 ):
                     for event in events:
-                        self.event_publisher.publish(event)
+                        message_headers = {}
+                        inject(message_headers)
+                        self.event_publisher.publish(event, headers=message_headers)
 
                 cmd_span.set_attribute("cqrs.command.success", True)
                 cmd_span.set_status(StatusCode.OK)
@@ -245,9 +251,9 @@ class OrderQueryHandler:
                     "query.read_model",
                     attributes={
                         "cqrs.query.type": query_type,
-                        "db.system": "postgresql",
-                        "db.operation": "SELECT",
-                        "db.name": "order_read_model",
+                        "db.system.name": "postgresql",
+                        "db.operation.name": "SELECT",
+                        "db.namespace": "order_read_model",
                     }
                 ) as db_span:
                     result = self._execute_query(query)
@@ -287,7 +293,6 @@ The projection service that keeps read models in sync is arguably the most impor
 
 ```python
 # projection_handler.py - Synchronization path instrumentation
-from opentelemetry import context
 from opentelemetry.trace import SpanKind, StatusCode
 from opentelemetry.propagate import extract
 import time
@@ -326,9 +331,9 @@ class OrderProjectionHandler:
                 with sync_tracer.start_as_current_span(
                     "projection.update_read_model",
                     attributes={
-                        "db.system": "postgresql",
-                        "db.operation": "UPSERT",
-                        "db.name": "order_read_model",
+                        "db.system.name": "postgresql",
+                        "db.operation.name": "UPSERT",
+                        "db.namespace": "order_read_model",
                     }
                 ):
                     self._apply_event(event)
@@ -449,9 +454,9 @@ def record_query(query_type, duration_ms, cache_hit):
 With the `cqrs.path` attribute on every span, you can easily filter traces in your observability backend. Here are some useful queries you can build:
 
 - Show all write path traces slower than 500ms: `cqrs.path = "write" AND duration > 500ms`
-- Show all read path cache misses: `cqrs.path = "read" AND cqrs.cache.hit = "False"`
+- Show all read path cache misses: `cqrs.path = "read" AND cqrs.cache.hit = false`
 - Show projection lag spikes: `cqrs.path = "sync" AND cqrs.projection.lag_ms > 5000`
-- Show failed commands by type: `cqrs.path = "write" AND cqrs.command.success = "False"`
+- Show failed commands by type: `cqrs.path = "write" AND cqrs.command.success = false`
 
 ## An HTTP Layer Example
 
@@ -479,7 +484,7 @@ async def create_order(request: Request):
         attributes={
             "cqrs.path": "write",
             "cqrs.command.type": "CreateOrder",
-            "http.method": "POST",
+            "http.request.method": "POST",
             "http.route": "/orders",
         }
     ):
@@ -496,7 +501,7 @@ async def get_order(order_id: str):
         attributes={
             "cqrs.path": "read",
             "cqrs.query.type": "GetOrder",
-            "http.method": "GET",
+            "http.request.method": "GET",
             "http.route": "/orders/{order_id}",
         }
     ):
@@ -514,7 +519,7 @@ async def list_orders(customer_id: str = None, status: str = None):
             "cqrs.path": "read",
             "cqrs.query.type": "ListOrders",
             "cqrs.query.has_filters": str(bool(customer_id or status)),
-            "http.method": "GET",
+            "http.request.method": "GET",
             "http.route": "/orders",
         }
     ):
