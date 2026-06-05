@@ -36,9 +36,9 @@ spec:
         - name: "POST /api/payments"
           kind: SERVER
           required_attributes:
-            - key: http.method
+            - key: http.request.method
               type: string
-            - key: http.status_code
+            - key: http.response.status_code
               type: int
             - key: payment.amount
               type: double
@@ -69,10 +69,10 @@ spec:
           - method   # credit_card, debit, wire
           - currency
 
-      - name: payment.amount.sum
+      - name: payment.amount
         type: histogram
-        unit: USD
-        description: "Payment amounts"
+        unit: "1"
+        description: "Payment amounts in the transaction currency"
         labels:
           - method
           - currency
@@ -80,11 +80,12 @@ spec:
 
       - name: payment.processing.duration
         type: histogram
-        unit: ms
+        unit: s
         description: "Payment processing duration"
         labels:
           - gateway
           - status
+        buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 10]
 
     logs:
       # Declare log patterns
@@ -118,7 +119,7 @@ spec:
       target: 99.0
       window: 30d
       metric: payment.processing.duration
-      threshold_ms: 500
+      threshold_seconds: 0.5
 ```
 
 ## The Catalog API
@@ -127,7 +128,7 @@ Build a simple API that serves the catalog:
 
 ```python
 # catalog_api.py
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import yaml
 import os
 from pathlib import Path
@@ -232,25 +233,48 @@ Validate that services actually produce the telemetry they declared:
 ```python
 # validate_contract.py
 import requests
+import os
+
+CATALOG_URL = os.getenv("CATALOG_URL", "http://localhost:8080")
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
+SERVICE_LABEL = os.getenv("SERVICE_LABEL", "service_name")
+
+def prometheus_name_regex(metric):
+    """Match common Prometheus names produced from an OpenTelemetry metric."""
+    base_name = metric["name"].replace(".", "_")
+    metric_type = metric.get("type")
+    unit_suffix = "_seconds" if metric.get("unit") == "s" else ""
+
+    if metric_type == "counter":
+        return f"{base_name}{unit_suffix}(_total)?"
+    if metric_type == "histogram":
+        return f"{base_name}{unit_suffix}(_bucket|_sum|_count)"
+    return base_name
 
 def validate_service_contract(service_name, prometheus_url, catalog_url):
     """Check if a service is fulfilling its telemetry contract."""
     # Get the contract
-    contract = requests.get(
+    contract_response = requests.get(
         f"{catalog_url}/api/v1/services/{service_name}/contract"
-    ).json()
+    )
+    contract_response.raise_for_status()
+    contract = contract_response.json()
 
     violations = []
 
     # Check metrics exist in Prometheus
     for metric in contract.get("metrics", []):
-        metric_name = metric["name"].replace(".", "_")
-        result = requests.get(
+        result_response = requests.get(
             f"{prometheus_url}/api/v1/query",
             params={
-                "query": f'{metric_name}{{service_name="{service_name}"}}'
+                "query": (
+                    f'{{__name__=~"{prometheus_name_regex(metric)}",'
+                    f'{SERVICE_LABEL}="{service_name}"}}'
+                )
             }
-        ).json()
+        )
+        result_response.raise_for_status()
+        result = result_response.json()
 
         if not result.get("data", {}).get("result"):
             violations.append(
@@ -267,7 +291,9 @@ def validate_service_contract(service_name, prometheus_url, catalog_url):
     return violations
 
 # Run validation for all services
-catalog = requests.get(f"{CATALOG_URL}/api/v1/services").json()
+catalog_response = requests.get(f"{CATALOG_URL}/api/v1/services")
+catalog_response.raise_for_status()
+catalog = catalog_response.json()
 for svc in catalog["services"]:
     violations = validate_service_contract(
         svc["name"], PROMETHEUS_URL, CATALOG_URL
