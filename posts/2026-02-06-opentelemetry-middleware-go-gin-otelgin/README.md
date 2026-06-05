@@ -10,7 +10,7 @@ The Gin web framework is one of the most popular choices for building HTTP servi
 
 ## Understanding otelgin Middleware
 
-The otelgin package is an official OpenTelemetry contribution that provides middleware specifically designed for Gin applications. It automatically creates spans for incoming HTTP requests, captures essential metadata like HTTP method, status code, route patterns, and propagates trace context to downstream services.
+The otelgin package is an official OpenTelemetry contribution that provides middleware specifically designed for Gin applications. It automatically creates spans for incoming HTTP requests, captures essential metadata like HTTP method, status code, route patterns, and extracts incoming trace context so downstream instrumentation can continue the trace.
 
 Unlike manual instrumentation where you'd need to create spans for each endpoint, otelgin handles this automatically. Every request that hits your Gin router gets traced without requiring changes to individual handler functions.
 
@@ -44,14 +44,12 @@ package main
 
 import (
     "context"
-    "log"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // initTracer sets up the OpenTelemetry tracer provider with OTLP exporter
@@ -73,9 +71,9 @@ func initTracer() (*sdktrace.TracerProvider, error) {
     // These appear in every span and help identify the source
     resource := resource.NewWithAttributes(
         semconv.SchemaURL,
-        semconv.ServiceNameKey.String("gin-api-service"),
-        semconv.ServiceVersionKey.String("1.0.0"),
-        semconv.DeploymentEnvironmentKey.String("production"),
+        semconv.ServiceName("gin-api-service"),
+        semconv.ServiceVersion("1.0.0"),
+        semconv.DeploymentEnvironmentName("production"),
     )
 
     // Create tracer provider with batch span processor
@@ -101,7 +99,9 @@ With the tracer provider configured, you can now add the otelgin middleware to y
 package main
 
 import (
-    "net/http"
+    "context"
+    "log"
+    "time"
 
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -149,8 +149,8 @@ When a request comes in, otelgin automatically creates a span with several impor
 ```mermaid
 graph TD
     A[Incoming HTTP Request] --> B[otelgin Middleware]
-    B --> C[Create Root Span]
-    C --> D[Extract Trace Context from Headers]
+    B --> C[Extract Trace Context from Headers]
+    C --> D[Create Server Span]
     D --> E[Set HTTP Attributes]
     E --> F[Execute Handler]
     F --> G[Record Response Status]
@@ -165,7 +165,7 @@ The middleware captures:
 - **Status Code**: HTTP response code (200, 404, 500, etc.)
 - **Request URL**: Full URL path
 - **User Agent**: Client user agent string
-- **Trace Context**: Propagated from upstream services via W3C Trace Context headers
+- **Trace Context**: Extracted from upstream services via W3C Trace Context headers
 
 ## Implementing Handler Functions with Context
 
@@ -192,7 +192,7 @@ func getUsers(c *gin.Context) {
 }
 
 // getUserByID retrieves a specific user by ID
-// Route parameters are automatically captured in the span
+// The route pattern is automatically captured in the span
 func getUserByID(c *gin.Context) {
     userID := c.Param("id")
 
@@ -247,8 +247,10 @@ router.Use(otelgin.Middleware(
         return req.URL.Path != "/health" && req.URL.Path != "/metrics"
     }),
     // Customize span naming
-    otelgin.WithSpanNameFormatter(func(req *http.Request) string {
-        // Default format is "HTTP {METHOD}"
+    otelgin.WithSpanNameFormatter(func(c *gin.Context) string {
+        req := c.Request
+
+        // Default format uses the request method and matched route pattern
         // You can customize it to include more context
         return req.Method + " " + req.URL.Path
     }),
@@ -294,11 +296,12 @@ To verify that traces are being generated correctly, you can run an OpenTelemetr
 ```bash
 # Run Jaeger all-in-one for local testing
 docker run -d --name jaeger \
-  -e COLLECTOR_OTLP_ENABLED=true \
   -p 16686:16686 \
   -p 4317:4317 \
   -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+  -p 5778:5778 \
+  -p 9411:9411 \
+  cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
 
 # Access Jaeger UI at http://localhost:16686
 ```
@@ -317,7 +320,7 @@ When deploying instrumented applications to production, consider these factors:
 
 **Security**: Use TLS credentials when connecting to remote collectors, never send traces over insecure connections in production.
 
-**Performance Impact**: The otelgin middleware adds minimal overhead (typically under 1ms per request), but measure the impact in your specific workload.
+**Performance Impact**: The otelgin middleware adds overhead for context propagation, span creation, and export processing, so measure the impact in your specific workload.
 
 ## Complete Working Example
 
@@ -341,7 +344,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 type User struct {
@@ -411,7 +414,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
 
     resource := resource.NewWithAttributes(
         semconv.SchemaURL,
-        semconv.ServiceNameKey.String("gin-api-service"),
+        semconv.ServiceName("gin-api-service"),
     )
 
     tp := sdktrace.NewTracerProvider(
