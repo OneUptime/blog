@@ -33,10 +33,10 @@ Different Collector components need different permissions:
 
 | Component | Resources | Verbs |
 |-----------|-----------|-------|
-| k8sattributes processor | pods, namespaces, replicasets | get, list, watch |
-| k8sobjects receiver | pods, events, nodes | get, list, watch |
-| kubeletstats receiver | nodes, nodes/stats | get |
-| filelog receiver | pods | get, list, watch |
+| k8sattributes processor | pods, namespaces, nodes, and selected workload resources such as replicasets | get, list, watch |
+| k8sobjects receiver | the Kubernetes objects you configure it to collect, such as pods or events | get, list, watch |
+| kubeletstats receiver | nodes/stats | get |
+| filelog receiver | no Kubernetes API RBAC by itself; use the k8sattributes processor if you need Kubernetes metadata on logs | n/a |
 
 ## Creating the Proper RBAC Configuration
 
@@ -57,20 +57,23 @@ kind: ClusterRole
 metadata:
   name: otel-collector
 rules:
-  # For k8sattributes processor - pod metadata enrichment
+  # For k8sattributes processor - pod, namespace, and node metadata enrichment
   - apiGroups: [""]
-    resources: ["pods", "namespaces"]
+    resources: ["pods", "namespaces", "nodes"]
     verbs: ["get", "list", "watch"]
 
-  # For k8sattributes processor - deployment/replicaset owner references
+  # For k8sattributes processor - workload metadata when extracting those attributes
   - apiGroups: ["apps"]
-    resources: ["replicasets", "deployments"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
     verbs: ["get", "list", "watch"]
 
   # For kubeletstats receiver
   - apiGroups: [""]
-    resources: ["nodes", "nodes/stats", "nodes/proxy"]
-    verbs: ["get", "list"]
+    resources: ["nodes/stats"]
+    verbs: ["get"]
 
   # For k8sobjects receiver (if collecting Kubernetes events)
   - apiGroups: [""]
@@ -79,7 +82,10 @@ rules:
 
   # For k8s_observer extension (service discovery)
   - apiGroups: [""]
-    resources: ["services", "endpoints"]
+    resources: ["pods", "nodes", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
 
 ---
@@ -109,7 +115,13 @@ metadata:
   name: otel-collector
   namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       serviceAccountName: otel-collector  # Must match the SA above
       containers:
