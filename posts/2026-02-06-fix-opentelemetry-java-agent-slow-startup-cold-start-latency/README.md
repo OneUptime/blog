@@ -107,21 +107,19 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar your-application.jar
 ```
 
-This approach typically reduces startup overhead by 50 to 70 percent because the agent skips the matching phase for all disabled modules.
+This approach can significantly reduce startup overhead because the agent skips disabled instrumentation modules. Measure the result in your own environment, because OpenTelemetry does not publish a single expected overhead number that applies to every application.
 
-## Fix 2: Use Lazy Attachment with the Agent
+## Fix 2: Exclude Classes That Should Not Be Instrumented
 
-Starting with recent versions of the Java agent, you can configure lazy class transformation. Instead of transforming classes eagerly at load time, the agent can defer some work:
+If you know that specific application packages or class loaders should never be instrumented, exclude them explicitly. This is useful for generated code, large internal packages that do not produce useful telemetry, or as a workaround for a problematic class:
 
 ```properties
 # otel-agent.properties
-# Configure the agent to use lazy attachment where possible
-# This defers bytecode transformation until first use
-otel.javaagent.experimental.early-start=false
+# Suppress all instrumentation for specific classes or packages
+otel.javaagent.exclude-classes=com.example.generated.*,com.example.internal.NoisyClass
 
-# Reduce initial instrumentation scope
-# Only instrument classes as they are actually used
-otel.javaagent.experimental.lazy-attach=true
+# Ignore classes loaded by specific class loaders
+otel.javaagent.exclude-class-loaders=com.example.CustomPluginClassLoader
 ```
 
 ```bash
@@ -131,7 +129,7 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar your-application.jar
 ```
 
-Note that lazy attachment is experimental and may not work with all instrumentation modules. Test thoroughly in a staging environment before deploying to production.
+Use this carefully. Excluding the wrong package can remove spans or context propagation that you expected to keep. Test thoroughly in a staging environment before deploying to production.
 
 ## Fix 3: JVM Tuning for Faster Class Loading
 
@@ -155,45 +153,36 @@ Here is what each flag does:
 - `-XX:+UseSerialGC` avoids GC thread startup overhead. Good for small heap sizes during initialization.
 - `-Xms256m` and `-Xmx256m` set a fixed heap size, avoiding the cost of heap resizing during startup.
 
-For long-running services where you want both fast startup and good steady-state performance, use CDS (Class Data Sharing):
+For long-running services where you want both fast startup and good steady-state performance, use CDS (Class Data Sharing). With JDK 13 and later, dynamic CDS is usually the simplest option for executable JARs:
 
 ```bash
-# Step 1: Create a class list by running the application briefly
-# This records which classes are loaded during startup
+# Step 1: Run once and write a dynamic CDS archive at JVM exit
 java -javaagent:opentelemetry-javaagent.jar \
-     -XX:DumpLoadedClassList=classes.lst \
+     -XX:ArchiveClassesAtExit=app-cds.jsa \
      -jar your-application.jar --check-startup
 
-# Step 2: Create a shared archive from the class list
-# This pre-processes and stores class metadata for reuse
-java -javaagent:opentelemetry-javaagent.jar \
-     -Xshare:dump \
-     -XX:SharedClassListFile=classes.lst \
-     -XX:SharedArchiveFile=app-cds.jsa \
-     -jar your-application.jar --check-startup
-
-# Step 3: Use the shared archive for subsequent starts
+# Step 2: Use the shared archive for subsequent starts
 # Class loading reads from the pre-processed archive instead of JAR files
 java -javaagent:opentelemetry-javaagent.jar \
-     -Xshare:on \
+     -Xshare:auto \
      -XX:SharedArchiveFile=app-cds.jsa \
      -jar your-application.jar
 ```
 
-CDS can reduce startup time by 20 to 40 percent because the JVM reads pre-processed class metadata from a memory-mapped file instead of parsing JAR files.
+CDS can reduce startup time because the JVM reads pre-processed class metadata from a memory-mapped file instead of parsing JAR files. The actual improvement depends on the JDK, application packaging, class loaders, and how much of startup is dominated by class loading.
 
 ## Fix 4: Switch to Manual Instrumentation for Critical Paths
 
 If automatic instrumentation overhead is unacceptable, you can switch to manual instrumentation for your most important code paths and skip the agent entirely:
 
-```java
+```groovy
 // build.gradle - add OpenTelemetry SDK dependencies instead of using the agent
 // These libraries add no startup overhead because there is no bytecode manipulation
 dependencies {
-    implementation 'io.opentelemetry:opentelemetry-api:1.36.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk:1.36.0'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.36.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.36.0'
+    implementation 'io.opentelemetry:opentelemetry-api:1.62.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk:1.62.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.62.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.62.0'
 }
 ```
 
@@ -235,6 +224,7 @@ public class TracingConfig {
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 
 public class OrderService {
 
@@ -247,7 +237,7 @@ public class OrderService {
                 .setAttribute("order.type", request.getType())
                 .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             Order order = createOrder(request);
             span.setAttribute("order.id", order.getId());
             return order;
@@ -261,7 +251,7 @@ public class OrderService {
 }
 ```
 
-Manual instrumentation adds zero startup overhead. The tradeoff is that you only get traces for code you explicitly instrument, so you lose the automatic coverage of HTTP handlers, database calls, and library internals that the agent provides.
+Manual instrumentation avoids Java agent bytecode transformation overhead. The tradeoff is that you only get traces for code you explicitly instrument, so you lose the automatic coverage of HTTP handlers, database calls, and library internals that the agent provides.
 
 ## Fix 5: Use a Hybrid Approach
 
@@ -276,6 +266,7 @@ java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.instrumentation.jdbc.enabled=true \
      -Dotel.instrumentation.logback-appender.enabled=true \
      -Dotel.service.name=order-service \
+     -Dotel.exporter.otlp.protocol=grpc \
      -Dotel.exporter.otlp.endpoint=http://otel-collector:4317 \
      -jar your-application.jar
 ```
@@ -319,11 +310,11 @@ Here is a rough guide to what each optimization buys you:
 
 | Optimization | Startup Reduction | Tradeoff |
 |---|---|---|
-| Disable unused modules | 50-70% | Need to maintain explicit module list |
-| CDS shared archive | 20-40% | Extra build step to generate archive |
-| JVM tiered compilation | 15-30% | Lower peak throughput |
-| Manual instrumentation | 90-100% | No automatic library coverage |
-| Hybrid approach | 60-80% | Best balance for most teams |
+| Disable unused modules | Often high | Need to maintain explicit module list |
+| CDS shared archive | Often moderate | Extra build step to generate archive |
+| JVM tiered compilation | Often moderate | Lower peak throughput |
+| Manual instrumentation | Highest agent-overhead reduction | No automatic library coverage |
+| Hybrid approach | Often high | Best balance for most teams |
 
 Start with disabling unused instrumentation modules. That alone will fix the problem for most applications. If you need sub-second startup in a serverless or scale-to-zero environment, consider switching to manual instrumentation or the hybrid approach with CDS.
 
