@@ -42,9 +42,9 @@ func getAgentType(desc *protobufs.AgentDescription) string {
 // Route configuration based on agent type
 func getConfigForAgent(agentType string, group string) string {
     switch agentType {
-    case "otelcol-contrib":
+    case "io.opentelemetry.collector":
         return configStore.GetOtelConfig(group)
-    case "fluent-bit":
+    case "io.fluentbit":
         return configStore.GetFluentBitConfig(group)
     default:
         log.Printf("Unknown agent type: %s", agentType)
@@ -70,19 +70,22 @@ agent:
   args:
     - "--config"
     - "/var/lib/opamp-supervisor/effective-config.conf"
-  storage_dir: /var/lib/opamp-supervisor
 
   description:
     identifying_attributes:
-      service.name: "fluent-bit"
+      service.name: "io.fluentbit"
       service.version: "3.0.0"
     non_identifying_attributes:
       os.type: "linux"
       host.name: "${HOSTNAME}"
 
+storage:
+  directory: /var/lib/opamp-supervisor
+
 capabilities:
   reports_effective_config: true
   reports_health: true
+  reports_remote_config: true
   accepts_remote_config: true
 ```
 
@@ -120,13 +123,16 @@ func (m *MixedFleetManager) onMessage(
     config := m.getConfigForType(agentType, group)
 
     if config != "" {
+        configHash := sha256.Sum256([]byte(config))
         contentType := "text/yaml"
-        if agentType == "fluent-bit" {
+        if agentType == "io.fluentbit" {
             contentType = "text/plain"
         }
 
         return &protobufs.ServerToAgent{
+            InstanceUid: msg.InstanceUid,
             RemoteConfig: &protobufs.AgentRemoteConfig{
+                ConfigHash: configHash[:],
                 Config: &protobufs.AgentConfigMap{
                     ConfigMap: map[string]*protobufs.AgentConfigFile{
                         "": {
@@ -172,6 +178,8 @@ processors:
 exporters:
   otlp:
     endpoint: backend.internal:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -217,8 +225,7 @@ Fluent Bit config (logs):
     Match        *
     Host         localhost
     Port         4318
-    Traces_uri   /v1/traces
-    Logs_uri     /v1/logs
+    logs_uri     /v1/logs
 ```
 
 Notice how the Fluent Bit config forwards logs to the local OpenTelemetry Collector via OTLP. This is a common pattern: use Fluent Bit for log collection and the OTel Collector for processing and export.
@@ -258,12 +265,12 @@ Sample response:
 {
   "total_agents": 150,
   "by_type": {
-    "otelcol-contrib": 50,
-    "fluent-bit": 100
+    "io.opentelemetry.collector": 50,
+    "io.fluentbit": 100
   },
   "healthy_by_type": {
-    "otelcol-contrib": 49,
-    "fluent-bit": 98
+    "io.opentelemetry.collector": 49,
+    "io.fluentbit": 98
   }
 }
 ```
