@@ -44,11 +44,12 @@ import (
     "net/http"
 
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+    otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.31.0"
 )
 
 func setupMetrics(ctx context.Context) (*sdkmetric.MeterProvider, error) {
@@ -64,7 +65,7 @@ func setupMetrics(ctx context.Context) (*sdkmetric.MeterProvider, error) {
         resource.WithAttributes(
             semconv.ServiceName("checkout-service"),
             semconv.ServiceVersion("1.4.2"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -86,6 +87,9 @@ func main() {
     mp, _ := setupMetrics(ctx)
     defer mp.Shutdown(ctx)
 
+    // Start Go runtime metrics such as go.goroutine.count.
+    _ = otelruntime.Start(otelruntime.WithMeterProvider(mp))
+
     // Wrap HTTP handler with OTel instrumentation
     // This automatically records http.server.request.duration metrics
     handler := otelhttp.NewHandler(
@@ -101,6 +105,8 @@ func main() {
 
 The top row of the dashboard should show all services at a glance using Stat panels with color-coded health indicators. Each stat panel shows a single number with conditional coloring.
 
+The PromQL examples below assume OpenTelemetry resource attributes such as `service.name` and `deployment.environment.name` are available as Prometheus labels (`service_name`, `deployment_environment_name`). If you use the OpenTelemetry Collector Prometheus exporter without resource-to-telemetry conversion or a transform processor, those resource attributes are exposed through `target_info` instead and you need to join against it.
+
 **Overall Health Score** - a composite score based on error rate and latency:
 
 ```promql
@@ -111,7 +117,7 @@ The top row of the dashboard should show all services at a glance using Stat pan
   clamp_min(
     1 - (
       sum by (service_name) (
-        rate(http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m])
+        rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
       )
       /
       sum by (service_name) (
@@ -182,7 +188,7 @@ Add a second query to show the traffic split by HTTP method for additional conte
 
 ```promql
 # Traffic breakdown by HTTP method for the selected service
-sum by (http_method) (
+sum by (http_request_method) (
   rate(http_server_request_duration_seconds_count{
     service_name=~"$service"
   }[5m])
@@ -197,7 +203,7 @@ Show error rate as a percentage with a breakdown by status code:
 # Error rate percentage per service
 100 * (
   sum by (service_name) (
-    rate(http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m])
+    rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
   )
   /
   sum by (service_name) (
@@ -206,14 +212,14 @@ Show error rate as a percentage with a breakdown by status code:
 )
 ```
 
-Add a table panel below the chart that shows the top error-producing endpoints:
+Add a table panel below the chart that shows the top error-producing endpoints. This requires your HTTP instrumentation to set the low-cardinality `http.route` attribute:
 
 ```promql
 # Top 10 endpoints by error count in the last hour
 topk(10,
-  sum by (service_name, http_route, http_status_code) (
+  sum by (service_name, http_route, http_response_status_code) (
     increase(http_server_request_duration_seconds_count{
-      http_status_code=~"5.."
+      http_response_status_code=~"5.."
     }[1h])
   )
 )
@@ -226,7 +232,7 @@ Saturation metrics vary by service type. For application-level saturation, track
 ```promql
 # Go runtime: goroutine count as saturation proxy
 # High goroutine counts indicate the service is handling many concurrent requests
-process_runtime_go_goroutines{service_name=~"$service"}
+go_goroutine_count{service_name=~"$service"}
 ```
 
 ```promql
@@ -274,10 +280,10 @@ Add template variables at the top of the dashboard for filtering:
 
 ```promql
 # Environment selector
-label_values(http_server_request_duration_seconds_count, deployment_environment)
+label_values(http_server_request_duration_seconds_count, deployment_environment_name)
 
 # Service selector (multi-value)
-label_values(http_server_request_duration_seconds_count{deployment_environment=~"$environment"}, service_name)
+label_values(http_server_request_duration_seconds_count{deployment_environment_name=~"$environment"}, service_name)
 ```
 
 The Golden Signals dashboard works as a starting point for any incident investigation. When something goes wrong, check the four signals: is latency up, is traffic unusual, are errors elevated, is something saturated? If any signal is abnormal, drill down from there. This dashboard gives you that starting point for every service in the system from a single screen.
