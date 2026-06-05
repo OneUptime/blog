@@ -19,7 +19,7 @@ A typical single-stage Dockerfile for a Go application looks like this:
 ```dockerfile
 # Single-stage build - the final image contains everything
 
-FROM golang:1.22
+FROM golang:1.25
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -39,7 +39,7 @@ A multi-stage Dockerfile that builds a Go binary and packages it in a minimal im
 ```dockerfile
 # Stage 1: Build
 # Uses the full Go toolchain to compile the application
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -48,7 +48,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server .
 
 # Stage 2: Runtime
 # Only contains the compiled binary and CA certificates
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/server .
@@ -66,7 +66,7 @@ Multi-stage build for a TypeScript Node.js application:
 
 ```dockerfile
 # Stage 1: Install all dependencies and compile TypeScript
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -75,13 +75,13 @@ COPY src/ ./src/
 RUN npm run build
 
 # Stage 2: Install only production dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Stage 3: Final runtime image
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 # Copy only the compiled JavaScript and production node_modules
 COPY --from=deps /app/node_modules ./node_modules
@@ -132,13 +132,13 @@ The first stage builds the JAR with Maven. The second stage uses jlink to create
 
 ## Builder Pattern for Rust
 
-Rust produces statically linked binaries, making it perfect for the builder pattern with scratch or distroless base images.
+Rust statically links Rust code into the final binary, but Linux builds usually still dynamically link the C runtime unless you target musl or enable static C runtime linking. That makes Rust well suited to the builder pattern with small runtime images such as distroless.
 
-Multi-stage build for a Rust application targeting a scratch image:
+Multi-stage build for a Rust application targeting a distroless image:
 
 ```dockerfile
 # Stage 1: Build the Rust application
-FROM rust:1.75 AS builder
+FROM rust:1-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 # Create a dummy main to cache dependency compilation
@@ -167,15 +167,16 @@ Multi-stage build for a Python application using virtual environment:
 
 ```dockerfile
 # Stage 1: Build dependencies in a virtual environment
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Copy the virtual environment into a clean image
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -195,7 +196,7 @@ Multi-stage build that compiles a React app and serves it with Nginx:
 
 ```dockerfile
 # Stage 1: Build the React application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -219,7 +220,7 @@ You can name stages and reference them in multiple COPY instructions.
 Use named stages to share artifacts between build phases:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o api ./cmd/api
@@ -227,19 +228,19 @@ RUN go build -o worker ./cmd/worker
 RUN go build -o migrate ./cmd/migrate
 
 # API image
-FROM alpine:3.19 AS api
+FROM alpine:3.23 AS api
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /app/api /usr/local/bin/api
 CMD ["api"]
 
 # Worker image
-FROM alpine:3.19 AS worker
+FROM alpine:3.23 AS worker
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /app/worker /usr/local/bin/worker
 CMD ["worker"]
 
 # Migration image
-FROM alpine:3.19 AS migrate
+FROM alpine:3.23 AS migrate
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /app/migrate /usr/local/bin/migrate
 CMD ["migrate"]
