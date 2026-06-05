@@ -6,7 +6,7 @@ Tags: OpenTelemetry, SpanProcessor, Custom SDK, Business Logic, Enrichment
 
 Description: Create a custom OpenTelemetry SpanProcessor that enriches every span with business-specific attributes like user tier, feature flags, and request cost.
 
-The built-in SpanProcessors (BatchSpanProcessor, SimpleSpanProcessor) handle batching and exporting. But what if you want to add business-specific attributes to every span before it is exported? Maybe you want to tag every span with the current user's subscription tier, active feature flags, or the estimated cost of the operation. A custom SpanProcessor is the clean way to do this.
+The built-in SpanProcessors (BatchSpanProcessor, SimpleSpanProcessor) handle exporting, and BatchSpanProcessor also handles batching. But what if you want to add business-specific attributes to every span before it is exported? Maybe you want to tag every span with the current user's subscription tier, active feature flags, or the estimated cost of the operation. A custom SpanProcessor is the clean way to do this.
 
 ## The SpanProcessor Interface
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 class BusinessAttributeProcessor(SpanProcessor):
     """
     Enriches spans with business-specific attributes at creation time.
-    This processor reads from thread-local context and external services
+    This processor reads from thread-local context and local or cached clients
     to add attributes that help with business analytics.
     """
 
@@ -169,13 +169,12 @@ Here is how to integrate the processor with a Flask app:
 
 ```python
 # flask_app.py
-from flask import Flask, request, g
-from business_span_processor import BusinessAttributeProcessor
+from flask import Flask, request
+from main import business_processor
 
 app = Flask(__name__)
 
-# Global reference to the processor so middleware can set context
-business_processor = BusinessAttributeProcessor(...)
+# Use the same processor instance registered with the TracerProvider
 
 @app.before_request
 def set_business_context():
@@ -208,6 +207,12 @@ The same pattern works in Java:
 
 ```java
 // BusinessSpanProcessor.java
+import io.opentelemetry.context.Context;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.trace.ReadWriteSpan;
+import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.SpanProcessor;
+
 public class BusinessSpanProcessor implements SpanProcessor {
 
     private final ThreadLocal<UserContext> userContext = new ThreadLocal<>();
@@ -237,6 +242,16 @@ public class BusinessSpanProcessor implements SpanProcessor {
         return false;  // We don't need on_end
     }
 
+    @Override
+    public CompletableResultCode shutdown() {
+        return CompletableResultCode.ofSuccess();
+    }
+
+    @Override
+    public CompletableResultCode forceFlush() {
+        return CompletableResultCode.ofSuccess();
+    }
+
     public void setUserContext(UserContext ctx) {
         userContext.set(ctx);
     }
@@ -249,4 +264,4 @@ public class BusinessSpanProcessor implements SpanProcessor {
 
 ## Wrapping Up
 
-Custom SpanProcessors are the SDK-level equivalent of collector processors, but they run inside your application. They are perfect for adding context that only the application knows about: user identity, feature flags, business logic, and deployment state. The key rule is to never let enrichment failures break the application. Wrap everything in try/catch and log failures at debug level.
+Custom SpanProcessors are the SDK-level equivalent of collector processors, but they run inside your application. They are perfect for adding context that only the application knows about: user identity, feature flags, business logic, and deployment state. The key rule is to never let enrichment failures break the application or block span creation. Use request-local or cached data, wrap everything in try/catch, and log failures at debug level.
