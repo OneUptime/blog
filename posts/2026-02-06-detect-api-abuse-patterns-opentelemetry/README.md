@@ -48,9 +48,9 @@ unique_pages_per_session = meter.create_histogram(
 
 # Data volume metrics
 response_data_volume = meter.create_counter(
-    "security.abuse.response_data_bytes",
+    "security.abuse.response_data",
     description="Total response bytes per source",
-    unit="bytes",
+    unit="By",
 )
 ```
 
@@ -63,11 +63,14 @@ Credential stuffing has a distinct pattern: high request rate to authentication 
 from collections import defaultdict
 import time
 
+from abuse_metrics import tracer
+
 class CredentialStuffingDetector:
     def __init__(self):
         self.ip_auth_stats = defaultdict(lambda: {
             "attempts": 0,
             "failures": 0,
+            "response_times": [],
             "unique_usernames": set(),
             "window_start": time.time(),
         })
@@ -93,13 +96,21 @@ class CredentialStuffingDetector:
             if not success:
                 stats["failures"] += 1
             stats["unique_usernames"].add(username)
+            stats["response_times"].append(response_time_ms)
 
             failure_rate = stats["failures"] / max(stats["attempts"], 1)
             username_count = len(stats["unique_usernames"])
+            response_times = stats["response_times"][-20:]
+            avg_response_time = sum(response_times) / max(len(response_times), 1)
+            max_response_variance = max(
+                (abs(response_time - avg_response_time) for response_time in response_times),
+                default=0,
+            )
 
             span.set_attribute("security.abuse.attempt_count", stats["attempts"])
             span.set_attribute("security.abuse.failure_rate", failure_rate)
             span.set_attribute("security.abuse.unique_usernames", username_count)
+            span.set_attribute("security.abuse.response_time_variance_ms", max_response_variance)
 
             # Credential stuffing indicators:
             # - High failure rate (> 90%)
@@ -109,6 +120,7 @@ class CredentialStuffingDetector:
                 stats["attempts"] > 20
                 and failure_rate > 0.9
                 and username_count > 10
+                and max_response_variance < 50
             )
 
             if is_stuffing:
@@ -126,6 +138,7 @@ class CredentialStuffingDetector:
         self.ip_auth_stats[source_ip] = {
             "attempts": 0,
             "failures": 0,
+            "response_times": [],
             "unique_usernames": set(),
             "window_start": time.time(),
         }
@@ -137,6 +150,10 @@ Scraping shows up as unusually high page access counts with specific patterns:
 
 ```python
 # scraping_detector.py
+from collections import defaultdict
+
+from abuse_metrics import response_data_volume, tracer, unique_pages_per_session
+
 class ScrapingDetector:
     def __init__(self):
         self.session_pages = defaultdict(set)
@@ -194,6 +211,11 @@ class ScrapingDetector:
 
             return {"detected": False}
 
+    def _is_bot_user_agent(self, user_agent: str) -> bool:
+        """Check for common automated client identifiers."""
+        bot_indicators = ("bot", "crawler", "spider", "scraper", "curl", "wget", "python-requests")
+        return any(indicator in user_agent.lower() for indicator in bot_indicators)
+
     def _has_systematic_pattern(self, pages: set) -> bool:
         """Check if page access follows a systematic pattern like pagination."""
         page_list = sorted(pages)
@@ -210,7 +232,18 @@ Enumeration attacks probe your API to discover valid resources:
 
 ```python
 # enumeration_detector.py
+from collections import defaultdict
+
+from abuse_metrics import response_status_counter, sequential_id_counter, tracer
+
 class EnumerationDetector:
+    def __init__(self):
+        self.ip_endpoint_stats = defaultdict(lambda: {
+            "total": 0,
+            "403_count": 0,
+            "404_count": 0,
+        })
+
     def analyze_request(self, source_ip: str, endpoint: str,
                         resource_id: str, status_code: int):
         """Detect enumeration attacks targeting resource IDs."""
@@ -219,13 +252,13 @@ class EnumerationDetector:
             attributes={
                 "security.source_ip": source_ip,
                 "security.endpoint": endpoint,
-                "http.status_code": status_code,
+                "http.response.status_code": status_code,
             }
         ) as span:
             response_status_counter.add(1, {
                 "security.source_ip": source_ip,
                 "security.endpoint": endpoint,
-                "http.status_code": str(status_code),
+                "http.response.status_code": status_code,
             })
 
             # Track sequential ID access
@@ -239,7 +272,7 @@ class EnumerationDetector:
             # - High rate of 404/403 responses
             # - Sequential or incremental resource IDs
             # - Fast request timing (automated)
-            stats = self._get_ip_endpoint_stats(source_ip, endpoint)
+            stats = self._get_ip_endpoint_stats(source_ip, endpoint, status_code)
 
             not_found_rate = stats.get("404_count", 0) / max(stats.get("total", 1), 1)
             forbidden_rate = stats.get("403_count", 0) / max(stats.get("total", 1), 1)
@@ -260,6 +293,15 @@ class EnumerationDetector:
                 return {"detected": True, "type": "permission_probing"}
 
             return {"detected": False}
+
+    def _get_ip_endpoint_stats(self, source_ip: str, endpoint: str, status_code: int):
+        stats = self.ip_endpoint_stats[(source_ip, endpoint)]
+        stats["total"] += 1
+        if status_code == 403:
+            stats["403_count"] += 1
+        elif status_code == 404:
+            stats["404_count"] += 1
+        return stats
 ```
 
 ## Unified Abuse Detection Middleware
@@ -268,19 +310,48 @@ Tie all the detectors together in a single middleware:
 
 ```python
 # abuse_detection_middleware.py
+import time
+
+from fastapi import Request
+
+from abuse_metrics import requests_per_ip
+from credential_stuffing_detector import CredentialStuffingDetector
+from enumeration_detector import EnumerationDetector
+from scraping_detector import ScrapingDetector
+
+credential_detector = CredentialStuffingDetector()
+enumeration_detector = EnumerationDetector()
+scraping_detector = ScrapingDetector()
+
 async def abuse_detection_middleware(request: Request, call_next):
-    source_ip = request.client.host
+    source_ip = request.client.host if request.client else "unknown"
+    start_time = time.perf_counter()
+    requests_per_ip.add(1, {"security.source_ip": source_ip})
+
     response = await call_next(request)
+    response_time_ms = (time.perf_counter() - start_time) * 1000
 
     # Run detectors based on endpoint type
     if "/auth/" in request.url.path:
         credential_detector.analyze_auth_request(
-            source_ip, request.state.get("username"),
-            response.status_code == 200, 0
+            source_ip, getattr(request.state, "username", ""),
+            response.status_code == 200, response_time_ms
         )
 
+    resource_id = next(
+        (
+            str(value)
+            for key, value in request.path_params.items()
+            if key == "id" or key.endswith("_id")
+        ),
+        "",
+    )
+    enumeration_detector.analyze_request(
+        source_ip, request.url.path, resource_id, response.status_code
+    )
+
     scraping_detector.analyze_request(
-        request.state.session_id, source_ip,
+        getattr(request.state, "session_id", source_ip), source_ip,
         request.url.path, int(response.headers.get("content-length", 0)),
         request.headers.get("user-agent", ""),
     )
