@@ -10,13 +10,13 @@ Description: Learn how to use the OpenTelemetry Collector's interval processor t
 
 If you run infrastructure at any reasonable scale, you have probably noticed that metric volumes can get out of hand quickly. A single Kubernetes cluster with a few hundred pods can generate millions of metric data points per minute. Your Prometheus or OTLP backend starts groaning under the weight. Storage costs climb. Query performance degrades. And the worst part? Most of those high-frequency data points are redundant for the kind of analysis you actually do.
 
-The OpenTelemetry Collector's interval processor solves this problem. It aggregates metric data points over configurable time intervals, effectively downsampling your metrics before they leave the collector. You keep the trends and patterns you care about while dramatically cutting the volume of data you ship and store.
+The OpenTelemetry Collector's interval processor solves this problem. It periodically forwards the latest values for supported metric streams over configurable time intervals, effectively downsampling your metrics before they leave the collector. You keep the trends and patterns you care about while dramatically cutting the volume of data you ship and store.
 
 ## What the Interval Processor Does
 
-The interval processor works by holding metric data points in memory and re-aggregating them at a specified interval. Instead of forwarding every single data point the moment it arrives, the processor waits, collects all data points for a given metric series within the interval window, and then emits a single aggregated data point.
+The interval processor works by holding the latest supported metric data points in memory and forwarding them at a specified interval. Instead of forwarding every supported data point the moment it arrives, the processor waits, tracks the newest data point for a given metric series within the interval window, and then emits that latest data point.
 
-For gauge metrics, it takes the last observed value. For cumulative sums and histograms, it re-aligns the data points to the interval boundaries. The result is a steady stream of metrics at a predictable, lower frequency.
+For gauge metrics, it takes the last observed value. For monotonically increasing cumulative sums, cumulative histograms, and cumulative exponential histograms, it forwards the latest cumulative value seen during the interval. Delta metrics and non-monotonic sums are not aggregated by the processor; they pass through unchanged. The result is a steady stream of supported metrics at a predictable, lower frequency.
 
 Here is how the data flow looks at a high level:
 
@@ -30,7 +30,7 @@ flowchart LR
     style C fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-The applications emit metrics every 10 seconds, but the interval processor only forwards aggregated data points every 60 seconds. That is a 6x reduction in data volume right at the collector level.
+The applications emit metrics every 10 seconds, but the interval processor only forwards supported data points every 60 seconds. For those supported streams, that is up to a 6x reduction in data volume right at the collector level.
 
 ## When You Should Use It
 
@@ -64,18 +64,18 @@ If you are building a custom collector with the OpenTelemetry Collector Builder 
 ```yaml
 # builder-config.yaml - OCB configuration to include interval processor
 processors:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/intervalprocessor v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/intervalprocessor v0.153.0
 ```
 
 ## Basic Configuration
 
-The simplest configuration just sets the interval duration. This tells the processor how often to emit aggregated data points.
+The simplest configuration just sets the interval duration. This tells the processor how often to forward supported data points.
 
 ```yaml
 # collector-config.yaml - Basic interval processor setup
 processors:
   interval:
-    # Aggregate and emit metrics every 60 seconds
+    # Forward supported metrics every 60 seconds
     interval: 60s
 
 service:
@@ -86,29 +86,30 @@ service:
       exporters: [otlp/backend]
 ```
 
-With this configuration, no matter how frequently your applications push metrics, the collector will only forward data points once per minute.
+With this configuration, no matter how frequently your applications push supported metrics, the collector will only forward those data points once per minute.
 
 ## Handling Different Metric Types
 
 The interval processor behaves differently depending on the metric type and temporality. Understanding this is important to avoid surprises.
 
-**Cumulative Sums** get re-aligned to the interval boundary. The processor tracks the cumulative value and emits a data point at the end of each interval that reflects the correct cumulative total.
+**Monotonic Cumulative Sums** keep latest-value semantics. The processor tracks the latest cumulative value and emits that data point at the end of each interval.
 
-**Delta Sums** are aggregated within the interval. All delta values that arrive during the window get summed together into a single delta for the interval period.
+**Delta Sums** are not aggregated. They are passed through unchanged, so the interval processor does not reduce delta metric volume.
 
 **Gauges** use last-value semantics. The processor emits the most recently observed value at the end of each interval. This makes sense because a gauge represents the current state, not an accumulation.
 
-**Histograms** get merged. Bucket counts are summed, and the sum/count/min/max fields are combined appropriately.
+**Cumulative Histograms and Exponential Histograms** also use latest-value semantics. The processor keeps the newest cumulative histogram data point for each stream and emits it at the end of the interval.
+
+**Summaries** are supported with latest-value semantics, but this is lossy in the same way gauge aggregation is lossy. If you do not want gauges or summaries aggregated, use the processor's `pass_through` settings.
 
 ```mermaid
 flowchart TD
     A[Incoming Metric] --> B{Metric Type?}
-    B -->|Cumulative Sum| C[Re-align to interval boundary]
-    B -->|Delta Sum| D[Sum deltas within interval]
+    B -->|Monotonic Cumulative Sum| C[Keep latest cumulative value]
+    B -->|Delta Sum| D[Forward immediately unchanged]
     B -->|Gauge| E[Keep last observed value]
-    B -->|Histogram| F[Merge bucket counts]
+    B -->|Cumulative Histogram| F[Keep latest cumulative histogram]
     C --> G[Emit at interval end]
-    D --> G
     E --> G
     F --> G
 ```
@@ -124,31 +125,19 @@ You can combine the interval processor with the filter processor to build select
 processors:
   # High-frequency pipeline: no downsampling for critical metrics
   filter/critical:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "http.server.request.duration"
-          - "http.server.active_requests"
+    error_mode: ignore
+    metric_conditions:
+      - 'not (metric.name == "http.server.request.duration" or metric.name == "http.server.active_requests")'
 
   # Low-frequency pipeline: aggressive downsampling for infrastructure metrics
   filter/infra:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "system.cpu.*"
-          - "system.memory.*"
-          - "system.disk.*"
-          - "system.network.*"
+    error_mode: ignore
+    metric_conditions:
+      - 'not (IsMatch(metric.name, "^system\\.cpu\\.") or IsMatch(metric.name, "^system\\.memory\\.") or IsMatch(metric.name, "^system\\.disk\\.") or IsMatch(metric.name, "^system\\.network\\."))'
 
   # 5-minute interval for slow-moving infra metrics
   interval/infra:
     interval: 300s
-
-  # 30-second interval for app metrics that aren't critical
-  interval/standard:
-    interval: 30s
 
 service:
   pipelines:
@@ -169,7 +158,7 @@ This approach gives you the best of both worlds. Your SLO-critical latency metri
 
 ## Memory Considerations
 
-The interval processor holds data points in memory for the duration of the interval. The longer your interval and the higher your metric cardinality, the more memory the processor needs. Keep this in mind when setting interval durations.
+The interval processor holds the latest supported data points in memory for the duration of the interval. The longer your interval and the higher your metric cardinality, the more memory the processor needs. Keep this in mind when setting interval durations.
 
 For a rough estimate: if you have 10,000 unique metric series and a 60-second interval, the memory overhead is modest, likely under 50 MB. But if you have 500,000 unique series with a 5-minute interval, you could be looking at several hundred megabytes.
 
@@ -180,12 +169,17 @@ Monitor the collector's own metrics to keep an eye on this:
 service:
   telemetry:
     metrics:
-      # Expose collector internal metrics on port 8888
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                # Expose collector internal metrics on port 8888
+                host: 0.0.0.0
+                port: 8888
 ```
 
-Then watch the `otelcol_processor_accepted_metric_points` and `otelcol_processor_dropped_metric_points` counters for the interval processor. If you see dropped points, your collector is under memory pressure and you may need to either reduce the interval or add more collector instances.
+Then watch the collector's process memory metrics along with `otelcol_processor_incoming_items` and `otelcol_processor_outgoing_items` for the interval processor. If memory keeps climbing or downstream export starts failing, you may need to either reduce the interval or add more collector instances.
 
 ## Measuring the Impact
 
@@ -195,12 +189,12 @@ Before and after enabling the interval processor, you should measure the actual 
 # collector-config.yaml - Measure data point reduction
 connectors:
   count/before:
-    metrics:
-      metric.point.count:
+    datapoints:
+      metric.datapoint.count.before:
         description: "Data points before downsampling"
   count/after:
-    metrics:
-      metric.point.count:
+    datapoints:
+      metric.datapoint.count.after:
         description: "Data points after downsampling"
 
 service:
@@ -210,9 +204,13 @@ service:
       exporters: [count/before]
 
     metrics/process:
-      receivers: [count/before]
+      receivers: [otlp]
       processors: [interval]
       exporters: [count/after, otlp/backend]
+
+    metrics/counts:
+      receivers: [count/before, count/after]
+      exporters: [otlp/backend]
 ```
 
 Compare the before and after counts to see your actual reduction ratio. In most deployments, you will see a 3x to 10x reduction depending on how your source intervals compare to the configured downsampling interval.
@@ -221,7 +219,7 @@ Compare the before and after counts to see your actual reduction ratio. In most 
 
 There are a few things to watch out for. First, do not set the interval shorter than your source emission interval. If your apps emit every 60 seconds and you set the interval to 30 seconds, you will not gain anything and will add unnecessary processing overhead.
 
-Second, be careful with delta temporality metrics and very long intervals. If the processor accumulates deltas over a 5-minute window and something goes wrong (collector restart, OOM kill), you lose that entire window of data. For delta metrics, shorter intervals with more frequent flushes are safer.
+Second, do not expect the interval processor to downsample delta temporality metrics. Delta metrics are passed through unchanged, so if your metric stream is mostly delta temporality, this processor will not give you much reduction.
 
 Third, remember that the interval processor does not reduce cardinality. If your problem is too many unique time series rather than too many data points per series, you need a different approach, like the attributes processor to drop high-cardinality labels.
 
