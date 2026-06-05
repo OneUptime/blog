@@ -55,8 +55,13 @@ exporters:
       - kafka-2.example.com:9092
       - kafka-3.example.com:9092
 
-    # Kafka topic for telemetry
-    topic: otel-telemetry
+    # Kafka topics for telemetry
+    traces:
+      topic: otel-telemetry
+    metrics:
+      topic: otel-telemetry
+    logs:
+      topic: otel-telemetry
 
 # service pipelines (wire receivers to exporters)
 service:
@@ -124,7 +129,12 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-all  # All traces, metrics, and logs
+    traces:
+      topic: otel-all  # All traces
+    metrics:
+      topic: otel-all  # All metrics
+    logs:
+      topic: otel-all  # All logs
 ```
 
 Consumers must filter messages by signal type using message metadata or content inspection.
@@ -138,17 +148,20 @@ exporters:
   kafka/traces:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
   kafka/metrics:
     brokers:
       - kafka.example.com:9092
-    topic: otel-metrics
+    metrics:
+      topic: otel-metrics
 
   kafka/logs:
     brokers:
       - kafka.example.com:9092
-    topic: otel-logs
+    logs:
+      topic: otel-logs
 
 service:
   pipelines:
@@ -177,17 +190,22 @@ exporters:
     brokers:
       - kafka.example.com:9092
 
-    # Use resource attribute for topic name
-    topic: otel-${resource.attributes.environment}
+    # Use a resource attribute value as the topic name
+    topic_from_attribute: kafka.topic
 
-    # Fallback if attribute is missing
-    fallback_topic: otel-unknown
+    # Fallback topics if the attribute is missing
+    traces:
+      topic: otel-traces
+    metrics:
+      topic: otel-metrics
+    logs:
+      topic: otel-logs
 ```
 
 With this configuration:
-- Telemetry from `production` environment goes to `otel-production` topic
-- Telemetry from `staging` environment goes to `otel-staging` topic
-- Telemetry without environment attribute goes to `otel-unknown` topic
+- Telemetry with `kafka.topic=otel-production` goes to the `otel-production` topic
+- Telemetry with `kafka.topic=otel-staging` goes to the `otel-staging` topic
+- Telemetry without the attribute uses the signal-specific fallback topic
 
 ---
 
@@ -204,8 +222,9 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
-    encoding: otlp_proto  # Default, binary protobuf
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto  # Default, binary protobuf
 ```
 
 Best for:
@@ -223,8 +242,9 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
-    encoding: otlp_json  # JSON format
+    traces:
+      topic: otel-traces
+      encoding: otlp_json  # JSON format
 ```
 
 Best for:
@@ -241,8 +261,9 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: jaeger-spans
-    encoding: jaeger_proto  # Jaeger format
+    traces:
+      topic: jaeger-spans
+      encoding: jaeger_proto  # Jaeger format
 ```
 
 Best for:
@@ -259,8 +280,9 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: jaeger-spans
-    encoding: jaeger_json
+    traces:
+      topic: jaeger-spans
+      encoding: jaeger_json
 ```
 
 Choose OTLP formats for new deployments. Use Jaeger formats only when integrating with legacy Jaeger systems.
@@ -271,7 +293,7 @@ Choose OTLP formats for new deployments. Use Jaeger formats only when integratin
 
 Kafka partitions enable parallel processing and ordering guarantees. Configure how telemetry is distributed across partitions:
 
-### Trace ID Partitioning (Default)
+### Trace ID Partitioning
 
 Keep all spans from the same trace in the same partition:
 
@@ -280,32 +302,34 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
-    # Partition by trace ID (default for traces)
-    partition_key: trace_id
+    # Partition traces by trace ID
+    partition_traces_by_id: true
 ```
 
 This ensures consumers can process complete traces without cross-partition coordination.
 
-### Service Name Partitioning
+### Resource Attribute Partitioning
 
-Group telemetry by service:
+Group metrics or logs by resource attributes:
 
 ```yaml
 exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    metrics:
+      topic: otel-metrics
 
-    # Partition by service name
-    partition_key: resource.service.name
+    # Partition metrics by a hash of sorted resource attributes
+    partition_metrics_by_resource_attributes: true
 ```
 
-Useful when different consumers handle different services.
+Useful when resource affinity matters for downstream consumers.
 
-### Random Partitioning
+### Round-Robin Partitioning
 
 Distribute evenly across partitions:
 
@@ -314,30 +338,33 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
-    # No partition key = random distribution
-    # partition_key: <not set>
+    # No message key = partitioner decides distribution
+    record_partitioner:
+      round_robin: {}
 ```
 
 Provides best load distribution but no ordering guarantees.
 
 ### Metadata-Based Partitioning
 
-Partition based on custom attributes:
+Partition based on request metadata:
 
 ```yaml
 exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
+      message_key_from_metadata_key: cluster.name
 
-    # Partition by custom attribute
-    partition_key: resource.cluster.name
+    include_metadata_keys: [cluster.name]
 ```
 
-This allows cluster-specific consumers to subscribe to specific partitions.
+This uses request metadata as the Kafka record key. The metadata must be set earlier in the pipeline.
 
 ---
 
@@ -354,7 +381,8 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     # SASL/PLAIN authentication
     auth:
@@ -381,7 +409,8 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     auth:
       sasl:
@@ -399,13 +428,13 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9093  # TLS port
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     # Enable TLS
-    auth:
-      tls:
-        insecure: false  # Verify server certificate
-        ca_file: /etc/kafka/ca.crt  # CA certificate
+    tls:
+      insecure: false  # Verify server certificate
+      ca_file: /etc/kafka/ca.crt  # CA certificate
 ```
 
 ### Mutual TLS (mTLS)
@@ -417,14 +446,14 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9093
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     # Mutual TLS authentication
-    auth:
-      tls:
-        ca_file: /etc/kafka/ca.crt
-        cert_file: /etc/kafka/client.crt
-        key_file: /etc/kafka/client.key
+    tls:
+      ca_file: /etc/kafka/ca.crt
+      cert_file: /etc/kafka/client.crt
+      key_file: /etc/kafka/client.key
 ```
 
 ### AWS MSK IAM Authentication
@@ -436,12 +465,15 @@ exporters:
   kafka:
     brokers:
       - b-1.my-cluster.kafka.us-west-2.amazonaws.com:9098
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     # AWS IAM authentication
+    tls:
+      insecure: false
     auth:
       sasl:
-        mechanism: AWS_MSK_IAM
+        mechanism: AWS_MSK_IAM_OAUTHBEARER
         aws_msk:
           region: us-west-2
           # Use IAM role credentials (recommended for EKS/EC2)
@@ -460,11 +492,11 @@ exporters:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
+    traces:
+      topic: otel-traces
 
     # Producer configuration
     producer:
-      # Maximum time to wait for batch to fill
       max_message_bytes: 1000000  # 1 MB per message (default)
 
       # Compression (reduces network usage)
@@ -473,18 +505,21 @@ exporters:
       # Number of acknowledgments required
       required_acks: 1  # Options: 0 (none), 1 (leader), -1 (all replicas)
 
-      # Retry configuration
-      max_retries: 3
-      retry_backoff: 100ms  # Wait between retries
+    # Retry configuration
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 ```
 
 **Compression algorithms:**
 
-- **snappy**: Fast compression, low CPU usage, good compression ratio (default)
+- **snappy**: Fast compression, low CPU usage, good compression ratio
 - **gzip**: Better compression but higher CPU usage
 - **lz4**: Very fast, low CPU, decent compression
 - **zstd**: Best compression ratio, moderate CPU
-- **none**: No compression (only for very fast networks)
+- **none**: No compression (default)
 
 **Required acks (durability vs latency):**
 
@@ -541,30 +576,34 @@ exporters:
       - kafka-2.example.com:9092
       - kafka-3.example.com:9092
 
-    topic: otel-traces
-
-    # Use efficient binary encoding
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      # Use efficient binary encoding
+      encoding: otlp_proto
 
     # Partition by trace ID for complete traces per partition
-    partition_key: trace_id
+    partition_traces_by_id: true
 
     # Authentication
+    tls:
+      insecure: false
+      ca_file: /etc/kafka/ca.crt
     auth:
       sasl:
         mechanism: SCRAM-SHA-512
         username: ${KAFKA_USERNAME}
         password: ${KAFKA_PASSWORD}
-      tls:
-        insecure: false
-        ca_file: /etc/kafka/ca.crt
 
     # Producer settings
     producer:
       compression: snappy
       required_acks: 1
-      max_retries: 3
-      retry_backoff: 100ms
+
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
     # Timeouts
     timeout: 10s
@@ -575,20 +614,21 @@ exporters:
       - kafka-2.example.com:9092
       - kafka-3.example.com:9092
 
-    topic: otel-metrics
-    encoding: otlp_proto
+    metrics:
+      topic: otel-metrics
+      encoding: otlp_proto
 
-    # Partition by service name for service-specific consumers
-    partition_key: resource.service.name
+    # Partition by resource attributes for resource-affine consumers
+    partition_metrics_by_resource_attributes: true
 
+    tls:
+      insecure: false
+      ca_file: /etc/kafka/ca.crt
     auth:
       sasl:
         mechanism: SCRAM-SHA-512
         username: ${KAFKA_USERNAME}
         password: ${KAFKA_PASSWORD}
-      tls:
-        insecure: false
-        ca_file: /etc/kafka/ca.crt
 
     producer:
       compression: snappy
@@ -600,20 +640,22 @@ exporters:
       - kafka-2.example.com:9092
       - kafka-3.example.com:9092
 
-    topic: otel-logs
-    encoding: otlp_proto
+    logs:
+      topic: otel-logs
+      encoding: otlp_proto
 
-    # Random partitioning for even distribution
-    # partition_key: <not set>
+    # Round-robin partitioning for even distribution
+    record_partitioner:
+      round_robin: {}
 
+    tls:
+      insecure: false
+      ca_file: /etc/kafka/ca.crt
     auth:
       sasl:
         mechanism: SCRAM-SHA-512
         username: ${KAFKA_USERNAME}
         password: ${KAFKA_PASSWORD}
-      tls:
-        insecure: false
-        ca_file: /etc/kafka/ca.crt
 
     producer:
       compression: snappy
@@ -680,8 +722,9 @@ receivers:
   kafka:
     brokers:
       - kafka.example.com:9092
-    topic: otel-traces
-    encoding: otlp_proto
+    traces:
+      topics: [otel-traces]
+      encoding: otlp_proto
     group_id: realtime-monitoring
 
 exporters:
@@ -726,15 +769,17 @@ Configure Kafka topics for optimal performance and retention:
 ```bash
 # Create topic with appropriate partitions and replication
 kafka-topics.sh --create \
+  --bootstrap-server kafka.example.com:9092 \
   --topic otel-traces \
   --partitions 12 \
   --replication-factor 3 \
-  --config retention.ms=604800000 \  # 7 days retention
-  --config compression.type=producer \  # Use producer compression
+  --config retention.ms=604800000 \
+  --config compression.type=producer \
   --config max.message.bytes=1048576  # 1 MB max message size
 
 # Create topic for metrics (shorter retention)
 kafka-topics.sh --create \
+  --bootstrap-server kafka.example.com:9092 \
   --topic otel-metrics \
   --partitions 6 \
   --replication-factor 3 \
@@ -742,6 +787,7 @@ kafka-topics.sh --create \
 
 # Create topic for logs (shortest retention)
 kafka-topics.sh --create \
+  --bootstrap-server kafka.example.com:9092 \
   --topic otel-logs \
   --partitions 24 \
   --replication-factor 3 \
@@ -787,7 +833,7 @@ kafka-topics.sh --create \
 
 ```bash
 kafka-console-producer.sh \
-  --broker-list kafka.example.com:9092 \
+  --bootstrap-server kafka.example.com:9092 \
   --topic test \
   --producer-property security.protocol=SASL_SSL \
   --producer-property sasl.mechanism=SCRAM-SHA-512 \
@@ -858,10 +904,8 @@ rate(otelcol_exporter_sent_spans_total{exporter="kafka"}[5m])
 # Failed publishes
 rate(otelcol_exporter_send_failed_spans_total{exporter="kafka"}[5m])
 
-# Publishing latency
-histogram_quantile(0.99,
-  rate(otelcol_exporter_send_latency_bucket{exporter="kafka"}[5m])
-)
+# Exporter queue size
+otelcol_exporter_queue_size{exporter="kafka"}
 ```
 
 Also monitor Kafka broker metrics:
