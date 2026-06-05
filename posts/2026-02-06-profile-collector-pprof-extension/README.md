@@ -359,12 +359,12 @@ Compare goroutine counts over time:
 
 ```bash
 # Check goroutine count
-curl -s http://localhost:1777/debug/pprof/goroutine | head -1
+curl -s http://localhost:1777/debug/pprof/goroutine?debug=1 | head -1
 # Output: goroutine profile: total 1250
 
 # Wait and check again
 sleep 300
-curl -s http://localhost:1777/debug/pprof/goroutine | head -1
+curl -s http://localhost:1777/debug/pprof/goroutine?debug=1 | head -1
 # Output: goroutine profile: total 2500
 ```
 
@@ -433,12 +433,7 @@ extensions:
     block_profile_fraction: 1
 ```
 
-Alternatively, enable at runtime:
-
-```bash
-# Enable block profiling via HTTP
-curl -X POST http://localhost:1777/debug/pprof/block?rate=1
-```
+Restart or reload the collector with this configuration before capturing the block profile. The pprof HTTP endpoints expose profiles but do not change the block profiling rate.
 
 ### Capturing Block Profile
 
@@ -562,7 +557,7 @@ curl -o heap_baseline.prof http://localhost:1777/debug/pprof/heap
 
 ```bash
 # Monitor memory usage
-watch 'curl -s http://localhost:1777/debug/pprof/heap | head -1'
+watch 'curl -s http://localhost:1777/debug/pprof/heap?debug=1 | head -1'
 ```
 
 **Step 3**: Capture second profile after growth:
@@ -608,34 +603,42 @@ go tool pprof -top heap.prof
 **Step 2**: Check for goroutine buildup:
 
 ```bash
-curl -s http://localhost:1777/debug/pprof/goroutine | head -1
+curl -s http://localhost:1777/debug/pprof/goroutine?debug=1 | head -1
 ```
 
 **Step 3**: Profile blocking operations:
 
+Enable block profiling in the pprof extension configuration, then restart or reload the collector:
+
+```yaml
+extensions:
+  pprof:
+    endpoint: 127.0.0.1:1777
+    block_profile_fraction: 1
+```
+
+Capture and analyze the profile:
+
 ```bash
-# Enable block profiling
-curl -X POST http://localhost:1777/debug/pprof/block?rate=1
-
-# Capture profile after enabling
-sleep 60
-curl -o block.prof http://localhost:1777/debug/pprof/block
-
-# Analyze
+curl -o block.prof http://localhost:1777/debug/pprof/block?seconds=60
 go tool pprof -top block.prof
 ```
 
 **Step 4**: Check mutex contention:
 
+Enable mutex profiling in the pprof extension configuration, then restart or reload the collector:
+
+```yaml
+extensions:
+  pprof:
+    endpoint: 127.0.0.1:1777
+    mutex_profile_fraction: 1
+```
+
+Capture and analyze the profile:
+
 ```bash
-# Enable mutex profiling
-curl -X POST http://localhost:1777/debug/pprof/mutex?rate=1
-
-# Capture profile
-sleep 60
-curl -o mutex.prof http://localhost:1777/debug/pprof/mutex
-
-# Analyze
+curl -o mutex.prof http://localhost:1777/debug/pprof/mutex?seconds=60
 go tool pprof -top mutex.prof
 ```
 
@@ -689,7 +692,6 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     traces:
@@ -724,7 +726,7 @@ curl -s -o "$PROFILE_DIR/cpu_$TIMESTAMP.prof" \
     "http://$COLLECTOR_HOST/debug/pprof/profile?seconds=30"
 
 # Extract goroutine count for metrics
-GOROUTINE_COUNT=$(curl -s "http://$COLLECTOR_HOST/debug/pprof/goroutine" | head -1 | grep -oP '\d+')
+GOROUTINE_COUNT=$(curl -s "http://$COLLECTOR_HOST/debug/pprof/goroutine?debug=1" | head -1 | grep -oP '\d+')
 echo "goroutine_count=$GOROUTINE_COUNT timestamp=$TIMESTAMP"
 
 # Cleanup old profiles (keep last 7 days)
