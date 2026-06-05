@@ -15,7 +15,7 @@ OpenTelemetry SDKs can emit metrics as histograms, which record values in config
 The default bucket boundaries for duration histograms are:
 
 ```text
-0, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
+0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
 ```
 
 These are in seconds and cover most HTTP request latency ranges. You can customize them if your services have different latency profiles.
@@ -41,24 +41,21 @@ processors:
     send_batch_size: 1000
     timeout: 10s
 
-  # Add service.name as a resource attribute if not already present
-  resource:
-    attributes:
-      - key: service.name
-        action: upsert
-        from_attribute: service.name
-
 exporters:
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [batch]
       exporters: [prometheusremotewrite]
 ```
+
+If you are sending directly to a Prometheus server, make sure its remote write receiver is enabled with `--web.enable-remote-write-receiver`. Otherwise, use a remote-write-compatible backend endpoint.
 
 ## Latency Comparison Queries
 
