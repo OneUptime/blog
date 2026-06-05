@@ -17,7 +17,7 @@ We will chain three types of enrichment:
 3. **Custom attributes** - business unit, cost center, SLA tier from a static mapping
 
 ```text
-[OTLP Receiver] --> [k8s_attributes] --> [geoip] --> [transform] --> [Exporter]
+[OTLP Receiver] --> [k8sattributes] --> [geoip] --> [transform] --> [Exporter]
 ```
 
 ## Kubernetes Metadata Enrichment
@@ -111,17 +111,18 @@ processors:
     providers:
       maxmind:
         database_path: /etc/otel/GeoLite2-City.mmdb
-    # Which attribute holds the IP to resolve
-    field: net.peer.ip
+    # Which attributes hold the IP addresses to resolve
+    attributes: [client.address]
 ```
 
-After processing, your spans will have attributes like:
+After processing, your spans will have resource attributes like:
 
 ```text
 geo.city_name: "San Francisco"
 geo.country_name: "United States"
-geo.country_iso_code: "US"
+geo.country.iso_code: "US"
 geo.region_name: "California"
+geo.region.iso_code: "CA"
 geo.postal_code: "94103"
 geo.location.lat: 37.7749
 geo.location.lon: -122.4194
@@ -165,15 +166,80 @@ processors:
 Here is the complete pipeline configuration:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+
+processors:
+  k8sattributes:
+    auth_type: "serviceAccount"
+    passthrough: false
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.namespace.name
+        - k8s.node.name
+        - k8s.deployment.name
+        - k8s.statefulset.name
+        - k8s.container.name
+      labels:
+        - tag_name: app.team
+          key: team
+          from: pod
+        - tag_name: app.version
+          key: app.kubernetes.io/version
+          from: pod
+      annotations:
+        - tag_name: app.oncall
+          key: oncall-contact
+          from: pod
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      - sources:
+          - from: connection
+
+  geoip:
+    context: resource
+    providers:
+      maxmind:
+        database_path: /etc/otel/GeoLite2-City.mmdb
+    attributes: [client.address]
+
+  transform/business:
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["business.unit"], "payments")
+            where attributes["service.name"] == "payment-service"
+          - set(attributes["business.unit"], "platform")
+            where attributes["service.name"] == "auth-service"
+          - set(attributes["business.unit"], "platform")
+            where attributes["service.name"] == "user-service"
+          - set(attributes["sla.tier"], "gold")
+            where attributes["k8s.namespace.name"] == "production"
+          - set(attributes["sla.tier"], "silver")
+            where attributes["k8s.namespace.name"] == "staging"
+          - set(attributes["sla.tier"], "bronze")
+            where attributes["k8s.namespace.name"] == "development"
+          - set(attributes["cost.center"], "CC-1001")
+            where attributes["business.unit"] == "payments"
+          - set(attributes["cost.center"], "CC-2001")
+            where attributes["business.unit"] == "platform"
+
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
 exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
-
-  batch:
-    send_batch_size: 512
-    timeout: 5s
 
 service:
   pipelines:
