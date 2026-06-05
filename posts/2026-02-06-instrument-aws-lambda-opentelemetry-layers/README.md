@@ -18,34 +18,34 @@ A Lambda Layer is a ZIP archive that gets extracted into the `/opt` directory of
 
 - The OpenTelemetry SDK for your runtime (Python, Node.js, Java, etc.)
 - Auto-instrumentation libraries for common frameworks
-- A stripped-down OpenTelemetry Collector that runs as a Lambda extension
-- Configuration defaults that work out of the box
+- An embedded Lambda agent or collector extension, depending on the layer you use
+- Configuration defaults that export traces to CloudWatch X-Ray for the current AWS-managed ADOT layers
 
 ```mermaid
 graph TD
     A[Lambda Function Invocation] --> B[OpenTelemetry SDK Layer]
     B --> C[Auto-instrumentation wraps handler]
     C --> D[Spans created during execution]
-    D --> E[OTel Collector Extension]
+    D --> E[ADOT Lambda extension]
     E --> F[Flush telemetry before freeze]
-    F --> G[Backend: X-Ray / OTLP endpoint]
+    F --> G[Backend: CloudWatch X-Ray / OTLP endpoint]
 ```
 
-The collector extension runs as a separate process alongside your function. When your function finishes executing, the extension flushes any buffered telemetry data before Lambda freezes the execution environment. This is critical because Lambda can freeze your environment at any time after the handler returns.
+The extension runs alongside your function. When your function finishes executing, the extension flushes any buffered telemetry data before Lambda freezes the execution environment. This is critical because Lambda can freeze your environment at any time after the handler returns.
 
 ## Choosing the Right Layer
 
-AWS publishes ADOT Lambda Layers for several runtimes. Here are the most commonly used ones:
+AWS publishes ADOT Lambda Layers for several runtimes. The exact ARN varies by runtime, Region, and layer version, so use the ADOT layer ARN table for your Region. Here are the most commonly used layer families:
 
-| Runtime | Layer Name | Auto-instrumentation |
-|---------|-----------|---------------------|
-| Python 3.9-3.12 | aws-otel-python-amd64 | Yes (requests, boto3, etc.) |
-| Node.js 18-20 | aws-otel-nodejs-amd64 | Yes (http, express, aws-sdk) |
-| Java 11-21 | aws-otel-java-agent-amd64 | Yes (Spring, AWS SDK) |
-| .NET 6-8 | aws-otel-dotnet-amd64 | Yes (ASP.NET, HttpClient) |
-| Collector only | aws-otel-collector-amd64 | No (bring your own SDK) |
+| Runtime | Layer family | Auto-instrumentation |
+|---------|--------------|---------------------|
+| Python | AWSOpenTelemetryDistroPython | Yes (AWS SDK and HTTP by default) |
+| Node.js | AWS-managed ADOT Node.js layer | Yes (AWS SDK and HTTP by default) |
+| Java | AWS-managed ADOT Java layer or Java agent layer | Yes (JVM libraries supported by the agent) |
+| .NET | AWS-managed ADOT .NET layer with OpenTelemetry.Instrumentation.AWSLambda | Manual Lambda instrumentation plus configured libraries |
+| Collector only | OpenTelemetry Collector Lambda layer | No (bring your own SDK) |
 
-For ARM64 (Graviton2) functions, replace `amd64` with `arm64` in the layer name.
+The current AWS-managed Python layer works for both x86_64 and arm64 functions. Some legacy ADOT layers still include the architecture in the layer name, so check the ARN table before copying an ARN into production.
 
 ## Step 1: Add the OpenTelemetry Layer to Your Function
 
@@ -58,7 +58,7 @@ First, find the latest layer ARN for your region and runtime:
 
 # Pick the latest version number from the output
 aws lambda list-layer-versions \
-  --layer-name aws-otel-python-amd64-ver-1-25-0 \
+  --layer-name AWSOpenTelemetryDistroPython \
   --region us-east-1 \
   --query 'LayerVersions[0].LayerVersionArn' \
   --output text
@@ -67,13 +67,11 @@ aws lambda list-layer-versions \
 Then attach the layer to your function:
 
 ```bash
-# Add the ADOT layer and the collector extension layer to your Lambda function
-# Both layers are needed: one for SDK auto-instrumentation, one for the collector
+# Add the ADOT Python instrumentation layer to your Lambda function
 aws lambda update-function-configuration \
   --function-name my-function \
   --layers \
-    arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-25-0:1 \
-    arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-98-0:1 \
+    arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:25 \
   --region us-east-1
 ```
 
@@ -87,12 +85,7 @@ The auto-instrumentation layer works by wrapping your original handler. You need
 # OTEL_SERVICE_NAME identifies your function in traces
 aws lambda update-function-configuration \
   --function-name my-function \
-  --environment "Variables={
-    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
-    OTEL_SERVICE_NAME=my-function,
-    OTEL_PROPAGATORS=tracecontext,
-    OPENTELEMETRY_COLLECTOR_CONFIG_FILE=/var/task/collector.yaml
-  }" \
+  --environment 'Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument,OTEL_SERVICE_NAME=my-function,OTEL_PROPAGATORS=tracecontext}' \
   --region us-east-1
 ```
 
@@ -100,7 +93,7 @@ The `AWS_LAMBDA_EXEC_WRAPPER` variable is the key piece. It points to a script i
 
 ## Step 3: Create a Collector Configuration
 
-The embedded collector needs a configuration file to know where to send data. Create a `collector.yaml` in your function's deployment package.
+The current AWS-managed ADOT Lambda layers export traces through the embedded Lambda agent to CloudWatch X-Ray by default, so you do not need a collector configuration file for the basic setup. If you use a collector-based layer or need a custom collector configuration, create a `collector.yaml` in your function's deployment package and point `OPENTELEMETRY_COLLECTOR_CONFIG_URI` at it.
 
 ```yaml
 # collector.yaml
@@ -109,7 +102,9 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: localhost:4317
+        endpoint: "localhost:4317"
+      http:
+        endpoint: "localhost:4318"
 
 processors:
   # Batch spans but with a short timeout since Lambda has limited execution time
@@ -120,7 +115,6 @@ processors:
 exporters:
   # Export traces to AWS X-Ray
   awsxray:
-    region: us-east-1
 
   # Alternatively, send to any OTLP-compatible backend
   # otlp:
@@ -137,6 +131,13 @@ service:
 ```
 
 If you want to send traces to a third-party backend or your own collector, swap out the `awsxray` exporter for an `otlp` exporter pointing at your endpoint.
+
+```bash
+aws lambda update-function-configuration \
+  --function-name my-function \
+  --environment 'Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument,OTEL_SERVICE_NAME=my-function,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/var/task/collector.yaml}' \
+  --region us-east-1
+```
 
 ## Step 4: Write Your Lambda Function (Python Example)
 
@@ -169,7 +170,7 @@ def lambda_handler(event, context):
     }
 ```
 
-The auto-instrumentation layer patches `boto3` and `urllib` at startup. Every DynamoDB call and HTTP request your function makes gets wrapped in a child span under the main invocation span.
+The auto-instrumentation layer patches AWS SDK and HTTP libraries at startup. The DynamoDB call and HTTP request your function makes can be wrapped in child spans under the main invocation span.
 
 ## Step 5: Add Manual Instrumentation (Optional)
 
@@ -214,11 +215,11 @@ def check_inventory(order_id):
 
 ## Step 6: Deploy and Test
 
-Package your function with the collector config and deploy it:
+Package your function and deploy it. Include `collector.yaml` only if you are using a custom collector configuration:
 
 ```bash
-# Zip the function code and collector config together
-zip -r function.zip lambda_function.py collector.yaml
+# Zip the function code. Add collector.yaml here too if you use a custom collector config.
+zip -r function.zip lambda_function.py
 
 # Deploy the updated function code
 aws lambda update-function-code \
@@ -233,6 +234,7 @@ Invoke the function and check for traces:
 # Invoke the function with a test payload
 aws lambda invoke \
   --function-name my-function \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"user_id": "456"}' \
   --region us-east-1 \
   output.json
@@ -257,22 +259,14 @@ Resources:
       CodeUri: ./src
       Layers:
         # ADOT Python instrumentation layer
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-25-0:1
-        # ADOT Collector extension layer
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-98-0:1
+        - arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:25
       Environment:
         Variables:
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
           OTEL_SERVICE_NAME: my-function
-          OPENTELEMETRY_COLLECTOR_CONFIG_FILE: /var/task/collector.yaml
       Policies:
-        # Grant X-Ray write permissions
-        - Statement:
-            - Effect: Allow
-              Action:
-                - xray:PutTraceSegments
-                - xray:PutTelemetryRecords
-              Resource: "*"
+        # Grant permissions required by ADOT Lambda instrumentation and Application Signals
+        - CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 ```
 
 ## Cold Start Impact
@@ -287,12 +281,12 @@ For warm invocations, the overhead is typically under 10ms. If cold start latenc
 
 ## Troubleshooting
 
-**No traces appearing:** Check that the `AWS_LAMBDA_EXEC_WRAPPER` environment variable is set correctly. Also verify the function's execution role has `xray:PutTraceSegments` permission.
+**No traces appearing:** Check that the `AWS_LAMBDA_EXEC_WRAPPER` environment variable is set to `/opt/otel-instrument`. Also verify the function's execution role has the `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` managed policy or equivalent X-Ray and CloudWatch permissions.
 
-**Collector config not found:** Make sure `collector.yaml` is in the root of your deployment package and the `OPENTELEMETRY_COLLECTOR_CONFIG_FILE` path matches.
+**Collector config not found:** Make sure `collector.yaml` is in the root of your deployment package and the `OPENTELEMETRY_COLLECTOR_CONFIG_URI` path matches.
 
-**Timeout errors:** The collector extension needs a few hundred milliseconds to flush data after your handler returns. If your function timeout is very tight (under 3 seconds), increase it slightly to give the collector time to export.
+**Timeout errors:** The ADOT extension needs time to flush data after your handler returns. If your function timeout is very tight (under 3 seconds), increase it slightly to give the extension time to export.
 
 ## Wrapping Up
 
-Lambda Layers make it surprisingly easy to add OpenTelemetry to serverless functions. The auto-instrumentation catches most of the interesting operations (HTTP calls, SDK calls, database queries), and you can layer manual instrumentation on top for business-specific context. The embedded collector handles the tricky part of flushing data before Lambda freezes the environment. Once everything is wired up, you get full distributed traces that flow seamlessly from your Lambda functions through the rest of your architecture.
+Lambda Layers make it surprisingly easy to add OpenTelemetry to serverless functions. The auto-instrumentation catches most of the interesting operations (HTTP calls, SDK calls, database queries), and you can layer manual instrumentation on top for business-specific context. The ADOT Lambda extension handles the tricky part of flushing data before Lambda freezes the environment. Once everything is wired up, you get full distributed traces that flow seamlessly from your Lambda functions through the rest of your architecture.
