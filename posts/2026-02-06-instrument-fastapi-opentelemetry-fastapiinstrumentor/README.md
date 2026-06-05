@@ -29,11 +29,14 @@ pip install opentelemetry-instrumentation-fastapi
 # Install ASGI instrumentation (dependency for FastAPI)
 pip install opentelemetry-instrumentation-asgi
 
+# Install HTTPX instrumentation if you trace outgoing httpx calls
+pip install opentelemetry-instrumentation-httpx
+
 # Install exporters
 pip install opentelemetry-exporter-otlp
 ```
 
-The FastAPI instrumentation builds on top of the ASGI instrumentation, adding FastAPI-specific features like route parameter extraction and dependency injection awareness.
+The FastAPI instrumentation builds on top of the ASGI instrumentation, adding FastAPI-specific features like route template extraction and integration with FastAPI and Starlette request handling.
 
 ## Basic FastAPI Application Instrumentation
 
@@ -93,7 +96,7 @@ async def create_user(name: str, email: str):
 # Run with: uvicorn main:app --reload
 ```
 
-This code automatically creates spans for every HTTP request. Span names follow the pattern `HTTP {method} {route}`, such as `HTTP GET /api/users/{user_id}`.
+This code automatically creates spans for every HTTP request. Span names follow the pattern `{method} {route}`, such as `GET /api/users/{user_id}`.
 
 ## Understanding the Instrumentation Flow
 
@@ -147,19 +150,21 @@ def server_request_hook(span, scope):
         if request_id:
             span.set_attribute("request.id", request_id)
 
-def client_request_hook(span, scope):
+def client_request_hook(span, scope, message):
     """
-    Called for outgoing requests made by the application
+    Called with the internal span when the ASGI receive event is processed
     """
     if span and span.is_recording():
         span.set_attribute("custom.hook", "client_request")
+        span.set_attribute("asgi.event.type", message.get("type", "unknown"))
 
-def client_response_hook(span, message):
+def client_response_hook(span, scope, message):
     """
-    Called when outgoing request receives response
+    Called with the internal span when the ASGI send event is processed
     """
     if span and span.is_recording():
         span.set_attribute("custom.hook", "client_response")
+        span.set_attribute("asgi.event.type", message.get("type", "unknown"))
 
 # Instrument with hooks
 FastAPIInstrumentor.instrument_app(
@@ -181,7 +186,7 @@ These hooks execute at specific points in the request lifecycle, giving you fine
 FastAPI's dependency injection system is powerful. You can create dependencies that add tracing context.
 
 ```python
-from fastapi import FastAPI, Depends, Header
+from fastapi import FastAPI, Depends, Header, HTTPException
 from opentelemetry import trace
 from typing import Optional
 
@@ -227,7 +232,7 @@ async def get_profile(
 ):
     """Get user profile with dependency-injected tracing"""
     if not user:
-        return {"error": "Unauthorized"}, 401
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     with tracer.start_as_current_span("profile.fetch") as span:
         span.set_attribute("user.id", user["user_id"])
@@ -245,11 +250,13 @@ FastAPI's async nature requires careful attention to context propagation. OpenTe
 ```python
 from fastapi import FastAPI
 from opentelemetry import trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 import asyncio
 import httpx
 
 app = FastAPI()
 tracer = trace.get_tracer(__name__)
+HTTPXClientInstrumentor().instrument()
 
 @app.get("/api/aggregate")
 async def aggregate_data():
@@ -306,7 +313,7 @@ async def call_external_api():
     with tracer.start_as_current_span("external.api.call") as span:
         span.set_attribute("http.url", "https://api.example.com/data")
 
-        # httpx automatically propagates trace context
+        # HTTPX instrumentation injects trace context into outgoing requests
         async with httpx.AsyncClient() as client:
             response = await client.get("https://api.example.com/data")
             span.set_attribute("http.status_code", response.status_code)
@@ -318,12 +325,11 @@ The tracer context automatically propagates across await points and async operat
 
 ## Background Tasks with Tracing
 
-FastAPI supports background tasks that run after the response is sent. Tracing these requires special handling.
+FastAPI supports background tasks that run after the response is sent. Current OpenTelemetry FastAPI instrumentation wraps Starlette background tasks in spans, and you can add custom spans and attributes inside the task functions when you need more detail.
 
 ```python
 from fastapi import FastAPI, BackgroundTasks
 from opentelemetry import trace
-from opentelemetry.trace import set_span_in_context
 import asyncio
 
 app = FastAPI()
@@ -331,8 +337,7 @@ tracer = trace.get_tracer(__name__)
 
 async def send_notification(user_id: int, message: str):
     """Background task with tracing"""
-    # Background tasks run outside the request span
-    # Create a new span for the background work
+    # Add a named span for the background work
     with tracer.start_as_current_span("background.send_notification") as span:
         span.set_attribute("user.id", user_id)
         span.set_attribute("notification.type", "email")
@@ -374,7 +379,7 @@ async def create_order(
     return {"order_id": order_id, "status": "processing"}
 ```
 
-Background tasks create separate trace spans that aren't children of the HTTP request span, since they execute after the response is sent.
+With FastAPIInstrumentor enabled, Starlette background tasks are wrapped in `BackgroundTask ...` spans, and the custom spans you create inside the task functions provide more detailed visibility into the background work.
 
 ## Exception Handling and Error Tracking
 
