@@ -1,16 +1,16 @@
-# How to Collect Grafana Internal Performance Metrics via OTLP Export
+# How to Collect Grafana Internal Performance Metrics and OTLP Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Grafana, Performance Metrics, OTLP
 
-Description: Configure Grafana to export internal performance metrics like dashboard load time and query duration directly via OTLP to the Collector.
+Description: Configure Grafana to expose internal performance metrics and export traces via OTLP to the Collector.
 
-Grafana supports native OpenTelemetry export for its internal metrics and traces. Instead of scraping a Prometheus endpoint, you can configure Grafana to push metrics directly to the OpenTelemetry Collector via OTLP. This approach reduces scrape overhead and gives you access to additional trace data that Prometheus scraping cannot capture.
+Grafana supports native OpenTelemetry export for traces. For internal metrics, Grafana exposes a Prometheus-compatible `/metrics` endpoint that the OpenTelemetry Collector can scrape with its Prometheus receiver. This approach lets you send Grafana metrics and traces through the Collector while preserving trace data that Prometheus scraping cannot capture.
 
-## Enabling OTLP Export in Grafana
+## Enabling Metrics and OTLP Export in Grafana
 
-Configure OTLP export in `grafana.ini` or through environment variables:
+Configure metrics and OTLP trace export in `grafana.ini` or through environment variables:
 
 ```ini
 # /etc/grafana/grafana.ini
@@ -24,12 +24,6 @@ propagation = w3c
 
 [metrics]
 enabled = true
-
-[metrics.otlp]
-# Enable OTLP metrics push
-enabled = true
-address = otel-collector:4317
-push_interval = 30s
 ```
 
 Or using environment variables:
@@ -37,9 +31,7 @@ Or using environment variables:
 ```bash
 GF_TRACING_OPENTELEMETRY_OTLP_ADDRESS=otel-collector:4317
 GF_TRACING_OPENTELEMETRY_OTLP_PROPAGATION=w3c
-GF_METRICS_OTLP_ENABLED=true
-GF_METRICS_OTLP_ADDRESS=otel-collector:4317
-GF_METRICS_OTLP_PUSH_INTERVAL=30s
+GF_METRICS_ENABLED=true
 ```
 
 ## Docker Compose Setup
@@ -54,6 +46,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_TRACING_OPENTELEMETRY_OTLP_ADDRESS=otel-collector:4317
       - GF_TRACING_OPENTELEMETRY_OTLP_PROPAGATION=w3c
+      - GF_METRICS_ENABLED=true
     ports:
       - "3000:3000"
     volumes:
@@ -79,6 +72,13 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: grafana
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["grafana:3000"]
 
 processors:
   batch:
@@ -100,7 +100,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [otlp]
+      receivers: [prometheus]
       processors: [resource, batch]
       exporters: [otlp]
     traces:
@@ -111,19 +111,19 @@ service:
 
 ## Key Performance Metrics
 
-### Dashboard Load Time
+### Dashboard and Page Response Time
 
-Grafana tracks how long each dashboard takes to load:
+Grafana tracks HTTP request duration for routes, including dashboard and API routes:
 
 ```text
-grafana_dashboard_loading_duration_seconds_bucket - Histogram of dashboard load times
-grafana_dashboard_loading_duration_seconds_count  - Number of dashboard loads
-grafana_dashboard_loading_duration_seconds_sum    - Total time spent loading dashboards
+grafana_http_request_duration_seconds_bucket - HTTP request duration histogram
+grafana_http_request_duration_seconds_count  - Number of HTTP requests
+grafana_http_request_duration_seconds_sum    - Total time spent serving HTTP requests
 ```
 
-Calculate the P95 dashboard load time:
+Calculate the P95 response time:
 ```text
-histogram_quantile(0.95, grafana_dashboard_loading_duration_seconds_bucket)
+histogram_quantile(0.95, sum by (le, handler) (rate(grafana_http_request_duration_seconds_bucket[5m])))
 ```
 
 ### Query Duration
@@ -131,17 +131,15 @@ histogram_quantile(0.95, grafana_dashboard_loading_duration_seconds_bucket)
 Data source query performance is critical:
 
 ```text
-grafana_datasource_request_duration_seconds_bucket - Query duration histogram
-grafana_datasource_request_total                    - Total queries by datasource type
-grafana_datasource_response_size_bytes              - Response sizes
+grafana_api_dataproxy_request_all_milliseconds - Summary of data proxy request duration
+grafana_proxy_response_status_total             - Data proxy responses by status code
 ```
 
-Break this down by data source type to identify which backends are slow:
+Use the data proxy summary to identify slow proxied data source requests:
 
 ```text
-grafana_datasource_request_duration_seconds_bucket{datasource_type="prometheus"}
-grafana_datasource_request_duration_seconds_bucket{datasource_type="elasticsearch"}
-grafana_datasource_request_duration_seconds_bucket{datasource_type="loki"}
+grafana_api_dataproxy_request_all_milliseconds{quantile="0.95"}
+grafana_proxy_response_status_total{code="500"}
 ```
 
 ### API Response Times
@@ -153,7 +151,7 @@ grafana_http_request_duration_seconds_bucket - HTTP handler duration
 Filter by handler to find slow API endpoints:
 
 ```text
-grafana_http_request_duration_seconds_bucket{handler="/api/dashboards/:uid"}
+grafana_http_request_duration_seconds_bucket{handler="/api/dashboards/uid/:uid"}
 grafana_http_request_duration_seconds_bucket{handler="/api/ds/query"}
 ```
 
@@ -161,68 +159,69 @@ grafana_http_request_duration_seconds_bucket{handler="/api/ds/query"}
 
 When tracing is enabled, Grafana generates traces for:
 
-- Dashboard rendering (fetching panels, running queries)
+- HTTP API endpoint execution
 - Data source proxy requests
-- Alert rule evaluation
-- API handler execution
+- Requests that include propagated trace context
 
-A dashboard load trace looks like:
+A data source proxy trace looks like:
 
 ```text
-grafana.dashboard.load                    [total: 2.5s]
-  grafana.dashboard.fetch                 [50ms]
-  grafana.panel.query (panel-1)           [800ms]
-    grafana.datasource.proxy.prometheus   [750ms]
-  grafana.panel.query (panel-2)           [1.2s]
-    grafana.datasource.proxy.elasticsearch [1.1s]
-  grafana.panel.query (panel-3)           [300ms]
-    grafana.datasource.proxy.prometheus   [250ms]
+HTTP POST /api/ds/query                  [total: 2.5s]
+  HTTP /datasources/proxy/:id/*          [2.3s]
 ```
 
-This trace shows that panel-2 with the Elasticsearch data source is the bottleneck.
+This trace shows that the data source proxy request is the bottleneck.
 
 ## Analyzing Query Performance
 
 Use traces to identify slow queries at the data source level:
 
-```python
+```sql
 # Pseudo-query for your tracing backend
 # Find the slowest data source queries in the last hour
 SELECT
-    span.attributes["datasource.type"] as datasource,
-    span.attributes["datasource.name"] as name,
+    span.attributes["http.method"] as method,
+    span.attributes["http.target"] as target,
     avg(span.duration) as avg_duration,
     p95(span.duration) as p95_duration,
     count(*) as query_count
 FROM traces
-WHERE span.name LIKE "grafana.datasource.proxy%"
+WHERE span.name LIKE "HTTP %/datasources/proxy/%"
     AND span.start_time > now() - interval '1 hour'
-GROUP BY datasource, name
+GROUP BY method, target
 ORDER BY p95_duration DESC
 ```
 
 ## Setting Up Performance Alerts
 
 ```yaml
-# Alert when dashboard loads are slow
-- alert: GrafanaSlowDashboards
-  condition: p95(grafana_dashboard_loading_duration_seconds) > 10
-  for: 5m
-  severity: warning
-  message: "Dashboard P95 load time exceeds 10 seconds"
+groups:
+  - name: grafana-performance
+    rules:
+      # Alert when Grafana HTTP responses are slow
+      - alert: GrafanaSlowHTTPResponses
+        expr: histogram_quantile(0.95, sum by (le) (rate(grafana_http_request_duration_seconds_bucket[5m]))) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Grafana HTTP P95 response time exceeds 10 seconds"
 
-# Alert when data source queries are slow
-- alert: GrafanaSlowQueries
-  condition: p95(grafana_datasource_request_duration_seconds) > 30
-  for: 3m
-  severity: warning
-  message: "Data source query P95 exceeds 30 seconds"
+      # Alert when data source proxy requests are slow
+      - alert: GrafanaSlowDataProxyRequests
+        expr: grafana_api_dataproxy_request_all_milliseconds{quantile="0.95"} > 30000
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Grafana data proxy P95 exceeds 30 seconds"
 
-# Alert on high query error rate
-- alert: GrafanaQueryErrors
-  condition: rate(grafana_datasource_request_total{status="error"}[5m]) > 5
-  for: 2m
-  severity: critical
+      # Alert on high data proxy error rate
+      - alert: GrafanaDataProxyErrors
+        expr: sum(rate(grafana_proxy_response_status_total{code!="200"}[5m])) > 5
+        for: 2m
+        labels:
+          severity: critical
 ```
 
 ## Correlating Frontend and Backend Performance
@@ -231,4 +230,4 @@ When Grafana traces are enabled, each API call includes trace context. If your b
 
 ## Summary
 
-Grafana's native OTLP export pushes metrics and traces directly to the OpenTelemetry Collector. This gives you dashboard load times, query durations, API response times, and detailed traces showing exactly which panels and data sources are slow. Use these metrics to set up alerts on Grafana performance, and use traces to drill into the root cause of slow dashboards or failing queries.
+Grafana's native OTLP export pushes traces directly to the OpenTelemetry Collector, while the Collector's Prometheus receiver scrapes Grafana's internal metrics. This gives you HTTP response times, aggregate data proxy duration, API response status metrics, and traces for Grafana HTTP requests. Use these metrics to set up alerts on Grafana performance, and use traces to drill into the root cause of slow or failing requests.
