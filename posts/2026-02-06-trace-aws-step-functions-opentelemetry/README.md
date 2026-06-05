@@ -45,10 +45,10 @@ Every Lambda function that participates in your Step Functions workflow needs th
 # This provides auto-instrumentation for AWS SDK calls
 aws lambda update-function-configuration \
   --function-name validate-order \
-  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64-0.12.0:1 \
+  --layers arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:25 \
   --environment "Variables={
-    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
-    OPENTELEMETRY_COLLECTOR_CONFIG_FILE=/var/task/collector.yaml,
+    AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument,
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://your-collector:4318/v1/traces,
     OTEL_SERVICE_NAME=order-workflow
   }"
 ```
@@ -109,7 +109,7 @@ def lambda_handler(event, ctx):
         }
 ```
 
-In subsequent Lambda functions, extract the context and create linked spans.
+In subsequent Lambda functions, extract the context and create child spans in the same trace.
 
 ```python
 from opentelemetry import trace, context
@@ -122,7 +122,7 @@ def lambda_handler(event, ctx):
     # Extract the trace context passed from the previous step
     parent_context = extract(event.get("_traceContext", {}))
 
-    # Start a new span linked to the parent trace
+    # Start a new child span using the extracted parent context
     with tracer.start_as_current_span(
         "step.process_payment",
         context=parent_context,
@@ -267,7 +267,7 @@ def step_function_traced(state_name):
 def lambda_handler(event, context):
     """Just focus on business logic - tracing is handled by the decorator."""
     order = get_order(event["orderId"])
-    is_valid = order["total"] > 0 and order["items"]
+    is_valid = order["total"] > 0 and bool(order["items"])
 
     return {
         "orderId": event["orderId"],
@@ -301,7 +301,7 @@ def lambda_handler(event, context):
     }
 ```
 
-The resulting trace will show the parallel branches as concurrent child spans under the parent.
+The resulting trace will show the parallel branches as concurrent child spans under the parent span. The "Parallel State" in this diagram is a conceptual workflow node; Step Functions does not emit that OpenTelemetry span automatically.
 
 ```mermaid
 graph TD
