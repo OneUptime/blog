@@ -24,6 +24,9 @@ If your services are dedicated to a single tenant (single-tenant deployment mode
 # For single-tenant deployments, set tenant.id as a resource attribute.
 
 # This applies to all telemetry from this service instance.
+import os
+
+from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -34,6 +37,7 @@ resource = Resource.create({
 })
 
 provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(provider)
 ```
 
 ### Using Span Attributes
@@ -65,7 +69,7 @@ When the tenant ID needs to flow across service boundaries automatically, use Op
 ```javascript
 // Use baggage to propagate tenant ID across all downstream services.
 // Baggage entries are automatically included in HTTP headers.
-const { propagation, context, baggage } = require('@opentelemetry/api');
+const { propagation, context } = require('@opentelemetry/api');
 
 function tenantMiddleware(req, res, next) {
   const tenantId = req.headers['x-tenant-id'] || extractFromJWT(req);
@@ -89,6 +93,8 @@ On the receiving side, downstream services extract the baggage and add it to the
 ```javascript
 // Middleware that extracts tenant baggage and adds it to the current span.
 // This ensures every span in the trace carries the tenant identifier.
+const { propagation, context, trace } = require('@opentelemetry/api');
+
 function extractTenantBaggage(req, res, next) {
   const bag = propagation.getBaggage(context.active());
   if (bag) {
@@ -120,16 +126,25 @@ receivers:
 # Use connectors to route based on tenant attributes
 connectors:
   routing:
+    default_pipelines: [traces/default]
     table:
-      # Enterprise tenants get dedicated high-retention pipeline
-      - statement: route() where attributes["tenant.tier"] == "enterprise"
+      # Enterprise tenants get dedicated high-retention pipeline.
+      # Resource attributes cover single-tenant service instances.
+      - context: resource
+        condition: attributes["tenant.tier"] == "enterprise"
+        pipelines: [traces/enterprise]
+      # Span attributes cover shared multi-tenant services.
+      - context: span
+        condition: attributes["tenant.tier"] == "enterprise"
         pipelines: [traces/enterprise]
       # Standard tenants use the default pipeline
-      - statement: route() where attributes["tenant.tier"] == "standard"
+      - context: resource
+        condition: attributes["tenant.tier"] == "standard"
         pipelines: [traces/standard]
-      # Default route for anything without a tier
-      - statement: route()
-        pipelines: [traces/default]
+      - context: span
+        condition: attributes["tenant.tier"] == "standard"
+        pipelines: [traces/standard]
+      # Anything without a tier is routed through default_pipelines.
 
 processors:
   batch/enterprise:
