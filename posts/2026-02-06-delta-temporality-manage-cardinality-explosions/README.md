@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Delta Temporality, Cardinality, Performance
 
-Description: Master delta temporality in OpenTelemetry to reduce metric cardinality and storage costs. Practical examples show how delta aggregation can cut time series by 60% compared to cumulative metrics.
+Description: Master delta temporality in OpenTelemetry to reduce metric state and storage costs. Practical examples show how delta aggregation can help ephemeral time series expire sooner compared to cumulative metrics.
 
 Metric temporality is one of the most misunderstood aspects of OpenTelemetry, yet it has a massive impact on cardinality and costs. The choice between cumulative and delta temporality can mean the difference between manageable metrics and a cardinality explosion that destroys your observability budget.
 
@@ -32,17 +32,17 @@ graph LR
     style E fill:#ffe1f5
 ```
 
-The temporality choice affects cardinality because cumulative metrics require maintaining state for every unique time series across restarts, while delta metrics can reset state and allow series to expire naturally.
+The temporality choice affects state and storage because cumulative metrics require maintaining a running value for every unique time series, while delta metrics can report only interval changes and allow inactive series to expire once the backend's staleness or retention rules apply.
 
 ## Why Delta Temporality Reduces Cardinality
 
-Delta temporality reduces cardinality in several ways:
+Delta temporality can reduce the amount of active metric state in several ways:
 
-1. **Natural series expiration**: When a unique attribute combination stops appearing, the time series naturally ends. Cumulative metrics keep series alive indefinitely.
+1. **Natural series expiration**: When a unique attribute combination stops appearing, a delta stream has no more points to accumulate. Cumulative streams may require the SDK, collector, or backend to keep conversion state until staleness or retention cleanup runs.
 
 2. **Reduced storage overhead**: Backends can aggregate delta metrics more efficiently, reducing the need to store every unique series.
 
-3. **Better handling of short-lived processes**: Containers and serverless functions that restart frequently don't accumulate unbounded time series with delta metrics.
+3. **Better handling of short-lived processes**: Containers and serverless functions that restart frequently can produce less long-lived aggregation state with delta metrics.
 
 4. **Alignment with stateless backends**: Systems like Prometheus that expect cumulative data can convert deltas, but backends designed for deltas (like many cloud providers) work more efficiently with native delta data.
 
@@ -56,7 +56,15 @@ OpenTelemetry SDKs support temporality configuration through metric readers. Her
 # Configure delta temporality for all instruments
 
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import (
+    Counter,
+    Histogram,
+    MeterProvider,
+    ObservableCounter,
+    ObservableGauge,
+    ObservableUpDownCounter,
+    UpDownCounter,
+)
 from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
     AggregationTemporality,
@@ -69,13 +77,13 @@ exporter = OTLPMetricExporter(
     # Specify temporality for different instrument types
     preferred_temporality={
         # Use delta for counters and histograms
-        "Counter": AggregationTemporality.DELTA,
-        "UpDownCounter": AggregationTemporality.DELTA,
-        "Histogram": AggregationTemporality.DELTA,
-        # UpDownCounter might use cumulative for gauges
-        "ObservableCounter": AggregationTemporality.DELTA,
-        "ObservableUpDownCounter": AggregationTemporality.CUMULATIVE,
-        "ObservableGauge": AggregationTemporality.CUMULATIVE,
+        Counter: AggregationTemporality.DELTA,
+        Histogram: AggregationTemporality.DELTA,
+        ObservableCounter: AggregationTemporality.DELTA,
+        # Up-down counters and gauges usually stay cumulative
+        UpDownCounter: AggregationTemporality.CUMULATIVE,
+        ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+        ObservableGauge: AggregationTemporality.CUMULATIVE,
     },
 )
 
@@ -100,7 +108,6 @@ import (
     "context"
     "time"
 
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -157,7 +164,6 @@ func initMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 
 ```java
 // Java SDK delta temporality configuration
-import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
@@ -191,7 +197,7 @@ public class MetricsConfig {
 
 ## Collector Configuration for Delta Metrics
 
-The OpenTelemetry Collector can convert between temporalities, but it's more efficient to configure your SDKs correctly. When you need conversion, use the metrics transform processor:
+The OpenTelemetry Collector can convert between temporalities, but it's more efficient to configure your SDKs correctly. When you need conversion, use the temporality conversion processors:
 
 ```yaml
 # Collector configuration for temporality handling
@@ -207,14 +213,12 @@ processors:
   # Cumulative to Delta conversion processor
   cumulativetodelta:
     # List metrics to convert
-    metrics:
-      - http.server.request.duration
-      - http.server.request.count
-      - db.client.operation.duration
-
-    # Maximum number of unique time series to track
-    # This prevents memory issues with high cardinality
-    max_stale: 100000
+    include:
+      metrics:
+        - http.server.request.duration
+        - http.server.request.count
+        - db.client.operation.duration
+      match_type: strict
 
     # How long to remember series after last seen
     # Helps with intermittent metrics
@@ -223,10 +227,9 @@ processors:
   # Alternative: Delta to Cumulative conversion
   # Some backends (like Prometheus) require cumulative
   deltatocumulative:
-    metrics:
-      - custom.metric.delta.*
-    max_stale: 100000
-    max_staleness: 10m
+    # This processor converts all delta samples it receives
+    max_stale: 10m
+    max_streams: 100000
 
   # Memory limiter to prevent OOM with stateful processors
   memory_limiter:
@@ -298,11 +301,11 @@ spec:
             value: "http://otel-collector:4317"
 ```
 
-With delta temporality, when pods restart (which happens frequently in Kubernetes), old time series expire naturally. With cumulative temporality, each pod restart creates new series that persist indefinitely.
+With delta temporality, when pods restart (which happens frequently in Kubernetes), old time series can expire naturally according to the backend's staleness and retention behavior. With cumulative temporality, each pod restart can create new series and additional cumulative conversion state until that cleanup occurs.
 
 ## Comparing Cardinality Impact
 
-Here's a real-world comparison of cardinality with different temporality configurations:
+Here's an illustrative comparison of active metric state with different temporality configurations:
 
 ```python
 # Python script to demonstrate cardinality differences
@@ -319,8 +322,8 @@ from opentelemetry.sdk.metrics.export import (
 # Simulate a high-churn scenario (like Kubernetes pods)
 def simulate_workload(meter, duration_seconds=300):
     """
-    Simulates a workload where 100 containers restart every 30 seconds.
-    This creates high cardinality with cumulative metrics.
+    Simulates a workload where containers restart every 30 seconds.
+    Container IDs as metric attributes create high-cardinality streams.
     """
     counter = meter.create_counter(
         name="requests.processed",
@@ -348,14 +351,14 @@ def simulate_workload(meter, duration_seconds=300):
 
         time.sleep(0.1)
 
-# With cumulative temporality:
-# - After 300 seconds: ~600 unique time series (one per container restart)
-# - Series never expire, memory grows unbounded
+# With cumulative temporality and stateful conversion:
+# - More unique container.id streams must be tracked until staleness cleanup
+# - Backend retention determines when inactive series disappear
 
 # With delta temporality:
-# - After 300 seconds: ~10 active time series (current containers only)
-# - Old series expire when containers stop reporting
-# - Memory usage is bounded and predictable
+# - Only currently reporting container.id streams emit new deltas
+# - Old series expire when containers stop reporting and staleness cleanup runs
+# - Conversion state can be lower and more predictable
 ```
 
 ## Best Practices for Delta Temporality
@@ -376,8 +379,8 @@ temporality_preferences:
   ObservableGauge: CUMULATIVE
   ObservableUpDownCounter: CUMULATIVE
 
-  # UpDownCounter can use either, depending on backend
-  UpDownCounter: DELTA  # or CUMULATIVE
+  # UpDownCounter is typically cumulative, matching the OTLP delta preference
+  UpDownCounter: CUMULATIVE
 ```
 
 ### 2. Configure Appropriate Export Intervals
@@ -409,18 +412,17 @@ When using temporality conversion processors, monitor memory usage:
 # Collector configuration with state monitoring
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.*
-    max_stale: 50000  # Limit state tracking
+    include:
+      metrics:
+        - http.server.*
+      match_type: regexp
     max_staleness: 5m
 
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
 
-# Monitor these collector metrics
-# - otelcol_processor_cumulativetodelta_tracked_series
-# - otelcol_processor_cumulativetodelta_stale_series_evicted
+# Monitor collector self-telemetry for processor state and memory usage
 # - otelcol_process_runtime_total_alloc_bytes
 ```
 
@@ -431,16 +433,12 @@ Different backends have different temporality preferences:
 ```yaml
 # Multi-backend configuration with appropriate temporalities
 exporters:
-  # Cloud providers typically prefer delta
-  otlphttp/datadog:
-    endpoint: https://api.datadoghq.com
+  # Delta-native backends can receive delta metrics without conversion
+  otlphttp/delta_backend:
+    endpoint: https://metrics.example.com
     # Delta is native, no conversion needed
 
-  otlphttp/cloudwatch:
-    endpoint: https://cloudwatch.amazonaws.com
-    # Delta is native, no conversion needed
-
-  # Prometheus requires cumulative
+  # Prometheus remote write expects cumulative counters
   prometheusremotewrite:
     endpoint: https://prometheus.example.com
     # Must use deltatocumulative processor
@@ -450,7 +448,7 @@ service:
     metrics/delta_native:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/datadog, otlphttp/cloudwatch]
+      exporters: [otlphttp/delta_backend]
 
     metrics/prometheus:
       receivers: [otlp]
@@ -460,7 +458,7 @@ service:
 
 ## Real-World Case Study: Microservices Platform
 
-A microservices platform with 200 services reduced their metric cardinality by 64% by switching to delta temporality:
+A microservices platform with 200 services can reduce active metric state by combining delta temporality with filtering and stable attribute grouping:
 
 **Before (Cumulative Temporality)**:
 - 50,000 pods restart per day
@@ -497,14 +495,13 @@ processors:
           - grpc.server.*
           - db.client.*
 
-  # Group by attributes to reduce further
+  # Group by stable datapoint attributes for more compact payloads
   groupbyattrs:
     keys:
-      - service.name
       - http.method
       - http.status_code
       # Note: container.id is NOT included
-      # This aggregates across container restarts
+      # This avoids promoting container.id to resource attributes
 
   batch:
     timeout: 10s
@@ -556,7 +553,7 @@ Backends may need hints about how to handle delta metrics:
 processors:
   transform/calculate_rate:
     metric_statements:
-      - context: metric
+      - context: datapoint
         statements:
           # Add metadata to indicate this is a delta counter
           - set(attributes["_temporality"], "delta")
