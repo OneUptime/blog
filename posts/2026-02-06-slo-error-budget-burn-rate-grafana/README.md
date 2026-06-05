@@ -27,7 +27,7 @@ flowchart LR
 
 ## Step 1: Define SLI Recording Rules
 
-SLIs (Service Level Indicators) are the raw measurements behind your SLOs. Create Prometheus recording rules that pre-compute these from OpenTelemetry metrics:
+SLIs (Service Level Indicators) are the raw measurements behind your SLOs. Create Prometheus recording rules that pre-compute these from OpenTelemetry metrics. These examples assume the default OpenTelemetry-to-Prometheus name translation, so `http.server.request.duration` is exposed as `http_server_request_duration_seconds`, `http.response.status_code` as `http_response_status_code`, and `service.name` as `service_name` when resource attributes are copied to metric labels:
 
 ```yaml
 # prometheus-rules/sli-recording-rules.yaml
@@ -44,12 +44,12 @@ groups:
             rate(http_server_request_duration_seconds_count[5m])
           )
 
-      # Successful request count (non-5xx responses under 500ms)
+      # Successful request count (non-5xx responses)
       - record: sli:http_requests_good:rate5m
         expr: |
           sum by (service_name) (
             rate(http_server_request_duration_seconds_count{
-              http_status_code!~"5.."
+              http_response_status_code!~"5.."
             }[5m])
           )
 
@@ -146,7 +146,7 @@ groups:
         expr: |
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[1h]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[1h]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[1h]))
             )
@@ -157,7 +157,7 @@ groups:
           and
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[5m]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[5m]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
             )
@@ -177,7 +177,7 @@ groups:
         expr: |
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[6h]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[6h]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[6h]))
             )
@@ -188,7 +188,7 @@ groups:
           and
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[30m]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[30m]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[30m]))
             )
@@ -208,7 +208,7 @@ groups:
         expr: |
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[1d]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[1d]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[1d]))
             )
@@ -219,7 +219,7 @@ groups:
           and
           (
             1 - (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_status_code!~"5.."}[2h]))
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code!~"5.."}[2h]))
               /
               sum by (service_name) (rate(http_server_request_duration_seconds_count[2h]))
             )
