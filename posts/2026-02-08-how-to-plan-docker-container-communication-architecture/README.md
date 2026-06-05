@@ -50,8 +50,6 @@ Docker Compose creates a default network for each project automatically. Service
 
 ```yaml
 # Services can reach each other by name: "api", "db", "redis"
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -100,8 +98,6 @@ graph TB
 Implement network segmentation with Docker Compose:
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -128,7 +124,7 @@ services:
       - backend
 
   rabbitmq:
-    image: rabbitmq:3.13-alpine
+    image: rabbitmq:4-alpine
     networks:
       - backend
       - workers
@@ -148,7 +144,7 @@ networks:
     internal: true  # No internet access
 ```
 
-In this setup, Traefik can reach the API but not the database. The database is completely isolated on the internal backend network. Workers can reach the message queue and database but not the public network.
+In this setup, Traefik can reach the API but not the database. The database is isolated from external connectivity on the internal backend network. Workers can reach the message queue and database but not the public network.
 
 ## Service Discovery Patterns
 
@@ -177,7 +173,7 @@ Run Consul as a service registry in Docker:
 ```yaml
 services:
   consul:
-    image: hashicorp/consul:1.18
+    image: hashicorp/consul:1.22
     ports:
       - "8500:8500"
     command: agent -server -bootstrap -ui -client=0.0.0.0
@@ -199,6 +195,10 @@ services:
     networks:
       - discovery
       - backend
+
+networks:
+  discovery:
+  backend:
 ```
 
 Services register themselves with Consul on startup and discover other services by querying the registry.
@@ -272,7 +272,7 @@ services:
       - messaging
 
   rabbitmq:
-    image: rabbitmq:3.13-alpine
+    image: rabbitmq:4-alpine
     networks:
       - messaging
 
