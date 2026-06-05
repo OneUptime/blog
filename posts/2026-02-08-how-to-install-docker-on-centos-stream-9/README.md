@@ -21,12 +21,12 @@ Before you begin, make sure you have:
 
 ## Step 1: Remove Old or Conflicting Packages
 
-CentOS Stream 9 ships with Podman and related container tools. These can conflict with Docker, so remove them first.
+CentOS Stream 9 may have older Docker packages or distribution-provided Docker-compatible packages installed. These can conflict with Docker's official packages, so remove them first.
 
 ```bash
-# Remove podman, buildah, and any old Docker remnants
+# Remove old Docker remnants
 
-sudo dnf remove -y podman buildah docker docker-client docker-client-latest \
+sudo dnf remove -y docker docker-client docker-client-latest \
   docker-common docker-latest docker-latest-logrotate \
   docker-logrotate docker-engine
 ```
@@ -35,14 +35,14 @@ This ensures a clean slate. If none of these packages are installed, the command
 
 ## Step 2: Install Required Dependencies
 
-Docker needs a few utilities to set up its repository.
+Docker needs the DNF plugin package to set up its repository.
 
 ```bash
-# Install yum-utils, which provides yum-config-manager
-sudo dnf install -y yum-utils device-mapper-persistent-data lvm2
+# Install dnf-plugins-core, which provides dnf config-manager
+sudo dnf install -y dnf-plugins-core
 ```
 
-The `yum-utils` package provides the `yum-config-manager` tool that makes adding third-party repositories straightforward.
+The `dnf-plugins-core` package provides the `dnf config-manager` command that makes adding third-party repositories straightforward.
 
 ## Step 3: Add the Docker CE Repository
 
@@ -50,7 +50,7 @@ Docker publishes its own RPM repository for CentOS. Add it with a single command
 
 ```bash
 # Add the official Docker CE repository
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 ```
 
 You can verify the repo was added by listing the enabled repositories.
@@ -73,7 +73,7 @@ sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 
 This pulls in the latest stable release. The `docker-compose-plugin` gives you `docker compose` (v2) as a subcommand, replacing the older standalone `docker-compose` binary.
 
-If you encounter a GPG key prompt, accept it. The fingerprint should match Docker's official signing key.
+If you encounter a GPG key prompt, verify that the fingerprint matches Docker's official signing key, `060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35`, and then accept it.
 
 ## Step 5: Start and Enable the Docker Service
 
@@ -113,7 +113,7 @@ By default, Docker commands require `sudo`. You can add your user to the `docker
 
 ```bash
 # Create the docker group (may already exist)
-sudo groupadd docker
+sudo groupadd -f docker
 
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -178,13 +178,7 @@ The lowercase `z` indicates a shared label (multiple containers can access it), 
 
 ## Configuring Firewall Rules
 
-CentOS Stream 9 uses `firewalld`. Docker manipulates iptables directly, which can conflict with firewalld in some cases. If you need to expose container ports to external traffic, make sure the appropriate zones and rules are in place.
-
-```bash
-# Allow Docker to manage iptables by trusting the docker0 interface
-sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
-sudo firewall-cmd --reload
-```
+CentOS Stream 9 uses `firewalld`. Docker creates the firewall rules it needs for bridge networks and, when firewalld is running, creates a `docker` zone for Docker bridge interfaces. If you need to expose container ports to external traffic, make sure the appropriate host firewall rules are in place.
 
 For specific port exposure, you can add rules like this.
 
@@ -201,7 +195,7 @@ The `docker-compose-plugin` you installed earlier provides `docker compose` as a
 ```bash
 # Download the latest standalone docker-compose binary
 COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
-sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)" -o /usr/local/bin/docker-compose
 
 # Make it executable
 sudo chmod +x /usr/local/bin/docker-compose
@@ -214,15 +208,15 @@ docker-compose --version
 
 ### "package docker-ce has no installation candidate"
 
-This usually means the Docker repository was not added correctly. Double-check with `dnf repolist` and re-add the repo if needed.
+This usually means the Docker repository was not added correctly. Double-check with `dnf repolist` and re-add the repo with `dnf config-manager` if needed.
 
-### Conflicting packages with Podman
+### Conflicting packages
 
-If `dnf` complains about conflicts, ensure you removed all Podman-related packages in Step 1. You can also use `--allowerasing` as a last resort.
+If `dnf` complains about conflicts, ensure you removed the conflicting packages listed in Step 1. You can also use `--allowerasing` as a last resort.
 
 ```bash
 # Force install Docker even if there are minor conflicts
-sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io
+sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ### Docker fails to start after reboot
@@ -253,7 +247,7 @@ To update only Docker packages specifically:
 
 ```bash
 # Update only Docker-related packages
-sudo dnf update -y docker-ce docker-ce-cli containerd.io
+sudo dnf update -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ## Summary
