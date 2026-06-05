@@ -31,6 +31,7 @@ graph TD
 Start with a standard ASP.NET Core application configured with health checks and OpenTelemetry.
 
 ```csharp
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -43,28 +44,28 @@ builder.Services.AddHealthChecks()
         builder.Configuration.GetConnectionString("Database"),
         name: "database",
         failureStatus: HealthStatus.Unhealthy,
-        tags: new[] { "db", "postgresql" })
+        tags: new[] { "ready", "db", "postgresql" })
     .AddRedis(
         builder.Configuration.GetConnectionString("Redis"),
         name: "redis-cache",
         failureStatus: HealthStatus.Degraded,
-        tags: new[] { "cache", "redis" })
+        tags: new[] { "ready", "cache", "redis" })
     .AddUrlGroup(
         new Uri(builder.Configuration["ExternalApi:BaseUrl"]),
         name: "external-api",
         failureStatus: HealthStatus.Degraded,
-        tags: new[] { "external", "api" })
-    .AddCheck<CustomBusinessHealthCheck>("business-logic", tags: new[] { "business" });
+        tags: new[] { "ready", "external", "api" })
+    .AddCheck<CustomBusinessHealthCheck>("business-logic", tags: new[] { "ready", "business" });
 
 // Configure OpenTelemetry metrics
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
-        .AddService("order-api", "1.0.0"))
+        .AddService("order-api", serviceVersion: "1.0.0"))
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()
-        .AddMeter("HealthChecks")
+        .AddMeter("HealthChecks", "HealthChecks.Business", "HealthChecks.Enhanced", "HealthChecks.Database")
         .AddOtlpExporter());
 
 var app = builder.Build();
@@ -77,7 +78,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("live")
+    Predicate = _ => false
 });
 
 app.Run();
@@ -96,11 +97,11 @@ namespace HealthMonitoring
     public class OpenTelemetryHealthCheckPublisher : IHealthCheckPublisher
     {
         private readonly Meter _meter;
-        private readonly ObservableGauge<int> _healthStatusGauge;
+        private readonly ObservableGauge<double> _healthStatusGauge;
         private readonly Histogram<double> _healthCheckDuration;
         private readonly Counter<long> _healthCheckFailures;
 
-        private HealthReport _lastHealthReport;
+        private HealthReport? _lastHealthReport;
         private readonly object _lock = new object();
 
         public OpenTelemetryHealthCheckPublisher()
@@ -168,9 +169,9 @@ namespace HealthMonitoring
             return Task.CompletedTask;
         }
 
-        private IEnumerable<Measurement<int>> GetHealthStatusObservations()
+        private IEnumerable<Measurement<double>> GetHealthStatusObservations()
         {
-            HealthReport report;
+            HealthReport? report;
             lock (_lock)
             {
                 report = _lastHealthReport;
@@ -186,7 +187,7 @@ namespace HealthMonitoring
                 var statusValue = entry.Value.Status switch
                 {
                     HealthStatus.Healthy => 1,
-                    HealthStatus.Degraded => 0,
+                    HealthStatus.Degraded => 0.5,
                     HealthStatus.Unhealthy => 0,
                     _ => 0
                 };
@@ -206,19 +207,19 @@ namespace HealthMonitoring
                     }
                 }
 
-                yield return new Measurement<int>(statusValue, tags);
+                yield return new Measurement<double>(statusValue, tags);
             }
 
             // Overall health status
             var overallStatus = report.Status switch
             {
                 HealthStatus.Healthy => 1,
-                HealthStatus.Degraded => 0,
+                HealthStatus.Degraded => 0.5,
                 HealthStatus.Unhealthy => 0,
                 _ => 0
             };
 
-            yield return new Measurement<int>(
+            yield return new Measurement<double>(
                 overallStatus,
                 new TagList { { "check_name", "overall" }, { "status", report.Status.ToString().ToLowerInvariant() } });
         }
@@ -278,17 +279,6 @@ namespace HealthMonitoring
                 _pendingOrdersHistogram.Record(pendingOrders);
 
                 // Define thresholds for health status
-                if (pendingOrders > 10000)
-                {
-                    return HealthCheckResult.Degraded(
-                        $"High number of pending orders: {pendingOrders}",
-                        data: new Dictionary<string, object>
-                        {
-                            ["pending_orders"] = pendingOrders,
-                            ["threshold"] = 10000
-                        });
-                }
-
                 if (pendingOrders > 50000)
                 {
                     return HealthCheckResult.Unhealthy(
@@ -297,6 +287,17 @@ namespace HealthMonitoring
                         {
                             ["pending_orders"] = pendingOrders,
                             ["threshold"] = 50000
+                        });
+                }
+
+                if (pendingOrders > 10000)
+                {
+                    return HealthCheckResult.Degraded(
+                        $"High number of pending orders: {pendingOrders}",
+                        data: new Dictionary<string, object>
+                        {
+                            ["pending_orders"] = pendingOrders,
+                            ["threshold"] = 10000
                         });
                 }
 
@@ -323,6 +324,10 @@ namespace HealthMonitoring
 Extract additional metrics from health check data for deeper insights.
 
 ```csharp
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
+
 namespace HealthMonitoring
 {
     public class EnhancedHealthCheckPublisher : IHealthCheckPublisher
@@ -443,6 +448,8 @@ app.MapHealthChecks("/health/details", new HealthCheckOptions
 For expensive health checks, implement caching to avoid excessive load.
 
 ```csharp
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 namespace HealthMonitoring
 {
     public class CachedHealthCheck : IHealthCheck
@@ -450,7 +457,7 @@ namespace HealthMonitoring
         private readonly IHealthCheck _innerCheck;
         private readonly TimeSpan _cacheDuration;
         private readonly SemaphoreSlim _semaphore;
-        private HealthCheckResult _cachedResult;
+        private HealthCheckResult? _cachedResult;
         private DateTime _lastCheckTime;
 
         public CachedHealthCheck(IHealthCheck innerCheck, TimeSpan cacheDuration)
@@ -470,21 +477,21 @@ namespace HealthMonitoring
             {
                 var now = DateTime.UtcNow;
 
-                if (_cachedResult != null &&
+                if (_cachedResult is HealthCheckResult cachedResult &&
                     now - _lastCheckTime < _cacheDuration)
                 {
                     // Return cached result with age indicator
                     var age = now - _lastCheckTime;
-                    var data = new Dictionary<string, object>(_cachedResult.Data)
+                    var data = new Dictionary<string, object>(cachedResult.Data)
                     {
                         ["cached"] = true,
                         ["cache_age_seconds"] = age.TotalSeconds
                     };
 
                     return new HealthCheckResult(
-                        _cachedResult.Status,
-                        _cachedResult.Description,
-                        _cachedResult.Exception,
+                        cachedResult.Status,
+                        cachedResult.Description,
+                        cachedResult.Exception,
                         data);
                 }
 
@@ -492,7 +499,7 @@ namespace HealthMonitoring
                 _cachedResult = await _innerCheck.CheckHealthAsync(context, cancellationToken);
                 _lastCheckTime = now;
 
-                return _cachedResult;
+                return _cachedResult.Value;
             }
             finally
             {
@@ -508,6 +515,9 @@ namespace HealthMonitoring
 Create specialized health checks that monitor resource pool metrics.
 
 ```csharp
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 namespace HealthMonitoring
 {
     public class DatabasePoolHealthCheck : IHealthCheck
@@ -607,7 +617,7 @@ groups:
           description: "Health check has been degraded for more than 5 minutes"
 
       - alert: HealthCheckSlow
-        expr: health_check_duration_seconds > 5
+        expr: histogram_quantile(0.95, rate(health_check_duration_seconds_bucket[5m])) > 5
         for: 3m
         labels:
           severity: warning
