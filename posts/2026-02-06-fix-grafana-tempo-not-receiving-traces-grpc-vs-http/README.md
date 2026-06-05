@@ -14,7 +14,7 @@ OTLP supports two transport protocols:
 - **gRPC** on port 4317 (default for OTLP gRPC)
 - **HTTP** on port 4318 (default for OTLP HTTP)
 
-The Collector's `otlp` exporter defaults to gRPC. Tempo might be configured for HTTP only, or on a different port.
+The Collector's OTLP gRPC exporter uses gRPC. In current Collector configuration this exporter is named `otlp_grpc`; older examples often use the `otlp` alias. Tempo might be configured for HTTP only, or on a different port.
 
 ## Diagnosing the Issue
 
@@ -24,7 +24,7 @@ The Collector's `otlp` exporter defaults to gRPC. Tempo might be configured for 
 # This is gRPC by default
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: tempo:4317    # gRPC endpoint
 ```
 
@@ -64,7 +64,7 @@ If Tempo accepts gRPC:
 ```yaml
 # Collector config
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: tempo:4317
     tls:
       insecure: true
@@ -83,22 +83,20 @@ distributor:
 If Tempo only accepts HTTP:
 
 ```yaml
-# Collector config - use otlphttp exporter
+# Collector config - use otlp_http exporter
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: http://tempo:4318
-    tls:
-      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]     # use otlphttp, not otlp
+      exporters: [otlp_http]     # use otlp_http, not otlp_grpc
 ```
 
-Note that `otlp` and `otlphttp` are two different exporters. The `otlp` exporter uses gRPC. The `otlphttp` exporter uses HTTP.
+Note that `otlp_grpc` and `otlp_http` are two different exporters. The `otlp_grpc` exporter uses gRPC. The `otlp_http` exporter uses HTTP. Older Collector examples may use `otlp` and `otlphttp`; `otlphttp` is now a deprecated alias for `otlp_http`.
 
 ## Fix 3: Enable Both Protocols in Tempo
 
@@ -151,10 +149,10 @@ If you forget to add the port to the Service, the Collector cannot reach it even
 ```bash
 # From the Collector pod
 kubectl exec <collector-pod> -- \
-  wget -qO- --spider http://tempo:4317
-# gRPC endpoints won't respond to HTTP, but you can check port is open
+  nc -vz tempo 4317
+# This only checks that the TCP port is reachable.
 
-# Better: use grpcurl
+# If the endpoint supports gRPC reflection, grpcurl can also inspect it.
 kubectl exec <collector-pod> -- \
   grpcurl -plaintext tempo:4317 list
 ```
@@ -163,7 +161,7 @@ kubectl exec <collector-pod> -- \
 
 ```bash
 kubectl exec <collector-pod> -- \
-  wget -qO- http://tempo:4318/v1/traces
+  curl -i http://tempo:4318/v1/traces
 ```
 
 A 405 Method Not Allowed response means the endpoint is reachable (it just does not accept GET).
@@ -171,15 +169,14 @@ A 405 Method Not Allowed response means the endpoint is reachable (it just does 
 ### Send a Test Trace
 
 ```bash
-# Install otel-cli in the Collector pod or a debug pod
-otel-cli span \
-  --service "test" \
-  --name "connectivity-test" \
-  --endpoint "tempo:4317" \
-  --protocol grpc
+# Install telemetrygen in the Collector pod or a debug pod
+telemetrygen traces \
+  --otlp-endpoint tempo:4317 \
+  --otlp-insecure \
+  --traces 1
 
 # Check Tempo API for the trace
-curl -s "http://tempo:3200/api/search?q={resource.service.name=\"test\"}" | jq .
+curl -s "http://tempo:3200/api/search?q={resource.service.name=\"telemetrygen\"}" | jq .
 ```
 
 ## Helm Chart Configuration
@@ -200,4 +197,4 @@ tempo:
 
 ## Summary
 
-The most common cause of traces not reaching Tempo is a protocol mismatch: the Collector uses gRPC (port 4317) while Tempo expects HTTP (port 4318), or vice versa. Verify that both the Collector exporter and Tempo receiver agree on the protocol. Use the `otlp` exporter for gRPC and `otlphttp` for HTTP. Enable both protocols in Tempo to avoid this issue entirely.
+The most common cause of traces not reaching Tempo is a protocol mismatch: the Collector uses gRPC (port 4317) while Tempo expects HTTP (port 4318), or vice versa. Verify that both the Collector exporter and Tempo receiver agree on the protocol. Use the `otlp_grpc` exporter for gRPC and `otlp_http` for HTTP. Enable both protocols in Tempo to avoid this issue entirely.
