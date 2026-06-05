@@ -65,7 +65,7 @@ provider = TracerProvider(resource=resource)
 provider.add_span_processor(
     BatchSpanProcessor(
         OTLPSpanExporter(
-            # Export to the local OTLP endpoint or Cloud Trace
+            # Export to a local collector or another OTLP endpoint
             endpoint="http://localhost:4317",
             insecure=True,
         ),
@@ -104,7 +104,7 @@ def handle_request(request):
         return result
 ```
 
-The `GoogleCloudResourceDetector` is important here. It queries the GCP metadata server to populate resource attributes like `cloud.project_id`, `cloud.region`, `faas.name`, and `faas.version`. These attributes let you filter and group traces by function name, region, or project in your trace viewer.
+The `GoogleCloudResourceDetector` is important here. It queries the GCP metadata server to populate resource attributes like `cloud.account.id`, `cloud.region`, `faas.name`, and `faas.version`. These attributes let you filter and group traces by function name, region, or project in your trace viewer.
 
 Install the required packages in your `requirements.txt`:
 
@@ -112,12 +112,12 @@ Install the required packages in your `requirements.txt`:
 # requirements.txt
 # Core OpenTelemetry packages for GCP Cloud Functions
 functions-framework==3.*
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-opentelemetry-exporter-otlp-proto-grpc==1.27.0
-opentelemetry-instrumentation-flask==0.48b0
-opentelemetry-instrumentation-requests==0.48b0
-opentelemetry-resourcedetector-gcp==1.7.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
+opentelemetry-instrumentation-flask==0.63b1
+opentelemetry-instrumentation-requests==0.63b1
+opentelemetry-resourcedetector-gcp==1.12.0a0
 ```
 
 ## Node.js Configuration
@@ -127,49 +127,48 @@ Node.js Cloud Functions also use a functions framework. The OpenTelemetry setup 
 ```javascript
 // tracing.js
 // OpenTelemetry initialization - must be imported first
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const opentelemetry = require('@opentelemetry/sdk-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { GcpDetector } = require('@opentelemetry/resource-detector-gcp');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
+const {
+  envDetector,
+  processDetector,
+  resourceFromAttributes,
+} = require('@opentelemetry/resources');
+const { gcpDetector } = require('@opentelemetry/resource-detector-gcp');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 
-async function initTracing() {
-  // Detect GCP-specific resource attributes
-  const gcpResource = await new GcpDetector().detect();
-
-  const resource = new Resource({
+function initTracing() {
+  const resource = resourceFromAttributes({
     'service.name': process.env.K_SERVICE || 'my-cloud-function',
     'service.version': process.env.K_REVISION || 'unknown',
-  }).merge(gcpResource);
+  });
 
-  const provider = new NodeTracerProvider({ resource });
-
-  // Configure batch export with serverless-friendly settings
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(
-      new OTLPTraceExporter({
-        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
-      }),
-      {
-        maxQueueSize: 256,
-        scheduledDelayMillis: 5000,
-        maxExportBatchSize: 64,
-      }
-    )
-  );
-
-  provider.register();
-
-  // Instrument HTTP and Express (Functions Framework uses Express)
-  registerInstrumentations({
+  const sdk = new opentelemetry.NodeSDK({
+    resource,
+    resourceDetectors: [envDetector, processDetector, gcpDetector],
+    // Configure batch export with serverless-friendly settings
+    spanProcessors: [
+      new BatchSpanProcessor(
+        new OTLPTraceExporter({
+          url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+        }),
+        {
+          maxQueueSize: 256,
+          scheduledDelayMillis: 5000,
+          maxExportBatchSize: 64,
+        }
+      ),
+    ],
+    // Instrument HTTP and Express (Functions Framework uses Express)
     instrumentations: [
       new HttpInstrumentation(),
       new ExpressInstrumentation(),
     ],
   });
+
+  sdk.start();
 }
 
 // Initialize tracing immediately
@@ -187,35 +186,35 @@ Now your function handler can import the tracing module and use the OpenTelemetr
 require('./tracing');
 
 const functions = require('@google-cloud/functions-framework');
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('my-cloud-function');
 
 functions.http('handleRequest', async (req, res) => {
   // Create a custom span for business logic
-  const span = tracer.startSpan('process-request', {
+  return tracer.startActiveSpan('process-request', {
     attributes: {
       'http.method': req.method,
       'request.path': req.path,
     },
+  }, async (span) => {
+    try {
+      const userId = req.query.user_id;
+      span.setAttribute('user.id', userId);
+
+      // Any HTTP calls made here are automatically traced
+      const result = await processUserData(userId);
+
+      span.setAttribute('result.status', 'success');
+      res.json(result);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      span.recordException(error);
+      res.status(500).json({ error: 'Internal server error' });
+    } finally {
+      span.end();
+    }
   });
-
-  try {
-    const userId = req.query.user_id;
-    span.setAttribute('user.id', userId);
-
-    // Any HTTP calls made here are automatically traced
-    const result = await processUserData(userId);
-
-    span.setAttribute('result.status', 'success');
-    res.json(result);
-  } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
-    span.recordException(error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    span.end();
-  }
 });
 ```
 
@@ -236,11 +235,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -250,54 +250,52 @@ import (
 
 var (
 	tracer trace.Tracer
-	once   sync.Once
 )
 
 func init() {
 	// Register the function with the framework
 	functions.HTTP("HandleRequest", handleRequest)
 
-	// Initialize OpenTelemetry once
-	once.Do(func() {
-		ctx := context.Background()
+	// Initialize OpenTelemetry once when the function package loads
+	ctx := context.Background()
+	tracer = otel.Tracer("my-cloud-function")
 
-		// Create OTLP exporter
-		exporter, err := otlptracegrpc.New(ctx,
-			otlptracegrpc.WithEndpoint(
-				getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
-			),
-			otlptracegrpc.WithInsecure(),
-		)
-		if err != nil {
-			fmt.Printf("Failed to create exporter: %v\n", err)
-			return
-		}
+	// Create OTLP exporter
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(
+			getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		),
+		otlptracegrpc.WithInsecure(),
+	)
+	if err != nil {
+		fmt.Printf("Failed to create exporter: %v\n", err)
+		return
+	}
 
-		// Build resource with GCP attributes
-		res, _ := resource.Merge(
-			resource.Default(),
-			resource.NewWithAttributes(
-				semconv.SchemaURL,
-				semconv.ServiceName(getEnv("K_SERVICE", "my-cloud-function")),
-				semconv.ServiceVersion(getEnv("K_REVISION", "unknown")),
-				attribute.String("cloud.provider", "gcp"),
-				attribute.String("cloud.platform", "gcp_cloud_functions"),
-			),
-		)
+	// Build resource with GCP attributes
+	res, _ := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName(getEnv("K_SERVICE", "my-cloud-function")),
+			semconv.ServiceVersion(getEnv("K_REVISION", "unknown")),
+			attribute.String("cloud.provider", "gcp"),
+			attribute.String("cloud.platform", "gcp_cloud_functions"),
+		),
+	)
 
-		// Configure the TracerProvider
-		tp := sdktrace.NewTracerProvider(
-			sdktrace.WithBatcher(exporter,
-				sdktrace.WithMaxQueueSize(256),
-				sdktrace.WithBatchTimeout(5*time.Second),
-				sdktrace.WithMaxExportBatchSize(64),
-			),
-			sdktrace.WithResource(res),
-		)
+	// Configure the TracerProvider
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter,
+			sdktrace.WithMaxQueueSize(256),
+			sdktrace.WithBatchTimeout(5*time.Second),
+			sdktrace.WithMaxExportBatchSize(64),
+		),
+		sdktrace.WithResource(res),
+	)
 
-		otel.SetTracerProvider(tp)
-		tracer = tp.Tracer("my-cloud-function")
-	})
+	otel.SetTracerProvider(tp)
+	tracer = tp.Tracer("my-cloud-function")
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -333,11 +331,13 @@ func getEnv(key, fallback string) string {
 }
 ```
 
-The `sync.Once` ensures the tracer provider is initialized exactly once, even if the `init` function is called multiple times. The Go SDK is efficient enough that initialization adds minimal cold start overhead.
+The package-level initialization runs once when the instance loads the function package. The Go SDK is efficient enough that initialization adds minimal cold start overhead.
 
 ## Exporting to Google Cloud Trace
 
 If you prefer to keep your telemetry within the Google Cloud ecosystem, you can export directly to Cloud Trace using the dedicated exporter.
+
+Install `opentelemetry-exporter-gcp-trace==1.12.0` for the Cloud Trace exporter.
 
 ```python
 # cloud-trace-export.py
@@ -413,7 +413,7 @@ gcloud functions deploy my-function \
 OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector.example.com:4317,\
 OTEL_TRACES_SAMPLER=parentbased_traceidratio,\
 OTEL_TRACES_SAMPLER_ARG=0.1,\
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production"
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production"
 ```
 
 The `parentbased_traceidratio` sampler at 0.1 means 10% of new traces are sampled, but if an incoming request already has a sampling decision (from an upstream service), that decision is respected. This keeps distributed traces complete while controlling volume.
