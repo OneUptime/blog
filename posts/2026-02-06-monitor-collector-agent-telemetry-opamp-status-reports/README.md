@@ -1,21 +1,21 @@
-# How to Monitor Collector Agent Telemetry via OpAMP Status Reports
+# How to Monitor Collector Agent Telemetry via OpAMP Own Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OpAMP, Agent Telemetry, Resource Monitoring
 
-Description: Monitor your OpenTelemetry Collector fleet resource usage including CPU, memory, and data throughput using OpAMP agent self-telemetry reports.
+Description: Monitor your OpenTelemetry Collector fleet resource usage including CPU, memory, and data throughput using OpAMP agent self-telemetry.
 
-Your OpenTelemetry Collectors are the backbone of your observability pipeline. If a collector starts consuming too much memory, its throughput drops, or its CPU usage spikes, you need to know about it before it starts dropping telemetry data. OpAMP includes a mechanism for agents to report their own resource consumption back to the management server.
+Your OpenTelemetry Collectors are the backbone of your observability pipeline. If a collector starts consuming too much memory, its throughput drops, or its CPU usage spikes, you need to know about it before it starts dropping telemetry data. OpAMP includes a mechanism for the server to tell agents where to send their own telemetry.
 
 ## Agent Self-Telemetry in OpAMP
 
-OpAMP agents can report their own metrics through the `AgentToServer` message. The supervisor collects metrics about the collector process and sends them as OTLP-formatted telemetry to the server. This gives you visibility into:
+OpAMP agents advertise the `ReportsOwnMetrics` capability through the `AgentToServer` message. The server can then respond with `ConnectionSettingsOffers.own_metrics`, which tells the supervisor where to send OTLP-formatted metrics about the collector process. This gives you visibility into:
 
 - CPU usage of each collector
 - Memory (RSS) consumption
 - Data points received and exported per second
-- Queue sizes in batch processors
+- Queue sizes in exporters
 - Export error rates
 
 ## Configuring the Collector to Expose Internal Metrics
@@ -25,11 +25,33 @@ First, configure the collector to expose its internal telemetry metrics via Prom
 ```yaml
 # collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp/backend:
+    endpoint: backend.internal:4317
+    tls:
+      insecure: false
+
 service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -40,17 +62,18 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp/backend]
+  extensions: [health_check]
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 ```
 
-The collector now exposes its internal metrics on port 8888, which the supervisor can scrape and forward to the OpAMP server.
+The collector now exposes its internal metrics on port 8888 for systems that scrape Prometheus metrics. When the OpAMP supervisor receives an own-metrics destination from the server, it injects an OTLP exporter for collector internal metrics instead of forwarding metrics inside the OpAMP status message.
 
 ## Supervisor Configuration for Own Metrics Reporting
 
-Enable the `reports_own_metrics` capability in the supervisor:
+Enable the `reports_own_metrics` capability in the supervisor and include `$OWN_TELEMETRY_CONFIG` in the collector config files:
 
 ```yaml
 # supervisor.yaml
@@ -59,7 +82,13 @@ server:
 
 agent:
   executable: /usr/local/bin/otelcol-contrib
-  storage_dir: /var/lib/opamp-supervisor
+  config_files:
+    - $OPAMP_EXTENSION_CONFIG
+    - $OWN_TELEMETRY_CONFIG
+    - $REMOTE_CONFIG
+
+storage:
+  directory: /var/lib/opamp-supervisor
 
 capabilities:
   reports_effective_config: true
@@ -67,17 +96,14 @@ capabilities:
   accepts_remote_config: true
   reports_own_metrics: true
 
-# Configure own metrics collection
-own_metrics:
-  # Scrape collector internal metrics endpoint
-  endpoint: http://localhost:8888/metrics
-  # Report interval
-  interval: 30s
+telemetry:
+  metrics:
+    level: normal
 ```
 
 ## Processing Agent Metrics on the Server
 
-On the server side, parse the agent metrics from incoming messages:
+On the OpAMP server side, offer an OTLP/HTTP metrics endpoint to agents that report the own-metrics capability:
 
 ```go
 func handleAgentMessage(
@@ -87,22 +113,37 @@ func handleAgentMessage(
 
     agentID := hex.EncodeToString(msg.InstanceUid)
 
-    // Process agent's own telemetry metrics
-    if msg.CustomMetrics != nil {
-        processAgentMetrics(agentID, msg.CustomMetrics)
+    response := &protobufs.ServerToAgent{}
+
+    if msg.Capabilities&uint64(protobufs.AgentCapabilities_AgentCapabilities_ReportsOwnMetrics) != 0 {
+        response.ConnectionSettings = &protobufs.ConnectionSettingsOffers{
+            Hash: settingsHash(agentID),
+            OwnMetrics: &protobufs.TelemetryConnectionSettings{
+                DestinationEndpoint: "https://telemetry.example.com:4318/v1/metrics",
+                Headers: &protobufs.Headers{
+                    Headers: []*protobufs.Header{
+                        {Key: "Authorization", Value: "Bearer " + tokenFor(agentID)},
+                    },
+                },
+            },
+        }
     }
 
-    return &protobufs.ServerToAgent{}
+    return response
 }
+```
 
-func processAgentMetrics(agentID string, metricsData *protobufs.MetricData) {
-    // Parse OTLP metrics from the agent
+Then parse the OTLP metrics that arrive at that endpoint:
+
+```go
+func processAgentMetrics(agentID string, metricsData *metricspb.MetricsData) {
+    // Parse OTLP metrics from the agent's own telemetry export.
     for _, rm := range metricsData.ResourceMetrics {
         for _, sm := range rm.ScopeMetrics {
             for _, metric := range sm.Metrics {
                 switch metric.Name {
-                case "otelcol_process_cpu_seconds_total":
-                    cpuSeconds := getGaugeValue(metric)
+                case "otelcol_process_cpu_seconds":
+                    cpuSeconds := getSumValue(metric)
                     log.Printf("Agent %s CPU: %.2f seconds", agentID, cpuSeconds)
                     metricsStore.RecordCPU(agentID, cpuSeconds)
 
@@ -130,7 +171,7 @@ func processAgentMetrics(agentID string, metricsData *protobufs.MetricData) {
 
 ## Key Metrics to Track
 
-These are the most important collector metrics to monitor through OpAMP:
+These are the most important collector metrics to monitor through OpAMP-managed own telemetry:
 
 ```go
 // Define thresholds for alerting
@@ -138,17 +179,17 @@ var metricThresholds = map[string]float64{
     // Memory threshold in bytes (2 GB)
     "otelcol_process_memory_rss": 2 * 1024 * 1024 * 1024,
 
-    // CPU usage per minute (if above 80% of one core)
-    "otelcol_process_cpu_seconds_total": 0.8,
+    // CPU rate over one minute (if above 80% of one core)
+    "rate(otelcol_process_cpu_seconds[1m])": 0.8,
 
-    // Dropped spans should be zero in healthy state
-    "otelcol_processor_dropped_spans": 0,
+    // Refused spans should be zero in healthy state
+    "otelcol_receiver_refused_spans": 0,
 
     // Export failures should be near zero
     "otelcol_exporter_send_failed_spans": 0,
 
-    // Queue capacity usage (percentage)
-    "otelcol_exporter_queue_capacity": 0.8,
+    // Queue usage ratio: otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
+    "otelcol_exporter_queue_usage_ratio": 0.8,
 }
 
 func checkThresholds(agentID string, metricName string, value float64) {
@@ -179,6 +220,17 @@ Aggregate metrics across the fleet to spot patterns:
 ```go
 func handleFleetMetrics(w http.ResponseWriter, r *http.Request) {
     agents := metricsStore.GetAllLatest()
+
+    if len(agents) == 0 {
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "fleet_summary": map[string]interface{}{
+                "total_agents": 0,
+            },
+            "agents": []map[string]interface{}{},
+        })
+        return
+    }
 
     var totalMemoryMB float64
     var totalCPU float64
