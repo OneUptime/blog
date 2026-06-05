@@ -31,7 +31,7 @@ rate_limit_utilization = meter.create_histogram(
     "rate_limit.utilization",
     description="Current usage as percentage of limit",
     unit="%",
-    explicit_bucket_boundaries=[10, 25, 50, 75, 80, 90, 95, 99, 100],
+    explicit_bucket_boundaries_advisory=[10, 25, 50, 75, 80, 90, 95, 99, 100],
 )
 
 # 3. Headroom metrics - how much capacity remains
@@ -46,7 +46,7 @@ rate_limit_check_duration = meter.create_histogram(
     "rate_limit.check_duration",
     description="Time spent checking rate limits",
     unit="ms",
-    explicit_bucket_boundaries=[0.1, 0.5, 1, 2, 5, 10, 25, 50],
+    explicit_bucket_boundaries_advisory=[0.1, 0.5, 1, 2, 5, 10, 25, 50],
 )
 
 # Burst metrics
@@ -73,6 +73,15 @@ Here is a rate limiter that emits all the metrics your dashboard needs:
 import time
 import redis
 
+from rate_limit_metrics import (
+    rate_limit_burst_counter,
+    rate_limit_check_duration,
+    rate_limit_decisions,
+    rate_limit_remaining,
+    rate_limit_utilization,
+    retry_after_histogram,
+)
+
 class InstrumentedRateLimiter:
     def __init__(self, redis_client: redis.Redis):
         self.redis = redis_client
@@ -83,7 +92,7 @@ class InstrumentedRateLimiter:
         attrs = attributes or {}
         start = time.time()
 
-        # Sliding window rate limit check
+        # Fixed-window rate limit check
         now = time.time()
         window_key = f"ratelimit:{key}:{int(now // window_seconds)}"
 
@@ -149,6 +158,13 @@ Different endpoints deserve different limits and separate dashboard panels:
 
 ```python
 # endpoint_rate_limits.py
+import redis
+from starlette.responses import JSONResponse
+
+from instrumented_rate_limiter import InstrumentedRateLimiter
+
+rate_limiter = InstrumentedRateLimiter(redis.Redis(host="localhost", port=6379, db=0))
+
 ENDPOINT_LIMITS = {
     "POST /api/search": {"limit": 30, "window": 60, "tier": "standard"},
     "POST /api/export": {"limit": 5, "window": 60, "tier": "heavy"},
@@ -221,12 +237,13 @@ With these metrics, build a dashboard with these panels:
 - Retry-After distribution (tells you how long rejected clients are being asked to wait)
 
 ```python
-# Example PromQL-style queries for each panel
+# Example PromQL queries for each panel, assuming OpenTelemetry-to-Prometheus
+# translation with underscore escaping and unit/type suffixes.
 queries = {
-    "rejection_rate": 'rate(rate_limit_decisions{rate_limit_decision="reject"}[5m]) / rate(rate_limit_decisions[5m])',
-    "utilization_p95": 'histogram_quantile(0.95, rate(rate_limit_utilization_bucket[5m]))',
-    "top_rejected_tenants": 'topk(10, sum by (tenant_id) (rate(rate_limit_decisions{rate_limit_decision="reject"}[1h])))',
-    "check_latency_p99": 'histogram_quantile(0.99, rate(rate_limit_check_duration_bucket[5m]))',
+    "rejection_rate": 'sum(rate(rate_limit_decisions_total{rate_limit_decision="reject"}[5m])) / sum(rate(rate_limit_decisions_total[5m]))',
+    "utilization_p95": 'histogram_quantile(0.95, sum by (le) (rate(rate_limit_utilization_percent_bucket[5m])))',
+    "top_rejected_tenants": 'topk(10, sum by (tenant_id) (rate(rate_limit_decisions_total{rate_limit_decision="reject"}[1h])))',
+    "check_latency_p99": 'histogram_quantile(0.99, sum by (le) (rate(rate_limit_check_duration_milliseconds_bucket[5m])))',
 }
 ```
 
