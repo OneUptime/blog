@@ -46,18 +46,20 @@ connectors:
   routing/priority:
     table:
       # Tier 1: Critical services go to hot storage
-      - statement: >
-          route() where resource.attributes["service.name"] == "payment-service"
-          or resource.attributes["service.name"] == "checkout-service"
-          or resource.attributes["service.name"] == "auth-service"
-          or resource.attributes["service.name"] == "api-gateway"
-          or resource.attributes["service.name"] == "order-service"
+      - context: resource
+        condition: >
+          attributes["service.name"] == "payment-service"
+          or attributes["service.name"] == "checkout-service"
+          or attributes["service.name"] == "auth-service"
+          or attributes["service.name"] == "api-gateway"
+          or attributes["service.name"] == "order-service"
         pipelines: [traces/hot]
 
       # Tier 3: Drop noisy, low-value services entirely
-      - statement: >
-          route() where resource.attributes["service.name"] == "synthetic-monitor"
-          or resource.attributes["service.name"] == "load-test-runner"
+      - context: resource
+        condition: >
+          attributes["service.name"] == "synthetic-monitor"
+          or attributes["service.name"] == "load-test-runner"
         pipelines: [traces/drop]
 
     # Everything else (Tier 2) goes to cold storage
@@ -98,9 +100,8 @@ exporters:
       enabled: true
       queue_size: 20000
 
-  # Drop pipeline: use the debug exporter in dev, nop in prod
-  debug:
-    verbosity: basic
+  # Drop pipeline: discard low-value spans
+  nop:
 
 service:
   pipelines:
@@ -122,7 +123,7 @@ service:
     traces/drop:
       receivers: [routing/priority]
       processors: []
-      exporters: [debug]
+      exporters: [nop]
 ```
 
 ## Using Labels Instead of Hardcoded Service Names
@@ -133,14 +134,17 @@ Hardcoding service names is fragile. A better approach is to use a priority labe
 connectors:
   routing/priority:
     table:
-      - statement: >
-          route() where resource.attributes["service.priority"] == "critical"
+      - context: resource
+        condition: >
+          attributes["service.priority"] == "critical"
         pipelines: [traces/hot]
-      - statement: >
-          route() where resource.attributes["service.priority"] == "low"
+      - context: resource
+        condition: >
+          attributes["service.priority"] == "low"
         pipelines: [traces/cold]
-      - statement: >
-          route() where resource.attributes["service.priority"] == "none"
+      - context: resource
+        condition: >
+          attributes["service.priority"] == "none"
         pipelines: [traces/drop]
     default_pipelines: [traces/cold]
 ```
@@ -177,13 +181,14 @@ connectors:
   routing/priority:
     table:
       # Rule 1: All errors go to hot storage regardless of service
-      - statement: >
-          route() where attributes["otel.status_code"] == "ERROR"
+      - context: span
+        condition: status.code == STATUS_CODE_ERROR
         pipelines: [traces/hot]
 
       # Rule 2: Critical services go to hot storage
-      - statement: >
-          route() where resource.attributes["service.priority"] == "critical"
+      - context: resource
+        condition: >
+          attributes["service.priority"] == "critical"
         pipelines: [traces/hot]
 
     default_pipelines: [traces/cold]
