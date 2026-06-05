@@ -51,10 +51,12 @@ def create_deployment_resource() -> Resource:
 
 ```python
 # telemetry_setup.py
+import os
+
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -72,7 +74,7 @@ def setup_telemetry():
             "X-Deployment-Key": os.environ.get("DEPLOYMENT_API_KEY", ""),
         }
     )
-    trace_provider.add_span_processor(BatchSpanExporter(trace_exporter))
+    trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(trace_provider)
 
     # Metrics provider
@@ -107,7 +109,7 @@ processors:
         value: "true"
         action: insert
 
-  # Batch per deployment to manage throughput
+  # Batch telemetry to manage throughput
   batch:
     send_batch_size: 1024
     timeout: 5s
@@ -122,7 +124,7 @@ exporters:
   otlp/central:
     endpoint: central-observability:4317
 
-  # Route specific deployments to their own backends
+  # Optional backend for a dedicated deployment-specific pipeline
   otlp/enterprise_customer_a:
     endpoint: customer-a-backend:4317
 
@@ -130,7 +132,7 @@ service:
   pipelines:
     traces/all:
       receivers: [otlp]
-      processors: [attributes/deployment, batch]
+      processors: [attributes/deployment, groupbyattrs, batch]
       exporters: [otlp/central]
 ```
 
@@ -140,6 +142,8 @@ Track the health of each deployment with custom metrics:
 
 ```python
 # deployment_health.py
+import time
+
 from opentelemetry import metrics
 
 meter = metrics.get_meter("deployment.health")
@@ -187,14 +191,25 @@ When you push a new version, track how it performs across deployments:
 
 ```python
 # version_tracker.py
-version_rollout = meter.create_counter(
-    "deployment.version.active",
-    description="Active deployment versions",
+from opentelemetry import metrics, trace
+
+meter = metrics.get_meter("deployment.version")
+tracer = trace.get_tracer("deployment.version")
+
+version_health_checks = meter.create_counter(
+    "deployment.version.health_checks",
+    description="Deployment version health check count",
     unit="1",
 )
 
 def track_version_health(deployment_id: str, version: str, healthy: bool):
     """Track the health of each deployment version after rollout."""
+    version_health_checks.add(1, {
+        "deployment.id": deployment_id,
+        "deployment.version": version,
+        "deployment.healthy": healthy,
+    })
+
     with tracer.start_as_current_span(
         "deployment.version.health_check",
         attributes={
