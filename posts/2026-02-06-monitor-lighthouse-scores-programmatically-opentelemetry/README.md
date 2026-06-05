@@ -54,12 +54,12 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 const { trace, metrics } = require('@opentelemetry/api');
 
 // Create a resource that identifies this as a Lighthouse monitor
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'lighthouse-monitor',
   'deployment.environment': process.env.ENVIRONMENT || 'production',
 });
@@ -95,10 +95,10 @@ The core audit function launches Chrome, runs Lighthouse, and returns the result
 
 ```javascript
 // src/lighthouse-runner.js
-const lighthouse = require('lighthouse');
-const chromeLauncher = require('chrome-launcher');
-
 async function runLighthouseAudit(url, options = {}) {
+  const { default: lighthouse } = await import('lighthouse');
+  const chromeLauncher = await import('chrome-launcher');
+
   // Launch a headless Chrome instance
   const chrome = await chromeLauncher.launch({
     chromeFlags: [
@@ -176,7 +176,7 @@ const seoScore = meter.createGauge('lighthouse.score.seo', {
   unit: 'score',
 });
 
-// Create gauges for Core Web Vitals
+// Create gauges for key Lighthouse metrics
 const lcpGauge = meter.createGauge('lighthouse.lcp_ms', {
   description: 'Largest Contentful Paint in milliseconds',
   unit: 'ms',
@@ -226,7 +226,7 @@ function recordScores(lhr, url, additionalAttributes = {}) {
     seoScore.record(categories.seo.score * 100, attributes);
   }
 
-  // Record Core Web Vitals from audit results
+  // Record key Lighthouse metrics from audit results
   const audits = lhr.audits;
 
   if (audits['largest-contentful-paint']) {
@@ -249,7 +249,7 @@ function recordScores(lhr, url, additionalAttributes = {}) {
 module.exports = { recordScores };
 ```
 
-Each metric is tagged with the URL and form factor, so you can track scores for different pages and device types independently. The Core Web Vitals (LCP, CLS, TBT) are especially important because they directly impact search rankings and user experience.
+Each metric is tagged with the URL and form factor, so you can track scores for different pages and device types independently. LCP and CLS are Core Web Vitals, while TBT is a useful lab proxy for responsiveness issues that can affect INP. These metrics are especially important because they reflect user experience and can help you catch issues related to search performance.
 
 ## Creating Detailed Trace Spans
 
@@ -258,7 +258,7 @@ Metrics give you the numbers, but traces give you the story of each audit run. C
 ```javascript
 // src/trace-recorder.js
 const { tracer } = require('./otel-setup');
-const { SpanStatusCode } = require('@opentelemetry/api');
+const { context, trace, SpanStatusCode } = require('@opentelemetry/api');
 
 async function recordAuditTrace(url, lhr, auditDurationMs) {
   // Create a parent span for the entire audit
@@ -279,7 +279,9 @@ async function recordAuditTrace(url, lhr, auditDurationMs) {
     );
   });
 
-  // Create child spans for each Core Web Vital
+  const rootContext = trace.setSpan(context.active(), rootSpan);
+
+  // Create child spans for key Lighthouse performance audits
   const vitals = [
     'largest-contentful-paint',
     'cumulative-layout-shift',
@@ -300,7 +302,7 @@ async function recordAuditTrace(url, lhr, auditDurationMs) {
         'lighthouse.numeric_value': audit.numericValue || 0,
         'lighthouse.score': audit.score !== null ? audit.score : -1,
       },
-    });
+    }, rootContext);
 
     // Mark as error if the vital fails (score below 0.5)
     if (audit.score !== null && audit.score < 0.5) {
@@ -333,7 +335,7 @@ async function recordAuditTrace(url, lhr, auditDurationMs) {
 module.exports = { recordAuditTrace };
 ```
 
-The trace structure gives you a parent span for the overall audit and child spans for each Core Web Vital. Failed audits (score of 0) are recorded as events on the parent span, making them easy to spot when browsing traces.
+The trace structure gives you a parent span for the overall audit and child spans for each key Lighthouse performance audit. Failed audits (score of 0) are recorded as events on the parent span, making them easy to spot when browsing traces.
 
 ## The Main Audit Script
 
@@ -410,12 +412,13 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
@@ -435,7 +438,7 @@ The combination of post-deployment and scheduled runs gives you two things. Post
 
 With Lighthouse scores flowing into your observability backend as metrics, set up alerts for the conditions that matter most:
 
-- **Performance score drops below 80**: This is Google's threshold for a "good" performance score. Dropping below it can impact search rankings.
+- **Performance score drops below 90**: This is Lighthouse's threshold for a "good" performance score. Dropping below it is a useful signal that user experience may have regressed.
 - **LCP exceeds 2.5 seconds**: The Core Web Vitals threshold for a good LCP. Beyond this, users perceive the page as slow.
 - **CLS exceeds 0.1**: Layout shift above this value causes a frustrating visual experience.
 - **TBT exceeds 200ms**: High total blocking time means the main thread is busy and the page feels unresponsive.
