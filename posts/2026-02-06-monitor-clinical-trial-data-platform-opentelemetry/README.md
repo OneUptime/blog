@@ -84,7 +84,9 @@ async def submit_crf_form(study_id: str, subject_id: str, form_id: str, request:
         # Step 2: Run edit checks (validation rules defined by the study protocol)
         with tracer.start_as_current_span("edc.edit_checks.run") as ec_span:
             ec_start = time.time()
-            edit_check_results = run_edit_checks(study_id, form_id, payload)
+            edit_check_results = run_edit_checks(
+                study_id, form_id, {**payload, "subject_id": subject_id}
+            )
 
             ec_duration = (time.time() - ec_start) * 1000
             ec_span.set_attribute("edc.edit_checks.count", edit_check_results["total_checks"])
@@ -166,6 +168,7 @@ def run_edit_checks(study_id, form_id, form_data):
                 check_span.set_attribute("edc.check.severity", check["severity"])
 
                 # Some checks need data from other forms/visits
+                cross_data = None
                 if check["type"] == "cross_form":
                     with tracer.start_as_current_span("edc.edit_check.fetch_cross_data") as xd_span:
                         cross_data = fetch_cross_form_data(
@@ -175,7 +178,7 @@ def run_edit_checks(study_id, form_id, form_data):
                         xd_span.set_attribute("edc.cross_form.forms_queried",
                                             len(check["referenced_forms"]))
 
-                check_result = evaluate_single_check(check, form_data)
+                check_result = evaluate_single_check(check, form_data, cross_data)
                 check_span.set_attribute("edc.check.passed", check_result["passed"])
 
                 if not check_result["passed"]:
@@ -234,4 +237,4 @@ async def respond_to_query(study_id: str, query_id: str, request: Request):
 
 ## Key Metrics for Clinical Trials
 
-The metrics that trial operations teams care about are: form submission latency by site (slow sites might have connectivity issues), edit check execution time (complex protocols with many cross-form checks can get slow), query generation rate (a spike might indicate a data entry training issue at a site), and query resolution time (regulatory deadlines often require queries to be resolved within a set period). With OpenTelemetry tracing on the EDC platform, you get site-level performance visibility that helps keep global clinical trials running on schedule.
+The metrics that trial operations teams care about are: form submission latency by site (slow sites might have connectivity issues), edit check execution time (complex protocols with many cross-form checks can get slow), query generation rate (a spike might indicate a data entry training issue at a site), and query resolution time (study protocols or operating procedures often set target resolution periods). With OpenTelemetry tracing on the EDC platform, you get site-level performance visibility that helps keep global clinical trials running on schedule.
