@@ -20,9 +20,9 @@ graph LR
     D --> E[OpsGenie API]
     E --> F{Severity?}
     F -->|P1 Critical| G[Immediate Page]
-    F -->|P2 High| H[Page after 5 min]
-    F -->|P3 Medium| I[Slack + Ticket]
-    F -->|P4 Low| J[Ticket Only]
+    F -->|P2 High| H[Team Alert]
+    F -->|P3 Medium| I[OpsGenie Alert]
+    F -->|P4 Low| J[Low-Priority Alert]
 ```
 
 ## Step 1: Define Severity Levels in Alert Rules
@@ -53,8 +53,8 @@ groups:
       # P2 - High: significant degradation affecting users
       - alert: HighErrorRate
         expr: |
-          sum(rate(http_server_errors_total[5m])) by (service_name)
-          / sum(rate(http_server_request_duration_count[5m])) by (service_name)
+          sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name)
+          / sum(rate(http_server_request_duration_seconds_count[5m])) by (service_name)
           > 0.05
         for: 5m
         labels:
@@ -68,7 +68,7 @@ groups:
       - alert: HighLatency
         expr: |
           histogram_quantile(0.95,
-            sum(rate(http_server_request_duration_bucket[5m])) by (le, service_name)
+            sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, service_name)
           ) > 1.5
         for: 15m
         labels:
@@ -104,16 +104,16 @@ global:
 # Inhibit lower-severity alerts when a higher-severity alert is already firing
 # for the same service. No need to page about high latency if the service is down.
 inhibit_rules:
-  - source_match:
-      severity: P1
-    target_match_re:
-      severity: "P2|P3|P4"
+  - source_matchers:
+      - severity="P1"
+    target_matchers:
+      - severity=~"P2|P3|P4"
     equal: [service_name]
 
-  - source_match:
-      severity: P2
-    target_match_re:
-      severity: "P3|P4"
+  - source_matchers:
+      - severity="P2"
+    target_matchers:
+      - severity=~"P3|P4"
     equal: [service_name]
 
 route:
@@ -125,29 +125,29 @@ route:
 
   routes:
     # P1 Critical - immediate page with short repeat
-    - match:
-        severity: P1
+    - matchers:
+        - severity="P1"
       receiver: opsgenie-p1
       repeat_interval: 15m
       continue: false
 
     # P2 High - page with standard repeat
-    - match:
-        severity: P2
+    - matchers:
+        - severity="P2"
       receiver: opsgenie-p2
       repeat_interval: 1h
       continue: false
 
     # P3 Medium - create alert but do not page
-    - match:
-        severity: P3
+    - matchers:
+        - severity="P3"
       receiver: opsgenie-p3
       repeat_interval: 4h
       continue: false
 
     # P4 Low - informational
-    - match:
-        severity: P4
+    - matchers:
+        - severity="P4"
       receiver: opsgenie-p4
       repeat_interval: 12h
 
@@ -169,10 +169,10 @@ receivers:
           Runbook: {{ .CommonAnnotations.runbook }}
           Firing since: {{ .Alerts.Firing | len }} alert(s)
         tags: "critical,opentelemetry,{{ .CommonLabels.team }}"
-        # Route to the specific team's OpsGenie schedule
+        # Route to the critical escalation policy created in OpsGenie
         responders:
-          - type: team
-            name: '{{ .CommonLabels.team }}'
+          - type: escalation
+            name: 'Critical Incident Escalation'
 
   - name: opsgenie-p2
     opsgenie_configs:
@@ -281,8 +281,8 @@ receivers:
           component: '{{ .CommonLabels.component }}'
         tags: "critical,opentelemetry,{{ .CommonLabels.team }}"
         responders:
-          - type: team
-            name: '{{ .CommonLabels.team }}'
+          - type: escalation
+            name: 'Critical Incident Escalation'
 ```
 
 ## Testing the Escalation Flow
