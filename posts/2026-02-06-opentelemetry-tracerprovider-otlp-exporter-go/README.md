@@ -28,6 +28,7 @@ Install the OpenTelemetry SDK and OTLP exporter packages.
 go get -u go.opentelemetry.io/otel
 go get -u go.opentelemetry.io/otel/sdk/trace
 go get -u go.opentelemetry.io/otel/sdk/resource
+go get -u go.opentelemetry.io/otel/exporters/stdout/stdouttrace
 
 # OTLP exporter with gRPC
 go get -u go.opentelemetry.io/otel/exporters/otlp/otlptrace
@@ -123,13 +124,10 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
 )
 
 func initProductionTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
@@ -215,7 +213,7 @@ func main() {
 }
 ```
 
-This production configuration includes retry logic, connection pooling, batch processing tuning, and sampling to handle high-volume trace data efficiently.
+This production configuration includes retry logic, exporter timeouts, batch processing tuning, and sampling to handle high-volume trace data efficiently.
 
 ## OTLP HTTP Exporter Alternative
 
@@ -226,9 +224,7 @@ package main
 
 import (
     "context"
-    "crypto/tls"
     "fmt"
-    "net/http"
     "time"
 
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -366,11 +362,12 @@ Sampling controls which traces are recorded and exported. Implement custom sampl
 package main
 
 import (
+    "context"
     "strings"
 
-    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    "go.opentelemetry.io/otel/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
 // Custom sampler that combines multiple strategies
@@ -384,7 +381,7 @@ func NewCustomSampler() sdktrace.Sampler {
     return &CustomSampler{
         // Never sample health checks
         healthCheckSampler: sdktrace.NeverSample(),
-        // Always sample traces with errors
+        // Always sample spans that carry an error attribute at span creation
         errorSampler: sdktrace.AlwaysSample(),
         // Sample 10% of normal traffic
         defaultSampler: sdktrace.TraceIDRatioBased(0.1),
@@ -401,7 +398,7 @@ func (s *CustomSampler) ShouldSample(params sdktrace.SamplingParameters) sdktrac
             }
         }
 
-        // Always sample error traces
+        // Always sample spans that carry an error attribute at span creation
         if attr.Key == "error" && attr.Value.AsBool() {
             return s.errorSampler.ShouldSample(params)
         }
@@ -432,7 +429,7 @@ func initWithCustomSampler(ctx context.Context, exporter sdktrace.SpanExporter) 
 }
 ```
 
-Custom samplers reduce trace volume while ensuring critical traces (errors, slow requests) are always captured.
+Custom samplers reduce trace volume while ensuring traces with important attributes available at span creation are captured. For policies based on completed spans, such as latency or errors recorded later in the request, use tail sampling in the OpenTelemetry Collector.
 
 ## Multiple Span Processors
 
@@ -443,11 +440,12 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
 
+    "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    "go.opentelemetry.io/otel/sdk/trace/tracetest"
+    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
 // Custom span processor that logs errors
@@ -480,7 +478,7 @@ func initWithMultipleProcessors(ctx context.Context, exporter sdktrace.SpanExpor
     tp := sdktrace.NewTracerProvider(
         // Batch processor for normal export
         sdktrace.WithBatcher(exporter),
-        // Simple processor for immediate error logging
+        // Custom processor for synchronous error logging
         sdktrace.WithSpanProcessor(&ErrorLoggingProcessor{}),
         sdktrace.WithResource(resource),
     )
@@ -514,7 +512,7 @@ type TracerConfig struct {
     Environment     string
     ServiceName     string
     ServiceVersion  string
-    OTLPEndpoint    string
+    OTLPEndpointURL string
     SamplingRate    float64
 }
 
@@ -523,7 +521,7 @@ func initTracerFromEnv(ctx context.Context) (*sdktrace.TracerProvider, error) {
         Environment:     getEnv("ENVIRONMENT", "development"),
         ServiceName:     getEnv("SERVICE_NAME", "my-service"),
         ServiceVersion:  getEnv("SERVICE_VERSION", "dev"),
-        OTLPEndpoint:    getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+        OTLPEndpointURL: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
         SamplingRate:    getEnvFloat("OTEL_SAMPLING_RATE", 1.0),
     }
 
@@ -539,8 +537,7 @@ func initTracerFromEnv(ctx context.Context) (*sdktrace.TracerProvider, error) {
         // Use OTLP exporter for staging and production
         exporter, err = otlptracegrpc.New(
             ctx,
-            otlptracegrpc.WithEndpoint(config.OTLPEndpoint),
-            otlptracegrpc.WithInsecure(),
+            otlptracegrpc.WithEndpointURL(config.OTLPEndpointURL),
         )
     default:
         return nil, fmt.Errorf("unknown environment: %s", config.Environment)
