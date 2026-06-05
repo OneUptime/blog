@@ -112,6 +112,7 @@ Metrics tell you the "what" (drop-off rates). Spans tell you the "why" (which ba
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("ecommerce.checkout")
 
@@ -129,7 +130,7 @@ async def handle_payment_step(request):
                 token_span.set_attribute("payment.tokenized", True)
             except TimeoutError:
                 token_span.set_attribute("payment.tokenized", False)
-                token_span.set_status(trace.StatusCode.ERROR, "Tokenization timeout")
+                token_span.set_status(Status(StatusCode.ERROR, "Tokenization timeout"))
                 tracker.complete_step("payment", success=False)
                 return {"error": "payment_timeout"}
 
