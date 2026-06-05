@@ -32,9 +32,9 @@ There are a few ways to install OCB depending on your workflow.
 The simplest approach if you already have Go installed:
 
 ```bash
-# Install the latest version of the builder tool
+# Install the builder version used in this guide
 
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.96.0
 
 # Verify the installation
 builder version
@@ -48,13 +48,13 @@ Grab the binary directly from the GitHub releases page:
 # Download the OCB binary for your platform
 # Replace the version and platform as needed
 curl -L -o ocb \
-  https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.96.0/ocb_0.96.0_linux_amd64
+  https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd%2Fbuilder%2Fv0.96.0/ocb_0.96.0_linux_amd64
 
 # Make it executable
 chmod +x ocb
 
 # Move it to your PATH
-sudo mv ocb /usr/local/bin/
+sudo mv ocb /usr/local/bin/ocb
 ```
 
 ### Option 3: Use Docker
@@ -63,8 +63,8 @@ If you prefer not to install Go locally:
 
 ```bash
 # Run OCB inside a Go container
-docker run --rm -v $(pwd):/workspace -w /workspace golang:1.22 \
-  sh -c "go install go.opentelemetry.io/collector/cmd/builder@latest && builder --config manifest.yaml"
+docker run --rm -v "$(pwd):/workspace" -w /workspace golang:1.22 \
+  sh -c "go install go.opentelemetry.io/collector/cmd/builder@v0.96.0 && builder --config manifest.yaml"
 ```
 
 ## Understanding the Manifest File
@@ -86,10 +86,8 @@ dist:
   otelcol_version: "0.96.0"
   # Go module path for dependency resolution
   module: github.com/myteam/otelcol-custom
-  # Target OS and architecture (optional, defaults to current platform)
-  # Uncomment these to cross-compile
-  # go_os: linux
-  # go_arch: amd64
+  # Optional: path to a specific Go binary
+  # go: "/usr/local/go/bin/go"
 
 # Receivers ingest telemetry data
 receivers:
@@ -139,13 +137,14 @@ builder --config manifest.yaml --skip-compilation
 
 # Skip generating source and only compile existing code
 # Useful after manual edits to the generated source
-builder --config manifest.yaml --skip-generate
+builder --config manifest.yaml --skip-generate --skip-get-modules
 
 # Enable verbose logging to debug build issues
 builder --config manifest.yaml --verbose
 
-# Specify a custom path for the Go binary
-builder --config manifest.yaml --go /usr/local/go/bin/go
+# Specify a custom path for the Go binary in the manifest
+# dist:
+#   go: "/usr/local/go/bin/go"
 
 # Set build flags passed to the Go compiler
 builder --config manifest.yaml --ldflags "-s -w"
@@ -184,25 +183,28 @@ import (
 )
 
 func main() {
-	// Build collector settings with the registered components
 	info := component.BuildInfo{
 		Command:     "otelcol-custom",
 		Description: "Our team's custom OTel collector",
 		Version:     "0.96.0",
 	}
 
-	// Create the collector parameters
-	params := otelcol.CollectorSettings{
-		BuildInfo: info,
-		Factories: components,
-	}
-
-	// Start the collector
-	if err := run(params); err != nil {
+	if err := run(otelcol.CollectorSettings{BuildInfo: info, Factories: components}); err != nil {
 		log.Fatal(err)
 	}
 }
+
+func runInteractive(params otelcol.CollectorSettings) error {
+	cmd := otelcol.NewCommand(params)
+	if err := cmd.Execute(); err != nil {
+		log.Fatalf("collector server run finished with error: %v", err)
+	}
+
+	return nil
+}
 ```
+
+OCB also generates platform-specific files such as `main_others.go` or `main_windows.go` that provide the `run` function used by `main.go`.
 
 And the generated `components.go`:
 
@@ -223,12 +225,24 @@ import (
 	otlpreceiver "go.opentelemetry.io/collector/receiver/otlpreceiver"
 	batchprocessor "go.opentelemetry.io/collector/processor/batchprocessor"
 	otlpexporter "go.opentelemetry.io/collector/exporter/otlpexporter"
+	forwardconnector "go.opentelemetry.io/collector/connector/forwardconnector"
+	healthcheckextension "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
+	pprofextension "github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension"
 	// ... more imports based on your manifest
 )
 
 func components() (otelcol.Factories, error) {
 	var err error
 	factories := otelcol.Factories{}
+
+	// Register extensions
+	factories.Extensions, err = extension.MakeFactoryMap(
+		healthcheckextension.NewFactory(),
+		pprofextension.NewFactory(),
+	)
+	if err != nil {
+		return otelcol.Factories{}, err
+	}
 
 	// Register receivers
 	factories.Receivers, err = receiver.MakeFactoryMap(
@@ -249,6 +263,14 @@ func components() (otelcol.Factories, error) {
 	// Register exporters
 	factories.Exporters, err = exporter.MakeFactoryMap(
 		otlpexporter.NewFactory(),
+	)
+	if err != nil {
+		return otelcol.Factories{}, err
+	}
+
+	// Register connectors
+	factories.Connectors, err = connector.MakeFactoryMap(
+		forwardconnector.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, err
@@ -313,14 +335,14 @@ When OCB fails, the error messages usually point to dependency issues. Here are 
 
 ### Version Mismatch
 
-All components must target the same collector version:
+Components should target the same collector major/minor version:
 
 ```yaml
 # This will fail because versions do not match
 receivers:
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
 exporters:
-  # Wrong version - must match the otelcol_version in dist section
+  # Wrong version - the major/minor version should match the dist section
   - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.94.0
 ```
 
