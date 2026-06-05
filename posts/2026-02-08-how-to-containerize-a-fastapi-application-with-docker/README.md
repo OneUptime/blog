@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, FastAPI, Python, Containerization, Backend, DevOps, Uvicorn, API
 
-Description: Learn how to containerize a FastAPI application with Docker using Uvicorn, multi-stage builds, and production-ready configuration
+Description: Learn how to containerize a FastAPI application with Docker using Uvicorn, non-root users, and production-ready configuration
 
 ---
 
@@ -24,6 +24,7 @@ Set up a basic FastAPI application:
 
 ```bash
 mkdir my-fastapi-app && cd my-fastapi-app
+mkdir -p app
 python -m venv venv
 source venv/bin/activate
 pip install fastapi uvicorn[standard]
@@ -158,8 +159,6 @@ alembic>=1.13
 Docker Compose configuration:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -234,15 +233,16 @@ Use it in your routes:
 ```python
 # app/main.py - Using database dependency
 from fastapi import FastAPI, Depends
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.database import get_db
 
 app = FastAPI()
 
 @app.get("/users")
-async def list_users(db: Session = Depends(get_db)):
+def list_users(db: Session = Depends(get_db)):
     # Query users from the database
-    users = db.execute("SELECT * FROM users").fetchall()
+    users = [dict(row) for row in db.execute(text("SELECT * FROM users")).mappings().all()]
     return {"users": users}
 ```
 
@@ -289,8 +289,8 @@ Async database setup:
 ```python
 # app/database.py - Async SQLAlchemy configuration
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 # Async PostgreSQL URL uses asyncpg driver
 DATABASE_URL = os.environ.get(
@@ -299,7 +299,7 @@ DATABASE_URL = os.environ.get(
 )
 
 engine = create_async_engine(DATABASE_URL, echo=False)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
     pass
@@ -332,8 +332,6 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
@@ -360,40 +358,53 @@ services:
 
 ## Uvicorn Production Configuration
 
-For production, configure Uvicorn with appropriate worker counts and timeouts:
+For production, configure worker counts and timeouts with Gunicorn when you use it as the process manager:
 
 ```python
-# uvicorn_config.py - Production Uvicorn configuration
+# gunicorn_conf.py - Production Gunicorn configuration for Uvicorn workers
 import multiprocessing
 
-# Worker count: 2 * CPU cores + 1
-workers = multiprocessing.cpu_count() * 2 + 1
+# Worker count: tune for your workload; 2-4 x CPU cores is a common starting point
+workers = multiprocessing.cpu_count() * 2
 bind = "0.0.0.0:8000"
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "uvicorn_worker.UvicornWorker"
 timeout = 120
 keepalive = 5
 accesslog = "-"
 errorlog = "-"
 ```
 
-Alternatively, use Gunicorn as the process manager with Uvicorn workers:
+Add Gunicorn and the external Uvicorn worker package to `requirements.txt`:
+
+```text
+gunicorn>=23.0
+uvicorn-worker>=0.4.0
+```
+
+Then use Gunicorn as the process manager with Uvicorn workers:
 
 ```dockerfile
-CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "app.main:app", "-c", "gunicorn_conf.py"]
 ```
 
 This gives you Gunicorn's process management with Uvicorn's async performance.
 
 ## Graceful Shutdown
 
-FastAPI and Uvicorn handle SIGTERM gracefully by default. Add shutdown event handlers for cleanup:
+FastAPI and Uvicorn handle SIGTERM gracefully by default. Add lifespan handlers for cleanup:
 
 ```python
 # app/main.py - Shutdown handling
-@app.on_event("shutdown")
-async def shutdown_event():
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
     # Close database connections, flush caches, etc.
     print("Application shutting down, cleaning up resources")
+
+app = FastAPI(lifespan=lifespan)
 ```
 
 ## Conclusion
