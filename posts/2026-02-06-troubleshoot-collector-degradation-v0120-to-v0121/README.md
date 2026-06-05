@@ -28,16 +28,16 @@ If you have Collector metrics from before the upgrade, compare key indicators:
 
 ```text
 # CPU usage
-rate(process_cpu_seconds_total[5m])
+rate(otelcol_process_cpu_seconds[5m])
 
 # Memory
-process_resident_memory_bytes
+otelcol_process_memory_rss
 
-# Span processing latency
+# Batch size distribution
 histogram_quantile(0.99, rate(otelcol_processor_batch_batch_send_size_bucket[5m]))
 
-# Export latency
-histogram_quantile(0.99, rate(otelcol_exporter_send_latency_bucket[5m]))
+# Export queue saturation
+otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 
 # Dropped data
 rate(otelcol_exporter_send_failed_spans[5m])
@@ -97,7 +97,7 @@ service:
 
 ### Issue 3: Go Runtime Changes
 
-Collector upgrades sometimes update the Go runtime version. Go 1.22 and 1.23 changed GC behavior significantly. Check which Go version each Collector version uses:
+Collector upgrades sometimes update the Go runtime version. In this release range, v0.120.0 added support for Go 1.24 and raised the minimum supported Go version to 1.23. Check which Go version each Collector version uses:
 
 ```bash
 # Check the Go version used by the Collector
@@ -156,7 +156,7 @@ For Helm deployments:
 helm history otel-collector
 
 # Roll back to previous revision
-helm rollback otel-collector 1
+helm rollback otel-collector <previous-revision>
 ```
 
 ## Upgrade Safely Next Time
@@ -177,7 +177,15 @@ metadata:
   name: otel-collector-canary
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+      track: canary
   template:
+    metadata:
+      labels:
+        app: otel-collector
+        track: canary
     spec:
       containers:
       - name: collector
