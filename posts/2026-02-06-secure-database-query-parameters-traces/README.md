@@ -36,9 +36,9 @@ SELECT * FROM users WHERE email = 'alice@example.com' AND ssn = '123-45-6789'
 
 Anyone with access to your tracing dashboard can see Alice's email and SSN. Let's fix that.
 
-## Method 1: Disable Statement Capture Entirely
+## Method 1: Disable or Redact Statement Capture
 
-The simplest approach is to stop capturing SQL statements altogether. Most OpenTelemetry database instrumentations have a configuration option for this.
+The simplest approach is to stop capturing SQL statements altogether, or to overwrite the statement attribute before export. Some instrumentations expose a direct option for this, while others require a hook, exporter, or Collector rule.
 
 For the Python `opentelemetry-instrumentation-psycopg2` library:
 
@@ -47,11 +47,11 @@ For the Python `opentelemetry-instrumentation-psycopg2` library:
 
 from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
-# Instrument psycopg2 but do not capture any SQL statements
-# This is the safest option if you do not need query text in traces
+# Do not capture query parameter values as db.statement.parameters.
+# Note: psycopg2 instrumentation still records the SQL text itself as
+# db.statement / db.query.text. Use a processor or Collector rule below
+# if you need to remove the statement text entirely.
 Psycopg2Instrumentor().instrument(
-    enable_commenter=False,
-    # Disable capturing the db.statement attribute entirely
     capture_parameters=False,
 )
 ```
@@ -63,17 +63,19 @@ For the Node.js `@opentelemetry/instrumentation-pg` library:
 const { PgInstrumentation } = require('@opentelemetry/instrumentation-pg');
 
 const pgInstrumentation = new PgInstrumentation({
-  // Do not add the db.statement attribute to spans
+  // Do not add the separate pg.values attribute containing parameters
   enhancedDatabaseReporting: false,
-  // Use a custom hook to clear any statement data
+  // Use a custom hook to overwrite statement text before export
   requestHook: (span, queryInfo) => {
-    // Remove the db.statement attribute if it was set
+    // db.statement is the older database semantic convention.
     span.setAttribute('db.statement', '[REDACTED]');
+    // db.query.text is the stable database semantic convention.
+    span.setAttribute('db.query.text', '[REDACTED]');
   },
 });
 ```
 
-This approach is safe but reduces debugging value. You lose the ability to see which query was slow. The next methods provide a better balance.
+This approach is safe but reduces debugging value. You lose the ability to see which query shape was slow. The next methods provide a better balance.
 
 ## Method 2: Capture Parameterized Queries Only
 
@@ -87,11 +89,11 @@ For Python with SQLAlchemy:
 # tracing_setup.py
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-# Instrument SQLAlchemy to capture query templates with placeholders
+# SQLAlchemy instrumentation records the statement it receives from SQLAlchemy.
+# When your application uses bound parameters, this is normally the template
+# with placeholders rather than interpolated parameter values.
 SQLAlchemyInstrumentor().instrument(
-    # This captures "SELECT * FROM users WHERE email = ?"
-    # instead of "SELECT * FROM users WHERE email = 'alice@example.com'"
-    enable_commenter=True,
+    enable_commenter=False,
 )
 ```
 
@@ -101,7 +103,7 @@ For Java with the OpenTelemetry Java agent, set these system properties:
 # Start your Java application with parameter sanitization enabled
 # The agent will replace literal values with '?' in the captured statement
 java -javaagent:opentelemetry-javaagent.jar \
-  -Dotel.instrumentation.jdbc.statement-sanitizer.enabled=true \
+  -Dotel.instrumentation.common.db-statement-sanitizer.enabled=true \
   -Dotel.exporter.otlp.endpoint=http://localhost:4318 \
   -jar myapp.jar
 ```
@@ -130,6 +132,13 @@ from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
+def sanitize_statement(statement):
+    """Return a SQL statement with common literal values redacted."""
+    for pattern, replacement in SanitizingSpanProcessor.SENSITIVE_PATTERNS:
+        statement = pattern.sub(replacement, statement)
+    return statement
+
+
 class SanitizingSpanProcessor(SpanProcessor):
     """
     A span processor that removes or redacts sensitive information
@@ -148,9 +157,11 @@ class SanitizingSpanProcessor(SpanProcessor):
 
     # Attribute keys that should be completely removed from spans
     FORBIDDEN_ATTRIBUTES = {
-        "db.query.parameter",       # Generic parameter attribute
-        "db.query.text",            # Some libs use this for full query
-        "db.cassandra.idempotence", # May contain query params
+        "db.statement.parameters",  # Python DB API parameter capture
+        "pg.values",                # Node pg enhancedDatabaseReporting values
+        "db.query.parameter.email",
+        "db.query.parameter.ssn",
+        "db.query.parameter.password",
     }
 
     def __init__(self, delegate_processor):
@@ -177,23 +188,21 @@ class SanitizingSpanProcessor(SpanProcessor):
             if key in self.FORBIDDEN_ATTRIBUTES:
                 continue
 
-            # Sanitize the db.statement attribute
-            if key == "db.statement" and isinstance(value, str):
-                sanitized_value = value
-                for pattern, replacement in self.SENSITIVE_PATTERNS:
-                    sanitized_value = pattern.sub(replacement, sanitized_value)
-                sanitized[key] = sanitized_value
+            # Sanitize the old and stable database statement attributes
+            if key in {"db.statement", "db.query.text"} and isinstance(value, str):
+                sanitized[key] = sanitize_statement(value)
             else:
                 sanitized[key] = value
 
-        # Replace the span's attributes with the sanitized version
+        # ReadableSpan exposes attributes as read-only. This uses a private SDK
+        # field and should be tested when upgrading opentelemetry-sdk.
         span._attributes = sanitized
 
     def shutdown(self):
-        self._delegate.shutdown()
+        return self._delegate.shutdown()
 
     def force_flush(self, timeout_millis=None):
-        self._delegate.force_flush(timeout_millis)
+        return self._delegate.force_flush(timeout_millis)
 ```
 
 Register the sanitizing processor in your tracing setup.
@@ -225,14 +234,17 @@ If you have multiple services in different languages, applying sanitization in e
 processors:
   # Use the transform processor to sanitize db.statement
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Replace all single-quoted string literals with '?'
           # This catches most parameter values in SQL statements
-          - replace_pattern(attributes["db.statement"], "'[^']*'", "'?'")
+          - replace_pattern(span.attributes["db.statement"], "'[^']*'", "'?'")
+          - replace_pattern(span.attributes["db.query.text"], "'[^']*'", "'?'")
           # Replace numeric literals after comparison operators
-          - replace_pattern(attributes["db.statement"], "= \\d+", "= ?")
+          - replace_pattern(span.attributes["db.statement"], "= \\d+", "= ?")
+          - replace_pattern(span.attributes["db.query.text"], "= \\d+", "= ?")
 
   # Use the attributes processor to remove specific dangerous attributes
   attributes:
@@ -252,6 +264,12 @@ processors:
 exporters:
   otlphttp:
     endpoint: "https://your-oneuptime-instance.com/otlp"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
 
 service:
   pipelines:
@@ -280,23 +298,19 @@ Instead of trying to strip bad data (which you might miss), flip the approach. O
 # otel-collector-config.yaml
 processors:
   # Only keep explicitly allowed span attributes
-  attributes:
-    actions:
-      # Keep these safe attributes
-      - key: db.system
-        action: upsert
-      - key: db.name
-        action: upsert
-      - key: db.operation
-        action: upsert
-      # Replace db.statement with just the operation type
-      # e.g., "SELECT", "INSERT", "UPDATE", "DELETE"
-      - key: db.statement
-        action: extract
-        pattern: "^(?P<db_operation_type>\\w+)"
-      # Now delete the full statement
-      - key: db.statement
-        action: delete
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          # Preserve a low-cardinality operation name, then drop raw query text
+          - set(span.attributes["db.operation.name"], "SELECT") where (span.attributes["db.statement"] != nil and IsMatch(span.attributes["db.statement"], "(?i)^\\s*SELECT\\b")) or (span.attributes["db.query.text"] != nil and IsMatch(span.attributes["db.query.text"], "(?i)^\\s*SELECT\\b"))
+          - set(span.attributes["db.operation.name"], "INSERT") where (span.attributes["db.statement"] != nil and IsMatch(span.attributes["db.statement"], "(?i)^\\s*INSERT\\b")) or (span.attributes["db.query.text"] != nil and IsMatch(span.attributes["db.query.text"], "(?i)^\\s*INSERT\\b"))
+          - set(span.attributes["db.operation.name"], "UPDATE") where (span.attributes["db.statement"] != nil and IsMatch(span.attributes["db.statement"], "(?i)^\\s*UPDATE\\b")) or (span.attributes["db.query.text"] != nil and IsMatch(span.attributes["db.query.text"], "(?i)^\\s*UPDATE\\b"))
+          - set(span.attributes["db.operation.name"], "DELETE") where (span.attributes["db.statement"] != nil and IsMatch(span.attributes["db.statement"], "(?i)^\\s*DELETE\\b")) or (span.attributes["db.query.text"] != nil and IsMatch(span.attributes["db.query.text"], "(?i)^\\s*DELETE\\b"))
+          - delete_key(span.attributes, "db.statement")
+          - delete_key(span.attributes, "db.query.text")
+          - keep_keys(span.attributes, ["db.system", "db.system.name", "db.name", "db.namespace", "db.operation", "db.operation.name"])
 ```
 
 This is the most conservative approach. You lose query details entirely but gain absolute certainty that no sensitive data escapes. This is appropriate for highly regulated environments like healthcare or financial services.
@@ -308,7 +322,7 @@ Do not assume your sanitization works. Verify it.
 ```python
 # test_sanitization.py
 import unittest
-from sanitizing_processor import SanitizingSpanProcessor
+from sanitizing_processor import sanitize_statement
 
 
 class TestSanitization(unittest.TestCase):
@@ -340,7 +354,7 @@ The right method depends on your compliance requirements and debugging needs.
 
 | Approach | Safety | Debugging Value | Complexity |
 |---|---|---|---|
-| Disable statement capture | Highest | Lowest | Trivial |
+| Disable or redact statement capture | Highest | Lowest | Low |
 | Parameterized queries only | High | Good | Low |
 | Custom SpanProcessor | High | Good | Medium |
 | Collector-level scrubbing | High | Good | Medium |
