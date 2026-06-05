@@ -50,7 +50,7 @@ services:
       - "4317:4317"   # gRPC receiver
       - "4318:4318"   # HTTP receiver
     volumes:
-      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -116,7 +116,10 @@ Have them add a simple counter or histogram to a service:
 
 ```go
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
 
@@ -124,12 +127,12 @@ var meter = otel.Meter("order-service")
 
 // Create a counter that tracks order creation by type
 var ordersCreated, _ = meter.Int64Counter(
-    "orders.created.count",
+    "order.created",
     metric.WithDescription("Number of orders successfully created"),
-    metric.WithUnit("1"),
+    metric.WithUnit("{order}"),
 )
 
-func createOrder(orderType string) error {
+func createOrder(ctx context.Context, orderType string) error {
     // ... order creation logic ...
 
     // Record the metric with the order type attribute
