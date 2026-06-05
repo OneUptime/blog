@@ -19,6 +19,7 @@ Let's instrument the autocomplete service that handles typeahead requests.
 ```python
 from opentelemetry import trace, metrics
 import time
+from typing import Optional
 
 tracer = trace.get_tracer("search.autocomplete")
 meter = metrics.get_meter("search.autocomplete")
@@ -29,9 +30,7 @@ autocomplete_latency = meter.create_histogram(
     "search.autocomplete.latency",
     unit="ms",
     description="End-to-end autocomplete response time",
-    advice={
-        "explicit_bucket_boundaries": [10, 25, 50, 75, 100, 150, 200, 300, 500, 1000]
-    }
+    explicit_bucket_boundaries_advisory=[10, 25, 50, 75, 100, 150, 200, 300, 500, 1000]
 )
 
 # Histogram for result count (are we returning enough suggestions?)
@@ -54,8 +53,8 @@ query_counter = meter.create_counter(
 )
 
 class AutocompleteService:
-    def suggest(self, query: str, user_id: str = None, max_results: int = 8):
-        start = time.time()
+    def suggest(self, query: str, user_id: Optional[str] = None, max_results: int = 8):
+        start = time.perf_counter()
 
         with tracer.start_as_current_span("autocomplete.suggest") as span:
             span.set_attribute("search.query", query)
@@ -90,7 +89,7 @@ class AutocompleteService:
                                          self._rank_results, candidates, max_results)
 
             # Record overall metrics
-            total_ms = (time.time() - start) * 1000
+            total_ms = (time.perf_counter() - start) * 1000
             autocomplete_latency.record(total_ms, {
                 "search.has_typo_correction": str(corrected != parsed),
                 "search.personalized": str(user_id is not None)
@@ -108,9 +107,9 @@ class AutocompleteService:
     def _timed_stage(self, stage_name: str, func, *args):
         """Run a pipeline stage and record its duration."""
         with tracer.start_as_current_span(f"autocomplete.{stage_name}") as span:
-            start = time.time()
+            start = time.perf_counter()
             result = func(*args)
-            duration_ms = (time.time() - start) * 1000
+            duration_ms = (time.perf_counter() - start) * 1000
 
             stage_latency.record(duration_ms, {"stage": stage_name})
             span.set_attribute("stage.duration_ms", round(duration_ms, 2))
@@ -166,21 +165,22 @@ class AutocompleteTracker {
   onInput(event) {
     this.lastKeypressTime = performance.now();
     const query = event.target.value;
+    const keypressTime = this.lastKeypressTime;
 
     // Clear the debounce timer
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
 
     // Debounce: wait 150ms after last keystroke
     this.debounceTimer = setTimeout(() => {
-      this.fetchSuggestions(query);
+      this.fetchSuggestions(query, keypressTime);
     }, 150);
   }
 
-  async fetchSuggestions(query) {
+  async fetchSuggestions(query, keypressTime) {
     if (query.length < 2) return;
 
     const requestTime = performance.now();
-    const debounceWait = requestTime - this.lastKeypressTime;
+    const debounceWait = requestTime - keypressTime;
 
     keystrokeToRequest.record(debounceWait, {
       'search.query_length': query.length.toString()
@@ -189,13 +189,14 @@ class AutocompleteTracker {
     try {
       const response = await fetch(`/api/autocomplete?q=${encodeURIComponent(query)}`);
       const suggestions = await response.json();
+      if (query !== this.input.value) return;
 
       // Render suggestions
       this.renderSuggestions(suggestions);
 
       // Measure perceived latency (keypress to render complete)
       const renderComplete = performance.now();
-      const totalPerceivedMs = renderComplete - this.lastKeypressTime;
+      const totalPerceivedMs = renderComplete - keypressTime;
 
       perceivedLatency.record(totalPerceivedMs, {
         'search.result_count': suggestions.length.toString(),
@@ -204,7 +205,7 @@ class AutocompleteTracker {
 
     } catch (error) {
       // Track failed autocomplete requests
-      perceivedLatency.record(performance.now() - this.lastKeypressTime, {
+      perceivedLatency.record(performance.now() - keypressTime, {
         'search.error': 'true',
         'search.result_count': '0'
       });
