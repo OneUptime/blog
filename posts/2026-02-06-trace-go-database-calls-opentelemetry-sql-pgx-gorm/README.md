@@ -8,13 +8,13 @@ Description: Complete guide to instrumenting Go database operations with OpenTel
 
 Database operations often represent the most critical bottleneck in web applications. A slow query can cascade through your entire system, degrading user experience and consuming server resources. Without proper instrumentation, identifying problematic queries, understanding their execution patterns, and correlating database performance with application behavior becomes nearly impossible.
 
-OpenTelemetry provides comprehensive instrumentation for Go database libraries, capturing query execution time, connection pool statistics, and error rates. Whether you use the standard library's database/sql, the high-performance pgx driver, or the GORM ORM, OpenTelemetry instrumentation transforms opaque database operations into observable, traceable events.
+OpenTelemetry provides instrumentation for Go database libraries, capturing query execution time, connection pool statistics, and error rates. Whether you use the standard library's database/sql, the high-performance pgx driver, or the GORM ORM, OpenTelemetry-compatible instrumentation transforms opaque database operations into observable, traceable events.
 
 ## Understanding Database Instrumentation
 
 Database instrumentation works at different levels depending on the library. For database/sql, instrumentation wraps the driver to intercept SQL execution. For pgx, instrumentation hooks into the query tracer interface. For GORM, instrumentation uses callbacks to capture operations before and after they execute.
 
-Each approach captures similar information: query text, execution duration, affected rows, and errors. This data appears as spans in your distributed traces, showing exactly how long each database operation takes and how it fits into the broader request context.
+Each approach captures similar information such as operation timing, errors, and database operation metadata. Depending on the instrumentation options, spans may also include query text and row counts. This data appears in your distributed traces, showing exactly how long each database operation takes and how it fits into the broader request context.
 
 ## Installing Database Instrumentation Packages
 
@@ -28,17 +28,17 @@ go get -u go.opentelemetry.io/otel/sdk/trace
 go get -u go.opentelemetry.io/otel/exporters/stdout/stdouttrace
 
 # database/sql instrumentation
-go get -u go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql
+go get -u github.com/XSAM/otelsql
 go get -u github.com/lib/pq  # PostgreSQL driver example
 
 # pgx instrumentation (v5)
 go get -u github.com/jackc/pgx/v5
-go get -u go.opentelemetry.io/contrib/instrumentation/github.com/jackc/pgx/v5/otelpgx
+go get -u github.com/exaring/otelpgx
 
 # GORM instrumentation
 go get -u gorm.io/gorm
 go get -u gorm.io/driver/postgres
-go get -u go.opentelemetry.io/contrib/instrumentation/gorm.io/gorm/otelgorm
+go get -u gorm.io/plugin/opentelemetry
 ```
 
 These packages provide the building blocks for tracing database operations across different libraries.
@@ -51,15 +51,11 @@ Initialize OpenTelemetry before instrumenting database connections.
 package main
 
 import (
-    "context"
-    "log"
-    "time"
-
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -95,11 +91,10 @@ import (
     "context"
     "database/sql"
     "fmt"
-    "log"
+    "time"
 
-    "go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql"
-    "go.opentelemetry.io/otel/attribute"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    "github.com/XSAM/otelsql"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func setupDatabaseSQL() (*sql.DB, error) {
@@ -107,7 +102,7 @@ func setupDatabaseSQL() (*sql.DB, error) {
     driverName, err := otelsql.Register(
         "postgres",
         otelsql.WithAttributes(
-            semconv.DBSystemPostgreSQL,
+            semconv.DBSystemNamePostgreSQL,
         ),
     )
     if err != nil {
@@ -129,7 +124,7 @@ func setupDatabaseSQL() (*sql.DB, error) {
     db.SetConnMaxLifetime(5 * time.Minute)
 
     // Record database stats as metrics
-    err = otelsql.RecordStats(db)
+    _, err = otelsql.RegisterDBStatsMetrics(db)
     if err != nil {
         return nil, err
     }
@@ -210,7 +205,7 @@ type User struct {
 }
 ```
 
-The otelsql package captures query text, execution time, and connection pool metrics automatically. Each database operation creates a span showing its contribution to overall request latency.
+The otelsql package captures execution time and database operation metadata, and it can report connection pool metrics through `RegisterDBStatsMetrics`. Each database operation creates a span showing its contribution to overall request latency.
 
 ## Instrumenting pgx
 
@@ -222,10 +217,11 @@ package main
 import (
     "context"
     "fmt"
+    "time"
 
+    "github.com/exaring/otelpgx"
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
-    "go.opentelemetry.io/contrib/instrumentation/github.com/jackc/pgx/v5/otelpgx"
 )
 
 func setupPgxPool(ctx context.Context) (*pgxpool.Pool, error) {
@@ -248,6 +244,10 @@ func setupPgxPool(ctx context.Context) (*pgxpool.Pool, error) {
     // Create pool with instrumentation
     pool, err := pgxpool.NewWithConfig(ctx, config)
     if err != nil {
+        return nil, err
+    }
+
+    if err := otelpgx.RecordStats(pool); err != nil {
         return nil, err
     }
 
@@ -335,7 +335,7 @@ func batchInsertPgx(ctx context.Context, pool *pgxpool.Pool, users []User) error
 }
 ```
 
-The pgx instrumentation provides detailed traces including connection acquisition time, query parsing, execution, and result processing. Batch operations appear as single spans with attributes showing the number of statements.
+The pgx instrumentation provides detailed traces for pgx operations including connection acquisition, queries, batches, prepared statements, and copy operations. Batch operations are traced through pgx's batch callbacks.
 
 ## Instrumenting GORM
 
@@ -351,7 +351,7 @@ import (
 
     "gorm.io/driver/postgres"
     "gorm.io/gorm"
-    "go.opentelemetry.io/contrib/instrumentation/gorm.io/gorm/otelgorm"
+    "gorm.io/plugin/opentelemetry/tracing"
 )
 
 func setupGORM() (*gorm.DB, error) {
@@ -364,7 +364,7 @@ func setupGORM() (*gorm.DB, error) {
     }
 
     // Add OpenTelemetry plugin
-    if err := db.Use(otelgorm.NewPlugin()); err != nil {
+    if err := db.Use(tracing.NewPlugin()); err != nil {
         return nil, err
     }
 
@@ -475,7 +475,7 @@ func transactionGORM(ctx context.Context, db *gorm.DB) error {
 }
 ```
 
-GORM instrumentation captures not just the generated SQL but also GORM-specific operations like hooks, associations, and transaction boundaries.
+GORM instrumentation uses callbacks to trace operations such as Create, Query, Delete, Update, Row, and Raw, and can also report database statistics metrics.
 
 ## Adding Custom Spans for Business Logic
 
@@ -547,6 +547,12 @@ func getUserWithOrders(ctx context.Context, db *sql.DB, userID int64) (*UserWith
         orders = append(orders, o)
     }
 
+    if err := rows.Err(); err != nil {
+        ordersSpan.RecordError(err)
+        ordersSpan.End()
+        return nil, err
+    }
+
     ordersSpan.SetAttributes(attribute.Int("orders.count", len(orders)))
     ordersSpan.End()
 
@@ -583,14 +589,12 @@ graph TD
     B --> D[Database Query: SELECT orders]
     B --> E[Database Query: SELECT products]
     C --> F[Connection Acquire]
-    C --> G[Query Execute]
-    C --> H[Result Scan]
+    C --> G[Query Operation]
     D --> I[Connection Acquire]
-    D --> J[Query Execute]
-    D --> K[Result Scan]
+    D --> J[Query Operation]
 ```
 
-Each database operation creates a span with timing information, allowing you to identify slow queries and connection pool contention.
+Database operations create spans with timing information, while pool instrumentation and metrics help identify slow queries and connection pool contention.
 
 ## Handling Connection Pools
 
@@ -602,7 +606,6 @@ package main
 import (
     "context"
     "database/sql"
-    "time"
 
     "go.opentelemetry.io/otel/metric"
 )
@@ -688,9 +691,9 @@ func addSemanticAttributes(ctx context.Context, db *sql.DB, email string) error 
     span := trace.SpanFromContext(ctx)
 
     span.SetAttributes(
-        attribute.String("db.operation", "user_lookup"),
-        attribute.String("user.email", email),
-        attribute.String("db.table", "users"),
+        attribute.String("db.operation.name", "SELECT"),
+        attribute.String("db.collection.name", "users"),
+        attribute.String("app.lookup.type", "user_by_email"),
     )
 
     var id int64
