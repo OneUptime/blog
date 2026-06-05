@@ -39,17 +39,6 @@ processors:
     send_batch_size: 4096
     timeout: 1s
 
-  # Route telemetry to team-specific pipelines
-  routing:
-    from_attribute: team.name
-    attribute_source: resource
-    table:
-      - value: payments
-        pipelines: [traces/payments, metrics/payments, logs/payments]
-      - value: platform
-        pipelines: [traces/platform, metrics/platform, logs/platform]
-    default_pipelines: [traces/shared, metrics/shared, logs/shared]
-
   # Strip sensitive attributes before sending to Team A's backend
   # Team A should not see Team B's internal attributes
   attributes/strip_for_payments:
@@ -74,18 +63,58 @@ processors:
 
   # Anonymize data for the shared/global view
   transform/anonymize:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Replace PII with hashes
-          - replace_pattern(attributes["user.id"],
-              ".*", SHA256(attributes["user.id"]))
-          - delete_key(attributes, "user.email")
-          - delete_key(attributes, "user.phone")
-          - delete_key(attributes, "user.name")
-          # Keep only the domain from email if present
-          - replace_pattern(attributes["user.email_domain"],
-              ".*@(.*)", "$1")
+      - set(span.attributes["user.id"], SHA256(span.attributes["user.id"])) where IsString(span.attributes["user.id"])
+      - delete_key(span.attributes, "user.email")
+      - delete_key(span.attributes, "user.phone")
+      - delete_key(span.attributes, "user.name")
+      # Keep only the domain from email if present
+      - replace_pattern(span.attributes["user.email_domain"], ".*@(.*)", "$$1") where IsString(span.attributes["user.email_domain"])
+    metric_statements:
+      - set(datapoint.attributes["user.id"], SHA256(datapoint.attributes["user.id"])) where IsString(datapoint.attributes["user.id"])
+      - delete_key(datapoint.attributes, "user.email")
+      - delete_key(datapoint.attributes, "user.phone")
+      - delete_key(datapoint.attributes, "user.name")
+      - replace_pattern(datapoint.attributes["user.email_domain"], ".*@(.*)", "$$1") where IsString(datapoint.attributes["user.email_domain"])
+    log_statements:
+      - set(log.attributes["user.id"], SHA256(log.attributes["user.id"])) where IsString(log.attributes["user.id"])
+      - delete_key(log.attributes, "user.email")
+      - delete_key(log.attributes, "user.phone")
+      - delete_key(log.attributes, "user.name")
+      - replace_pattern(log.attributes["user.email_domain"], ".*@(.*)", "$$1") where IsString(log.attributes["user.email_domain"])
+
+connectors:
+  # Route telemetry to team-specific pipelines
+  routing/traces:
+    table:
+      - context: resource
+        condition: attributes["team.name"] == "payments"
+        pipelines: [traces/payments]
+      - context: resource
+        condition: attributes["team.name"] == "platform"
+        pipelines: [traces/platform]
+    default_pipelines: [traces/shared]
+
+  routing/metrics:
+    table:
+      - context: resource
+        condition: attributes["team.name"] == "payments"
+        pipelines: [metrics/payments]
+      - context: resource
+        condition: attributes["team.name"] == "platform"
+        pipelines: [metrics/platform]
+    default_pipelines: [metrics/shared]
+
+  routing/logs:
+    table:
+      - context: resource
+        condition: attributes["team.name"] == "payments"
+        pipelines: [logs/payments]
+      - context: resource
+        condition: attributes["team.name"] == "platform"
+        pipelines: [logs/platform]
+    default_pipelines: [logs/shared]
 
 exporters:
   otlphttp/payments:
@@ -105,56 +134,66 @@ exporters:
 
 service:
   pipelines:
-    # Intake pipeline
-    traces:
+    # Intake pipelines
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: []
+      processors: [batch]
+      exporters: [routing/traces]
+
+    metrics/in:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [routing/metrics]
+
+    logs/in:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [routing/logs]
 
     # Team-specific pipelines with attribute stripping
     traces/payments:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [attributes/strip_for_payments, batch]
       exporters: [otlphttp/payments]
 
     traces/platform:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [attributes/strip_for_platform, batch]
       exporters: [otlphttp/platform]
 
     traces/shared:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [transform/anonymize, batch]
       exporters: [otlphttp/shared]
 
     # Same pattern for metrics and logs
     metrics/payments:
-      receivers: [routing]
-      processors: [batch]
+      receivers: [routing/metrics]
+      processors: [attributes/strip_for_payments, batch]
       exporters: [otlphttp/payments]
 
     metrics/platform:
-      receivers: [routing]
-      processors: [batch]
+      receivers: [routing/metrics]
+      processors: [attributes/strip_for_platform, batch]
       exporters: [otlphttp/platform]
 
     metrics/shared:
-      receivers: [routing]
-      processors: [batch]
+      receivers: [routing/metrics]
+      processors: [transform/anonymize, batch]
       exporters: [otlphttp/shared]
 
     logs/payments:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [attributes/strip_for_payments, batch]
       exporters: [otlphttp/payments]
 
     logs/platform:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [attributes/strip_for_platform, batch]
       exporters: [otlphttp/platform]
 
     logs/shared:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [transform/anonymize, batch]
       exporters: [otlphttp/shared]
 ```
@@ -243,16 +282,11 @@ if __name__ == "__main__":
 
 ## Audit Logging
 
-Track all attribute filtering operations for compliance:
+Capture Collector internal logs for troubleshooting. The stock processors do not emit a per-attribute audit record for every filtering decision, so use backend audit logs or a custom processor if you need compliance-grade audit events:
 
 ```yaml
 # Add to the gateway Collector
-extensions:
-  file_storage:
-    directory: /var/log/otel-audit
-
 service:
-  extensions: [file_storage]
   telemetry:
     logs:
       level: info
