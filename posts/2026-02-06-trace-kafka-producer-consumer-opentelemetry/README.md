@@ -42,13 +42,13 @@ First, add the required dependencies to your project:
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-kafka-clients-2.6</artifactId>
-    <version>2.12.0-alpha</version>
+    <version>2.28.1-alpha</version>
 </dependency>
 <!-- Core OpenTelemetry API -->
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-api</artifactId>
-    <version>1.46.0</version>
+    <version>1.62.0</version>
 </dependency>
 ```
 
@@ -62,8 +62,8 @@ props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.get
 props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
 // Add the OpenTelemetry interceptor to automatically inject trace context
-props.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
-    "io.opentelemetry.instrumentation.kafkaclients.v2_6.TracingProducerInterceptor");
+KafkaTelemetry kafkaTelemetry = KafkaTelemetry.create(GlobalOpenTelemetry.get());
+props.putAll(kafkaTelemetry.producerInterceptorConfigProperties());
 
 KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 
@@ -83,11 +83,11 @@ producer.send(record, (metadata, exception) -> {
 });
 ```
 
-The interceptor approach is clean because you configure it once and every message gets traced. The interceptor creates a span with kind PRODUCER, sets attributes like `messaging.system`, `messaging.destination`, and `messaging.kafka.partition`, and injects the trace context into the Kafka record headers.
+The interceptor approach is clean because you configure it once and every message gets traced. The interceptor creates a span with kind PRODUCER, sets attributes like `messaging.system`, `messaging.destination.name`, and `messaging.destination.partition.id`, and injects the trace context into the Kafka record headers.
 
 ## Setting Up the Consumer in Java
 
-The consumer side mirrors the producer. You add an interceptor that extracts the trace context from incoming messages and creates a CONSUMER span linked to the producer span.
+The consumer side mirrors the producer. You add an interceptor that extracts the trace context from incoming messages and creates consumer-side spans correlated with the producer span.
 
 ```java
 // Configure consumer properties with OpenTelemetry interceptor
@@ -98,8 +98,8 @@ props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class
 props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
 // Add the tracing interceptor for consumers
-props.put(ConsumerConfig.INTERCEPTOR_CLASSES_CONFIG,
-    "io.opentelemetry.instrumentation.kafkaclients.v2_6.TracingConsumerInterceptor");
+KafkaTelemetry kafkaTelemetry = KafkaTelemetry.create(GlobalOpenTelemetry.get());
+props.putAll(kafkaTelemetry.consumerInterceptorConfigProperties());
 
 KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
 consumer.subscribe(Collections.singletonList("order-events"));
@@ -108,14 +108,14 @@ consumer.subscribe(Collections.singletonList("order-events"));
 while (true) {
     ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
     for (ConsumerRecord<String, String> record : records) {
-        // The interceptor extracts trace context and creates a CONSUMER span
-        // Your processing code runs within that span's context
+        // The interceptor extracts trace context and creates consumer-side spans
+        // Your processing code runs within the extracted span context
         processOrder(record.value());
     }
 }
 ```
 
-When the consumer interceptor processes a message, it reads the `traceparent` header that the producer injected. It then creates a new span whose parent is the producer span. This links the two sides of the Kafka interaction into a single distributed trace.
+When the consumer interceptor processes a message, it reads the `traceparent` header that the producer injected. It then creates consumer-side spans that are correlated with the message creation context. Depending on the instrumentation and semantic convention mode, that correlation may be represented with span links rather than a direct parent-child relationship.
 
 ## Python Producer-Consumer Example
 
@@ -124,7 +124,7 @@ If you are working in Python, the `opentelemetry-instrumentation-confluent-kafka
 ```python
 # Install the required packages
 
-# pip install opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-confluent-kafka confluent-kafka
+# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc opentelemetry-instrumentation-confluent-kafka confluent-kafka
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -181,7 +181,7 @@ while True:
 
 A common pattern with Kafka is batch consumption, where a consumer polls multiple messages and processes them together. This creates an interesting tracing challenge because each message may belong to a different trace.
 
-The recommended approach is to create a processing span for each message individually, linking back to its original trace:
+The recommended approach is to create a processing span for each message individually, using that message's original trace context:
 
 ```java
 // Batch processing with per-message trace context
@@ -197,7 +197,7 @@ for (ConsumerRecord<String, String> record : records) {
     Span processSpan = tracer.spanBuilder("process " + record.topic())
         .setParent(extractedContext)
         .setSpanKind(SpanKind.CONSUMER)
-        .setAttribute("messaging.kafka.partition", record.partition())
+        .setAttribute("messaging.destination.partition.id", String.valueOf(record.partition()))
         .setAttribute("messaging.kafka.offset", record.offset())
         .startSpan();
 
@@ -213,7 +213,7 @@ for (ConsumerRecord<String, String> record : records) {
 }
 ```
 
-This approach preserves the trace lineage for each message while still allowing batch consumption. Each message gets its own span tied to the correct parent trace.
+This approach preserves the trace lineage for each message while still allowing batch consumption. Each message gets its own span tied to the correct trace context.
 
 ## Collector Configuration for Kafka Traces
 
@@ -258,10 +258,10 @@ Once everything is wired up, your traces will show the complete message flow. A 
 
 1. The API handler that received the HTTP request
 2. A PRODUCER span showing the message being sent to the `order-events` topic
-3. A CONSUMER span in the order processing service showing the message being received
+3. Consumer-side spans in the order processing service showing the message being received or processed
 4. Any downstream processing spans, including database writes or additional Kafka publishes
 
-Each span carries semantic attributes defined by the OpenTelemetry messaging semantic conventions, including `messaging.system` (kafka), `messaging.destination.name` (the topic), `messaging.kafka.consumer.group`, and `messaging.kafka.message.offset`.
+Each span carries semantic attributes defined by the OpenTelemetry messaging semantic conventions, including `messaging.system` (kafka), `messaging.destination.name` (the topic), `messaging.consumer.group.name`, and `messaging.kafka.offset`.
 
 ## Common Pitfalls
 
