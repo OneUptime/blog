@@ -48,7 +48,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 
 # Standard resource attributes every service must have
-REQUIRED_ATTRIBUTES = ["service.name", "team.name", "deployment.environment"]
+REQUIRED_ATTRIBUTES = ["service.name", "team.name", "deployment.environment.name"]
 
 def init_telemetry(
     service_name: str,
@@ -71,7 +71,7 @@ def init_telemetry(
         "service.name": service_name,
         "service.version": version,
         "team.name": team_name,
-        "deployment.environment": env,
+        "deployment.environment.name": env,
         "telemetry.sdk.wrapper": "internal-v2",
     })
 
@@ -172,7 +172,7 @@ A shared configuration schema helps keep wrappers in sync:
 required_resource_attributes:
   - service.name
   - team.name
-  - deployment.environment
+  - deployment.environment.name
   - service.version
   - telemetry.sdk.wrapper
 
