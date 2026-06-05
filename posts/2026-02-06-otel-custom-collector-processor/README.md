@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Custom Processor, Go, Domain Logic, Collector
 
-Description: Build a custom OpenTelemetry Collector processor in Go that applies your domain-specific transformation logic to traces, metrics, and logs.
+Description: Build a custom OpenTelemetry Collector processor in Go that applies your domain-specific transformation logic to traces and logs.
 
 The built-in processors cover common transformations like batching, filtering, and attribute manipulation. But when you need domain-specific logic, such as PII redaction based on your data classification rules, cost estimation, or custom aggregation, you need a custom processor. This post walks through building one in Go.
 
@@ -132,6 +132,7 @@ import (
     "context"
     "crypto/sha256"
     "encoding/hex"
+    "fmt"
     "regexp"
 
     "go.opentelemetry.io/collector/component"
@@ -278,6 +279,12 @@ func (p *piiProcessor) redactLogBody(log plog.LogRecord) {
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   pii_redactor:
     pii_attributes:
@@ -290,24 +297,29 @@ processors:
       - '\b\d{3}-\d{2}-\d{4}\b'
     redaction_text: "[PII_REDACTED]"
     hash_instead_of_redact: false
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [pii_redactor, batch]
-      exporters: [otlp]
+      exporters: [debug]
     logs:
       receivers: [otlp]
       processors: [pii_redactor, batch]
-      exporters: [otlp]
+      exporters: [debug]
 ```
 
 ## Testing
 
 ```go
 func TestRedactsPIIAttributes(t *testing.T) {
-    proc, _ := newPIIProcessor(processortest.NewNopSettings(), &Config{
+    proc, _ := newPIIProcessor(processortest.NewNopSettings(component.MustNewType(typeStr)), &Config{
         PIIAttributes: []string{"user.email"},
         RedactionText: "[REDACTED]",
     }, consumertest.NewNop(), nil)
