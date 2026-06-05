@@ -6,25 +6,25 @@ Tags: OpenTelemetry, HashiCorp Vault, Dynamic Secret, Config Source, Collector
 
 Description: Configure the Vault config source provider to dynamically inject secrets from HashiCorp Vault into the OpenTelemetry Collector config.
 
-The OpenTelemetry Collector supports config source providers that can pull configuration values from external systems at startup time. The Vault config source provider connects directly to HashiCorp Vault, removing the need for a separate Vault Agent sidecar. Secrets are fetched when the Collector starts and can be refreshed on a configurable interval.
+The Splunk Distribution of the OpenTelemetry Collector supports config source providers that can pull configuration values from external systems. The Vault config source provider connects directly to HashiCorp Vault, removing the need for a separate Vault Agent sidecar. Secrets are fetched when the Collector resolves its configuration, and KV v2 secrets can be refreshed on a configurable poll interval.
 
 ## How Config Source Providers Work
 
-Config source providers extend the Collector's configuration resolution. Instead of reading values from environment variables or static files, they fetch values from external sources like Vault, AWS Secrets Manager, or etcd. In the config file, you reference these sources with a URI-like syntax.
+Config source providers extend the Collector's configuration resolution. Instead of reading values from environment variables or static files, they fetch values from external sources like Vault, etcd, or Zookeeper. In the config file, you reference these sources with a URI-like syntax.
 
 ## Setting Up the Vault Config Source
 
-The Vault config source is available in the OpenTelemetry Collector Contrib distribution. Configure it in the Collector's config file:
+The Vault config source is available in the Splunk Distribution of the OpenTelemetry Collector as an alpha config source. Configure it in the Collector's config file:
 
 ```yaml
-# config-sources section defines available sources
+# config_sources section defines available sources
 
 config_sources:
-  vault:
+  vault/backend:
     endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/backend"
     # Authentication method
     auth:
-      method: token
       token: "${env:VAULT_TOKEN}"
 
 # Now use vault references in any config field
@@ -38,11 +38,11 @@ exporters:
   otlp:
     endpoint: "backend.example.com:4317"
     headers:
-      # Pull the API key from Vault at startup
-      Authorization: "Bearer ${vault:secret/data/otel/backend#api_key}"
+      # Pull the API key from Vault at config resolution time
+      Authorization: "Bearer $vault/backend:data.api_key"
 ```
 
-The syntax `${vault:secret/data/otel/backend#api_key}` tells the Collector to read the `api_key` field from the Vault path `secret/data/otel/backend`.
+The syntax `$vault/backend:data.api_key` tells the Collector to read the `api_key` field from the `data` object returned by the Vault KV v2 path `secret/data/otel/backend`.
 
 ## Authentication Methods
 
@@ -52,54 +52,74 @@ The simplest method, suitable for development:
 
 ```yaml
 config_sources:
-  vault:
+  vault/backend:
     endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/backend"
     auth:
-      method: token
       token: "${env:VAULT_TOKEN}"
 ```
 
-### Kubernetes Auth
+### AWS IAM Auth
 
-For production Kubernetes deployments:
+For AWS deployments:
 
 ```yaml
 config_sources:
-  vault:
+  vault/backend:
     endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/backend"
     auth:
-      method: kubernetes
-      mount_path: "auth/kubernetes"
-      role: "otel-collector"
+      iam:
+        mount: "aws"
+        role: "otel-collector"
+        aws_access_key_id: "${env:AWS_ACCESS_KEY_ID}"
+        aws_secret_access_key: "${env:AWS_SECRET_ACCESS_KEY}"
+        aws_security_token: "${env:AWS_SESSION_TOKEN}"
 ```
 
-This uses the pod's service account token to authenticate with Vault. No static tokens needed.
+This uses Vault's AWS auth method to generate the Vault token. No static Vault token is needed.
 
-### AppRole Auth
+### GCP Auth
 
-For non-Kubernetes deployments:
+For GCP deployments:
 
 ```yaml
 config_sources:
-  vault:
+  vault/backend:
     endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/backend"
     auth:
-      method: approle
-      mount_path: "auth/approle"
-      role_id: "${env:VAULT_ROLE_ID}"
-      secret_id: "${env:VAULT_SECRET_ID}"
+      gcp:
+        mount: "gcp"
+        role: "otel-collector"
+        service_account: "otel-collector@example-project.iam.gserviceaccount.com"
+        project: "example-project"
 ```
 
 ## Complete Collector Configuration
 
 ```yaml
 config_sources:
-  vault:
+  vault/primary:
     endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/primary-backend"
     auth:
-      method: kubernetes
-      role: "otel-collector"
-    # Poll Vault for secret changes every 5 minutes
+      token: "${env:VAULT_TOKEN}"
+    # Poll Vault KV v2 metadata for secret changes every 5 minutes
+    poll_interval: 5m
+
+  vault/secondary:
+    endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/secondary-backend"
+    auth:
+      token: "${env:VAULT_TOKEN}"
+    poll_interval: 5m
+
+  vault/tls:
+    endpoint: "https://vault.internal:8200"
+    path: "secret/data/otel/tls-certs"
+    auth:
+      token: "${env:VAULT_TOKEN}"
     poll_interval: 5m
 
 receivers:
@@ -118,15 +138,15 @@ exporters:
   otlp/primary:
     endpoint: "primary-backend.example.com:4317"
     headers:
-      Authorization: "Bearer ${vault:secret/data/otel/primary-backend#api_key}"
+      Authorization: "Bearer $vault/primary:data.api_key"
     tls:
-      cert_pem: "${vault:secret/data/otel/tls-certs#client_cert}"
-      key_pem: "${vault:secret/data/otel/tls-certs#client_key}"
+      cert_pem: "$vault/tls:data.client_cert"
+      key_pem: "$vault/tls:data.client_key"
 
   otlp/secondary:
     endpoint: "secondary-backend.example.com:4317"
     headers:
-      X-API-Token: "${vault:secret/data/otel/secondary-backend#token}"
+      X-API-Token: "$vault/secondary:data.token"
 
 service:
   pipelines:
@@ -146,27 +166,27 @@ service:
 
 ## Using Dynamic Secrets
 
-Vault dynamic secrets (like database credentials or AWS IAM keys) are generated on-demand and have a TTL. The config source provider handles lease renewal:
+Vault dynamic secrets (like database credentials or AWS IAM keys) are generated on-demand and have a TTL. The config source provider uses Vault's lease watcher for renewable secrets:
 
 ```yaml
 config_sources:
-  vault:
+  vault/clickhouse:
     endpoint: "https://vault.internal:8200"
+    path: "database/creds/otel-writer"
     auth:
-      method: kubernetes
-      role: "otel-collector"
+      token: "${env:VAULT_TOKEN}"
 
 exporters:
   # Use a dynamically generated database credential
   # for an exporter that writes to a database
   clickhouse:
     endpoint: "tcp://clickhouse.internal:9000"
-    username: "${vault:database/creds/otel-writer#username}"
-    password: "${vault:database/creds/otel-writer#password}"
+    username: "$vault/clickhouse:username"
+    password: "$vault/clickhouse:password"
     database: "traces"
 ```
 
-The provider automatically renews the lease before it expires. If the lease cannot be renewed, the Collector will request a new credential.
+The provider renews renewable leases through Vault's lifetime watcher. If renewal stops, the Collector is notified to re-resolve the configuration and request a new credential.
 
 ## Multiple Vault Instances
 
@@ -176,33 +196,33 @@ You can configure multiple Vault sources for different secret stores:
 config_sources:
   vault/production:
     endpoint: "https://vault-prod.internal:8200"
+    path: "secret/data/otel/prod-backend"
     auth:
-      method: kubernetes
-      role: "otel-collector"
+      token: "${env:VAULT_PROD_TOKEN}"
 
   vault/shared:
     endpoint: "https://vault-shared.internal:8200"
+    path: "secret/data/otel/monitoring"
     auth:
-      method: kubernetes
-      role: "otel-collector-readonly"
+      token: "${env:VAULT_SHARED_TOKEN}"
 
 exporters:
   otlp/prod:
     endpoint: "prod-backend.example.com:4317"
     headers:
-      Authorization: "Bearer ${vault/production:secret/data/otel/prod-backend#api_key}"
+      Authorization: "Bearer $vault/production:data.api_key"
 
   otlp/monitoring:
     endpoint: "monitoring.example.com:4317"
     headers:
-      X-API-Key: "${vault/shared:secret/data/otel/monitoring#api_key}"
+      X-API-Key: "$vault/shared:data.api_key"
 ```
 
 ## Error Handling
 
-If the Vault config source cannot connect to Vault at startup, the Collector will fail to start. This is the desired behavior since running without proper authentication would mean data is not being exported.
+If the Vault config source cannot connect to Vault or cannot read the configured path while resolving the configuration, the Collector will fail to start. This is the desired behavior since running without proper authentication would mean data is not being exported.
 
-For transient Vault outages after startup, the config source caches the last known good values and logs warnings. When Vault becomes available again, values are refreshed on the next poll interval.
+For Vault errors after startup, the config source reports a change event with the error. KV v2 secrets are checked by polling metadata at the configured interval, and dynamic secrets use Vault lease renewal events to trigger re-resolution when renewal stops.
 
 ## Vault Policy for Config Source
 
@@ -212,14 +232,13 @@ path "secret/data/otel/*" {
   capabilities = ["read"]
 }
 
-path "database/creds/otel-writer" {
+path "secret/metadata/otel/*" {
   capabilities = ["read"]
 }
 
-# Allow lease renewal for dynamic secrets
-path "sys/leases/renew" {
-  capabilities = ["update"]
+path "database/creds/otel-writer" {
+  capabilities = ["read"]
 }
 ```
 
-The Vault config source provider gives you the cleanest integration between the Collector and Vault. No sidecar containers, no template rendering, and no startup scripts. Secrets are resolved inline in the config file, and the provider handles authentication, caching, and renewal.
+The Vault config source provider gives you a direct integration between the Collector and Vault in distributions that include it. No sidecar containers, no template rendering, and no startup scripts. Secrets are resolved inline in the config file, and the provider handles authentication, KV v2 metadata polling, and dynamic secret lease renewal.
