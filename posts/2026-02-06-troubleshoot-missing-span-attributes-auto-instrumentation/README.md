@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Span Attributes, Auto-Instrumentation, SDK
 
-Description: Troubleshoot missing custom span attributes that are silently dropped by auto-instrumentation or SDK configuration limits.
+Description: Troubleshoot missing custom span attributes that are dropped or not exported because of auto-instrumentation context or SDK configuration limits.
 
 You added custom attributes to your spans in code, but when you look at the traces in your backend, those attributes are gone. Auto-instrumented spans show up fine, but your custom attributes are nowhere to be found. This post covers the most common reasons and fixes.
 
 ## Reason 1: Setting Attributes on the Wrong Span
 
-Auto-instrumentation creates spans automatically for HTTP requests, database calls, etc. If you create a new span inside an auto-instrumented operation and set attributes on the auto-instrumented span instead of yours (or vice versa), the attributes end up on the wrong span or get lost.
+Auto-instrumentation creates spans automatically for HTTP requests, database calls, etc. If you create a new span inside an auto-instrumented operation and set attributes on the auto-instrumented span instead of yours (or vice versa), the attributes end up on the wrong span and may not appear where you are looking.
 
 ```python
 from opentelemetry import trace
@@ -35,17 +35,17 @@ def handle_request(request):
 
 ## Reason 2: Attribute Limits in the SDK
 
-The SDK has default limits on the number of attributes per span. The default is 128 attributes. If auto-instrumentation adds many attributes and your custom ones push the total over the limit, the extras get dropped:
+The SDK has default limits on the number of attributes per span. The default is 128 attributes. If auto-instrumentation adds many attributes and your custom ones push the total over the limit, some attributes can be dropped:
 
 ```python
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import TracerProvider, SpanLimits
 
 # Check the default limits
 
 provider = TracerProvider(
-    span_limits=trace.SpanLimits(
-        max_attributes=128,               # Default
-        max_attribute_length=None,         # No length limit by default
+    span_limits=SpanLimits(
+        max_span_attributes=128,               # Default
+        max_span_attribute_length=None,         # No length limit by default
     )
 )
 ```
@@ -57,7 +57,7 @@ from opentelemetry.sdk.trace import TracerProvider, SpanLimits
 
 provider = TracerProvider(
     span_limits=SpanLimits(
-        max_attributes=256,  # Increase the limit
+        max_span_attributes=256,  # Increase the span attribute limit
     )
 )
 ```
@@ -70,14 +70,14 @@ export OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=256
 
 ## Reason 3: Attribute Added After Span Ends
 
-If you set an attribute after the span has already ended, the SDK silently ignores it:
+If you set an attribute after the span has already ended, the SDK ignores it. In Python, this logs a warning instead of throwing an exception:
 
 ```python
 with tracer.start_as_current_span("my-operation") as span:
     result = do_work()
 
 # This is OUTSIDE the with block - the span is already ended
-span.set_attribute("result.status", result.status)  # Silently ignored!
+span.set_attribute("result.status", result.status)  # Ignored after the span ends
 ```
 
 Fix: set attributes before the span ends:
@@ -146,12 +146,12 @@ spec:
 Check the environment variables injected by the Operator:
 
 ```bash
-kubectl get pod my-app-pod -o jsonpath='{.spec.containers[0].env[*]}' | jq . | grep -i "ATTR\|LIMIT"
+kubectl get pod my-app-pod -o json | jq '.spec.containers[0].env[] | select(.name | test("ATTR|LIMIT"; "i"))'
 ```
 
 ## Debugging Attributes
 
-Enable SDK debug logging to see what attributes are being set and whether any are dropped:
+Enable SDK debug logging to catch SDK warnings and initialization problems:
 
 ```python
 import logging
@@ -186,7 +186,7 @@ service:
 
 1. Use a custom namespace prefix for your attributes (e.g., `app.user.id` instead of just `user.id`)
 2. Set attributes as early as possible, before the span ends
-3. Monitor the `otelcol_processor_dropped_spans` metric to detect attribute-related drops
+3. Check the raw span output for the span's dropped attribute count, and monitor Collector drop metrics separately for processor-level span drops
 4. Keep your total attribute count well below the SDK limit
 
 Missing attributes are frustrating to debug because the SDK does not throw errors when they are dropped. Always verify your spans contain the expected attributes by checking the raw output in your backend or using the Collector's debug exporter.
