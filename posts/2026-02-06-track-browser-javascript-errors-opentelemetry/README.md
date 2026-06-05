@@ -42,27 +42,26 @@ import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 // Create the provider with service metadata so errors
 // are tagged with the correct application name
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'frontend-app',
     'service.version': '2.1.0',
     'deployment.environment': 'production',
   }),
+  // Use batch processing to avoid sending individual spans
+  // for each error, which would create too much network overhead
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: '/api/v1/traces',
+      })
+    ),
+  ],
 });
-
-// Use batch processing to avoid sending individual spans
-// for each error, which would create too much network overhead
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: '/api/v1/traces',
-    })
-  )
-);
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -72,7 +71,7 @@ provider.register({
 export const tracer = provider.getTracer('error-tracking', '1.0.0');
 ```
 
-The `ZoneContextManager` is critical for browser tracing. It uses Zone.js to maintain trace context across asynchronous operations, which means errors thrown inside setTimeout callbacks, promise chains, or event handlers can still be linked to the span that was active when the async operation started.
+The `ZoneContextManager` is useful when you need browser trace context across asynchronous operations. It uses Zone.js to maintain context through callbacks and event handlers, but the OpenTelemetry JavaScript docs note that it does not work with code targeting ES2017 or newer unless you transpile back to ES2015.
 
 ## Capturing Uncaught Exceptions
 
@@ -94,13 +93,13 @@ window.onerror = function (message, source, lineno, colno, error) {
       'exception.stacktrace': error ? error.stack : '',
 
       // Browser-specific context about where the error occurred
-      'code.filepath': source,
-      'code.lineno': lineno,
-      'code.column': colno,
+      'code.file.path': source,
+      'code.line.number': lineno,
+      'code.column.number': colno,
 
       // Page context helps identify which feature broke
-      'browser.url': window.location.href,
-      'browser.user_agent': navigator.userAgent,
+      'url.full': window.location.href,
+      'user_agent.original': navigator.userAgent,
     },
   });
 
@@ -151,7 +150,7 @@ window.addEventListener('unhandledrejection', function (event) {
       'exception.type': errorType,
       'exception.message': errorMessage,
       'exception.stacktrace': errorStack,
-      'browser.url': window.location.href,
+      'url.full': window.location.href,
       'error.category': 'promise_rejection',
     },
   });
@@ -178,15 +177,17 @@ Failed API calls are among the most common sources of user-visible errors. The O
 ```javascript
 // src/error-handlers/network-errors.js
 import { tracer } from '../tracing/init';
-import { SpanStatusCode, context, trace } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 
 // Wrap fetch to capture detailed error information when requests fail
 const originalFetch = window.fetch;
 
 window.fetch = async function (...args) {
-  const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+  const input = args[0];
+  const url =
+    typeof input === 'string' ? input : input.url || input.href;
   const method =
-    (args[1] && args[1].method) || 'GET';
+    (args[1] && args[1].method) || input.method || 'GET';
 
   try {
     const response = await originalFetch.apply(this, args);
@@ -195,11 +196,12 @@ window.fetch = async function (...args) {
     if (!response.ok) {
       const span = tracer.startSpan('browser.error.http', {
         attributes: {
-          'http.method': method,
-          'http.url': url,
-          'http.status_code': response.status,
+          'http.request.method': method,
+          'url.full': url,
+          'http.response.status_code': response.status,
           'http.status_text': response.statusText,
           'error.category': 'http_error',
+          'error.type': String(response.status),
         },
       });
 
@@ -217,11 +219,12 @@ window.fetch = async function (...args) {
     // connection refused, CORS blocks, and timeouts
     const span = tracer.startSpan('browser.error.network', {
       attributes: {
-        'http.method': method,
-        'http.url': url,
+        'http.request.method': method,
+        'url.full': url,
         'exception.type': networkError.name,
         'exception.message': networkError.message,
         'error.category': 'network_failure',
+        'error.type': networkError.name,
       },
     });
 
@@ -273,7 +276,7 @@ class TracedErrorBoundary extends React.Component {
         'react.component_stack': errorInfo.componentStack,
         'react.boundary_name': this.props.name || 'unnamed',
         'error.category': 'react_error_boundary',
-        'browser.url': window.location.href,
+        'url.full': window.location.href,
       },
     });
 
@@ -315,8 +318,6 @@ Errors without user context are hard to prioritize. Adding basic user informatio
 
 ```javascript
 // src/error-handlers/user-context.js
-import { tracer } from '../tracing/init';
-
 let currentUser = null;
 
 // Call this after authentication to associate errors with a user
@@ -348,7 +349,7 @@ Initialize all error handlers when your application starts, after the OpenTeleme
 
 ```javascript
 // src/main.js
-import { initTracing } from './tracing/init';
+import './tracing/init';
 import './error-handlers/uncaught';
 import './error-handlers/promise-rejections';
 import './error-handlers/network-errors';
@@ -356,8 +357,6 @@ import { setUser } from './error-handlers/user-context';
 
 // Initialize tracing first so the tracer is available
 // when error handler modules load
-initTracing();
-
 // After the user logs in, set their context
 onAuthComplete((user) => {
   setUser(user);
