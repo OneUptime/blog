@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, TypeScript, Ts-node, ESM
 
-Description: Fix the tracing gap in TypeScript projects where ts-node's ESM mode prevents OpenTelemetry from patching imported modules.
+Description: Fix the tracing gap in TypeScript projects where ts-node's ESM mode prevents OpenTelemetry from patching imported modules unless the right loader hooks are registered first.
 
-TypeScript projects that use `ts-node` with ESM mode have a particularly tricky interaction with OpenTelemetry. The combination of TypeScript compilation, ESM module loading, and OpenTelemetry's require hooks creates a situation where all three systems interfere with each other, resulting in zero traces despite correct configuration.
+TypeScript projects that use `ts-node` with ESM mode have a particularly tricky interaction with OpenTelemetry. The combination of TypeScript compilation, ESM module loading, and OpenTelemetry's instrumentation hooks creates a situation where all three systems can interfere with each other, resulting in zero traces despite correct configuration.
 
 ## The Problem Setup
 
 A typical TypeScript project with ESM:
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "target": "ES2022"
   }
 }
 ```
 
-```json
+```jsonc
 // package.json
 {
   "type": "module",
@@ -47,7 +47,7 @@ sdk.start();
 
 ```typescript
 // src/app.ts
-import './tracing';
+import './tracing.js';
 import express from 'express';
 
 const app = express();
@@ -59,14 +59,14 @@ This produces zero traces. Here is why.
 
 ## Why It Fails
 
-`ts-node --esm` registers its own ESM loader hook to handle TypeScript compilation on the fly. This loader hook competes with OpenTelemetry's ESM loader hook. The result:
+`ts-node --esm` registers its own ESM loader hook to handle TypeScript compilation on the fly. That loader must be chained with OpenTelemetry's ESM loader hook. The result when it is not:
 
 1. `ts-node` intercepts the `import` call
 2. It compiles the TypeScript to JavaScript
 3. It loads the compiled module through the ESM loader
-4. OpenTelemetry's require hook never sees the import
+4. OpenTelemetry's CommonJS require hook never sees the ESM import unless the OpenTelemetry ESM loader hook is also registered
 
-Additionally, TypeScript's `import` statements are hoisted, so `import './tracing'` and `import express from 'express'` are resolved in parallel, not sequentially.
+Additionally, static ESM `import` statements are linked before the module body runs, so `import './tracing.js'` in the same entry point does not guarantee that the tracing setup runs before `import express from 'express'` is loaded.
 
 ## Fix 1: Pre-compile and Run with Node Directly
 
@@ -76,24 +76,24 @@ The most reliable approach is to compile TypeScript separately and run the outpu
 {
   "scripts": {
     "build": "tsc",
-    "start": "node --import ./dist/tracing.mjs dist/app.mjs"
+    "start": "node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./dist/tracing.js dist/app.js"
   }
 }
 ```
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "target": "ES2022"
   }
 }
 ```
 
-This removes `ts-node` from the equation entirely and lets you use the standard Node.js loader hooks.
+This removes `ts-node` from the equation entirely and lets you use the standard Node.js loader hooks. In a package with `"type": "module"`, TypeScript emits `.js` files that Node treats as ESM.
 
 ## Fix 2: Use tsx Instead of ts-node
 
@@ -106,12 +106,12 @@ npm install --save-dev tsx
 ```json
 {
   "scripts": {
-    "start": "node --import ./tracing.ts --loader tsx src/app.ts"
+    "start": "tsx --import ./register.ts --import ./src/tracing.ts src/app.ts"
   }
 }
 ```
 
-Or with the registration approach:
+With the registration approach:
 
 ```typescript
 // register.ts
@@ -120,14 +120,14 @@ register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 ```
 
 ```bash
-tsx --import ./register.ts --import ./tracing.ts src/app.ts
+tsx --import ./register.ts --import ./src/tracing.ts src/app.ts
 ```
 
 ## Fix 3: Use CommonJS Mode with ts-node
 
 If you do not strictly need ESM, switch to CommonJS mode:
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
@@ -138,7 +138,7 @@ If you do not strictly need ESM, switch to CommonJS mode:
 }
 ```
 
-```json
+```jsonc
 // package.json - remove "type": "module"
 {
   "scripts": {
@@ -147,7 +147,7 @@ If you do not strictly need ESM, switch to CommonJS mode:
 }
 ```
 
-This is the simplest fix. CommonJS mode works perfectly with OpenTelemetry's require hooks.
+This is the simplest fix. CommonJS mode works with OpenTelemetry's require hooks as long as the tracing setup is required before the app loads instrumented modules.
 
 ## Fix 4: Separate Tracing Setup as CJS
 
@@ -165,10 +165,10 @@ sdk.start();
 ```
 
 ```bash
-ts-node --esm --require ./tracing.cjs src/app.ts
+node --require ./tracing.cjs --experimental-loader=@opentelemetry/instrumentation/hook.mjs --loader ts-node/esm src/app.ts
 ```
 
-The `--require` flag loads the CJS file before ts-node's ESM loader kicks in, giving OpenTelemetry a chance to register its hooks first.
+The `--require` flag loads the CJS file before the application entry point, while the OpenTelemetry loader hook handles ESM imports made by the app.
 
 ## Debugging the Issue
 
@@ -196,7 +196,7 @@ For production TypeScript applications, always pre-compile:
 tsc --outDir dist
 
 # Start with proper OpenTelemetry hooks
-node --import ./dist/tracing.js dist/app.js
+node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./dist/tracing.js dist/app.js
 ```
 
 This approach:
