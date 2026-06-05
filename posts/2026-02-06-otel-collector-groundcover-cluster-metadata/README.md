@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Groundcover, Kubernetes, Metadata Enrichment
 
-Description: Enrich OpenTelemetry data with cluster-level metadata using the Collector's resource detection and k8s_attributes processors for Groundcover.
+Description: Enrich OpenTelemetry data with cluster-level metadata using the Collector's resource_detection and k8s_attributes processors for Groundcover.
 
 When running multiple Kubernetes clusters, each sending telemetry to Groundcover, you need cluster-level metadata on every span, metric, and log record. Without it, you cannot distinguish which cluster produced a given trace. The OpenTelemetry Collector provides several processors and resource detectors that automatically attach cluster identity and node-level metadata to your telemetry before it reaches Groundcover.
 
@@ -27,8 +27,8 @@ receivers:
 
 processors:
   # Detect cloud provider metadata automatically
-  resourcedetection:
-    detectors: [env, gcp, aws, azure]
+  resource_detection:
+    detectors: [env, gcp]
     timeout: 5s
     override: false
     # GCP-specific: detect project ID, zone, cluster name
@@ -73,10 +73,10 @@ processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: "${CLUSTER_NAME}"
+        value: "${env:CLUSTER_NAME}"
         action: upsert
       - key: deployment.environment
-        value: "${DEPLOY_ENV}"
+        value: "${env:DEPLOY_ENV}"
         action: upsert
 
   # Control memory usage
@@ -90,10 +90,10 @@ processors:
     timeout: 5s
 
 exporters:
-  otlp/groundcover:
-    endpoint: ingest.groundcover.com:443
+  otlp_grpc/groundcover:
+    endpoint: "${env:GROUNDCOVER_OTLP_ENDPOINT}:443"
     headers:
-      x-groundcover-api-key: "${GROUNDCOVER_API_KEY}"
+      apikey: "${env:GROUNDCOVER_INGESTION_KEY}"
     tls:
       insecure: false
     compression: gzip
@@ -106,16 +106,16 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, k8s_attributes, resource, batch]
-      exporters: [otlp/groundcover]
+      processors: [memory_limiter, resource_detection, k8s_attributes, resource, batch]
+      exporters: [otlp_grpc/groundcover]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, k8s_attributes, resource, batch]
-      exporters: [otlp/groundcover]
+      processors: [memory_limiter, resource_detection, k8s_attributes, resource, batch]
+      exporters: [otlp_grpc/groundcover]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, k8s_attributes, resource, batch]
-      exporters: [otlp/groundcover]
+      processors: [memory_limiter, resource_detection, k8s_attributes, resource, batch]
+      exporters: [otlp_grpc/groundcover]
 ```
 
 ## Processor Ordering Matters
@@ -123,16 +123,16 @@ service:
 The order of processors in the pipeline is significant:
 
 ```yaml
-processors: [memory_limiter, resourcedetection, k8s_attributes, resource, batch]
+processors: [memory_limiter, resource_detection, k8s_attributes, resource, batch]
 ```
 
 1. **memory_limiter** runs first to protect the Collector from OOM crashes
-2. **resourcedetection** discovers cloud and cluster metadata
+2. **resource_detection** discovers cloud and cluster metadata
 3. **k8s_attributes** enriches with pod-level Kubernetes metadata
 4. **resource** adds or overrides any missing attributes
 5. **batch** groups records for efficient export
 
-If you put `resource` before `resourcedetection`, the resource detector might overwrite your manual values (depending on the `override` setting).
+If you put `resource` before `resource_detection`, the resource detector might overwrite your manual values (depending on the `override` setting).
 
 ## Extracting Labels and Annotations
 
@@ -158,16 +158,20 @@ This is useful for tagging all telemetry with ownership information. In Groundco
 
 ## Cloud Provider Resource Detection
 
-The `resourcedetection` processor automatically detects cloud metadata. On GCP, it adds attributes like `cloud.provider`, `cloud.region`, `cloud.availability_zone`, and `k8s.cluster.name`. On AWS, it detects `cloud.provider`, `cloud.region`, `cloud.account.id`, and the EKS cluster name.
+The `resource_detection` processor automatically detects cloud metadata. On GCP, it adds attributes like `cloud.provider`, `cloud.region`, `cloud.availability_zone`, and `k8s.cluster.name` when running on GKE. On AWS, the `ec2` detector adds attributes such as `cloud.provider`, `cloud.region`, and `host.id`; use the `eks` detector with `k8s.cluster.name` enabled when you want EKS cluster name detection.
 
 Here is how it looks on AWS:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, eks, ec2]
     timeout: 5s
     override: false
+    eks:
+      resource_attributes:
+        k8s.cluster.name:
+          enabled: true
     ec2:
       resource_attributes:
         cloud.provider:
@@ -201,19 +205,24 @@ extraEnvs:
     value: "production-us-east-1"
   - name: DEPLOY_ENV
     value: "production"
-  - name: GROUNDCOVER_API_KEY
+  - name: GROUNDCOVER_OTLP_ENDPOINT
+    value: "your-groundcover-otlp-endpoint"
+  - name: GROUNDCOVER_INGESTION_KEY
     valueFrom:
       secretKeyRef:
         name: groundcover-credentials
-        key: api-key
+        key: ingestion-key
 ```
 
 Deploy with:
 
 ```bash
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+
 helm install otel-collector open-telemetry/opentelemetry-collector \
   -f values.yaml \
-  -n groundcover
+  -n groundcover \
+  --create-namespace
 ```
 
 ## Verifying Metadata in Groundcover
