@@ -93,12 +93,12 @@ auto_auth {
 template {
   contents = <<-EOF
     {{ with secret "secret/data/otel/production/primary-backend" }}
-    OTLP_PRIMARY_API_KEY={{ .Data.data.api_key }}
-    OTLP_PRIMARY_ENDPOINT={{ .Data.data.endpoint }}
+    export OTLP_PRIMARY_API_KEY={{ .Data.data.api_key }}
+    export OTLP_PRIMARY_ENDPOINT={{ .Data.data.endpoint }}
     {{ end }}
     {{ with secret "secret/data/otel/production/metrics-backend" }}
-    OTLP_METRICS_TOKEN={{ .Data.data.token }}
-    OTLP_METRICS_ENDPOINT={{ .Data.data.endpoint }}
+    export OTLP_METRICS_TOKEN={{ .Data.data.token }}
+    export OTLP_METRICS_ENDPOINT={{ .Data.data.endpoint }}
     {{ end }}
   EOF
   destination = "/vault/secrets/otel-env"
@@ -136,9 +136,6 @@ receivers:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"
-        tls:
-          cert_file: /vault/secrets/client.pem
-          key_file: /vault/secrets/client-key.pem
 
 processors:
   batch:
@@ -181,8 +178,13 @@ metadata:
   namespace: production
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
     metadata:
+      labels:
+        app: otel-collector
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "otel-collector-prod"
@@ -192,14 +194,35 @@ spec:
           export OTLP_PRIMARY_API_KEY={{ .Data.data.api_key }}
           export OTLP_PRIMARY_ENDPOINT={{ .Data.data.endpoint }}
           {{ end }}
+          {{ with secret "secret/data/otel/production/metrics-backend" }}
+          export OTLP_METRICS_TOKEN={{ .Data.data.token }}
+          export OTLP_METRICS_ENDPOINT={{ .Data.data.endpoint }}
+          {{ end }}
+        vault.hashicorp.com/agent-inject-secret-client.pem: "secret/data/otel/production/tls"
+        vault.hashicorp.com/agent-inject-template-client.pem: |
+          {{ with secret "secret/data/otel/production/tls" }}{{ .Data.data.client_cert }}{{ end }}
+        vault.hashicorp.com/agent-inject-secret-client-key.pem: "secret/data/otel/production/tls"
+        vault.hashicorp.com/agent-inject-template-client-key.pem: |
+          {{ with secret "secret/data/otel/production/tls" }}{{ .Data.data.client_key }}{{ end }}
+        vault.hashicorp.com/agent-inject-secret-ca.pem: "secret/data/otel/production/tls"
+        vault.hashicorp.com/agent-inject-template-ca.pem: |
+          {{ with secret "secret/data/otel/production/tls" }}{{ .Data.data.ca_cert }}{{ end }}
     spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           command: ["/bin/sh", "-c"]
           args:
-            - source /vault/secrets/otel-env && otelcol-contrib --config /etc/otel/config.yaml
+            - . /vault/secrets/otel-env && exec otelcol-contrib --config /etc/otel/config.yaml
+          volumeMounts:
+            - name: collector-config
+              mountPath: /etc/otel
+              readOnly: true
+      volumes:
+        - name: collector-config
+          configMap:
+            name: otel-collector-config
 ```
 
 ## Secret Rotation Workflow
