@@ -17,7 +17,7 @@ The pipeline has three stages:
    (per host)              (gateway/pool)         (storage + query)
 ```
 
-The eBPF agent runs as a DaemonSet (one per node in Kubernetes) or as a systemd service on bare metal. It captures CPU stack samples from all target processes on the host and exports them as OpenTelemetry profiles to the Collector.
+The eBPF agent runs as a specialized OpenTelemetry Collector DaemonSet (one per node in Kubernetes) or as a systemd service on bare metal. It captures CPU stack samples from all target processes on the host and exports them as OpenTelemetry profiles to the Collector.
 
 The Collector acts as a gateway. It receives profiles from multiple agents, enriches them with metadata, batches them, and exports them to Pyroscope.
 
@@ -28,6 +28,29 @@ Pyroscope stores the profiles and provides the query API used by Grafana for vis
 ```yaml
 # profiler-daemonset.yaml
 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-ebpf-profiler-config
+  namespace: observability
+data:
+  config.yaml: |
+    receivers:
+      profiling:
+        samples_per_second: 97
+
+    exporters:
+      otlp/gateway:
+        endpoint: otel-collector-gateway.observability:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        profiles:
+          receivers: [profiling]
+          exporters: [otlp/gateway]
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -45,20 +68,10 @@ spec:
       hostPID: true
       containers:
         - name: profiler
-          image: ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
-          env:
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector-gateway.observability:4317"
-            - name: OTEL_PROFILER_SAMPLING_FREQUENCY
-              value: "19"
-            - name: OTEL_PROFILER_MAX_STACK_DEPTH
-              value: "64"
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "host.name=$(NODE_NAME)"
+          image: otel/opentelemetry-collector-ebpf-profiler:0.147.0
+          args:
+            - "--config=/etc/otel/config.yaml"
+            - "--feature-gates=+service.profilesSupport"
           resources:
             requests:
               cpu: 100m
@@ -69,6 +82,8 @@ spec:
           securityContext:
             privileged: true
           volumeMounts:
+            - name: config
+              mountPath: /etc/otel
             - name: sys-kernel
               mountPath: /sys/kernel
               readOnly: true
@@ -79,6 +94,9 @@ spec:
               mountPath: /proc
               readOnly: true
       volumes:
+        - name: config
+          configMap:
+            name: otel-ebpf-profiler-config
         - name: sys-kernel
           hostPath:
             path: /sys/kernel
@@ -121,7 +139,7 @@ processors:
     pod_association:
       - sources:
           - from: resource_attribute
-            name: host.name
+            name: container.id
 
   # Batch profiles to reduce export overhead
   batch:
@@ -136,8 +154,8 @@ processors:
     spike_limit_mib: 256
 
 exporters:
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope.observability:4040
+  otlp/pyroscope:
+    endpoint: pyroscope.observability:4040
     tls:
       insecure: true
     retry_on_failure:
@@ -151,11 +169,55 @@ service:
     profiles:
       receivers: [otlp]
       processors: [memory_limiter, k8sattributes, batch]
-      exporters: [otlphttp/pyroscope]
+      exporters: [otlp/pyroscope]
 ```
 
 ```yaml
 # collector-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-k8sattributes
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-k8sattributes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: observability
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-gateway
+  namespace: observability
+spec:
+  selector:
+    app: otel-collector-gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -171,10 +233,13 @@ spec:
       labels:
         app: otel-collector-gateway
     spec:
+      serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
-          args: ["--config=/etc/otel/config.yaml"]
+          image: otel/opentelemetry-collector-contrib:0.147.0
+          args:
+            - "--config=/etc/otel/config.yaml"
+            - "--feature-gates=+service.profilesSupport"
           resources:
             requests:
               cpu: 500m
@@ -197,6 +262,19 @@ Deploy Pyroscope with persistent storage:
 
 ```yaml
 # pyroscope-deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyroscope
+  namespace: observability
+spec:
+  selector:
+    app: pyroscope
+  ports:
+    - name: http
+      port: 4040
+      targetPort: 4040
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -214,7 +292,7 @@ spec:
     spec:
       containers:
         - name: pyroscope
-          image: grafana/pyroscope:1.7.0
+          image: grafana/pyroscope:1.18.1
           args:
             - "-config.file=/etc/pyroscope/config.yaml"
           ports:
@@ -224,6 +302,10 @@ spec:
               mountPath: /data
             - name: config
               mountPath: /etc/pyroscope
+      volumes:
+        - name: config
+          configMap:
+            name: pyroscope-config
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -243,9 +325,13 @@ storage:
   filesystem:
     dir: /data
 
-# Retention: keep 7 days of profiles
+# Query lookback: allow queries over the last 7 days of profiles
 limits:
   max_query_lookback: 168h
+  ingestion_relabeling_rules:
+    - action: labelmap
+      regex: ^process.executable.name$
+      replacement: service_name
 
 server:
   http_listen_port: 4040
@@ -262,9 +348,11 @@ kubectl get pods -n observability -l app=otel-ebpf-profiler
 # Check collector logs for incoming profile data
 kubectl logs -n observability deployment/otel-collector-gateway | grep profiles
 
-# Query Pyroscope directly to confirm data is arriving
-curl http://pyroscope.observability:4040/api/v1/labels
-# Should return labels like "service_name", "host.name", etc.
+# Query Pyroscope directly to confirm profile types are arriving
+curl -H "Content-Type: application/json" \
+  -d "{\"start\": $(($(date +%s) - 3600))000, \"end\": $(date +%s)000}" \
+  http://pyroscope.observability:4040/querier.v1.QuerierService/ProfileTypes
+# Should return profile types such as "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
 ```
 
 ## Scaling Considerations
