@@ -52,6 +52,8 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 def setup_test_telemetry():
     """Configure OpenTelemetry for CI/CD test runs."""
+    otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "https://otel.oneuptime.com")
+
     # Include CI metadata in the resource attributes
     resource = Resource.create({
         SERVICE_NAME: "regression-test",
@@ -65,14 +67,14 @@ def setup_test_telemetry():
     trace_provider = TracerProvider(resource=resource)
     trace_provider.add_span_processor(
         BatchSpanProcessor(
-            OTLPSpanExporter(endpoint="https://otel.oneuptime.com/v1/traces")
+            OTLPSpanExporter(endpoint=f"{otlp_endpoint}/v1/traces")
         )
     )
     trace.set_tracer_provider(trace_provider)
 
     # Set up metrics
     metric_reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(endpoint="https://otel.oneuptime.com/v1/metrics"),
+        OTLPMetricExporter(endpoint=f"{otlp_endpoint}/v1/metrics"),
         export_interval_millis=5000,
     )
     metric_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -98,21 +100,21 @@ test_api_latency = meter.create_histogram(
 def timed_api_call(endpoint: str, method: str = "GET", **kwargs):
     """Make an API call with timing and tracing for regression detection."""
     with tracer.start_as_current_span(f"test.api.{method}.{endpoint}") as span:
-        span.set_attribute("http.method", method)
-        span.set_attribute("http.url", endpoint)
+        span.set_attribute("http.request.method", method)
+        span.set_attribute("url.full", endpoint)
         span.set_attribute("ci.test_run", True)
 
         start = time.perf_counter()
         response = make_request(method, endpoint, **kwargs)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
-        span.set_attribute("http.status_code", response.status_code)
+        span.set_attribute("http.response.status_code", response.status_code)
         span.set_attribute("http.response_time_ms", elapsed_ms)
 
         # Record for metric aggregation
         test_api_latency.record(elapsed_ms, {
             "http.route": endpoint,
-            "http.method": method,
+            "http.request.method": method,
         })
 
         return response, elapsed_ms
@@ -185,12 +187,14 @@ This data structure captures per-endpoint latency distributions and error rates,
 
 ## The Regression Detector
 
-The detector compares current test results against a baseline and flags statistically significant regressions.
+The detector compares current test results against a baseline and flags threshold-based regressions.
 
 ```python
 # regression_detector.py
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
+
+from test_collector import TestRunResults
 
 @dataclass
 class Regression:
@@ -303,6 +307,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   regression-check:
     runs-on: ubuntu-latest
@@ -320,7 +328,7 @@ jobs:
           CI_COMMIT_SHA: ${{ github.sha }}
           CI_BRANCH: ${{ github.head_ref }}
           CI_BUILD_NUMBER: ${{ github.run_number }}
-          OTEL_ENDPOINT: https://otel.oneuptime.com
+          OTEL_EXPORTER_OTLP_ENDPOINT: https://otel.oneuptime.com
         run: |
           pip install -r requirements-test.txt
           python -m pytest tests/performance/ \
@@ -339,13 +347,13 @@ jobs:
             --threshold-p95-critical 50
 
       - name: Post regression report
-        if: failure()
+        if: failure() && hashFiles('regression-report.md') != ''
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const report = fs.readFileSync('regression-report.md', 'utf8');
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -361,6 +369,10 @@ The regression check step compares the current test results against the baseline
 
 ```python
 # report_generator.py
+from typing import List
+
+from regression_detector import Regression
+
 def generate_regression_report(regressions: List[Regression], commit_sha: str) -> str:
     """Generate a markdown regression report for PR comments."""
     if not regressions:
@@ -407,6 +419,8 @@ Baselines need to be updated whenever a legitimate performance change is made. S
 import json
 from pathlib import Path
 
+from test_collector import EndpointMetrics, TestRunResults
+
 class BaselineManager:
     """Manages performance baselines for regression detection."""
 
@@ -418,13 +432,17 @@ class BaselineManager:
         """Save current test results as the new baseline."""
         data = {
             "commit_sha": results.commit_sha,
+            "branch": results.branch,
+            "build_number": results.build_number,
+            "total_tests": results.total_tests,
+            "failed_tests": results.failed_tests,
+            "total_duration_ms": results.total_duration_ms,
             "endpoints": {
                 key: {
-                    "p50": metrics.p50,
-                    "p95": metrics.p95,
-                    "p99": metrics.p99,
-                    "error_rate": metrics.error_rate,
-                    "sample_count": len(metrics.latencies_ms),
+                    "endpoint": metrics.endpoint,
+                    "method": metrics.method,
+                    "latencies_ms": metrics.latencies_ms,
+                    "status_codes": metrics.status_codes,
                 }
                 for key, metrics in results.endpoints.items()
             },
@@ -434,13 +452,30 @@ class BaselineManager:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def load_baseline(self) -> dict:
+    def load_baseline(self) -> TestRunResults:
         """Load the current performance baseline."""
         path = self.baseline_dir / "performance_baseline.json"
         if not path.exists():
-            return {}
+            return TestRunResults(commit_sha="", branch="", build_number="")
         with open(path) as f:
-            return json.load(f)
+            data = json.load(f)
+
+        results = TestRunResults(
+            commit_sha=data.get("commit_sha", ""),
+            branch=data.get("branch", ""),
+            build_number=data.get("build_number", ""),
+            total_tests=data.get("total_tests", 0),
+            failed_tests=data.get("failed_tests", 0),
+            total_duration_ms=data.get("total_duration_ms", 0),
+        )
+        for key, metrics in data.get("endpoints", {}).items():
+            results.endpoints[key] = EndpointMetrics(
+                endpoint=metrics["endpoint"],
+                method=metrics["method"],
+                latencies_ms=metrics.get("latencies_ms", []),
+                status_codes=metrics.get("status_codes", []),
+            )
+        return results
 ```
 
 ---
