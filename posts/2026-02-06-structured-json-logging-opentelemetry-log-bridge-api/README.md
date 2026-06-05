@@ -21,10 +21,10 @@ This means you do not need to change any of your existing `logger.info()` calls.
 Install the required packages:
 
 ```bash
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc opentelemetry-instrumentation-logging
 ```
 
-Here is the setup code that configures both tracing and logging through OpenTelemetry. The key piece is the `LoggingHandler` that bridges Python's built-in logging module:
+Here is the setup code that configures both tracing and logging through OpenTelemetry. The key piece is the `LoggingInstrumentor` that installs the handler bridging Python's built-in logging module:
 
 ```python
 # otel_setup.py
@@ -34,10 +34,12 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 def setup_otel(service_name: str):
     """Initialize OpenTelemetry tracing and logging."""
@@ -59,16 +61,11 @@ def setup_otel(service_name: str):
     log_provider.add_log_record_processor(
         BatchLogRecordProcessor(OTLPLogExporter(endpoint="http://otel-collector:4317"))
     )
+    set_logger_provider(log_provider)
 
-    # Create the bridge handler that connects Python logging to OTel
-    otel_handler = LoggingHandler(
-        level=logging.INFO,
-        logger_provider=log_provider,
-    )
-
-    # Attach the handler to the root logger
+    # Install the bridge handler that connects Python logging to OTel
+    LoggingInstrumentor().instrument(log_handler_level=logging.INFO)
     root_logger = logging.getLogger()
-    root_logger.addHandler(otel_handler)
     root_logger.setLevel(logging.INFO)
 
     return trace.get_tracer(service_name)
@@ -148,7 +145,7 @@ The `extra` dict fields become structured attributes on the log record. When exp
 
 ## Collector Configuration for Logs
 
-The collector receives logs via OTLP and can export them to multiple destinations. Here is a config that sends logs to both a file (for debugging) and a remote backend:
+The collector receives logs via OTLP and can export them to multiple destinations. Here is a Collector Contrib config that sends logs to both a file (for debugging) and a remote backend:
 
 ```yaml
 # otel-collector-config.yaml
@@ -184,7 +181,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [otlp]
+      exporters: [otlp, file]
     traces:
       receivers: [otlp]
       processors: [batch]
