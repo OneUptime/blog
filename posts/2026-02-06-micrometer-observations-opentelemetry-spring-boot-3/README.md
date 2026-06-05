@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Micrometer, Spring Boot 3, Observations, Bridge
 
 Description: Learn how to use the Micrometer Observation API as a bridge to OpenTelemetry in Spring Boot 3 for unified observability across metrics, traces, and logs.
 
-Spring Boot 3 introduced the Micrometer Observation API, a powerful abstraction that unifies metrics, tracing, and logging instrumentation. Rather than forcing a choice between Micrometer and OpenTelemetry, the Observation API acts as a facade that can emit telemetry to multiple backends simultaneously. This approach gives you the flexibility to instrument once and export everywhere.
+Spring Boot 3 introduced the Micrometer Observation API, a powerful abstraction that unifies metrics and tracing instrumentation and can enrich log correlation. Rather than forcing a choice between Micrometer and OpenTelemetry, the Observation API acts as a facade that can emit telemetry to multiple handlers simultaneously. This approach gives you the flexibility to instrument once and export everywhere.
 
 ## Understanding Micrometer Observations
 
@@ -21,21 +21,21 @@ graph TD
 
     C --> F[OpenTelemetry Tracer]
     D --> G[Micrometer Registry]
-    E --> H[Log Appender]
+    E --> H[Log Correlation or Custom Handler]
 
     F --> I[OTLP Collector]
     G --> I
     H --> I
 ```
 
-An observation automatically generates:
+With the right handlers and exporters, an observation can generate:
 - **Traces**: Spans with timing and attributes
 - **Metrics**: Timers and counters
-- **Logs**: Structured log events with context
+- **Logs**: Correlated log context, or structured log events when you add logging instrumentation
 
 ## Setting Up the Bridge
 
-Configure Spring Boot 3 to bridge observations to OpenTelemetry traces and metrics.
+Configure Spring Boot 3 to bridge observations to OpenTelemetry traces and Micrometer metrics.
 
 ```xml
 <!-- pom.xml -->
@@ -76,6 +76,13 @@ Configure Spring Boot 3 to bridge observations to OpenTelemetry traces and metri
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
+
+    <!-- Test support for observations -->
+    <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-observation-test</artifactId>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 ```
 
@@ -89,6 +96,7 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    testImplementation 'io.micrometer:micrometer-observation-test'
 }
 ```
 
@@ -112,9 +120,12 @@ management:
 
   # Metrics configuration
   metrics:
-    enabled: true
-    export:
-      prometheus:
+    enable:
+      all: true
+
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
   # Actuator endpoints
@@ -123,18 +134,13 @@ management:
       exposure:
         include: health,metrics,prometheus
 
-# OpenTelemetry exporter configuration
-otel:
-  exporter:
-    otlp:
-      endpoint: http://localhost:4318
-      protocol: http/protobuf
+# OTLP trace exporter configuration
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
 
-  service:
-    name: ${spring.application.name}
-
-  resource:
-    attributes:
+  opentelemetry:
+    resource-attributes:
       deployment.environment: development
       service.namespace: payments
 ```
@@ -150,6 +156,8 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+
+import java.math.BigDecimal;
 
 /**
  * Payment service demonstrating Observation API usage.
@@ -172,7 +180,7 @@ public class PaymentService {
             .highCardinalityKeyValue("payment.id", paymentId)
             .start();
 
-        try {
+        try (Observation.Scope scope = observation.openScope()) {
             // Business logic
             validatePayment(paymentId, amount);
             chargeCustomer(paymentId, amount);
@@ -224,6 +232,10 @@ package com.example.payment;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+
+import java.math.BigDecimal;
 
 /**
  * Payment service using scoped observations.
@@ -281,6 +293,8 @@ package com.example.payment;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
 
 /**
  * Demonstrates proper use of low vs high cardinality key-values.
@@ -422,7 +436,7 @@ public class PaymentService {
         this.convention = new PaymentObservationConvention();
     }
 
-    public void processPayment(String paymentId, String userId, BigDecimal amount) {
+    public String processPayment(String paymentId, String userId, BigDecimal amount) {
         // Create context with all relevant data
         PaymentContext context = new PaymentContext();
         context.setPaymentId(paymentId);
@@ -433,12 +447,13 @@ public class PaymentService {
         context.setCurrency("USD");
 
         // Create observation with custom convention
-        Observation.createNotStarted(convention, context, observationRegistry)
+        return Observation.createNotStarted(convention, context, observationRegistry)
             .observe(() -> {
                 // Process payment
                 validatePayment(amount);
-                chargeCustomer(paymentId, amount);
+                String transactionId = chargeCustomer(paymentId, amount);
                 context.setStatus("completed");
+                return transactionId;
             });
     }
 }
@@ -551,6 +566,7 @@ public class LoggingObservationHandler implements ObservationHandler<Observation
 
     @Override
     public void onStart(Observation.Context context) {
+        context.put("startTime", System.currentTimeMillis());
         log.info("Observation started: {} with context: {}",
             context.getName(),
             context.getAllKeyValues());
@@ -565,9 +581,11 @@ public class LoggingObservationHandler implements ObservationHandler<Observation
 
     @Override
     public void onStop(Observation.Context context) {
+        Long startTime = context.get("startTime");
+        long durationMs = startTime != null ? System.currentTimeMillis() - startTime : -1;
         log.info("Observation stopped: {} (duration: {}ms)",
             context.getName(),
-            System.currentTimeMillis() - context.get("startTime"));
+            durationMs);
     }
 
     @Override
@@ -616,6 +634,7 @@ package com.example.payment.config;
 
 import io.micrometer.observation.ObservationPredicate;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.common.KeyValue;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -637,8 +656,8 @@ public class ObservationFilterConfig {
             .observationPredicate((name, context) -> {
                 // Skip observations for actuator endpoints
                 if (name.startsWith("http.server.requests")) {
-                    String uri = context.getLowCardinalityKeyValue("uri");
-                    if (uri != null && uri.startsWith("/actuator")) {
+                    KeyValue uri = context.getLowCardinalityKeyValue("uri");
+                    if (uri != null && uri.getValue().startsWith("/actuator")) {
                         return false;  // Don't observe
                     }
                 }
@@ -650,9 +669,9 @@ public class ObservationFilterConfig {
             .observationConfig()
             .observationPredicate((name, context) -> {
                 if ("payment.process".equals(name)) {
-                    String method = context.getLowCardinalityKeyValue("payment.method");
+                    KeyValue method = context.getLowCardinalityKeyValue("payment.method");
                     // Skip test payments
-                    return !"test".equals(method);
+                    return method == null || !"test".equals(method.getValue());
                 }
                 return true;
             });
@@ -669,9 +688,14 @@ package com.example.payment;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
 
 /**
  * Service that uses both Observations and OpenTelemetry API.
@@ -685,9 +709,9 @@ public class HybridPaymentService {
 
     public HybridPaymentService(
             ObservationRegistry observationRegistry,
-            Tracer tracer) {
+            OpenTelemetry openTelemetry) {
         this.observationRegistry = observationRegistry;
-        this.tracer = tracer;
+        this.tracer = openTelemetry.getTracer("com.example.payment");
     }
 
     public void processPayment(String paymentId, BigDecimal amount) {
