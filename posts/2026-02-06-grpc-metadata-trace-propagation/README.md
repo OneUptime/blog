@@ -23,7 +23,6 @@ import (
     "context"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
     "google.golang.org/grpc"
     "google.golang.org/grpc/metadata"
@@ -133,10 +132,20 @@ func serverInterceptor(
 
 ```python
 import grpc
-from opentelemetry import trace, context
+from collections import namedtuple
+from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
 
 tracer = trace.get_tracer("grpc-propagation")
+
+class _ClientCallDetails(
+    namedtuple(
+        "_ClientCallDetails",
+        ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
+    ),
+    grpc.ClientCallDetails,
+):
+    pass
 
 class GrpcMetadataCarrier:
     """Adapts gRPC metadata to work with OpenTelemetry propagators."""
@@ -175,11 +184,13 @@ class TracePropagationClientInterceptor(grpc.UnaryUnaryClientInterceptor):
             existing_metadata.extend(carrier.to_grpc_metadata())
 
             # Create new call details with updated metadata
-            new_details = grpc.ClientCallDetails(
+            new_details = _ClientCallDetails(
                 method=client_call_details.method,
                 timeout=client_call_details.timeout,
                 metadata=existing_metadata,
                 credentials=client_call_details.credentials,
+                wait_for_ready=client_call_details.wait_for_ready,
+                compression=client_call_details.compression,
             )
 
             response = continuation(new_details, request)
@@ -199,16 +210,23 @@ class TracePropagationServerInterceptor(grpc.ServerInterceptor):
 
         # The span will be created within the restored context
         # This ensures the server span is a child of the client span
+        handler = continuation(handler_call_details)
+        if handler is None or handler.unary_unary is None:
+            return handler
+
         def traced_handler(request, servicer_context):
             with tracer.start_as_current_span(
                 handler_call_details.method,
                 context=ctx,
                 kind=trace.SpanKind.SERVER,
             ) as span:
-                handler = continuation(handler_call_details)
                 return handler.unary_unary(request, servicer_context)
 
-        return grpc.unary_unary_rpc_method_handler(traced_handler)
+        return grpc.unary_unary_rpc_method_handler(
+            traced_handler,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 ```
 
 ## Verifying Propagation
