@@ -66,6 +66,12 @@ service:
       initial_fields:
         service: otel-collector
         component: exporter
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      # Include debug exporter temporarily
+      exporters: [otlp, debug]
 
 exporters:
   otlp:
@@ -77,20 +83,12 @@ exporters:
       enabled: true
       queue_size: 10000
 
-  # Add logging exporter to see what's being sent
-  logging:
-    loglevel: info
+  # Add debug exporter to see what's being sent
+  debug:
+    verbosity: basic
     # Sample to reduce log volume
     sampling_initial: 10
     sampling_thereafter: 100
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      # Include logging exporter temporarily
-      exporters: [otlp, logging]
 ```
 
 Monitor logs for timeout patterns:
@@ -119,23 +117,31 @@ service:
     metrics:
       # Enable detailed metrics
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: 0.0.0.0
+              port: 8888
+              without_type_suffix: true
+              without_units: true
 ```
 
 Query export duration metrics:
 
 ```promql
-# Export duration histogram (p50, p95, p99)
-histogram_quantile(0.50, rate(otelcol_exporter_send_duration_bucket[5m]))
-histogram_quantile(0.95, rate(otelcol_exporter_send_duration_bucket[5m]))
-histogram_quantile(0.99, rate(otelcol_exporter_send_duration_bucket[5m]))
+# gRPC export duration histogram (p50, p95, p99)
+histogram_quantile(0.50, sum by (le) (rate({"__name__"="rpc.client.call.duration_bucket"}[5m])))
+histogram_quantile(0.95, sum by (le) (rate({"__name__"="rpc.client.call.duration_bucket"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate({"__name__"="rpc.client.call.duration_bucket"}[5m])))
 
-# Compare timeout rate to total exports
+# Compare failed sends to total span exports
 rate(otelcol_exporter_send_failed_spans[5m]) /
   (rate(otelcol_exporter_sent_spans[5m]) + rate(otelcol_exporter_send_failed_spans[5m]))
 
-# Average export duration by exporter
-avg(rate(otelcol_exporter_send_duration_sum[5m])) by (exporter)
+# Average gRPC export duration
+rate({"__name__"="rpc.client.call.duration_sum"}[5m]) /
+  rate({"__name__"="rpc.client.call.duration_count"}[5m])
 ```
 
 ### Step 3: Test Backend Connectivity
@@ -287,7 +293,7 @@ kubectl exec -it deployment/otel-collector -n observability -- sh -c \
 kubectl exec -it deployment/otel-collector -n observability -- cat /etc/resolv.conf
 ```
 
-**Solution**: Use IP addresses, reduce DNS TTL, or deploy DNS cache.
+**Solution**: Use IP addresses for truly static endpoints, reduce DNS lookup retries, or deploy DNS cache.
 
 ```yaml
 # otel-collector-config.yaml
@@ -344,10 +350,10 @@ spec:
           name: otel-collector-config
 ```
 
-Alternatively, deploy local DNS cache sidecar:
+Alternatively, use Kubernetes NodeLocal DNSCache if it is enabled in your cluster:
 
 ```yaml
-# deployment-with-dns-cache.yaml
+# deployment-with-node-local-dns.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -356,29 +362,22 @@ metadata:
 spec:
   template:
     spec:
-      containers:
-      # Local DNS cache
-      - name: dns-cache
-        image: k8s.gcr.io/dns/k8s-dns-node-cache:1.22.20
-        securityContext:
-          privileged: true
-        ports:
-        - containerPort: 53
-          name: dns
-          protocol: UDP
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 60
-          timeoutSeconds: 5
+      # Point pods at the NodeLocal DNSCache address when your cluster is configured for it.
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+        - 169.254.20.10
+        searches:
+        - observability.svc.cluster.local
+        - svc.cluster.local
+        - cluster.local
+        options:
+        - name: ndots
+          value: "1"
 
+      containers:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:0.93.0
-        # Use local DNS cache
-        env:
-        - name: LOCALDNS
-          value: "169.254.20.10"
 ```
 
 ### 4. TLS Handshake Overhead
@@ -401,10 +400,8 @@ exporters:
       # Optimize TLS configuration
       # Use TLS 1.3 for faster handshake
       min_version: "1.3"
-      # Specify cipher suites for faster negotiation
-      cipher_suites:
-      - "TLS_AES_128_GCM_SHA256"
-      - "TLS_AES_256_GCM_SHA384"
+      # Leave cipher suites unset unless you need a legacy TLS policy.
+      # Go's TLS 1.3 cipher suites are not configurable through cipher_suites.
       # Load certificates once at startup
       ca_file: /etc/ssl/certs/ca-bundle.crt
       cert_file: /etc/ssl/certs/client-cert.pem
@@ -415,10 +412,7 @@ exporters:
       time: 30s
       timeout: 10s
 
-    # Connection pool settings (if supported by exporter)
-    max_idle_conns: 100
-    max_idle_conns_per_host: 10
-    idle_conn_timeout: 90s
+    # gRPC reuses HTTP/2 connections; keepalive avoids repeated handshakes.
 ```
 
 ### 5. Large Payload Size
@@ -429,7 +423,7 @@ Extremely large batches take longer to serialize, transfer, and process.
 
 ```promql
 # Check batch size distribution
-histogram_quantile(0.95, rate(otelcol_processor_batch_batch_size_trigger_send_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(otelcol_processor_batch_batch_send_size_bucket[5m])))
 ```
 
 **Solution**: Reduce batch size and enable compression.
@@ -457,9 +451,6 @@ exporters:
 
     # Enable compression to reduce transfer time
     compression: gzip
-
-    # Increase max message size if needed
-    max_msg_size_mib: 4
 
     sending_queue:
       enabled: true
@@ -536,12 +527,8 @@ exporters:
       # Increase queue capacity
       queue_size: 30000
       # Significantly increase number of consumers
-      # Each consumer maintains separate connection
+      # Each consumer can process an export request concurrently
       num_consumers: 50
-
-    # Configure connection pooling (exporter-specific)
-    max_idle_conns: 100
-    max_idle_conns_per_host: 50
 
 # Scale collector deployment
 ---
@@ -591,7 +578,6 @@ exporters:
       # Start retrying quickly
       initial_interval: 1s
       # Exponential backoff
-      randomization_factor: 0.5
       multiplier: 2
       # Cap maximum delay
       max_interval: 30s
@@ -604,17 +590,11 @@ exporters:
       queue_size: 50000
       num_consumers: 20
 
-# Add health check to detect backend issues
+# Add health check for collector liveness
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
     path: /
-    check_collector_pipeline:
-      enabled: true
-      # Check every 5 seconds
-      interval: 5s
-      # Mark unhealthy after 5 failures
-      exporter_failure_threshold: 5
 
 service:
   extensions: [health_check]
@@ -670,12 +650,12 @@ service:
 
 ### Adaptive Timeout Using Circuit Breaker
 
-Implement circuit breaker pattern to avoid cascading failures (requires custom extension).
+Implement circuit breaker pattern to avoid cascading failures (requires a custom extension that is included in your Collector distribution).
 
 ```yaml
 # otel-collector-config.yaml
 extensions:
-  # Hypothetical circuit breaker extension
+  # Hypothetical circuit breaker extension; not included in standard Collector distributions
   circuit_breaker:
     # Open circuit after 5 consecutive failures
     failure_threshold: 5
@@ -703,23 +683,23 @@ Create Grafana dashboard to track timeout patterns.
     "title": "Collector Exporter Timeouts",
     "panels": [
       {
-        "title": "Timeout Rate by Exporter",
+        "title": "Failed Send Rate by Exporter",
         "targets": [
           {
-            "expr": "sum by (exporter) (rate(otelcol_exporter_send_failed_spans{error=\"timeout\"}[5m]))"
+            "expr": "sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m]))"
           }
         ]
       },
       {
-        "title": "Export Duration vs Timeout",
+        "title": "Export Duration and In-Flight Requests",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(otelcol_exporter_send_duration_bucket[5m]))",
+            "expr": "histogram_quantile(0.99, sum by (le) (rate({\"__name__\"=\"rpc.client.call.duration_bucket\"}[5m])))",
             "legendFormat": "p99 duration"
           },
           {
-            "expr": "otelcol_exporter_timeout_seconds",
-            "legendFormat": "configured timeout"
+            "expr": "otelcol_exporter_in_flight_requests",
+            "legendFormat": "in-flight export requests"
           }
         ]
       },
@@ -757,7 +737,7 @@ groups:
 - name: otel-collector-timeout
   interval: 30s
   rules:
-  - alert: CollectorExporterTimeoutHigh
+  - alert: CollectorExporterSendFailuresHigh
     expr: |
       rate(otelcol_exporter_send_failed_spans[5m]) /
       (rate(otelcol_exporter_sent_spans[5m]) + rate(otelcol_exporter_send_failed_spans[5m])) > 0.05
@@ -765,23 +745,23 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: "High exporter timeout rate"
+      summary: "High exporter send failure rate"
       description: |
         Collector {{ $labels.instance }} exporter {{ $labels.exporter }}
-        experiencing {{ $value | humanizePercentage }} timeout rate.
+        experiencing {{ $value | humanizePercentage }} send failure rate.
+        Check collector logs to confirm whether failures are timeouts.
 
-  - alert: CollectorExporterDurationNearTimeout
+  - alert: CollectorExporterDurationHigh
     expr: |
-      histogram_quantile(0.95, rate(otelcol_exporter_send_duration_bucket[5m])) /
-      otelcol_exporter_timeout_seconds > 0.8
+      histogram_quantile(0.95, sum by (le) (rate({"__name__"="rpc.client.call.duration_bucket"}[5m]))) > 24
     for: 10m
     labels:
       severity: warning
     annotations:
-      summary: "Export duration approaching timeout"
+      summary: "Export duration is high"
       description: |
-        Collector {{ $labels.instance }} exporter {{ $labels.exporter }}
-        p95 duration is {{ $value | humanizePercentage }} of timeout setting.
+        Collector {{ $labels.instance }} p95 gRPC export duration is {{ $value }}s.
+        Adjust the threshold to match 80% of the configured exporter timeout.
 ```
 
 ## Related Resources
