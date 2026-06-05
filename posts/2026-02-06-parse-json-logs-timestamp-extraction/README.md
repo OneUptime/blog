@@ -17,7 +17,7 @@ Here are examples from popular frameworks:
 ```
 
 ```json
-{"ts":1738851825.123,"level":"error","caller":"handler.go:42","msg":"request failed","method":"POST","path":"/api/orders","status":500,"duration_ms":234}
+{"ts":1770387825.123,"level":"error","caller":"handler.go:42","msg":"request failed","method":"POST","path":"/api/orders","status":500,"duration_ms":234}
 ```
 
 ## Basic json_parser Configuration
@@ -35,6 +35,7 @@ receivers:
         timestamp:
           parse_from: attributes.timestamp
           layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+          location: UTC
         severity:
           parse_from: attributes.level
           mapping:
@@ -42,7 +43,8 @@ receivers:
             error: ["ERROR", "error"]
             warn: ["WARN", "warn", "WARNING", "warning"]
             info: ["INFO", "info"]
-            debug: ["DEBUG", "debug", "TRACE", "trace"]
+            debug: ["DEBUG", "debug"]
+            trace: ["TRACE", "trace"]
 ```
 
 After parsing, each JSON field becomes a log attribute. The `timestamp` and `severity` directives tell the parser which fields to use for the log record's timestamp and severity.
@@ -58,22 +60,23 @@ Applications use many timestamp formats. Here are the most common ones and their
 timestamp:
   parse_from: attributes.timestamp
   layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+  location: UTC
 
 # ISO 8601 with offset
 # "2026-02-06T14:23:45.123+05:30"
 timestamp:
   parse_from: attributes.timestamp
-  layout: "%Y-%m-%dT%H:%M:%S.%L%z"
+  layout: "%Y-%m-%dT%H:%M:%S.%L%j"
 
 # Unix epoch seconds (float)
-# 1738851825.123
+# 1770387825.123
 timestamp:
   parse_from: attributes.ts
   layout_type: epoch
   layout: s.ms
 
 # Unix epoch milliseconds
-# 1738851825123
+# 1770387825123
 timestamp:
   parse_from: attributes.ts
   layout_type: epoch
@@ -145,13 +148,13 @@ service:
 
 ## Handling Nested JSON Objects
 
-When your JSON logs contain nested objects, the json_parser flattens them with dot notation:
+When your JSON logs contain nested objects, the json_parser preserves them as nested maps:
 
 ```json
 {"timestamp":"2026-02-06T14:23:45Z","level":"error","message":"DB query failed","context":{"query":"SELECT * FROM users","duration_ms":5230,"database":"userdb"}}
 ```
 
-After parsing, you get attributes like `context.query`, `context.duration_ms`, and `context.database`. You can move or rename these:
+After parsing, you can access nested fields with paths like `attributes.context.query`, `attributes.context.duration_ms`, and `attributes.context.database`. You can move or rename these:
 
 ```yaml
 operators:
@@ -159,16 +162,17 @@ operators:
     timestamp:
       parse_from: attributes.timestamp
       layout: "%Y-%m-%dT%H:%M:%SZ"
+      location: UTC
 
-  # Flatten nested context fields
+  # Move nested context fields
   - type: move
-    from: attributes["context.query"]
+    from: attributes.context.query
     to: attributes["db.statement"]
   - type: move
-    from: attributes["context.duration_ms"]
+    from: attributes.context.duration_ms
     to: attributes["db.operation.duration_ms"]
   - type: move
-    from: attributes["context.database"]
+    from: attributes.context.database
     to: attributes["db.name"]
 ```
 
@@ -192,11 +196,16 @@ operators:
     type: move
     from: attributes.msg
     to: body
+    output: parsed_done
   - id: handle_logback
     type: move
     from: attributes.message
     to: body
+    output: parsed_done
   - id: handle_generic
+    type: noop
+    output: parsed_done
+  - id: parsed_done
     type: noop
 ```
 
