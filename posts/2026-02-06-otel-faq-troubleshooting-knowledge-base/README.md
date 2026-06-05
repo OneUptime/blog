@@ -49,12 +49,11 @@ Solution:
 
 export OTEL_LOG_LEVEL=debug
 
-# Step 2: Verify the collector endpoint is reachable from your service
-curl -v http://otel-collector.observability:4317
+# Step 2: Verify the OTLP/gRPC collector endpoint is reachable from your service
+nc -vz otel-collector.observability 4317
 
-# Step 3: Check if the SDK is initialized by looking for startup logs
-# You should see something like:
-# "OpenTelemetry SDK initialized with OTLP exporter"
+# Step 3: Check if the SDK is initialized by looking for language-specific startup
+# or debug logs that mention the configured OTLP exporter
 
 # Step 4: Send a test span using the otel-cli tool
 otel-cli exec --service "test-service" --name "test-span" -- echo "hello"
@@ -71,9 +70,12 @@ export OTEL_SERVICE_NAME=order-service
 Alternatively, set it in code through the Resource:
 
 ```python
+from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
 
 resource = Resource.create({"service.name": "order-service"})
+trace.set_tracer_provider(TracerProvider(resource=resource))
 ```
 
 ### Missing or Broken Telemetry
