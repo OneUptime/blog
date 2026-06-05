@@ -36,7 +36,9 @@ The core setup involves configuring your logging system to automatically inject 
 ```python
 # correlated_logging.py
 
+import json
 import logging
+from datetime import datetime, timezone
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -75,26 +77,36 @@ class TraceContextFilter(logging.Filter):
 
         return True
 
+class JSONTraceFormatter(logging.Formatter):
+    """Format log records as JSON while preserving trace context fields."""
+
+    def __init__(self, service_name: str):
+        super().__init__()
+        self.service_name = service_name
+
+    def format(self, record):
+        return json.dumps({
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z"),
+            "level": record.levelname,
+            "service": self.service_name,
+            "trace_id": record.trace_id,
+            "span_id": record.span_id,
+            "trace_flags": record.trace_flags,
+            "message": record.getMessage(),
+        })
+
 # Configure the logger with trace context injection
 def setup_correlated_logging(service_name: str):
     """Set up logging with automatic trace context injection."""
     logger = logging.getLogger()
 
-    # Add the trace context filter
+    # Add the trace context filter to the handler so propagated records
+    # from module-level loggers also receive correlation fields.
     trace_filter = TraceContextFilter()
-    logger.addFilter(trace_filter)
-
-    # Use a JSON formatter that includes trace context fields
-    formatter = logging.Formatter(
-        '{"timestamp": "%(asctime)s", '
-        '"level": "%(levelname)s", '
-        '"service": "' + service_name + '", '
-        '"trace_id": "%(trace_id)s", '
-        '"span_id": "%(span_id)s", '
-        '"message": "%(message)s"}'
-    )
+    formatter = JSONTraceFormatter(service_name)
 
     handler = logging.StreamHandler()
+    handler.addFilter(trace_filter)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
@@ -217,13 +229,15 @@ receivers:
       - type: json_parser
         timestamp:
           parse_from: attributes.timestamp
-          layout: "%Y-%m-%d %H:%M:%S"
+          layout: "%Y-%m-%dT%H:%M:%S.%f%z"
       # Extract trace_id and span_id from parsed JSON
       - type: trace_parser
         trace_id:
           parse_from: attributes.trace_id
         span_id:
           parse_from: attributes.span_id
+        trace_flags:
+          parse_from: attributes.trace_flags
 
 processors:
   batch:
@@ -238,7 +252,7 @@ processors:
         action: upsert
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://otel.oneuptime.com
 
 service:
@@ -246,11 +260,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     logs:
       receivers: [otlp, filelog]
       processors: [resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The `filelog` receiver with the `trace_parser` operator extracts trace IDs from your JSON log lines and attaches them as proper trace context on the log records. This means even log files from legacy systems can be correlated with traces.
