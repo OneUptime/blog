@@ -19,25 +19,19 @@ Start by adding the required Quarkus extensions for metrics collection and expor
     <!-- Quarkus core -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-resteasy-reactive</artifactId>
+        <artifactId>quarkus-rest</artifactId>
     </dependency>
 
-    <!-- OpenTelemetry extension with metrics support -->
+    <!-- OpenTelemetry extension with metrics support, if you only use the OpenTelemetry API -->
     <dependency>
         <groupId>io.quarkus</groupId>
         <artifactId>quarkus-opentelemetry</artifactId>
     </dependency>
 
-    <!-- Micrometer integration for familiar API -->
+    <!-- Micrometer integration for familiar API and OpenTelemetry export -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-micrometer-registry-opentelemetry</artifactId>
-    </dependency>
-
-    <!-- OTLP exporter for metrics -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-exporter-otlp</artifactId>
+        <artifactId>quarkus-micrometer-opentelemetry</artifactId>
     </dependency>
 
     <!-- Optional: Prometheus compatibility -->
@@ -56,15 +50,15 @@ Configure OpenTelemetry metrics in application.properties.
 quarkus.application.name=payment-service
 
 # OpenTelemetry configuration
-quarkus.opentelemetry.enabled=true
+quarkus.otel.enabled=true
 
 # Metrics configuration
 quarkus.otel.metrics.enabled=true
 quarkus.otel.metrics.exporter=otlp
 
 # OTLP endpoint for metrics
-quarkus.otel.exporter.otlp.endpoint=http://localhost:4318
-quarkus.otel.exporter.otlp.protocol=http/protobuf
+quarkus.otel.exporter.otlp.metrics.endpoint=http://localhost:4318
+quarkus.otel.exporter.otlp.metrics.protocol=http/protobuf
 
 # Metric export interval (default: 60 seconds)
 quarkus.otel.metric.export.interval=30s
@@ -86,9 +80,6 @@ quarkus.micrometer.binder.system=true
 # Prometheus endpoint (optional)
 quarkus.micrometer.export.prometheus.enabled=true
 quarkus.micrometer.export.prometheus.path=/metrics
-
-# Native image support
-quarkus.native.additional-build-args=--initialize-at-run-time=io.opentelemetry.sdk.metrics
 ```
 
 ## Creating Custom Metrics with OpenTelemetry API
@@ -158,9 +149,8 @@ public class PaymentMetricsService {
      * Record a successful payment with attributes
      */
     public void recordPaymentSuccess(String customerId, String paymentMethod, double amount) {
-        // Increment counter with dimensional attributes
+        // Increment counter with low-cardinality dimensional attributes
         Attributes attributes = Attributes.of(
-            AttributeKey.stringKey("customer.id"), customerId,
             AttributeKey.stringKey("payment.method"), paymentMethod,
             AttributeKey.stringKey("status"), "success"
         );
@@ -181,7 +171,6 @@ public class PaymentMetricsService {
             String errorCode) {
 
         Attributes attributes = Attributes.of(
-            AttributeKey.stringKey("customer.id"), customerId,
             AttributeKey.stringKey("payment.method"), paymentMethod,
             AttributeKey.stringKey("status"), "failed",
             AttributeKey.stringKey("error.code"), errorCode
@@ -195,20 +184,14 @@ public class PaymentMetricsService {
      * Track when a payment transaction starts
      */
     public void paymentStarted(String transactionId) {
-        Attributes attributes = Attributes.of(
-            AttributeKey.stringKey("transaction.id"), transactionId
-        );
-        activePaymentsCounter.add(1, attributes);
+        activePaymentsCounter.add(1);
     }
 
     /**
      * Track when a payment transaction completes
      */
     public void paymentCompleted(String transactionId) {
-        Attributes attributes = Attributes.of(
-            AttributeKey.stringKey("transaction.id"), transactionId
-        );
-        activePaymentsCounter.add(-1, attributes);
+        activePaymentsCounter.add(-1);
     }
 
     private long getPendingPaymentCount() {
@@ -513,14 +496,13 @@ Quarkus automatically collects HTTP metrics when Micrometer is enabled.
 ```properties
 # Enable HTTP server metrics
 quarkus.micrometer.binder.http-server.enabled=true
-quarkus.micrometer.binder.http-server.match-patterns=/api/.*,/orders/.*
+quarkus.micrometer.binder.http-server.match-patterns=/api/.*=/api/{path},/orders/.*=/orders/{path}
 
 # Enable HTTP client metrics
 quarkus.micrometer.binder.http-client.enabled=true
 
-# Configure histogram buckets for latency tracking
-quarkus.micrometer.binder.http-server.percentiles=0.5,0.95,0.99
-quarkus.micrometer.binder.http-server.slo=100ms,200ms,500ms,1s,2s
+# Limit URI tag cardinality
+quarkus.micrometer.binder.http-server.max-uri-tags=100
 ```
 
 These configurations automatically produce metrics like:
@@ -540,11 +522,10 @@ quarkus.micrometer.binder.jvm=true
 # System metrics
 quarkus.micrometer.binder.system=true
 
-# Specific JVM metrics
-quarkus.micrometer.binder.jvm.memory=true
-quarkus.micrometer.binder.jvm.gc=true
-quarkus.micrometer.binder.jvm.threads=true
-quarkus.micrometer.binder.jvm.classes=true
+# OpenTelemetry automatic JVM and HTTP metrics can be disabled
+# if Micrometer is collecting the same signal.
+quarkus.otel.instrument.jvm-metrics=false
+quarkus.otel.instrument.http-server-metrics=false
 ```
 
 Access detailed JVM metrics programmatically.
@@ -739,21 +720,18 @@ class OrderMetricsCollectorTest {
 Configure metrics for production workloads with appropriate cardinality and export intervals.
 
 ```properties
-# Limit cardinality to prevent metric explosion
-quarkus.otel.metrics.exemplars.enabled=false
+# Limit cardinality to prevent metric explosion by avoiding user IDs,
+# transaction IDs, or other unbounded values as metric attributes.
 
 # Adjust export interval based on your needs
 # More frequent exports increase overhead but provide fresher data
 quarkus.otel.metric.export.interval=60s
 
-# Configure batch size for efficient export
-quarkus.otel.exporter.otlp.metrics.batch-size=512
-
 # Set timeout for export operations
-quarkus.otel.exporter.otlp.timeout=30s
+quarkus.otel.exporter.otlp.metrics.timeout=30s
 
 # Enable compression for network efficiency
-quarkus.otel.exporter.otlp.compression=gzip
+quarkus.otel.exporter.otlp.metrics.compression=gzip
 
 # Resource attributes for filtering in backend
 quarkus.otel.resource.attributes=\
@@ -764,4 +742,4 @@ quarkus.otel.resource.attributes=\
   host.name=${HOSTNAME}
 ```
 
-OpenTelemetry metrics in Quarkus provide production-ready observability with minimal configuration. Automatic instrumentation covers HTTP requests, JVM internals, and system resources. The dual API support through both native OpenTelemetry and Micrometer accommodates different developer preferences. Custom metrics enable domain-specific monitoring of business operations. Native image support ensures metrics work identically whether running on the JVM or as a compiled binary. This comprehensive metrics foundation enables effective monitoring, alerting, and capacity planning for cloud-native applications.
+OpenTelemetry metrics in Quarkus provide production-ready observability with minimal configuration. Automatic instrumentation covers HTTP requests, JVM internals, and system resources. The dual API support through both native OpenTelemetry and Micrometer accommodates different developer preferences. Custom metrics enable domain-specific monitoring of business operations. Native image support is available, though some JVM runtime metrics may differ depending on the native VM support available. This comprehensive metrics foundation enables effective monitoring, alerting, and capacity planning for cloud-native applications.
