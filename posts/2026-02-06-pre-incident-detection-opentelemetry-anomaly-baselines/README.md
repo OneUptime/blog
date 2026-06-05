@@ -34,6 +34,7 @@ First, instrument your services to emit the metrics you want to baseline. Latenc
 # baseline_metrics.py - Instrument key signals for baseline tracking
 
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -45,11 +46,21 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("pre.incident.detector", version="1.0.0")
 
-# Histogram captures the full distribution, essential for percentile baselines
+
+def get_current_queue_depth():
+    # Replace this with a call to your queue broker/client.
+    return 0
+
+
+def observe_queue_depth(options):
+    return [Observation(get_current_queue_depth())]
+
+
+# Histogram records latency measurements so your backend can build distribution and percentile views
 request_latency = meter.create_histogram(
     name="http.server.request.duration",
-    description="Server request duration in milliseconds",
-    unit="ms",
+    description="Server request duration in seconds",
+    unit="s",
 )
 
 error_counter = meter.create_counter(
@@ -62,7 +73,7 @@ queue_depth = meter.create_observable_gauge(
     name="messaging.queue.depth",
     description="Current message queue depth",
     unit="1",
-    callbacks=[lambda options: observe_queue_depth()],
+    callbacks=[observe_queue_depth],
 )
 ```
 
@@ -73,7 +84,7 @@ Baselines should be computed from at least two weeks of data to capture weekly p
 ```python
 # baseline_computer.py - Compute hourly baselines from stored metrics
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from collections import defaultdict
 
 class BaselineComputer:
@@ -84,10 +95,10 @@ class BaselineComputer:
 
     def compute_baselines(self, metric_name: str, lookback_days: int = 14):
         """Build hourly baselines grouped by day-of-week."""
-        end = datetime.utcnow()
+        end = datetime.now(UTC)
         start = end - timedelta(days=lookback_days)
 
-        # Fetch raw metric values with timestamps
+        # Fetch metric values with timestamps
         data_points = self.store.query(metric_name, start, end)
 
         # Group by (day_of_week, hour)
@@ -120,7 +131,7 @@ With baselines computed, compare live metric values against them. A z-score appr
 
 ```python
 # deviation_scorer.py - Score how far a live metric deviates from baseline
-from datetime import datetime
+from datetime import UTC, datetime
 
 class DeviationScorer:
     def __init__(self, baseline_computer):
@@ -129,7 +140,7 @@ class DeviationScorer:
     def score(self, metric_name: str, current_value: float,
               timestamp: datetime = None) -> dict:
         """Compute deviation score for a metric value."""
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(UTC)
         baseline = self.baselines.get_baseline(metric_name, timestamp)
 
         if not baseline or baseline["stddev"] == 0:
