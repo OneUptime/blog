@@ -13,7 +13,7 @@ Splitting responsibilities between agent and gateway collectors is not just abou
 The rule of thumb is:
 
 - **Agent (per-node)**: Things that reduce data volume early (head sampling, filtering, basic attribute dropping)
-- **Gateway (centralized)**: Things that need aggregated context (tail sampling, Kubernetes enrichment, transformations, export)
+- **Gateway (centralized)**: Things that need aggregated context (tail sampling, Kubernetes enrichment when pod association attributes are present, transformations, export)
 
 ```text
 Agent Layer:                    Gateway Layer:
@@ -48,12 +48,12 @@ processors:
 
   # Filter out health check and readiness probe spans
   filter/drop_noise:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/healthz"'
-        - 'attributes["http.target"] == "/readyz"'
-        - 'attributes["http.target"] == "/livez"'
-        - 'attributes["http.route"] == "/metrics"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.attributes["http.target"] == "/readyz"'
+      - 'span.attributes["http.target"] == "/livez"'
+      - 'span.attributes["http.route"] == "/metrics"'
 
   # Remove high-cardinality attributes that bloat data
   attributes/strip:
@@ -70,7 +70,7 @@ processors:
     timeout: 2s
 
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -80,7 +80,7 @@ exporters:
     resolver:
       dns:
         hostname: "otel-gateway-headless.monitoring.svc.cluster.local"
-        port: 4317
+        port: "4317"
 
 service:
   pipelines:
@@ -92,7 +92,7 @@ service:
         - attributes/strip      # Second: strip sensitive/large attrs
         - probabilistic_sampler # Third: reduce volume
         - batch
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ## Gateway: Enrichment and Smart Sampling
@@ -117,6 +117,17 @@ processors:
   # Kubernetes enrichment - adds pod, namespace, deployment info
   k8sattributes:
     auth_type: "serviceAccount"
+    pod_association:
+      # Gateway collectors receive traffic from agents, so associate by
+      # resource attributes instead of the agent connection IP.
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
     extract:
       metadata:
         - k8s.pod.name
@@ -166,13 +177,14 @@ processors:
 
   # Add derived attributes after enrichment
   transform/classify:
+    error_mode: ignore
     trace_statements:
       - context: resource
         statements:
-          - set(attributes["sla.tier"], "gold")
-            where attributes["k8s.namespace.name"] == "production"
-          - set(attributes["sla.tier"], "silver")
-            where attributes["k8s.namespace.name"] == "staging"
+          - set(resource.attributes["sla.tier"], "gold")
+            where resource.attributes["k8s.namespace.name"] == "production"
+          - set(resource.attributes["sla.tier"], "silver")
+            where resource.attributes["k8s.namespace.name"] == "staging"
 
   batch:
     send_batch_size: 2048
@@ -224,7 +236,7 @@ The head sampling at the agent is the only lossy stage for error traces. If you 
 
 ## Metrics Pipeline (Agent and Gateway)
 
-For metrics, the agent does delta-to-cumulative conversion and the gateway handles aggregation:
+For metrics, the agent does cumulative-to-delta conversion and the gateway handles label-set aggregation within each batch:
 
 ```yaml
 # agent metrics pipeline
