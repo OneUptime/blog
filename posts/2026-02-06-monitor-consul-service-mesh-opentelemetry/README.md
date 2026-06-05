@@ -10,7 +10,7 @@ Description: Learn how to monitor HashiCorp Consul service mesh health, service 
 
 HashiCorp Consul does a lot of heavy lifting in modern infrastructure. It handles service discovery, configuration management, health checking, and, when running as a service mesh, manages the entire data plane with sidecar proxies. The problem is that Consul's internal state is complex. You have servers maintaining consensus via Raft, clients gossiping membership information, health checks running against every registered service, and Envoy sidecar proxies handling actual traffic between services. If any of these layers develops problems, your applications feel it immediately.
 
-OpenTelemetry gives you a way to pull metrics from Consul's telemetry system and combine them with traces from the Envoy proxies, creating a complete picture of your service mesh health. This post covers both sides: Consul server and client metrics through the collector, and service mesh data plane observability through Envoy's OpenTelemetry integration.
+OpenTelemetry gives you a way to pull metrics from Consul's telemetry system and combine them with metrics from the Envoy proxies, creating a complete picture of your service mesh health. This post covers both sides: Consul server and client metrics through the collector, and service mesh data plane observability by scraping Envoy's Prometheus metrics.
 
 ## Consul Telemetry Architecture
 
@@ -31,15 +31,15 @@ graph TD
         E2[Envoy Sidecar - Service B]
     end
 
-    S1 -->|Prometheus /metrics| OC[OTel Collector]
-    S2 -->|Prometheus /metrics| OC
-    S3 -->|Prometheus /metrics| OC
-    E1 -->|Prometheus /stats| OC
-    E2 -->|Prometheus /stats| OC
+    S1 -->|Prometheus /v1/agent/metrics| OC[OTel Collector]
+    S2 -->|Prometheus /v1/agent/metrics| OC
+    S3 -->|Prometheus /v1/agent/metrics| OC
+    E1 -->|Prometheus /stats/prometheus| OC
+    E2 -->|Prometheus /stats/prometheus| OC
     OC -->|Export| O[OneUptime]
 ```
 
-Consul servers expose metrics about Raft consensus, RPC handling, catalog operations, and health check results. Consul clients expose metrics about DNS queries, service registration, and gossip protocol health. Envoy sidecars expose metrics about request routing, connection management, and upstream health.
+Consul servers expose metrics about Raft consensus, RPC handling, catalog state, Autopilot health, and gossip membership. Consul clients expose metrics about client-side API and RPC activity. Envoy sidecars expose metrics about request routing, connection management, and upstream health.
 
 ## Enabling Consul Prometheus Metrics
 
@@ -54,7 +54,7 @@ First, configure Consul to expose metrics in Prometheus format. Update the Consu
 }
 ```
 
-The `prometheus_retention_time` setting tells Consul to keep metrics available for scraping. Setting it to 60 seconds means the Prometheus endpoint will serve metrics from the last 60 seconds of activity. The `disable_hostname` flag prevents Consul from prepending the hostname to every metric name, which keeps metric names clean and consistent across nodes.
+The `prometheus_retention_time` setting tells Consul to keep metrics available for scraping. Setting it to 60 seconds means the Prometheus endpoint will serve metrics from the last 60 seconds of activity. The `disable_hostname` flag prevents Consul from prepending the hostname to gauge metric names, which keeps metric names clean and consistent across nodes.
 
 Verify the metrics endpoint works:
 
@@ -65,10 +65,10 @@ Verify the metrics endpoint works:
 curl http://localhost:8500/v1/agent/metrics?format=prometheus
 
 # You should see metrics like:
-# consul_raft_leader 1
-# consul_raft_peers 3
-# consul_catalog_service_count 15
-# consul_health_service_checks_critical 0
+# consul_server_isLeader 1
+# consul_members_servers 3
+# consul_state_services 15
+# consul_autopilot_healthy 1
 ```
 
 ## Collector Configuration for Consul Metrics
@@ -135,10 +135,12 @@ processors:
         action: upsert
 
 exporters:
-  otlp:
-    endpoint: "https://otel-ingest.oneuptime.com:4317"
+  otlphttp:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      Authorization: "Bearer YOUR_ONEUPTIME_TOKEN"
+      Content-Type: "application/json"
+      x-oneuptime-token: "YOUR_ONEUPTIME_TOKEN"
 
 service:
   pipelines:
@@ -147,17 +149,17 @@ service:
         - prometheus/consul_servers
         - prometheus/consul_clients
       processors: [resource, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 
     metrics/envoy:
       receivers: [prometheus/envoy_sidecars]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 The configuration uses three separate Prometheus receiver instances. Consul servers and clients are scraped every 30 seconds since their metrics change relatively slowly. Envoy sidecars are scraped every 15 seconds because traffic metrics need higher resolution to catch short-lived issues.
 
-Note that the Envoy admin interface runs on port 19000 by default in Consul Connect deployments. The `/stats/prometheus` path returns all Envoy metrics in Prometheus format.
+Note that the Envoy admin interface runs on port 19000 by default for `consul connect envoy`, but it binds to localhost unless you change `-admin-bind` or run the collector in the same network namespace. The `/stats/prometheus` path returns Envoy metrics in Prometheus format.
 
 ## Critical Consul Server Metrics
 
@@ -165,21 +167,21 @@ Consul server health directly affects the entire cluster. These are the metrics 
 
 ### Raft Consensus
 
-The Raft protocol is Consul's consensus mechanism. The most important metric is `consul_raft_leader`, which equals 1 on the leader node and 0 on followers. If no node has this set to 1, the cluster has no leader and cannot process writes.
+The Raft protocol is Consul's consensus mechanism. The most important metric is `consul_server_isLeader`, which equals 1 on the leader node and 0 on followers when Consul metrics are exported in Prometheus format. If no node has this set to 1, the cluster has no leader and cannot process writes.
 
-`consul_raft_peers` should equal the number of server nodes in your cluster. If it drops below the expected count, a server has been removed from the cluster, either intentionally or because it failed.
+`consul_members_servers` should equal the number of server agents in your cluster. If it drops below the expected count, a server has been removed from membership, either intentionally or because it failed.
 
 `consul_raft_commitTime` measures how long it takes to commit a new log entry. This reflects the performance of the Raft replication process. Commit times under 50ms are healthy. Above 200ms indicates network or disk performance problems.
 
 ### Catalog and Health Checks
 
-`consul_catalog_service_count` tracks the total number of registered services. A sudden drop might indicate a network partition where clients lost contact with servers.
+`consul_state_services` tracks the number of unique services registered with Consul. A sudden drop might indicate a network partition where clients lost contact with servers.
 
-`consul_health_service_checks_critical` counts services with failing health checks. This is one of the most actionable metrics because it directly maps to services that Consul will stop routing traffic to.
+`consul_autopilot_healthy` tracks whether the local server cluster is healthy. This is one of the most actionable control plane metrics because it gives a direct signal when Consul's server set is unhealthy.
 
 ### RPC Performance
 
-`consul_rpc_request` and `consul_rpc_request_error` track the volume and error rate of RPC calls between Consul agents. A spike in RPC errors often precedes broader cluster issues.
+`consul_rpc_request` and `consul_rpc_request_error` track the volume and error rate of RPC calls received by Consul servers. Client agents also emit `consul_client_rpc` and `consul_client_rpc_failed` for RPCs they make to Consul servers. A spike in RPC errors often precedes broader cluster issues.
 
 ## Service Mesh Data Plane Metrics
 
@@ -233,7 +235,7 @@ receivers:
               action: keep
 ```
 
-The `consul_dns_domain_query_count` metric tracks DNS query volume, while `consul_dns_stale_queries` counts queries served from stale data. A high stale query rate means Consul clients are having trouble reaching servers for fresh data.
+Consul's documented agent telemetry focuses on API and RPC metrics rather than a stable aggregate DNS query metric. If your Consul version emits DNS-prefixed metrics, the relabeling rule above keeps them; otherwise, use `consul_client_rpc_failed` and related client RPC metrics to catch Consul clients that are struggling to reach servers for fresh discovery data.
 
 ## Alerting on Service Mesh Health
 
@@ -242,38 +244,38 @@ Set up alerts that cover both the control plane (Consul servers) and the data pl
 ```yaml
 # Control plane alerts
 - alert: ConsulNoLeader
-  condition: sum(consul_raft_leader) == 0
+  condition: sum(consul_server_isLeader) == 0
   for: 30s
   severity: critical
   description: "No Consul server is the Raft leader"
 
 - alert: ConsulServerDown
-  condition: consul_raft_peers < expected_server_count
+  condition: consul_members_servers < expected_server_count
   for: 2m
   severity: warning
-  description: "Consul cluster has fewer peers than expected"
+  description: "Consul cluster has fewer server agents than expected"
 
 - alert: ConsulHighCommitTime
-  condition: consul_raft_commitTime > 200
+  condition: consul_raft_commitTime{quantile="0.9"} > 200
   for: 5m
   severity: warning
   description: "Raft commit time is elevated"
 
 # Data plane alerts
 - alert: ConsulServiceUnhealthy
-  condition: consul_health_service_checks_critical > 0
+  condition: consul_autopilot_healthy == 0
   for: 3m
   severity: warning
-  description: "One or more services have critical health checks"
+  description: "Consul Autopilot reports the server cluster is unhealthy"
 
 - alert: EnvoyUpstreamErrors
-  condition: rate(envoy_cluster_upstream_rq_xx{response_code_class="5"}[5m]) > 0.05
+  condition: sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m])) / sum(rate(envoy_cluster_upstream_rq_total[5m])) > 0.05
   for: 2m
   severity: warning
   description: "Upstream 5xx error rate exceeds 5%"
 ```
 
-The no-leader alert should fire quickly (30 seconds) because a leaderless cluster cannot process any write operations. The service health alert has a 3-minute grace period to avoid alerting on transient health check failures that resolve themselves.
+The no-leader alert should fire quickly (30 seconds) because a leaderless cluster cannot process any write operations. The Autopilot alert has a 3-minute grace period to avoid alerting on transient membership or server health changes that resolve themselves.
 
 ## Scaling the Collection
 
@@ -291,10 +293,11 @@ receivers:
             - server: "consul-server-1.internal:8500"
               # Discover all sidecar proxy services
               services: []
-              tags: ["connect-proxy"]
+              filter: 'ServiceKind == "connect-proxy"'
           relabel_configs:
             # Use the service address and admin port
             - source_labels: [__meta_consul_service_address]
+              regex: "(.+)"
               target_label: __address__
               replacement: "${1}:19000"
 ```
@@ -303,4 +306,4 @@ This approach uses Consul's service discovery to automatically find all sidecar 
 
 ## Conclusion
 
-Monitoring a Consul service mesh requires visibility into both the control plane and the data plane. The OpenTelemetry Collector bridges this gap by scraping Prometheus metrics from Consul servers, client agents, and Envoy sidecar proxies through a single configuration. Focus your alerting on Raft leader presence, health check failures, and upstream error rates. These three signals cover the most common failure modes in a Consul service mesh. With this monitoring in place, you can confidently manage your service mesh knowing that problems will surface before they cascade into outages.
+Monitoring a Consul service mesh requires visibility into both the control plane and the data plane. The OpenTelemetry Collector bridges this gap by scraping Prometheus metrics from Consul servers, client agents, and Envoy sidecar proxies through a single configuration. Focus your alerting on Raft leader presence, Autopilot health, and upstream error rates. These three signals cover the most common failure modes in a Consul service mesh. With this monitoring in place, you can confidently manage your service mesh knowing that problems will surface before they cascade into outages.
