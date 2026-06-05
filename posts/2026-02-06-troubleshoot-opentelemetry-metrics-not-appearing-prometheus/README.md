@@ -253,6 +253,9 @@ exporters:
 
     # Controls whether OTel metric names are normalized to Prometheus conventions
     # When true (default), dots become underscores and units become suffixes
+    translation_strategy: UnderscoreEscapingWithSuffixes
+
+    # Controls how long metrics remain exposed after they stop arriving
     metric_expiration: 5m
 ```
 
@@ -270,7 +273,7 @@ If you are searching for `http.server.duration` in Prometheus, you will not find
 
 ## Step 6: Check for Metric Type Conflicts
 
-Prometheus is strict about metric types. If the same metric name arrives with different types (once as a counter, once as a gauge), Prometheus rejects it silently.
+Prometheus is strict about metric types. If the same metric name arrives with different types (once as a counter, once as a gauge), the scrape or ingestion can fail for that metric, and the error may show up in Prometheus target status or collector logs.
 
 ```yaml
 # collector-config.yaml
@@ -282,8 +285,8 @@ processors:
       - context: metric
         statements:
           # Rename a conflicting metric to avoid type clash
-          - set(name, "custom_request_count_total") where name == "request_count" and type == "Sum"
-          - set(name, "custom_request_count_gauge") where name == "request_count" and type == "Gauge"
+          - set(metric.name, "custom_request_count_total") where metric.name == "request_count" and metric.type == METRIC_DATA_TYPE_SUM
+          - set(metric.name, "custom_request_count_gauge") where metric.name == "request_count" and metric.type == METRIC_DATA_TYPE_GAUGE
 
   batch:
     timeout: 10s
@@ -300,31 +303,27 @@ You can check for type conflicts by looking at the collector logs with debug log
 
 ## Step 7: Check Temporality and Aggregation
 
-OpenTelemetry supports two temporality modes for cumulative metrics: cumulative and delta. Prometheus only understands cumulative temporality. If your application exports delta metrics, they will not work correctly with Prometheus.
+OpenTelemetry supports two aggregation temporality modes for sums and histograms: cumulative and delta. Prometheus stores cumulative time series, so cumulative temporality is the safest choice when exporting to a Prometheus scrape endpoint. If your application exports delta metrics, make sure the collector or exporter you use can convert them correctly for Prometheus.
 
 ```python
 # fix_temporality.py
 # Configure the OTLP exporter to use cumulative temporality
-# This is required for Prometheus compatibility
+import os
+
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-# Force cumulative temporality for all instrument types
-# Delta temporality does not work with Prometheus
-exporter = OTLPMetricExporter(
-    endpoint="http://otel-collector:4317",
-    preferred_temporality={
-        # All instrument types should use cumulative temporality
-        # when the backend is Prometheus
-    }
-)
+# Force cumulative temporality for OTLP metrics before the exporter is initialized
+os.environ["OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE"] = "cumulative"
+
+exporter = OTLPMetricExporter(endpoint="http://otel-collector:4317")
 
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=10000)
 provider = MeterProvider(metric_readers=[reader])
 ```
 
-Most OpenTelemetry SDKs default to cumulative temporality for OTLP export, so this is usually not the problem. But if you have customized the temporality settings, double-check them.
+Many OpenTelemetry SDKs default to cumulative temporality for common OTLP metric exports, so this is usually not the problem. But if you have customized the temporality settings, double-check them.
 
 ## Step 8: Using prometheusremotewrite Instead
 
@@ -380,7 +379,7 @@ When metrics are not appearing in Prometheus, run through this checklist:
 4. Is the Prometheus target healthy? (Check Prometheus targets page)
 5. Are you searching with the correct metric name? (Remember the naming translation)
 6. Are there type conflicts? (Check collector debug logs)
-7. Is temporality set to cumulative? (Required for Prometheus)
+7. Is temporality cumulative, or is your collector/exporter converting delta metrics correctly for Prometheus?
 8. Is the port correct and not conflicting with internal metrics? (8889 not 8888)
 
 Most of the time, the issue falls into one of three buckets: the collector is not receiving data, the Prometheus exporter port or config is wrong, or the metric name in your query does not match the translated name. Start with the `curl` test against the collector's Prometheus endpoint. If that returns your metrics, the problem is on the Prometheus side. If it returns nothing, the problem is on the collector side.
