@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OAuth, SaaS Marketplace, App Installation
 
 Description: Trace SaaS marketplace app installation and OAuth authorization flows with OpenTelemetry for debugging integration onboarding issues.
 
-If your SaaS has a marketplace or app directory, the installation flow is where third-party developers and customers form their first impression. OAuth authorization, permission grants, webhook setup, and initial data sync all happen in a sequence that spans your frontend, backend, the marketplace app, and external OAuth providers. Tracing this end-to-end is essential for debugging installation failures.
+If your SaaS has a marketplace or app directory, the installation flow is where third-party developers and customers form their first impression. OAuth authorization, permission grants, webhook setup, and initial data sync all happen in a sequence that spans your frontend, backend, the marketplace app, and handoffs to external OAuth providers. Tracing this end-to-end is essential for debugging installation failures.
 
 ## The App Installation Flow
 
@@ -26,10 +26,14 @@ A typical marketplace installation involves these steps:
 
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
+import httpx
 import secrets
 import urllib.parse
 
 tracer = trace.get_tracer("marketplace.oauth")
+
+class OAuthError(Exception):
+    pass
 
 class OAuthFlowHandler:
     def initiate_authorization(self, app_id: str, tenant_id: str, user_id: str):
@@ -45,7 +49,7 @@ class OAuthFlowHandler:
             # Generate state parameter to prevent CSRF
             state = secrets.token_urlsafe(32)
 
-            # Store state with trace context for later correlation
+            # Store state with trace ID for later correlation
             save_oauth_state(state, {
                 "app_id": app_id,
                 "tenant_id": tenant_id,
@@ -56,7 +60,7 @@ class OAuthFlowHandler:
             app_config = get_app_config(app_id)
             auth_url = self._build_auth_url(app_config, state)
 
-            span.set_attribute("oauth.redirect_url", auth_url)
+            span.set_attribute("oauth.authorization_endpoint", app_config["auth_endpoint"])
             span.set_attribute("oauth.scopes", ",".join(app_config["scopes"]))
 
             return {"redirect_url": auth_url}
@@ -75,6 +79,7 @@ class OAuthFlowHandler:
 ## Handling the OAuth Callback
 
 ```python
+class OAuthFlowHandler:
     async def handle_callback(self, code: str, state: str):
         """Handle OAuth callback with token exchange and app setup."""
         # Retrieve the saved state to get context
@@ -87,6 +92,7 @@ class OAuthFlowHandler:
             attributes={
                 "oauth.app_id": saved_state["app_id"],
                 "tenant.id": saved_state["tenant_id"],
+                "oauth.source_trace_id": saved_state.get("trace_id", ""),
             }
         ) as span:
             # Step 1: Exchange code for tokens
@@ -144,6 +150,7 @@ class OAuthFlowHandler:
 ## App Installation Registration
 
 ```python
+class OAuthFlowHandler:
     async def _register_installation(self, state_data: dict, tokens: dict, parent_span):
         """Register the app installation in the database."""
         with tracer.start_as_current_span(
