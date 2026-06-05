@@ -10,7 +10,7 @@ Description: Learn how to configure Prometheus to receive and store OpenTelemetr
 
 Prometheus is one of the most popular metrics systems in the cloud native world. It powers alerting and dashboarding for thousands of organizations. OpenTelemetry, on the other hand, is becoming the standard for instrumenting applications. The good news is that these two systems work well together. You can use OpenTelemetry to instrument your code and send metrics to Prometheus for storage, querying, and alerting.
 
-This guide covers the full setup: configuring Prometheus to accept OpenTelemetry metrics, setting up the OpenTelemetry Collector to export to Prometheus, and understanding the nuances of how OTel metrics map to Prometheus types.
+This guide covers the full setup: configuring Prometheus to accept OpenTelemetry metrics over OTLP/HTTP, setting up the OpenTelemetry Collector to export to Prometheus, and understanding the nuances of how OTel metrics map to Prometheus types.
 
 ## Architecture Options
 
@@ -19,7 +19,7 @@ There are two main approaches to getting OpenTelemetry metrics into Prometheus. 
 ```mermaid
 graph TD
     subgraph "Option 1: Direct OTLP Ingestion"
-        A1[OTel SDK] -->|OTLP| B1[Prometheus OTLP Receiver]
+        A1[OTel SDK] -->|OTLP/HTTP| B1[Prometheus OTLP Receiver]
         B1 --> C1[Prometheus TSDB]
     end
 
@@ -34,29 +34,21 @@ Option 1 is simpler because you remove the collector from the pipeline. Option 2
 
 ## Option 1: Prometheus OTLP Receiver
 
-Since Prometheus 2.47, there is experimental support for receiving OTLP metrics directly. This feature has matured significantly and is a solid choice for teams that want to avoid running a separate collector just for metrics.
+Prometheus supports receiving OTLP metrics directly over HTTP. This feature has matured significantly and is a solid choice for teams that want to avoid running a separate collector just for metrics.
 
-Here is a Prometheus configuration that enables the OTLP receiver.
+Here is a Prometheus configuration that controls how OTLP metrics are translated once the receiver is enabled.
 
 ```yaml
-# prometheus.yml - Enable OTLP receiver for direct metric ingestion
+# prometheus.yml - Configure OTLP receiver behavior for direct metric ingestion
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# Enable the OTLP receiver feature
 otlp:
-  # Configure the OTLP receiver to accept both gRPC and HTTP
-  protocols:
-    grpc:
-      endpoint: "0.0.0.0:4317"
-    http:
-      endpoint: "0.0.0.0:4318"
-
   # Resource attributes to promote to labels
   # These attributes from OTel resources become Prometheus labels
-  resource_attributes:
+  promote_resource_attributes:
     - service.name
     - service.namespace
     - deployment.environment
@@ -68,18 +60,18 @@ scrape_configs:
       - targets: ["localhost:9090"]
 ```
 
-You need to start Prometheus with the OTLP feature flag enabled.
+You need to start Prometheus with the OTLP receiver enabled.
 
 ```bash
-# Start Prometheus with the OTLP write receiver enabled
+# Start Prometheus with the OTLP receiver enabled
 prometheus \
   --config.file=prometheus.yml \
-  --enable-feature=otlp-write-receiver \
+  --web.enable-otlp-receiver \
   --storage.tsdb.path=/var/lib/prometheus/data \
   --web.listen-address=0.0.0.0:9090
 ```
 
-Once Prometheus is running with these settings, you can point any OpenTelemetry SDK or collector directly at the Prometheus OTLP endpoint. No separate collector needed.
+Once Prometheus is running with these settings, you can point any OpenTelemetry SDK or collector directly at the Prometheus OTLP/HTTP endpoint. No separate collector needed.
 
 Here is a quick test using the OTel SDK in a Python application.
 
@@ -88,7 +80,7 @@ Here is a quick test using the OTel SDK in a Python application.
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 
 # Create a resource identifying this service
@@ -100,8 +92,7 @@ resource = Resource.create({
 
 # Configure the OTLP exporter pointing at Prometheus
 exporter = OTLPMetricExporter(
-    endpoint="localhost:4317",  # Prometheus OTLP gRPC endpoint
-    insecure=True,
+    endpoint="http://localhost:9090/api/v1/otlp/v1/metrics",
 )
 
 # Set up the meter provider with a 30-second export interval
@@ -112,7 +103,7 @@ metrics.set_meter_provider(provider)
 # Create and use metrics
 meter = metrics.get_meter("payment-service")
 request_counter = meter.create_counter(
-    "http_requests_total",
+    "http_requests",
     description="Total HTTP requests",
     unit="1",
 )
@@ -127,7 +118,7 @@ request_counter.add(1, {"method": "POST", "path": "/api/charge", "status": "200"
 request_duration.record(0.145, {"method": "POST", "path": "/api/charge"})
 ```
 
-After the export interval elapses, you can query these metrics in Prometheus using PromQL just like any other Prometheus metric.
+After the export interval elapses, you can query these metrics in Prometheus using PromQL just like any other Prometheus metric. With the default translation strategy, the counter is exposed as `http_requests_total`.
 
 ## Option 2: OpenTelemetry Collector with Prometheus Exporter
 
@@ -232,7 +223,6 @@ Counter                Counter            _total
 Histogram              Histogram          _bucket, _sum, _count
 Gauge                  Gauge              (none)
 UpDownCounter          Gauge              (none)
-Summary                Summary            (quantile labels)
 ```
 
 Keep these mappings in mind when writing PromQL queries against OTel-sourced metrics. If your application creates a counter called `requests`, query it as `requests_total` in Prometheus.
