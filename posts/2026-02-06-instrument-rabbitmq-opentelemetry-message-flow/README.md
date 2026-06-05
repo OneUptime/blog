@@ -10,7 +10,7 @@ Description: Learn how to instrument RabbitMQ publishers and consumers with Open
 
 RabbitMQ handles message routing with a level of flexibility that most message brokers cannot match. Exchanges, bindings, queues, dead letter queues, and routing keys create powerful routing topologies. But that flexibility also makes it harder to follow a message from the moment it is published to the moment it is acknowledged by a consumer.
 
-OpenTelemetry gives you the tooling to trace messages through RabbitMQ, regardless of how complex your routing setup is. By injecting trace context into message headers on the publish side and extracting it on the consume side, you get a continuous trace that connects the publisher, the broker, and every downstream consumer.
+OpenTelemetry gives you the tooling to trace messages through RabbitMQ, regardless of how complex your routing setup is. By injecting trace context into message headers on the publish side and extracting it on the consume side, you get trace correlation that connects the publisher and every downstream consumer.
 
 ## How RabbitMQ Tracing Works with OpenTelemetry
 
@@ -25,7 +25,7 @@ graph LR
     D -->|consume + extract context| F[Consumer Service B]
 ```
 
-The key difference from HTTP tracing is that RabbitMQ supports fanout patterns. A single published message can be routed to multiple queues and consumed by multiple services. Each consumer creates its own child span linked to the same parent, giving you a fan-out view in your trace visualization.
+The key difference from HTTP tracing is that RabbitMQ supports fanout patterns. A single published message can be routed to multiple queues and consumed by multiple services. Each consumer creates its own span correlated to the same producer context, usually through span links and, in some single-message instrumentations, a parent-child relationship. This gives you a fan-out view in your trace visualization.
 
 ## Python Instrumentation with Pika
 
@@ -120,7 +120,7 @@ def process_order(ch, method, properties, body):
     Callback for consuming messages.
     The PikaInstrumentor wraps this callback to:
     1. Extract trace context from message headers
-    2. Create a CONSUMER span as a child of the producer span
+    2. Create a CONSUMER span correlated with the producer context
     3. Set the span as the current context during processing
     """
     order = json.loads(body)
@@ -144,7 +144,7 @@ channel.basic_consume(
 channel.start_consuming()
 ```
 
-Notice that inside the callback, you can create additional spans using the standard OpenTelemetry API. These spans will automatically become children of the consumer span, which in turn is a child of the producer span. This gives you a trace tree that shows the full journey.
+Notice that inside the callback, you can create additional spans using the standard OpenTelemetry API. These spans will automatically become children of the consumer span, which is correlated with the producer span through the extracted message context. This gives you a trace view that shows the full journey.
 
 ## Java Instrumentation with Spring AMQP
 
@@ -159,6 +159,7 @@ curl -L -o opentelemetry-javaagent.jar \
 java -javaagent:opentelemetry-javaagent.jar \
     -Dotel.service.name=order-service \
     -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
+    -Dotel.exporter.otlp.protocol=grpc \
     -jar order-service.jar
 ```
 
@@ -173,6 +174,10 @@ import io.opentelemetry.api.trace.*;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.context.propagation.TextMapSetter;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 // Custom setter to inject trace context into AMQP headers
 TextMapSetter<AMQP.BasicProperties.Builder> headerSetter =
@@ -209,7 +214,7 @@ try (Scope scope = producerSpan.makeCurrent()) {
         "order-exchange",
         "orders.created",
         propsBuilder.build(),
-        orderJson.getBytes()
+        orderJson.getBytes(StandardCharsets.UTF_8)
     );
 } finally {
     producerSpan.end();
@@ -222,7 +227,7 @@ The manual approach gives you full control over span attributes and error handli
 
 Dead letter queues (DLQs) are a critical part of RabbitMQ architectures. When a message is rejected or expires, RabbitMQ routes it to a DLQ. Tracing through DLQs requires extra attention because the message gets re-published internally by RabbitMQ.
 
-The trace context in the message headers survives the dead-lettering process because RabbitMQ preserves the original message headers. This means your DLQ consumer will still see the original trace context and can create a span linked to the original producer.
+The trace context in the message headers usually survives the dead-lettering process because RabbitMQ dead-lettering modifies routing metadata and adds death-related headers such as `x-death`, but does not remove ordinary application headers. This means your DLQ consumer can still see the original trace context and create a span correlated with the original producer.
 
 ```python
 # DLQ consumer that preserves trace lineage
@@ -299,10 +304,11 @@ service:
 OpenTelemetry defines specific semantic attributes for messaging systems. When instrumenting RabbitMQ, make sure your spans include these attributes for consistency:
 
 - `messaging.system`: Set to `rabbitmq`
-- `messaging.destination.name`: The exchange name
+- `messaging.destination.name`: The destination name, typically `{exchange}:{routing key}` for RabbitMQ producers when both values are available
+- `messaging.operation.name`: The system-specific operation name, such as `publish`, `ack`, or `nack`
 - `messaging.rabbitmq.destination.routing_key`: The routing key used
-- `messaging.operation`: Either `publish` or `receive`
-- `messaging.message.payload_size_bytes`: Size of the message body
+- `messaging.operation.type`: The operation type, such as `send` for publishing or `process` for consumer callback handling
+- `messaging.message.body.size`: Size of the message body
 
 These attributes make it possible to filter and search traces by exchange, routing key, or operation type. They also enable automated dashboards and alerts based on messaging patterns.
 
