@@ -6,14 +6,14 @@ Tags: OpenTelemetry, Custom Sampler, Business Rules, Sampling, SDK
 
 Description: Build a custom OpenTelemetry sampler that makes sampling decisions based on business rules like revenue impact, user tier, and operation criticality.
 
-The built-in samplers (AlwaysOn, AlwaysOff, TraceIdRatio, ParentBased) make decisions based on statistical probability. But business logic is not random. A trace from a user on your enterprise plan spending $50,000/year should always be sampled. A trace from an internal health check should almost never be sampled. A custom sampler lets you encode these business rules directly into the sampling decision.
+The built-in samplers (AlwaysOn, AlwaysOff, TraceIdRatioBased, ParentBased) cover fixed, probability-based, and parent-based decisions. But business logic is not random. A trace from a user on your enterprise plan spending $50,000/year should always be sampled. A trace from an internal health check should almost never be sampled. A custom sampler lets you encode these business rules directly into the sampling decision.
 
 ## The Sampler Interface
 
 A sampler receives context about the span being created and returns a sampling decision:
 
 - `RECORD_AND_SAMPLE`: The span is recorded and included in the exported trace
-- `RECORD_ONLY`: The span is recorded (for metrics) but not exported
+- `RECORD_ONLY`: The span is recorded and passed to span processors, but not exported
 - `DROP`: The span is not recorded at all
 
 ## Python: Revenue-Based Sampler
@@ -38,7 +38,6 @@ class BusinessRuleSampler(Sampler):
     - Enterprise users: always sample
     - Pro users: sample 50%
     - Free users: sample 5%
-    - Error spans: always sample
     - High-revenue operations: always sample
     """
 
@@ -74,6 +73,7 @@ class BusinessRuleSampler(Sampler):
         kind: SpanKind = None,
         attributes=None,
         links: Sequence[Link] = None,
+        trace_state=None,
     ) -> SamplingResult:
         """Make a sampling decision based on business rules."""
 
@@ -85,6 +85,7 @@ class BusinessRuleSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 attributes=attributes,
+                trace_state=trace_state,
             )
 
         # Rule 2: Drop low-value operations entirely
@@ -92,6 +93,7 @@ class BusinessRuleSampler(Sampler):
             return SamplingResult(
                 Decision.DROP,
                 attributes={},
+                trace_state=trace_state,
             )
 
         # Rule 3: Sample based on user tier
@@ -113,11 +115,13 @@ class BusinessRuleSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 attributes=attributes,
+                trace_state=trace_state,
             )
 
         return SamplingResult(
             Decision.DROP,
             attributes={},
+            trace_state=trace_state,
         )
 
     def _should_sample_by_rate(self, trace_id: int, rate: float) -> bool:
@@ -148,7 +152,7 @@ In distributed systems, you usually want to respect the parent span's sampling d
 
 ```python
 # setup.py
-from opentelemetry.sdk.trace.sampling import ParentBasedTraceIdRatio, ParentBased
+from opentelemetry.sdk.trace.sampling import ParentBased
 from opentelemetry.sdk.trace import TracerProvider
 from business_sampler import BusinessRuleSampler
 
@@ -170,6 +174,7 @@ provider = TracerProvider(sampler=sampler)
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
 import io.opentelemetry.sdk.trace.samplers.SamplingDecision;
+import io.opentelemetry.sdk.trace.data.LinkData;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanKind;
@@ -212,6 +217,10 @@ public class BusinessRuleSampler implements Sampler {
 
         // Sample based on user tier
         String userTier = attributes.get(AttributeKey.stringKey("user.tier"));
+        if (userTier == null) {
+            userTier = "unknown";
+        }
+
         double rate = switch (userTier) {
             case "enterprise" -> 1.0;
             case "pro" -> 0.5;
