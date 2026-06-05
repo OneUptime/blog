@@ -8,9 +8,9 @@ Description: Learn how to relocate Docker's default data directory to an externa
 
 ---
 
-Docker stores all of its data, including images, containers, volumes, and build cache, in a single root directory. On most Linux systems, this defaults to `/var/lib/docker`. Over time, this directory can grow to consume tens or even hundreds of gigabytes. If your root partition is small, or if you want to take advantage of a faster or larger external drive, moving Docker's storage location becomes necessary.
+Docker stores most of its persistent data, including images, containers, volumes, and build cache, in a root directory. On most Linux systems using the classic Docker storage drivers, this defaults to `/var/lib/docker`. On fresh Docker Engine 29.0 and later installations that use the containerd image store, image contents and container snapshots are stored under `/var/lib/containerd`, while other daemon data remains under `/var/lib/docker`. Over time, these directories can grow to consume tens or even hundreds of gigabytes. If your root partition is small, or if you want to take advantage of a faster or larger external drive, moving Docker's storage location becomes necessary.
 
-This guide walks through the entire process step by step, covering both the daemon configuration method and the symbolic link method.
+This guide walks through the entire process step by step, covering the daemon configuration, symbolic link, and systemd mount methods.
 
 ## Why Move Docker's Storage?
 
@@ -29,15 +29,18 @@ This command shows a breakdown of Docker's disk usage including images, containe
 docker system df
 ```
 
-You can also check the size of the default directory directly:
+You can also check the size of the default directories directly:
 
 ```bash
 du -sh /var/lib/docker
+
+# If your Docker Engine uses the containerd image store
+du -sh /var/lib/containerd
 ```
 
 ## Method 1: Using the Docker Daemon Configuration File
 
-This is the recommended approach. Docker supports a `data-root` configuration option in its daemon configuration file that tells the Docker engine where to store all of its data.
+This is the recommended approach. Docker supports a `data-root` configuration option in its daemon configuration file that tells the Docker engine where to store its daemon data. If your installation uses the containerd image store, you also need to move containerd's root directory to relocate image and snapshot data.
 
 ### Step 1: Stop the Docker Service
 
@@ -95,6 +98,9 @@ Use `rsync` to copy Docker's data to the new location. rsync preserves permissio
 ```bash
 # Copy all Docker data to the new location, preserving all attributes
 sudo rsync -aP /var/lib/docker/ /mnt/external-docker/docker/
+
+# If your Docker Engine uses the containerd image store, copy containerd data too
+sudo rsync -aP /var/lib/containerd/ /mnt/external-docker/containerd/
 ```
 
 The `-a` flag enables archive mode (preserves permissions, symlinks, timestamps), and `-P` shows progress during the copy.
@@ -117,11 +123,27 @@ EOF
 
 If you already have a `daemon.json` file with other settings, add the `data-root` key to the existing JSON object. Do not create a second file.
 
-### Step 5: Start Docker and Verify
-
-Start the Docker service and confirm it is using the new location.
+For Docker Engine installations that use the containerd image store, also configure containerd's root directory:
 
 ```bash
+# Back up the existing containerd config if it exists
+if [ -f /etc/containerd/config.toml ]; then
+  sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.bak
+fi
+
+# Set containerd's root directory to the external drive
+sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i "s#^root = .*#root = '/mnt/external-docker/containerd'#" /etc/containerd/config.toml
+```
+
+### Step 5: Start Docker and Verify
+
+Start the services and confirm Docker is using the new location.
+
+```bash
+# Start containerd first if you stopped it earlier
+sudo systemctl start containerd
+
 # Start Docker with the new configuration
 sudo systemctl start docker
 
@@ -149,6 +171,9 @@ Once you have confirmed that Docker is working correctly with the new location, 
 ```bash
 # Remove the old Docker data directory
 sudo rm -rf /var/lib/docker
+
+# If you moved containerd data too
+sudo rm -rf /var/lib/containerd
 ```
 
 Some administrators prefer to keep the old directory for a few days as a safety net before deleting it. That is a sensible precaution.
@@ -165,10 +190,19 @@ sudo systemctl stop containerd
 # Move the data to the new location
 sudo mv /var/lib/docker /mnt/external-docker/docker
 
+# If your Docker Engine uses the containerd image store, move containerd data too
+if [ -d /var/lib/containerd ]; then
+  sudo mv /var/lib/containerd /mnt/external-docker/containerd
+fi
+
 # Create a symbolic link from the old path to the new location
 sudo ln -s /mnt/external-docker/docker /var/lib/docker
+if [ -d /mnt/external-docker/containerd ]; then
+  sudo ln -s /mnt/external-docker/containerd /var/lib/containerd
+fi
 
 # Start Docker
+sudo systemctl start containerd
 sudo systemctl start docker
 
 # Verify it works
@@ -179,7 +213,7 @@ The symbolic link method works, but the daemon configuration method is cleaner a
 
 ## Method 3: Using a Bind Mount in systemd
 
-Another option is to use a systemd bind mount. This mounts the external drive directly over `/var/lib/docker`.
+Another option is to use a systemd bind mount. This mounts the Docker data directory from the external drive directly over `/var/lib/docker`.
 
 Create a systemd mount unit file:
 
@@ -189,12 +223,13 @@ sudo tee /etc/systemd/system/var-lib-docker.mount <<EOF
 [Unit]
 Description=Mount Docker data directory
 Before=docker.service
+RequiresMountsFor=/mnt/external-docker/docker
 
 [Mount]
-What=/dev/sdb1
+What=/mnt/external-docker/docker
 Where=/var/lib/docker
-Type=ext4
-Options=defaults
+Type=none
+Options=bind
 
 [Install]
 WantedBy=multi-user.target
@@ -258,4 +293,4 @@ The filesystem choice also affects Docker's storage drivers. ext4 works well wit
 
 ## Summary
 
-Moving Docker's storage location is straightforward when you follow the right steps. The daemon configuration method using `data-root` is the cleanest approach. Always stop Docker before moving data, use rsync to preserve file attributes, and verify everything works before removing old data. For production systems, make sure your external drive is reliable, fast, and configured to mount automatically on boot.
+Moving Docker's storage location is straightforward when you follow the right steps. The daemon configuration method using `data-root` is the cleanest approach for Docker daemon data. Always stop Docker before moving data, use rsync to preserve file attributes, and verify everything works before removing old data. For production systems, make sure your external drive is reliable, fast, and configured to mount automatically on boot.
