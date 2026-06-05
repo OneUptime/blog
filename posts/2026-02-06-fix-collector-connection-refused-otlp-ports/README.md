@@ -129,7 +129,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]  # Referenced but not defined above!
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 **Fix:**
@@ -145,11 +145,15 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318  # Listen on all interfaces
 
+exporters:
+  debug:
+    verbosity: detailed
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ### Cause 2: Listening on Localhost Only
@@ -345,8 +349,8 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-  # Debug logging exporter
-  logging:
+  # Debug exporter
+  debug:
     verbosity: detailed
 
 # extensions: Health checks and monitoring
@@ -381,7 +385,12 @@ service:
   # Monitor Collector's own health
   telemetry:
     metrics:
-      address: 0.0.0.0:8888  # Prometheus metrics endpoint
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0  # Prometheus metrics endpoint
+                port: 8888
 ```
 
 ---
@@ -413,6 +422,7 @@ data:
       memory_limiter:
         limit_mib: 512
         spike_limit_mib: 128
+        check_interval: 2s
 
     exporters:
       otlphttp:
@@ -420,7 +430,20 @@ data:
         headers:
           x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
       pipelines:
         traces:
           receivers: [otlp]
@@ -444,7 +467,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
         ports:
         # OTLP gRPC port
         - containerPort: 4317
@@ -457,6 +480,10 @@ spec:
         # Metrics port
         - containerPort: 8888
           name: metrics
+          protocol: TCP
+        # Health check port
+        - containerPort: 13133
+          name: health-check
           protocol: TCP
         env:
         - name: ONEUPTIME_TOKEN
@@ -559,7 +586,7 @@ After applying the fix, verify connectivity:
 curl -v http://otel-collector:4318/v1/traces \
   -H "Content-Type: application/json" \
   -d '{}'
-# Should return 400 Bad Request (means it's listening and parsing)
+# A 2xx or 4xx response means the HTTP receiver is reachable; "connection refused" means it is not.
 
 # In Kubernetes, test from a pod
 kubectl run test-curl --image=curlimages/curl -i --rm --restart=Never -- \
