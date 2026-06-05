@@ -43,24 +43,24 @@ receivers:
 
 # exporters configuration (where telemetry is sent)
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces  # OTLP HTTP endpoint
+  otlp_http:
+    endpoint: https://api.example.com  # Base OTLP HTTP endpoint
 
 # service pipelines (wire receivers to exporters)
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-The `endpoint` should point to your OTLP-compatible backend. Many platforms provide signal-specific endpoints:
+The `endpoint` should point to your OTLP-compatible backend's base URL. The exporter appends the standard signal paths automatically:
 
 - Traces: `https://api.example.com/v1/traces`
 - Metrics: `https://api.example.com/v1/metrics`
 - Logs: `https://api.example.com/v1/logs`
 
-If your backend supports a unified endpoint for all signals, you can omit the signal path and the exporter will append it automatically.
+If your backend requires explicit signal-specific URLs, use `traces_endpoint`, `metrics_endpoint`, and `logs_endpoint` instead of relying on the base `endpoint`.
 
 ---
 
@@ -96,17 +96,17 @@ The most common pattern uses a bearer token or API key in HTTP headers:
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
+  otlp_http:
+    endpoint: https://api.example.com
     headers:
       # Bearer token authentication
-      authorization: "Bearer ${OTEL_API_TOKEN}"
+      authorization: "Bearer ${env:OTEL_API_TOKEN}"
 
       # Or custom header authentication
-      x-api-key: "${OTEL_API_KEY}"
+      x-api-key: "${env:OTEL_API_KEY}"
 ```
 
-Using environment variables (like `${OTEL_API_TOKEN}`) keeps secrets out of configuration files. Set these variables before starting the Collector:
+Using environment variables (like `${env:OTEL_API_TOKEN}`) keeps secrets out of configuration files. Set these variables before starting the Collector:
 
 ```bash
 export OTEL_API_TOKEN="your-secret-token-here"
@@ -119,10 +119,10 @@ For OneUptime specifically, use the `x-oneuptime-token` header:
 
 ```yaml
 exporters:
-  otlphttp_oneuptime:
+  otlp_http/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 ```
 
 ### Basic Authentication
@@ -131,11 +131,11 @@ Some backends use HTTP Basic Auth:
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
+  otlp_http:
+    endpoint: https://api.example.com
     headers:
       # Base64-encoded username:password
-      authorization: "Basic ${BASIC_AUTH_CREDENTIALS}"
+      authorization: "Basic ${env:BASIC_AUTH_CREDENTIALS}"
 ```
 
 Generate the Basic Auth header:
@@ -154,12 +154,12 @@ Compression reduces bandwidth usage and speeds up data transfer, especially impo
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
-    compression: gzip  # Options: gzip, zstd, snappy, none
+  otlp_http:
+    endpoint: https://api.example.com
+    compression: gzip  # Options include gzip, zstd, snappy, zlib, deflate, lz4, none
 
     headers:
-      authorization: "Bearer ${OTEL_API_TOKEN}"
+      authorization: "Bearer ${env:OTEL_API_TOKEN}"
 ```
 
 **Compression algorithm comparison:**
@@ -167,6 +167,7 @@ exporters:
 - **gzip** (default): Universal support, good compression ratio (60-80% size reduction), moderate CPU usage. Best for most use cases.
 - **zstd**: Better compression and speed than gzip, but requires backend support. Use if your backend supports it.
 - **snappy**: Very fast but lower compression ratio. Good for high-throughput scenarios where CPU matters more than bandwidth.
+- **zlib, deflate, lz4**: Additional Collector-supported HTTP compression options. Use only when your backend supports them.
 - **none**: No compression. Only use for debugging or when the network is fast and CPU-constrained.
 
 For most production deployments, stick with `gzip` unless you have specific requirements.
@@ -179,8 +180,8 @@ Network failures happen. The OTLP HTTP exporter includes sophisticated retry log
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
+  otlp_http:
+    endpoint: https://api.example.com
 
     # HTTP request timeout - how long to wait for a response
     timeout: 30s
@@ -189,6 +190,7 @@ exporters:
     retry_on_failure:
       enabled: true
       initial_interval: 5s      # Wait 5s after first failure
+      multiplier: 2.0           # Double the wait time on each retry
       max_interval: 30s          # Cap backoff at 30s
       max_elapsed_time: 300s     # Give up after 5 minutes total
 
@@ -218,14 +220,14 @@ When sending telemetry over the internet, always use TLS encryption. The exporte
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
+  otlp_http:
+    endpoint: https://api.example.com
 
     tls:
       # Skip TLS verification (ONLY for testing, never in production)
       insecure_skip_verify: false
 
-      # Use system certificate pool
+      # Keep TLS enabled. System CAs are used unless you provide a custom CA.
       insecure: false
 
       # Custom CA certificate for self-signed or internal CAs
@@ -267,7 +269,7 @@ processors:
 
   # Batch telemetry to reduce network overhead
   batch:
-    send_batch_size: 8192        # Send when batch reaches 8192 spans
+    send_batch_size: 8192        # Send when batch reaches 8192 telemetry items
     timeout: 10s                  # Or send every 10 seconds
     send_batch_max_size: 10000   # Hard limit per batch
 
@@ -280,12 +282,12 @@ processors:
 
 exporters:
   # Primary OTLP HTTP exporter to OneUptime
-  otlphttp_oneuptime:
+  otlp_http/oneuptime:
     endpoint: https://oneuptime.com/otlp
 
     # Authentication
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
     # Compression for bandwidth efficiency
     compression: gzip
@@ -297,6 +299,7 @@ exporters:
     retry_on_failure:
       enabled: true
       initial_interval: 5s
+      multiplier: 2.0
       max_interval: 30s
       max_elapsed_time: 300s
 
@@ -308,10 +311,10 @@ exporters:
       storage: file_storage  # Persist queue to disk (requires extension)
 
   # Backup exporter for redundancy (optional)
-  otlphttp_backup:
-    endpoint: https://backup.example.com/v1/traces
+  otlp_http/backup:
+    endpoint: https://backup.example.com
     headers:
-      authorization: "Bearer ${BACKUP_TOKEN}"
+      authorization: "Bearer ${env:BACKUP_TOKEN}"
     compression: gzip
 
 # Extensions for additional functionality
@@ -330,19 +333,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlp_http/oneuptime]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlp_http/oneuptime]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlp_http/oneuptime]
 ```
 
 This configuration includes:
@@ -364,28 +367,28 @@ You can send telemetry to multiple backends simultaneously by configuring multip
 ```yaml
 exporters:
   # Primary backend (all signals)
-  otlphttp_primary:
+  otlp_http/primary:
     endpoint: https://primary.example.com/otlp
     headers:
-      authorization: "Bearer ${PRIMARY_TOKEN}"
+      authorization: "Bearer ${env:PRIMARY_TOKEN}"
 
   # Secondary backend (traces only for long-term storage)
-  otlphttp_archive:
-    endpoint: https://archive.example.com/v1/traces
+  otlp_http/archive:
+    traces_endpoint: https://archive.example.com/v1/traces
     headers:
-      x-api-key: "${ARCHIVE_KEY}"
+      x-api-key: "${env:ARCHIVE_KEY}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp_primary, otlphttp_archive]  # Send to both
+      exporters: [otlp_http/primary, otlp_http/archive]  # Send to both
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp_primary]  # Only primary gets metrics
+      exporters: [otlp_http/primary]  # Only primary gets metrics
 ```
 
 This pattern is useful for:
@@ -446,7 +449,7 @@ service:
 **Solution**:
 - Configure `memory_limiter` processor with appropriate limits
 - Reduce `sending_queue` size if buffering too much data
-- Increase `batch` processor timeout to send data faster
+- Reduce `batch` processor timeout or batch size to send data faster
 - Check for backend slowness causing queue buildup
 
 ---
@@ -457,17 +460,12 @@ For high-throughput environments, tune these parameters:
 
 ```yaml
 exporters:
-  otlphttp:
-    endpoint: https://api.example.com/v1/traces
+  otlp_http:
+    endpoint: https://api.example.com
 
     # Increase workers for parallel exports
     sending_queue:
       num_consumers: 20  # More workers = higher throughput
-
-    # Larger batches reduce network overhead
-    batch:
-      send_batch_size: 16384
-      send_batch_max_size: 20000
 
 processors:
   batch:
