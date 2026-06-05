@@ -39,8 +39,10 @@ Create a policy file for image compliance:
 
 package docker.compliance
 
+import rego.v1
+
 # Deny images from unapproved registries
-deny[msg] {
+deny contains msg if {
     input.image
     not startswith(input.image, "registry.example.com/")
     not startswith(input.image, "docker.io/library/")
@@ -48,28 +50,43 @@ deny[msg] {
 }
 
 # Deny images running as root
-deny[msg] {
+deny contains msg if {
     input.config.User == ""
     msg := "Container must specify a non-root USER"
 }
 
-deny[msg] {
+deny contains msg if {
     input.config.User == "root"
+    msg := "Container must not run as root"
+}
+
+deny contains msg if {
+    input.config.User == "0"
+    msg := "Container must not run as root"
+}
+
+deny contains msg if {
+    startswith(input.config.User, "root:")
+    msg := "Container must not run as root"
+}
+
+deny contains msg if {
+    startswith(input.config.User, "0:")
     msg := "Container must not run as root"
 }
 
 # Require specific labels on all images
 required_labels := {"maintainer", "version", "team"}
 
-deny[msg] {
+deny contains msg if {
     label := required_labels[_]
     not input.config.Labels[label]
     msg := sprintf("Required label '%s' is missing", [label])
 }
 
 # Deny images with exposed privileged ports
-deny[msg] {
-    port := input.config.ExposedPorts[p]
+deny contains msg if {
+    input.config.ExposedPorts[p]
     port_num := to_number(split(p, "/")[0])
     port_num < 1024
     port_num != 80
@@ -191,6 +208,7 @@ override:
     - DL3007  # Using latest is prone to errors
     - DL3008  # Pin versions in apt get install
     - DL3018  # Pin versions in apk add
+    - DL3026  # Use only an allowed registry in the FROM image
   warning:
     - DL3003  # Use WORKDIR to switch to a directory
     - DL3009  # Delete apt-get lists after installing
@@ -237,7 +255,7 @@ jobs:
 
       # Scan for vulnerabilities
       - name: Vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: compliance-check:${{ github.sha }}
           format: table
@@ -258,15 +276,20 @@ jobs:
           }' > /tmp/input.json
 
           # Run OPA policy check and fail on any violations
-          VIOLATIONS=$(opa eval \
+          VIOLATION_COUNT=$(opa eval \
               --data policy/docker_compliance.rego \
               --input /tmp/input.json \
-              --format raw \
-              "data.docker.compliance.deny")
+              --format json \
+              "data.docker.compliance.deny" | \
+              jq '.result[0].expressions[0].value | length')
 
-          if [ "$VIOLATIONS" != "[]" ]; then
+          if [ "$VIOLATION_COUNT" -gt 0 ]; then
               echo "Policy violations found:"
-              echo "$VIOLATIONS" | jq .
+              opa eval \
+                  --data policy/docker_compliance.rego \
+                  --input /tmp/input.json \
+                  --format pretty \
+                  "data.docker.compliance.deny"
               exit 1
           fi
 ```
@@ -301,8 +324,18 @@ spec:
         package allowedregistries
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
-          not any({r | r := input.parameters.registries[_]; startswith(container.image, r)})
-          msg := sprintf("Image '%s' is from a non-approved registry", [container.image])
+          not strings.any_prefix_match(container.image, input.parameters.registries)
+          msg := sprintf("Container '%s' uses image '%s' from a non-approved registry", [container.name, container.image])
+        }
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not strings.any_prefix_match(container.image, input.parameters.registries)
+          msg := sprintf("Init container '%s' uses image '%s' from a non-approved registry", [container.name, container.image])
+        }
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not strings.any_prefix_match(container.image, input.parameters.registries)
+          msg := sprintf("Ephemeral container '%s' uses image '%s' from a non-approved registry", [container.name, container.image])
         }
 ```
 
@@ -349,7 +382,7 @@ for CONTAINER_ID in $(docker ps -q); do
 
     # Run a quick vulnerability count
     VULN_COUNT=$(trivy image --format json "$IMAGE" 2>/dev/null | \
-        jq '[.Results[]?.Vulnerabilities[]?] | length' 2>/dev/null || echo "scan_failed")
+        jq '[.Results[]?.Vulnerabilities[]?] | length' 2>/dev/null || echo '"scan_failed"')
 
     if [ "$FIRST" = true ]; then
         FIRST=false
@@ -357,17 +390,27 @@ for CONTAINER_ID in $(docker ps -q); do
         echo ',' >> "$REPORT_FILE"
     fi
 
+    case "$USER" in
+        ""|"root"|"0"|"root:"*|"0:"*) COMPLIANT=false ;;
+        *) COMPLIANT=true ;;
+    esac
+
     # Write container compliance data to the report
-    cat >> "$REPORT_FILE" << EOF
-  {
-    "container": "$NAME",
-    "image": "$IMAGE",
-    "user": "$USER",
-    "labels": $LABELS,
-    "vulnerability_count": $VULN_COUNT,
-    "compliant": $([ -n "$USER" ] && [ "$USER" != "root" ] && echo true || echo false)
-  }
-EOF
+    jq -n \
+        --arg container "$NAME" \
+        --arg image "$IMAGE" \
+        --arg user "$USER" \
+        --argjson labels "$LABELS" \
+        --argjson vulnerability_count "$VULN_COUNT" \
+        --argjson compliant "$COMPLIANT" \
+        '{
+          container: $container,
+          image: $image,
+          user: $user,
+          labels: $labels,
+          vulnerability_count: $vulnerability_count,
+          compliant: $compliant
+        }' >> "$REPORT_FILE"
 done
 
 echo ']}' >> "$REPORT_FILE"
