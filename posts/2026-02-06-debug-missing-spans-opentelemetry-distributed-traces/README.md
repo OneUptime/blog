@@ -47,11 +47,11 @@ tracer = trace.get_tracer("context.debug")
 
 with tracer.start_as_current_span("outgoing-call"):
     headers = {}
-    # inject() adds traceparent and tracestate headers
+    # inject() adds traceparent, and tracestate when there is trace state to send
     inject(headers)
     print("Propagated headers:", headers)
     # Expected output:
-    # {'traceparent': '00-abc123...-def456...-01', 'tracestate': ''}
+    # {'traceparent': '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'}
 
     response = requests.get("http://service-b:8080/api/data", headers=headers)
 ```
@@ -121,7 +121,7 @@ from opentelemetry import propagate
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.textmap import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Support both W3C and B3 propagation formats
 # This ensures context works with services using either format
@@ -189,12 +189,12 @@ Check what instrumentations are active:
 
 ```python
 # Python: list installed instrumentations
-import pkg_resources
+from importlib.metadata import distributions
 
 # Find all installed OpenTelemetry instrumentation packages
 otel_packages = [
-    pkg.key for pkg in pkg_resources.working_set
-    if pkg.key.startswith("opentelemetry-instrumentation")
+    dist.metadata["Name"] for dist in distributions()
+    if dist.metadata.get("Name", "").lower().startswith("opentelemetry-instrumentation")
 ]
 print("Installed instrumentations:", otel_packages)
 ```
@@ -208,7 +208,7 @@ pip install opentelemetry-instrumentation-flask
 pip install opentelemetry-instrumentation-sqlalchemy
 pip install opentelemetry-instrumentation-redis
 
-# Or use the auto-instrumentor to detect and instrument everything
+# Or run the app with installed auto-instrumentation enabled
 opentelemetry-instrument python app.py
 ```
 
@@ -341,6 +341,7 @@ Spans that are created but never flushed before the process exits will be lost. 
 
 ```python
 # Problem: spans lost because the process exits before flushing
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
