@@ -45,6 +45,7 @@ receivers:
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<timestamp>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d+) (?P<bytes>\d+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "02/Jan/2006:15:04:05 -0700"
         severity:
           parse_from: attributes.status
@@ -54,9 +55,9 @@ receivers:
             warn: ["400", "401", "403", "404", "405"]
             error: ["500", "502", "503", "504"]
 
-      # Convert bytes and status to integers for proper typing
+      # Copy parsed values to semantic attribute names
       - type: add
-        field: attributes.http.method
+        field: attributes["http.request.method"]
         value: EXPR(attributes.method)
 
       # Clean up the temporary parsed fields
@@ -87,9 +88,11 @@ receivers:
     operators:
       # Parse the main log line structure
       - type: regex_parser
+        id: parse_app_log
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>[A-Z]+)\] \[(?P<thread>[^\]]+)\] (?P<logger>[^\s]+) - (?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "2006-01-02 15:04:05.000"
         severity:
           parse_from: attributes.severity
@@ -109,11 +112,13 @@ receivers:
       # Try to extract structured data from the message text
       # For example, extract customer IDs and retry counts
       - type: regex_parser
+        id: parse_customer_id
         parse_from: body
         regex: 'customer (?P<customer_id>cust_\w+)'
         if: 'body matches "customer cust_"'
 
       - type: regex_parser
+        id: parse_retry_count
         parse_from: body
         regex: 'retry attempt (?P<retry_count>\d+)'
         if: 'body matches "retry attempt"'
@@ -141,9 +146,9 @@ receivers:
       - type: syslog_parser
         protocol: rfc3164
 
-      # Add the facility and priority as attributes
+      # Tag the log source for filtering
       - type: add
-        field: attributes.log.source
+        field: attributes["log.source"]
         value: "syslog"
 ```
 
@@ -161,6 +166,7 @@ receivers:
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<timestamp>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d+) (?P<bytes>\d+)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "02/Jan/2006:15:04:05 -0700"
 
   filelog/app:
@@ -173,9 +179,17 @@ receivers:
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>[A-Z]+)\] \[(?P<thread>[^\]]+)\] (?P<logger>[^\s]+) - (?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
+          layout_type: gotime
           layout: "2006-01-02 15:04:05.000"
         severity:
           parse_from: attributes.severity
+
+  filelog/syslog:
+    include: ["/var/log/syslog", "/var/log/messages"]
+    start_at: end
+    operators:
+      - type: syslog_parser
+        protocol: rfc3164
 
 processors:
   # Tag each log source for easy filtering
@@ -195,7 +209,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [filelog/apache, filelog/app]
+      receivers: [filelog/apache, filelog/app, filelog/syslog]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -204,7 +218,7 @@ service:
 
 Test your regex patterns against real log samples before deploying. An incorrect pattern will silently drop fields or fail to parse entirely. Use a tool like regex101.com with the Go flavor (since the collector is written in Go and uses Go's regex engine).
 
-Named capture groups (`?P<name>`) become attributes on the log record. Keep the names consistent with OpenTelemetry semantic conventions where possible (e.g., `http.method` instead of just `method`).
+Named capture groups (`?P<name>`) become attributes on the log record. Keep the names consistent with OpenTelemetry semantic conventions where possible (e.g., `http.request.method` instead of just `method`).
 
 ## Wrapping Up
 
