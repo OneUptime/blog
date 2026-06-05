@@ -30,11 +30,11 @@ This exposes metrics at `/v1/metrics?format=prometheus` on the Nomad HTTP API (d
 ### Scheduling Metrics
 - `nomad_nomad_broker_total_ready` - Number of evaluations ready to be scheduled
 - `nomad_nomad_broker_total_unacked` - Number of evaluations waiting for acknowledgment
-- `nomad_nomad_worker_invoke_scheduler` - Scheduler invocation count and latency
+- `nomad_nomad_worker_invoke_scheduler_<type>` - Scheduler invocation latency by scheduler type
 
 ### Allocation Metrics
 - `nomad_client_allocs_running` - Number of running allocations per client
-- `nomad_client_allocs_start` - Allocation start events
+- `nomad_client_allocations_start` - Number of allocations starting
 - `nomad_client_allocs_complete` - Allocation completion events
 - `nomad_client_allocs_failed` - Allocation failure events
 - `nomad_client_allocs_oom_killed` - OOM killed allocations
@@ -42,13 +42,13 @@ This exposes metrics at `/v1/metrics?format=prometheus` on the Nomad HTTP API (d
 Resource Utilization
 - `nomad_client_allocs_cpu_total_ticks` - CPU ticks used by allocations
 - `nomad_client_allocs_memory_usage` - Memory usage by allocations
-- `nomad_client_host_cpu_total` - Total host CPU
+- `nomad_client_host_cpu_total_percent` - Total host CPU utilization percentage
 - `nomad_client_host_memory_total` - Total host memory
 
 ### Cluster Health
-- `nomad_raft_leader` - Whether this server is the Raft leader
-- `nomad_raft_peers` - Number of Raft peers
-- `nomad_serf_member_status` - Serf membership status
+- `nomad_raft_leader_lastContact` - Time since the leader last contacted followers
+- `nomad_raft_state_leader` - Raft leader state transition count
+- `nomad_serf_member_join` - Serf member join events
 
 ## Collector Configuration
 
@@ -100,18 +100,9 @@ processors:
         action: upsert
 
   filter/nomad-essentials:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "nomad_nomad_broker_.*"
-          - "nomad_nomad_worker_.*"
-          - "nomad_client_allocs_.*"
-          - "nomad_client_host_.*"
-          - "nomad_raft_.*"
-          - "nomad_serf_.*"
-          - "nomad_nomad_job_.*"
-          - "nomad_runtime_.*"
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^nomad_(nomad_broker_.*|nomad_worker_.*|client_allocs_.*|client_allocations_.*|client_host_.*|raft_.*|serf_.*|nomad_job_.*|nomad_job_summary_.*|runtime_.*)$")'
 
   batch:
     timeout: 10s
@@ -155,7 +146,7 @@ job "otel-nomad-metrics" {
       driver = "docker"
 
       config {
-        image = "otel/opentelemetry-collector-contrib:0.96.0"
+        image = "otel/opentelemetry-collector-contrib:0.153.0"
         args  = ["--config=/local/config.yaml"]
         ports = ["metrics"]
       }
@@ -217,20 +208,20 @@ service:
 Set up alerts for Nomad scheduling problems:
 
 ```text
-# Critical: No Raft leader
-# nomad_raft_leader == 0 on all servers
+# Critical: Raft leader contact latency
+# nomad_raft_leader_lastContact > threshold
 
 # Warning: Scheduling backlog
 # nomad_nomad_broker_total_ready > 100
 
 # Warning: Allocation failures increasing
-# rate(nomad_client_allocs_failed) > 0
+# rate(nomad_client_allocs_failed[5m]) > 0
 
 # Warning: OOM kills
-# rate(nomad_client_allocs_oom_killed) > 0
+# rate(nomad_client_allocs_oom_killed[5m]) > 0
 
 # Warning: Node resource saturation
-# nomad_client_host_cpu_total - nomad_client_allocs_cpu_total_ticks < threshold
+# nomad_client_host_cpu_total_percent > 90
 ```
 
 ## Correlating Nomad Metrics with Application Telemetry
