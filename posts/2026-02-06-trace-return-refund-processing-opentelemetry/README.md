@@ -219,17 +219,17 @@ class RefundProcessor:
 
             for item in rma["items"]:
                 with tracer.start_as_current_span("refund.restock_item") as item_span:
+                    condition = item.get("inspection_result", "like_new")
                     item_span.set_attribute("product.id", item["product_id"])
                     item_span.set_attribute("restock.quantity", item["quantity"])
-                    item_span.set_attribute("restock.condition",
-                                           item.get("inspection_result", "like_new"))
+                    item_span.set_attribute("restock.condition", condition)
 
                     # Only restock if item passed quality inspection
-                    if item.get("inspection_result") in ("like_new", "good"):
+                    if condition in ("like_new", "good"):
                         self.inventory_service.add_stock(
                             item["product_id"],
                             item["quantity"],
-                            condition=item.get("inspection_result")
+                            condition=condition
                         )
                         item_span.set_attribute("restock.restocked", True)
                     else:
@@ -242,13 +242,12 @@ class RefundProcessor:
 Set up metrics to track whether you are meeting your refund timing promises.
 
 ```python
-# Query: Average refund processing time by payment method
+# Query: Payment gateway refund latency by payment method
 
 REFUND_SLA_QUERY = """
 SELECT
     attributes['payment.method'] as method,
-    avg(attributes['refund.estimated_days']) as avg_estimated_days,
-    quantile(0.95)(duration_ms / 3600000) as p95_actual_hours
+    quantile(0.95)(duration_ms / 3600000) as p95_gateway_hours
 FROM spans
 WHERE name = 'refund.payment_gateway'
   AND attributes['refund.status'] = 'completed'
