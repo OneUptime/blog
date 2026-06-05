@@ -86,6 +86,8 @@ For Python, the same principle applies. The easiest way to guarantee correct ord
 # This automatically patches libraries before your application code runs
 opentelemetry-instrument \
   --traces_exporter otlp \
+  --metrics_exporter none \
+  --exporter_otlp_protocol http/protobuf \
   --exporter_otlp_endpoint http://localhost:4318 \
   python app.py
 ```
@@ -114,7 +116,7 @@ For Python:
 pip list | grep opentelemetry-instrumentation
 
 # Install all available auto-instrumentations at once
-pip install opentelemetry-distro
+pip install opentelemetry-distro opentelemetry-exporter-otlp
 opentelemetry-bootstrap -a install
 ```
 
@@ -187,7 +189,7 @@ const instrumentations = getNodeAutoInstrumentations({
 
 ## Step 5: Confirm the Sampler Is Not Dropping Everything
 
-If you configured a sampler, it might be dropping all or most spans. The default sampler is `AlwaysOn`, which keeps everything, but if someone changed it to a ratio-based sampler or `AlwaysOff`, that would explain the missing spans.
+If you configured a sampler, it might be dropping all or most spans. The default sampler is `parentbased_always_on`, which keeps new root traces but respects an upstream parent's sampling decision. If someone changed it to a ratio-based sampler or `AlwaysOff`, that would explain the missing spans.
 
 ```javascript
 // Check your sampler configuration
@@ -229,7 +231,7 @@ npm list | grep @opentelemetry
 # Look for duplicate installations that might cause conflicts
 npm ls @opentelemetry/api
 
-# The API package should appear exactly once
+# The API package should resolve to a single compatible version
 # Multiple versions can cause instrumentation to silently fail
 # because the instrumentation registers with a different API instance
 ```
@@ -253,7 +255,7 @@ When all else fails, enable debug logging in the OpenTelemetry SDK to see exactl
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 
 // Set this BEFORE creating the SDK instance
-// VERBOSE level shows everything including instrumentation patching details
+// DEBUG level shows detailed initialization and instrumentation messages
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 ```
 
