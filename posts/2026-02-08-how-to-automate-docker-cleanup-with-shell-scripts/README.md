@@ -60,13 +60,20 @@ Keep recently stopped containers for debugging, but remove ones that have been d
 MAX_AGE_HOURS="${1:-24}"
 REMOVED=0
 
+parse_docker_time() {
+    local VALUE="$1"
+    local BSD_VALUE="${VALUE%%.*}Z"
+    BSD_VALUE="${BSD_VALUE%ZZ}Z"
+    date -d "$VALUE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$BSD_VALUE" +%s 2>/dev/null
+}
+
 echo "[$(date)] Cleaning up containers stopped more than ${MAX_AGE_HOURS} hours ago"
 
 # Get stopped containers with their finish time
 for CONTAINER_ID in $(docker ps -a -q --filter status=exited --filter status=dead); do
     # Get the time the container stopped
     FINISHED=$(docker inspect --format '{{.State.FinishedAt}}' "$CONTAINER_ID")
-    FINISHED_EPOCH=$(date -d "$FINISHED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$FINISHED" +%s 2>/dev/null)
+    FINISHED_EPOCH=$(parse_docker_time "$FINISHED")
     NOW_EPOCH=$(date +%s)
 
     # Calculate age in hours
@@ -97,13 +104,20 @@ PROTECTED_PATTERNS="${2:-}"  # Comma-separated patterns to protect, e.g., "myapp
 REMOVED=0
 RECLAIMED=0
 
+parse_docker_time() {
+    local VALUE="$1"
+    local BSD_VALUE="${VALUE%%.*}Z"
+    BSD_VALUE="${BSD_VALUE%ZZ}Z"
+    date -d "$VALUE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$BSD_VALUE" +%s 2>/dev/null
+}
+
 echo "[$(date)] Cleaning up images older than ${MAX_AGE_DAYS} days"
 
 # Get all image IDs
-for IMAGE_ID in $(docker images -q --filter "dangling=false"); do
+for IMAGE_ID in $(docker images -q --filter "dangling=false" | sort -u); do
     # Get image creation time
     CREATED=$(docker inspect --format '{{.Created}}' "$IMAGE_ID")
-    CREATED_EPOCH=$(date -d "$CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$CREATED" +%s 2>/dev/null)
+    CREATED_EPOCH=$(parse_docker_time "$CREATED")
     NOW_EPOCH=$(date +%s)
     AGE_DAYS=$(( (NOW_EPOCH - CREATED_EPOCH) / 86400 ))
 
@@ -132,8 +146,8 @@ for IMAGE_ID in $(docker images -q --filter "dangling=false"); do
         continue
     fi
 
-    # Check if any running container uses this image
-    USED=$(docker ps -q --filter "ancestor=$IMAGE_ID" | head -1)
+    # Check if any container uses this image
+    USED=$(docker ps -a -q --filter "ancestor=$IMAGE_ID" | head -1)
     if [ -n "$USED" ]; then
         continue
     fi
@@ -259,6 +273,13 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+parse_docker_time() {
+    local VALUE="$1"
+    local BSD_VALUE="${VALUE%%.*}Z"
+    BSD_VALUE="${BSD_VALUE%ZZ}Z"
+    date -d "$VALUE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$BSD_VALUE" +%s 2>/dev/null
+}
+
 log "=== Docker Cleanup Started ==="
 
 # Record disk usage before cleanup
@@ -271,7 +292,8 @@ log "--- Cleaning containers ---"
 for CID in $(docker ps -a -q --filter status=exited); do
     FINISHED=$(docker inspect --format '{{.State.FinishedAt}}' "$CID" 2>/dev/null)
     if [ -n "$FINISHED" ]; then
-        AGE_H=$(( ($(date +%s) - $(date -d "$FINISHED" +%s 2>/dev/null || echo 0)) / 3600 ))
+        FINISHED_EPOCH=$(parse_docker_time "$FINISHED" || echo 0)
+        AGE_H=$(( ($(date +%s) - FINISHED_EPOCH) / 3600 ))
         if [ "$AGE_H" -ge "$CONTAINER_MAX_AGE_HOURS" ]; then
             NAME=$(docker inspect --format '{{.Name}}' "$CID" | sed 's/^\//')
             log "  Removing container: $NAME (${AGE_H}h old)"
@@ -286,11 +308,59 @@ docker image prune -f 2>/dev/null
 
 # Step 3: Remove old unused images (respecting protected patterns)
 log "--- Cleaning old unused images ---"
-docker image prune -a --filter "until=${IMAGE_MAX_AGE_DAYS}d" -f 2>/dev/null || true
+for IMAGE_ID in $(docker images -q --filter "dangling=false" | sort -u); do
+    CREATED=$(docker inspect --format '{{.Created}}' "$IMAGE_ID" 2>/dev/null || true)
+    [ -n "$CREATED" ] || continue
 
-# Step 4: Remove orphaned volumes
+    CREATED_EPOCH=$(parse_docker_time "$CREATED" || echo 0)
+    AGE_D=$(( ($(date +%s) - CREATED_EPOCH) / 86400 ))
+    [ "$AGE_D" -ge "$IMAGE_MAX_AGE_DAYS" ] || continue
+
+    REPO_TAGS=$(docker inspect --format '{{join .RepoTags ","}}' "$IMAGE_ID" 2>/dev/null || echo "")
+    PROTECTED=false
+    IFS=',' read -ra PATTERNS <<< "$PROTECTED_IMAGES"
+    for PATTERN in "${PATTERNS[@]}"; do
+        if [ -n "$PATTERN" ] && [[ "$REPO_TAGS" == *"$PATTERN"* ]]; then
+            PROTECTED=true
+            break
+        fi
+    done
+
+    if [ "$PROTECTED" = true ]; then
+        log "  Protected image: ${REPO_TAGS:-$IMAGE_ID}"
+        continue
+    fi
+
+    USED=$(docker ps -a -q --filter "ancestor=$IMAGE_ID" | head -1)
+    if [ -z "$USED" ]; then
+        log "  Removing image: ${REPO_TAGS:-$IMAGE_ID} (${AGE_D}d old)"
+        docker rmi "$IMAGE_ID" 2>/dev/null || true
+    fi
+done
+
+# Step 4: Remove orphaned volumes (respecting protected names)
 log "--- Cleaning orphaned volumes ---"
-docker volume prune -f 2>/dev/null
+for VOLUME in $(docker volume ls -q); do
+    PROTECTED=false
+    IFS=',' read -ra VOLUME_PATTERNS <<< "$PROTECTED_VOLUMES"
+    for PATTERN in "${VOLUME_PATTERNS[@]}"; do
+        if [ "$VOLUME" = "$PATTERN" ]; then
+            PROTECTED=true
+            break
+        fi
+    done
+
+    if [ "$PROTECTED" = true ]; then
+        log "  Protected volume: $VOLUME"
+        continue
+    fi
+
+    USED=$(docker ps -a --filter volume="$VOLUME" -q | head -1)
+    if [ -z "$USED" ]; then
+        log "  Removing orphaned volume: $VOLUME"
+        docker volume rm "$VOLUME" 2>/dev/null || true
+    fi
+done
 
 # Step 5: Clean build cache
 log "--- Cleaning build cache ---"
@@ -314,8 +384,8 @@ log "=== Docker Cleanup Complete ==="
 # Run the master cleanup script daily at 2 AM
 0 2 * * * /opt/scripts/docker-cleanup.sh >> /var/log/docker-cleanup.log 2>&1
 
-# Run aggressive cleanup weekly on Sundays (removes more aggressively)
-0 3 * * 0 /opt/scripts/docker-cleanup.sh --aggressive >> /var/log/docker-cleanup.log 2>&1
+# Run the same cleanup weekly on Sundays as an extra maintenance pass
+0 3 * * 0 /opt/scripts/docker-cleanup.sh >> /var/log/docker-cleanup.log 2>&1
 ```
 
 ## Monitoring Disk Usage with Alerts
