@@ -10,7 +10,7 @@ A common performance tuning mistake with the OpenTelemetry Collector is setting 
 
 ## How the Batch Processor Uses Memory
 
-The batch processor accumulates spans (or metrics, or logs) in an internal buffer. When the buffer reaches `send_batch_size` or `timeout` expires (whichever comes first), it sends the entire batch to the exporter. Until the export completes, the batch data stays in memory. If you have multiple pipeline goroutines, each one holds its own batch.
+The batch processor accumulates spans (or metric data points, or log records) in an internal buffer. When the buffer reaches `send_batch_size` or `timeout` expires (whichever comes first), it sends a batch to the exporter. `send_batch_size` is a trigger, not a hard cap on the outgoing batch size. Until the export completes, the batch data stays in memory. If you configure batching by metadata, each distinct metadata combination has its own pending batch.
 
 ## The Problem
 
@@ -21,7 +21,7 @@ processors:
     timeout: 60s             # and waiting too long
 ```
 
-With this configuration, the batch processor accumulates up to 50,000 spans before sending. If each span is ~2KB, that is 100MB per batch. With multiple concurrent batches in flight, you can easily hit 500MB+ just in the batch processor.
+With this configuration, the batch processor can accumulate roughly 50,000 spans before sending, and larger bursts are not capped because `send_batch_max_size` is not set. If each span is ~2KB, that is about 100MB per batch. With multiple concurrent batches in flight, you can easily hit 500MB+ just in the batch processor.
 
 ## Calculating Memory Impact
 
@@ -78,7 +78,7 @@ processors:
 The interaction:
 - If 1024 spans arrive within 5 seconds, a batch is sent immediately
 - If only 100 spans arrive in 5 seconds, those 100 are sent when the timeout fires
-- If 3000 spans arrive in a burst, two batches are created (2048 and 952) due to `send_batch_max_size`
+- If a 3000-span input batch is flushed, it is split into two outgoing batches (2048 and 952) due to `send_batch_max_size`
 
 ## Tuning for Your Workload
 
@@ -127,8 +127,8 @@ The Collector exposes batch processor metrics:
 
 otelcol_processor_batch_batch_send_size
 
-# Time taken to export a batch
-otelcol_exporter_send_latency
+# Export requests currently in flight, including retry backoff
+otelcol_exporter_in_flight_requests
 
 # Number of times timeout triggered (vs size trigger)
 otelcol_processor_batch_timeout_trigger_send
