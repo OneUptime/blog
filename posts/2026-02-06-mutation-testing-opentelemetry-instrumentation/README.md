@@ -29,7 +29,6 @@ Here is a Python script that creates mutated versions of your instrumented code:
 
 import ast
 import copy
-import sys
 
 class InstrumentationMutator(ast.NodeTransformer):
     """Creates mutations in OpenTelemetry instrumentation code."""
@@ -79,6 +78,18 @@ class InstrumentationMutator(ast.NodeTransformer):
                         "node": child,
                     })
 
+            # Mutation type 4: Change error status calls to OK
+            if isinstance(child, ast.Expr) and isinstance(child.value, ast.Call):
+                func = child.value.func
+                if isinstance(func, ast.Attribute) and func.attr == "set_status":
+                    if self._sets_error_status(child.value):
+                        self.mutations.append({
+                            "type": "change_status_to_ok",
+                            "line": child.lineno,
+                            "description": f"Change ERROR status to OK at line {child.lineno}",
+                            "node": child,
+                        })
+
     def _is_span_creation(self, node):
         """Check if a node is a tracer.start_as_current_span() call."""
         if isinstance(node, ast.Call):
@@ -87,24 +98,75 @@ class InstrumentationMutator(ast.NodeTransformer):
                 return func.attr == "start_as_current_span"
         return False
 
+    def _sets_error_status(self, node):
+        """Check if a set_status() call sets StatusCode.ERROR."""
+        if not node.args:
+            return False
+
+        status_arg = node.args[0]
+        if not isinstance(status_arg, ast.Call):
+            return False
+
+        return any(
+            isinstance(child, ast.Attribute) and
+            child.attr == "ERROR" and
+            isinstance(child.value, ast.Attribute) and
+            child.value.attr == "StatusCode"
+            for child in ast.walk(status_arg)
+        )
+
     def apply_mutation(self, tree, mutation):
         """Apply a single mutation to the AST."""
         mutated = copy.deepcopy(tree)
 
         class Remover(ast.NodeTransformer):
+            def _current_span_assignment(self, node):
+                item = node.items[0]
+                if item.optional_vars is None:
+                    return node.body
+
+                assignment = ast.Assign(
+                    targets=[item.optional_vars],
+                    value=ast.Call(
+                        func=ast.Attribute(
+                            value=ast.Name(id="trace", ctx=ast.Load()),
+                            attr="get_current_span",
+                            ctx=ast.Load(),
+                        ),
+                        args=[],
+                        keywords=[],
+                    ),
+                )
+                ast.copy_location(assignment, node)
+                return [assignment, *node.body]
+
+            def _change_error_status_to_ok(self, node):
+                status_arg = node.value.args[0]
+                for child in ast.walk(status_arg):
+                    if (isinstance(child, ast.Attribute) and
+                        child.attr == "ERROR" and
+                        isinstance(child.value, ast.Attribute) and
+                        child.value.attr == "StatusCode"):
+                        child.attr = "OK"
+                status_arg.args = status_arg.args[:1]
+                status_arg.keywords = []
+                return node
+
             def visit(self, node):
                 if (hasattr(node, 'lineno') and
                     node.lineno == mutation["line"] and
                     type(node) == type(mutation["node"])):
                     if mutation["type"] == "remove_span":
-                        # Replace the with block with just its body
-                        return node.body
+                        # Keep the span variable bound so tests fail on missing telemetry.
+                        return self._current_span_assignment(node)
                     elif mutation["type"] in ("remove_attribute", "remove_event"):
                         # Remove the statement entirely
                         return None
+                    elif mutation["type"] == "change_status_to_ok":
+                        return self._change_error_status_to_ok(node)
                 return self.generic_visit(node)
 
-        return Remover().visit(mutated)
+        return ast.fix_missing_locations(Remover().visit(mutated))
 ```
 
 ## Running the Mutations
@@ -115,9 +177,7 @@ Create a test runner that applies each mutation and checks if the test suite cat
 # run_mutations.py
 import ast
 import subprocess
-import tempfile
 import shutil
-import os
 from mutator import InstrumentationMutator
 
 def run_mutation_tests(source_file, test_command):
@@ -236,8 +296,7 @@ The mutator would find these mutation points:
 3. Remove `set_attribute("order.item_count", ...)`
 4. Remove `set_attribute("order.id", ...)`
 5. Remove `add_event("order_created", ...)`
-6. Remove `set_status(ERROR)` call
-7. Remove `set_status(OK)` call
+6. Change `set_status(ERROR)` to `set_status(OK)`
 
 If your tests are thorough, they should fail for every single mutation. Any mutation that survives points to a missing assertion in your tests.
 
