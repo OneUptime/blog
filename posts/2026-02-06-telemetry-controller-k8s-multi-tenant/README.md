@@ -49,24 +49,16 @@ spec:
                           type: boolean
                         samplingRate:
                           type: number
-                        rateLimit:
-                          type: integer
                     metrics:
                       type: object
                       properties:
                         enabled:
                           type: boolean
-                        rateLimit:
-                          type: integer
                     logs:
                       type: object
                       properties:
                         enabled:
                           type: boolean
-                        retentionDays:
-                          type: integer
-                        rateLimit:
-                          type: integer
                 backends:
                   type: array
                   items:
@@ -118,14 +110,10 @@ spec:
     traces:
       enabled: true
       samplingRate: 1.0
-      rateLimit: 50000  # spans per second
     metrics:
       enabled: true
-      rateLimit: 10000
     logs:
       enabled: true
-      retentionDays: 30
-      rateLimit: 20000
   backends:
     - name: primary
       endpoint: https://primary-backend:4318
@@ -144,12 +132,12 @@ Build a controller using the Kopf framework (Python Kubernetes operator framewor
 import kopf
 import kubernetes
 import yaml
-import json
+from datetime import datetime, timezone
 from kubernetes import client
 
 @kopf.on.create("observability.platform.io", "v1alpha1", "telemetrytenants")
 @kopf.on.update("observability.platform.io", "v1alpha1", "telemetrytenants")
-def reconcile_tenant(spec, meta, status, namespace, logger, **kwargs):
+def reconcile_tenant(spec, meta, status, namespace, patch, logger, **kwargs):
     """Reconcile a TelemetryTenant resource."""
     team_name = spec["teamName"]
     tenant_ns = spec["namespace"]
@@ -189,11 +177,9 @@ def reconcile_tenant(spec, meta, status, namespace, logger, **kwargs):
     deploy_collector(spec, tenant_ns, team_name, logger)
 
     # Update status
-    return {
-        "state": "Ready",
-        "collectorReady": True,
-        "lastReconciled": kopf.datetime.datetime.utcnow().isoformat(),
-    }
+    patch.status["state"] = "Ready"
+    patch.status["collectorReady"] = True
+    patch.status["lastReconciled"] = datetime.now(timezone.utc).isoformat()
 
 
 def generate_collector_config(spec):
@@ -321,6 +307,7 @@ def deploy_collector(spec, namespace, team_name, logger):
 def cleanup_tenant(spec, namespace, logger, **kwargs):
     """Clean up resources when a tenant is deleted."""
     team_name = spec["teamName"]
+    tenant_ns = spec.get("namespace", namespace)
     logger.info(f"Cleaning up resources for team: {team_name}")
 
     api = client.CoreV1Api()
@@ -328,9 +315,9 @@ def cleanup_tenant(spec, namespace, logger, **kwargs):
 
     try:
         api.delete_namespaced_config_map(
-            f"otel-collector-{team_name}", namespace)
+            f"otel-collector-{team_name}", tenant_ns)
         apps_api.delete_namespaced_daemon_set(
-            f"otel-collector-{team_name}", namespace)
+            f"otel-collector-{team_name}", tenant_ns)
     except kubernetes.client.exceptions.ApiException:
         pass
 ```
