@@ -62,10 +62,10 @@ def setup_recon_metrics():
             description="Seconds between transaction time and reconciliation",
             unit="seconds"
         ),
-        # Current unreconciled transaction count (gauge)
-        "unreconciled_count": meter.create_up_down_counter(
+        # Unreconciled transactions found in the latest batch (gauge)
+        "unreconciled_batch_count": meter.create_gauge(
             "recon.unreconciled.count",
-            description="Current count of unreconciled transactions"
+            description="Unreconciled transactions found in the latest batch"
         ),
     }
 ```
@@ -77,8 +77,8 @@ Now let's build the reconciliation engine with full tracing support.
 ```python
 # recon_engine.py
 from opentelemetry import trace
-from datetime import datetime, timedelta
-import time
+from opentelemetry.trace import Status, StatusCode
+from datetime import datetime, timedelta, timezone
 
 tracer = trace.get_tracer("reconciliation.engine")
 
@@ -98,6 +98,15 @@ class ReconciliationEngine:
             with tracer.start_as_current_span("recon.fetch_processor_txns") as fetch_span:
                 processor_txns = self.processor.get_batch(batch_id)
                 fetch_span.set_attribute("recon.processor_txn_count", len(processor_txns))
+
+                if not processor_txns:
+                    span.set_attribute("recon.matched_count", 0)
+                    span.set_attribute("recon.unmatched_count", 0)
+                    span.set_attribute("recon.discrepancy_count", 0)
+                    self.metrics["unreconciled_batch_count"].set(
+                        0, {"processor": processor_name}
+                    )
+                    return ReconciliationResult(0, 0, [])
 
             # Fetch corresponding transactions from core banking
             with tracer.start_as_current_span("recon.fetch_core_txns") as fetch_span:
@@ -135,10 +144,15 @@ class ReconciliationEngine:
 
             self.metrics["txn_matched"].add(matched, {"processor": processor_name})
             self.metrics["txn_unmatched"].add(unmatched, {"processor": processor_name})
+            self.metrics["unreconciled_batch_count"].set(
+                unmatched, {"processor": processor_name}
+            )
 
             if unmatched > 0:
-                span.set_status(trace.StatusCode.ERROR,
-                    f"{unmatched} unmatched transactions in batch")
+                span.set_status(Status(
+                    StatusCode.ERROR,
+                    f"{unmatched} unmatched transactions in batch"
+                ))
 
             return ReconciliationResult(matched, unmatched, discrepancies)
 
@@ -155,8 +169,10 @@ class ReconciliationEngine:
 
             if core_txn is None:
                 span.set_attribute("recon.match_status", "not_found")
-                span.set_status(trace.StatusCode.ERROR, "No matching core transaction")
-                self.metrics["unreconciled_count"].add(1, {"processor": processor_name})
+                span.set_status(Status(
+                    StatusCode.ERROR,
+                    "No matching core transaction"
+                ))
                 return MatchResult(matched=False, discrepancy="missing_in_core")
 
             # Check amount match
@@ -181,7 +197,7 @@ class ReconciliationEngine:
                 return MatchResult(matched=False, discrepancy="status_mismatch")
 
             # Record reconciliation lag
-            lag = (datetime.utcnow() - processor_txn.timestamp).total_seconds()
+            lag = (datetime.now(timezone.utc) - processor_txn.timestamp).total_seconds()
             self.metrics["recon_lag"].record(lag, {"processor": processor_name})
 
             span.set_attribute("recon.match_status", "matched")
@@ -214,6 +230,10 @@ def run_reconciliation():
 
 # Run every 30 seconds for near real-time reconciliation
 schedule.every(30).seconds.do(run_reconciliation)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
 ```
 
 ## Alerting on Reconciliation Issues
