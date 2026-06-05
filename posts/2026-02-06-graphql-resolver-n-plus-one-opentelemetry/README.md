@@ -43,9 +43,9 @@ const tracer = trace.getTracer('graphql-resolvers');
 
 // Apollo Server plugin that wraps each resolver in a span
 export const resolverTracingPlugin = {
-  requestDidStart() {
+  async requestDidStart() {
     return {
-      executionDidStart() {
+      async executionDidStart() {
         return {
           willResolveField({ info }: any) {
             // Create a span for every field resolution
@@ -104,25 +104,30 @@ resolve: Query.posts          [=============================]
   ... (repeated 100 times)
 ```
 
-You will see dozens of child spans for the same field, each making its own database call.
+You will see dozens of resolver spans for the same field, each making its own database call.
 
 ## Adding Database Call Counting
 
-To make N+1 detection more explicit, track the number of database queries per resolver type:
+To make N+1 detection more explicit, track the number of database queries on the active span:
 
 ```typescript
 // db-query-counter.ts
-import { trace, context } from '@opentelemetry/api';
+import { trace, type Span } from '@opentelemetry/api';
 
-// Simple counter that tracks DB calls within a request scope
+const dbQueryCounts = new WeakMap<Span, number>();
+
+// Simple counter that tracks DB calls on the active span
 export function countDatabaseCalls(queryFn: Function) {
   return async (...args: any[]) => {
     const span = trace.getActiveSpan();
 
-    // Increment a counter attribute on the parent span
-    const currentCount = (span as any)?._dbQueryCount || 0;
-    (span as any)._dbQueryCount = currentCount + 1;
+    if (!span) {
+      return queryFn(...args);
+    }
 
+    // Increment a counter attribute on the active span
+    const currentCount = dbQueryCounts.get(span) || 0;
+    dbQueryCounts.set(span, currentCount + 1);
     span?.setAttribute('db.query.count', currentCount + 1);
 
     return queryFn(...args);
@@ -144,19 +149,21 @@ function createAuthorLoader() {
   return new DataLoader(async (authorIds: readonly string[]) => {
     // This span shows the batched query
     return tracer.startActiveSpan('dataloader: batch-load-authors', async (span) => {
-      span.setAttribute('dataloader.keys.count', authorIds.length);
-      span.setAttribute('dataloader.entity', 'Author');
+      try {
+        span.setAttribute('dataloader.keys.count', authorIds.length);
+        span.setAttribute('dataloader.entity', 'Author');
 
-      const authors = await db.query(
-        'SELECT * FROM authors WHERE id = ANY($1)',
-        [authorIds]
-      );
+        const { rows: authors } = await db.query(
+          'SELECT * FROM authors WHERE id = ANY($1)',
+          [authorIds]
+        );
 
-      span.end();
-
-      // DataLoader expects results in the same order as keys
-      const authorMap = new Map(authors.map((a: any) => [a.id, a]));
-      return authorIds.map((id) => authorMap.get(id) || null);
+        // DataLoader expects results in the same order as keys
+        const authorMap = new Map(authors.map((a: any) => [a.id, a]));
+        return authorIds.map((id) => authorMap.get(id) || null);
+      } finally {
+        span.end();
+      }
     });
   });
 }
@@ -166,11 +173,14 @@ After applying DataLoader, your trace waterfall changes dramatically. Instead of
 
 ## Setting Up Alerts for N+1 Detection
 
-You can create automated alerts by counting child spans per resolver type:
+You can create automated alerts by counting resolver spans per resolver type:
 
 ```typescript
-// In your resolver tracing plugin, track child span counts
-span.setAttribute('graphql.resolver.child_count', childCount);
+// In your resolver tracing plugin, track resolver counts by field
+const fieldKey = `${info.parentType.name}.${info.fieldName}`;
+const count = (resolverCounts.get(fieldKey) || 0) + 1;
+resolverCounts.set(fieldKey, count);
+span.setAttribute('graphql.resolver.count_for_field', count);
 
 // Then alert when any single request has more than N resolver spans
 // for the same field type. A threshold of 20+ identical resolver
