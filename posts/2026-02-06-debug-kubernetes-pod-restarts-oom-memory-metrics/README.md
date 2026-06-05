@@ -16,36 +16,48 @@ First, instrument your application to export memory metrics. Here is a Python ex
 import psutil
 import os
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+from typing import Iterable
 
 meter = metrics.get_meter("runtime-metrics")
 
 # Create observable gauges for memory stats
 
-def get_memory_stats(callback_options):
+def get_rss_memory(callback_options: CallbackOptions) -> Iterable[Observation]:
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
 
-    yield metrics.Observation(
+    yield Observation(
         value=mem_info.rss,
-        attributes={"memory.type": "rss"},
-    )
-    yield metrics.Observation(
-        value=mem_info.vms,
-        attributes={"memory.type": "vms"},
     )
 
 meter.create_observable_gauge(
     name="process.memory.usage",
-    callbacks=[get_memory_stats],
-    description="Process memory usage in bytes",
-    unit="bytes",
+    callbacks=[get_rss_memory],
+    description="Resident physical memory in use",
+    unit="By",
 )
 
-# Track memory allocation rate per endpoint
-memory_delta = meter.create_histogram(
+def get_virtual_memory(callback_options: CallbackOptions) -> Iterable[Observation]:
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+
+    yield Observation(
+        value=mem_info.vms,
+    )
+
+meter.create_observable_gauge(
+    name="process.memory.virtual",
+    callbacks=[get_virtual_memory],
+    description="Committed virtual memory",
+    unit="By",
+)
+
+# Track net memory change per endpoint
+memory_delta = meter.create_up_down_counter(
     name="request.memory.delta",
     description="Memory change during request processing",
-    unit="bytes",
+    unit="By",
 )
 
 
@@ -61,7 +73,7 @@ def track_memory_for_request(endpoint):
             mem_after = process.memory_info().rss
             delta = mem_after - mem_before
 
-            memory_delta.record(delta, attributes={
+            memory_delta.add(delta, attributes={
                 "http.route": endpoint,
                 "memory.grew": str(delta > 0),
             })
@@ -142,7 +154,7 @@ Query your metrics backend to find endpoints where memory consistently grows wit
 ```python
 def detect_memory_leak_endpoints(metric_data, window_hours=4):
     """
-    Analyze request.memory.delta histograms to find endpoints
+    Analyze request.memory.delta points from the metrics backend to find endpoints
     where memory consistently grows.
     """
     endpoint_stats = {}
@@ -189,15 +201,17 @@ def detect_memory_leak_endpoints(metric_data, window_hours=4):
 
 ## Linking Kubernetes Events to OpenTelemetry Data
 
-Use the Kubernetes events API to pull OOM kill timestamps and correlate them with your memory metrics:
+Use the Kubernetes API to read the last terminated container states and correlate OOM kill timestamps with your memory metrics:
 
 ```python
 from kubernetes import client, config
+from datetime import datetime, timedelta, timezone
 
 def get_oom_kill_events(namespace, pod_prefix, hours=24):
-    """Fetch OOM kill events from Kubernetes API."""
+    """Fetch recent OOM kill records from Kubernetes pod status."""
     config.load_incluster_config()
     v1 = client.CoreV1Api()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
     pods = v1.list_namespaced_pod(namespace)
     oom_events = []
@@ -209,7 +223,11 @@ def get_oom_kill_events(namespace, pod_prefix, hours=24):
         for status in (pod.status.container_statuses or []):
             if status.last_state.terminated:
                 term = status.last_state.terminated
-                if term.reason == "OOMKilled":
+                if (
+                    term.reason == "OOMKilled"
+                    and term.finished_at
+                    and term.finished_at >= cutoff
+                ):
                     oom_events.append({
                         "pod": pod.metadata.name,
                         "container": status.name,
@@ -227,8 +245,10 @@ Create alerts that fire before the OOM kill happens:
 ```yaml
 - alert: MemoryUsageApproachingLimit
   expr: |
-    process_memory_usage{memory_type="rss"} /
-    kube_pod_container_resource_limits{resource="memory"} > 0.85
+    sum by (namespace, pod, container) (process_memory_usage_bytes)
+    /
+    on (namespace, pod, container)
+    kube_pod_container_resource_limits{resource="memory", unit="byte"} > 0.85
   for: 5m
   labels:
     severity: warning
