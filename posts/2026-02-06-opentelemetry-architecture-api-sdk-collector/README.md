@@ -32,7 +32,7 @@ Here's what API usage looks like in Node.js:
 
 ```javascript
 // Import the API (not the SDK)
-const { trace, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer from the API
 const tracer = trace.getTracer('payment-service', '1.0.0');
@@ -49,11 +49,11 @@ async function processPayment(orderId, amount) {
   try {
     // Your business logic here
     const result = await chargeCard(amount);
-    span.setStatus({ code: 1 }); // OK
+    span.setStatus({ code: SpanStatusCode.OK });
     return result;
   } catch (error) {
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message }); // ERROR
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     throw error;
   } finally {
     span.end();
@@ -79,14 +79,18 @@ Here's SDK configuration for a Node.js application:
 // SDK imports (used during application initialization)
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure resource attributes that apply to all telemetry
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'payment-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'payment-service',
+  [ATTR_SERVICE_VERSION]: '2.1.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production'
 });
 
 // Configure where telemetry gets exported
@@ -117,10 +121,9 @@ The SDK organizes functionality into pipelines:
 
 ```mermaid
 graph LR
-    A[TracerProvider] --> B[SpanProcessor]
-    B --> C[BatchSpanProcessor]
-    C --> D[SpanExporter]
-    D --> E[OTLP/HTTP or OTLP/gRPC]
+    A[TracerProvider] --> B[BatchSpanProcessor]
+    B --> C[SpanExporter]
+    C --> D[OTLP/HTTP or OTLP/gRPC]
 ```
 
 **TracerProvider**: Factory that creates Tracers. You typically have one per application.
@@ -136,11 +139,6 @@ const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 
-const provider = new NodeTracerProvider({
-  resource: resource,
-});
-
-// Configure batching behavior
 const processor = new BatchSpanProcessor(
   new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -152,7 +150,11 @@ const processor = new BatchSpanProcessor(
   }
 );
 
-provider.addSpanProcessor(processor);
+const provider = new NodeTracerProvider({
+  resource: resource,
+  spanProcessors: [processor],
+});
+
 provider.register();
 ```
 
@@ -185,13 +187,13 @@ graph TD
 
 **Fan-out**: Send the same telemetry to multiple backends simultaneously. Useful during migrations or when different teams use different tools.
 
-**Buffering**: The Collector queues telemetry when backends are slow or unavailable, preventing data loss.
+**Buffering**: The Collector can queue telemetry when backends are slow or unavailable, reducing data loss within the limits of the configured queue.
 
 **Resource efficiency**: One Collector can receive from hundreds of applications, reducing total network connections to backends.
 
 ### Basic Collector Configuration
 
-The Collector uses a YAML configuration with three sections: receivers, processors, and exporters.
+The Collector uses a YAML configuration with component sections for receivers, processors, and exporters, plus a service section that wires them into pipelines.
 
 ```yaml
 # Receive OTLP telemetry over HTTP and gRPC
@@ -227,11 +229,12 @@ exporters:
     endpoint: "https://oneuptime.com/otlp"
     encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "your-token-here"
 
   # Also export to local Jaeger for development
-  jaeger:
-    endpoint: localhost:14250
+  otlp/jaeger:
+    endpoint: localhost:4317
     tls:
       insecure: true
 
@@ -241,7 +244,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlphttp, jaeger]
+      exporters: [otlphttp, otlp/jaeger]
 
     metrics:
       receivers: [otlp]
@@ -249,7 +252,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration receives OTLP telemetry, batches it, adds environment attributes, and exports to two backends.
+This configuration receives OTLP telemetry, batches it, adds environment attributes, and exports traces to two backends.
 
 ### Running the Collector
 
@@ -320,13 +323,17 @@ The Collector configuration handles dual export:
 ```yaml
 exporters:
   # Existing Jaeger backend
-  jaeger:
-    endpoint: jaeger.company.internal:14250
+  otlp/jaeger:
+    endpoint: jaeger.company.internal:4317
+    tls:
+      insecure: true
 
   # New OneUptime backend
   otlphttp:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "token"
 
 service:
@@ -334,10 +341,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, otlphttp]  # Both!
+      exporters: [otlp/jaeger, otlphttp]  # Both!
 ```
 
-When you're confident in OneUptime, remove the Jaeger exporter from the Collector config. No application code changes required.
+When you're confident in OneUptime, remove the Jaeger OTLP exporter from the Collector config. No application code changes required.
 
 ## Common Architecture Patterns
 
@@ -390,17 +397,17 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 docker logs otel-collector
 ```
 
-Look for receiver metrics. Enable debug exporter:
+Look for receiver metrics. Enable the debug exporter:
 
 ```yaml
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
-      exporters: [logging]  # Add alongside real exporters
+      exporters: [debug]  # Add alongside real exporters
 ```
 
 **Check the backend**: Are there network connectivity issues? Authentication problems? Check backend-specific logs.
