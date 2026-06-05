@@ -41,9 +41,9 @@ flowchart LR
 
 ## Architecture with the OpenTelemetry Collector
 
-The Collector routes data to different backends based on tiering rules. Fresh data goes to the hot tier directly. A background process handles aging data from hot to warm to cold.
+The Collector can fan out fresh telemetry to multiple OTLP-compatible ingestion services. Age-based movement from hot to warm to cold storage is handled by the storage backend.
 
-This Collector config sends data to the hot tier and a parallel write to cheap long-term storage:
+This Collector config sends data to the hot tier and a parallel write to an OTLP-compatible archive service that can persist data to cheap long-term storage:
 
 ```yaml
 # tiered-storage-collector.yaml
@@ -61,15 +61,15 @@ processors:
 
 exporters:
   # Hot tier - fast backend for real-time queries
-  otlphttp/hot:
-    endpoint: https://clickhouse-hot.internal:8428
+  otlp_http/hot:
+    endpoint: https://otel-hot-gateway.internal:4318
     headers:
       X-Storage-Tier: hot
 
-  # Cold tier - direct write to object storage via a compatible API
+  # Cold tier - archive gateway writes to object storage
   # This gives you an immediate backup even before tiering kicks in
-  otlphttp/cold:
-    endpoint: https://s3-gateway.internal:4318
+  otlp_http/cold:
+    endpoint: https://otel-archive-gateway.internal:4318
     headers:
       X-Storage-Tier: cold
     sending_queue:
@@ -85,15 +85,15 @@ service:
       receivers: [otlp]
       processors: [batch]
       # Fan-out to both tiers simultaneously
-      exporters: [otlphttp/hot, otlphttp/cold]
+      exporters: [otlp_http/hot, otlp_http/cold]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/hot, otlphttp/cold]
+      exporters: [otlp_http/hot, otlp_http/cold]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/hot, otlphttp/cold]
+      exporters: [otlp_http/hot, otlp_http/cold]
 ```
 
 ## Implementing Tier Migration with ClickHouse
@@ -141,7 +141,7 @@ This ClickHouse configuration defines three storage tiers with automatic data mo
             <disk>cold_disk</disk>
           </cold>
         </volumes>
-        <!-- Data moves between tiers based on age -->
+        <!-- Also move parts to the next volume when free space drops below 10% -->
         <move_factor>0.1</move_factor>
       </tiered_policy>
     </policies>
@@ -160,19 +160,18 @@ CREATE TABLE otel_traces (
     ParentSpanId String,
     ServiceName LowCardinality(String),
     SpanName String,
+    SpanKind LowCardinality(String),
     Duration Int64,
     StatusCode LowCardinality(String),
-    SpanAttributes Map(LowCardinality(String), String)
+    SpanAttributes Map(String, String)
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, Timestamp)
 -- TTL rules control automatic tier migration
 TTL
-    -- Stay on hot tier for 2 days
-    Timestamp + INTERVAL 2 DAY TO VOLUME 'hot',
-    -- Move to warm tier after 2 days, stay for 28 days
-    Timestamp + INTERVAL 30 DAY TO VOLUME 'warm',
+    -- Move to warm tier after 2 days
+    Timestamp + INTERVAL 2 DAY TO VOLUME 'warm',
     -- Move to cold tier after 30 days
     Timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
     -- Delete entirely after 365 days
@@ -200,6 +199,7 @@ AS SELECT
     SpanId,
     ServiceName,
     SpanName,
+    SpanKind,
     Duration,
     StatusCode,
     -- Keep only essential attributes
@@ -210,7 +210,7 @@ AS SELECT
 FROM otel_traces
 WHERE
     -- Only keep root spans and direct service-entry spans
-    ParentSpanId = '' OR SpanName LIKE '%server%';
+    ParentSpanId = '' OR SpanKind = 'SPAN_KIND_SERVER';
 ```
 
 ## Cost Comparison
