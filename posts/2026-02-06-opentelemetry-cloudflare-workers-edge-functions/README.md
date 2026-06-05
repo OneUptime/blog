@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Cloudflare Workers, Edge Computing, Serverless, Tracing, Observability, JavaScript
 
-Description: A practical guide to instrumenting Cloudflare Workers with OpenTelemetry for distributed tracing and metrics collection at the edge.
+Description: A practical guide to instrumenting Cloudflare Workers with OpenTelemetry for distributed tracing at the edge.
 
 ---
 
-Cloudflare Workers run at the edge, close to your users, in over 300 data centers worldwide. That makes them fast. It also makes them hard to observe. Traditional APM agents do not work in the Workers runtime because it is not Node.js. There is no file system, no native modules, and no long-running process to attach to. You have to approach instrumentation differently.
+Cloudflare Workers run at the edge, close to your users, across hundreds of locations worldwide. That makes them fast. It also makes them hard to observe. Traditional APM agents do not work in the Workers runtime the same way they do in a long-running Node.js server. Even though Workers now support a subset of Node.js APIs behind compatibility flags, there is no long-running process to attach to. You have to approach instrumentation differently.
 
-OpenTelemetry can work in Cloudflare Workers, but you need to use the right components. The standard Node.js SDK will not run in the Workers environment. Instead, you build on the lightweight browser-compatible pieces of the OpenTelemetry JS API and export telemetry over HTTP using the OTLP JSON exporter. This guide walks through the full setup from scratch.
+OpenTelemetry can work in Cloudflare Workers, but you need to use the right components. The standard Node.js SDK is not a good fit for the Workers environment. Instead, you build on the lightweight runtime-compatible pieces of the OpenTelemetry JS API and export telemetry over HTTP using the OTLP JSON exporter. This guide walks through the full setup from scratch.
 
 ## Understanding the Workers Runtime Constraints
 
@@ -29,16 +29,16 @@ flowchart LR
 ```
 
 Key constraints you need to work with:
-- No `fs`, `net`, `http`, or other Node.js built-in modules
-- No gRPC support, so you must use HTTP/JSON for OTLP export
-- Execution time limits (typically 30 seconds for paid plans, 10ms CPU for free)
+- Node.js built-ins require `nodejs_compat`, and not every built-in or Node.js APM package is compatible with the Workers runtime
+- OTLP/gRPC exporters are Node.js-specific, so use OTLP over HTTP from Workers
+- CPU time limits (10ms on the Free plan, 30 seconds by default on the Paid plan, configurable up to 5 minutes)
 - The `waitUntil` API lets you send telemetry after the response without blocking the user
 
 These constraints mean you cannot simply install `@opentelemetry/sdk-node` and call it a day. But you can build a lightweight instrumentation layer that works perfectly within these limits.
 
 ## Installing the Compatible OpenTelemetry Packages
 
-Start with only the packages that work in the Workers runtime. Avoid anything that pulls in Node.js dependencies.
+Start with only the packages that work in the Workers runtime. Avoid full Node.js server SDKs and auto-instrumentation bundles.
 
 ```bash
 # Install the core API and SDK packages that are runtime-agnostic
@@ -47,13 +47,15 @@ npm install @opentelemetry/api
 npm install @opentelemetry/sdk-trace-base
 npm install @opentelemetry/resources
 npm install @opentelemetry/semantic-conventions
+npm install @opentelemetry/core
+npm install @opentelemetry/context-async-hooks
 
 # Install the OTLP HTTP exporter using JSON format,
 # which works with the fetch API available in Workers
 npm install @opentelemetry/exporter-trace-otlp-http
 ```
 
-Do not install `@opentelemetry/sdk-trace-node` or `@opentelemetry/auto-instrumentations-node`. Those packages import Node.js modules and will fail at deploy time.
+Do not install `@opentelemetry/sdk-trace-node` or `@opentelemetry/auto-instrumentations-node`. Those packages are built for Node.js servers and are not the right fit for the Workers request model.
 
 ## Configuring the Trace Provider for Workers
 
@@ -61,23 +63,29 @@ The trace provider needs to be configured to use a simple span processor and the
 
 ```javascript
 // tracing.js
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
 
-// Create a provider factory that builds a fresh provider per request.
-// Workers isolates may be reused, but we want clean state for each
-// request to avoid leaking context between different users.
+let provider;
+let registered = false;
+
 export function createTracerProvider(env) {
-  const resource = new Resource({
+  if (provider) {
+    return provider;
+  }
+
+  const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'cloudflare-worker-api',
     [ATTR_SERVICE_VERSION]: '1.0.0',
     // Tag with the Cloudflare data center for geographic analysis
@@ -95,19 +103,26 @@ export function createTracerProvider(env) {
     },
   });
 
-  const provider = new BasicTracerProvider({
+  provider = new BasicTracerProvider({
     resource,
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
-  // Register this provider as the global trace provider
-  provider.register();
+  if (!registered) {
+    // BasicTracerProvider does not install globals for you.
+    trace.setGlobalTracerProvider(provider);
+    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+    context.setGlobalContextManager(
+      new AsyncLocalStorageContextManager().enable()
+    );
+    registered = true;
+  }
 
   return provider;
 }
 ```
 
-We use `SimpleSpanProcessor` instead of `BatchSpanProcessor` because Workers requests are short-lived. The simple processor exports each span immediately when it ends, which fits the Workers execution model better. In a long-running server you would batch, but here immediacy matters more than throughput.
+We use `SimpleSpanProcessor` instead of `BatchSpanProcessor` because Workers requests are short-lived. The simple processor exports each span immediately when it ends, which fits the Workers execution model better. In a long-running server you would usually batch, but here immediacy matters more than throughput. The provider is cached per isolate and flushed per request; OpenTelemetry global providers should not be re-registered on every request.
 
 ## Instrumenting the Worker Request Handler
 
@@ -303,7 +318,8 @@ Your Cloudflare Worker configuration needs the right environment variables and b
 # wrangler.toml
 name = "my-otel-worker"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
 # Bind environment variables for the OTel configuration.
 # Use secrets for the API key so it is not stored in plain text.
@@ -314,7 +330,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT = "https://your-collector:4318/v1/traces"
 # wrangler secret put OTEL_API_KEY
 ```
 
-Set the API key as a secret rather than a plain variable to keep it out of your version control and build logs.
+Set the API key as a secret rather than a plain variable to keep it out of your version control and build logs. The `nodejs_compat` flag is required for the AsyncLocalStorage-based context manager used above.
 
 ## Performance Considerations
 
@@ -328,10 +344,20 @@ If your Worker handles thousands of requests per second, use a head-based sample
 
 ```javascript
 // Add sampling to reduce telemetry volume on high-traffic Workers
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  BasicTracerProvider,
+  SimpleSpanProcessor,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 // Sample 10% of traces in production
 const sampler = new TraceIdRatioBasedSampler(0.1);
+
+const provider = new BasicTracerProvider({
+  resource,
+  sampler,
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+});
 ```
 
 ## Wrapping Up
