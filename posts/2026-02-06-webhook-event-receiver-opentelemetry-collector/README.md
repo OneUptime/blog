@@ -19,7 +19,7 @@ The Webhook Event Receiver creates an HTTP endpoint that accepts POST requests c
 ```mermaid
 graph LR
     A[External System] -->|HTTP POST| B[Webhook Receiver]
-    B -->|Parse JSON| C[Log Records]
+    B -->|Read body| C[Log Records]
     C --> D[Processors]
     D --> E[Exporters]
     E --> F[Backend]
@@ -38,7 +38,7 @@ The simplest configuration creates an HTTP endpoint that accepts JSON payloads.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     # HTTP endpoint configuration
     endpoint: 0.0.0.0:8080
 
@@ -53,7 +53,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       exporters: [debug]
 ```
 
@@ -78,7 +78,7 @@ Configure the HTTP server behavior.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     # Bind address and port
     endpoint: 0.0.0.0:8080
 
@@ -100,14 +100,14 @@ receivers:
         - Authorization
       max_age: 3600
 
-    # Maximum request body size (default: 20MB)
+    # Maximum request body size (default: 100KB unless set to 0, which uses 20MiB)
     max_request_body_size: 10485760  # 10MB
 
-    # Read timeout for requests
-    read_timeout: 30s
+    # Read timeout for request headers (maximum: 10s)
+    read_timeout: 10s
 
-    # Write timeout for responses
-    write_timeout: 30s
+    # Write timeout for responses (maximum: 10s)
+    write_timeout: 10s
 ```
 
 ## Authentication
@@ -118,7 +118,7 @@ Secure your webhook endpoint with various authentication methods.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
 
@@ -131,11 +131,15 @@ extensions:
     # Token value - use environment variable
     token: ${env:WEBHOOK_AUTH_TOKEN}
 
+exporters:
+  debug:
+    verbosity: detailed
+
 service:
   extensions: [bearertokenauth]
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       exporters: [debug]
 ```
 
@@ -152,7 +156,7 @@ curl -X POST http://localhost:8080/events \
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
     auth:
@@ -165,11 +169,15 @@ extensions:
       file: /etc/collector/htpasswd
       # inline: "user:$2y$10$..." for inline credentials
 
+exporters:
+  debug:
+    verbosity: detailed
+
 service:
   extensions: [basicauth]
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       exporters: [debug]
 ```
 
@@ -198,16 +206,16 @@ Configure how incoming HTTP requests map to log record attributes.
 
 ### Default Mapping
 
-By default, the entire JSON body becomes the log record body.
+By default, the entire request body becomes the log record body as a string.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
 
-    # Extract specific fields as attributes
-    req_body_max_bytes: 1048576  # 1MB
+    # Limit request body size
+    max_request_body_size: 1048576  # 1MB
 ```
 
 Example request:
@@ -224,7 +232,7 @@ curl -X POST http://localhost:8080/events \
   }'
 ```
 
-This creates a log record with the entire JSON as the body.
+This creates a log record with the entire JSON payload as the string body.
 
 ### Extract Headers as Attributes
 
@@ -232,12 +240,12 @@ Extract HTTP headers and add them as log record attributes.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
 
-    # Extract headers
-    include_metadata: true
+    # Extract matching headers as log attributes named header.<Header-Name>
+    header_attribute_regex: "X-Event-Source|X-Event-ID|X-Forwarded-For"
 
 processors:
   # Use transform processor to extract header values
@@ -246,18 +254,22 @@ processors:
       - context: log
         statements:
           # Extract X-Event-Source header
-          - set(attributes["event.source"], attributes["http.request.header.x-event-source"]) where attributes["http.request.header.x-event-source"] != nil
+          - set(log.attributes["event.source"], log.attributes["header.X-Event-Source"][0]) where log.attributes["header.X-Event-Source"] != nil
 
           # Extract X-Event-ID header
-          - set(attributes["event.id"], attributes["http.request.header.x-event-id"]) where attributes["http.request.header.x-event-id"] != nil
+          - set(log.attributes["event.id"], log.attributes["header.X-Event-ID"][0]) where log.attributes["header.X-Event-ID"] != nil
 
-          # Extract client IP
-          - set(attributes["client.ip"], attributes["http.request.remote_addr"]) where attributes["http.request.remote_addr"] != nil
+          # Extract client IP from a forwarded header when present
+          - set(log.attributes["client.ip"], log.attributes["header.X-Forwarded-For"][0]) where log.attributes["header.X-Forwarded-For"] != nil
+
+exporters:
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       processors: [transform/headers]
       exporters: [debug]
 ```
@@ -280,7 +292,7 @@ Process webhook events using the transform processor.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
 
@@ -290,25 +302,28 @@ processors:
     log_statements:
       - context: log
         statements:
+          # Parse JSON body into the temporary OTTL cache
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+
           # Extract event type from body
-          - set(attributes["event.type"], body["event_type"]) where body["event_type"] != nil
+          - set(log.attributes["event.type"], log.cache["event_type"]) where log.cache["event_type"] != nil
 
           # Extract service name
-          - set(attributes["service.name"], body["service"]) where body["service"] != nil
+          - set(log.attributes["service.name"], log.cache["service"]) where log.cache["service"] != nil
 
           # Extract version
-          - set(attributes["service.version"], body["version"]) where body["version"] != nil
+          - set(log.attributes["service.version"], log.cache["version"]) where log.cache["version"] != nil
 
           # Extract environment
-          - set(attributes["deployment.environment"], body["environment"]) where body["environment"] != nil
+          - set(log.attributes["deployment.environment"], log.cache["environment"]) where log.cache["environment"] != nil
 
-          # Extract timestamp and convert to ObservedTimestamp
-          - set(time_unix_nano, UnixNano(body["timestamp"])) where body["timestamp"] != nil
+          # Extract timestamp
+          - set(log.time_unix_nano, UnixNano(Time(log.cache["timestamp"], "%Y-%m-%dT%H:%M:%SZ"))) where log.cache["timestamp"] != nil
 
           # Set severity based on event type
-          - set(severity_text, "INFO") where attributes["event.type"] == "deployment"
-          - set(severity_text, "WARN") where attributes["event.type"] == "rollback"
-          - set(severity_text, "ERROR") where attributes["event.type"] == "failure"
+          - set(log.severity_text, "INFO") where log.attributes["event.type"] == "deployment"
+          - set(log.severity_text, "WARN") where log.attributes["event.type"] == "rollback"
+          - set(log.severity_text, "ERROR") where log.attributes["event.type"] == "failure"
 
   # Add resource attributes
   resource:
@@ -327,7 +342,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       processors: [transform/events, resource]
       exporters: [otlp]
 ```
@@ -340,47 +355,43 @@ Receive GitHub webhook events.
 
 ```yaml
 receivers:
-  webhookevent/github:
+  webhook_event/github:
     endpoint: 0.0.0.0:8080
     path: /github/events
-    auth:
-      authenticator: bearertokenauth
-
-extensions:
-  bearertokenauth:
-    token: ${env:GITHUB_WEBHOOK_SECRET}
+    header_attribute_regex: "X-GitHub-Event"
 
 processors:
   transform/github:
     log_statements:
       - context: log
         statements:
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+
           # Extract GitHub event type from header
-          - set(attributes["github.event"], attributes["http.request.header.x-github-event"]) where attributes["http.request.header.x-github-event"] != nil
+          - set(log.attributes["github.event"], log.attributes["header.X-GitHub-Event"][0]) where log.attributes["header.X-GitHub-Event"] != nil
 
           # Extract repository info
-          - set(attributes["github.repository"], body["repository"]["full_name"]) where body["repository"]["full_name"] != nil
+          - set(log.attributes["github.repository"], log.cache["repository"]["full_name"]) where log.cache["repository"]["full_name"] != nil
 
           # Extract sender
-          - set(attributes["github.sender"], body["sender"]["login"]) where body["sender"]["login"] != nil
+          - set(log.attributes["github.sender"], log.cache["sender"]["login"]) where log.cache["sender"]["login"] != nil
 
           # Handle push events
-          - set(attributes["git.ref"], body["ref"]) where attributes["github.event"] == "push" and body["ref"] != nil
-          - set(attributes["git.commits.count"], len(body["commits"])) where attributes["github.event"] == "push" and body["commits"] != nil
+          - set(log.attributes["git.ref"], log.cache["ref"]) where log.attributes["github.event"] == "push" and log.cache["ref"] != nil
+          - set(log.attributes["git.commits.count"], Len(log.cache["commits"])) where log.attributes["github.event"] == "push" and log.cache["commits"] != nil
 
           # Handle pull request events
-          - set(attributes["github.pr.number"], body["pull_request"]["number"]) where attributes["github.event"] == "pull_request" and body["pull_request"]["number"] != nil
-          - set(attributes["github.pr.action"], body["action"]) where attributes["github.event"] == "pull_request" and body["action"] != nil
+          - set(log.attributes["github.pr.number"], log.cache["pull_request"]["number"]) where log.attributes["github.event"] == "pull_request" and log.cache["pull_request"]["number"] != nil
+          - set(log.attributes["github.pr.action"], log.cache["action"]) where log.attributes["github.event"] == "pull_request" and log.cache["action"] != nil
 
 exporters:
   otlp:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
 
 service:
-  extensions: [bearertokenauth]
   pipelines:
     logs:
-      receivers: [webhookevent/github]
+      receivers: [webhook_event/github]
       processors: [transform/github]
       exporters: [otlp]
 ```
@@ -389,7 +400,7 @@ Configure GitHub webhook:
 1. Go to repository Settings > Webhooks
 2. Add webhook URL: `http://your-collector:8080/github/events`
 3. Set Content type: `application/json`
-4. Set Secret: Same as `GITHUB_WEBHOOK_SECRET` env var
+4. Set Secret only if you verify GitHub's `X-Hub-Signature-256` before the Collector; the receiver does not validate GitHub HMAC signatures by itself
 5. Select events: Push, Pull request, Deployment
 
 ### CI/CD Pipeline Events
@@ -398,7 +409,7 @@ Receive deployment events from Jenkins, GitLab CI, or custom pipelines.
 
 ```yaml
 receivers:
-  webhookevent/cicd:
+  webhook_event/cicd:
     endpoint: 0.0.0.0:8080
     path: /cicd/deployments
 
@@ -407,26 +418,28 @@ processors:
     log_statements:
       - context: log
         statements:
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+
           # Extract deployment info
-          - set(attributes["deployment.service"], body["service"]) where body["service"] != nil
-          - set(attributes["deployment.version"], body["version"]) where body["version"] != nil
-          - set(attributes["deployment.environment"], body["environment"]) where body["environment"] != nil
-          - set(attributes["deployment.status"], body["status"]) where body["status"] != nil
+          - set(log.attributes["deployment.service"], log.cache["service"]) where log.cache["service"] != nil
+          - set(log.attributes["deployment.version"], log.cache["version"]) where log.cache["version"] != nil
+          - set(log.attributes["deployment.environment"], log.cache["environment"]) where log.cache["environment"] != nil
+          - set(log.attributes["deployment.status"], log.cache["status"]) where log.cache["status"] != nil
 
           # Extract pipeline info
-          - set(attributes["cicd.pipeline"], body["pipeline"]) where body["pipeline"] != nil
-          - set(attributes["cicd.job"], body["job"]) where body["job"] != nil
-          - set(attributes["cicd.trigger.user"], body["triggered_by"]) where body["triggered_by"] != nil
+          - set(log.attributes["cicd.pipeline"], log.cache["pipeline"]) where log.cache["pipeline"] != nil
+          - set(log.attributes["cicd.job"], log.cache["job"]) where log.cache["job"] != nil
+          - set(log.attributes["cicd.trigger.user"], log.cache["triggered_by"]) where log.cache["triggered_by"] != nil
 
           # Extract timing
-          - set(attributes["deployment.duration_seconds"], body["duration"]) where body["duration"] != nil
+          - set(log.attributes["deployment.duration_seconds"], log.cache["duration"]) where log.cache["duration"] != nil
 
           # Set severity based on status
-          - set(severity_text, "INFO") where attributes["deployment.status"] == "success"
-          - set(severity_text, "ERROR") where attributes["deployment.status"] == "failure"
+          - set(log.severity_text, "INFO") where log.attributes["deployment.status"] == "success"
+          - set(log.severity_text, "ERROR") where log.attributes["deployment.status"] == "failure"
 
           # Create structured log message
-          - set(body, Concat([attributes["deployment.service"], " version ", attributes["deployment.version"], " deployed to ", attributes["deployment.environment"], " with status ", attributes["deployment.status"]], ""))
+          - set(log.body, Concat([log.attributes["deployment.service"], " version ", log.attributes["deployment.version"], " deployed to ", log.attributes["deployment.environment"], " with status ", log.attributes["deployment.status"]], ""))
 
   # Add batch processing
   batch:
@@ -440,7 +453,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [webhookevent/cicd]
+      receivers: [webhook_event/cicd]
       processors: [transform/cicd, batch]
       exporters: [otlp]
 ```
@@ -469,7 +482,7 @@ Receive alerts from Prometheus Alertmanager, Grafana, or other monitoring tools.
 
 ```yaml
 receivers:
-  webhookevent/alerts:
+  webhook_event/alerts:
     endpoint: 0.0.0.0:8080
     path: /alerts
 
@@ -478,28 +491,30 @@ processors:
     log_statements:
       - context: log
         statements:
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+
           # Handle Alertmanager format
-          - set(attributes["alert.name"], body["alerts"][0]["labels"]["alertname"]) where body["alerts"] != nil and len(body["alerts"]) > 0
-          - set(attributes["alert.severity"], body["alerts"][0]["labels"]["severity"]) where body["alerts"] != nil and len(body["alerts"]) > 0
-          - set(attributes["alert.status"], body["alerts"][0]["status"]) where body["alerts"] != nil and len(body["alerts"]) > 0
+          - set(log.attributes["alert.name"], log.cache["alerts"][0]["labels"]["alertname"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
+          - set(log.attributes["alert.severity"], log.cache["alerts"][0]["labels"]["severity"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
+          - set(log.attributes["alert.status"], log.cache["alerts"][0]["status"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
 
           # Extract instance information
-          - set(attributes["alert.instance"], body["alerts"][0]["labels"]["instance"]) where body["alerts"] != nil and len(body["alerts"]) > 0
-          - set(attributes["alert.job"], body["alerts"][0]["labels"]["job"]) where body["alerts"] != nil and len(body["alerts"]) > 0
+          - set(log.attributes["alert.instance"], log.cache["alerts"][0]["labels"]["instance"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
+          - set(log.attributes["alert.job"], log.cache["alerts"][0]["labels"]["job"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
 
           # Extract annotations
-          - set(attributes["alert.summary"], body["alerts"][0]["annotations"]["summary"]) where body["alerts"] != nil and len(body["alerts"]) > 0
-          - set(attributes["alert.description"], body["alerts"][0]["annotations"]["description"]) where body["alerts"] != nil and len(body["alerts"]) > 0
+          - set(log.attributes["alert.summary"], log.cache["alerts"][0]["annotations"]["summary"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
+          - set(log.attributes["alert.description"], log.cache["alerts"][0]["annotations"]["description"]) where log.cache["alerts"] != nil and Len(log.cache["alerts"]) > 0
 
           # Set severity based on alert severity
-          - set(severity_text, "WARN") where attributes["alert.severity"] == "warning"
-          - set(severity_text, "ERROR") where attributes["alert.severity"] == "critical"
+          - set(log.severity_text, "WARN") where log.attributes["alert.severity"] == "warning"
+          - set(log.severity_text, "ERROR") where log.attributes["alert.severity"] == "critical"
 
   # Filter to only send critical alerts
   filter/critical:
-    logs:
-      log_record:
-        - attributes["alert.severity"] == "critical"
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["alert.severity"] != "critical"
 
 exporters:
   otlp:
@@ -509,13 +524,13 @@ service:
   pipelines:
     # Pipeline for all alerts
     logs/all:
-      receivers: [webhookevent/alerts]
+      receivers: [webhook_event/alerts]
       processors: [transform/alerts]
       exporters: [otlp]
 
     # Pipeline for critical alerts only
     logs/critical:
-      receivers: [webhookevent/alerts]
+      receivers: [webhook_event/alerts]
       processors: [transform/alerts, filter/critical]
       exporters: [otlp]
 ```
@@ -527,35 +542,47 @@ Configure multiple webhook receivers for different event sources.
 ```yaml
 receivers:
   # GitHub events
-  webhookevent/github:
+  webhook_event/github:
     endpoint: 0.0.0.0:8080
     path: /webhooks/github
 
   # CI/CD events
-  webhookevent/cicd:
-    endpoint: 0.0.0.0:8080
+  webhook_event/cicd:
+    endpoint: 0.0.0.0:8081
     path: /webhooks/cicd
 
   # Monitoring alerts
-  webhookevent/alerts:
-    endpoint: 0.0.0.0:8080
+  webhook_event/alerts:
+    endpoint: 0.0.0.0:8082
     path: /webhooks/alerts
 
   # Custom application events
-  webhookevent/custom:
-    endpoint: 0.0.0.0:8080
+  webhook_event/custom:
+    endpoint: 0.0.0.0:8083
     path: /webhooks/custom
 
 processors:
   # Tag events with source
-  transform/source:
+  transform/source/github:
     log_statements:
       - context: log
         statements:
-          - set(resource.attributes["event.source"], "github") where attributes["http.request.path"] == "/webhooks/github"
-          - set(resource.attributes["event.source"], "cicd") where attributes["http.request.path"] == "/webhooks/cicd"
-          - set(resource.attributes["event.source"], "alerts") where attributes["http.request.path"] == "/webhooks/alerts"
-          - set(resource.attributes["event.source"], "custom") where attributes["http.request.path"] == "/webhooks/custom"
+          - set(resource.attributes["event.source"], "github")
+  transform/source/cicd:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["event.source"], "cicd")
+  transform/source/alerts:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["event.source"], "alerts")
+  transform/source/custom:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["event.source"], "custom")
 
 exporters:
   otlp:
@@ -563,9 +590,21 @@ exporters:
 
 service:
   pipelines:
-    logs:
-      receivers: [webhookevent/github, webhookevent/cicd, webhookevent/alerts, webhookevent/custom]
-      processors: [transform/source]
+    logs/github:
+      receivers: [webhook_event/github]
+      processors: [transform/source/github]
+      exporters: [otlp]
+    logs/cicd:
+      receivers: [webhook_event/cicd]
+      processors: [transform/source/cicd]
+      exporters: [otlp]
+    logs/alerts:
+      receivers: [webhook_event/alerts]
+      processors: [transform/source/alerts]
+      exporters: [otlp]
+    logs/custom:
+      receivers: [webhook_event/custom]
+      processors: [transform/source/custom]
       exporters: [otlp]
 ```
 
@@ -575,11 +614,11 @@ Configure how the receiver responds to errors.
 
 ```yaml
 receivers:
-  webhookevent:
+  webhook_event:
     endpoint: 0.0.0.0:8080
     path: /events
 
-    # Return custom error responses
+    # Add custom headers to HTTP responses
     response_headers:
       X-Custom-Header: "Webhook-Receiver"
 
@@ -590,15 +629,17 @@ processors:
     log_statements:
       - context: log
         statements:
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+
           # Ensure event_type exists
-          - set(attributes["valid"], true) where body["event_type"] != nil
-          - set(attributes["valid"], false) where body["event_type"] == nil
+          - set(log.attributes["valid"], true) where log.cache["event_type"] != nil
+          - set(log.attributes["valid"], false) where log.cache["event_type"] == nil
 
   # Drop invalid events
   filter/valid:
-    logs:
-      log_record:
-        - attributes["valid"] == true
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["valid"] != true
 
 exporters:
   otlp:
@@ -607,7 +648,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [webhookevent]
+      receivers: [webhook_event]
       processors: [transform/validate, filter/valid]
       exporters: [otlp]
 ```
@@ -628,19 +669,18 @@ extensions:
 
 receivers:
   # GitHub webhook events
-  webhookevent/github:
+  webhook_event/github:
     endpoint: 0.0.0.0:8443
     path: /webhooks/github
-    auth:
-      authenticator: bearertokenauth
+    header_attribute_regex: "X-GitHub-Event"
     tls:
       cert_file: /etc/collector/certs/server.crt
       key_file: /etc/collector/certs/server.key
     max_request_body_size: 5242880  # 5MB
 
   # CI/CD deployment events
-  webhookevent/deployments:
-    endpoint: 0.0.0.0:8443
+  webhook_event/deployments:
+    endpoint: 0.0.0.0:8444
     path: /webhooks/deployments
     auth:
       authenticator: bearertokenauth
@@ -654,22 +694,24 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(attributes["event.source"], "github") where true
-          - set(attributes["github.event"], attributes["http.request.header.x-github-event"]) where attributes["http.request.header.x-github-event"] != nil
-          - set(attributes["github.repository"], body["repository"]["full_name"]) where body["repository"]["full_name"] != nil
-          - set(severity_text, "INFO") where true
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+          - set(log.attributes["event.source"], "github")
+          - set(log.attributes["github.event"], log.attributes["header.X-GitHub-Event"][0]) where log.attributes["header.X-GitHub-Event"] != nil
+          - set(log.attributes["github.repository"], log.cache["repository"]["full_name"]) where log.cache["repository"]["full_name"] != nil
+          - set(log.severity_text, "INFO")
 
   # Parse deployment events
   transform/deployments:
     log_statements:
       - context: log
         statements:
-          - set(attributes["event.source"], "cicd") where true
-          - set(attributes["deployment.service"], body["service"]) where body["service"] != nil
-          - set(attributes["deployment.environment"], body["environment"]) where body["environment"] != nil
-          - set(attributes["deployment.status"], body["status"]) where body["status"] != nil
-          - set(severity_text, "INFO") where attributes["deployment.status"] == "success"
-          - set(severity_text, "ERROR") where attributes["deployment.status"] == "failure"
+          - merge_maps(log.cache, ParseJSON(log.body), "upsert")
+          - set(log.attributes["event.source"], "cicd")
+          - set(log.attributes["deployment.service"], log.cache["service"]) where log.cache["service"] != nil
+          - set(log.attributes["deployment.environment"], log.cache["environment"]) where log.cache["environment"] != nil
+          - set(log.attributes["deployment.status"], log.cache["status"]) where log.cache["status"] != nil
+          - set(log.severity_text, "INFO") where log.attributes["deployment.status"] == "success"
+          - set(log.severity_text, "ERROR") where log.attributes["deployment.status"] == "failure"
 
   # Add resource attributes
   resource:
@@ -706,13 +748,13 @@ service:
   pipelines:
     # GitHub events pipeline
     logs/github:
-      receivers: [webhookevent/github]
+      receivers: [webhook_event/github]
       processors: [transform/github, resource, batch]
       exporters: [otlp]
 
     # Deployment events pipeline
     logs/deployments:
-      receivers: [webhookevent/deployments]
+      receivers: [webhook_event/deployments]
       processors: [transform/deployments, resource, batch]
       exporters: [otlp]
 
@@ -721,7 +763,12 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Summary
