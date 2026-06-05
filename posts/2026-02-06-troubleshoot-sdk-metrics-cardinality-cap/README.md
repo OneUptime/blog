@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Cardinality, SDK Limits
 
-Description: Troubleshoot silent data loss caused by the OpenTelemetry SDK capping metric cardinality at the default 2000 limit.
+Description: Troubleshoot loss of metric attribute detail caused by the OpenTelemetry SDK capping metric cardinality at the default 2000 limit.
 
-Your metric dashboards show consistent values for some attribute combinations but mysteriously flat or missing data for others. The metrics are not being dropped by the Collector or the backend. They are being silently capped at the SDK level before they ever leave your application. The default cardinality limit of 2000 unique attribute combinations per metric is the cause.
+Your metric dashboards show consistent values for some attribute combinations but mysteriously flat or missing data for others. The metrics are not being dropped by the Collector or the backend. They are being silently capped at the SDK level before they ever leave your application. The default cardinality limit of 2000 unique attribute combinations per metric collection cycle is the cause.
 
 ## What Is Metric Cardinality?
 
@@ -29,15 +29,15 @@ If you have 10 HTTP methods, 500 paths, and 20 status codes, that is 10 * 500 * 
 
 ## The Default Limit
 
-The OpenTelemetry SDK defaults to 2000 unique attribute combinations per metric instrument. Once this limit is hit, any new combinations are dropped and an "overflow" attribute set is used to aggregate them:
+The OpenTelemetry SDK specification defaults to 2000 unique attribute combinations per metric instrument per collection cycle when no view or MetricReader limit is configured. Once this limit is hit, any new combinations lose their original attribute set and an "overflow" attribute set is used to aggregate them:
 
 ```text
 # The SDK creates a special overflow series:
 # otel.metric.overflow = true
-# All new attribute combinations get lumped into this overflow bucket
+# New attribute combinations beyond the limit get lumped into this overflow bucket
 ```
 
-The problem is that this happens silently. No error is thrown, no log is written (unless you have debug logging enabled), and you just see incomplete data.
+The problem is that this can be easy to miss. No error is thrown, logging depends on the SDK implementation and log level, and you just see incomplete attribute-level data.
 
 ## Detecting the Cap
 
@@ -47,8 +47,7 @@ Enable SDK debug logging:
 import logging
 logging.getLogger("opentelemetry.sdk.metrics").setLevel(logging.DEBUG)
 
-# Look for messages like:
-# "Dropping measurement, cardinality limit reached for metric http.requests"
+# SDK-specific messages may mention the cardinality limit or overflow aggregation.
 ```
 
 Check for the overflow attribute in your backend:
@@ -80,45 +79,44 @@ counter.add(1, {
 
 ## Fix 2: Increase the Cardinality Limit
 
-If you genuinely need more than 2000 series, increase the limit:
+If you genuinely need more than 2000 series, increase the limit in SDKs that expose cardinality limit configuration. If your SDK does not expose a direct limit setting, use Views to keep the active attribute set bounded:
 
 ```python
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
 
-# Set a higher cardinality limit globally
-import os
-os.environ["OTEL_METRIC_EXPORT_INTERVAL"] = "30000"
-
-# Or set it per-instrument using Views
+# Python Views can reduce cardinality by keeping only selected attributes.
 provider = MeterProvider(
     views=[
         View(
             instrument_name="http.requests",
-            attribute_keys=["method", "route", "status"],  # Explicitly list allowed attributes
+            attribute_keys={"method", "route", "status"},  # Explicitly list allowed attributes
             # This also effectively controls cardinality by limiting which attributes are kept
         ),
     ],
 )
 ```
 
-Via environment variable (SDK-dependent):
+Via environment variable (Java autoconfigure):
 
 ```bash
-# Some SDK implementations support this
-export OTEL_CARDINALITY_LIMIT=5000
+export OTEL_JAVA_METRICS_CARDINALITY_LIMIT=5000
 ```
 
 For Go:
 
 ```go
-import "go.opentelemetry.io/otel/sdk/metric"
+import (
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/sdk/metric"
+)
 
 provider := metric.NewMeterProvider(
+    metric.WithCardinalityLimit(5000),
     metric.WithView(metric.NewView(
         metric.Instrument{Name: "http.requests"},
         metric.Stream{
-            // CardinalityLimit is available in newer SDK versions
+            // Keep only bounded attributes on this instrument.
             AttributeFilter: attribute.NewAllowKeysFilter(
                 attribute.Key("method"),
                 attribute.Key("route"),
@@ -156,39 +154,35 @@ provider = MeterProvider(
 
 ## Fix 4: Use the Collector to Filter High-Cardinality Metrics
 
-If you cannot change the SDK, filter at the Collector level:
+If you cannot change the SDK, aggregate away high-cardinality attributes at the Collector level:
 
 ```yaml
 processors:
-  metricstransform:
-    transforms:
-      - include: "http.requests"
-        match_type: strict
-        action: update
-        operations:
-          # Remove high-cardinality attributes
-          - action: delete_label_value
-            label: path
+  transform/metrics:
+    metric_statements:
+      - context: metric
+        statements:
+          # Keep only these attributes and aggregate datapoints that now match.
+          - aggregate_on_attributes("sum", ["method", "route", "status_code"]) where metric.name == "http.requests"
 ```
 
-Or use the filter processor to drop specific metric series:
+Or use the filter processor to drop datapoints that still have a high-cardinality attribute:
 
 ```yaml
 processors:
-  filter/metrics:
+  filter/drop_path_datapoints:
+    error_mode: ignore
     metrics:
-      exclude:
-        match_type: expr
-        expressions:
-          - 'Label("path") != ""'  # Drop any series that has a path label
+      datapoint:
+        - 'attributes["path"] != nil'
 ```
 
 ## Monitoring Cardinality
 
-Track how close you are to the limit:
+Track how close you are to the limit in your backend:
 
 ```yaml
-# Collector internal metrics
+# Optional: enable detailed Collector internal metrics for Collector pipelines
 service:
   telemetry:
     metrics:
@@ -199,8 +193,8 @@ service:
 # Check cardinality per metric
 count by (__name__) ({__name__=~"http.*"})
 
-# Alert when approaching the limit
-count by (__name__) ({__name__=~"otelcol.*"}) > 1500
+# Alert when a metric approaches the default SDK limit
+count by (__name__) ({__name__="http_requests_total"}) > 1500
 ```
 
 The cardinality cap exists to protect your application from unbounded memory growth. Before increasing it, always ask whether you genuinely need that many unique time series. In most cases, reducing cardinality through attribute normalization is the better approach.
