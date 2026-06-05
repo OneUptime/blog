@@ -27,14 +27,14 @@ The challenge is that each GDS has different latency characteristics, and a slow
 ```javascript
 // tracing.js - Initialize OpenTelemetry for the flight search service
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'flight-search-service',
     'service.version': '2.4.1',
-    'deployment.environment': process.env.NODE_ENV,
+    'deployment.environment.name': process.env.NODE_ENV,
   }),
   traceExporter: new OTLPTraceExporter({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -49,7 +49,7 @@ sdk.start();
 The core of flight search is the parallel fan-out to multiple GDS systems. Each provider call gets its own span:
 
 ```javascript
-const { trace, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
+const { context, trace, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
 const tracer = trace.getTracer('flight-search');
 
 async function searchFlights(searchParams) {
@@ -104,7 +104,7 @@ Each GDS provider call gets detailed instrumentation:
 
 ```javascript
 async function searchGDS(provider, params, parentSpan) {
-  const ctx = trace.setSpan(trace.active(), parentSpan);
+  const ctx = trace.setSpan(context.active(), parentSpan);
 
   return tracer.startActiveSpan(
     `flight.gds.search.${provider}`,
