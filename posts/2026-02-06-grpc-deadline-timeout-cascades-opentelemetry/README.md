@@ -31,8 +31,14 @@ func (s *service) ProcessOrder(ctx context.Context, req *pb.OrderRequest) (*pb.O
     inventory, err := s.inventoryClient.CheckStock(ctx, &pb.StockRequest{
         ItemId: req.ItemId,
     })
+    if err != nil {
+        return nil, err
+    }
+
     // If only 2 seconds remain of the original 5, the downstream call
     // gets a 2-second deadline automatically
+    _ = inventory
+    return &pb.OrderResponse{}, nil
 }
 ```
 
@@ -97,8 +103,8 @@ Register the interceptor on your server:
 
 ```go
 server := grpc.NewServer(
+    grpc.StatsHandler(otelgrpc.NewServerHandler()),
     grpc.ChainUnaryInterceptor(
-        otelgrpc.UnaryServerInterceptor(),
         DeadlineTrackingUnaryInterceptor,
     ),
 )
@@ -132,6 +138,7 @@ Track deadline-related metrics to build dashboards:
 
 ```go
 import (
+    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
 )
 
