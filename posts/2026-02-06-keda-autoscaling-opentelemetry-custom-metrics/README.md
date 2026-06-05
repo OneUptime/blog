@@ -41,6 +41,7 @@ helm repo update
 helm install keda kedacore/keda \
   --namespace keda \
   --create-namespace \
+  --set prometheus.operator.enabled=true \
   --set prometheus.metricServer.enabled=true
 ```
 
@@ -90,6 +91,7 @@ def complete_job(job):
 ```
 
 Route these metrics through the OTel Collector to Prometheus.
+If you are writing directly to Prometheus with remote write, make sure Prometheus is started with `--web.enable-remote-write-receiver` so the `/api/v1/write` endpoint accepts samples.
 
 ```yaml
 # otel-collector-keda.yaml
@@ -143,6 +145,7 @@ spec:
   #   - parameter: bearerToken
   #     name: prometheus-token
   #     key: token
+  # Then add authModes: "bearer" to the Prometheus trigger metadata.
 ```
 
 ## Scenario 1: Scale on Pending Jobs
@@ -177,13 +180,13 @@ spec:
           sum(jobs_pending{queue="processing"})
         # Scale up when there are more than 10 pending jobs per pod
         threshold: "10"
-        # Enable scale-to-zero
-        activationThreshold: "1"
+        # Activate scaling as soon as there is pending work
+        activationThreshold: "0"
       authenticationRef:
         name: prometheus-auth
 ```
 
-When the `jobs_pending` metric is 0, KEDA scales the deployment to zero pods. When the first job appears (exceeding the `activationThreshold` of 1), KEDA spins up a pod. As the queue grows, KEDA adds more pods so each pod handles roughly 10 pending jobs.
+When the `jobs_pending` metric is 0, KEDA scales the deployment to zero pods. When the first job appears (exceeding the `activationThreshold` of 0), KEDA spins up a pod. As the queue grows, KEDA adds more pods so each pod handles roughly 10 pending jobs.
 
 ## Scenario 2: Scale on Request Rate
 
@@ -311,7 +314,7 @@ receivers:
 Key KEDA metrics to track:
 
 - `keda_scaler_metrics_value` - the current value of each scaling trigger
-- `keda_scaler_errors_total` - errors querying the scaler (like Prometheus being unreachable)
+- `keda_scaler_detail_errors_total` - errors querying the scaler (like Prometheus being unreachable)
 - `keda_scaled_object_errors_total` - errors applying scaling decisions
 
 Build a dashboard panel that overlays the scaler metric value against the actual replica count. This shows you exactly how KEDA is responding to your OpenTelemetry metrics and helps you tune the thresholds and cooldown periods for your workload.
