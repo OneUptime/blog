@@ -90,20 +90,22 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from service import process_order
 
+# Register the global provider once for this test module.
+exporter = InMemorySpanExporter()
+provider = TracerProvider()
+provider.add_span_processor(SimpleSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
+
 @pytest.fixture(autouse=True)
 def setup_telemetry():
-    """Set up a fresh in-memory exporter before each test."""
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
+    """Start each test with a clean in-memory exporter."""
+    exporter.clear()
 
     # Yield the exporter so tests can inspect captured spans
     yield exporter
 
     # Clean up after each test to prevent span leakage
     exporter.clear()
-    provider.shutdown()
 
 def test_process_order_creates_span(setup_telemetry):
     exporter = setup_telemetry
@@ -142,7 +144,7 @@ def test_process_order_records_confirmation_event(setup_telemetry):
     assert events[0].attributes["confirmation_id"] == "CONF-ORD-456"
 ```
 
-The `autouse=True` fixture ensures every test starts with a clean exporter. This is important because leftover spans from a previous test can cause confusing false positives or negatives.
+The `autouse=True` fixture ensures every test starts with a clean exporter. This is important because leftover spans from a previous test can cause confusing false positives or negatives. In Python, the global tracer provider can only be set once per process, so the provider is registered once and the exporter is cleared between tests.
 
 ## Setting Up In-Memory Exporters in Go
 
@@ -299,4 +301,4 @@ Name your test spans descriptively. When a test fails, the span name in the erro
 
 ## Wrapping Up
 
-In-memory exporters turn OpenTelemetry instrumentation from something you hope works into something you know works. They are lightweight, fast, and built into the official SDKs for Python, Go, Java, and JavaScript. By writing tests against captured spans, you catch broken context propagation, missing attributes, and incorrect error handling before they reach production. The investment in test coverage for instrumentation pays off the first time you need accurate trace data to debug a live incident.
+In-memory exporters turn OpenTelemetry instrumentation from something you hope works into something you know works. They are lightweight, fast, and available from the official SDK or testing packages for Python, Go, Java, and JavaScript. By writing tests against captured spans, you catch broken context propagation, missing attributes, and incorrect error handling before they reach production. The investment in test coverage for instrumentation pays off the first time you need accurate trace data to debug a live incident.
