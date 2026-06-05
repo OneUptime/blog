@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GKE, Kubernetes, Google Cloud, Collector, Tracing, Metric, Observability
 
-Description: A hands-on guide to deploying the OpenTelemetry Collector on Google Kubernetes Engine (GKE) and instrumenting workloads for traces, metrics, and logs.
+Description: A hands-on guide to deploying the OpenTelemetry Collector on Google Kubernetes Engine (GKE) and instrumenting workloads for traces and metrics.
 
 ---
 
@@ -92,6 +92,15 @@ Create a values file for the agent collectors. These run on every node and colle
 # agent-values.yaml - Configuration for the DaemonSet agent collectors
 mode: daemonset
 
+image:
+  repository: otel/opentelemetry-collector-k8s
+
+presets:
+  kubeletMetrics:
+    enabled: true
+  kubernetesAttributes:
+    enabled: true
+
 # Resource limits appropriate for an agent sidecar
 resources:
   limits:
@@ -155,7 +164,7 @@ config:
   exporters:
     # Forward to the gateway collector
     otlp:
-      endpoint: otel-gateway-collector.observability.svc.cluster.local:4317
+      endpoint: otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4317
       tls:
         insecure: true    # Cluster-internal traffic
 
@@ -190,6 +199,9 @@ The gateway is a Deployment (not DaemonSet) that receives data from agents and e
 mode: deployment
 replicaCount: 2    # Run two replicas for high availability
 
+image:
+  repository: otel/opentelemetry-collector-contrib
+
 resources:
   limits:
     cpu: "1"
@@ -201,6 +213,10 @@ resources:
 # Expose the gateway as a ClusterIP service
 service:
   type: ClusterIP
+
+ports:
+  metrics:
+    enabled: true
 
 config:
   receivers:
@@ -231,7 +247,7 @@ config:
 
   exporters:
     # Send to OneUptime or your preferred backend
-    otlphttp:
+    otlp_http:
       endpoint: "https://oneuptime.com/otlp"
 
     # Also export to Google Cloud Trace
@@ -243,11 +259,11 @@ config:
       traces:
         receivers: [otlp]
         processors: [memory_limiter, filter, batch]
-        exporters: [otlphttp, googlecloud]
+        exporters: [otlp_http, googlecloud]
       metrics:
         receivers: [otlp]
         processors: [memory_limiter, batch]
-        exporters: [otlphttp]
+        exporters: [otlp_http, googlecloud]
 ```
 
 Deploy the gateway.
@@ -380,14 +396,22 @@ A few things to keep in mind as you scale.
 
 ```yaml
 # Add to gateway exporter configuration for durability
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/file_storage
+    create_directory: true
+
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
     sending_queue:
       enabled: true
       num_consumers: 10
       queue_size: 5000
       storage: file_storage   # Persist queue to disk
+
+service:
+  extensions: [health_check, file_storage]
 ```
 
 ## Summary
