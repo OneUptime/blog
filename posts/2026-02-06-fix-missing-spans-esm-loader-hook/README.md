@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Node.js, ESM, Loader Hook
 
-Description: Resolve the problem of missing spans in Node.js ESM applications by correctly configuring the experimental loader hook.
+Description: Resolve the problem of missing spans in Node.js ESM applications by correctly configuring the loader hook.
 
-If you have migrated your Node.js application from CommonJS (`require`) to ES Modules (`import`) and your OpenTelemetry spans have disappeared, the issue is that the ESM loader does not trigger the CommonJS require hooks that auto-instrumentation depends on. You need the experimental loader hook to intercept ESM imports.
+If you have migrated your Node.js application from CommonJS (`require`) to ES Modules (`import`) and your OpenTelemetry auto-instrumented spans have disappeared, the issue is that the ESM loader does not trigger the CommonJS require hooks that many auto-instrumentations depend on. You need the loader hook to intercept ESM imports.
 
 ## The Problem
 
-ES modules in Node.js use a different loading mechanism than CommonJS. OpenTelemetry's auto-instrumentation patches modules by hooking into `require()`. With ESM, `import` does not go through `require()`, so the hooks never fire.
+ES modules in Node.js use a different loading mechanism than CommonJS. Many OpenTelemetry auto-instrumentations patch modules by hooking into `require()`. With ESM, `import` does not go through `require()`, so the CommonJS hooks never fire.
 
 Your tracing setup looks correct:
 
@@ -25,9 +25,9 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-But no spans appear because the libraries imported via `import` are never patched.
+But auto-instrumented spans may be missing because the libraries imported via `import` are never patched.
 
-## The Fix for Node.js 18.19+ and 20+
+## The Fix for Node.js 18.19+ and 20.6+
 
 Use the `--import` flag combined with the OpenTelemetry ESM hook:
 
@@ -57,9 +57,9 @@ sdk.start();
 node --import ./tracing.mjs src/app.mjs
 ```
 
-## The Fix for Node.js 16-18
+## The Fix for Older Node.js Versions
 
-Older versions use the `--experimental-loader` flag:
+If you are pinned to older OpenTelemetry packages that still support Node.js 16 or Node.js 18 before 18.19, use the `--experimental-loader` flag:
 
 ```bash
 node \
@@ -68,7 +68,7 @@ node \
   src/app.mjs
 ```
 
-Note: With `--experimental-loader`, you need a CommonJS tracing setup file (`.cjs`) for the `--require` flag, because `--require` only loads CommonJS modules.
+Note: With this startup pattern, you need a CommonJS tracing setup file (`.cjs`) for the `--require` flag, because `--require` is the CommonJS preload flag.
 
 ```javascript
 // tracing.cjs
@@ -114,10 +114,10 @@ Make sure your package.json has the right settings:
     "dev": "node --import ./tracing.mjs --watch src/app.mjs"
   },
   "dependencies": {
-    "@opentelemetry/sdk-node": "^0.48.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.42.0",
-    "@opentelemetry/instrumentation": "^0.48.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.48.0"
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/instrumentation": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0"
   }
 }
 ```
@@ -137,7 +137,7 @@ CMD ["node", "src/app.mjs"]
 
 ## Which Instrumentations Support ESM?
 
-Not all OpenTelemetry instrumentations have ESM support yet. As of early 2025, the following are the most commonly used ones with ESM support:
+Not all OpenTelemetry instrumentations have ESM support yet. Some commonly used instrumentations with ESM support include:
 
 - `@opentelemetry/instrumentation-http` - Works with ESM
 - `@opentelemetry/instrumentation-express` - Works with ESM
@@ -151,7 +151,7 @@ Check the individual instrumentation package's README for ESM compatibility note
 
 If spans are still missing after adding the loader hook:
 
-1. **Check Node.js version**: `node --version` must be 18.19+ or 20+
+1. **Check Node.js version**: current OpenTelemetry packages require Node.js 18.19+ or 20.6+
 2. **Check the hook is registered**: Look for ESM-specific log messages
 3. **Check the instrumentation package version**: Older versions may not support ESM
 4. **Check for bundler interference**: Bundlers bypass the Node.js loader
@@ -165,4 +165,4 @@ ls node_modules/@opentelemetry/instrumentation/hook.mjs
 
 If the file does not exist, update `@opentelemetry/instrumentation` to the latest version.
 
-ESM support in OpenTelemetry for Node.js has improved significantly, but it still requires the loader hook. Without it, your auto-instrumentations simply cannot intercept module loading, and you get no spans.
+ESM support in OpenTelemetry for Node.js has improved significantly, but it still requires the loader hook. Without it, your auto-instrumentations simply cannot intercept ESM module loading, and you may miss auto-instrumented spans.
