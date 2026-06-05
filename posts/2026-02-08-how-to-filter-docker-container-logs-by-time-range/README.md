@@ -36,7 +36,7 @@ The duration format supports:
 You can also use an absolute timestamp:
 
 ```bash
-# Show logs since a specific date and time (RFC 3339 format)
+# Show logs since a specific date and time
 docker logs --since "2026-02-08T14:30:00" my-container
 
 # Show logs since a specific date (midnight)
@@ -218,13 +218,13 @@ docker logs --since 1h my-container 2>&1 | \
 
 ## Understanding Docker's Time Reference
 
-Docker uses the container's creation time and the system clock for time calculations. A few things to keep in mind:
+Docker accepts RFC 3339 timestamps, Unix timestamps, and Go duration strings for time filtering. A few things to keep in mind:
 
 ```bash
-# Check what timezone the Docker daemon uses (usually UTC)
-docker info --format '{{.OperatingSystem}}'
+# Check your local timezone, which Docker uses when no offset is provided
+date +'%Z %z'
 
-# Container logs timestamps are always in UTC
+# Docker-added log timestamps are emitted in UTC
 docker logs -t --tail 1 my-container
 ```
 
