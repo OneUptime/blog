@@ -29,6 +29,12 @@ composer require open-telemetry/sdk
 composer require open-telemetry/opentelemetry-auto-laravel
 ```
 
+If you plan to export metrics over OTLP, install the OTLP exporter and an HTTP client implementation:
+
+```bash
+composer require open-telemetry/exporter-otlp php-http/guzzle7-adapter
+```
+
 Create a metrics service provider in `app/Providers/MetricsServiceProvider.php`:
 
 ```php
@@ -37,19 +43,19 @@ Create a metrics service provider in `app/Providers/MetricsServiceProvider.php`:
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Metrics\MeterInterface;
+use OpenTelemetry\SDK\Common\Util\ShutdownHandler;
 use OpenTelemetry\SDK\Metrics\MeterProvider;
 use OpenTelemetry\SDK\Metrics\MetricExporter\ConsoleMetricExporter;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
-use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
 
 class MetricsServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        $this->app->singleton('metrics.meter', function () {
+        $this->app->singleton(MeterProvider::class, function () {
             $resource = ResourceInfo::create(Attributes::create([
                 'service.name' => config('app.name'),
                 'service.version' => config('app.version', '1.0.0'),
@@ -64,9 +70,13 @@ class MetricsServiceProvider extends ServiceProvider
                 ->addReader($reader)
                 ->build();
 
-            Globals::registerInitialMeterProvider($meterProvider);
+            ShutdownHandler::register([$meterProvider, 'shutdown']);
 
-            return $meterProvider->getMeter('laravel-app');
+            return $meterProvider;
+        });
+
+        $this->app->singleton(MeterInterface::class, function () {
+            return $this->app->make(MeterProvider::class)->getMeter('laravel-app');
         });
     }
 
@@ -77,7 +87,16 @@ class MetricsServiceProvider extends ServiceProvider
 }
 ```
 
-Register this provider in `config/app.php`:
+For Laravel 11 and later, register this provider in `bootstrap/providers.php`:
+
+```php
+return [
+    // Other providers...
+    App\Providers\MetricsServiceProvider::class,
+];
+```
+
+For Laravel 10 and earlier, register it in the `providers` array in `config/app.php`:
 
 ```php
 'providers' => [
@@ -208,7 +227,18 @@ class RecordHttpMetrics
 }
 ```
 
-Register the middleware in `app/Http/Kernel.php`:
+For Laravel 11 and later, register the middleware in `bootstrap/app.php`:
+
+```php
+use App\Http\Middleware\RecordHttpMetrics;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->append(RecordHttpMetrics::class);
+})
+```
+
+For Laravel 10 and earlier, register it in `app/Http/Kernel.php`:
 
 ```php
 protected $middleware = [
@@ -479,7 +509,7 @@ Register this service in `MetricsServiceProvider`:
 ```php
 public function boot()
 {
-    $meter = $this->app->make('metrics.meter');
+    $meter = $this->app->make(MeterInterface::class);
     new SystemMetrics($meter);
 }
 ```
@@ -726,6 +756,17 @@ class DatabaseMetrics
 }
 ```
 
+Register this service in `MetricsServiceProvider`:
+
+```php
+public function boot()
+{
+    $meter = $this->app->make(MeterInterface::class);
+    new SystemMetrics($meter);
+    new DatabaseMetrics($meter);
+}
+```
+
 ## Cache Metrics
 
 Monitor cache performance with hit/miss counters and operation duration.
@@ -836,11 +877,12 @@ class MetricsCache
     {
         $startTime = microtime(true);
 
+        $hit = Cache::has($key);
         $value = Cache::get($key, $default);
 
         $duration = (microtime(true) - $startTime) * 1000;
 
-        if ($value !== null && $value !== $default) {
+        if ($hit) {
             $this->metrics->recordHit($key, $duration);
         } else {
             $this->metrics->recordMiss($key, $duration);
@@ -872,9 +914,10 @@ class MetricsCache
     {
         $startTime = microtime(true);
 
+        $hit = Cache::has($key);
         $value = Cache::get($key);
 
-        if ($value !== null) {
+        if ($hit) {
             $duration = (microtime(true) - $startTime) * 1000;
             $this->metrics->recordHit($key, $duration);
             return $value;
@@ -911,7 +954,7 @@ Common dashboard panels:
 
 **Request Rate**: `rate(http_requests_total[5m])` shows requests per second
 **Error Rate**: `rate(http_errors_total[5m])` shows errors per second
-**Latency Percentiles**: `histogram_quantile(0.95, http_request_duration)` shows P95 latency
+**Latency Percentiles**: `histogram_quantile(0.95, sum(rate(http_request_duration_bucket[5m])) by (le))` shows P95 latency in Prometheus
 **Queue Depth**: `queue_depth` shows pending jobs
 **Cache Hit Rate**: `cache_hits_total / (cache_hits_total + cache_misses_total)`
 
@@ -925,8 +968,11 @@ Configure the OTLP exporter to send metrics to your collector:
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Metrics\MeterInterface;
+use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\MetricExporter;
+use OpenTelemetry\SDK\Common\Export\Http\PsrTransportFactory;
+use OpenTelemetry\SDK\Common\Util\ShutdownHandler;
 use OpenTelemetry\SDK\Metrics\MeterProvider;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 
@@ -934,23 +980,29 @@ class MetricsServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        $this->app->singleton('metrics.meter', function () {
-            $exporter = new MetricExporter(
-                config('opentelemetry.metrics.endpoint', 'http://localhost:4318/v1/metrics')
+        $this->app->singleton(MeterProvider::class, function () {
+            $transport = (new PsrTransportFactory())->create(
+                config('opentelemetry.metrics.endpoint', 'http://localhost:4318/v1/metrics'),
+                ContentTypes::PROTOBUF
             );
 
-            $reader = new ExportingReader(
-                $exporter,
-                config('opentelemetry.metrics.interval', 60000) // Export every 60 seconds
+            $exporter = new MetricExporter(
+                $transport
             );
+
+            $reader = new ExportingReader($exporter);
 
             $meterProvider = MeterProvider::builder()
                 ->addReader($reader)
                 ->build();
 
-            Globals::registerInitialMeterProvider($meterProvider);
+            ShutdownHandler::register([$meterProvider, 'shutdown']);
 
-            return $meterProvider->getMeter('laravel-app');
+            return $meterProvider;
+        });
+
+        $this->app->singleton(MeterInterface::class, function () {
+            return $this->app->make(MeterProvider::class)->getMeter('laravel-app');
         });
     }
 }
@@ -963,7 +1015,6 @@ return [
     'metrics' => [
         'enabled' => env('OTEL_METRICS_ENABLED', true),
         'endpoint' => env('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'http://localhost:4318/v1/metrics'),
-        'interval' => env('OTEL_METRICS_EXPORT_INTERVAL', 60000),
     ],
 ];
 ```
@@ -972,7 +1023,7 @@ return [
 
 **Cardinality control**: Limit unique label combinations. High cardinality metrics consume excessive memory and storage.
 
-**Sampling**: For high-traffic applications, sample metrics rather than recording every event.
+**Instrumentation overhead**: For high-traffic applications, avoid expensive work when recording metrics and keep attributes low-cardinality.
 
 **Aggregation**: Pre-aggregate metrics at the application level before exporting.
 
