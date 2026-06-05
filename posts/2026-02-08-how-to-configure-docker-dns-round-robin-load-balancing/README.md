@@ -134,7 +134,7 @@ docker exec $(docker compose ps -q client) nslookup backend
 
 ## DNS TTL and Caching Behavior
 
-Docker's embedded DNS server uses a very short TTL (typically 600 seconds). But the real behavior depends on the client:
+Docker's embedded DNS server commonly returns a 600-second TTL for container-name and alias records. But the real behavior depends on the client:
 
 ```bash
 # Check the DNS response TTL
@@ -160,7 +160,7 @@ docker run --rm --network app-network curlimages/curl sh -c '
 
 ## Handling Container Failures
 
-When a container dies, Docker's DNS server stops returning its IP. This provides basic health-aware routing:
+When a container stops, Docker's DNS server stops returning its IP. This removes stopped containers from new DNS lookups:
 
 ```bash
 # Stop one backend
@@ -180,7 +180,7 @@ The DNS update happens within a few seconds of the container stopping. Clients t
 
 ## Combining DNS Round-Robin with Health Checks
 
-Add health checks to ensure DNS only returns healthy backends:
+Add health checks to mark unhealthy backends:
 
 ```yaml
 # docker-compose.yml - Round-robin with health checks
@@ -281,10 +281,22 @@ The `resolver 127.0.0.11 valid=10s` line tells Nginx to use Docker's embedded DN
 Track which backend handles each request:
 
 ```bash
-# Add a custom header to identify the backend
+# Replace the earlier test backends with backends that identify themselves
+docker rm -f web1 web2 web3 web-id-1 web-id-2 web-id-3
+
 docker run -d --name web-id-1 --network app-network --network-alias backend \
   nginx:alpine sh -c '
     echo "server { listen 80; add_header X-Backend web-id-1; location / { return 200 \"web1\n\"; }}" \
+    > /etc/nginx/conf.d/default.conf && nginx -g "daemon off;"'
+
+docker run -d --name web-id-2 --network app-network --network-alias backend \
+  nginx:alpine sh -c '
+    echo "server { listen 80; add_header X-Backend web-id-2; location / { return 200 \"web2\n\"; }}" \
+    > /etc/nginx/conf.d/default.conf && nginx -g "daemon off;"'
+
+docker run -d --name web-id-3 --network app-network --network-alias backend \
+  nginx:alpine sh -c '
+    echo "server { listen 80; add_header X-Backend web-id-3; location / { return 200 \"web3\n\"; }}" \
     > /etc/nginx/conf.d/default.conf && nginx -g "daemon off;"'
 
 # Check distribution using headers
@@ -311,7 +323,7 @@ For these reasons, DNS round-robin works best for stateless services where imper
 
 ```bash
 # Remove all test containers and networks
-docker rm -f web1 web2 web3 web-id-1
+docker rm -f web1 web2 web3 web-id-1 web-id-2 web-id-3
 docker network rm app-network
 ```
 
