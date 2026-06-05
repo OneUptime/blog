@@ -59,8 +59,6 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.b3 import B3MultiFormat
 
 def setup_tracing(service_name: str):
     # Define the service identity for all spans
@@ -74,6 +72,8 @@ def setup_tracing(service_name: str):
 
     # Use W3C TraceContext propagation (the default) for cross-service context
     # If you need B3 for Zipkin compatibility, uncomment:
+    # from opentelemetry.propagate import set_global_textmap
+    # from opentelemetry.propagators.b3 import B3MultiFormat
     # set_global_textmap(B3MultiFormat())
 
 def instrument_app(app):
@@ -94,8 +94,8 @@ This middleware adds service-to-service metadata to every outgoing span:
 ```python
 # latency_middleware.py
 import time
-from opentelemetry import trace, context
-from opentelemetry.trace import StatusCode
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("service-latency")
 
@@ -103,9 +103,9 @@ async def call_service(client, url: str, target_service: str, method: str = "GET
     """Wrapper around HTTP calls that adds latency tracking attributes."""
     with tracer.start_as_current_span(f"call.{target_service}") as span:
         # Tag the span with routing metadata for filtering
-        span.set_attribute("peer.service", target_service)
-        span.set_attribute("http.method", method)
-        span.set_attribute("http.url", url)
+        span.set_attribute("service.peer.name", target_service)
+        span.set_attribute("http.request.method", method)
+        span.set_attribute("url.full", url)
 
         start = time.monotonic()
         try:
@@ -114,17 +114,17 @@ async def call_service(client, url: str, target_service: str, method: str = "GET
 
             # Record the latency as a span attribute for easy querying
             span.set_attribute("service.call.latency_ms", elapsed_ms)
-            span.set_attribute("http.status_code", response.status_code)
+            span.set_attribute("http.response.status_code", response.status_code)
 
             if response.status_code >= 500:
-                span.set_status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                span.set_status(Status(StatusCode.ERROR))
 
             return response
         except Exception as e:
             elapsed_ms = (time.monotonic() - start) * 1000
             span.set_attribute("service.call.latency_ms", elapsed_ms)
             span.record_exception(e)
-            span.set_status(StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
@@ -142,7 +142,12 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 
+service_call_duration = None
+service_call_count = None
+
 def setup_metrics(service_name: str):
+    global service_call_duration, service_call_count
+
     resource = Resource.create({"service.name": service_name})
 
     # Configure metric export to the collector every 30 seconds
@@ -153,32 +158,28 @@ def setup_metrics(service_name: str):
     provider = MeterProvider(resource=resource, metric_readers=[reader])
     metrics.set_meter_provider(provider)
 
-# Create a meter for this module
-meter = metrics.get_meter("service.latency")
-
-# Histogram for service-to-service call duration
-# Bucket boundaries chosen for typical microservice latency patterns
-service_call_duration = meter.create_histogram(
-    name="service.call.duration",
-    description="Duration of service-to-service calls in milliseconds",
-    unit="ms",
-)
-
-# Counter for tracking call volumes and error rates
-service_call_count = meter.create_counter(
-    name="service.call.count",
-    description="Number of service-to-service calls",
-)
+    # Create instruments after the SDK provider is installed.
+    meter = metrics.get_meter("service.latency")
+    service_call_duration = meter.create_histogram(
+        name="service.call.duration",
+        description="Duration of service-to-service calls in milliseconds",
+        unit="ms",
+        explicit_bucket_boundaries_advisory=(5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000),
+    )
+    service_call_count = meter.create_counter(
+        name="service.call.count",
+        description="Number of service-to-service calls",
+    )
 
 def record_call(target_service: str, method: str, duration_ms: float, status: str):
     """Record a service call in both the histogram and counter."""
     labels = {
         "target.service": target_service,
-        "http.method": method,
+        "http.request.method": method,
         "call.status": status,  # "success", "error", "timeout"
     }
-    service_call_duration.record(duration_ms, labels)
-    service_call_count.add(1, labels)
+    service_call_duration.record(duration_ms, attributes=labels)
+    service_call_count.add(1, attributes=labels)
 ```
 
 ## Combining Traces and Metrics in Practice
@@ -259,12 +260,12 @@ connectors:
     histogram:
       explicit:
         # Bucket boundaries in milliseconds for latency histograms
-        buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2500ms, 5s]
     dimensions:
-      - name: peer.service    # Break down by target service
-      - name: http.method     # Break down by HTTP method
-      - name: http.status_code
-    dimensions_cache_size: 1000
+      - name: service.peer.name       # Break down by target service
+      - name: http.request.method     # Break down by HTTP method
+      - name: http.response.status_code
+    aggregation_cardinality_limit: 1000
 
 processors:
   batch:
@@ -295,7 +296,7 @@ service:
 
 ## Visualizing the Service Map
 
-The trace data you collect naturally builds a service dependency map. Each span with a `peer.service` attribute represents an edge in the graph. Most observability platforms will render this automatically, but you can also query it yourself.
+The trace data you collect naturally builds a service dependency map. Each span with a `service.peer.name` attribute represents an edge in the graph. Most observability platforms will render this automatically, but you can also query it yourself.
 
 The service topology for our example looks like this:
 
