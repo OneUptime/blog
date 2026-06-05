@@ -23,9 +23,8 @@ Let's say your organization uses these headers:
 
 ```text
 X-MyCompany-Trace-ID: abc123def456
-X-MyCompany-Span-ID: 789xyz
+X-MyCompany-Span-ID: 789abc
 X-MyCompany-Sampled: 1
-X-MyCompany-Baggage: key1=val1;key2=val2
 ```
 
 ## Python: Custom Propagator
@@ -34,7 +33,6 @@ X-MyCompany-Baggage: key1=val1;key2=val2
 # legacy_propagator.py
 
 from opentelemetry.context import Context, get_current
-from opentelemetry.context.context import Context
 from opentelemetry.propagators import textmap
 from opentelemetry.trace import (
     SpanContext,
@@ -44,7 +42,7 @@ from opentelemetry.trace import (
     get_current_span,
 )
 from opentelemetry.trace.span import format_trace_id, format_span_id
-from typing import Optional, List
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,7 +51,6 @@ logger = logging.getLogger(__name__)
 TRACE_ID_HEADER = "x-mycompany-trace-id"
 SPAN_ID_HEADER = "x-mycompany-span-id"
 SAMPLED_HEADER = "x-mycompany-sampled"
-BAGGAGE_HEADER = "x-mycompany-baggage"
 
 
 class LegacyPropagator(textmap.TextMapPropagator):
@@ -71,7 +68,6 @@ class LegacyPropagator(textmap.TextMapPropagator):
             TRACE_ID_HEADER,
             SPAN_ID_HEADER,
             SAMPLED_HEADER,
-            BAGGAGE_HEADER,
         }
 
     def extract(
@@ -101,7 +97,7 @@ class LegacyPropagator(textmap.TextMapPropagator):
 
             # Read sampling decision
             sampled_str = self._get_header(carrier, SAMPLED_HEADER, getter)
-            is_sampled = sampled_str == "1" or sampled_str == "true"
+            is_sampled = sampled_str == "1" or (sampled_str or "").lower() == "true"
             trace_flags = TraceFlags(TraceFlags.SAMPLED if is_sampled else TraceFlags.DEFAULT)
 
             # Create a SpanContext from the legacy headers
@@ -158,7 +154,7 @@ class LegacyPropagator(textmap.TextMapPropagator):
 
     def _convert_trace_id(self, legacy_id: str) -> int:
         """Convert a legacy trace ID string to a 128-bit integer."""
-        # Remove any dashes or non-hex characters
+        # Remove common separators and surrounding whitespace
         clean_id = legacy_id.replace("-", "").strip()
         # Pad to 32 hex characters (128 bits)
         padded = clean_id.zfill(32)
@@ -166,6 +162,7 @@ class LegacyPropagator(textmap.TextMapPropagator):
 
     def _convert_span_id(self, legacy_id: str) -> int:
         """Convert a legacy span ID string to a 64-bit integer."""
+        # Remove common separators and surrounding whitespace
         clean_id = legacy_id.replace("-", "").strip()
         # Pad to 16 hex characters (64 bits)
         padded = clean_id.zfill(16)
@@ -180,17 +177,18 @@ Register it as a composite propagator alongside W3C Trace Context:
 # main.py
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.propagators.textmap import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from legacy_propagator import LegacyPropagator
 
 # Use both W3C and legacy propagators
-# The composite propagator tries each one during extraction
-# and injects using all of them
+# The composite propagator runs each one during extraction
+# and injection. Later extractors can override earlier ones
+# when they write the same context key.
 propagator = CompositePropagator([
+    LegacyPropagator(),               # Our legacy format
     TraceContextTextMapPropagator(),  # Standard W3C
     W3CBaggagePropagator(),           # Standard baggage
-    LegacyPropagator(),               # Our legacy format
 ])
 
 set_global_textmap(propagator)
@@ -207,6 +205,17 @@ This means legacy services can still participate in traces while new services us
 
 ```java
 // LegacyPropagator.java
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.context.propagation.TextMapGetter;
+import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.context.propagation.TextMapSetter;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+
 public class LegacyPropagator implements TextMapPropagator {
 
     private static final String TRACE_ID_HEADER = "x-mycompany-trace-id";
@@ -225,8 +234,8 @@ public class LegacyPropagator implements TextMapPropagator {
         SpanContext sc = span.getSpanContext();
         if (!sc.isValid()) return;
 
-        setter.set(carrier, TRACE_ID_HEADER, sc.getTraceId().toUpperCase());
-        setter.set(carrier, SPAN_ID_HEADER, sc.getSpanId().toUpperCase());
+        setter.set(carrier, TRACE_ID_HEADER, sc.getTraceId().toUpperCase(Locale.ROOT));
+        setter.set(carrier, SPAN_ID_HEADER, sc.getSpanId().toUpperCase(Locale.ROOT));
         setter.set(carrier, SAMPLED_HEADER, sc.isSampled() ? "1" : "0");
     }
 
@@ -253,7 +262,16 @@ public class LegacyPropagator implements TextMapPropagator {
             traceId, spanId, flags, TraceState.getDefault()
         );
 
-        return context.with(Span.wrap(sc));
+        if (!sc.isValid()) return context;
+
+        return Span.wrap(sc).storeInContext(context);
+    }
+
+    private static String padLeft(String value, int length) {
+        if (value.length() > length) {
+            return value.toLowerCase(Locale.ROOT);
+        }
+        return "0".repeat(length - value.length()) + value.toLowerCase(Locale.ROOT);
     }
 }
 ```
