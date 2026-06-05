@@ -79,6 +79,7 @@ services:
     environment:
       - POSTGRES_DB=myapp
       - POSTGRES_USER=app
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
     secrets:
       - db_password
     deploy:
@@ -134,12 +135,9 @@ kubectl apply -f namespace.yaml
 Convert Swarm secrets to Kubernetes secrets:
 
 ```bash
-# Get the secret value from Docker Swarm
-SWARM_SECRET=$(docker secret inspect db_password --format '{{.Spec.Data}}' | base64 -d)
-
-# Create the equivalent Kubernetes secret
+# Create the equivalent Kubernetes secret from the original secret file
 kubectl create secret generic db-password \
-    --from-literal=password="$SWARM_SECRET" \
+    --from-file=password=/secure/path/db_password \
     --namespace myapp
 ```
 
@@ -361,7 +359,7 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-  clusterIP: None  # Headless service for stable DNS name
+  type: ClusterIP  # Internal service for database access
 ```
 
 ### Cache
@@ -507,8 +505,11 @@ kubectl get all -n myapp
 # Check pod logs
 kubectl logs -l app=myapp,component=web -n myapp --tail=20
 
-# Verify services can communicate
-kubectl exec -it deploy/web -n myapp -- curl -s http://cache:6379/ping
+# Verify the Redis service is reachable through Kubernetes DNS
+kubectl run redis-check --rm -i --restart=Never \
+    --image=redis:7-alpine \
+    --namespace=myapp \
+    -- redis-cli -h cache ping
 ```
 
 ## Summary
