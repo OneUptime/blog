@@ -88,6 +88,9 @@ mttr_histogram = meter.create_histogram(
     name="incident.mttr.seconds",
     description="Mean Time to Resolution in seconds",
     unit="s",
+    explicit_bucket_boundaries_advisory=[
+        0, 5, 10, 25, 50, 60, 75, 100, 250, 500, 1000, 2500, 5000, 10000
+    ],
 )
 
 alert_counter = meter.create_counter(
@@ -109,7 +112,7 @@ def record_incident_metrics(alert, resolution_time_seconds):
 
 ## OpenTelemetry Collector Configuration
 
-Route the incident telemetry through the OpenTelemetry Collector. This configuration receives OTLP data and exports traces to Jaeger and metrics to Prometheus.
+Route the incident telemetry through the OpenTelemetry Collector. This configuration receives OTLP data and exports traces to Jaeger and metrics to Prometheus. If you write directly to a Prometheus server with remote write, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` is available.
 
 ```yaml
 # otel-collector-config.yaml
@@ -126,7 +129,7 @@ processors:
     timeout: 10s
     send_batch_size: 512
 
-  # Add shift metadata based on time of day
+  # Add static shift metadata at the collector layer if needed
   attributes:
     actions:
       - key: oncall.shift_period
