@@ -32,19 +32,25 @@ Start by adding the necessary dependencies for Quarkus, Reactive Messaging, Kafk
     <!-- SmallRye Reactive Messaging -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-smallrye-reactive-messaging</artifactId>
+        <artifactId>quarkus-messaging</artifactId>
     </dependency>
 
     <!-- Kafka connector for Reactive Messaging -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-smallrye-reactive-messaging-kafka</artifactId>
+        <artifactId>quarkus-messaging-kafka</artifactId>
     </dependency>
 
     <!-- Optional: AMQP connector -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-smallrye-reactive-messaging-amqp</artifactId>
+        <artifactId>quarkus-messaging-amqp</artifactId>
+    </dependency>
+
+    <!-- JSON-B support for Kafka JSON serialization -->
+    <dependency>
+        <groupId>io.quarkus</groupId>
+        <artifactId>quarkus-jsonb</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -69,13 +75,27 @@ mp.messaging.incoming.orders.connector=smallrye-kafka
 mp.messaging.incoming.orders.topic=orders-topic
 mp.messaging.incoming.orders.group.id=order-processor
 mp.messaging.incoming.orders.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-mp.messaging.incoming.orders.value.deserializer=io.quarkus.kafka.client.serialization.JsonbDeserializer
+mp.messaging.incoming.orders.value.deserializer=com.example.messaging.OrderEventDeserializer
 
 # Outgoing channel configuration
 mp.messaging.outgoing.notifications.connector=smallrye-kafka
 mp.messaging.outgoing.notifications.topic=notifications-topic
 mp.messaging.outgoing.notifications.key.serializer=org.apache.kafka.common.serialization.StringSerializer
 mp.messaging.outgoing.notifications.value.serializer=io.quarkus.kafka.client.serialization.JsonbSerializer
+```
+
+For JSON-B deserialization, create a typed deserializer for each payload type you consume from Kafka.
+
+```java
+package com.example.messaging;
+
+import io.quarkus.kafka.client.serialization.JsonbDeserializer;
+
+public class OrderEventDeserializer extends JsonbDeserializer<OrderEvent> {
+    public OrderEventDeserializer() {
+        super(OrderEvent.class);
+    }
+}
 ```
 
 ## Tracing Message Producers
@@ -242,6 +262,8 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.eclipse.microprofile.reactive.messaging.Outgoing;
 import org.eclipse.microprofile.reactive.messaging.Message;
 
+import java.util.concurrent.CompletionStage;
+
 @ApplicationScoped
 public class OrderPipeline {
 
@@ -256,6 +278,9 @@ public class OrderPipeline {
 
     @Inject
     PricingService pricingService;
+
+    @Inject
+    OrderService orderService;
 
     // Stage 1: Validate incoming orders
     @Incoming("raw-orders")
@@ -274,7 +299,7 @@ public class OrderPipeline {
             if (!result.isValid()) {
                 span.addEvent("validation_failed");
                 span.setAttribute("validation.errors", result.getErrors().toString());
-                return message.nack(new ValidationException(result.getErrors()));
+                throw new ValidationException(result.getErrors());
             }
 
             span.addEvent("validation_passed");
@@ -302,7 +327,7 @@ public class OrderPipeline {
                     span.setAttribute("customer.lifetime_value", enriched.getLifetimeValue());
                     span.addEvent("order_enriched");
                 })
-                .map(enriched -> Message.of(enriched))
+                .map(enriched -> message.withPayload(enriched))
                 .eventually(() -> span.end());
         }
     }
@@ -325,7 +350,7 @@ public class OrderPipeline {
             span.setAttribute("pricing.total", priced.getTotal());
             span.addEvent("pricing_calculated");
 
-            return Message.of(priced);
+            return message.withPayload(priced);
 
         } finally {
             span.end();
@@ -359,12 +384,24 @@ public class OrderPipeline {
 
 Implement proper error handling and dead letter queue patterns with tracing.
 
+Configure the Kafka incoming channel to use delayed retry topics and a dead letter queue when messages are negatively acknowledged.
+
+```properties
+mp.messaging.incoming.orders-with-retry.connector=smallrye-kafka
+mp.messaging.incoming.orders-with-retry.topic=orders-topic
+mp.messaging.incoming.orders-with-retry.failure-strategy=delayed-retry-topic
+mp.messaging.incoming.orders-with-retry.delayed-retry-topic.max-retries=3
+mp.messaging.incoming.orders-with-retry.dead-letter-queue.topic=orders-dlq
+mp.messaging.incoming.orders-with-retry.dead-letter-queue.value.serializer=io.quarkus.kafka.client.serialization.JsonbSerializer
+```
+
 ```java
 package com.example.messaging;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
+import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -373,6 +410,7 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.eclipse.microprofile.reactive.messaging.Message;
 
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
 @ApplicationScoped
@@ -411,7 +449,7 @@ public class ResilientOrderProcessor {
 
             if (retryCount < MAX_RETRIES) {
                 span.setAttribute("retry.action", "requeue");
-                return message.nack(e); // Will be retried
+                return message.nack(e); // Triggers the configured delayed-retry-topic strategy
             } else {
                 // Max retries exceeded - send to DLQ
                 span.setAttribute("retry.action", "send_to_dlq");
@@ -466,7 +504,7 @@ public class ResilientOrderProcessor {
         return message.getMetadata(IncomingKafkaRecordMetadata.class)
             .flatMap(metadata -> {
                 var headers = metadata.getHeaders();
-                var retryHeader = headers.lastHeader("retry-count");
+                var retryHeader = headers.lastHeader("delayed-retry-count");
                 if (retryHeader != null) {
                     return Optional.of(Integer.parseInt(new String(retryHeader.value())));
                 }
@@ -519,14 +557,13 @@ package com.example.messaging;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import io.smallrye.mutiny.Multi;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.eclipse.microprofile.reactive.messaging.Message;
 
-import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletionStage;
 
 @ApplicationScoped
 public class BatchOrderProcessor {
@@ -538,43 +575,22 @@ public class BatchOrderProcessor {
     BatchProcessingService batchService;
 
     @Incoming("orders-batch")
-    public void processBatch(Multi<Message<OrderEvent>> messages) {
-        // Create a parent span for the entire batch
+    public CompletionStage<Void> processBatch(Message<List<OrderEvent>> message) {
         Span batchSpan = tracer.spanBuilder("process-order-batch").startSpan();
 
         try (var scope = batchSpan.makeCurrent()) {
-            // Collect messages into batches of 100 or every 5 seconds
-            messages
-                .group().intoLists().of(100, Duration.ofSeconds(5))
-                .subscribe().with(batch -> {
-                    batchSpan.setAttribute("batch.size", batch.size());
-                    batchSpan.addEvent("batch_collected");
+            List<OrderEvent> events = message.getPayload();
+            batchSpan.setAttribute("batch.size", events.size());
+            batchSpan.addEvent("batch_collected");
 
-                    // Create a span for processing this specific batch
-                    Span processingSpan = tracer.spanBuilder("process-batch-items")
-                        .startSpan();
+            batchService.processBatch(events);
+            batchSpan.setAttribute("batch.processed", events.size());
+            batchSpan.addEvent("batch_processed");
 
-                    try (var innerScope = processingSpan.makeCurrent()) {
-                        List<OrderEvent> events = batch.stream()
-                            .map(Message::getPayload)
-                            .toList();
-
-                        // Process the batch
-                        batchService.processBatch(events);
-                        processingSpan.setAttribute("batch.processed", events.size());
-                        processingSpan.addEvent("batch_processed");
-
-                        // Acknowledge all messages in the batch
-                        batch.forEach(msg -> msg.ack());
-
-                    } catch (Exception e) {
-                        processingSpan.recordException(e);
-                        batch.forEach(msg -> msg.nack(e));
-                    } finally {
-                        processingSpan.end();
-                    }
-                });
-
+            return message.ack();
+        } catch (Exception e) {
+            batchSpan.recordException(e);
+            return message.nack(e);
         } finally {
             batchSpan.end();
         }
@@ -582,35 +598,97 @@ public class BatchOrderProcessor {
 }
 ```
 
+With Kafka, configure the incoming channel as a batch consumer so the connector delivers `List<OrderEvent>` payloads to the method:
+
+```properties
+mp.messaging.incoming.orders-batch.connector=smallrye-kafka
+mp.messaging.incoming.orders-batch.topic=orders-topic
+mp.messaging.incoming.orders-batch.batch=true
+mp.messaging.incoming.orders-batch.value.deserializer=com.example.messaging.OrderEventDeserializer
+```
+
 ## Testing Reactive Messaging Traces
 
 Write tests to verify that trace context propagates correctly through your messaging flows.
+
+Add the test utilities for the in-memory connector, OpenTelemetry in-memory exporter, and asynchronous assertions.
+
+```xml
+<dependency>
+    <groupId>io.smallrye.reactive</groupId>
+    <artifactId>smallrye-reactive-messaging-in-memory</artifactId>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-sdk-testing</artifactId>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.awaitility</groupId>
+    <artifactId>awaitility</artifactId>
+    <scope>test</scope>
+</dependency>
+```
 
 ```java
 package com.example.messaging;
 
 import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.trace.export.InMemorySpanExporter;
 import io.quarkus.test.junit.QuarkusTest;
 import io.smallrye.reactive.messaging.memory.InMemoryConnector;
 import io.smallrye.reactive.messaging.memory.InMemorySource;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.time.Duration;
 import java.util.List;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class OrderPipelineTest {
 
-    @RegisterExtension
-    static final OpenTelemetryExtension otelTesting = OpenTelemetryExtension.create();
+    @Inject
+    @Any
+    InMemoryConnector connector;
 
     @Inject
-    InMemoryConnector connector;
+    InMemorySpanExporter inMemorySpanExporter;
+
+    @ApplicationScoped
+    static class InMemorySpanExporterProducer {
+        @Produces
+        @Singleton
+        InMemorySpanExporter inMemorySpanExporter() {
+            return InMemorySpanExporter.create();
+        }
+    }
+
+    @BeforeAll
+    static void switchChannels() {
+        InMemoryConnector.switchIncomingChannelsToInMemory("raw-orders");
+    }
+
+    @AfterAll
+    static void clearChannels() {
+        InMemoryConnector.clear();
+    }
+
+    @BeforeEach
+    void resetExporter() {
+        inMemorySpanExporter.reset();
+    }
 
     @Test
     public void testOrderPipelineCreatesSpans() {
@@ -623,10 +701,10 @@ public class OrderPipelineTest {
 
         // Wait for processing
         await().atMost(Duration.ofSeconds(5))
-            .until(() -> otelTesting.getSpans().size() >= 4);
+            .until(() -> inMemorySpanExporter.getFinishedSpanItems().size() >= 4);
 
         // Verify spans were created for each stage
-        List<SpanData> spans = otelTesting.getSpans();
+        List<SpanData> spans = inMemorySpanExporter.getFinishedSpanItems();
 
         SpanData validateSpan = findSpanByName(spans, "validate-order");
         assertNotNull(validateSpan);
