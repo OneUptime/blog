@@ -19,12 +19,16 @@ helm repo add logzio-helm https://logzio.github.io/logzio-helm
 helm repo update
 
 # Install the collector
-helm install logzio-otel logzio-helm/logzio-otel-collector \
-  --set secrets.LogzioLogsToken="your-logs-token" \
-  --set secrets.LogzioMetricsToken="your-metrics-token" \
-  --set secrets.LogzioTracesToken="your-tracing-token" \
-  --set secrets.LogzioRegion="us" \
-  --set secrets.env_id="my-k8s-cluster"
+helm install -n monitoring --create-namespace \
+  --set logs.enabled=true \
+  --set logzio-k8s-telemetry.metrics.enabled=true \
+  --set logzio-apm-collector.enabled=true \
+  --set global.logzioLogsToken="your-logs-token" \
+  --set global.logzioMetricsToken="your-metrics-token" \
+  --set global.logzioTracesToken="your-tracing-token" \
+  --set global.logzioRegion="us" \
+  --set global.env_id="my-k8s-cluster" \
+  logzio-monitoring logzio-helm/logzio-monitoring
 ```
 
 ## Custom Configuration Override
@@ -33,78 +37,32 @@ You can override the default configuration with your own values:
 
 ```yaml
 # logzio-values.yaml
-secrets:
-  LogzioLogsToken: "your-logs-token"
-  LogzioMetricsToken: "your-metrics-token"
-  LogzioTracesToken: "your-tracing-token"
-  LogzioRegion: "us"
+logs:
+  enabled: true
+
+global:
+  logzioLogsToken: "your-logs-token"
+  logzioMetricsToken: "your-metrics-token"
+  logzioTracesToken: "your-tracing-token"
+  logzioRegion: "us"
   env_id: "production-cluster"
 
-# Override collector configuration
-config:
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: 0.0.0.0:4317
-        http:
-          endpoint: 0.0.0.0:4318
+logzio-k8s-telemetry:
+  metrics:
+    enabled: true
+  applicationMetrics:
+    enabled: true
+  k8sObjectsConfig:
+    enabled: true
 
-    # Kubernetes events receiver
-    k8s_events:
-      namespaces: []  # Empty means all namespaces
-
-    # Prometheus receiver for scraping
-    prometheus:
-      config:
-        scrape_configs:
-          - job_name: "kubernetes-pods"
-            kubernetes_sd_configs:
-              - role: pod
-            relabel_configs:
-              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-                action: keep
-                regex: true
-
-  processors:
-    batch:
-      timeout: 5s
-      send_batch_size: 512
-
-    k8sattributes:
-      auth_type: serviceAccount
-      extract:
-        metadata:
-          - k8s.pod.name
-          - k8s.namespace.name
-          - k8s.node.name
-          - k8s.deployment.name
-
-  # The exporters are pre-configured, but you can add custom ones
-  exporters: {}
-
-  service:
-    pipelines:
-      traces:
-        receivers: [otlp]
-        processors: [k8sattributes, batch]
-        # logzio/traces exporter is pre-configured
-
-      metrics:
-        receivers: [otlp, prometheus]
-        processors: [k8sattributes, batch]
-        # logzio/metrics exporter is pre-configured
-
-      logs:
-        receivers: [otlp, k8s_events]
-        processors: [k8sattributes, batch]
-        # logzio/logs exporter is pre-configured
+logzio-apm-collector:
+  enabled: true
 ```
 
 Install with the custom values:
 
 ```bash
-helm install logzio-otel logzio-helm/logzio-otel-collector -f logzio-values.yaml
+helm install -n monitoring --create-namespace logzio-monitoring logzio-helm/logzio-monitoring -f logzio-values.yaml
 ```
 
 ## Sending Traces from Your Application
@@ -125,8 +83,8 @@ resource = Resource.create({
 
 # Point to the Logz.io Collector distribution running in the cluster
 exporter = OTLPSpanExporter(
-    endpoint="logzio-otel-collector.default.svc.cluster.local:4317",
-    insecure=True,  # Within the cluster, TLS is handled by the Collector
+    endpoint="logzio-apm-collector.monitoring.svc.cluster.local:4317",
+    insecure=True,  # The in-cluster OTLP receiver is plain gRPC
 )
 
 provider = TracerProvider(resource=resource)
@@ -157,7 +115,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 metric_exporter = OTLPMetricExporter(
-    endpoint="logzio-otel-collector.default.svc.cluster.local:4317",
+    endpoint="logzio-monitoring-otel-collector.monitoring.svc.cluster.local:4317",
     insecure=True,
 )
 
@@ -182,25 +140,20 @@ checkout_value = meter.create_histogram(
 
 ## Standalone Docker Installation
 
-If you are not using Kubernetes, run the Logz.io Collector distribution as a Docker container:
+If you are not using Kubernetes, the Logz.io Collector distribution Docker quickstart runs the Collector with the default tracing configuration:
 
 ```yaml
-version: "3.8"
+version: "3.2"
 services:
-  logzio-collector:
+  logzio-otel-collector:
     image: logzio/otel-collector-distro:latest
-    environment:
-      - LOGZIO_LOGS_TOKEN=your-logs-token
-      - LOGZIO_METRICS_TOKEN=your-metrics-token
-      - LOGZIO_TRACES_TOKEN=your-tracing-token
-      - LOGZIO_REGION=us
-      - ENV_ID=my-environment
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"
-    volumes:
-      - /var/log:/var/log:ro
+      - "14268:14268"
+      - "14269:14269"
+      - "14250:14250"
+    environment:
+      - TRACING_TOKEN=${TRACING_TOKEN}
+      - LOGZIO_REGION=${LOGZIO_REGION}
 ```
 
 ## Verifying the Setup
@@ -209,13 +162,13 @@ Check that all three signals are flowing:
 
 ```bash
 # Check collector health
-kubectl logs -l app=logzio-otel-collector -n default --tail=50
+kubectl logs -n monitoring -l app.kubernetes.io/instance=logzio-monitoring --tail=50
 
 # Look for export success messages
-kubectl logs -l app=logzio-otel-collector | grep -i "export"
+kubectl logs -n monitoring -l app.kubernetes.io/instance=logzio-monitoring | grep -i "export"
 
 # Check metrics endpoint
-kubectl port-forward svc/logzio-otel-collector 8888:8888
+kubectl port-forward -n monitoring svc/logzio-monitoring-otel-collector 8888:8888
 curl localhost:8888/metrics | grep otelcol_exporter
 ```
 
