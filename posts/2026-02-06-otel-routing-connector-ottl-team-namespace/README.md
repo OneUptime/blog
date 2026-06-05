@@ -32,11 +32,11 @@ receivers:
 connectors:
   routing/by_team:
     table:
-      - statement: route() where resource.attributes["team"] == "payments"
+      - statement: route() where attributes["team"] == "payments"
         pipelines: [traces/payments]
-      - statement: route() where resource.attributes["team"] == "platform"
+      - statement: route() where attributes["team"] == "platform"
         pipelines: [traces/platform]
-      - statement: route() where resource.attributes["team"] == "mobile"
+      - statement: route() where attributes["team"] == "mobile"
         pipelines: [traces/mobile]
     default_pipelines: [traces/default]
 
@@ -55,7 +55,7 @@ exporters:
   otlp/default:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
@@ -95,18 +95,18 @@ connectors:
     table:
       # Production namespaces go to the production backend
       - statement: >
-          route() where resource.attributes["k8s.namespace.name"] == "prod-payments"
-          or resource.attributes["k8s.namespace.name"] == "prod-platform"
+          route() where attributes["k8s.namespace.name"] == "prod-payments"
+          or attributes["k8s.namespace.name"] == "prod-platform"
         pipelines: [traces/production]
 
       # Staging namespaces go to a cheaper backend
       - statement: >
-          route() where IsMatch(resource.attributes["k8s.namespace.name"], "^staging-.*")
+          route() where IsMatch(attributes["k8s.namespace.name"], "^staging-.*")
         pipelines: [traces/staging]
 
       # CI namespaces go to a short-retention backend
       - statement: >
-          route() where IsMatch(resource.attributes["k8s.namespace.name"], "^ci-.*")
+          route() where IsMatch(attributes["k8s.namespace.name"], "^ci-.*")
         pipelines: [traces/ci]
 
     default_pipelines: [traces/default]
@@ -116,20 +116,20 @@ The `IsMatch` function supports regex patterns, which is useful when namespaces 
 
 ## Routing by Environment
 
-For environment-based routing, you can match on the standard `deployment.environment` resource attribute:
+For environment-based routing, you can match on the standard `deployment.environment.name` resource attribute:
 
 ```yaml
 connectors:
   routing/by_env:
     table:
       - statement: >
-          route() where resource.attributes["deployment.environment"] == "production"
+          route() where attributes["deployment.environment.name"] == "production"
         pipelines: [traces/prod]
       - statement: >
-          route() where resource.attributes["deployment.environment"] == "staging"
+          route() where attributes["deployment.environment.name"] == "staging"
         pipelines: [traces/staging]
       - statement: >
-          route() where resource.attributes["deployment.environment"] == "development"
+          route() where attributes["deployment.environment.name"] == "development"
         pipelines: [traces/dev]
     default_pipelines: [traces/prod]
 ```
@@ -144,20 +144,20 @@ connectors:
     table:
       # Production payment traces get the premium treatment
       - statement: >
-          route() where resource.attributes["team"] == "payments"
-          and resource.attributes["deployment.environment"] == "production"
+          route() where attributes["team"] == "payments"
+          and attributes["deployment.environment.name"] == "production"
         pipelines: [traces/critical]
 
       # All other production traces
       - statement: >
-          route() where resource.attributes["deployment.environment"] == "production"
+          route() where attributes["deployment.environment.name"] == "production"
         pipelines: [traces/production]
 
       # Everything else
     default_pipelines: [traces/standard]
 ```
 
-The routing table is evaluated top to bottom. The first matching rule wins, so put your most specific rules first.
+With the default `move` action, the routing table is evaluated top to bottom and matching data is removed from later route evaluation. Put your most specific rules first.
 
 ## Routing All Signal Types
 
@@ -198,6 +198,6 @@ service:
 
 - Each downstream pipeline has its own batch processor and exporter queue, so memory usage scales with the number of routes.
 - If a telemetry item matches no routing rule and no default pipeline is set, it gets dropped silently.
-- The routing connector evaluates OTTL expressions per span (not per batch), so the overhead is proportional to your throughput.
+- The routing connector evaluates OTTL expressions against the configured OTTL context for each record it routes, so the overhead is proportional to your throughput.
 
 This pattern is the foundation of multi-tenant observability. Once you have routing in place, each team can have their own retention policy, sampling rate, and backend, all managed centrally at the collector level.
