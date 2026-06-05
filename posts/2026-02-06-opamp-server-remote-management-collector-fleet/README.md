@@ -54,7 +54,7 @@ import (
 
 func main() {
     // Create the OpAMP server with callback handlers
-    srv := server.New(&logger{})
+    srv := server.New(nil)
 
     // Configure the server settings
     settings := server.StartSettings{
@@ -62,22 +62,27 @@ func main() {
         ListenEndpoint: "0.0.0.0:4320",
         // Define callbacks for agent events
         Settings: server.Settings{
-            Callbacks: server.CallbacksStruct{
-                OnConnectingFunc: func(request *http.Request) types.ConnectionResponse {
+            Callbacks: types.Callbacks{
+                OnConnecting: func(request *http.Request) types.ConnectionResponse {
                     log.Printf("Agent connecting from %s", request.RemoteAddr)
                     return types.ConnectionResponse{
                         Accept: true,
-                    }
-                },
-                OnMessageFunc: func(
-                    conn types.Connection,
-                    message *protobufs.AgentToServer,
-                ) *protobufs.ServerToAgent {
-                    // Handle incoming agent messages
-                    log.Printf("Received message from agent: %s",
-                        message.InstanceUid)
+                        ConnectionCallbacks: types.ConnectionCallbacks{
+                            OnMessage: func(
+                                _ context.Context,
+                                _ types.Connection,
+                                message *protobufs.AgentToServer,
+                            ) *protobufs.ServerToAgent {
+                                // Handle incoming agent messages
+                                log.Printf("Received message from agent: %x",
+                                    message.InstanceUid)
 
-                    return &protobufs.ServerToAgent{}
+                                return &protobufs.ServerToAgent{
+                                    InstanceUid: message.InstanceUid,
+                                }
+                            },
+                        },
+                    }
                 },
             },
         },
@@ -129,7 +134,7 @@ Start the supervisor:
 
 ```bash
 # The supervisor manages the collector process
-./opamp-supervisor --config supervisor.yaml
+./opampsupervisor --config=supervisor.yaml
 ```
 
 Once connected, the supervisor will register with the server and begin reporting the collector's status.
@@ -140,16 +145,16 @@ After starting supervisors on multiple hosts, you can verify connectivity throug
 
 ```text
 Agent connecting from 10.0.1.15:43210
-Received message from agent: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Received message from agent: a1b2c3d4e5f67890abcdef1234567890
 Agent connecting from 10.0.1.16:43211
-Received message from agent: b2c3d4e5-f6a7-8901-bcde-f12345678901
+Received message from agent: b2c3d4e5f6a78901bcdef12345678901
 ```
 
 ## Production Considerations
 
 For a production deployment, you should put the OpAMP server behind a load balancer with TLS termination. The server itself should be deployed with high availability in mind, since it becomes the control plane for your entire observability pipeline.
 
-Store agent state in a persistent database rather than in-memory. The reference implementation uses in-memory storage by default, which means you lose all agent state on restart. For production, implement the `types.ServerCallbacks` interface with a database-backed store.
+Store agent state in a persistent database rather than in-memory. The example server keeps agent state in memory, which means you lose that state on restart. For production, implement the `types.Callbacks` and `types.ConnectionCallbacks` handlers with a database-backed store.
 
 Enable TLS on the WebSocket endpoint. OpAMP supports client certificate authentication, which is strongly recommended when managing agents across untrusted networks.
 
