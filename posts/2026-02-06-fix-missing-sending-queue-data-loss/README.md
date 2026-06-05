@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Reliability, Queue
 
 Description: Prevent telemetry data loss during backend outages by configuring the sending queue and retry mechanisms on your Collector exporters.
 
-Without a sending queue, the OpenTelemetry Collector drops telemetry data the moment it cannot reach the backend. A 30-second network blip, a backend restart, or a DNS resolution hiccup means all in-flight data is gone. Configuring a sending queue with retry logic is essential for a reliable telemetry pipeline.
+Without an enabled and adequately sized sending queue, the OpenTelemetry Collector can drop telemetry data when it cannot reach the backend. A 30-second network blip, a backend restart, or a DNS resolution hiccup can mean in-flight data is gone. Configuring a sending queue with retry logic is essential for a reliable telemetry pipeline.
 
 ## The Default Behavior
 
@@ -22,7 +22,7 @@ This message appears in the Collector logs, but by then the data is already gone
 
 ## Configuring the Sending Queue
 
-Every exporter in the Collector supports `sending_queue` and `retry_on_failure` configuration:
+Most network exporters in the Collector are built with the exporter helper and support `sending_queue` and `retry_on_failure` configuration:
 
 ```yaml
 exporters:
@@ -55,7 +55,7 @@ When the exporter fails to send data:
 1. The data stays in the queue
 2. The retry mechanism kicks in with exponential backoff
 3. After `initial_interval`, the exporter tries again
-4. If it fails again, the interval doubles (up to `max_interval`)
+4. If it fails again, the retry interval increases (up to `max_interval`)
 5. Retries continue until `max_elapsed_time` is reached
 6. If all retries fail, the data is dropped
 
@@ -66,13 +66,13 @@ During the retry period, new data continues to enter the queue (up to `queue_siz
 The queue size determines how much data you can buffer during an outage. Here is how to calculate it:
 
 ```text
-queue_size = (outage_duration_seconds / batch_timeout_seconds) * safety_factor
+queue_size = batches_per_second * outage_duration_seconds * safety_factor
 
-# Example: buffer 5 minutes of data with 5-second batches
+# Example: buffer 5 minutes at 10 batches per second
 
-# queue_size = (300 / 5) * 2 = 120
+# queue_size = 10 * 300 * 2 = 6000
 # But round up generously for spikes
-# queue_size = 5000
+# queue_size = 10000
 ```
 
 Each item in the queue is one batch of telemetry data (the size of which is determined by the batch processor). A `queue_size` of 5000 with a batch size of 512 spans means you can buffer roughly 2.5 million spans.
@@ -124,7 +124,7 @@ service:
 
 With the persistent queue:
 - Data survives Collector restarts
-- Queue capacity is limited by disk space, not memory
+- Queue capacity is constrained by `queue_size` and disk space instead of heap memory
 - Recovery after a backend outage includes data from before the Collector restarted
 
 ## Monitoring Queue Health
@@ -134,6 +134,9 @@ Watch these Collector metrics to know if your queue is healthy:
 ```bash
 # Current number of batches in the queue
 otelcol_exporter_queue_size
+
+# Maximum number of batches the queue can hold
+otelcol_exporter_queue_capacity
 
 # Total number of items dropped because the queue was full
 otelcol_exporter_enqueue_failed_spans
@@ -149,7 +152,7 @@ Set up an alert when the queue is more than 80% full:
 
 ```yaml
 alert: CollectorQueueNearFull
-expr: otelcol_exporter_queue_size / 10000 > 0.8
+expr: otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.8
 for: 5m
 labels:
   severity: warning
