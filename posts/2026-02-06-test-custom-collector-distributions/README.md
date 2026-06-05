@@ -206,15 +206,16 @@ echo "All configs passed validation."
 
 ## Level 3: Integration Testing
 
-Integration tests verify that data actually flows through the pipeline. Use Docker Compose to set up a complete test environment:
+Integration tests verify that data actually flows through the pipeline. Use Docker Compose to run the collector with the debug exporter enabled:
 
 ```yaml
 # docker-compose-test.yaml
-# Spins up the collector and a mock backend for integration testing
+# Spins up the collector for integration testing
 
 services:
   # The collector under test
   collector:
+    container_name: otel-collector
     build:
       context: .
       dockerfile: Dockerfile
@@ -225,29 +226,14 @@ services:
     volumes:
       - ./configs/config-integration.yaml:/etc/otel/config.yaml
     command: ["--config", "/etc/otel/config.yaml"]
-    depends_on:
-      - mock-backend
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:13133/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  # Mock OTLP backend that receives and stores telemetry for verification
-  mock-backend:
-    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest
-    entrypoint: []
-    command: ["sleep", "infinity"]
-    ports:
-      - "4319:4317"
 ```
 
-Write a test script that sends telemetry and verifies it arrives:
+Write a test script that sends telemetry and verifies it is exported:
 
 ```bash
 #!/bin/bash
 # integration-test.sh
-# Sends test telemetry through the collector and verifies the output
+# Sends test telemetry through the collector and verifies debug exporter output
 
 set -euo pipefail
 
@@ -334,9 +320,11 @@ Verify that your collector handles production-level traffic without dropping dat
 
 COLLECTOR_ENDPOINT="localhost:4317"
 DURATION="300"  # 5 minutes
-RATE="1000"     # Spans per second
+TARGET_RATE="1000"  # Total spans per second
+WORKERS="10"
+RATE_PER_WORKER=$((TARGET_RATE / WORKERS))
 
-echo "Running load test: ${RATE} spans/sec for ${DURATION}s..."
+echo "Running load test: ${TARGET_RATE} spans/sec for ${DURATION}s..."
 
 # Generate high-volume trace traffic
 docker run --rm --network host \
@@ -344,9 +332,9 @@ docker run --rm --network host \
   traces \
   --otlp-insecure \
   --otlp-endpoint "${COLLECTOR_ENDPOINT}" \
-  --rate "${RATE}" \
+  --rate "${RATE_PER_WORKER}" \
   --duration "${DURATION}s" \
-  --workers 10 &
+  --workers "${WORKERS}" &
 
 TELEMETRYGEN_PID=$!
 
@@ -413,6 +401,7 @@ spec:
       containers:
         - name: collector
           image: ghcr.io/myorg/custom-collector:v0.97.0-rc1
+          args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
               name: otlp-grpc
@@ -472,7 +461,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
 
       - name: Install OCB
         run: go install go.opentelemetry.io/collector/cmd/builder@latest
@@ -494,11 +483,7 @@ jobs:
 
       # Level 3: Integration testing
       - name: Integration tests
-        run: |
-          docker compose -f docker-compose-test.yaml up -d
-          sleep 10
-          ./scripts/integration-test.sh
-          docker compose -f docker-compose-test.yaml down
+        run: ./scripts/integration-test.sh
 
       # Level 4: Smoke load test (shorter duration for CI)
       - name: Smoke load test
