@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Python, Boto3, AWS, SDK, Tracing, Cloud
 
 Description: Complete guide to instrumenting boto3 AWS SDK calls with OpenTelemetry to trace S3, DynamoDB, Lambda, and other AWS service interactions in Python applications.
 
-Applications running on AWS interact with dozens of services through boto3, the official AWS SDK for Python. These interactions can become a major source of latency and errors in distributed systems. OpenTelemetry instrumentation for boto3 automatically traces every AWS API call, capturing service names, operations, regions, and performance metrics without code changes.
+Applications running on AWS interact with dozens of services through boto3, the official AWS SDK for Python. These interactions can become a major source of latency and errors in distributed systems. OpenTelemetry instrumentation for botocore, the underlying library used by boto3, automatically traces AWS API calls, capturing service names, operations, regions, response metadata, and timing without changes to individual AWS call sites.
 
 ## Why Instrument boto3 Calls
 
@@ -75,9 +75,11 @@ print(f"Found {len(response['Buckets'])} S3 buckets")
 Once instrumented, every boto3 API call automatically creates a span containing:
 - AWS service name (S3, DynamoDB, Lambda, etc.)
 - API operation (GetObject, PutItem, Invoke)
-- Request parameters (sanitized for security)
-- Response metadata and status codes
+- Region and peer attributes
+- Response metadata such as request IDs, retry attempts, and status codes
 - Latency and timing information
+
+Some AWS services, such as DynamoDB, Lambda, SQS, SNS, Secrets Manager, Step Functions, and Bedrock Runtime, also have service-specific enrichment in the Python botocore instrumentation. For other services, you can add extra span attributes with request and response hooks.
 
 ## Tracing S3 Operations
 
@@ -102,7 +104,7 @@ def upload_user_data(user_id, data):
         key = f"users/{user_id}/profile.json"
 
         # The put_object call will automatically create a child span
-        # showing S3 service, operation, bucket, key, and latency
+        # showing S3 service, operation, region, response metadata, and latency
         try:
             response = s3_client.put_object(
                 Bucket=bucket_name,
@@ -145,13 +147,15 @@ def download_and_process_file(bucket, key):
             return processed_data
 ```
 
-The boto3 instrumentation captures S3-specific details like bucket names, object keys, and storage class, making it easy to identify slow or failing S3 operations.
+The botocore instrumentation creates spans for S3 operations with the service, operation, region, response metadata, and timing. If you need bucket names, object keys, storage class, or other S3-specific values on spans, add them on your parent spans as shown above or attach them with a request hook.
 
 ## Tracing DynamoDB Operations
 
 DynamoDB queries and scans can be performance bottlenecks. OpenTelemetry makes them visible:
 
 ```python
+from boto3.dynamodb.conditions import Key
+
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table('Users')
 
@@ -162,7 +166,7 @@ def get_user_by_id(user_id):
         span.set_attribute("dynamodb.table", "Users")
         span.set_attribute("user.id", user_id)
 
-        # GetItem operation - automatically traced with table name and key
+        # GetItem operation - automatically traced with table name
         response = table.get_item(Key={'user_id': user_id})
 
         if 'Item' in response:
@@ -180,11 +184,10 @@ def query_users_by_status(status, limit=10):
         span.set_attribute("query.status", status)
         span.set_attribute("query.limit", limit)
 
-        # Query operation - traced with index name, filter conditions, and consumed capacity
+        # Query operation - traced with table name, index name, limit, and consumed capacity
         response = table.query(
             IndexName='StatusIndex',
-            KeyConditionExpression='status = :status',
-            ExpressionAttributeValues={':status': status},
+            KeyConditionExpression=Key('status').eq(status),
             Limit=limit,
             ReturnConsumedCapacity='TOTAL'
         )
@@ -202,7 +205,7 @@ def batch_write_items(items):
     with tracer.start_as_current_span("batch_write_users") as span:
         span.set_attribute("dynamodb.batch_size", len(items))
 
-        # Batch write - traced with item count and write metrics
+        # Batch write - traced as DynamoDB BatchWriteItem calls
         with table.batch_writer() as batch:
             for item in items:
                 batch.put_item(Item=item)
@@ -210,7 +213,7 @@ def batch_write_items(items):
         span.set_attribute("batch_write.status", "completed")
 ```
 
-Each DynamoDB operation creates a span showing table names, key conditions, consumed capacity, and returned item counts.
+Each DynamoDB operation creates a span showing the operation, table name, selected request attributes such as index name and limit, and consumed capacity when it is returned by DynamoDB.
 
 ## Tracing Lambda Invocations
 
@@ -227,7 +230,7 @@ def invoke_processing_function(payload):
         span.set_attribute("lambda.function_name", function_name)
         span.set_attribute("lambda.invocation_type", "RequestResponse")
 
-        # Lambda invoke - automatically traced with function name and invocation type
+        # Lambda invoke - automatically traced with function name and region
         response = lambda_client.invoke(
             FunctionName=function_name,
             InvocationType='RequestResponse',
@@ -280,7 +283,7 @@ def send_message_to_queue(message_body, attributes=None):
         span.set_attribute("sqs.queue_url", queue_url)
         span.set_attribute("message.size", len(message_body))
 
-        # SendMessage - traced with queue URL and message attributes
+        # SendMessage - traced with queue URL and message ID
         response = sqs_client.send_message(
             QueueUrl=queue_url,
             MessageBody=message_body,
@@ -297,7 +300,7 @@ def receive_and_process_messages(max_messages=10):
         span.set_attribute("sqs.queue_url", queue_url)
         span.set_attribute("sqs.max_messages", max_messages)
 
-        # ReceiveMessage - traced with visibility timeout and wait time
+        # ReceiveMessage - traced with queue URL and, when available, message ID
         response = sqs_client.receive_message(
             QueueUrl=queue_url,
             MaxNumberOfMessages=max_messages,
@@ -355,7 +358,7 @@ def process_uploaded_file(event):
             'file_id': key,
             'bucket': bucket,
             'size': len(content),
-            'processed_at': str(trace.get_current_span().context.trace_id)
+            'processed_at': str(trace.get_current_span().get_span_context().trace_id)
         })
 
         # Step 3: Send processing message to SQS (traced)
@@ -433,24 +436,29 @@ def robust_s3_operation(bucket, key):
 
 ## Filtering Sensitive Data
 
-AWS API calls may contain sensitive information. Configure attribute filtering:
+AWS API calls may contain sensitive information. Be careful not to add sensitive request fields as span attributes in hooks:
 
 ```python
 from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
 
-# Instrument with request/response hook to filter sensitive data
+# Instrument with request/response hooks for custom, sanitized attributes
 def request_hook(span, service_name, operation_name, api_params):
-    """Called before AWS API call - filter sensitive params"""
-    # Remove sensitive data from span attributes
-    if 'Password' in api_params:
-        api_params['Password'] = '***REDACTED***'
-    if 'SecretString' in api_params:
-        api_params['SecretString'] = '***REDACTED***'
+    """Called before AWS API call - add only safe custom attributes"""
+    span.set_attribute("aws.service", service_name)
+    span.set_attribute("aws.operation", operation_name)
+
+    if 'Bucket' in api_params:
+        span.set_attribute("aws.s3.bucket", api_params['Bucket'])
+    if 'TableName' in api_params:
+        span.set_attribute("aws.dynamodb.table_name", api_params['TableName'])
 
 def response_hook(span, service_name, operation_name, result):
     """Called after AWS API call - add custom attributes"""
-    span.set_attribute("aws.service", service_name)
-    span.set_attribute("aws.operation", operation_name)
+    if result and 'ResponseMetadata' in result:
+        span.set_attribute(
+            "aws.request_id",
+            result['ResponseMetadata'].get('RequestId', 'unknown')
+        )
 
 # Apply hooks during instrumentation
 BotocoreInstrumentor().instrument(
@@ -461,11 +469,7 @@ BotocoreInstrumentor().instrument(
 
 ## Performance Impact and Optimization
 
-boto3 instrumentation adds minimal overhead:
-
-- Span creation: ~10-30 microseconds per AWS call
-- Attribute capture: ~5-10 microseconds per attribute
-- No impact on AWS API latency
+Botocore instrumentation adds the normal overhead of creating spans and setting attributes. In most applications this is small compared with network calls to AWS, but high-volume workloads should measure it in their own environment.
 
 For high-volume applications with thousands of AWS calls per second, use sampling:
 
@@ -500,4 +504,4 @@ otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 BotocoreInstrumentor().instrument()
 ```
 
-OpenTelemetry's boto3 instrumentation provides complete visibility into AWS service interactions. Every S3 upload, DynamoDB query, Lambda invocation, and SQS message operation becomes a traceable span with detailed metrics. This visibility is essential for debugging cloud applications, optimizing AWS costs, and understanding distributed system behavior across AWS infrastructure.
+OpenTelemetry's botocore instrumentation provides useful visibility into AWS service interactions. Every S3 upload, DynamoDB query, Lambda invocation, and SQS message operation becomes a traceable span with timing and response metadata. This visibility is essential for debugging cloud applications, optimizing AWS costs, and understanding distributed system behavior across AWS infrastructure.
