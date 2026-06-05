@@ -4,23 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Push Notification, APNs, FCM
 
-Description: Instrument push notification delivery across APNS, FCM, and Web Push providers with OpenTelemetry to track delivery rates and latency.
+Description: Instrument push notification delivery across APNS, FCM, and Web Push providers with OpenTelemetry to track provider acceptance rates and latency.
 
-Push notifications are the primary way social media platforms re-engage users. But the delivery path is complex: your backend generates the notification, routes it to the correct provider (Apple Push Notification Service, Firebase Cloud Messaging, or Web Push), and the provider delivers it to the device. Each step can fail silently. OpenTelemetry instrumentation gives you visibility into delivery rates, provider latency, and failure modes across all channels.
+Push notifications are the primary way social media platforms re-engage users. But the delivery path is complex: your backend generates the notification, routes it to the correct provider (Apple Push Notification Service, Firebase Cloud Messaging, or Web Push), and the provider accepts it for delivery to the device. Each step can fail silently. OpenTelemetry instrumentation gives you visibility into provider acceptance rates, provider latency, and failure modes across all channels.
 
 ## Setting Up the Tracer
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(
     OTLPSpanExporter(endpoint="http://otel-collector:4317")
 ))
-trace.set_tracer_provider(provider)
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 tracer = trace.get_tracer("push.notifications")
 meter = metrics.get_meter("push.notifications")
@@ -68,10 +77,10 @@ def send_push_notification(user_id: str, event_type: str, payload: dict):
             result = send_to_device(device, payloads[device.platform])
             results.append(result)
 
-        delivered = sum(1 for r in results if r.success)
+        accepted = sum(1 for r in results if r.success)
         span.set_attribute("push.devices_targeted", len(devices))
-        span.set_attribute("push.delivered", delivered)
-        span.set_attribute("push.failed", len(devices) - delivered)
+        span.set_attribute("push.accepted_by_provider", accepted)
+        span.set_attribute("push.failed", len(devices) - accepted)
 ```
 
 ## Tracing Provider-Specific Delivery
@@ -79,6 +88,8 @@ def send_push_notification(user_id: str, event_type: str, payload: dict):
 Each push provider has different APIs, rate limits, and error handling. You should trace them separately.
 
 ```python
+from firebase_admin import messaging
+
 def send_to_device(device, payload):
     with tracer.start_as_current_span("push.deliver") as span:
         span.set_attribute("device.id", device.device_id)
@@ -115,8 +126,8 @@ def send_via_apns(device, payload, parent_span):
             return DeliveryResult(success=response.status_code == 200, provider="apns")
 
         except Exception as e:
-            span.set_attribute("error", True)
-            span.add_event("apns_error", {"error": str(e)})
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
             return DeliveryResult(success=False, provider="apns", error=str(e))
 
 def send_via_fcm(device, payload, parent_span):
@@ -124,23 +135,24 @@ def send_via_fcm(device, payload, parent_span):
         span.set_attribute("fcm.project_id", FCM_PROJECT_ID)
 
         try:
-            response = fcm_client.send(
+            message = messaging.Message(
                 token=device.token,
                 notification=payload.to_fcm_notification(),
                 data=payload.to_fcm_data()
             )
-            span.set_attribute("fcm.message_id", response.message_id)
+            message_id = messaging.send(message)
+            span.set_attribute("fcm.message_id", message_id)
             span.set_attribute("fcm.success", True)
             return DeliveryResult(success=True, provider="fcm")
 
-        except fcm_errors.UnregisteredError:
+        except messaging.UnregisteredError:
             span.add_event("token_unregistered", {"device_id": device.device_id})
             invalidate_device_token(device.device_id)
             return DeliveryResult(success=False, provider="fcm", error="unregistered")
 
         except Exception as e:
-            span.set_attribute("error", True)
-            span.add_event("fcm_error", {"error": str(e)})
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
             return DeliveryResult(success=False, provider="fcm", error=str(e))
 
 def send_via_web_push(device, payload, parent_span):
@@ -160,7 +172,8 @@ def send_via_web_push(device, payload, parent_span):
                 provider="webpush"
             )
         except Exception as e:
-            span.set_attribute("error", True)
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
             return DeliveryResult(success=False, provider="webpush", error=str(e))
 ```
 
@@ -174,7 +187,7 @@ notifications_sent = meter.create_counter(
 
 delivery_latency = meter.create_histogram(
     "push.delivery.latency_ms",
-    description="Time to deliver notification to provider",
+    description="Time for the provider to accept or reject the notification request",
     unit="ms"
 )
 
@@ -191,4 +204,4 @@ notifications_suppressed = meter.create_counter(
 
 ## What You Learn
 
-Push notification delivery is often a black box. You send a notification and hope it arrives. With OpenTelemetry tracing, you know exactly what happened: which provider handled the delivery, how long it took, whether the device token was still valid, and whether user preferences suppressed the notification. Over time, the metrics show you which provider has the best delivery rates, how many stale tokens are in your database, and whether quiet hours settings are being applied correctly. That is the difference between hoping notifications work and knowing they do.
+Push notification delivery is often a black box. You send a notification and hope it arrives. With OpenTelemetry tracing, you know exactly what happened: which provider handled the request, how long it took, whether the device token was still valid, and whether user preferences suppressed the notification. Over time, the metrics show you which provider has the best acceptance rates, how many stale tokens are in your database, and whether quiet hours settings are being applied correctly. That is the difference between hoping notifications work and knowing what your providers accepted.
