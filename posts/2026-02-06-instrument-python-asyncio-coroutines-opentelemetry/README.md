@@ -8,7 +8,7 @@ Description: Master the techniques for instrumenting Python asyncio coroutines w
 
 Python's asyncio provides powerful concurrency through coroutines and event loops, but tracing async code presents unique challenges. Context must propagate correctly across await boundaries, through task spawning, and within concurrent operations. Without proper instrumentation, you lose visibility into which operations are slow, how concurrent tasks relate, and where errors occur in your async code.
 
-The core challenge is that asyncio creates many execution contexts as coroutines yield control. OpenTelemetry's context propagation must work seamlessly with asyncio's task-local state to maintain trace relationships across all async operations.
+The core challenge is that asyncio switches between coroutines as they yield control. OpenTelemetry's context propagation must work seamlessly with Python's task-local context to maintain trace relationships across all async operations.
 
 ## Understanding Asyncio Context Propagation
 
@@ -45,8 +45,7 @@ Install the required packages with async support.
 pip install opentelemetry-api \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp \
-    aiohttp \
-    asyncio
+    aiohttp
 ```
 
 Initialize OpenTelemetry with proper configuration for async applications.
@@ -191,7 +190,7 @@ When using create_task to spawn background tasks, you need to ensure context pro
 async def background_operation(operation_id: str, duration: float):
     """
     A background operation that runs independently.
-    Context must be explicitly preserved when using create_task.
+    The current context is copied when create_task is called.
     """
     with tracer.start_as_current_span("background_operation") as span:
         span.set_attribute("operation.id", operation_id)
@@ -429,7 +428,6 @@ Async HTTP clients are common in asyncio applications and should be properly ins
 
 ```python
 import aiohttp
-from opentelemetry.semconv.trace import SpanAttributes
 
 async def fetch_api_async(url: str) -> dict:
     """
@@ -440,13 +438,13 @@ async def fetch_api_async(url: str) -> dict:
         "http_request",
         kind=SpanKind.CLIENT
     ) as span:
-        span.set_attribute(SpanAttributes.HTTP_METHOD, "GET")
-        span.set_attribute(SpanAttributes.HTTP_URL, url)
+        span.set_attribute("http.request.method", "GET")
+        span.set_attribute("url.full", url)
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
-                    span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status)
+                    span.set_attribute("http.response.status_code", response.status)
 
                     if response.status >= 400:
                         span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status}"))
