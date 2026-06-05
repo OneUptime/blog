@@ -6,7 +6,7 @@ Tags: OpenTelemetry, JetBrains Rider, .NET, Trace, Metric
 
 Description: Install and configure the JetBrains Rider OpenTelemetry plugin to visualize traces and metrics directly inside your IDE.
 
-JetBrains Rider is a popular IDE for .NET development, and its OpenTelemetry plugin brings trace and metric visualization directly into the editor. Instead of switching to a browser to check Jaeger or Grafana, you can inspect the telemetry your application produces without leaving Rider. This post covers installation, configuration, and practical usage patterns.
+JetBrains Rider is a popular IDE for .NET development, and its OpenTelemetry plugin brings trace, metric, and log visualization directly into the editor. Instead of switching to a browser to check Jaeger or Grafana, you can inspect the telemetry your application produces without leaving Rider. This post covers installation, configuration, and practical usage patterns.
 
 ## Installing the Plugin
 
@@ -14,11 +14,11 @@ Open Rider and go to Settings (Ctrl+Alt+S on Windows/Linux, Cmd+, on macOS). Nav
 
 You can also install it from the JetBrains Marketplace website by searching for the OpenTelemetry plugin and clicking "Install to Rider."
 
-After restarting, you will find a new "OpenTelemetry" tool window at the bottom of the IDE.
+After restarting, you will find a new "OpenTelemetry" service in the Services window.
 
 ## Configuring Your .NET Application
 
-The plugin works by receiving OTLP data that your application exports. You need to configure your .NET application to send traces and metrics to a local endpoint. Add the required NuGet packages:
+The plugin works by receiving OTLP data that your application exports. For .NET applications launched from Rider, the IDE can set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable automatically, so your application only needs to add the OTLP exporter without hard-coding an endpoint. Add the required NuGet packages:
 
 ```bash
 dotnet add package OpenTelemetry
@@ -37,6 +37,8 @@ using OpenTelemetry.Metrics;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpClient();
+
 // Configure OpenTelemetry tracing
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
@@ -46,27 +48,22 @@ builder.Services.AddOpenTelemetry()
         .AddAspNetCoreInstrumentation()
         // Instrument outgoing HTTP calls
         .AddHttpClientInstrumentation()
-        // Export via OTLP to the local collector or plugin receiver
-        .AddOtlpExporter(opts =>
-        {
-            opts.Endpoint = new Uri("http://localhost:4318/v1/traces");
-            opts.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-        }))
+        // Export via OTLP to Rider's endpoint from OTEL_EXPORTER_OTLP_ENDPOINT
+        .AddOtlpExporter())
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
-        .AddOtlpExporter(opts =>
-        {
-            opts.Endpoint = new Uri("http://localhost:4318/v1/metrics");
-            opts.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-        }));
+        .AddMeter("Microsoft.AspNetCore.Hosting")
+        .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+        .AddOtlpExporter());
 
 var app = builder.Build();
 
 app.MapGet("/", () => "Hello from Rider with OpenTelemetry!");
-app.MapGet("/weather", async (HttpClient client) =>
+app.MapGet("/weather", async (IHttpClientFactory clientFactory) =>
 {
     // This outgoing call will be traced automatically
+    var client = clientFactory.CreateClient();
     var response = await client.GetStringAsync("https://api.weather.gov/points/39.7456,-97.0892");
     return response;
 });
@@ -74,13 +71,15 @@ app.MapGet("/weather", async (HttpClient client) =>
 app.Run();
 ```
 
-## Using the OpenTelemetry Tool Window
+If you run the application outside Rider, configure the plugin to use a fixed OTLP server port and point your exporter to `http://localhost:<port>`. Rider's OpenTelemetry service supports OTLP over gRPC, so you do not need to add `/v1/traces` or `/v1/metrics` paths for that direct-to-Rider setup.
 
-Run your application from Rider using the standard Run or Debug configuration. As requests come in, the OpenTelemetry tool window populates with trace data.
+## Using the OpenTelemetry Service View
 
-The tool window has several views:
+Run your application from Rider using the standard Run or Debug configuration. As requests come in, the OpenTelemetry service in the Services window populates with telemetry data.
 
-**Trace View** shows a list of traces with their root span name, duration, and service name. Click on a trace to expand it into a waterfall diagram showing all spans and their timing relationships.
+The service view has several tabs:
+
+**Traces** shows a list of traces with their details. Select a trace and click Examine Trace to expand it into a span view showing all spans and their timing relationships.
 
 **Span Details** appears when you select a specific span. It shows attributes, events, and status. For ASP.NET Core spans, you will see attributes like:
 
@@ -89,11 +88,11 @@ The tool window has several views:
 - `http.response.status_code`
 - `server.address`
 
-**Metrics View** displays runtime metrics like request duration histograms, active request counts, and custom metrics you define.
+**Metrics View** displays metrics emitted by your configured instrumentation and meters, such as request duration histograms, active request counts, and custom metrics you define.
 
 ## Adding Custom Spans for Better Visibility
 
-Auto-instrumentation covers HTTP and database calls, but your business logic is where the interesting debugging happens. Add custom spans using the `ActivitySource` API (which is .NET's implementation of the OpenTelemetry tracer):
+Instrumentation libraries can cover incoming and outgoing HTTP calls, but your business logic is where the interesting debugging happens. Add custom spans using the `ActivitySource` API (which is .NET's implementation of the OpenTelemetry tracer):
 
 ```csharp
 using System.Diagnostics;
@@ -147,15 +146,15 @@ Now when you process an order, the Rider plugin shows the `ProcessOrder` span wi
 
 ## Debugging with Traces
 
-The real power of in-IDE traces appears during debugging. Set a breakpoint in your code and run in Debug mode. When you hit the breakpoint, check the OpenTelemetry tool window. You can see the active span for the current request, including all the attributes and events recorded so far.
+The real power of in-IDE traces appears during debugging. Set a breakpoint in your code and run in Debug mode. When the request completes and spans are exported, check the OpenTelemetry service in the Services window. You can see the completed spans for the current request, including their attributes, events, and status.
 
 This gives you two perspectives simultaneously: the code-level view from the debugger and the distributed-system view from the trace. If your breakpoint is inside a method that is called by another service, the trace shows you the full chain of calls that led to this point.
 
 ## Filtering and Navigation
 
-The plugin supports filtering traces by service name, span name, status, and duration. If you are looking for slow requests, sort by duration. If you are hunting for errors, filter by error status.
+The plugin supports filtering traces by time, duration, and trace ID. If you are looking for slow requests, filter or sort by duration.
 
-Double-clicking a span attribute that contains a file path or class name navigates you to that location in the code. This tight integration between traces and source code is what makes the in-IDE experience valuable.
+For logs, the Navigate To Code action can jump from a log entry to the corresponding source code location when the log record includes the required original message template attribute. This tight integration between telemetry and source code is what makes the in-IDE experience valuable.
 
 ## Wrapping Up
 
