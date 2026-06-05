@@ -36,7 +36,7 @@ exporters:
   otlphttp/baselime:
     endpoint: "https://otel.baselime.io"
     headers:
-      x-api-key: "${BASELIME_API_KEY}"
+      x-api-key: "${env:BASELIME_API_KEY}"
     retry_on_failure:
       enabled: true
       initial_interval: 1s
@@ -72,24 +72,39 @@ processors:
   batch:
     timeout: 2s
 
+connectors:
   # Route based on the deployment.environment resource attribute
-  routing:
-    from_attribute: deployment.environment
-    attribute_source: resource
+  routing/traces:
+    default_pipelines: [traces/baselime-prod]
     table:
-      production:
-        exporters: [otlphttp/baselime-prod]
-      staging:
-        exporters: [otlphttp/baselime-staging]
-      development:
-        exporters: [otlphttp/baselime-dev]
-    default_exporters: [otlphttp/baselime-prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/baselime-prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/baselime-staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [traces/baselime-dev]
+
+  routing/logs:
+    default_pipelines: [logs/baselime-prod]
+    table:
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [logs/baselime-prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [logs/baselime-staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [logs/baselime-dev]
 
 exporters:
   otlphttp/baselime-prod:
     endpoint: "https://otel.baselime.io"
     headers:
-      x-api-key: "${BASELIME_PROD_API_KEY}"
+      x-api-key: "${env:BASELIME_PROD_API_KEY}"
     retry_on_failure:
       enabled: true
       initial_interval: 1s
@@ -97,7 +112,7 @@ exporters:
   otlphttp/baselime-staging:
     endpoint: "https://otel.baselime.io"
     headers:
-      x-api-key: "${BASELIME_STAGING_API_KEY}"
+      x-api-key: "${env:BASELIME_STAGING_API_KEY}"
     retry_on_failure:
       enabled: true
       initial_interval: 1s
@@ -105,22 +120,46 @@ exporters:
   otlphttp/baselime-dev:
     endpoint: "https://otel.baselime.io"
     headers:
-      x-api-key: "${BASELIME_DEV_API_KEY}"
+      x-api-key: "${env:BASELIME_DEV_API_KEY}"
     retry_on_failure:
       enabled: true
       initial_interval: 1s
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [otlphttp/baselime-prod, otlphttp/baselime-staging, otlphttp/baselime-dev]
+      processors: [batch]
+      exporters: [routing/traces]
 
-    logs:
+    traces/baselime-prod:
+      receivers: [routing/traces]
+      exporters: [otlphttp/baselime-prod]
+
+    traces/baselime-staging:
+      receivers: [routing/traces]
+      exporters: [otlphttp/baselime-staging]
+
+    traces/baselime-dev:
+      receivers: [routing/traces]
+      exporters: [otlphttp/baselime-dev]
+
+    logs/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [otlphttp/baselime-prod, otlphttp/baselime-staging, otlphttp/baselime-dev]
+      processors: [batch]
+      exporters: [routing/logs]
+
+    logs/baselime-prod:
+      receivers: [routing/logs]
+      exporters: [otlphttp/baselime-prod]
+
+    logs/baselime-staging:
+      receivers: [routing/logs]
+      exporters: [otlphttp/baselime-staging]
+
+    logs/baselime-dev:
+      receivers: [routing/logs]
+      exporters: [otlphttp/baselime-dev]
 ```
 
 ## Enriching Serverless Telemetry
@@ -135,7 +174,7 @@ processors:
         value: "aws"
         action: upsert
       - key: cloud.region
-        value: "${AWS_REGION}"
+        value: "${env:AWS_REGION}"
         action: upsert
       - key: cloud.platform
         value: "aws_lambda"
@@ -146,16 +185,15 @@ processors:
       - context: span
         statements:
           # Tag cold starts for easy filtering in Baselime
-          - set(attributes["baselime.alert_worthy"], true)
-            where attributes["faas.coldstart"] == true
-              and duration > 3000000000
+          - set(span.attributes["baselime.alert_worthy"], true)
+            where span.attributes["faas.coldstart"] == true
+              and (span.end_time - span.start_time) > Duration("3s")
 
   # Drop internal Lambda extension spans that add noise
   filter/noise:
-    traces:
-      span:
-        - 'name == "LambdaExtension.Invoke"'
-        - 'name == "LambdaRuntime.Invoke"'
+    trace_conditions:
+      - 'span.name == "LambdaExtension.Invoke"'
+      - 'span.name == "LambdaRuntime.Invoke"'
 
 service:
   pipelines:
@@ -200,7 +238,7 @@ Deploy the Collector as an ECS sidecar alongside your Lambda-invoked containers:
 
 ## Sampling for Cost Control
 
-Baselime pricing is volume-based, so sampling high-volume environments is useful:
+Sampling high-volume environments is useful for controlling ingestion volume:
 
 ```yaml
 processors:
@@ -217,10 +255,10 @@ processors:
         latency:
           threshold_ms: 2000
       - name: keep-cold-starts
-        type: string_attribute
-        string_attribute:
+        type: boolean_attribute
+        boolean_attribute:
           key: faas.coldstart
-          values: ["true"]
+          value: true
       - name: sample-rest
         type: probabilistic
         probabilistic:
