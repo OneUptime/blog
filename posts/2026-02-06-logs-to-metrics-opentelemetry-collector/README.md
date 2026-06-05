@@ -76,8 +76,7 @@ connectors:
       auth.failures:
         description: "Number of authentication failures"
         conditions:
-          - 'severity_number >= 13'
-          - 'attributes["event.name"] == "auth.failure"'
+          - 'severity_number >= SEVERITY_NUMBER_WARN and attributes["event.name"] == "auth.failure"'
         attributes:
           - key: auth.failure_reason
           - key: auth.method
@@ -90,17 +89,11 @@ connectors:
         attributes:
           - key: ratelimit.policy
           - key: http.route
+          - key: customer.tier
 
 processors:
   batch:
     timeout: 10s
-
-  # Add resource attributes to metrics for service identification
-  resource:
-    attributes:
-      - key: service.name
-        from_attribute: service.name
-        action: upsert
 
 exporters:
   prometheus:
@@ -108,8 +101,8 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
 
 service:
   pipelines:
@@ -117,18 +110,18 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki, count]
+      exporters: [otlphttp/loki, count]
 
     # Metrics pipeline receives counted log events
     metrics:
       receivers: [otlp, count]
-      processors: [batch, resource]
+      processors: [batch]
       exporters: [prometheus]
 ```
 
 ## Step 3: Use the Transform Processor for More Complex Extractions
 
-When you need to extract numeric values from logs (not just counts), the `transform` processor combined with the `count` connector gives you more flexibility. For example, extracting latency values logged by a legacy system that does not emit metrics:
+When you need more control over the fields used for counting, the `transform` processor can normalize log attributes before the `count` connector sees them. For example, a legacy system might log request duration as a string; you can parse it and convert it into a bounded bucket label before counting:
 
 ```yaml
 # Extract and transform log attributes before counting
@@ -138,27 +131,26 @@ processors:
       # Parse a structured log field into a numeric attribute
       - context: log
         statements:
-          - set(attributes["parsed_duration_ms"],
-              Double(attributes["request.duration_ms"]))
-              where attributes["request.duration_ms"] != nil
+          - set(log.attributes["request.duration_ms"], Double(log.attributes["request.duration_ms"])) where log.attributes["request.duration_ms"] != nil
+          - set(log.attributes["request.duration_bucket"], "under_100ms") where log.attributes["request.duration_ms"] < 100
+          - set(log.attributes["request.duration_bucket"], "100ms_to_500ms") where log.attributes["request.duration_ms"] >= 100 and log.attributes["request.duration_ms"] < 500
+          - set(log.attributes["request.duration_bucket"], "over_500ms") where log.attributes["request.duration_ms"] >= 500
 
       # Categorize log severity into buckets for metric labels
       - context: log
         statements:
-          - set(attributes["severity_bucket"], "error")
-              where severity_number >= 17
-          - set(attributes["severity_bucket"], "warning")
-              where severity_number >= 13 and severity_number < 17
-          - set(attributes["severity_bucket"], "info")
-              where severity_number < 13
+          - set(log.attributes["severity_bucket"], "error")
+              where log.severity_number >= SEVERITY_NUMBER_ERROR
+          - set(log.attributes["severity_bucket"], "warning")
+              where log.severity_number >= SEVERITY_NUMBER_WARN and log.severity_number < SEVERITY_NUMBER_ERROR
+          - set(log.attributes["severity_bucket"], "info")
+              where log.severity_number < SEVERITY_NUMBER_WARN
 
   # Filter out low-value logs before counting to keep cardinality manageable
   filter/high_value:
-    logs:
-      include:
-        match_type: expr
-        expressions:
-          - 'attributes["event.name"] != nil'
+    error_mode: ignore
+    log_conditions:
+      - 'log.attributes["event.name"] == nil'
 ```
 
 ## Step 4: Write Alert Rules Against the Generated Metrics
@@ -200,7 +192,7 @@ groups:
       # Alert when rate limiting kicks in for premium customers
       - alert: PremiumCustomerRateLimited
         expr: |
-          sum(rate(ratelimit_hits_total{customer_tier="premium"}[5m])) > 0
+          sum(rate(ratelimit_hits_total{customer_tier="premium"}[5m])) by (http_route) > 0
         for: 2m
         labels:
           severity: warning
@@ -227,7 +219,7 @@ The biggest risk with logs-to-metrics conversion is cardinality explosion. A log
 # - http.url (includes query params)
 ```
 
-You can use the `filter` processor to strip high-cardinality attributes before they reach the count connector, as a safety measure.
+You can use the `filter` processor to drop logs that should not be counted, and the `transform` or `attributes` processor to delete high-cardinality attributes before they reach the count connector.
 
 ## When to Use This Pattern
 
