@@ -21,7 +21,7 @@ In all these cases, some collectors end up running a different configuration tha
 
 ## How OpAMP Detects Drift
 
-OpAMP agents periodically report their effective configuration to the server. The server compares the reported config hash against the expected config hash. If they do not match, drift has occurred:
+OpAMP agents can report their effective configuration to the server when the `ReportsEffectiveConfig` capability is enabled and the effective configuration changes. The server compares a hash of the reported config map against the expected config hash. If they do not match, drift has occurred:
 
 ```go
 type DriftDetector struct {
@@ -47,13 +47,12 @@ func (d *DriftDetector) CheckDrift(
         return true
     }
 
-    mainConfig, ok := reportedConfig.ConfigMap.ConfigMap[""]
-    if !ok {
+    reportedHash, err := hashConfigMap(reportedConfig.ConfigMap)
+    if err != nil {
         return true
     }
 
     // Compare hashes
-    reportedHash := sha256Sum(mainConfig.Body)
     drifted := !bytes.Equal(reportedHash, expectedHash)
 
     if drifted {
@@ -64,11 +63,39 @@ func (d *DriftDetector) CheckDrift(
 
     return drifted
 }
+
+func hashConfigMap(configMap *protobufs.AgentConfigMap) ([]byte, error) {
+    if configMap == nil || len(configMap.ConfigMap) == 0 {
+        return nil, fmt.Errorf("empty config map")
+    }
+
+    h := sha256.New()
+    names := make([]string, 0, len(configMap.ConfigMap))
+    for name := range configMap.ConfigMap {
+        names = append(names, name)
+    }
+    sort.Strings(names)
+
+    for _, name := range names {
+        file := configMap.ConfigMap[name]
+        if file == nil {
+            continue
+        }
+        h.Write([]byte(name))
+        h.Write([]byte{0})
+        h.Write([]byte(file.ContentType))
+        h.Write([]byte{0})
+        h.Write(file.Body)
+        h.Write([]byte{0})
+    }
+
+    return h.Sum(nil), nil
+}
 ```
 
 ## Automatic Drift Correction
 
-When drift is detected, the server pushes the correct configuration back to the agent:
+When drift is detected, the server can offer the correct configuration back to the agent if the agent advertised the `AcceptsRemoteConfig` capability:
 
 ```go
 func (s *OpAMPServer) handleDriftCorrection(
@@ -76,7 +103,10 @@ func (s *OpAMPServer) handleDriftCorrection(
     conn types.Connection,
     msg *protobufs.AgentToServer,
 ) {
-    if msg.EffectiveConfig == nil {
+    if msg.EffectiveConfig == nil || !hasCapability(
+        msg.Capabilities,
+        protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig,
+    ) {
         return
     }
 
@@ -87,7 +117,7 @@ func (s *OpAMPServer) handleDriftCorrection(
         group := s.agentStore.GetGroup(agentID)
         desiredConfig := s.configStore.GetCurrentConfig(group)
 
-        // Push the correct configuration
+        // Offer the correct configuration
         err := pushConfigToAgent(conn, desiredConfig)
         if err != nil {
             log.Printf("Failed to correct drift on agent %s: %v", agentID, err)
@@ -99,11 +129,15 @@ func (s *OpAMPServer) handleDriftCorrection(
         }
     }
 }
+
+func hasCapability(capabilities uint64, capability protobufs.AgentCapabilities) bool {
+    return capabilities&uint64(capability) != 0
+}
 ```
 
 ## Periodic Drift Scanning
 
-Besides checking on each message, run a periodic scan to catch agents that may have drifted but are not sending frequent updates:
+Besides checking on each message, run a periodic scan over the latest reported state to keep drift metrics current and retry correction for agents that are still connected:
 
 ```go
 func (s *OpAMPServer) startDriftScanner(interval time.Duration) {
@@ -265,4 +299,4 @@ groups:
           summary: "{{ $value }} agents have drifted configurations"
 ```
 
-Self-healing pipelines remove an entire class of operational problems. Instead of discovering missing telemetry and then hunting for the cause, the system detects and corrects drift automatically. Your collectors always converge to the desired state, and you get alerted only when automatic correction fails.
+Self-healing pipelines remove an entire class of operational problems. Instead of discovering missing telemetry and then hunting for the cause, the system detects and corrects drift automatically when remote configuration is enabled and accepted by the agent. Your collectors can converge to the desired state, and you get alerted only when automatic correction fails.
