@@ -75,7 +75,7 @@ groups:
       # Critical: error rate above 10% triggers PagerDuty
       - alert: HighErrorRate_Critical
         expr: |
-          sum(rate(otel_http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m]))
+          sum(rate(otel_http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
           /
           sum(rate(otel_http_server_request_duration_seconds_count[5m]))
           > 0.10
@@ -90,7 +90,7 @@ groups:
       # Warning: error rate above 5% goes to Slack
       - alert: HighErrorRate_Warning
         expr: |
-          sum(rate(otel_http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m]))
+          sum(rate(otel_http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
           /
           sum(rate(otel_http_server_request_duration_seconds_count[5m]))
           > 0.05
@@ -104,7 +104,7 @@ groups:
       # Info: error rate above 2% triggers email digest
       - alert: HighErrorRate_Info
         expr: |
-          sum(rate(otel_http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m]))
+          sum(rate(otel_http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
           /
           sum(rate(otel_http_server_request_duration_seconds_count[5m]))
           > 0.02
@@ -140,23 +140,23 @@ route:
 
   routes:
     # Critical alerts route to PagerDuty AND Slack
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty-critical
       continue: true  # continue matching so Slack also fires
 
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: slack-critical
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warning
 
     # Info alerts go to email digest
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       receiver: email-digest
 
 receivers:
@@ -202,14 +202,21 @@ Add a second routing layer that matches on the `team` label:
 ```yaml
 # Additional routes nested under the severity routes
 routes:
-  - match:
-      severity: critical
-      team: database
-    receiver: pagerduty-database-team
-  - match:
-      severity: critical
-      team: payments
-    receiver: pagerduty-payments-team
+  - matchers:
+      - severity="critical"
+    receiver: pagerduty-critical
+    continue: true
+    routes:
+      - matchers:
+          - team="database"
+        receiver: pagerduty-database-team
+      - matchers:
+          - team="payments"
+        receiver: pagerduty-payments-team
+
+  - matchers:
+      - severity="critical"
+    receiver: slack-critical
 ```
 
 ## Testing Your Routing
