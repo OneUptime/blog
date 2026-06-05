@@ -39,7 +39,7 @@ Before configuring the Google Cloud Operations exporter, you need:
 - A Google Cloud project with billing enabled
 - Cloud Trace, Cloud Monitoring, and Cloud Logging APIs enabled
 - Service account credentials with appropriate permissions
-- OpenTelemetry Collector Contrib installed (version 0.80.0 or later)
+- A recent OpenTelemetry Collector Contrib distribution installed
 
 ## Setting Up Google Cloud Permissions
 
@@ -83,6 +83,9 @@ gcloud projects add-iam-policy-binding my-project \
 # Create and download key
 gcloud iam service-accounts keys create key.json \
   --iam-account=otel-collector@my-project.iam.gserviceaccount.com
+
+# Use the key with Application Default Credentials
+export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/key.json"
 ```
 
 ## Basic Configuration
@@ -110,9 +113,8 @@ exporters:
     # Google Cloud project ID
     project: "my-project-id"
 
-    # Path to service account key file
-    # Leave empty to use Application Default Credentials
-    credentials_file: "/path/to/key.json"
+    # Authentication uses Application Default Credentials.
+    # For a key file, set GOOGLE_APPLICATION_CREDENTIALS before starting the Collector.
 
     # Enable trace export to Cloud Trace
     trace:
@@ -152,7 +154,7 @@ For applications running on Google Cloud (GCE, GKE, Cloud Run), use Application 
 exporters:
   googlecloud:
     project: "my-project-id"
-    # No credentials_file needed - will use Application Default Credentials
+    # No key file configuration needed - will use Application Default Credentials
 
     trace:
       endpoint: "cloudtrace.googleapis.com:443"
@@ -188,8 +190,10 @@ exporters:
   googlecloud:
     project: "my-project-id"
 
-    # Use environment variable for credentials
-    # credentials_file: "${GOOGLE_APPLICATION_CREDENTIALS}"
+    # Use GOOGLE_APPLICATION_CREDENTIALS in the Collector environment for key files.
+
+    # Timeout for export operations
+    timeout: 30s
 
     # Trace configuration
     trace:
@@ -198,26 +202,16 @@ exporters:
       # Use insecure connection (not recommended for production)
       # use_insecure: false
 
-      # Compression (gzip or none)
-      compression: "gzip"
-
-      # Timeout for export operations
-      timeout: 30s
-
-      # Number of spans to buffer
-      queue_size: 10000
-
     # Metrics configuration
     metric:
       endpoint: "monitoring.googleapis.com:443"
       compression: "gzip"
-      timeout: 30s
 
       # Metric prefix for custom metrics
       prefix: "custom.googleapis.com"
 
-      # Skip CreateMetricDescriptor calls
-      # use_insecure_metric_descriptor_lookup: false
+      # Skip automatic metric descriptor creation
+      skip_create_descriptor: false
 
       # Resource filters
       resource_filters:
@@ -227,17 +221,9 @@ exporters:
     log:
       endpoint: "logging.googleapis.com:443"
       compression: "gzip"
-      timeout: 30s
 
       # Default log name
-      default_log_name: "projects/my-project-id/logs/otel-logs"
-
-    # Retry configuration
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
+      default_log_name: "otel-logs"
 
     # Queue settings
     sending_queue:
@@ -380,10 +366,13 @@ processors:
         action: update
         new_name: "http_request_duration"
 
-      # Aggregate metrics
+      # Aggregate away all labels except cpu using a mean
       - include: "cpu.utilization"
         action: update
-        aggregation_type: mean
+        operations:
+          - action: aggregate_labels
+            label_set: [cpu]
+            aggregation_type: mean
 
   batch:
     timeout: 10s
@@ -410,9 +399,9 @@ exporters:
       endpoint: "logging.googleapis.com:443"
 
       # Default log name
-      default_log_name: "projects/my-project-id/logs/otel-logs"
+      default_log_name: "otel-logs"
 
-      # Use resource labels for log routing
+      # Use insecure connection (not recommended for production)
       use_insecure: false
 
 processors:
@@ -458,7 +447,7 @@ exporters:
       prefix: "custom.googleapis.com/prod"
     log:
       endpoint: "logging.googleapis.com:443"
-      default_log_name: "projects/production-project-id/logs/otel"
+      default_log_name: "otel"
 
   # Development project
   googlecloud/dev:
@@ -470,28 +459,37 @@ exporters:
       prefix: "custom.googleapis.com/dev"
     log:
       endpoint: "logging.googleapis.com:443"
-      default_log_name: "projects/development-project-id/logs/otel"
+      default_log_name: "otel"
 
 processors:
-  # Route by environment
-  routing:
-    from_attribute: "deployment.environment"
-    table:
-      - value: "production"
-        exporters: [googlecloud/prod]
-      - value: "development"
-        exporters: [googlecloud/dev]
-
   batch:
     timeout: 10s
     send_batch_size: 1024
 
+connectors:
+  # Route by environment
+  routing:
+    default_pipelines: [traces/dev]
+    table:
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [traces/dev]
+
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing, batch]
-      exporters: [googlecloud/prod, googlecloud/dev]
+      processors: [batch]
+      exporters: [routing]
+    traces/prod:
+      receivers: [routing]
+      exporters: [googlecloud/prod]
+    traces/dev:
+      receivers: [routing]
+      exporters: [googlecloud/dev]
 ```
 
 ## Querying Data in Google Cloud Console
@@ -508,7 +506,7 @@ Navigate to Cloud Trace in the console and use filters:
 
 **Query metrics in Cloud Monitoring:**
 
-Use Metrics Explorer with MQL (Monitoring Query Language):
+Use Metrics Explorer with MQL (Monitoring Query Language). MQL is no longer Google's recommended query language for new dashboards and alerts, but it can still be executed in Metrics Explorer and through the Cloud Monitoring API:
 
 ```sql
 fetch k8s_container
@@ -536,31 +534,31 @@ Set up monitoring alerts based on your telemetry:
 **Create a latency alert:**
 
 ```bash
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --notification-channels=CHANNEL_ID \
   --display-name="High Latency Alert" \
   --condition-display-name="Request latency above threshold" \
-  --condition-threshold-value=1000 \
-  --condition-threshold-duration=300s \
-  --condition-expression='
+  --condition-filter='
     metric.type="custom.googleapis.com/opentelemetry/http_request_duration"
     AND resource.type="k8s_container"
-  '
+  ' \
+  --if="> 1000" \
+  --duration=300s
 ```
 
 **Create an error rate alert:**
 
 ```bash
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --notification-channels=CHANNEL_ID \
   --display-name="High Error Rate" \
   --condition-display-name="Error rate above 5%" \
-  --condition-threshold-value=0.05 \
-  --condition-threshold-duration=300s \
-  --condition-expression='
+  --condition-filter='
     metric.type="custom.googleapis.com/opentelemetry/error_rate"
     AND resource.type="k8s_container"
-  '
+  ' \
+  --if="> 0.05" \
+  --duration=300s
 ```
 
 **Create an SLO:**
@@ -602,6 +600,7 @@ processors:
 exporters:
   googlecloud:
     project: "my-project-id"
+    timeout: 60s
 
     # Increase queue sizes
     sending_queue:
@@ -611,17 +610,14 @@ exporters:
 
     # Optimize timeouts
     trace:
-      timeout: 60s
-      compression: "gzip"
+      endpoint: "cloudtrace.googleapis.com:443"
 
     metric:
-      timeout: 60s
       compression: "gzip"
       # Skip descriptor creation for better performance
       skip_create_descriptor: true
 
     log:
-      timeout: 60s
       compression: "gzip"
 
 service:
@@ -658,9 +654,8 @@ processors:
 **3. Use Metric Aggregation:**
 
 ```yaml
-processors:
-  spanmetrics:
-    metrics_exporter: googlecloud
+connectors:
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -768,32 +763,30 @@ processors:
         probabilistic:
           sampling_percentage: 5
 
-  # Generate metrics from spans
-  spanmetrics:
-    metrics_exporter: googlecloud
-    dimensions:
-      - name: http.method
-      - name: http.status_code
-      - name: service.name
-
   # Batch for efficiency
   batch:
     timeout: 30s
     send_batch_size: 4096
 
+connectors:
+  # Generate metrics from spans
+  span_metrics:
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: service.name
+
 exporters:
   googlecloud:
     project: "${GCP_PROJECT_ID}"
+    timeout: 60s
 
     trace:
       endpoint: "cloudtrace.googleapis.com:443"
-      compression: "gzip"
-      timeout: 60s
 
     metric:
       endpoint: "monitoring.googleapis.com:443"
       compression: "gzip"
-      timeout: 60s
       prefix: "custom.googleapis.com/otel"
       skip_create_descriptor: false
       service_resource_labels: true
@@ -801,29 +794,22 @@ exporters:
     log:
       endpoint: "logging.googleapis.com:443"
       compression: "gzip"
-      timeout: 60s
-      default_log_name: "projects/${GCP_PROJECT_ID}/logs/otel"
+      default_log_name: "otel"
 
     sending_queue:
       enabled: true
       num_consumers: 20
       queue_size: 10000
 
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, filter/healthcheck, tail_sampling, spanmetrics, batch]
-      exporters: [googlecloud]
+      processors: [memory_limiter, resourcedetection, resource, filter/healthcheck, tail_sampling, batch]
+      exporters: [span_metrics, googlecloud]
 
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, span_metrics]
       processors: [memory_limiter, resourcedetection, resource, batch]
       exporters: [googlecloud]
 
@@ -836,7 +822,7 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      level: normal
 ```
 
 ## Troubleshooting Common Issues
@@ -845,7 +831,7 @@ service:
 
 Solutions:
 - Verify service account has correct permissions
-- Check credentials file path is correct
+- Check that Application Default Credentials are available to the Collector
 - Ensure Application Default Credentials are properly configured
 - Verify APIs are enabled in the project
 
