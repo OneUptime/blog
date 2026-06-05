@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Node.js, DNS, Error Handling
 
 Description: Fix the unhandled promise rejection that crashes your Node.js app when the OTLP exporter cannot resolve the Collector DNS name.
 
-When the OpenTelemetry OTLP exporter cannot resolve the DNS name of your Collector, it throws an error that can surface as an unhandled promise rejection. In Node.js, unhandled promise rejections crash the process by default (Node.js 15+). This means a temporary DNS issue can take down your entire application.
+When the OpenTelemetry OTLP exporter cannot resolve the DNS name of your Collector, it can surface as an unhandled promise rejection in affected OpenTelemetry SDK/exporter versions. In Node.js, unhandled promise rejections are raised as uncaught exceptions by default when no `unhandledRejection` handler is installed (Node.js 15+). This means a temporary DNS issue can take down your entire application.
 
 ## The Error
 
@@ -27,30 +27,33 @@ This error happens when:
 
 ## Why It Crashes the Application
 
-The OTLP exporter's `export()` method returns a Promise. When the BatchSpanProcessor calls `export()` and the DNS resolution fails, the rejection is not always caught by the BatchSpanProcessor's internal error handling (depending on the version). The rejection propagates to the Node.js event loop as an unhandled rejection.
+The current OpenTelemetry JavaScript `SpanExporter.export()` interface is callback-based, but OTLP exporters still perform asynchronous network work internally. In affected versions, when the BatchSpanProcessor calls the exporter and DNS resolution fails, the failure is not always converted into an export result by the exporter's internal error handling. The rejection can propagate to the Node.js event loop as an unhandled rejection.
 
 ## Fix 1: Add a Global Unhandled Rejection Handler
 
-Prevent crashes from any unhandled rejection:
+Add a last-resort handler for exporter DNS failures:
 
 ```javascript
 // Add this at the top of your tracing.js
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled rejection from OpenTelemetry exporter:', reason);
-  // Do NOT call process.exit() - let the application continue
+process.on('unhandledRejection', (reason) => {
+  if (reason && reason.code === 'ENOTFOUND' && String(reason.message).includes('otel-collector')) {
+    console.error('Unhandled DNS rejection from OpenTelemetry exporter:', reason);
+    // Do NOT call process.exit() for this exporter DNS failure - let the application continue
+    return;
+  }
+
+  throw reason;
 });
 ```
 
-This keeps the application running even if the exporter fails. Telemetry data is lost during the DNS outage, but the application continues serving requests.
+This keeps the application running if this exporter DNS failure escapes the SDK. Telemetry data is lost during the DNS outage, but the application continues serving requests. Do not use a global handler to hide unrelated application promise bugs.
 
 ## Fix 2: Update to the Latest SDK Version
 
 This issue has been addressed in newer versions of the OpenTelemetry SDK. Update your packages:
 
 ```bash
-npm install @opentelemetry/exporter-trace-otlp-http@latest
-npm install @opentelemetry/exporter-trace-otlp-grpc@latest
-npm install @opentelemetry/sdk-trace-base@latest
+npm install @opentelemetry/sdk-node@latest @opentelemetry/sdk-trace-base@latest @opentelemetry/exporter-trace-otlp-http@latest @opentelemetry/exporter-trace-otlp-grpc@latest
 ```
 
 Newer versions of the BatchSpanProcessor catch export errors more reliably.
@@ -74,18 +77,19 @@ Wrap the SDK startup in retry logic:
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const dns = require('node:dns');
 
 async function startTracing(retries = 5) {
   for (let i = 0; i < retries; i++) {
     try {
+      const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4318';
       const exporter = new OTLPTraceExporter({
-        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
+        url: `${endpoint.replace(/\/$/, '')}/v1/traces`,
       });
 
-      // Test DNS resolution before starting
-      const url = new URL(process.env.OTEL_EXPORTER_OTLP_ENDPOINT);
-      const dns = require('dns');
-      await dns.promises.resolve(url.hostname);
+      // Test name resolution before starting, using the same OS lookup path as Node networking APIs
+      const url = new URL(endpoint);
+      await dns.promises.lookup(url.hostname);
 
       const sdk = new NodeSDK({
         traceExporter: exporter,
@@ -109,7 +113,7 @@ startTracing();
 
 ## Fix 5: Use the HTTP Exporter with Connection Timeout
 
-The HTTP exporter handles connection errors more gracefully than the gRPC exporter:
+The HTTP exporter supports an explicit per-export timeout and retry behavior:
 
 ```javascript
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
@@ -121,7 +125,7 @@ const exporter = new OTLPTraceExporter({
 });
 ```
 
-The HTTP exporter catches network errors internally and returns them as export failures rather than unhandled rejections.
+The timeout limits how long each export batch can wait. Current HTTP OTLP exporters also include retry behavior for transient export failures within the configured timeout.
 
 ## Kubernetes-Specific Fix
 
@@ -154,11 +158,16 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 
-// Catch all unhandled rejections from the exporter
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
+
+// Catch exporter DNS failures without hiding unrelated application bugs
 process.on('unhandledRejection', (reason) => {
   if (reason && reason.code === 'ENOTFOUND') {
     diag.warn('OTLP exporter DNS resolution failed. Telemetry data may be lost.');
+    return;
   }
+
+  throw reason;
 });
 
 const sdk = new NodeSDK({
