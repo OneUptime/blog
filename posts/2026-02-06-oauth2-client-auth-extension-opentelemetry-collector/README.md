@@ -51,7 +51,7 @@ sequenceDiagram
     Collector->>Backend: Request + Authorization: Bearer token
     Backend->>Collector: Response
     Note over Collector: Before expiration
-    Collector->>AuthServer: POST /token (refresh)
+    Collector->>AuthServer: POST /token (client credentials)
     AuthServer->>Collector: New Access Token
 ```
 
@@ -209,8 +209,12 @@ extensions:
       resource: "https://api.backend.com"
       audience: "backend-api"
 
-    # Optional: Timeout for token requests (default: 5s)
+    # Optional: Timeout for token requests (unset means no client timeout)
     timeout: 10s
+
+    # Optional: Buffer before token expiry when the extension should request a new token
+    # Default: 5m
+    expiry_buffer: 10s
 
     # Optional: TLS configuration for token endpoint
     tls:
@@ -299,6 +303,7 @@ processors:
 
   # Route based on environment attribute
   routing:
+    attribute_source: resource
     from_attribute: deployment.environment
     table:
       - value: production
@@ -333,6 +338,7 @@ service:
       receivers: [otlp]
       processors: [routing]
       # Routing processor handles exporter selection
+      exporters: [otlphttp/prod, otlphttp/staging]
 
     metrics:
       receivers: [otlp]
@@ -363,10 +369,8 @@ extensions:
     scopes:
       - "https://RESOURCE/.default"
 
-    # Additional parameters for Azure AD
-    endpoint_params:
-      # Optionally specify resource
-      resource: "https://api.example.com"
+    # The v2.0 endpoint uses scopes such as RESOURCE/.default.
+    # Do not add the v1.0 resource parameter when using this endpoint.
 
 receivers:
   otlp:
@@ -402,25 +406,9 @@ service:
 
 ## Integration with Google Cloud
 
-Configure OAuth2 for Google Cloud APIs:
+For Google Cloud APIs, use the Google Cloud exporter with Application Default Credentials (ADC), workload identity, or a service account key file:
 
 ```yaml
-extensions:
-  oauth2client:
-    # Google OAuth2 token endpoint
-    token_url: "https://oauth2.googleapis.com/token"
-
-    # Service account client ID
-    client_id: "${env:GOOGLE_CLIENT_ID}"
-
-    # Service account client secret
-    client_secret: "${env:GOOGLE_CLIENT_SECRET}"
-
-    # Google Cloud API scopes
-    scopes:
-      - "https://www.googleapis.com/auth/cloud-platform"
-      - "https://www.googleapis.com/auth/monitoring.write"
-
 receivers:
   otlp:
     protocols:
@@ -442,13 +430,8 @@ exporters:
   googlecloud:
     # Project ID can be specified or auto-detected
     project: "your-gcp-project-id"
-    # Use OAuth2 client auth
-    auth:
-      authenticator: oauth2client
 
 service:
-  extensions: [oauth2client]
-
   pipelines:
     traces:
       receivers: [otlp]
@@ -456,7 +439,7 @@ service:
       exporters: [googlecloud]
 ```
 
-Note that for Google Cloud, you may want to use workload identity or service account key files instead of OAuth2 client credentials, depending on your deployment environment.
+The `googlecloud` exporter relies on Google Cloud client libraries for authentication. On GKE, prefer Workload Identity. Outside Google Cloud, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file.
 
 ## Integration with Custom Authorization Servers
 
@@ -480,7 +463,6 @@ extensions:
 
     # Custom parameters required by your auth server
     endpoint_params:
-      grant_type: "client_credentials"
       audience: "otel-backend-api"
       realm: "production"
 
@@ -629,8 +611,8 @@ extensions:
   # OAuth2 client authentication
   oauth2client:
     token_url: "https://auth.production.example.com/oauth/token"
-    client_id: "${file:/var/secrets/client-id}"
-    client_secret: "${file:/var/secrets/client-secret}"
+    client_id_file: /var/secrets/client-id
+    client_secret_file: /var/secrets/client-secret
 
     scopes:
       - "telemetry:write"
@@ -711,7 +693,7 @@ processors:
 exporters:
   # Primary backend with OAuth2
   otlphttp/backend:
-    endpoint: https://api.backend.com/v1/traces
+    endpoint: https://api.backend.com
     auth:
       authenticator: oauth2client
     tls:
@@ -729,9 +711,9 @@ exporters:
       queue_size: 5000
     timeout: 30s
 
-  # Logging for troubleshooting
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
@@ -742,7 +724,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, attributes, resource, batch]
-      exporters: [otlphttp/backend, logging]
+      exporters: [otlphttp/backend, debug]
 
     metrics:
       receivers: [otlp]
@@ -759,13 +741,13 @@ service:
 
 The OAuth2 client extension automatically manages the token lifecycle:
 
-**Token Acquisition**: When the collector starts, the extension immediately requests an access token from the authorization server.
+**Token Acquisition**: When an authenticated exporter sends a request, the extension requests an access token from the authorization server as needed.
 
 **Token Caching**: The token is cached in memory and reused for all requests until it expires.
 
-**Automatic Renewal**: Before the token expires (typically with a 5-minute buffer), the extension automatically requests a new token.
+**Automatic Renewal**: Before the token expires, the extension requests a new token. The default expiry buffer is 5 minutes and can be changed with `expiry_buffer`.
 
-**Retry Logic**: If token acquisition fails, the extension retries with exponential backoff to handle temporary authorization server outages.
+**Retry Behavior**: If token acquisition fails, the exporter request fails. Exporter retry settings can retry the send operation, which may trigger another token request.
 
 **Error Handling**: If the extension cannot obtain a valid token, exporters will fail to send data until a token is successfully acquired.
 
