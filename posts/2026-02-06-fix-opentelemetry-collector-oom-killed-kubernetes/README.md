@@ -57,26 +57,26 @@ Last State:     Terminated
   Finished:     Fri, 06 Feb 2026 08:15:32 UTC
 ```
 
-Exit code 137 specifically means the process was killed by SIGKILL due to an out-of-memory condition.
+In an `OOMKilled` pod status, exit code 137 means the process was killed by SIGKILL due to an out-of-memory condition.
 
 ## Step 2: Configure the Memory Limiter Processor
 
-The memory limiter processor is the single most important defense against OOM kills. It monitors the collector's memory usage and starts refusing data before memory reaches the Kubernetes limit. This gives the collector time to flush existing data and prevents the hard OOM kill.
+The memory limiter processor is the single most important defense against OOM kills. It periodically monitors the collector's memory usage and starts refusing data before memory reaches the Kubernetes limit. When receivers handle that refusal correctly, they can retry or apply backpressure while the collector reduces memory pressure, helping prevent the hard OOM kill.
 
 ```yaml
 # Collector configuration with memory limiter
 processors:
   # Memory limiter must be the FIRST processor in the pipeline
-  # It checks memory on every batch and refuses new data when limits are hit
+  # It checks memory periodically and refuses new data when limits are hit
   memory_limiter:
     # How often to check memory usage
     check_interval: 1s
-    # Hard limit: refuse all data above this threshold
+    # Hard limit: continue refusing data and force garbage collection above this threshold
     # Set to ~80% of the Kubernetes memory limit
     limit_mib: 1600
     # Spike limit: extra buffer for sudden traffic spikes
     # Difference between limit_mib and spike_limit_mib is the soft limit
-    # Soft limit = 1600 - 400 = 1200 MiB (start refusing at this point)
+    # Soft limit = 1600 - 400 = 1200 MiB (start refusing data at this point)
     spike_limit_mib: 400
 
   batch:
@@ -120,10 +120,10 @@ The relationship between the Kubernetes limit and the memory limiter settings is
 Kubernetes memory limit:   2000 MiB (set in deployment spec)
 memory_limiter limit_mib:  1600 MiB (80% of Kubernetes limit)
 memory_limiter spike_limit: 400 MiB (buffer for spikes)
-Soft limit (triggers GC):  1200 MiB (limit_mib - spike_limit_mib)
+Soft limit (refuses data): 1200 MiB (limit_mib - spike_limit_mib)
 ```
 
-The 20% gap between the Kubernetes limit and the memory limiter's hard limit accounts for memory used by the Go runtime, internal data structures, and other overhead that the memory limiter does not track.
+The 20% gap between the Kubernetes limit and the memory limiter's hard limit helps account for process memory outside the targeted Go heap and for allocations that occur between memory checks.
 
 ## Step 3: Set Proper Kubernetes Resource Limits
 
@@ -205,19 +205,19 @@ Compare memory profiles with different batch settings:
 # High memory usage configuration
 send_batch_size: 8192
 timeout: 30s
-# Each batch can hold up to 8192 spans in memory
-# With 30s timeout, data accumulates for a long time
+# The processor waits for up to 8192 items or 30 seconds before sending
+# Without send_batch_max_size, larger incoming batches are not split
 
 # Lower memory usage configuration
 send_batch_size: 256
 timeout: 5s
-# Each batch holds at most 256 spans
-# Data is flushed every 5 seconds at most
+send_batch_max_size: 512
+# The processor sends sooner and caps each outbound batch at 512 items
 ```
 
 ## Step 5: Control the Export Queue Size
 
-The exporter's sending queue is another major source of memory growth. When the backend is slow or unreachable, the queue fills up with unsent data. By default, the queue can grow quite large.
+The exporter's sending queue is another major source of memory growth. When the backend is slow or unreachable, the queue fills up with unsent data. The default in-memory queue is enabled and can hold up to 1000 requests, so tune it deliberately for your traffic and memory budget.
 
 ```yaml
 exporters:
@@ -229,10 +229,10 @@ exporters:
       # Enable the sending queue
       enabled: true
       # Maximum number of batches in the queue
-      # Each batch can be up to send_batch_max_size items
-      # Total queued items = num_consumers * queue_size
+      # By default, queue_size is measured in requests, not individual spans
       queue_size: 100
       # Number of goroutines sending data from the queue
+      # This controls export concurrency, not queue capacity
       num_consumers: 4
 
     # Retry settings affect how long failed data stays in memory
@@ -274,10 +274,10 @@ spec:
         image: otel/opentelemetry-collector-contrib:latest
         env:
           # GOMEMLIMIT tells the Go runtime to try to keep memory below this value
-          # Set to ~90% of the Kubernetes memory limit
+          # Set to ~80% of the Kubernetes memory limit
           # This is a complement to the memory_limiter processor, not a replacement
           - name: GOMEMLIMIT
-            value: "1800MiB"
+            value: "1600MiB"
           # Optional: set GOGC to control GC frequency
           # Lower values mean more frequent GC (less memory, more CPU)
           - name: GOGC
@@ -364,13 +364,19 @@ spec:
     # Alert when memory usage exceeds 80% of limit
     - alert: CollectorMemoryHigh
       expr: |
-        container_memory_working_set_bytes{
-          namespace="observability",
-          container="otel-collector"
-        } / container_spec_memory_limit_bytes{
-          namespace="observability",
-          container="otel-collector"
-        } > 0.8
+        sum by (namespace, pod, container) (
+          container_memory_working_set_bytes{
+            namespace="observability",
+            container="otel-collector"
+          }
+        )
+        /
+        sum by (namespace, pod, container) (
+          container_spec_memory_limit_bytes{
+            namespace="observability",
+            container="otel-collector"
+          } > 0
+        ) > 0.8
       for: 5m
       labels:
         severity: warning
@@ -401,14 +407,14 @@ Here is a reference table for memory settings based on your Kubernetes memory li
 ```text
 K8s Limit | GOMEMLIMIT | limit_mib | spike_limit_mib | Soft Limit
 ----------|------------|-----------|-----------------|----------
-512 MiB   | 460 MiB    | 400       | 100             | 300 MiB
-1 GiB     | 920 MiB    | 800       | 200             | 600 MiB
-2 GiB     | 1800 MiB   | 1600      | 400             | 1200 MiB
-4 GiB     | 3600 MiB   | 3200      | 800             | 2400 MiB
+512 MiB   | 400 MiB    | 400       | 100             | 300 MiB
+1 GiB     | 800 MiB    | 800       | 200             | 600 MiB
+2 GiB     | 1600 MiB   | 1600      | 400             | 1200 MiB
+4 GiB     | 3200 MiB   | 3200      | 800             | 2400 MiB
 ```
 
 The pattern is:
-- GOMEMLIMIT: 90% of K8s limit
+- GOMEMLIMIT: 80% of K8s limit
 - limit_mib: 80% of K8s limit
 - spike_limit_mib: 25% of limit_mib
 - Soft limit: limit_mib minus spike_limit_mib
