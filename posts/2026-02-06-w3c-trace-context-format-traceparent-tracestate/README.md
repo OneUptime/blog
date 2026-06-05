@@ -45,7 +45,7 @@ Let us look at each field individually.
 
 ### version
 
-The version field is two hexadecimal characters. The current specification defines version `00`. Future versions might add fields or change semantics, but compliant parsers are expected to handle unknown versions gracefully by falling back to the fields they do understand. In practice you will almost always see `00` here.
+The version field is two hexadecimal characters. The current specification defines version `00`, and version `ff` is forbidden. Future versions might add fields or change semantics, but compliant parsers are expected to handle higher versions gracefully by parsing the `trace-id` and `parent-id` fields they understand and ignoring unsupported flags when possible. In practice you will almost always see `00` here.
 
 ### trace-id
 
@@ -114,7 +114,7 @@ The tracestate header has a few important rules. The maximum number of entries i
 
 ### How OpenTelemetry Uses tracestate
 
-OpenTelemetry stores vendor-specific information in tracestate under its own key. For example, if you are using a probability-based sampler, OpenTelemetry might store the sampling probability so that downstream services or backends can reconstruct the correct sample rate.
+OpenTelemetry can store its own propagation information in tracestate under the `ot` key. For example, consistent probability sampling can use the OpenTelemetry `th` sub-key to carry a sampling threshold so that downstream services or backends can reconstruct the effective sample rate.
 
 ```python
 from opentelemetry import trace
@@ -175,8 +175,7 @@ When you run this, the `inject` function writes the `traceparent` header (and `t
 
 ```text
 Outgoing headers:
-  traceparent: 00-a]b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e-1a2b3c4d5e6f7a8b-01
-  tracestate:
+  traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 ```
 
 On the receiving side, Service B extracts the context and creates a child span.
@@ -219,8 +218,9 @@ def validate_traceparent(header):
 
     Returns a dict with parsed fields or raises ValueError.
     """
-    # The regex enforces the exact format: version-traceid-parentid-flags
-    pattern = r'^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$'
+    # The regex enforces the current version 00 format:
+    # version-traceid-parentid-flags
+    pattern = r'^(00)-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$'
     match = re.match(pattern, header)
 
     if not match:
