@@ -112,7 +112,9 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(('', PORT))
 
 # Join the multicast group
-mreq = struct.pack('4sL', socket.inet_aton(MULTICAST_GROUP), socket.INADDR_ANY)
+mreq = struct.pack('4s4s',
+    socket.inet_aton(MULTICAST_GROUP),
+    socket.inet_aton('0.0.0.0'))
 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 print(f"Listening for multicast on {MULTICAST_GROUP}:{PORT}")
@@ -146,6 +148,7 @@ Create a Docker image with both scripts:
 ```dockerfile
 # Dockerfile - Multicast test container
 FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1
 COPY multicast_sender.py /app/
 COPY multicast_receiver.py /app/
 WORKDIR /app
@@ -267,8 +270,7 @@ Control how far multicast packets travel:
 # Set the multicast TTL (Time To Live)
 # TTL 0: restricted to the same host
 # TTL 1: restricted to the same subnet (default)
-# TTL 32: restricted to the same site
-# TTL 255: unrestricted
+# Higher TTL values allow packets to cross more router hops
 
 sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
 ```
