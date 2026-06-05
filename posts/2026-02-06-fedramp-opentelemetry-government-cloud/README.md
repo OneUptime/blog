@@ -14,7 +14,7 @@ This means encrypted transport, FIPS-validated cryptography, strict access contr
 
 The controls that directly affect your telemetry pipeline include:
 
-- **SC-8** (Transmission Confidentiality): All telemetry must be encrypted in transit using FIPS 140-2 validated cryptographic modules
+- **SC-8** (Transmission Confidentiality): All telemetry must be encrypted in transit using FIPS 140-validated cryptographic modules
 - **SC-28** (Protection of Information at Rest): Telemetry stored in backends must be encrypted at rest
 - **AU-2** (Audit Events): The telemetry system itself must generate audit records
 - **AU-3** (Content of Audit Records): Audit records must contain specific fields
@@ -24,15 +24,14 @@ The controls that directly affect your telemetry pipeline include:
 
 ## FIPS-Compliant TLS Configuration
 
-The most critical requirement is FIPS 140-2 validated cryptography for all data in transit. The OpenTelemetry Collector must be built with a FIPS-compliant TLS library and configured to use only FIPS-approved cipher suites.
+The most critical requirement is FIPS 140-validated cryptography for all data in transit. The OpenTelemetry Collector must be built with a FIPS-compliant TLS library and configured to use only FIPS-approved cipher suites.
 
 Build and configure the collector with FIPS-validated TLS:
 
 ```yaml
 # fedramp-collector.yaml
 
-# Requires the collector to be compiled with GOEXPERIMENT=boringcrypto
-# which uses BoringSSL's FIPS-validated crypto module
+# Requires the collector to be compiled with Go's FIPS 140 module enabled
 
 receivers:
   otlp:
@@ -68,18 +67,18 @@ exporters:
 
 ## Building a FIPS-Compliant Collector Binary
 
-The standard OpenTelemetry Collector binary does not use FIPS-validated cryptography. You need to build it with Go's BoringCrypto experiment flag.
+The standard OpenTelemetry Collector binary may not match the cryptographic module and operating environment you need for your authorization boundary. Build your own collector with Go's native FIPS 140 support enabled.
 
 Build the collector with FIPS crypto support:
 
 ```dockerfile
 # Dockerfile.fedramp-collector
-# Build the collector with FIPS 140-2 validated BoringCrypto
-FROM golang:1.22-bookworm AS builder
+# Build the collector with Go's FIPS 140 support
+FROM golang:1.26-bookworm AS builder
 
-# Enable BoringCrypto - uses FIPS-validated BoringSSL
-ENV GOEXPERIMENT=boringcrypto
-ENV CGO_ENABLED=1
+# Build against the certified Go Cryptographic Module and enable FIPS mode by default
+ENV GOFIPS140=v1.0.0
+ENV GODEBUG=fips140=on
 
 # Install the OpenTelemetry Collector builder
 RUN go install go.opentelemetry.io/collector/cmd/builder@latest
@@ -93,19 +92,13 @@ RUN builder --config=builder-config.yaml
 
 # Runtime image - use a FIPS-enabled base
 FROM redhat/ubi9-minimal:latest
-
-# Install FIPS-validated OpenSSL
-RUN microdnf install -y openssl && microdnf clean all
-
-# Enable FIPS mode at the OS level
-RUN fips-mode-setup --enable || true
+ENV GODEBUG=fips140=on
 
 COPY --from=builder /build/otelcol-fedramp /usr/local/bin/otelcol
 COPY fedramp-collector.yaml /etc/otel/config.yaml
 
 # Run as non-root (AC-6 Least Privilege)
-RUN useradd -r -s /sbin/nologin otelcol
-USER otelcol
+USER 10001
 
 ENTRYPOINT ["/usr/local/bin/otelcol"]
 CMD ["--config=/etc/otel/config.yaml"]
@@ -145,14 +138,19 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
       receivers: [otlp]
       processors:
         - transform/fedramp_metadata
-        - filter/sensitive_data
+        - transform/scrub_cui
         - batch
       exporters: [otlp/fedramp_backend]
 ```
@@ -173,11 +171,9 @@ processors:
           - set(attributes["fedramp.impact_level"], "high")
           - set(attributes["fedramp.system_id"], "FRA-2024-0042")
 
-  # Remove any attributes that might contain CUI
-  filter/sensitive_data:
-    error_mode: ignore
-
+  # Remove or redact any attributes that might contain CUI
   transform/scrub_cui:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -266,8 +262,8 @@ spec:
               mountPath: /var/log/otel
           env:
             # Enforce FIPS mode
-            - name: GOFIPS
-              value: "1"
+            - name: GODEBUG
+              value: "fips140=on"
       volumes:
         - name: config
           configMap:
@@ -294,25 +290,30 @@ Application services in the FedRAMP boundary also need to use FIPS-compliant TLS
 
 ```python
 # Python SDK configuration for FedRAMP environments
-import ssl
+import grpc
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-# Create a FIPS-compliant SSL context
-ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-ssl_context.load_cert_chain(
-    certfile="/etc/pki/tls/certs/app-client.crt",
-    keyfile="/etc/pki/tls/private/app-client.key",
+with open("/etc/pki/tls/certs/fedramp-ca.crt", "rb") as ca_file:
+    trusted_certs = ca_file.read()
+with open("/etc/pki/tls/private/app-client.key", "rb") as key_file:
+    private_key = key_file.read()
+with open("/etc/pki/tls/certs/app-client.crt", "rb") as cert_file:
+    certificate_chain = cert_file.read()
+
+# Configure gRPC channel credentials for mutual TLS
+credentials = grpc.ssl_channel_credentials(
+    root_certificates=trusted_certs,
+    private_key=private_key,
+    certificate_chain=certificate_chain,
 )
-ssl_context.load_verify_locations("/etc/pki/tls/certs/fedramp-ca.crt")
 
 # Configure the exporter with mutual TLS
 exporter = OTLPSpanExporter(
     endpoint="otel-collector-fedramp.observability:4317",
-    credentials=ssl_context,
+    credentials=credentials,
 )
 ```
 
 ## Summary
 
-Configuring OpenTelemetry for FedRAMP boils down to three areas: cryptographic compliance (FIPS 140-2 validated TLS everywhere), strict data handling (scrub CUI and PII at the collector), and security hardening (least-privilege service accounts, read-only filesystems, audit logging for the collector itself). The most labor-intensive part is building the collector binary with BoringCrypto, but once that is done, the rest is configuration. Make sure to document your telemetry pipeline in your System Security Plan (SSP) and include it in your continuous monitoring program.
+Configuring OpenTelemetry for FedRAMP boils down to three areas: cryptographic compliance (FIPS 140-validated TLS everywhere), strict data handling (scrub CUI and PII at the collector), and security hardening (least-privilege service accounts, read-only filesystems, audit logging for the collector itself). The most labor-intensive part is building the collector binary with the right FIPS-enabled Go toolchain, but once that is done, the rest is configuration. Make sure to document your telemetry pipeline in your System Security Plan (SSP) and include it in your continuous monitoring program.
