@@ -23,15 +23,15 @@ Here is where this matters in practice:
 ```bash
 # This works on Debian-slim but may fail on Alpine
 
-pip install numpy
-# Alpine needs to compile from source because no musl wheels exist
-# This adds minutes to your build and requires gcc, musl-dev, etc.
+pip install scikit-learn
+# Alpine can only use wheels published for musllinux
+# If no musllinux wheel exists, it compiles from source and needs gcc, musl-dev, etc.
 ```
 
 ```bash
 # On Debian-slim, pip installs the pre-compiled wheel in seconds
-pip install numpy
-# Finds the manylinux glibc wheel and installs it immediately
+pip install scikit-learn
+# Finds the widely published manylinux glibc wheel and installs it immediately
 ```
 
 ## Size Comparison
@@ -64,38 +64,38 @@ Alpine is consistently smaller. But the gap narrows once you install additional 
 
 ## Build Time Comparison
 
-This is where Alpine can bite you. Python packages with C extensions need to be compiled from source on Alpine because PyPI wheels are built for glibc.
+This is where Alpine can bite you. Python packages with C extensions need musllinux wheels on Alpine. If a package only publishes manylinux wheels for glibc-based distributions, Alpine has to compile it from source.
 
 ```bash
-# Time to install common Python packages
+# Time to install Python packages with native extensions and no matching musllinux wheel
 
 # On Debian-slim:
-time pip install pandas numpy scipy
+time pip install scikit-learn opencv-python
 # real 0m12.834s (installs pre-built wheels)
 
-# On Alpine:
+# On Alpine when matching musllinux wheels are not available:
 apk add gcc musl-dev python3-dev g++ gfortran openblas-dev
-time pip install pandas numpy scipy
-# real 4m23.112s (compiles everything from source)
+time pip install scikit-learn opencv-python
+# real 4m23.112s (compiles from source)
 ```
 
 A 4-minute difference per build adds up fast in CI pipelines. Multiply that by 50 builds a day and you are wasting over 3 hours daily.
 
 ## DNS Resolution Differences
 
-musl and glibc handle DNS differently. musl does not support the `search` and `ndots` directives in `/etc/resolv.conf` the same way glibc does. In Kubernetes, this manifests as DNS lookup failures for short service names.
+musl and glibc handle DNS differently. Modern musl supports the `search` and `ndots` directives in `/etc/resolv.conf`, but its fallback behavior is not identical to glibc. In Kubernetes, this can manifest as DNS lookup surprises when names contain enough dots to meet the `ndots` threshold.
 
 ```bash
-# In a Kubernetes pod on Alpine, this might fail:
-curl http://my-service:8080
-# ERROR: Could not resolve host
+# In a Kubernetes pod on Alpine, a dotted short name may behave differently:
+curl http://api.prod:8080
+# May query api.prod as an absolute name instead of falling back through search domains
 
 # The same command works fine on Debian-slim
-curl http://my-service:8080
+curl http://api.prod:8080
 # Success
 ```
 
-The workaround is to use fully qualified domain names or configure `ndots` in your pod spec. But if you do not know about this issue, it can waste hours of debugging time.
+The workaround is to use fully qualified domain names, use names in the same namespace when possible, or configure `ndots` in your pod spec. But if you do not know about this issue, it can waste hours of debugging time.
 
 ## Package Manager Comparison
 
@@ -142,7 +142,7 @@ Alpine is the right choice when:
 
 - Image size is a hard constraint (edge deployments, IoT)
 - Your application has no C library dependencies or they work with musl
-- You are building Go applications (Go compiles to static binaries, musl compatibility is irrelevant)
+- You are building Go applications with `CGO_ENABLED=0` or otherwise do not depend on libc
 - You are running simple shell-based containers or utility containers
 - You need the fastest possible image pull times
 
@@ -166,7 +166,7 @@ Debian-slim is the right choice when:
 - Your application uses Python packages with C extensions (numpy, pandas, psycopg2)
 - You need pre-built binary wheels from PyPI or npm
 - Your application depends on glibc-specific behavior
-- You are running in Kubernetes and rely on short DNS names
+- You are running in Kubernetes and rely on DNS search behavior for dotted names
 - Build time matters more than a 50MB image size difference
 - You need packages not available in Alpine's repository
 
@@ -189,10 +189,10 @@ CMD ["python", "app.py"]
 
 | Language | Recommended Base | Reason |
 |----------|-----------------|--------|
-| Go | Alpine or scratch | Static binaries, no C library needed |
-| Rust | Alpine or scratch | Static binaries with musl target |
+| Go | Alpine or scratch | Static binaries when CGO is disabled |
+| Rust | Alpine or scratch | Static binaries when built for a musl target |
 | Node.js | Either works | Few native modules use glibc-specific features |
-| Python | Debian-slim | Many packages need glibc wheels |
+| Python | Debian-slim | Broader binary wheel compatibility |
 | Java | Debian-slim | JVM is tested primarily on glibc |
 | Ruby | Debian-slim | Native gem compilation is more reliable |
 | PHP | Debian-slim | Extensions expect glibc |
@@ -230,4 +230,4 @@ When in doubt, start with Debian-slim. It works with everything and the size pen
 
 ## Summary
 
-Alpine gives you smaller images at the cost of potential compatibility issues with musl libc. Debian-slim gives you broad compatibility at the cost of 50-70MB more disk space. For Go and Rust, Alpine is a natural fit because you compile static binaries. For Python, Ruby, and PHP, Debian-slim avoids a class of build and runtime problems that musl introduces. Choose based on your language, dependencies, and willingness to debug compatibility issues, not just the image size number.
+Alpine gives you smaller images at the cost of potential compatibility issues with musl libc. Debian-slim gives you broad compatibility at the cost of 50-70MB more disk space. For Go and Rust, Alpine is a natural fit when you compile static binaries. For Python, Ruby, and PHP, Debian-slim avoids a class of build and runtime problems that musl introduces. Choose based on your language, dependencies, and willingness to debug compatibility issues, not just the image size number.
