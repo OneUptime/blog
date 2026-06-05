@@ -14,40 +14,45 @@ A trace tells you that `POST /checkout` took 3.2 seconds, and the `calculate-tot
 
 Continuous profiling fills this gap by periodically sampling the call stack of your application (typically every 10ms). Each sample records what function was executing and what the call stack looked like at that moment.
 
-When profiles carry trace context (trace ID and span ID), you can filter profile samples to only those that occurred during a specific span. This gives you a flamegraph scoped to the exact operation that was slow.
+When profiles are linked to trace context, you can filter profile samples to only those that occurred during a specific span. This gives you a flamegraph scoped to the exact operation that was slow.
 
 ## Setting Up Profiling with Trace Correlation
 
-### Java with Pyroscope Agent
+### Java with Pyroscope and the OpenTelemetry Agent
 
-The Pyroscope Java agent integrates with OpenTelemetry to automatically tag profile samples with trace and span IDs:
+For Java span profiles, use the Pyroscope OpenTelemetry Java agent extension with the OpenTelemetry Java agent:
 
 ```bash
-# Download the Pyroscope Java agent
+# Download the Pyroscope OpenTelemetry Java agent extension
 
-curl -L -o pyroscope.jar \
-  https://github.com/grafana/pyroscope-java/releases/latest/download/pyroscope.jar
+curl -L -o pyroscope-otel.jar \
+  https://github.com/grafana/otel-profiling-java/releases/latest/download/pyroscope-otel.jar
 ```
 
-Run your application with both agents:
+Run your application with the OpenTelemetry Java agent and load the Pyroscope extension:
 
 ```bash
 java \
   -javaagent:/opt/opentelemetry-javaagent.jar \
-  -javaagent:/opt/pyroscope.jar \
+  -Dotel.javaagent.extensions=/opt/pyroscope-otel.jar \
   -Dpyroscope.server.address=http://pyroscope:4040 \
   -Dpyroscope.application.name=checkout-service \
   -Dpyroscope.format=jfr \
+  -Dpyroscope.profiler.event=itimer \
   -Dpyroscope.labels="service_name=checkout-service" \
   -Dotel.experimental.config.file=/etc/otel/otel-config.yaml \
   -jar checkout-service.jar
 ```
 
-The Pyroscope agent detects the OpenTelemetry Java agent and automatically attaches `trace_id` and `span_id` labels to every profile sample.
+The extension connects the two signals by enriching spans and profile data so Grafana can query span-specific profile data. For wall-clock latency analysis, use `-Dpyroscope.profiler.event=wall` instead of `itimer`.
 
-### Python with py-spy and OpenTelemetry
+### Python with Pyroscope and OpenTelemetry
 
-For Python applications, you can use the `opentelemetry-exporter-profiling` package:
+For Python applications, use Pyroscope's Python SDK together with the `pyroscope-otel` package:
+
+```bash
+pip install pyroscope-io pyroscope-otel
+```
 
 ```python
 # profiling_setup.py
@@ -60,7 +65,7 @@ from pyroscope.otel import PyroscopeSpanProcessor
 provider = TracerProvider()
 
 # Add the Pyroscope span processor
-# This processor tags profile samples with the current span's trace context
+# This processor connects profile data with the current span context
 pyroscope_processor = PyroscopeSpanProcessor()
 provider.add_span_processor(pyroscope_processor)
 
@@ -74,15 +79,15 @@ configure_pyroscope(
 )
 ```
 
-Now when a span is active, profile samples captured during that span are tagged with its trace ID and span ID:
+Now when a span is active, profile samples captured during that span can be associated with that span:
 
 ```python
 tracer = trace.get_tracer("checkout-service")
 
 def process_checkout(cart):
     with tracer.start_as_current_span("process_checkout") as span:
-        # Profile samples captured during this span are tagged with
-        # span.context.trace_id and span.context.span_id
+        # Profile samples captured during this span can be linked
+        # back to this OpenTelemetry span in Grafana.
 
         total = calculate_total(cart)  # CPU-intensive
         validate_inventory(cart)        # might block on DB
@@ -91,9 +96,9 @@ def process_checkout(cart):
         return total
 ```
 
-### Go with pprof Labels
+### Go with otel-profiling-go
 
-Go's `runtime/pprof` package supports labels that are carried through goroutine execution:
+For Go applications, use the `otel-profiling-go` tracer provider wrapper with the Pyroscope Go SDK:
 
 ```go
 // profiling.go
@@ -101,29 +106,29 @@ package main
 
 import (
     "context"
-    "runtime/pprof"
 
-    "go.opentelemetry.io/otel/trace"
+    otelpyroscope "github.com/grafana/otel-profiling-go"
+    "github.com/grafana/pyroscope-go"
+    "go.opentelemetry.io/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// WrapWithProfileLabels adds trace context as pprof labels
-// so profile samples can be correlated with spans
-func WrapWithProfileLabels(ctx context.Context) context.Context {
-    span := trace.SpanFromContext(ctx)
-    if !span.SpanContext().IsValid() {
-        return ctx
-    }
+func setupProfiling(tp *sdktrace.TracerProvider) {
+    otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
 
-    labels := pprof.Labels(
-        "trace_id", span.SpanContext().TraceID().String(),
-        "span_id", span.SpanContext().SpanID().String(),
-    )
-
-    pprof.Do(ctx, labels, func(ctx context.Context) {
-        // All profile samples within this block carry the trace context labels
+    _, _ = pyroscope.Start(pyroscope.Config{
+        ApplicationName: "checkout-service",
+        ServerAddress:   "http://pyroscope:4040",
     })
+}
 
-    return ctx
+func processCheckout(ctx context.Context) {
+    ctx, span := otel.Tracer("checkout-service").Start(ctx, "process_checkout")
+    defer span.End()
+
+    // Profile samples captured while this span is active can be
+    // queried as a span profile in Grafana.
+    _ = ctx
 }
 ```
 
@@ -138,21 +143,17 @@ receivers:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"
-
-  # Receive profiling data (if using OTLP profiling protocol)
-  otlp/profiling:
-    protocols:
-      grpc:
+      http:
         endpoint: "0.0.0.0:4318"
 
 exporters:
   otlp/traces:
-    endpoint: "http://tempo:4317"
+    endpoint: "tempo:4317"
     tls:
       insecure: true
 
   otlp/profiles:
-    endpoint: "http://pyroscope:4040"
+    endpoint: "pyroscope:4040"
     tls:
       insecure: true
 
@@ -164,13 +165,15 @@ service:
 
     # Profile pipeline
     profiles:
-      receivers: [otlp/profiling]
+      receivers: [otlp]
       exporters: [otlp/profiles]
 ```
 
+Start collector versions that gate profile pipelines with `--feature-gates=service.profilesSupport`.
+
 ## Using the Correlation in Practice
 
-Once profiles carry trace context, the workflow during an incident looks like this:
+Once profiles are linked to trace context, the workflow during an incident looks like this:
 
 1. You see a latency spike on your dashboard
 2. You click an exemplar to open a slow trace
@@ -201,15 +204,16 @@ datasources:
             value: "service_name"
         profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
         customQuery: true
-        query: '{service_name="${__span.tags["service.name"]}"}'
+        query: '{service_name="$${__span.tags["service.name"]}"}'
 
   - name: Pyroscope
     type: grafana-pyroscope-datasource
+    uid: pyroscope
     url: http://pyroscope:4040
 ```
 
-This configuration adds a "Profiles" button on every span in the Tempo trace view.
+This configuration adds a "Profiles for this span" button on spans that include the `pyroscope.profile.id` attribute in the Tempo trace view.
 
 ## Wrapping Up
 
-Correlating profiles with traces closes the last mile of performance debugging. Traces show you the slow operation. Profiles show you the slow code. The connection between them is trace context, the same trace ID and span ID that already flows through your system. Set up a profiling agent that reads OpenTelemetry context, configure your observability tools to link the data sources, and the next time a span is unexpectedly slow, you will know exactly which line of code to look at.
+Correlating profiles with traces closes the last mile of performance debugging. Traces show you the slow operation. Profiles show you the slow code. The connection between them is span profile context carried by the OpenTelemetry bridge package. Set up a profiling agent that reads OpenTelemetry context, configure your observability tools to link the data sources, and the next time a span is unexpectedly slow, you will know exactly which line of code to look at.
