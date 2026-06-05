@@ -31,25 +31,25 @@ Each stage in a Spinnaker pipeline is an independently executed unit. Stages can
 
 ## Setting Up the Webhook-Based Approach
 
-Spinnaker supports webhook stages and pipeline notifications. The most straightforward way to instrument Spinnaker without modifying its source code is to use these hooks to send telemetry data to an external service that emits OpenTelemetry spans.
+Spinnaker supports webhook stages and can forward pipeline events to downstream listeners. The most straightforward way to instrument Spinnaker without modifying its source code is to use these hooks to send telemetry data to an external service that emits OpenTelemetry spans.
 
-First, create a small service that receives Spinnaker webhook calls and converts them into spans:
+First, create a small service that receives Spinnaker event calls and converts them into spans:
 
 ```python
 # spinnaker_otel_bridge.py
 
-# This service acts as a bridge between Spinnaker webhook notifications
+# This service acts as a bridge between Spinnaker event webhooks
 # and OpenTelemetry. It receives pipeline and stage events from Spinnaker
 # and emits corresponding spans to the collector. Each pipeline execution
 # becomes a parent span with child spans for each stage.
 
 from flask import Flask, request, jsonify
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-import time
 
 app = Flask(__name__)
 
@@ -64,13 +64,50 @@ tracer = trace.get_tracer("spinnaker.pipelines")
 # Store active pipeline spans so stage events can be linked to their parent
 active_pipelines = {}
 
-@app.route("/pipeline/start", methods=["POST"])
-def pipeline_start():
-    """Handle pipeline start events from Spinnaker notifications."""
-    data = request.json
-    pipeline_id = data["execution"]["id"]
-    pipeline_name = data["execution"]["name"]
-    application = data["execution"]["application"]
+def _execution_from_event(data):
+    content = data.get("content", {})
+    execution = content.get("execution", data.get("execution", {}))
+    pipeline_id = execution.get("id") or content.get("executionId")
+    return execution, pipeline_id
+
+def _current_stage(execution, event_type):
+    stages = execution.get("stages", [])
+    status_by_event = {
+        "orca:stage:starting": "RUNNING",
+        "orca:stage:complete": "SUCCEEDED",
+        "orca:stage:failed": "TERMINAL",
+    }
+    expected_status = status_by_event.get(event_type)
+    candidates = [
+        stage for stage in stages
+        if not expected_status or stage.get("status") == expected_status
+    ] or stages
+    if not candidates:
+        return None
+    return max(candidates, key=lambda stage: stage.get("endTime") or stage.get("startTime") or 0)
+
+@app.route("/spinnaker/events", methods=["POST"])
+def spinnaker_event():
+    """Handle events forwarded by Spinnaker Echo's REST event listener."""
+    data = request.json or {}
+    event_type = data.get("details", {}).get("type")
+    execution, pipeline_id = _execution_from_event(data)
+
+    if event_type == "orca:pipeline:starting":
+        return pipeline_start(execution, pipeline_id)
+    if event_type in ("orca:pipeline:complete", "orca:pipeline:failed"):
+        return pipeline_complete(execution, pipeline_id)
+    if event_type == "orca:stage:starting":
+        return stage_start(execution, pipeline_id, event_type)
+    if event_type in ("orca:stage:complete", "orca:stage:failed"):
+        return stage_complete(execution, pipeline_id, event_type)
+
+    return jsonify({"status": "ignored"}), 202
+
+def pipeline_start(execution, pipeline_id):
+    """Handle pipeline start events from Spinnaker."""
+    pipeline_name = execution.get("name", "unknown")
+    application = execution.get("application", "unknown")
 
     # Start a new root span for this pipeline execution
     span = tracer.start_span(
@@ -79,35 +116,34 @@ def pipeline_start():
             "spinnaker.pipeline.id": pipeline_id,
             "spinnaker.pipeline.name": pipeline_name,
             "spinnaker.application": application,
-            "spinnaker.trigger.type": data["execution"].get("trigger", {}).get("type", "manual"),
+            "spinnaker.trigger.type": execution.get("trigger", {}).get("type", "manual"),
         },
     )
     active_pipelines[pipeline_id] = span
     return jsonify({"status": "tracking"}), 200
 
-@app.route("/pipeline/complete", methods=["POST"])
-def pipeline_complete():
+def pipeline_complete(execution, pipeline_id):
     """Handle pipeline completion events."""
-    data = request.json
-    pipeline_id = data["execution"]["id"]
-    status = data["execution"]["status"]
+    status = execution.get("status", "UNKNOWN")
 
     span = active_pipelines.pop(pipeline_id, None)
     if span:
         span.set_attribute("spinnaker.pipeline.status", status)
         if status != "SUCCEEDED":
-            span.set_status(trace.StatusCode.ERROR, f"Pipeline {status}")
+            span.set_status(Status(StatusCode.ERROR, f"Pipeline {status}"))
         span.end()
 
     return jsonify({"status": "completed"}), 200
 
-@app.route("/stage/start", methods=["POST"])
-def stage_start():
+def stage_start(execution, pipeline_id, event_type):
     """Handle stage start events from Spinnaker."""
-    data = request.json
-    pipeline_id = data["execution"]["id"]
-    stage_name = data["stage"]["name"]
-    stage_type = data["stage"]["type"]
+    stage = _current_stage(execution, event_type)
+    if not stage:
+        return jsonify({"status": "ignored"}), 202
+
+    stage_id = stage.get("id") or stage.get("refId") or stage.get("name")
+    stage_name = stage.get("name", stage_id)
+    stage_type = stage.get("type", "unknown")
 
     parent_span = active_pipelines.get(pipeline_id)
     if parent_span:
@@ -121,27 +157,28 @@ def stage_start():
                 "spinnaker.pipeline.id": pipeline_id,
             },
         )
-        # Store stage spans keyed by pipeline_id + stage_name
-        active_pipelines[f"{pipeline_id}:{stage_name}"] = stage_span
+        # Store stage spans keyed by pipeline_id + stage_id because names can repeat.
+        active_pipelines[f"{pipeline_id}:{stage_id}"] = stage_span
 
     return jsonify({"status": "tracking"}), 200
 
-@app.route("/stage/complete", methods=["POST"])
-def stage_complete():
+def stage_complete(execution, pipeline_id, event_type):
     """Handle stage completion events."""
-    data = request.json
-    pipeline_id = data["execution"]["id"]
-    stage_name = data["stage"]["name"]
-    status = data["stage"]["status"]
+    stage = _current_stage(execution, event_type)
+    if not stage:
+        return jsonify({"status": "ignored"}), 202
 
-    key = f"{pipeline_id}:{stage_name}"
+    stage_id = stage.get("id") or stage.get("refId") or stage.get("name")
+    status = stage.get("status", "UNKNOWN")
+
+    key = f"{pipeline_id}:{stage_id}"
     span = active_pipelines.pop(key, None)
     if span:
         span.set_attribute("spinnaker.stage.status", status)
         span.set_attribute("spinnaker.stage.duration_ms",
-                          data["stage"].get("endTime", 0) - data["stage"].get("startTime", 0))
+                          stage.get("endTime", 0) - stage.get("startTime", 0))
         if status != "SUCCEEDED":
-            span.set_status(trace.StatusCode.ERROR, f"Stage {status}")
+            span.set_status(Status(StatusCode.ERROR, f"Stage {status}"))
         span.end()
 
     return jsonify({"status": "completed"}), 200
@@ -151,46 +188,20 @@ This bridge service maintains a map of active pipeline and stage spans. When Spi
 
 ---
 
-## Configuring Spinnaker Notifications
+## Configuring Spinnaker Event Webhooks
 
-Spinnaker pipelines support notifications at both the pipeline and stage level. Configure them to call your bridge service:
+Spinnaker can forward Orca pipeline and stage events to downstream listeners through Echo's REST event listener. Configure Echo to call your bridge service:
 
-```json
-{
-  "notifications": [
-    {
-      "type": "webhook",
-      "address": "http://spinnaker-otel-bridge:5000/pipeline/start",
-      "when": ["pipeline.starting"]
-    },
-    {
-      "type": "webhook",
-      "address": "http://spinnaker-otel-bridge:5000/pipeline/complete",
-      "when": ["pipeline.complete", "pipeline.failed"]
-    }
-  ],
-  "stages": [
-    {
-      "name": "Bake",
-      "type": "bake",
-      "notifications": [
-        {
-          "type": "webhook",
-          "address": "http://spinnaker-otel-bridge:5000/stage/start",
-          "when": ["stage.starting"]
-        },
-        {
-          "type": "webhook",
-          "address": "http://spinnaker-otel-bridge:5000/stage/complete",
-          "when": ["stage.complete", "stage.failed"]
-        }
-      ]
-    }
-  ]
-}
+```yaml
+# echo-local.yml
+rest:
+  enabled: true
+  endpoints:
+    - wrap: false
+      url: http://spinnaker-otel-bridge:5000/spinnaker/events
 ```
 
-You need to add these notification blocks to each stage in your pipeline. It is a bit repetitive, but you can automate it with a pipeline template or a Spinnaker pipeline-as-code tool like Dinghy or sponnet.
+This sends Orca events such as `orca:pipeline:starting`, `orca:pipeline:complete`, `orca:stage:starting`, `orca:stage:complete`, and `orca:stage:failed` to the bridge service. The service filters the event stream and creates spans only for the pipeline and stage lifecycle events it cares about.
 
 ---
 
@@ -201,9 +212,9 @@ Canary analysis is one of Spinnaker's strongest features, and it benefits greatl
 ```python
 # canary_metrics.py
 # This module emits metrics from your application that are tagged with
-# the deployment strategy (canary vs baseline). Spinnaker sets the
-# SPINNAKER_SERVER_GROUP environment variable, which you can use to
-# determine whether a given instance is canary or baseline.
+# the deployment strategy (canary vs baseline). Set these values in
+# your manifest or deployment stage so Kayenta can query matching
+# canary and baseline metric series.
 
 import os
 from opentelemetry import metrics
@@ -220,10 +231,9 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("canary.metrics")
 
-# Determine if this instance is canary or baseline based on server group name
-server_group = os.getenv("SPINNAKER_SERVER_GROUP", "unknown")
-is_canary = "canary" in server_group.lower()
-deployment_type = "canary" if is_canary else "baseline"
+# Determine if this instance is canary or baseline from deployment metadata
+server_group = os.getenv("SERVER_GROUP", "unknown")
+deployment_type = os.getenv("DEPLOYMENT_TYPE", "baseline")
 
 # Create metrics with deployment type labels
 request_latency = meter.create_histogram(
@@ -295,8 +305,8 @@ Configure your OpenTelemetry Collector to handle telemetry from the Spinnaker br
 ```yaml
 # otel-collector-config.yaml
 # Collector config that receives traces from the Spinnaker bridge service
-# and metrics from canary/baseline application instances. It enriches
-# the data with Kubernetes attributes and forwards to your backend.
+# and metrics from canary/baseline application instances. It adds a
+# deployment platform attribute and forwards the data to your backend.
 
 receivers:
   otlp:
@@ -351,4 +361,4 @@ The combination of these signals turns Spinnaker from a deployment tool into an 
 
 ## Summary
 
-Monitoring Spinnaker with OpenTelemetry requires a bridge service that converts Spinnaker webhook notifications into OpenTelemetry spans. This gives you trace-level visibility into pipeline executions, stage-by-stage timing, canary analysis results, and rollback events. The setup is non-invasive since it uses Spinnaker's built-in notification system rather than requiring changes to Spinnaker itself. Combined with application-level metrics tagged with deployment type and version information, you get a complete picture of how deployments affect your production systems.
+Monitoring Spinnaker with OpenTelemetry requires a bridge service that converts Spinnaker event webhooks into OpenTelemetry spans. This gives you trace-level visibility into pipeline executions, stage-by-stage timing, canary analysis results, and rollback events. The setup is non-invasive since it uses Spinnaker's built-in event forwarding rather than requiring changes to Spinnaker itself. Combined with application-level metrics tagged with deployment type and version information, you get a complete picture of how deployments affect your production systems.
