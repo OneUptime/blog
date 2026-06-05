@@ -46,7 +46,7 @@ Here is how you set up the producer side in Python:
 ```python
 # kafka_producer_tracing.py
 
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject
 from confluent_kafka import Producer
 
@@ -71,6 +71,9 @@ class KafkaHeaderCarrier:
         self.headers = [(k, v) for k, v in self.headers if k != key]
         self.headers.append((key, value.encode("utf-8")))
 
+    def __setitem__(self, key, value):
+        self.set(key, value)
+
     def keys(self):
         return [k for k, v in self.headers]
 
@@ -86,8 +89,8 @@ def produce_message(producer: Producer, topic: str, key: str, value: str):
 
         # Add useful attributes to the span
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.destination", topic)
-        span.set_attribute("messaging.operation", "publish")
+        span.set_attribute("messaging.destination.name", topic)
+        span.set_attribute("messaging.operation.type", "send")
 
         # Produce the message with the trace context in headers
         producer.produce(
@@ -105,9 +108,10 @@ On the consumer side, you reverse the process:
 
 ```python
 # kafka_consumer_tracing.py
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import extract
 from confluent_kafka import Consumer
+from kafka_producer_tracing import KafkaHeaderCarrier
 
 tracer = trace.get_tracer(__name__)
 
@@ -133,9 +137,9 @@ def consume_messages(consumer: Consumer):
             kind=trace.SpanKind.CONSUMER
         ) as span:
             span.set_attribute("messaging.system", "kafka")
-            span.set_attribute("messaging.destination", msg.topic())
-            span.set_attribute("messaging.operation", "process")
-            span.set_attribute("messaging.kafka.partition", msg.partition())
+            span.set_attribute("messaging.destination.name", msg.topic())
+            span.set_attribute("messaging.operation.type", "process")
+            span.set_attribute("messaging.destination.partition.id", str(msg.partition()))
             span.set_attribute("messaging.kafka.offset", msg.offset())
 
             # Process the message within the traced context
@@ -179,8 +183,9 @@ def publish_to_rabbitmq(channel, exchange, routing_key, body):
         inject(carrier=carrier)
 
         span.set_attribute("messaging.system", "rabbitmq")
-        span.set_attribute("messaging.destination", exchange)
-        span.set_attribute("messaging.rabbitmq.routing_key", routing_key)
+        span.set_attribute("messaging.destination.name", exchange)
+        span.set_attribute("messaging.operation.type", "send")
+        span.set_attribute("messaging.rabbitmq.destination.routing_key", routing_key)
 
         # Pass the carrier as AMQP headers in BasicProperties
         properties = pika.BasicProperties(headers=dict(carrier))
@@ -202,12 +207,13 @@ def on_message_received(ch, method, properties, body):
         kind=trace.SpanKind.CONSUMER
     ) as span:
         span.set_attribute("messaging.system", "rabbitmq")
-        span.set_attribute("messaging.rabbitmq.routing_key", method.routing_key)
+        span.set_attribute("messaging.operation.type", "process")
+        span.set_attribute("messaging.rabbitmq.destination.routing_key", method.routing_key)
 
         process_message(body)
 ```
 
-Since RabbitMQ's AMQP headers are already a string-to-string dictionary, the carrier implementation is minimal. You just need to make sure you pass the headers through `BasicProperties` when publishing and read them from `properties.headers` when consuming.
+Since RabbitMQ's AMQP headers are already a dictionary-like field table, the carrier implementation is minimal. You just need to make sure you pass the headers through `BasicProperties` when publishing and read them from `properties.headers` when consuming.
 
 ## SQS: Using Message Attributes
 
@@ -241,6 +247,9 @@ class SQSCarrier:
             "StringValue": value
         }
 
+    def __setitem__(self, key, value):
+        self.set(key, value)
+
     def keys(self):
         return list(self.attrs.keys())
 
@@ -255,7 +264,8 @@ def send_sqs_message(queue_url: str, body: str):
         inject(carrier=carrier)
 
         span.set_attribute("messaging.system", "aws_sqs")
-        span.set_attribute("messaging.destination", queue_url)
+        span.set_attribute("messaging.destination.name", queue_url)
+        span.set_attribute("messaging.operation.type", "send")
 
         # Send the message with trace context in MessageAttributes
         sqs.send_message(
@@ -266,6 +276,7 @@ def send_sqs_message(queue_url: str, body: str):
 
 def process_sqs_message(message: dict):
     # Extract context from SQS message attributes
+    # Make sure receive_message requests MessageAttributeNames=["All"] or the trace attributes will not be returned.
     attrs = message.get("MessageAttributes", {})
     carrier = SQSCarrier(attrs)
     ctx = extract(carrier=carrier)
@@ -276,6 +287,7 @@ def process_sqs_message(message: dict):
         kind=trace.SpanKind.CONSUMER
     ) as span:
         span.set_attribute("messaging.system", "aws_sqs")
+        span.set_attribute("messaging.operation.type", "process")
 
         process_message(message["Body"])
 ```
@@ -290,6 +302,7 @@ But in batch processing scenarios where a single consumer processes messages fro
 
 ```python
 # Using span links instead of parent-child for batch consumers
+from opentelemetry import trace
 from opentelemetry.trace import Link
 
 def process_batch(messages):
