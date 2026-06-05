@@ -93,24 +93,25 @@ Once the health endpoint returns a status of "green" or "yellow", OpenSearch is 
 
 ## Setting Up Data Prepper (Optional)
 
-OpenSearch has its own ingestion pipeline called Data Prepper, which is designed specifically for OpenTelemetry data. While you can send data directly from the OTel Collector to OpenSearch using the Elasticsearch exporter (OpenSearch is API-compatible), Data Prepper provides richer integration with OpenSearch's Trace Analytics features.
+OpenSearch has its own ingestion pipeline called Data Prepper, which is designed specifically for OpenTelemetry data. While you can send data directly from the OTel Collector to OpenSearch using the OpenSearch exporter, Data Prepper provides richer integration with OpenSearch's Trace Analytics features.
 
 Here is how to run Data Prepper alongside the Collector.
 
 ```yaml
 # data-prepper-config.yaml
-# Data Prepper pipeline for trace and log ingestion
+# Data Prepper pipeline for trace ingestion
 
 entry-pipeline:
+  delay: "100"
   source:
     otel_trace_source:
       # Data Prepper receives OTLP traces on port 21890
       ssl: false
-  processor:
-    - trace_peer_forwarder:
   sink:
     - pipeline:
         name: span-pipeline
+    - pipeline:
+        name: service-map-pipeline
 
 span-pipeline:
   source:
@@ -143,11 +144,17 @@ service-map-pipeline:
 
 ## Configuring the OpenTelemetry Collector
 
-If you prefer to skip Data Prepper and go directly from the Collector to OpenSearch, the Elasticsearch exporter works because OpenSearch maintains API compatibility. Here is the Collector configuration.
+If you prefer to skip Data Prepper and go directly from the Collector to OpenSearch, use the OpenSearch exporter from the OpenTelemetry Collector Contrib distribution. Here is the Collector configuration.
 
 ```yaml
 # otel-collector-config.yaml
 # Direct export from OTel Collector to OpenSearch
+
+extensions:
+  basicauth/opensearch:
+    client_auth:
+      username: admin
+      password: Admin_12345!
 
 receivers:
   otlp:
@@ -176,46 +183,35 @@ processors:
         action: upsert
 
 exporters:
-  # Using the Elasticsearch exporter with OpenSearch
-  # OpenSearch is API-compatible with Elasticsearch
-  elasticsearch/traces:
-    endpoints: [https://localhost:9200]
-    user: admin
-    password: Admin_12345!
+  opensearch/traces:
+    http:
+      endpoint: https://localhost:9200
+      auth:
+        authenticator: basicauth/opensearch
+      tls:
+        insecure_skip_verify: true
     traces_index: otel-v1-apm-span
-    tls:
-      insecure_skip_verify: true
-    flush:
-      bytes: 5242880
-      interval: 5s
-    retry:
-      enabled: true
-      max_requests: 3
 
-  elasticsearch/logs:
-    endpoints: [https://localhost:9200]
-    user: admin
-    password: Admin_12345!
+  opensearch/logs:
+    http:
+      endpoint: https://localhost:9200
+      auth:
+        authenticator: basicauth/opensearch
+      tls:
+        insecure_skip_verify: true
     logs_index: otel-v1-apm-log
-    tls:
-      insecure_skip_verify: true
-    flush:
-      bytes: 5242880
-      interval: 5s
-    retry:
-      enabled: true
-      max_requests: 3
 
 service:
+  extensions: [basicauth/opensearch]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [elasticsearch/traces]
+      exporters: [opensearch/traces]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [elasticsearch/logs]
+      exporters: [opensearch/logs]
 ```
 
 If you are using Data Prepper, the Collector configuration is simpler because you just point the OTLP exporter at Data Prepper instead.
@@ -242,15 +238,13 @@ Once data is flowing into OpenSearch, open the Dashboards UI at http://localhost
 
 The Trace Analytics dashboard provides several views out of the box. The service map shows your microservices and the connections between them, with color coding for error rates. The traces view lets you search for traces by service name, operation, duration, and status. The services view shows per-service metrics like average latency and error rate.
 
-To set up these views when using the direct Elasticsearch exporter approach, you may need to create index patterns manually. Go to Stack Management, then Index Patterns, and create patterns for your trace and log indices.
+To set up these views when using the direct OpenSearch exporter approach, you may need to create index patterns manually. Go to Stack Management, then Index Patterns, and create patterns for your trace and log indices.
 
 ## Index Management with ISM
 
 OpenSearch uses Index State Management (ISM) policies instead of Elasticsearch's ILM. The concept is the same: automatically manage index lifecycle based on age and size.
 
 ```json
-// ISM policy for OpenTelemetry trace data
-// PUT _plugins/_ism/policies/otel-traces-policy
 {
   "policy": {
     "description": "Manage OpenTelemetry trace index lifecycle",
@@ -321,17 +315,17 @@ OpenSearch supports the same query DSL as Elasticsearch, plus it includes a SQL 
 -- Uses the OpenSearch SQL plugin
 SELECT
   serviceName,
-  operationName,
+  name,
   AVG(durationInNanos) / 1000000 AS avg_duration_ms,
   MAX(durationInNanos) / 1000000 AS max_duration_ms,
   COUNT(*) AS request_count
-FROM otel-v1-apm-span
+FROM `otel-v1-apm-span-*`
 WHERE startTime > DATE_SUB(NOW(), INTERVAL 24 HOUR)
-GROUP BY serviceName, operationName
+GROUP BY serviceName, name
 ORDER BY avg_duration_ms DESC
 LIMIT 20;
 ```
 
 ## Wrapping Up
 
-OpenSearch gives you a fully open-source observability backend that is API-compatible with Elasticsearch but free from licensing concerns. Its built-in Trace Analytics feature understands OpenTelemetry data natively, and the ISM policies handle automated index lifecycle management. Whether you use the direct Elasticsearch exporter approach or the Data Prepper pipeline depends on whether you need the richer Trace Analytics integration. Either way, OpenSearch provides a solid foundation for storing and exploring your OpenTelemetry data.
+OpenSearch gives you a fully open-source observability backend that is API-compatible with Elasticsearch but free from licensing concerns. Its built-in Trace Analytics feature understands OpenTelemetry data natively, and the ISM policies handle automated index lifecycle management. Whether you use the direct OpenSearch exporter approach or the Data Prepper pipeline depends on whether you need the richer Trace Analytics integration. Either way, OpenSearch provides a solid foundation for storing and exploring your OpenTelemetry data.
