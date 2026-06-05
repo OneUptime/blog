@@ -6,30 +6,30 @@ Tags: OpenTelemetry, Collector, Connector, Signal to Metrics, Metrics Generation
 
 Description: Master the Signal to Metrics connector in OpenTelemetry Collector to transform traces and logs into actionable metrics for enhanced monitoring and observability.
 
-The Signal to Metrics connector represents one of the most powerful capabilities in the OpenTelemetry Collector: the ability to derive metrics from other telemetry signals. This connector enables you to extract meaningful quantitative data from traces and logs, creating a unified observability experience where metrics, traces, and logs work together seamlessly.
+The Signal to Metrics connector represents one of the most powerful capabilities in OpenTelemetry Collector: the ability to derive metrics from other telemetry signals. This connector enables you to extract meaningful quantitative data from traces and logs, creating a unified observability experience where metrics, traces, and logs work together seamlessly.
 
 ## What is the Signal to Metrics Connector?
 
-The Signal to Metrics connector is a specialized component that transforms telemetry signals (primarily traces and logs) into metrics. Rather than sending signals to external systems, this connector processes them internally and generates new metric data points based on configurable rules and aggregations.
+The Signal to Metrics connector is a specialized component that transforms telemetry signals into metrics. Rather than sending signals to external systems, this connector processes them internally and generates new metric data points based on configurable OpenTelemetry Transformation Language (OTTL) expressions.
 
-This transformation capability is critical for several reasons. While traces provide detailed transaction data and logs capture discrete events, metrics offer aggregated time-series data that's efficient for alerting, dashboards, and long-term trend analysis. The Signal to Metrics connector bridges these observability pillars, allowing you to maintain rich detail in traces and logs while automatically generating the metrics you need for operational monitoring.
+This transformation capability is critical for several reasons. While traces provide detailed transaction data and logs capture discrete events, metrics offer time-series data that's efficient for alerting, dashboards, and long-term trend analysis. The Signal to Metrics connector bridges these observability pillars, allowing you to maintain rich detail in traces and logs while automatically generating the metrics you need for operational monitoring.
 
 ## Core Concepts and Architecture
 
-The connector operates by analyzing incoming telemetry signals and applying transformation rules to generate metrics. Each signal type can contribute different metric dimensions and values:
+The connector operates by analyzing incoming telemetry signals and applying OTTL expressions to generate metrics. Each signal type can contribute different metric attributes and values:
 
-**From Traces**: Extract duration, error rates, request counts, and custom span attributes as metric dimensions.
+**From Traces**: Extract duration, request counts, error counts, and custom span attributes as metric attributes.
 
-**From Logs**: Count log occurrences, categorize by severity, extract numeric values from log body or attributes.
+**From Logs**: Count log occurrences, filter by severity, and extract numeric values from log bodies or attributes.
 
-The connector maintains state to perform aggregations over time windows, producing metrics that represent summaries of your telemetry data.
+The connector does not perform stateful or time-based aggregations. It aggregates metric points for the telemetry payload passed to each `Consume*` call and forwards the generated metrics to the metrics pipeline.
 
 ```mermaid
 graph TB
     A[Traces/Logs Input] --> B[Signal to Metrics Connector]
-    B --> C[Aggregation Engine]
+    B --> C[OTTL Evaluation]
     C --> D[Histogram Metrics]
-    C --> E[Counter Metrics]
+    C --> E[Sum Metrics]
     C --> F[Gauge Metrics]
     D --> G[Metrics Pipeline]
     E --> G
@@ -49,31 +49,41 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  signaltometrics:
+  signal_to_metrics:
     # Define which spans to process
     spans:
       # Create a histogram metric from span duration
       - name: span.duration
         description: Duration of spans
-        unit: ms
-        # Define metric dimensions from span attributes
-        dimensions:
-          - name: service.name
-          - name: span.kind
-          - name: http.method
-          - name: http.status_code
-        # Configure histogram buckets
+        unit: us
+        # Define metric attributes from span attributes
+        attributes:
+          - key: http.method
+            optional: true
+          - key: http.status_code
+            optional: true
+        # Keep selected resource attributes on the generated metrics
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        # Configure histogram buckets and the value expression
         histogram:
-          explicit:
-            buckets: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+          buckets: [1000, 5000, 10000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000]
+          value: Microseconds(end_time - start_time)
 
-      # Create a counter for total span count
+      # Create a monotonic sum for total span count
       - name: span.count
         description: Total number of spans
         unit: "1"
-        dimensions:
-          - name: service.name
-          - name: span.kind
+        attributes:
+          - key: http.method
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 
 exporters:
   prometheusremotewrite:
@@ -84,15 +94,15 @@ service:
     # Input pipeline receives traces
     traces/input:
       receivers: [otlp]
-      exporters: [signaltometrics]
+      exporters: [signal_to_metrics]
 
     # Metrics pipeline exports generated metrics
     metrics/from-traces:
-      receivers: [signaltometrics]
+      receivers: [signal_to_metrics]
       exporters: [prometheusremotewrite]
 ```
 
-This configuration creates two metrics from every span: a histogram tracking span duration and a counter for total spans, both tagged with service name and span kind.
+This configuration creates two metrics from spans: a histogram tracking span duration and a monotonic sum for span counts, with selected span and resource attributes on the generated metrics.
 
 ## Generating Metrics from Span Attributes
 
@@ -100,7 +110,7 @@ You can extract custom business metrics from span attributes. This is particular
 
 ```yaml
 connectors:
-  signaltometrics/business:
+  signal_to_metrics/business:
     spans:
       # Track shopping cart values
       - name: cart.value
@@ -108,44 +118,56 @@ connectors:
         unit: USD
         # Only process spans with these attributes
         conditions:
-          - key: span.kind
-            value: "server"
+          - 'span.kind == SPAN_KIND_SERVER AND resource.attributes["service.name"] == "checkout-service" AND attributes["cart.total.amount"] != nil'
+        attributes:
+          - key: user.tier
+            optional: true
+          - key: payment.method
+            optional: true
+          - key: region
+            optional: true
+        include_resource_attributes:
           - key: service.name
-            value: "checkout-service"
-        dimensions:
-          - name: user.tier
-          - name: payment.method
-          - name: region
+            optional: true
         # Extract the value from a span attribute
-        value:
-          attribute: cart.total.amount
+        gauge:
+          value: Double(attributes["cart.total.amount"])
 
       # Track database query performance
       - name: db.query.duration
         description: Database query execution time
-        unit: ms
+        unit: us
         conditions:
-          - key: db.system
-            value: "postgresql"
-        dimensions:
-          - name: db.operation
-          - name: db.name
-          - name: service.name
+          - 'attributes["db.system"] == "postgresql"'
+        attributes:
+          - key: db.operation
+            optional: true
+          - key: db.name
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [5, 10, 25, 50, 100, 250, 500, 1000]
+          buckets: [5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000]
+          value: Microseconds(end_time - start_time)
 
       # Count errors by type
       - name: error.count
         description: Number of errors by type
         unit: "1"
         conditions:
-          - key: status.code
-            value: "ERROR"
-        dimensions:
-          - name: error.type
-          - name: service.name
-          - name: http.status_code
+          - 'span.status.code == STATUS_CODE_ERROR'
+        attributes:
+          - key: error.type
+            optional: true
+          - key: http.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 ```
 
 This configuration creates business-specific metrics directly from your trace data, eliminating the need to instrument these metrics separately in your application code.
@@ -162,42 +184,55 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  signaltometrics/logs:
+  signal_to_metrics/logs:
+    error_mode: ignore
     logs:
-      # Count logs by severity
+      # Count log records
       - name: log.count
-        description: Count of log records by severity
+        description: Count of log records
         unit: "1"
-        dimensions:
-          - name: severity_text
-          - name: service.name
-          - name: log.source
+        attributes:
+          - key: log.source
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: "1"
+          monotonic: true
 
       # Track error logs specifically
       - name: log.error.count
         description: Count of error logs
         unit: "1"
         conditions:
-          - key: severity_number
-            operator: gte
-            value: 17  # ERROR level and above
-        dimensions:
-          - name: service.name
-          - name: error.category
-          - name: deployment.environment
+          - 'severity_number >= SEVERITY_NUMBER_ERROR'
+        attributes:
+          - key: error.category
+            optional: true
+          - key: deployment.environment
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: "1"
+          monotonic: true
 
       # Extract numeric values from log body
       - name: custom.metric.from.log
         description: Custom metric extracted from log data
         unit: "1"
         conditions:
-          - key: log.source
-            value: "application"
-        dimensions:
-          - name: metric.type
-          - name: service.name
-        value:
-          attribute: extracted.value
+          - 'attributes["log.source"] == "application"'
+        attributes:
+          - key: metric.type
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        gauge:
+          value: ExtractGrokPatterns(body, "value=%{NUMBER:extracted_value:float}")["extracted_value"]
 
 exporters:
   prometheusremotewrite:
@@ -207,133 +242,107 @@ service:
   pipelines:
     logs/input:
       receivers: [otlp]
-      exporters: [signaltometrics/logs]
+      exporters: [signal_to_metrics/logs]
 
     metrics/from-logs:
-      receivers: [signaltometrics/logs]
-      processors: [batch]
+      receivers: [signal_to_metrics/logs]
       exporters: [prometheusremotewrite]
 ```
 
-This configuration monitors log volume and error rates, converting log events into time-series metrics suitable for alerting and trending.
+This configuration monitors log volume and error counts, converting log events into time-series metrics suitable for alerting and trending.
 
-## Advanced Dimension Configuration
+## Advanced Attribute Configuration
 
-Dimensions (labels in Prometheus terminology) are critical for making your metrics useful. The Signal to Metrics connector offers flexible dimension extraction:
+Attributes (labels in Prometheus terminology) are critical for making your metrics useful. The Signal to Metrics connector offers flexible attribute extraction:
 
 ```yaml
 connectors:
-  signaltometrics/advanced:
+  signal_to_metrics/advanced:
     spans:
       - name: http.server.duration
         description: HTTP server request duration
-        unit: ms
-        dimensions:
-          # Direct attribute mapping
-          - name: http.method
-          - name: http.route
-          - name: service.name
+        unit: us
+        attributes:
+          # Direct span attribute mapping
+          - key: http.method
+            optional: true
+          - key: http.route
+            optional: true
 
-          # Rename an attribute
-          - name: status_code
-            source: http.status_code
-
-          # Set default value if attribute is missing
-          - name: environment
-            source: deployment.environment
-            default: "production"
-
-          # Extract from resource attributes instead of span attributes
-          - name: service.version
-            source: service.version
-            scope: resource
-
-          # Create custom dimension based on conditions
-          - name: status_class
-            source: http.status_code
-            mapping:
-              "2xx": "200-299"
-              "3xx": "300-399"
-              "4xx": "400-499"
-              "5xx": "500-599"
+        # Keep resource attributes on the generated metric
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+          - key: service.version
+            optional: true
+          # Set default value if the resource attribute is missing
+          - key: deployment.environment
+            default_value: production
 
         histogram:
-          explicit:
-            buckets: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+          buckets: [10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000]
+          value: Microseconds(end_time - start_time)
 ```
 
-Properly configured dimensions enable powerful querying and filtering in your metrics backend, allowing you to slice and dice your telemetry data effectively.
+Properly configured attributes enable powerful querying and filtering in your metrics backend, allowing you to slice and dice your telemetry data effectively.
 
 ## Aggregation Windows and Temporal Behavior
 
-The Signal to Metrics connector aggregates data over time windows. Understanding temporal behavior is essential for accurate metrics:
+The Signal to Metrics connector does not configure aggregation windows, rates, or percentiles. It emits the metric type you define for each incoming payload; rate calculations and percentiles are typically calculated in your metrics backend from sums and histograms.
 
 ```yaml
 connectors:
-  signaltometrics/temporal:
-    # Configure aggregation window
-    aggregation:
-      # Time window for aggregation (default: 60s)
-      interval: 30s
-      # How long to wait for late data
-      delay: 10s
-
+  signal_to_metrics/temporal:
     spans:
-      - name: request.rate
-        description: Request rate per service
-        unit: "1/s"
-        dimensions:
-          - name: service.name
-          - name: http.method
-        # This creates a rate metric
-        rate: true
+      - name: request.count
+        description: Request count per service
+        unit: "1"
+        attributes:
+          - key: http.method
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 
-      - name: request.duration.p99
-        description: 99th percentile request duration
-        unit: ms
-        dimensions:
-          - name: service.name
+      - name: request.duration
+        description: Request duration histogram
+        unit: us
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [10, 50, 100, 250, 500, 1000, 2500, 5000]
-        # Calculate percentiles
-        percentiles: [50, 90, 95, 99]
+          buckets: [10000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000]
+          value: Microseconds(end_time - start_time)
 ```
 
-Shorter aggregation intervals provide more granular metrics but increase cardinality and storage requirements. Balance temporal resolution with resource constraints.
+Use backend queries such as `rate()` on monotonic sums and histogram percentile functions to calculate request rates and latency percentiles.
 
 Resource Attribute Filtering
 
-Control which spans or logs contribute to metrics using resource attribute filters:
+Control which spans or logs contribute to metrics using OTTL conditions:
 
 ```yaml
 connectors:
-  signaltometrics/filtered:
-    # Global filter applied to all metric rules
-    resource_filters:
-      # Only process telemetry from production
-      - key: deployment.environment
-        value: "production"
-      # Only specific services
-      - key: service.name
-        operator: in
-        values: ["frontend", "api-gateway", "checkout"]
-
+  signal_to_metrics/filtered:
     spans:
       - name: critical.service.duration
         description: Duration for critical services
-        unit: ms
-        # Additional span-level conditions
+        unit: us
+        # Process telemetry from production and selected services
         conditions:
-          - key: http.route
-            operator: regex
-            value: "^/api/v1/.*"
-        dimensions:
-          - name: service.name
-          - name: http.method
+          - 'resource.attributes["deployment.environment"] == "production" AND (resource.attributes["service.name"] == "frontend" OR resource.attributes["service.name"] == "api-gateway" OR resource.attributes["service.name"] == "checkout") AND attributes["http.route"] != nil AND IsMatch(attributes["http.route"], "^/api/v1/.*")'
+        attributes:
+          - key: http.method
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [10, 50, 100, 250, 500, 1000]
+          buckets: [10000, 50000, 100000, 250000, 500000, 1000000]
+          value: Microseconds(end_time - start_time)
 ```
 
 Filtering reduces the volume of metrics generated and ensures you're only tracking relevant telemetry.
@@ -344,65 +353,76 @@ You can configure the connector to process both traces and logs simultaneously:
 
 ```yaml
 connectors:
-  signaltometrics/multi:
+  signal_to_metrics/multi:
     # Generate metrics from traces
     spans:
       - name: span.duration
         description: Span duration by service
-        unit: ms
-        dimensions:
-          - name: service.name
-          - name: span.kind
+        unit: us
+        attributes:
+          - key: http.method
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [10, 50, 100, 250, 500, 1000, 2500, 5000]
+          buckets: [10000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000]
+          value: Microseconds(end_time - start_time)
 
       - name: span.error.count
         description: Count of span errors
         unit: "1"
         conditions:
-          - key: status.code
-            value: "ERROR"
-        dimensions:
-          - name: service.name
-          - name: error.type
+          - 'span.status.code == STATUS_CODE_ERROR'
+        attributes:
+          - key: error.type
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 
     # Generate metrics from logs
     logs:
       - name: log.records
-        description: Log record count by severity
+        description: Log record count
         unit: "1"
-        dimensions:
-          - name: severity_text
-          - name: service.name
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: "1"
+          monotonic: true
 
-      - name: log.error.rate
-        description: Error log rate
-        unit: "1/s"
+      - name: log.error.count
+        description: Error log count
+        unit: "1"
         conditions:
-          - key: severity_number
-            operator: gte
-            value: 17
-        dimensions:
-          - name: service.name
-        rate: true
+          - 'severity_number >= SEVERITY_NUMBER_ERROR'
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: "1"
+          monotonic: true
 
 service:
   pipelines:
     # Traces feed into the connector
     traces/input:
       receivers: [otlp]
-      exporters: [signaltometrics/multi]
+      exporters: [signal_to_metrics/multi]
 
     # Logs also feed into the same connector
     logs/input:
       receivers: [otlp]
-      exporters: [signaltometrics/multi]
+      exporters: [signal_to_metrics/multi]
 
     # Single metrics pipeline receives all generated metrics
     metrics/from-signals:
-      receivers: [signaltometrics/multi]
-      processors: [batch]
+      receivers: [signal_to_metrics/multi]
       exporters: [prometheusremotewrite]
 ```
 
@@ -412,26 +432,29 @@ This unified approach ensures consistent metric generation across all your telem
 
 The Signal to Metrics connector can generate significant metric volume. Optimize performance with these strategies:
 
-**Control Cardinality**: Limit the number of dimensions and their possible values. High-cardinality dimensions like user IDs or transaction IDs can create millions of unique metric series.
+**Control Cardinality**: Limit the number of attributes and their possible values. High-cardinality attributes like user IDs or transaction IDs can create millions of unique metric series.
 
 ```yaml
 connectors:
-  signaltometrics/optimized:
+  signal_to_metrics/optimized:
     spans:
       - name: optimized.duration
         description: Optimized duration metric
-        unit: ms
-        dimensions:
+        unit: us
+        attributes:
           # Good: low cardinality
-          - name: service.name
-          - name: http.method
+          - key: http.method
+            optional: true
           # Avoid: high cardinality
-          # - name: user.id
-          # - name: trace.id
+          # - key: user.id
+          # - key: trace.id
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
           # Fewer buckets reduce storage
-          explicit:
-            buckets: [100, 500, 1000, 5000]
+          buckets: [100000, 500000, 1000000, 5000000]
+          value: Microseconds(end_time - start_time)
 ```
 
 **Use Sampling**: For high-volume services, sample your telemetry before metric generation:
@@ -446,10 +469,10 @@ service:
     traces/input:
       receivers: [otlp]
       processors: [probabilistic_sampler]
-      exporters: [signaltometrics]
+      exporters: [signal_to_metrics]
 ```
 
-**Adjust Aggregation Intervals**: Longer intervals reduce metric update frequency and storage requirements.
+**Limit Attribute Sets**: Use `attributes` and `include_resource_attributes` carefully so each generated metric has only the dimensions you need.
 
 ## Real-World Example: Comprehensive Service Monitoring
 
@@ -474,84 +497,105 @@ processors:
     limit_mib: 512
 
 connectors:
-  signaltometrics/comprehensive:
-    aggregation:
-      interval: 60s
-      delay: 10s
-
-    resource_filters:
-      - key: deployment.environment
-        value: "production"
-
+  signal_to_metrics/comprehensive:
     spans:
       # Request duration histogram
       - name: http.server.request.duration
         description: HTTP request duration
-        unit: ms
-        dimensions:
-          - name: service.name
-          - name: http.method
-          - name: http.route
-          - name: http.status_code
+        unit: us
+        conditions:
+          - 'span.kind == SPAN_KIND_SERVER'
+        attributes:
+          - key: http.method
+            optional: true
+          - key: http.route
+            optional: true
+          - key: http.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+          - key: deployment.environment
+            optional: true
         histogram:
-          explicit:
-            buckets: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+          buckets: [10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
+          value: Microseconds(end_time - start_time)
 
       # Request count
       - name: http.server.request.count
         description: HTTP request count
         unit: "1"
-        dimensions:
-          - name: service.name
-          - name: http.method
-          - name: http.status_code
+        conditions:
+          - 'span.kind == SPAN_KIND_SERVER'
+        attributes:
+          - key: http.method
+            optional: true
+          - key: http.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 
       # Error count
       - name: http.server.error.count
         description: HTTP error count
         unit: "1"
         conditions:
+          - 'attributes["http.status_code"] != nil AND attributes["http.status_code"] >= 400'
+        attributes:
+          - key: http.method
+            optional: true
           - key: http.status_code
-            operator: gte
-            value: 400
-        dimensions:
-          - name: service.name
-          - name: http.method
-          - name: http.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
+        sum:
+          value: Int(AdjustedCount())
+          monotonic: true
 
       # Database query duration
       - name: db.client.operation.duration
         description: Database operation duration
-        unit: ms
+        unit: us
         conditions:
+          - 'attributes["db.system"] != nil'
+        attributes:
           - key: db.system
-            operator: exists
-        dimensions:
-          - name: service.name
-          - name: db.system
-          - name: db.operation
-          - name: db.name
+            optional: true
+          - key: db.operation
+            optional: true
+          - key: db.name
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500]
+          buckets: [5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000]
+          value: Microseconds(end_time - start_time)
 
       # External API call duration
       - name: http.client.request.duration
         description: External HTTP request duration
-        unit: ms
+        unit: us
         conditions:
-          - key: span.kind
-            value: "client"
-          - key: http.url
-            operator: exists
-        dimensions:
-          - name: service.name
-          - name: http.method
-          - name: http.status_code
-          - name: net.peer.name
+          - 'span.kind == SPAN_KIND_CLIENT AND attributes["http.url"] != nil'
+        attributes:
+          - key: http.method
+            optional: true
+          - key: http.status_code
+            optional: true
+          - key: net.peer.name
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+            optional: true
         histogram:
-          explicit:
-            buckets: [50, 100, 250, 500, 1000, 2500, 5000]
+          buckets: [50000, 100000, 250000, 500000, 1000000, 2500000, 5000000]
+          value: Microseconds(end_time - start_time)
 
 exporters:
   prometheusremotewrite:
@@ -563,10 +607,10 @@ service:
     traces/input:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [signaltometrics/comprehensive]
+      exporters: [signal_to_metrics/comprehensive]
 
     metrics/generated:
-      receivers: [signaltometrics/comprehensive]
+      receivers: [signal_to_metrics/comprehensive]
       processors: [batch]
       exporters: [prometheusremotewrite]
 ```
@@ -584,24 +628,29 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-Check the Collector's internal metrics:
+Check the Collector's internal metrics for pipeline health:
 
-- `otelcol_connector_signaltometrics_spans_processed`: Spans processed by the connector
-- `otelcol_connector_signaltometrics_metrics_generated`: Metrics generated
-- `otelcol_exporter_sent_metric_points`: Metric points sent to backend
+- `otelcol_receiver_accepted_spans`: Spans accepted by receivers
+- `otelcol_exporter_sent_metric_points`: Metric points sent by exporters
+- `otelcol_exporter_send_failed_metric_points`: Metric points that exporters failed to send
 
 ## Troubleshooting Common Issues
 
-**No Metrics Generated**: Verify that your conditions and filters match incoming telemetry. Enable debug logging to see which spans/logs are being processed.
+**No Metrics Generated**: Verify that your OTTL conditions match incoming telemetry. Enable debug logging to see which spans or logs are being processed.
 
-**High Cardinality**: Review your dimensions. Remove or aggregate high-cardinality attributes like user IDs or request IDs.
+**High Cardinality**: Review your attributes. Remove or aggregate high-cardinality attributes like user IDs or request IDs.
 
-**Missing Attributes**: Ensure the attributes you're extracting exist in your spans or logs. Use default values for optional attributes.
+**Missing Attributes**: Ensure the attributes you're extracting exist in your spans or logs. Use `optional: true` or `default_value` for optional attributes.
 
-**Performance Issues**: Reduce the number of metric rules, increase aggregation intervals, or apply sampling.
+**Performance Issues**: Reduce the number of metric rules, reduce metric attributes, or apply sampling.
 
 ## Related Resources
 
