@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Python, CLI, Zero-Code, Auto-Instrumentation, Opentelemetry
 
 Description: Master the opentelemetry-instrument CLI tool to add comprehensive observability to Python applications without modifying a single line of code, including configuration, best practices.
 
-The fastest way to add OpenTelemetry to your Python application is to not write any instrumentation code at all. The `opentelemetry-instrument` CLI automatically instruments your application by injecting tracing at runtime, detecting libraries you use, and configuring exporters through environment variables. You can go from zero observability to full distributed tracing in minutes.
+The fastest way to add OpenTelemetry to your Python application is to not write any instrumentation code at all. The `opentelemetry-instrument` CLI automatically instruments supported libraries in your application by injecting instrumentation at runtime, detecting libraries you use, and configuring exporters through environment variables. You can go from zero observability to distributed tracing in minutes.
 
 ## Why Zero-Code Instrumentation
 
@@ -17,7 +17,7 @@ The `opentelemetry-instrument` tool:
 - Instruments them before your application starts
 - Configures exporters from environment variables
 - Requires no code changes to your application
-- Works with any Python application
+- Works with Python applications that use supported instrumentation libraries
 
 ## Installation
 
@@ -71,8 +71,7 @@ Here's a complete configuration example:
 
 # Service identification
 export OTEL_SERVICE_NAME="payment-service"
-export OTEL_SERVICE_VERSION="1.2.3"
-export OTEL_DEPLOYMENT_ENVIRONMENT="production"
+export OTEL_RESOURCE_ATTRIBUTES="service.version=1.2.3,deployment.environment.name=production"
 
 # OTLP exporter configuration
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel-collector.company.com:4317"
@@ -91,7 +90,7 @@ export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
 export OTEL_TRACES_SAMPLER_ARG="0.1"
 
 # Resource attributes
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,team=payments,region=us-east-1"
+export OTEL_RESOURCE_ATTRIBUTES="service.version=1.2.3,deployment.environment.name=production,team=payments,region=us-east-1"
 
 # Run application
 opentelemetry-instrument python app.py
@@ -134,7 +133,7 @@ def get_user(user_id):
 @app.route("/slow")
 def slow_endpoint():
     """Simulate slow operation"""
-    # Even plain Python code inside HTTP handlers is traced
+    # Time spent in plain Python code is included in the HTTP server span
     time.sleep(random.uniform(0.1, 0.5))
     return jsonify({"status": "completed"})
 
@@ -168,7 +167,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 opentelemetry-instrument python app.py
 ```
 
-Every HTTP request, external call, and database query is automatically traced without modifying `app.py`.
+Supported HTTP server requests and external calls are automatically traced without modifying `app.py`.
 
 ## Database Auto-Instrumentation
 
@@ -178,7 +177,7 @@ Database queries are automatically instrumented when you use supported libraries
 # db_app.py - SQLAlchemy automatically instrumented
 from flask import Flask, jsonify
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 app = Flask(__name__)
@@ -200,11 +199,10 @@ Base.metadata.create_all(engine)
 def list_users():
     """
     Database queries are automatically traced.
-    Each SELECT statement creates a span with:
-    - Query text
+    Each SELECT statement creates a span with attributes such as:
+    - Query text, depending on semantic convention and configuration
     - Duration
-    - Database name
-    - Table names
+    - Database system and name
     """
     session = Session()
     users = session.query(User).all()
@@ -294,7 +292,7 @@ Run with Uvicorn and automatic instrumentation:
 ```bash
 export OTEL_SERVICE_NAME="async-app"
 
-# Instrument both FastAPI and Uvicorn automatically
+# Run Uvicorn with FastAPI instrumentation enabled
 opentelemetry-instrument uvicorn async_app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -315,11 +313,8 @@ export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SANITIZE_FIELDS="authorization,
 export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST="content-type,user-agent"
 export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE="content-type"
 
-# SQLAlchemy specific configuration
-export OTEL_PYTHON_SQLALCHEMY_CAPTURE_STATEMENT_PARAMS="true"
-
 # Logging integration
-export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true"
+export OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION="true"
 
 # Propagator configuration for distributed tracing
 export OTEL_PROPAGATORS="tracecontext,baggage"
@@ -330,29 +325,26 @@ opentelemetry-instrument python app.py
 
 ## Selective Instrumentation
 
-Control which libraries are instrumented using command-line flags.
+Control which libraries are instrumented using bootstrap output and environment variables.
 
 ```bash
-# List available instrumentors
-opentelemetry-instrument --list
+# List recommended instrumentation packages for installed libraries
+opentelemetry-bootstrap
 
 # This shows output like:
-# - flask
-# - requests
-# - sqlalchemy
-# - psycopg2
-# - redis
+# opentelemetry-instrumentation-flask==0.63b1
+# opentelemetry-instrumentation-requests==0.63b1
+# opentelemetry-instrumentation-sqlalchemy==0.63b1
+# opentelemetry-instrumentation-psycopg2==0.63b1
+# opentelemetry-instrumentation-redis==0.63b1
 # etc.
 
-# Instrument only specific libraries
-opentelemetry-instrument \
-    --instrumentors flask,requests \
-    python app.py
+# To instrument only specific libraries, install only those instrumentation packages
+pip install opentelemetry-instrumentation-flask opentelemetry-instrumentation-requests
 
 # Exclude specific instrumentors
-opentelemetry-instrument \
-    --exclude-instrumentors redis,celery \
-    python app.py
+export OTEL_PYTHON_DISABLED_INSTRUMENTATIONS="redis,celery"
+opentelemetry-instrument python app.py
 ```
 
 ## Debugging Instrumentation
@@ -373,11 +365,9 @@ opentelemetry-instrument python app.py
 You'll see output showing:
 
 ```text
-Instrumented flask
-Instrumented requests
-Instrumented sqlalchemy
-Instrumented urllib3
-Starting trace exporter to http://localhost:4317
+DEBUG:opentelemetry.instrumentation.auto_instrumentation:...
+DEBUG:opentelemetry.sdk._configuration:...
+DEBUG:opentelemetry.exporter.otlp:...
 ```
 
 ## Multi-Process Applications
@@ -497,7 +487,7 @@ spec:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector.observability:4317"
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "deployment.environment=production,k8s.namespace=$(NAMESPACE)"
+          value: "deployment.environment.name=production,k8s.namespace=$(NAMESPACE)"
         - name: NAMESPACE
           valueFrom:
             fieldRef:
@@ -564,10 +554,11 @@ opentelemetry-instrument python app.py
 ```bash
 # Solution: Enable debug logging
 export OTEL_LOG_LEVEL="debug"
+export OTEL_PYTHON_LOG_LEVEL="debug"
 opentelemetry-instrument python app.py
 
 # Check connectivity
-curl http://localhost:4317
+nc -vz localhost 4317
 ```
 
 **Issue**: Missing spans for certain operations.
@@ -608,8 +599,8 @@ export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer your-token"
 
 ```bash
 # Pin versions in requirements.txt
-opentelemetry-distro==0.42b0
-opentelemetry-exporter-otlp==1.21.0
+opentelemetry-distro==0.63b1
+opentelemetry-exporter-otlp==1.42.1
 ```
 
 **Document Configuration**: Keep a README with required environment variables and their purposes.
