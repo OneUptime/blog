@@ -27,12 +27,12 @@ scrape_configs:
 Graph these metrics:
 
 ```text
-process_resident_memory_bytes{job="otel-collector"}
-go_memstats_heap_inuse_bytes{job="otel-collector"}
-go_memstats_heap_objects{job="otel-collector"}
+otelcol_process_memory_rss{job="otel-collector"}
+otelcol_process_runtime_heap_alloc_bytes{job="otel-collector"}
+otelcol_process_runtime_total_sys_memory_bytes{job="otel-collector"}
 ```
 
-If `heap_objects` keeps growing, objects are being allocated but not freed.
+If heap allocation keeps growing without settling after garbage collection, objects are being retained.
 
 ### Step 2: Take Heap Snapshots
 
@@ -63,7 +63,7 @@ The diff shows you which allocations grew between the two snapshots.
 
 ### Cause 1: Internal Metric Accumulation
 
-The Collector tracks internal metrics about its own operation. Some of these metrics (like per-exporter stats) can accumulate unique label combinations over time:
+The Collector tracks internal metrics about its own operation. More verbose internal telemetry can emit more dimensions, so reduce the level if profiles show self-observability overhead:
 
 ```yaml
 service:
@@ -73,30 +73,37 @@ service:
       level: basic
 ```
 
-### Cause 2: Persistent Queue Metadata
+### Cause 2: Persistent Queue Backlog
 
-If you use the persistent sending queue, metadata about queued items stays in memory even after the items are exported:
+If you use the persistent sending queue, queued data is written to disk instead of only being buffered in memory. The queue and storage directory can still grow while the backend is unavailable or too slow:
 
 ```yaml
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/storage
+
 exporters:
   otlp:
     sending_queue:
       enabled: true
       storage: file_storage
       queue_size: 1000
+
+service:
+  extensions: [file_storage]
 ```
 
-Check the queue storage directory size over time. If it keeps growing, items are being queued faster than they are exported.
+Check `otelcol_exporter_queue_size`, `otelcol_exporter_queue_capacity`, and the queue storage directory size over time. If they keep growing, items are being queued faster than they are exported.
 
-### Cause 3: Resource Detection Caching
+### Cause 3: Resource Attribute Cardinality
 
-Resource detectors cache information about the environment. In dynamic environments (like Kubernetes with frequent pod churn), the cache can grow:
+Resource detection adds resource attributes to telemetry. In dynamic environments, avoid overwriting existing resource attributes with the Collector host's identity, and keep detector calls bounded with a timeout:
 
 ```yaml
 processors:
-  resourcedetection:
-    detectors: [env, system, docker, gcp, aws]
-    # Set a timeout to prevent stale cache growth
+  resource_detection:
+    detectors: [env, system, docker, gcp, ec2]
+    # Set a timeout so detector calls cannot hang the pipeline
     timeout: 5s
     override: false
 ```
@@ -114,9 +121,11 @@ connectors:
     - name: http.status_code
     # Set a metrics expiration to clean up stale entries
     metrics_expiration: 5m
+    # Expire stale dimension combinations
+    series_expiration: 5m
 ```
 
-The `metrics_expiration` setting is critical. Without it, the spanmetrics connector keeps state for every unique attribute combination it has ever seen.
+The `series_expiration` setting is critical for per-series cleanup. Without it, the spanmetrics connector can keep state for stale dimension combinations. `metrics_expiration` expires whole metrics after no new spans arrive for them.
 
 ## Establishing a Baseline
 
@@ -144,8 +153,8 @@ groups:
   - alert: CollectorMemoryCreep
     # Memory grew by more than 100MB in 24 hours
     expr: |
-      (process_resident_memory_bytes{job="otel-collector"} -
-       process_resident_memory_bytes{job="otel-collector"} offset 24h)
+      (otelcol_process_memory_rss{job="otel-collector"} -
+       otelcol_process_memory_rss{job="otel-collector"} offset 24h)
       > 100e6
     for: 1h
     labels:
@@ -185,4 +194,4 @@ This is a band-aid, not a fix. But it keeps the Collector running while you inve
 
 ## Summary
 
-Slow memory accumulation over weeks is caused by internal state that grows without bounds. Common culprits are connector state (like spanmetrics), Prometheus receiver series tracking, persistent queue metadata, and internal telemetry accumulation. Use heap profiles to identify the specific allocation, set expiration on connector state, limit internal telemetry, and schedule restarts as a safety net while investigating.
+Slow memory accumulation over weeks is caused by internal state that grows without bounds. Common culprits are connector state (like spanmetrics), Prometheus receiver series tracking, persistent queue backlog, and internal telemetry accumulation. Use heap profiles to identify the specific allocation, set expiration on connector state, limit internal telemetry, and schedule restarts as a safety net while investigating.
