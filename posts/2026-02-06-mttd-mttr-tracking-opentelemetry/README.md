@@ -38,13 +38,22 @@ The true start of an incident is not when someone notices it - it is when the sy
 # Detect incident start time from OTel metric history
 
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+def prometheus_time(dt):
+    """Return an RFC3339 timestamp that Prometheus can parse."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 def find_incident_start_time(prometheus_url, metric_name, service, alert_time):
     """
     Walk backward from alert_time to find when the metric first deviated.
     This gives us the true incident start, not just the detection time.
     """
+    if alert_time.tzinfo is None:
+        alert_time = alert_time.replace(tzinfo=timezone.utc)
+
     # Look back up to 1 hour before the alert
     lookback_start = alert_time - timedelta(hours=1)
 
@@ -53,16 +62,24 @@ def find_incident_start_time(prometheus_url, metric_name, service, alert_time):
         f"{prometheus_url}/api/v1/query_range",
         params={
             "query": query,
-            "start": lookback_start.isoformat(),
-            "end": alert_time.isoformat(),
+            "start": prometheus_time(lookback_start),
+            "end": prometheus_time(alert_time),
             "step": "15s"
         }
     )
+    response.raise_for_status()
 
-    data_points = response.json()["data"]["result"][0]["values"]
+    results = response.json()["data"]["result"]
+    if not results:
+        return alert_time
+
+    data_points = results[0]["values"]
+    if len(data_points) < 2:
+        return alert_time
 
     # Compute the baseline from the first portion of the lookback window
-    baseline_values = [float(v) for _, v in data_points[:60]]  # First 15 minutes
+    baseline_points = data_points[:60]  # First 15 minutes at a 15s step
+    baseline_values = [float(v) for _, v in baseline_points]
     baseline_mean = sum(baseline_values) / len(baseline_values)
     baseline_std = (sum((v - baseline_mean)**2 for v in baseline_values) / len(baseline_values)) ** 0.5
 
@@ -71,7 +88,7 @@ def find_incident_start_time(prometheus_url, metric_name, service, alert_time):
     # Find the first data point that exceeded the threshold
     for timestamp, value in data_points:
         if float(value) > threshold:
-            return datetime.fromtimestamp(float(timestamp))
+            return datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
 
     # If nothing found, use the alert time as fallback
     return alert_time
@@ -84,7 +101,7 @@ Emit OpenTelemetry metrics at each phase transition of an incident. These metric
 ```python
 # Instrument incident lifecycle transitions as OTel metrics
 from opentelemetry import metrics, trace
-from datetime import datetime
+from datetime import datetime, timezone
 
 meter = metrics.get_meter("incident.lifecycle")
 tracer = trace.get_tracer("incident.lifecycle")
@@ -116,6 +133,9 @@ class IncidentTracker:
 
     def on_alert_fired(self, incident_id, alert_time, service, severity):
         """Called when an alert fires and creates an incident."""
+        if alert_time.tzinfo is None:
+            alert_time = alert_time.replace(tzinfo=timezone.utc)
+
         # Find when the problem actually started
         actual_start = find_incident_start_time(
             PROMETHEUS_URL,
@@ -140,6 +160,9 @@ class IncidentTracker:
 
     def on_acknowledged(self, incident_id, ack_time):
         """Called when an engineer acknowledges the incident."""
+        if ack_time.tzinfo is None:
+            ack_time = ack_time.replace(tzinfo=timezone.utc)
+
         incident = self.incidents[incident_id]
         mtta_seconds = (ack_time - incident["detected_at"]).total_seconds()
         mtta_histogram.record(mtta_seconds, attributes={
@@ -150,6 +173,9 @@ class IncidentTracker:
 
     def on_resolved(self, incident_id, resolve_time):
         """Called when the incident is resolved."""
+        if resolve_time.tzinfo is None:
+            resolve_time = resolve_time.replace(tzinfo=timezone.utc)
+
         incident = self.incidents[incident_id]
         mttr_seconds = (resolve_time - incident["start_time"]).total_seconds()
         mttr_histogram.record(mttr_seconds, attributes={
@@ -164,6 +190,9 @@ Just as the incident start time can be determined from metrics, so can the resol
 
 ```python
 # Auto-detect incident resolution from OTel metrics
+import requests
+from datetime import datetime, timezone
+
 def watch_for_resolution(prometheus_url, metric_name, service, threshold, check_interval=30):
     """
     Poll the metric and detect when it returns to normal levels.
@@ -179,12 +208,19 @@ def watch_for_resolution(prometheus_url, metric_name, service, threshold, check_
             f"{prometheus_url}/api/v1/query",
             params={"query": f'{metric_name}{{service_name="{service}"}}'}
         )
-        current_value = float(response.json()["data"]["result"][0]["value"][1])
+        response.raise_for_status()
+        results = response.json()["data"]["result"]
+        if not results:
+            consecutive_normal = 0
+            time.sleep(check_interval)
+            continue
+
+        current_value = float(results[0]["value"][1])
 
         if current_value < threshold:
             consecutive_normal += 1
             if consecutive_normal >= required_consecutive:
-                return datetime.utcnow()
+                return datetime.now(timezone.utc)
         else:
             consecutive_normal = 0
 
@@ -195,25 +231,29 @@ def watch_for_resolution(prometheus_url, metric_name, service, threshold, check_
 
 Once you are recording these metrics, compute weekly and monthly trends to track improvement over time.
 
+These queries assume the common Prometheus translation for OpenTelemetry metrics, where dots in metric and attribute names become underscores.
+
 ```promql
 # Weekly average MTTD by severity (in minutes)
-avg by (incident_severity) (
+sum by (incident_severity) (
   rate(incident_mttd_seconds_sum[7d])
-  /
+) /
+sum by (incident_severity) (
   rate(incident_mttd_seconds_count[7d])
 ) / 60
 
 # Weekly average MTTR by service (in minutes)
-avg by (service_name) (
+sum by (service_name) (
   rate(incident_mttr_seconds_sum[7d])
-  /
+) /
+sum by (service_name) (
   rate(incident_mttr_seconds_count[7d])
 ) / 60
 
 # MTTR percentiles over the last 30 days
-histogram_quantile(0.50, rate(incident_mttr_seconds_bucket[30d]))
-histogram_quantile(0.90, rate(incident_mttr_seconds_bucket[30d]))
-histogram_quantile(0.99, rate(incident_mttr_seconds_bucket[30d]))
+histogram_quantile(0.50, sum by (le) (rate(incident_mttr_seconds_bucket[30d]))) / 60
+histogram_quantile(0.90, sum by (le) (rate(incident_mttr_seconds_bucket[30d]))) / 60
+histogram_quantile(0.99, sum by (le) (rate(incident_mttr_seconds_bucket[30d]))) / 60
 ```
 
 ## Using MTTD/MTTR to Drive Improvements
