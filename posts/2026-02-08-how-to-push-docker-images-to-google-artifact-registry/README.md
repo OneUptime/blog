@@ -8,7 +8,7 @@ Description: A step-by-step guide to pushing Docker images to Google Artifact Re
 
 ---
 
-Google Artifact Registry is the successor to Google Container Registry (GCR). It supports Docker images along with other artifact formats like Maven, npm, and Python packages. If you deploy to Google Cloud (GKE, Cloud Run, or Compute Engine), Artifact Registry is the natural choice for storing your container images. It integrates with IAM for fine-grained access control and provides vulnerability scanning out of the box.
+Google Artifact Registry is the successor to Google Container Registry (GCR). It supports Docker images along with other artifact formats like Maven, npm, and Python packages. If you deploy to Google Cloud (GKE, Cloud Run, or Compute Engine), Artifact Registry is the natural choice for storing your container images. It integrates with IAM for fine-grained access control and provides vulnerability scanning when Artifact Analysis is enabled.
 
 This guide covers everything from initial setup to automated CI/CD pushes.
 
@@ -19,7 +19,7 @@ You need the Google Cloud CLI (gcloud) installed and a GCP project:
 ```bash
 # Install gcloud CLI (macOS)
 
-brew install google-cloud-sdk
+brew install --cask gcloud-cli
 
 # Or download from https://cloud.google.com/sdk/docs/install
 
@@ -149,10 +149,14 @@ jobs:
 
       # Authenticate with Google Cloud using Workload Identity Federation
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
+          project_id: ${{ env.PROJECT_ID }}
           workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github/providers/my-provider'
           service_account: 'github-actions@my-project-123.iam.gserviceaccount.com'
+
+      # Install and configure the Google Cloud CLI
+      - uses: google-github-actions/setup-gcloud@v3
 
       # Set up Docker to authenticate with Artifact Registry
       - name: Configure Docker
@@ -177,7 +181,7 @@ jobs:
 ```yaml
 # Alternative: authenticate with a service account key JSON
 - name: Auth with service account
-  uses: google-github-actions/auth@v2
+  uses: google-github-actions/auth@v3
   with:
     credentials_json: ${{ secrets.GCP_SA_KEY }}
 ```
@@ -205,8 +209,9 @@ Other services and machines can pull images after authentication:
 gcloud auth configure-docker us-central1-docker.pkg.dev
 docker pull us-central1-docker.pkg.dev/my-project-123/my-docker-repo/myapp:v1.0.0
 
-# Pull from GKE (automatic if in the same project)
-# GKE nodes have automatic pull access to Artifact Registry in the same project
+# Pull from GKE
+# Same-project GKE clusters can pull automatically when they use a supported
+# GKE version, the default node service account, and storage read access.
 ```
 
 ## Vulnerability Scanning
@@ -237,25 +242,23 @@ gcloud artifacts repositories set-cleanup-policies my-docker-repo \
 Create a cleanup policy file:
 
 ```json
-{
-  "cleanupPolicies": [
-    {
-      "id": "delete-old-images",
-      "action": {"type": "Delete"},
-      "condition": {
-        "olderThan": "7776000s",
-        "tagState": "ANY"
-      }
-    },
-    {
-      "id": "keep-minimum-versions",
-      "action": {"type": "Keep"},
-      "mostRecentVersions": {
-        "keepCount": 5
-      }
+[
+  {
+    "name": "delete-old-images",
+    "action": {"type": "Delete"},
+    "condition": {
+      "olderThan": "90d",
+      "tagState": "any"
     }
-  ]
-}
+  },
+  {
+    "name": "keep-minimum-versions",
+    "action": {"type": "Keep"},
+    "mostRecentVersions": {
+      "keepCount": 5
+    }
+  }
+]
 ```
 
 ## Multi-Architecture Images
@@ -274,4 +277,4 @@ docker buildx build \
     .
 ```
 
-Google Artifact Registry is the recommended container registry for any GCP workload. The IAM integration provides security by default, the vulnerability scanning catches issues before deployment, and the gcloud credential helper makes authentication seamless. Set it up once, automate your pushes with CI/CD, and your images are ready for GKE, Cloud Run, or any other Google Cloud service.
+Google Artifact Registry is the recommended container registry for any GCP workload. The IAM integration provides security by default, vulnerability scanning catches issues before deployment when enabled, and the gcloud credential helper makes authentication seamless. Set it up once, automate your pushes with CI/CD, and your images are ready for GKE, Cloud Run, or any other Google Cloud service.
