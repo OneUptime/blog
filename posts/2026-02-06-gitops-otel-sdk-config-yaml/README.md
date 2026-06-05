@@ -28,7 +28,7 @@ observability-config/
   shared/
     base-config.yaml                    # shared defaults
   scripts/
-    validate.sh
+    validate.py
   .github/
     workflows/
       validate-and-deploy.yaml
@@ -55,22 +55,24 @@ Make your change. For example, increasing the sampling ratio:
 
 ```yaml
 # services/order-service/otel-config.yaml
-file_format: "0.3"
+file_format: "1.1"
 
 resource:
   attributes:
-    service.name: "order-service"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "order-service"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment
+      value: "${DEPLOY_ENV}"
 
 tracer_provider:
   processors:
     - batch:
         schedule_delay: 5000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
   sampler:
     parent_based:
@@ -118,7 +120,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install validation tools
-        run: pip install jsonschema pyyaml
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base
+          pip install jsonschema pyyaml
 
       - name: Validate all config files
         run: |
@@ -171,7 +176,7 @@ jobs:
 
 ## ArgoCD Integration
 
-If you use ArgoCD for GitOps, your OpenTelemetry config files naturally fit into the Application model:
+If you use ArgoCD for GitOps, your OpenTelemetry config files naturally fit into the Application model once they are rendered as Kubernetes manifests, such as ConfigMaps:
 
 ```yaml
 # argocd/otel-configs.yaml
@@ -185,7 +190,7 @@ spec:
   source:
     repoURL: https://github.com/your-org/observability-config.git
     targetRevision: main
-    path: services
+    path: k8s/otel-configs
     directory:
       recurse: true
   destination:
@@ -199,7 +204,7 @@ spec:
       - CreateNamespace=true
 ```
 
-ArgoCD watches the repository and automatically syncs configuration changes when they are merged to main.
+ArgoCD watches the repository and automatically syncs rendered configuration manifests when they are merged to main.
 
 ## CODEOWNERS for Review Requirements
 
