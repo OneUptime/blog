@@ -17,7 +17,8 @@ A typical lab result routing flow looks like this: Instrument produces result, L
 ## Instrumenting Result Ingestion from Analyzers
 
 ```python
-from opentelemetry import trace, metrics
+from opentelemetry import trace, metrics, context
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -153,19 +154,37 @@ def route_result(validated_result):
 
         # Route to each destination and track results
         routing_results = {}
+        parent_context = context.get_current()
+
+        def send_with_parent_context(dest):
+            token = context.attach(parent_context)
+            try:
+                return send_to_destination(validated_result, dest)
+            finally:
+                context.detach(token)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             future_to_dest = {}
             for dest in destinations:
-                future = executor.submit(send_to_destination, validated_result, dest)
+                future = executor.submit(send_with_parent_context, dest)
                 future_to_dest[future] = dest
 
-            for future in concurrent.futures.as_completed(future_to_dest):
-                dest = future_to_dest[future]
-                try:
-                    result = future.result(timeout=30)
-                    routing_results[dest] = result
-                except Exception as e:
-                    routing_results[dest] = {"status": "error", "error": str(e)}
+            try:
+                for future in concurrent.futures.as_completed(future_to_dest, timeout=30):
+                    dest = future_to_dest[future]
+                    try:
+                        result = future.result()
+                        routing_results[dest] = result
+                    except Exception as e:
+                        routing_results[dest] = {"status": "error", "error": str(e)}
+            except concurrent.futures.TimeoutError:
+                for future, dest in future_to_dest.items():
+                    if not future.done():
+                        future.cancel()
+                        routing_results[dest] = {
+                            "status": "error",
+                            "error": "routing timed out",
+                        }
 
         # Record routing outcomes
         for dest, result in routing_results.items():
@@ -209,7 +228,7 @@ def send_to_destination(result, destination):
             return {"status": "delivered", "ack": response.get("acked", False)}
 
         except Exception as e:
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.set_attribute("lis.routing.status", "failed")
             span.set_attribute("lis.routing.error", str(e))
             raise
@@ -217,7 +236,7 @@ def send_to_destination(result, destination):
 
 ## Tracking Critical Value Notification Compliance
 
-Hospitals have regulatory requirements for how quickly critical lab values must be communicated to clinicians. Trace this specifically:
+Hospitals have regulatory requirements and local policies for how quickly critical lab values must be communicated to clinicians. Trace this specifically:
 
 ```python
 def send_critical_alert(result):
@@ -230,7 +249,7 @@ def send_critical_alert(result):
         alert_delay_seconds = time.time() - result_time
         span.set_attribute("lis.critical_alert.delay_seconds", alert_delay_seconds)
 
-        # Most hospitals require critical value notification within 30 minutes
+        # Many hospitals set a policy target such as 30 minutes
         if alert_delay_seconds > 1800:
             span.add_event("critical_alert_sla_breach", {
                 "delay_seconds": alert_delay_seconds,
