@@ -6,7 +6,7 @@ Tags: OpenTelemetry, gRPC, Retry Policies, Per-Attempt Metrics
 
 Description: Track gRPC retry policies and per-attempt metrics with OpenTelemetry to understand retry behavior and spot failing backends.
 
-gRPC has built-in retry support through service configs. When a call fails with a retryable status code, the client automatically retries it. But how do you know if retries are actually happening? Are they succeeding on the second attempt or burning through all attempts and still failing? OpenTelemetry metrics give you per-call and per-attempt visibility into retry behavior.
+gRPC has built-in retry support through service configs. When a call fails with a retryable status code, the client automatically retries it. But how do you know if retries are actually happening? Are they succeeding on the second attempt or burning through all attempts and still failing? gRPC's built-in OpenTelemetry metrics give you per-call and per-attempt visibility into service-config retry behavior. The custom examples below show the same per-call and per-attempt shape for manual retry loops.
 
 ## gRPC Retry Configuration
 
@@ -33,9 +33,15 @@ First, here is what a gRPC retry policy looks like in the service config:
 package main
 
 import (
+    "context"
+    "time"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
 )
 
 var meter = otel.Meter("grpc.retry.monitoring")
@@ -95,19 +101,12 @@ func check(err error) {
 }
 ```
 
-## Interceptor That Tracks Retries
+## Interceptor That Tracks Manual Retries
 
 ```go
-import (
-    "context"
-    "time"
-
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
-)
-
 func retryTrackingInterceptor() grpc.UnaryClientInterceptor {
+    const maxAttempts = 4
+
     return func(
         ctx context.Context,
         method string,
@@ -120,20 +119,20 @@ func retryTrackingInterceptor() grpc.UnaryClientInterceptor {
         attemptCount := 0
         var lastErr error
 
-        // The built-in gRPC retry is transparent, so we track at this level
-        // For manual retry tracking, wrap the invoker
-        for attempt := 0; attempt < 4; attempt++ {
+        // Service-config retries happen inside gRPC and are not exposed as
+        // separate invoker calls. This loop is for manual retries.
+        for attempt := 0; attempt < maxAttempts; attempt++ {
             attemptCount++
             attemptStart := time.Now()
 
             err := invoker(ctx, method, req, reply, cc, opts...)
             attemptElapsed := float64(time.Since(attemptStart).Milliseconds())
+            code := status.Code(err)
 
-            st, _ := status.FromError(err)
             attemptAttrs := []attribute.KeyValue{
                 attribute.String("grpc.method", method),
                 attribute.Int("grpc.retry.attempt_number", attempt+1),
-                attribute.String("grpc.status_code", st.Code().String()),
+                attribute.String("grpc.status_code", code.String()),
             }
 
             attemptTotal.Add(ctx, 1, metric.WithAttributes(attemptAttrs...))
@@ -148,7 +147,7 @@ func retryTrackingInterceptor() grpc.UnaryClientInterceptor {
             lastErr = err
 
             // Check if the error is retryable
-            if !isRetryable(st.Code()) {
+            if !isRetryable(code) || attempt == maxAttempts-1 {
                 break
             }
 
@@ -158,11 +157,7 @@ func retryTrackingInterceptor() grpc.UnaryClientInterceptor {
 
         // Record per-call metrics
         callElapsed := float64(time.Since(callStart).Milliseconds())
-        finalStatus := "OK"
-        if lastErr != nil {
-            st, _ := status.FromError(lastErr)
-            finalStatus = st.Code().String()
-        }
+        finalStatus := status.Code(lastErr).String()
 
         callAttrs := []attribute.KeyValue{
             attribute.String("grpc.method", method),
@@ -194,7 +189,7 @@ func backoff(attempt int) time.Duration {
 }
 ```
 
-## Python Implementation
+## Python Manual Retry Wrapper
 
 ```python
 import grpc
@@ -209,69 +204,72 @@ attempts_per_call = meter.create_histogram("grpc.client.call.attempts")
 attempt_total = meter.create_counter("grpc.client.attempt.total")
 attempt_duration = meter.create_histogram("grpc.client.attempt.duration", unit="ms")
 
-class RetryTrackingInterceptor(grpc.UnaryUnaryClientInterceptor):
-    def __init__(self, max_retries=3, retryable_codes=None):
-        self.max_retries = max_retries
-        self.retryable_codes = retryable_codes or [
-            grpc.StatusCode.UNAVAILABLE,
-            grpc.StatusCode.DEADLINE_EXCEEDED,
-        ]
+def call_with_retry(stub_method, request, method_name, max_retries=3, retryable_codes=None):
+    retryable_codes = retryable_codes or [
+        grpc.StatusCode.UNAVAILABLE,
+        grpc.StatusCode.DEADLINE_EXCEEDED,
+    ]
+    call_start = time.time()
+    attempt_count = 0
+    last_error = None
 
-    def intercept_unary_unary(self, continuation, client_call_details, request):
-        call_start = time.time()
-        attempt_count = 0
-        last_error = None
+    for attempt in range(max_retries + 1):
+        attempt_count += 1
+        attempt_start = time.time()
 
-        for attempt in range(self.max_retries + 1):
-            attempt_count += 1
-            attempt_start = time.time()
+        try:
+            response = stub_method(request)
+            attempt_ms = (time.time() - attempt_start) * 1000
 
-            try:
-                response = continuation(client_call_details, request)
-                attempt_ms = (time.time() - attempt_start) * 1000
+            attempt_total.add(1, {
+                "grpc.method": method_name,
+                "grpc.retry.attempt_number": attempt + 1,
+                "grpc.status_code": "OK",
+            })
+            attempt_duration.record(attempt_ms, {
+                "grpc.method": method_name,
+                "grpc.retry.attempt_number": attempt + 1,
+                "grpc.status_code": "OK",
+            })
 
-                attempt_total.add(1, {
-                    "grpc.method": client_call_details.method,
-                    "grpc.retry.attempt_number": attempt + 1,
-                    "grpc.status_code": "OK",
-                })
-                attempt_duration.record(attempt_ms, {
-                    "grpc.method": client_call_details.method,
-                    "grpc.retry.attempt_number": attempt + 1,
-                })
+            last_error = None
+            break
 
-                last_error = None
+        except grpc.RpcError as e:
+            attempt_ms = (time.time() - attempt_start) * 1000
+            status_code = e.code().name
+
+            attempt_total.add(1, {
+                "grpc.method": method_name,
+                "grpc.retry.attempt_number": attempt + 1,
+                "grpc.status_code": status_code,
+            })
+            attempt_duration.record(attempt_ms, {
+                "grpc.method": method_name,
+                "grpc.retry.attempt_number": attempt + 1,
+                "grpc.status_code": status_code,
+            })
+
+            last_error = e
+            if e.code() not in retryable_codes or attempt == max_retries:
                 break
 
-            except grpc.RpcError as e:
-                attempt_ms = (time.time() - attempt_start) * 1000
-                status_code = e.code().name
+    final_status = "OK" if last_error is None else last_error.code().name
+    call_attrs = {
+        "grpc.method": method_name,
+        "grpc.final_status_code": final_status,
+        "grpc.retry.occurred": str(attempt_count > 1).lower(),
+    }
 
-                attempt_total.add(1, {
-                    "grpc.method": client_call_details.method,
-                    "grpc.retry.attempt_number": attempt + 1,
-                    "grpc.status_code": status_code,
-                })
-                attempt_duration.record(attempt_ms, {
-                    "grpc.method": client_call_details.method,
-                })
+    # Record per-call metrics
+    call_ms = (time.time() - call_start) * 1000
+    calls_total.add(1, call_attrs)
+    call_duration.record(call_ms, call_attrs)
+    attempts_per_call.record(attempt_count, call_attrs)
 
-                last_error = e
-                if e.code() not in self.retryable_codes:
-                    break
-
-        # Record per-call metrics
-        call_ms = (time.time() - call_start) * 1000
-        calls_total.add(1, {
-            "grpc.method": client_call_details.method,
-            "grpc.retry.occurred": str(attempt_count > 1),
-        })
-        call_duration.record(call_ms, {"grpc.method": client_call_details.method})
-        attempts_per_call.record(attempt_count, {"grpc.method": client_call_details.method})
-
-        if last_error:
-            raise last_error
-        return response
+    if last_error:
+        raise last_error
+    return response
 ```
 
 ## Key Queries
@@ -284,10 +282,14 @@ sum(rate(grpc_client_call_total{grpc_retry_occurred="true"}[5m]))
 sum(rate(grpc_client_call_total[5m]))
 
 # Average attempts per call (should be close to 1 if things are healthy)
-histogram_avg(grpc_client_call_attempts[5m])
+sum(rate(grpc_client_call_attempts_sum[5m]))
+/
+sum(rate(grpc_client_call_attempts_count[5m]))
 
 # Attempt success rate by attempt number (do retries actually help?)
 sum(rate(grpc_client_attempt_total{grpc_status_code="OK"}[5m])) by (grpc_retry_attempt_number)
+/
+sum(rate(grpc_client_attempt_total[5m])) by (grpc_retry_attempt_number)
 ```
 
 These metrics tell you whether your retry policy is actually helping or just adding latency. If the success rate on attempt 2 is nearly the same as attempt 1, your retries are wasting time and you should look at the root cause instead.
