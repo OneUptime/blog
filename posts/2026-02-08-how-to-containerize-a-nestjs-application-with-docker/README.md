@@ -14,8 +14,8 @@ NestJS is a progressive Node.js framework for building server-side applications.
 
 You need the following installed:
 
-- Node.js 18+ and npm
-- Docker Engine 20.10+
+- Node.js 20.11+ and npm
+- Docker Engine with Docker Compose v2+
 - NestJS CLI (`npm install -g @nestjs/cli`)
 
 ## Creating a NestJS Project
@@ -79,7 +79,7 @@ COPY . .
 RUN npm run build
 
 # Prune dev dependencies after build
-RUN npm prune --production
+RUN npm prune --omit=dev
 ```
 
 The third stage creates the lean production image:
@@ -156,8 +156,6 @@ Most NestJS applications connect to a database. Here is a Compose file that runs
 This Compose file sets up the NestJS app with PostgreSQL and proper networking:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     build:
@@ -236,8 +234,6 @@ For local development, you want hot reload with `nest start --watch`. Set up a d
 This configuration mounts your source code and runs the dev server:
 
 ```yaml
-version: "3.8"
-
 services:
   app-dev:
     build:
@@ -278,8 +274,8 @@ COPY . .
 
 EXPOSE 3000 9229
 
-# Run the NestJS dev server with file watching and debug port
-CMD ["npm", "run", "start:dev"]
+# Run the NestJS dev server with file watching and the debug port
+CMD ["npm", "run", "start:debug"]
 ```
 
 Port 9229 allows you to attach a debugger from your IDE.
@@ -299,14 +295,11 @@ Create a health controller:
 ```typescript
 // src/health/health.controller.ts
 import { Controller, Get } from '@nestjs/common';
-import { HealthCheck, HealthCheckService, HttpHealthIndicator } from '@nestjs/terminus';
+import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 
 @Controller('health')
 export class HealthController {
-  constructor(
-    private health: HealthCheckService,
-    private http: HttpHealthIndicator,
-  ) {}
+  constructor(private health: HealthCheckService) {}
 
   @Get()
   @HealthCheck()
@@ -315,6 +308,21 @@ export class HealthController {
     return this.health.check([]);
   }
 }
+```
+
+Register it in a health module and import that module into your `AppModule`:
+
+```typescript
+// src/health/health.module.ts
+import { Module } from '@nestjs/common';
+import { TerminusModule } from '@nestjs/terminus';
+import { HealthController } from './health.controller';
+
+@Module({
+  imports: [TerminusModule],
+  controllers: [HealthController],
+})
+export class HealthModule {}
 ```
 
 Add a health check to your Docker Compose service:
@@ -352,7 +360,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-Docker sends a SIGTERM signal when stopping a container. NestJS will catch it and close database connections, finish pending requests, and shut down cleanly.
+Docker sends a SIGTERM signal when stopping a container, followed by SIGKILL if the container does not exit before the stop timeout. With shutdown hooks enabled, NestJS invokes lifecycle hooks so providers can close resources such as database connections, and the HTTP adapter waits for in-flight responses to finish before closing.
 
 ## Optimizing the Image
 
@@ -365,7 +373,7 @@ docker images my-nest-app
 A well-built NestJS image typically weighs 150-200MB. Most of that is Node.js and production `node_modules`. To reduce it further:
 
 - Use `node:20-alpine` (not the full Debian-based image)
-- Run `npm prune --production` after building to strip dev dependencies
+- Run `npm prune --omit=dev` after building to strip dev dependencies
 - Avoid installing unnecessary system packages
 
 ## Security Hardening
@@ -373,10 +381,10 @@ A well-built NestJS image typically weighs 150-200MB. Most of that is Node.js an
 Run as a non-root user (already included in the Dockerfile above). Additionally:
 
 ```dockerfile
-# Drop all capabilities and run read-only where possible
+# Keep the runtime user unprivileged
 USER appuser
 
-# Set NODE_ENV to production to disable debug features
+# Set NODE_ENV to production so libraries can apply production behavior
 ENV NODE_ENV=production
 ```
 
