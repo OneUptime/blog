@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Prometheus, TSDB, Server Health
 
 Description: Monitor Prometheus server health metrics including TSDB compaction, WAL size, and scrape duration using the OpenTelemetry Collector for proactive alerting.
 
-Prometheus exposes metrics about its own health through the same `/metrics` endpoint it uses for service discovery. These self-monitoring metrics cover TSDB performance, WAL (Write-Ahead Log) status, scrape job health, and resource usage. Collecting them with the OpenTelemetry Collector gives you an independent monitoring path that works even if Prometheus itself is struggling.
+Prometheus exposes metrics about its own health through the same `/metrics` endpoint it uses for scraping. These self-monitoring metrics cover TSDB performance, WAL (Write-Ahead Log) status, scrape job health, and resource usage. Collecting them with the OpenTelemetry Collector gives you an independent monitoring path that works even if Prometheus itself is struggling.
 
 ## Why Monitor Prometheus Separately
 
@@ -108,10 +108,12 @@ service:
 
 ```yaml
 - alert: PrometheusHighCardinality
-  condition: prometheus_tsdb_head_series > 2000000
+  expr: prometheus_tsdb_head_series > 2000000
   for: 10m
-  severity: warning
-  message: "Prometheus has {{ value }} active time series. Consider reducing cardinality."
+  labels:
+    severity: warning
+  annotations:
+    message: "Prometheus has {{ $value }} active time series. Consider reducing cardinality."
 ```
 
 High cardinality slows queries and increases memory usage. Track this metric over time to detect gradual growth.
@@ -120,29 +122,35 @@ High cardinality slows queries and increases memory usage. Track this metric ove
 
 ```yaml
 - alert: PrometheusWALCorruption
-  condition: increase(prometheus_tsdb_wal_corruptions_total[1h]) > 0
-  severity: critical
-  message: "WAL corruption detected. Prometheus may lose recent data."
+  expr: increase(prometheus_tsdb_wal_corruptions_total[1h]) > 0
+  labels:
+    severity: critical
+  annotations:
+    message: "WAL corruption detected. Prometheus may lose recent data."
 ```
 
 ### Slow Compactions
 
 ```yaml
 - alert: PrometheusSlowCompaction
-  condition: prometheus_tsdb_compaction_duration_seconds > 600
+  expr: histogram_quantile(0.99, rate(prometheus_tsdb_compaction_duration_seconds_bucket[15m])) > 600
   for: 5m
-  severity: warning
-  message: "TSDB compaction taking over 10 minutes."
+  labels:
+    severity: warning
+  annotations:
+    message: "Recent TSDB compactions are taking over 10 minutes."
 ```
 
 ### Scrape Failures
 
 ```yaml
 - alert: PrometheusScrapeFailures
-  condition: up == 0
+  expr: up == 0
   for: 5m
-  severity: critical
-  message: "Target {{ target }} is down."
+  labels:
+    severity: critical
+  annotations:
+    message: "Target {{ $labels.instance }} is down."
 ```
 
 ## Docker Compose Example
@@ -162,7 +170,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     volumes:
-      - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - "4317:4317"
 
@@ -186,10 +194,10 @@ When storage grows unexpectedly, it usually means a new high-cardinality metric 
 ```text
 prometheus_engine_query_duration_seconds - Query execution time
 prometheus_engine_queries_concurrent_max - Max concurrent queries allowed
-prometheus_engine_queries               - Total queries executed
+prometheus_engine_queries               - Current queries executing or waiting
 ```
 
-If `query_duration_seconds` is consistently high for certain query types, it may indicate that your PromQL queries need optimization or that cardinality is too high.
+If `prometheus_engine_query_duration_seconds` is consistently high for certain query types, it may indicate that your PromQL queries need optimization or that cardinality is too high.
 
 ## Summary
 
