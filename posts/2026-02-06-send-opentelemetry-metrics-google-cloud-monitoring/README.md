@@ -31,7 +31,7 @@ Before you start, make sure you have the following in place:
 
 - A Google Cloud project with the Cloud Monitoring API enabled.
 - A service account with the `roles/monitoring.metricWriter` role.
-- The OpenTelemetry Collector binary or Docker image (v0.90.0 or later recommended).
+- The OpenTelemetry Collector binary or Docker image. Use a current `otelcol-contrib` release so the `googlecloud` exporter is included.
 - Your application instrumented with the OpenTelemetry SDK for your language.
 
 ## Approach 1: Using the OpenTelemetry Collector
@@ -45,10 +45,10 @@ If you are running on a GCE instance or GKE cluster, the easiest method is to de
 ```bash
 # Download the contrib distribution which includes the googlecloud exporter
 
-curl -LO https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz
+curl -LO https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_linux_amd64.tar.gz
 
 # Extract the binary
-tar -xzf otelcol-contrib_0.96.0_linux_amd64.tar.gz
+tar -xzf otelcol-contrib_0.153.0_linux_amd64.tar.gz
 ```
 
 ### Step 2: Configure the Collector
@@ -83,7 +83,7 @@ exporters:
     # Specify your GCP project ID
     project: your-gcp-project-id
     metric:
-      # Use the service name as a prefix for custom metrics
+      # Use a custom metric type prefix
       prefix: custom.googleapis.com/opentelemetry
 
 service:
@@ -109,6 +109,10 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
 ### Step 4: Configure Your Application
 
 Point your application's OTLP exporter to the Collector's address. Here is an example in Python.
+
+```bash
+pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
+```
 
 ```python
 from opentelemetry import metrics
@@ -161,10 +165,10 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.cloud_monitoring import CloudMonitoringMetricsExporter
 
 # Create the GCP Cloud Monitoring exporter
-# It will auto-detect the project from GOOGLE_CLOUD_PROJECT or metadata server
+# It uses Application Default Credentials for authentication
 exporter = CloudMonitoringMetricsExporter(project_id="your-gcp-project-id")
 
-# Export metrics every 60 seconds (Cloud Monitoring has a minimum 10s interval)
+# Export metrics every 60 seconds
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=60000)
 
 # Set up the meter provider with the reader
@@ -199,7 +203,7 @@ OpenTelemetry metric types map to Google Cloud Monitoring types as follows:
 
 Understanding this mapping matters because Cloud Monitoring treats cumulative and gauge metrics differently in queries and dashboards. Counters become cumulative time series, which means Cloud Monitoring tracks their rate of change automatically.
 
-Resource Detection
+## Resource Detection
 
 When running on GCP infrastructure, the `resourcedetection` processor in the Collector can automatically populate resource attributes like `cloud.provider`, `cloud.region`, `host.id`, and `cloud.availability_zone`. This metadata shows up in Cloud Monitoring as monitored resource labels, making it much easier to filter and group metrics by instance, zone, or service.
 
@@ -220,7 +224,7 @@ processors:
 
 ## Viewing Metrics in Cloud Monitoring
 
-Once metrics start flowing, head to the Google Cloud Console and open Monitoring. Navigate to Metrics Explorer and search for your custom metric name. Custom metrics created through OpenTelemetry appear under the `custom.googleapis.com/opentelemetry` prefix (or whatever prefix you configured in the exporter).
+Once metrics start flowing, head to the Google Cloud Console and open Monitoring. Navigate to Metrics Explorer and search for your custom metric name. With the Collector configuration above, metrics appear under the `custom.googleapis.com/opentelemetry` prefix. If you use the direct Python exporter without setting `prefix`, it uses `workload.googleapis.com` by default.
 
 You can build dashboards, set up alerting policies, and create SLOs using these metrics just like any other Cloud Monitoring metric.
 
@@ -228,7 +232,7 @@ You can build dashboards, set up alerting policies, and create SLOs using these 
 
 There are a few things that trip people up when setting up this pipeline.
 
-First, Cloud Monitoring enforces a minimum write interval of 10 seconds per time series. If you push data more frequently, the API will reject the extra points. Set your export interval to at least 10 seconds, and preferably 30 or 60 seconds.
+First, Cloud Monitoring requires the end times of points written to the same time series to be at least 5 seconds apart. The Python Cloud Monitoring exporter also uses a 10-second write interval internally when protecting against duplicate writes to the same metric name. Set your export interval to at least 10 seconds, and preferably 30 or 60 seconds.
 
 Second, metric descriptor limits can be a problem. Each GCP project has a limit of 10,000 custom metric descriptors. If your OpenTelemetry instrumentation creates metrics with high-cardinality attributes (like user IDs in labels), you can quickly hit that limit. Keep attribute cardinality low for metrics. Use traces for high-cardinality data instead.
 
