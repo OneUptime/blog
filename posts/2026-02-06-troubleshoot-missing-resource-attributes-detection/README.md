@@ -10,18 +10,18 @@ Resource attributes like `service.name`, `cloud.provider`, `host.name`, and `con
 
 ## How Resource Detection Works
 
-The `resourcedetection` processor in the OpenTelemetry Collector reads metadata from various sources:
+The `resource_detection` processor in the OpenTelemetry Collector reads metadata from various sources:
 
 - **Environment variables** (OTEL_RESOURCE_ATTRIBUTES)
 - **Cloud provider metadata APIs** (AWS, GCP, Azure)
-- **Container runtime** (Docker, containerd)
-- **Kubernetes Downward API**
+- **Container runtime** (Docker)
+- **Kubernetes API** for Kubernetes-specific detectors
 - **System information** (hostname, OS)
 
 ```yaml
 processors:
-  resourcedetection:
-    detectors: [env, docker, system, gcp, aws, azure]
+  resource_detection:
+    detectors: [env, docker, system, gcp, ec2, azure]
     timeout: 5s
 ```
 
@@ -83,10 +83,10 @@ aws ec2 modify-instance-metadata-options \
 
 ## Problem 2: Docker/Container Metadata Not Available
 
-The container runtime detector needs access to the container's cgroup information:
+The Docker detector needs access to the Docker daemon socket:
 
 ```yaml
-# Mount the cgroup filesystem for container detection
+# Mount the Docker socket for Docker detection
 apiVersion: apps/v1
 kind: DaemonSet
 spec:
@@ -95,20 +95,20 @@ spec:
       containers:
         - name: collector
           volumeMounts:
-            - name: cgroup
-              mountPath: /sys/fs/cgroup
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
               readOnly: true
       volumes:
-        - name: cgroup
+        - name: docker-sock
           hostPath:
-            path: /sys/fs/cgroup
+            path: /var/run/docker.sock
 ```
 
-For containerd-based clusters, the Docker detector will not work. Use the system detector instead:
+For containerd-based clusters, the Docker detector will not work. Use the system detector for host metadata and the `k8sattributes` processor for Kubernetes and container metadata instead:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]  # Not 'docker' for containerd clusters
     system:
       hostname_sources: ["os"]
@@ -116,11 +116,11 @@ processors:
 
 ## Problem 3: Kubernetes Metadata Missing
 
-For Kubernetes-specific attributes, use the `k8sattributes` processor instead of `resourcedetection`:
+For Kubernetes-specific attributes, use the `k8sattributes` processor instead of `resource_detection`:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, gcp]  # Cloud and system metadata
 
   k8sattributes:
@@ -138,7 +138,7 @@ processors:
 service:
   pipelines:
     traces:
-      processors: [resourcedetection, k8sattributes, batch]
+      processors: [resource_detection, k8sattributes, batch]
 ```
 
 ## Problem 4: service.name Not Set
@@ -146,7 +146,7 @@ service:
 `service.name` is the most important resource attribute. If it is not set, many backends will assign a default like "unknown_service":
 
 ```yaml
-# Set service.name via environment variable (highest priority)
+# Set service.name in instrumented applications via environment variable
 env:
   - name: OTEL_SERVICE_NAME
     value: "my-service"
@@ -165,19 +165,19 @@ processors:
     attributes:
       - key: service.name
         value: "otel-collector"
-        action: upsert  # Only set if not already present
+        action: insert  # Only set if not already present
       - key: service.version
         value: "0.95.0"
-        action: upsert
+        action: insert
 ```
 
 ## Problem 5: Detector Timeout
 
-Some metadata APIs are slow, especially during pod startup. If the detector times out, attributes are silently missing:
+Some metadata APIs are slow, especially during pod startup. If the detector times out, detection can fail or return incomplete attributes:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, gcp]
     timeout: 10s    # Increase from default 5s
     override: false  # Do not override attributes already set by the SDK
@@ -189,7 +189,7 @@ Detectors run in order, and later detectors can override earlier ones:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, gcp]  # env runs first, then system, then gcp
     override: true  # Later detectors override earlier ones
 ```
