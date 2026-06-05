@@ -157,10 +157,10 @@ processors:
       - context: span
         statements:
           # Convert to uppercase
-          - set(attributes["http.method"], Uppercase(attributes["http.method"]))
+          - set(attributes["http.method"], ToUpperCase(attributes["http.method"]))
 
           # Convert to lowercase
-          - set(attributes["service.name"], Lowercase(attributes["service.name"]))
+          - set(attributes["service.name"], ToLowerCase(attributes["service.name"]))
 
           # Concatenate strings
           - set(attributes["full.url"], Concat([attributes["scheme"], "://", attributes["host"], attributes["path"]], ""))
@@ -169,7 +169,8 @@ processors:
           - set(attributes["short.id"], Substring(attributes["trace.id"], 0, 8))
 
           # Replace substring
-          - set(attributes["sanitized.url"], Replace(attributes["url"], "/api/v1/", "/api/v2/", 1))
+          - set(attributes["sanitized.url"], String(attributes["url"]))
+          - replace_pattern(attributes["sanitized.url"], "/api/v1/", "/api/v2/")
 
           # Split string into array
           - set(attributes["path.segments"], Split(attributes["http.target"], "/"))
@@ -216,7 +217,7 @@ processors:
       - context: span
         statements:
           # Calculate span duration in seconds
-          - set(attributes["duration.seconds"], (end_time - start_time) / 1000000000)
+          - set(attributes["duration.seconds"], (UnixNano(end_time) - UnixNano(start_time)) / 1000000000)
 
           # Set current timestamp
           - set(attributes["processed.at"], Now())
@@ -226,7 +227,7 @@ processors:
 
           # Extract time components
           - set(attributes["hour"], Hour(start_time))
-          - set(attributes["day_of_week"], DayOfWeek(start_time))
+          - set(attributes["day_of_week"], Weekday(start_time))
 ```
 
 Time functions enable time-based filtering, bucketing, and analysis.
@@ -273,10 +274,11 @@ processors:
           - set(attributes["first.tag"], attributes["tags"][0])
 
           # Check if array contains value
-          - set(attributes["has.error.tag"], Contains(attributes["tags"], "error"))
+          - set(attributes["has.error.tag"], ContainsValue(attributes["tags"], "error"))
 
           # Concatenate arrays
-          - set(attributes["all.tags"], Concat(attributes["tags"], attributes["labels"]))
+          - append(attributes["all.tags"], values = attributes["tags"])
+          - append(attributes["all.tags"], values = attributes["labels"])
 ```
 
 Array operations enable working with multi-valued attributes.
@@ -292,16 +294,18 @@ processors:
       - context: span
         statements:
           # Extract with regex
-          - set(attributes["user.id"], ExtractPatterns(attributes["url"], "/users/(\\d+)")[0])
+          - set(attributes["url.matches"], ExtractPatterns(attributes["url"], "/users/(?P<user_id>\\d+)"))
+          - set(attributes["user.id"], attributes["url.matches"]["user_id"])
 
           # Check if matches pattern
           - set(attributes["is.api.call"], IsMatch(attributes["http.target"], "^/api/"))
 
           # Replace using regex
-          - set(attributes["sanitized.url"], ReplacePattern(attributes["url"], "token=[^&]+", "token=REDACTED"))
+          - set(attributes["sanitized.url"], String(attributes["url"]))
+          - replace_pattern(attributes["sanitized.url"], "token=[^&]+", "token=REDACTED")
 
-          # Split by regex pattern
-          - set(attributes["segments"], SplitPattern(attributes["path"], "[/.]"))
+          # Split by delimiter
+          - set(attributes["segments"], Split(attributes["path"], "/"))
 ```
 
 Regular expressions provide powerful pattern-based transformations.
@@ -322,11 +326,11 @@ processors:
           # Access nested JSON fields
           - set(attributes["user.id"], attributes["parsed.body"]["user"]["id"])
 
-          # Convert object to JSON string
-          - set(attributes["json.string"], JSON(attributes["structured.data"]))
+          # Convert object to a key-value string
+          - set(attributes["body.string"], ToKeyValueString(attributes["parsed.body"]))
 ```
 
-JSON functions enable working with structured data embedded in attributes.
+JSON parsing enables working with structured data embedded in attributes.
 
 Resource Transformations
 
@@ -343,7 +347,7 @@ processors:
           - set(attributes["cloud.region"], "us-east-1")
 
           # Normalize service name
-          - set(attributes["service.name"], Lowercase(attributes["service.name"]))
+          - set(attributes["service.name"], ToLowerCase(attributes["service.name"]))
 
           # Add computed resource attributes
           - set(attributes["service.namespace"], Split(attributes["service.name"], ".")[0])
@@ -384,7 +388,7 @@ processors:
       - context: datapoint
         statements:
           # Normalize metric names
-          - set(metric.name, Replace(metric.name, ".", "_", -1))
+          - replace_pattern(metric.name, "\\.", "_")
 
           # Add computed attributes
           - set(attributes["is.high"], value > 1000)
@@ -407,13 +411,15 @@ processors:
       - context: log
         statements:
           # Parse log level from body
-          - set(severity_text, ExtractPatterns(body, "\\[(DEBUG|INFO|WARN|ERROR)\\]")[0])
+          - set(cache["severity"], ExtractPatterns(body, "\\[(?P<level>DEBUG|INFO|WARN|ERROR)\\]"))
+          - set(severity_text, cache["severity"]["level"])
 
           # Add structured attributes from unstructured logs
-          - set(attributes["request.id"], ExtractPatterns(body, "request_id=([\\w-]+)")[0])
+          - set(cache["request"], ExtractPatterns(body, "request_id=(?P<request_id>[\\w-]+)"))
+          - set(attributes["request.id"], cache["request"]["request_id"])
 
           # Sanitize sensitive data
-          - set(body, ReplacePattern(body, "password=\\S+", "password=REDACTED"))
+          - replace_pattern(body, "password=\\S+", "password=REDACTED")
 ```
 
 Log transformations extract structure from unstructured log data.
@@ -430,7 +436,7 @@ processors:
       - context: resource
         statements:
           # Normalize service name
-          - set(attributes["service.name"], Lowercase(Trim(attributes["service.name"])))
+          - set(attributes["service.name"], ToLowerCase(Trim(attributes["service.name"])))
           # Extract service namespace
           - set(attributes["service.namespace"], Split(attributes["service.name"], ".")[0])
           # Add deployment timestamp
@@ -441,13 +447,14 @@ processors:
       - context: span
         statements:
           # Normalize HTTP method
-          - set(attributes["http.method"], Uppercase(attributes["http.method"])) where attributes["http.method"] != nil
+          - set(attributes["http.method"], ToUpperCase(attributes["http.method"])) where attributes["http.method"] != nil
 
           # Build full URL
           - set(attributes["http.full_url"], Concat([attributes["http.scheme"], "://", attributes["http.host"], attributes["http.target"]], "")) where attributes["http.scheme"] != nil
 
           # Extract user ID from URL
-          - set(attributes["user.id"], ExtractPatterns(attributes["http.target"], "/users/(\\d+)")[0]) where IsMatch(attributes["http.target"], "/users/\\d+")
+          - set(attributes["url.matches"], ExtractPatterns(attributes["http.target"], "/users/(?P<user_id>\\d+)")) where IsMatch(attributes["http.target"], "/users/\\d+")
+          - set(attributes["user.id"], attributes["url.matches"]["user_id"]) where attributes["url.matches"] != nil
 
           # Categorize response status
           - set(attributes["http.status_category"], "success") where attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
@@ -456,13 +463,13 @@ processors:
           - set(attributes["http.status_category"], "server_error") where attributes["http.status_code"] >= 500
 
           # Calculate duration in seconds
-          - set(attributes["duration.seconds"], (end_time - start_time) / 1000000000)
+          - set(attributes["duration.seconds"], (UnixNano(end_time) - UnixNano(start_time)) / 1000000000)
 
           # Mark slow requests
           - set(attributes["is.slow"], true) where attributes["duration.seconds"] > 1.0
 
           # Sanitize query parameters
-          - set(attributes["http.target"], ReplacePattern(attributes["http.target"], "token=[^&]+", "token=REDACTED")) where IsMatch(attributes["http.target"], "token=")
+          - replace_pattern(attributes["http.target"], "token=[^&]+", "token=REDACTED") where IsMatch(attributes["http.target"], "token=")
 
           # Delete debug attributes in production
           - delete_key(attributes, "debug.info") where resource.attributes["deployment.environment"] == "production"
@@ -528,7 +535,7 @@ processors:
           - set(attributes["skip"], true) where attributes["internal.testing"] == true
 
           # Only process non-skipped spans
-          - set(attributes["normalized.url"], Lowercase(attributes["http.url"])) where attributes["skip"] != true
+          - set(attributes["normalized.url"], ToLowerCase(attributes["http.url"])) where attributes["skip"] != true
           - set(attributes["status"], "error") where attributes["skip"] != true and attributes["http.status_code"] >= 500
 ```
 
