@@ -39,7 +39,9 @@ The automatic instrumentation covers HTTP boundaries, but you often need visibil
 // main.ts
 // Edge function with custom OpenTelemetry spans for business logic
 
-const tracer = new Deno.opentelemetry.Tracer("edge-api");
+import { SpanStatusCode, trace } from "npm:@opentelemetry/api@1";
+
+const tracer = trace.getTracer("edge-api", "1.0.0");
 
 Deno.serve(async (req: Request) => {
   // The incoming request span is created automatically by the runtime
@@ -64,17 +66,23 @@ async function handleProcess(req: Request): Promise<Response> {
 
       // Validate input with its own span for timing visibility
       const validated = await tracer.startActiveSpan("validate-input", async (validationSpan) => {
-        const result = validatePayload(body);
-        validationSpan.setAttribute("validation.passed", result.valid);
-        if (!result.valid) {
-          validationSpan.setAttribute("validation.error", result.error);
+        try {
+          const result = validatePayload(body);
+          validationSpan.setAttribute("validation.passed", result.valid);
+          if (!result.valid) {
+            validationSpan.setAttribute("validation.error", result.error);
+          }
+          return result;
+        } finally {
+          validationSpan.end();
         }
-        validationSpan.end();
-        return result;
       });
 
       if (!validated.valid) {
-        span.setAttribute("error", true);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: validated.error,
+        });
         span.end();
         return new Response(JSON.stringify({ error: validated.error }), {
           status: 400,
@@ -99,8 +107,12 @@ async function handleProcess(req: Request): Promise<Response> {
       });
     } catch (error) {
       // Record the exception on the span for error tracking
-      span.recordException(error);
-      span.setAttribute("error", true);
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error instanceof Error ? error : new Error(message));
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message,
+      });
       span.end();
       return new Response("Internal Server Error", { status: 500 });
     }
@@ -118,24 +130,34 @@ Deno Deploy includes Deno KV, a globally distributed key-value store. Operations
 // kv-instrumented.ts
 // Helper module for traced Deno KV operations
 
-const tracer = new Deno.opentelemetry.Tracer("deno-kv");
+import { SpanStatusCode, trace } from "npm:@opentelemetry/api@1";
+
+const tracer = trace.getTracer("deno-kv", "1.0.0");
 const kv = await Deno.openKv();
 
 // Wrapper that adds tracing to KV get operations
 export async function tracedGet<T>(key: Deno.KvKey): Promise<Deno.KvEntryMaybe<T>> {
   return tracer.startActiveSpan("kv.get", async (span) => {
-    // Record the key for debugging (be careful with sensitive keys)
-    span.setAttribute("kv.operation", "get");
-    span.setAttribute("kv.key", JSON.stringify(key));
+    try {
+      // Record the key for debugging (be careful with sensitive keys)
+      span.setAttribute("kv.operation", "get");
+      span.setAttribute("kv.key", JSON.stringify(key));
 
-    const start = performance.now();
-    const result = await kv.get<T>(key);
-    const duration = performance.now() - start;
+      const start = performance.now();
+      const result = await kv.get<T>(key);
+      const duration = performance.now() - start;
 
-    span.setAttribute("kv.hit", result.value !== null);
-    span.setAttribute("kv.latency_ms", duration);
-    span.end();
-    return result;
+      span.setAttribute("kv.hit", result.value !== null);
+      span.setAttribute("kv.latency_ms", duration);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error instanceof Error ? error : new Error(message));
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 
@@ -145,33 +167,49 @@ export async function tracedSet(
   value: unknown,
 ): Promise<Deno.KvCommitResult> {
   return tracer.startActiveSpan("kv.set", async (span) => {
-    span.setAttribute("kv.operation", "set");
-    span.setAttribute("kv.key", JSON.stringify(key));
+    try {
+      span.setAttribute("kv.operation", "set");
+      span.setAttribute("kv.key", JSON.stringify(key));
 
-    const start = performance.now();
-    const result = await kv.set(key, value);
-    const duration = performance.now() - start;
+      const start = performance.now();
+      const result = await kv.set(key, value);
+      const duration = performance.now() - start;
 
-    span.setAttribute("kv.latency_ms", duration);
-    span.setAttribute("kv.success", result.ok);
-    span.end();
-    return result;
+      span.setAttribute("kv.latency_ms", duration);
+      span.setAttribute("kv.success", result.ok);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error instanceof Error ? error : new Error(message));
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 
 // Wrapper for atomic transactions
 export async function tracedAtomic(
   operations: (atomic: Deno.AtomicOperation) => Deno.AtomicOperation,
-): Promise<Deno.KvCommitResult> {
+): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
   return tracer.startActiveSpan("kv.atomic", async (span) => {
-    span.setAttribute("kv.operation", "atomic");
+    try {
+      span.setAttribute("kv.operation", "atomic");
 
-    const atomic = operations(kv.atomic());
-    const result = await atomic.commit();
+      const atomic = operations(kv.atomic());
+      const result = await atomic.commit();
 
-    span.setAttribute("kv.success", result.ok);
-    span.end();
-    return result;
+      span.setAttribute("kv.success", result.ok);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error instanceof Error ? error : new Error(message));
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -208,24 +246,29 @@ If you need to propagate context to systems that do not support W3C Trace Contex
 // Manual context propagation for non-standard systems
 // Useful when calling services that use custom correlation headers
 
+import { context, propagation, trace } from "npm:@opentelemetry/api@1";
+
+const tracer = trace.getTracer("edge-api", "1.0.0");
+
 Deno.serve(async (req: Request) => {
   return tracer.startActiveSpan("proxy-request", async (span) => {
-    // Extract the current trace ID and span ID
-    const traceId = span.spanContext().traceId;
-    const spanId = span.spanContext().spanId;
-
-    // Forward to a legacy system that uses custom headers
-    const response = await fetch("https://legacy.example.com/api", {
-      headers: {
-        // Standard W3C header (auto-injected, but shown for clarity)
-        "traceparent": `00-${traceId}-${spanId}-01`,
-        // Custom header for legacy systems
+    try {
+      // Extract the current trace ID for a legacy correlation header
+      const traceId = span.spanContext().traceId;
+      const headers = new Headers({
         "X-Correlation-ID": traceId,
-      },
-    });
+      });
 
-    span.end();
-    return response;
+      // Inject any configured standard propagation headers into the request
+      propagation.inject(context.active(), headers);
+
+      // Forward to a legacy system that uses custom headers
+      return await fetch("https://legacy.example.com/api", {
+        headers,
+      });
+    } finally {
+      span.end();
+    }
   });
 });
 ```
@@ -238,7 +281,9 @@ Beyond tracing, you can emit custom metrics from your edge functions. This is us
 // metrics.ts
 // Custom metrics for edge function monitoring
 
-const meter = new Deno.opentelemetry.Meter("edge-api-metrics");
+import { metrics } from "npm:@opentelemetry/api@1";
+
+const meter = metrics.getMeter("edge-api-metrics", "1.0.0");
 
 // Counter for tracking requests by endpoint and status
 const requestCounter = meter.createCounter("edge.requests.total", {
@@ -273,12 +318,13 @@ Deno.serve(async (req: Request) => {
     return response;
   } catch (error) {
     const duration = performance.now() - start;
+    const errorType = error instanceof Error ? error.constructor.name : typeof error;
 
     requestCounter.add(1, {
       "http.method": req.method,
       "http.route": url.pathname,
       "http.status_code": 500,
-      "error.type": error.constructor.name,
+      "error.type": errorType,
     });
 
     latencyHistogram.record(duration, {
