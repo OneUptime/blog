@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Span Processors, Exporter, SDK Testing, Custom Component
 
-Description: Use OpenTelemetry SDK test utilities to write thorough tests for custom span processors and exporters across Java, Python, and Node.js.
+Description: Use OpenTelemetry SDK test utilities to write thorough tests for custom span processors and exporters across Python and Node.js.
 
-When you write custom span processors or exporters, you need to test them in isolation before plugging them into your production pipeline. The OpenTelemetry SDK provides test utilities in every language that make this straightforward. This post covers how to test both processors and exporters with proper setup, assertions, and edge case handling.
+When you write custom span processors or exporters, you need to test them in isolation before plugging them into your production pipeline. OpenTelemetry SDKs provide test utilities in many languages that make this straightforward. This post covers how to test both processors and exporters with proper setup, assertions, and edge case handling.
 
 ## Testing a Custom Span Processor in Python
 
@@ -20,20 +20,26 @@ from opentelemetry.sdk.trace import SpanProcessor
 SENSITIVE_KEYS = {"user.email", "user.phone", "credit_card.number", "db.statement"}
 
 class RedactingSpanProcessor(SpanProcessor):
-    """Redacts sensitive attributes from spans before they are exported."""
+    """Redacts sensitive attributes as they are set on a recording span."""
 
     def __init__(self, next_processor=None):
         self.next_processor = next_processor
 
     def on_start(self, span, parent_context=None):
+        original_set_attribute = span.set_attribute
+
+        def redacting_set_attribute(key, value):
+            if key in SENSITIVE_KEYS:
+                value = "[REDACTED]"
+            return original_set_attribute(key, value)
+
+        span.set_attribute = redacting_set_attribute
+
         if self.next_processor:
             self.next_processor.on_start(span, parent_context)
 
     def on_end(self, span):
-        # Spans are read-only at this point, so we need to work with
-        # the ReadableSpan. For a real implementation, you would use
-        # a wrapping approach or modify before on_end.
-        # This example shows the testing pattern.
+        # on_end receives a ReadableSpan, so this processor only forwards it.
         if self.next_processor:
             self.next_processor.on_end(span)
 
@@ -47,28 +53,35 @@ class RedactingSpanProcessor(SpanProcessor):
         return True
 ```
 
-A more practical approach modifies attributes during `on_start` when the span is still writable:
+If attributes can be added by code paths that bypass `set_attribute`, use a custom exporter wrapper and redact in the exported payload instead of trying to mutate the ended `ReadableSpan`:
 
 ```python
-# redacting_processor_v2.py
-from opentelemetry.sdk.trace import SpanProcessor
+# redacting_exporter.py
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-SENSITIVE_PATTERNS = {"email", "phone", "password", "credit_card", "ssn", "token"}
+SENSITIVE_KEYS = {"user.email", "user.phone", "credit_card.number", "db.statement"}
 
-class RedactingSpanProcessor(SpanProcessor):
-    def on_start(self, span, parent_context=None):
-        pass  # Cannot redact yet, attributes are not set during start
+class RedactingExporter(SpanExporter):
+    def __init__(self, backend_client):
+        self.backend_client = backend_client
 
-    def on_end(self, span):
-        # For testing purposes, we check if sensitive keys exist
-        # In production, you would use a custom exporter wrapper
-        pass
+    def export(self, spans):
+        payload = []
+        for span in spans:
+            attributes = {
+                key: "[REDACTED]" if key in SENSITIVE_KEYS else value
+                for key, value in span.attributes.items()
+            }
+            payload.append({"name": span.name, "attributes": attributes})
 
-    def shutdown(self):
-        pass
+        self.backend_client.send(payload)
+        return SpanExportResult.SUCCESS
 
     def force_flush(self, timeout_millis=None):
         return True
+
+    def shutdown(self):
+        self.backend_client.close()
 ```
 
 ## Testing with InMemorySpanExporter
@@ -78,22 +91,21 @@ Here is how to test the processor behavior end to end:
 ```python
 # test_redacting_processor.py
 import pytest
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from redacting_exporter import RedactingExporter
+from redacting_processor import RedactingSpanProcessor
 
 @pytest.fixture
 def setup():
-    """Create a tracer with the redacting exporter wrapping an in-memory exporter."""
-    inner_exporter = InMemorySpanExporter()
-    redacting_exporter = RedactingExporter(inner_exporter)
+    """Create a tracer with the redacting processor forwarding to an in-memory exporter."""
+    exporter = InMemorySpanExporter()
     provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(redacting_exporter))
+    simple_processor = SimpleSpanProcessor(exporter)
+    provider.add_span_processor(RedactingSpanProcessor(simple_processor))
     tracer = provider.get_tracer("test")
-    return tracer, inner_exporter, provider
+    return tracer, exporter, provider
 
 def test_sensitive_attributes_are_redacted(setup):
     tracer, exporter, provider = setup
@@ -153,7 +165,11 @@ def exporter():
 
 def create_test_span(name="test-span", attributes=None):
     """Helper to create a span for testing."""
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    mem_exporter = InMemorySpanExporter()
     provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(mem_exporter))
     tracer = provider.get_tracer("test")
 
     with tracer.start_as_current_span(name) as span:
@@ -161,18 +177,7 @@ def create_test_span(name="test-span", attributes=None):
             for k, v in attributes.items():
                 span.set_attribute(k, v)
 
-    # Get the span from a simple processor
-    from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
-    mem_exporter = InMemorySpanExporter()
-    provider2 = TracerProvider()
-    provider2.add_span_processor(SimpleSpanProcessor(mem_exporter))
-    tracer2 = provider2.get_tracer("test")
-
-    with tracer2.start_as_current_span(name) as span:
-        if attributes:
-            for k, v in attributes.items():
-                span.set_attribute(k, v)
-
+    provider.force_flush()
     return mem_exporter.get_finished_spans()
 
 @patch("requests.post")
@@ -192,7 +197,9 @@ def test_export_sends_to_backend(mock_post, exporter):
 
 @patch("requests.post")
 def test_export_handles_network_failure(mock_post, exporter):
-    mock_post.side_effect = ConnectionError("Connection refused")
+    import requests
+
+    mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
 
     spans = create_test_span("test-span")
     result = exporter.export(spans)
@@ -223,15 +230,14 @@ describe('SamplingRateProcessor', () => {
 
   beforeEach(() => {
     exporter = new InMemorySpanExporter();
-    provider = new NodeTracerProvider();
-
-    // Chain: custom processor -> simple processor -> in-memory exporter
     const simpleProcessor = new SimpleSpanProcessor(exporter);
     const customProcessor = new SamplingRateProcessor(simpleProcessor, {
       sampleRate: 0.5,
     });
 
-    provider.addSpanProcessor(customProcessor);
+    provider = new NodeTracerProvider({
+      spanProcessors: [customProcessor],
+    });
     provider.register();
   });
 
@@ -255,14 +261,14 @@ describe('SamplingRateProcessor', () => {
     expect(exported.length).toBeLessThan(650);
   });
 
-  test('shutdown flushes remaining spans', async () => {
+  test('forceFlush exports remaining spans', async () => {
     const tracer = provider.getTracer('test');
     const span = tracer.startSpan('final-span');
     span.end();
 
-    await provider.shutdown();
+    await provider.forceFlush();
 
-    // Span should have been flushed during shutdown
+    // Span should have been flushed by forceFlush
     const exported = exporter.getFinishedSpans();
     expect(exported.length).toBeGreaterThanOrEqual(0); // May or may not be sampled
   });
