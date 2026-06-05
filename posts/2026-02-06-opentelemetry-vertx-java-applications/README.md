@@ -12,9 +12,9 @@ This guide demonstrates how to instrument Vert.x applications with OpenTelemetry
 
 ## Understanding Vert.x's Threading Model
 
-Vert.x uses event loops and a small number of threads to handle massive concurrency. Unlike traditional thread-per-request models, Vert.x multiplexes many operations onto few threads. This means traditional ThreadLocal-based context propagation fails.
+Vert.x uses event loops and a small number of threads to handle massive concurrency. Unlike traditional thread-per-request models, Vert.x multiplexes many operations onto few threads. This means ThreadLocal-based context propagation alone is not enough across asynchronous callbacks.
 
-OpenTelemetry's Context API can work with Vert.x, but it requires careful integration with Vert.x's context mechanism. Each verticle and event loop maintains its own context, and we must bridge OpenTelemetry context with Vert.x context.
+OpenTelemetry's Context API can work with Vert.x, but it requires careful integration with Vert.x's asynchronous execution model. Handlers run with a Vert.x context, while individual HTTP requests and event bus messages still need their own OpenTelemetry parent context carried explicitly.
 
 ## Project Dependencies
 
@@ -77,7 +77,6 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.ResourceAttributes;
 
 public class OpenTelemetryConfig {
 
@@ -88,8 +87,8 @@ public class OpenTelemetryConfig {
         // Create resource attributes identifying this service
         Resource resource = Resource.getDefault()
             .merge(Resource.builder()
-                .put(ResourceAttributes.SERVICE_NAME, serviceName)
-                .put(ResourceAttributes.SERVICE_VERSION, "1.0.0")
+                .put("service.name", serviceName)
+                .put("service.version", "1.0.0")
                 .build());
 
         // Configure OTLP exporter
@@ -127,7 +126,7 @@ This configuration sets up OTLP export with W3C trace context propagation.
 
 ## Creating a Context Propagation Utility
 
-Build a utility class that bridges OpenTelemetry context with Vert.x context:
+Build a utility class that bridges OpenTelemetry context with Vert.x code:
 
 ```java
 import io.opentelemetry.api.trace.Span;
@@ -136,15 +135,14 @@ import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class TracingHelper {
 
-    private static final String OTEL_CONTEXT_KEY = "__otel_context__";
+    public static final String OTEL_CONTEXT_KEY = "__otel_context__";
 
     // Store OpenTelemetry context in Vert.x context
     public static void storeContext(io.vertx.core.Context vertxContext, Context otelContext) {
@@ -170,8 +168,23 @@ public class TracingHelper {
             SpanKind spanKind,
             Function<Span, Future<T>> operation) {
 
-        // Get parent context
         Context parentContext = getContext(vertxContext);
+
+        return traceAsync(parentContext, tracer, spanName, spanKind, operation)
+            .onComplete(ar -> storeContext(vertxContext, parentContext));
+    }
+
+    // Execute code with an explicit parent context
+    public static <T> Future<T> traceAsync(
+            Context parentContext,
+            Tracer tracer,
+            String spanName,
+            SpanKind spanKind,
+            Function<Span, Future<T>> operation) {
+
+        if (parentContext == null) {
+            parentContext = Context.current();
+        }
 
         // Start new span
         Span span = tracer.spanBuilder(spanName)
@@ -182,19 +195,16 @@ public class TracingHelper {
         // Create new context with this span
         Context contextWithSpan = parentContext.with(span);
 
-        // Store in Vert.x context
-        storeContext(vertxContext, contextWithSpan);
-
         // Make span current
         try (Scope scope = contextWithSpan.makeCurrent()) {
             return operation.apply(span)
-                .onSuccess(result -> {
-                    span.setStatus(StatusCode.OK);
-                    span.end();
-                })
-                .onFailure(error -> {
-                    span.setStatus(StatusCode.ERROR, error.getMessage());
-                    span.recordException(error);
+                .onComplete((AsyncResult<T> ar) -> {
+                    if (ar.succeeded()) {
+                        span.setStatus(StatusCode.OK);
+                    } else {
+                        span.setStatus(StatusCode.ERROR, ar.cause().getMessage());
+                        span.recordException(ar.cause());
+                    }
                     span.end();
                 });
         } catch (Exception e) {
@@ -213,10 +223,19 @@ public class TracingHelper {
             Function<Span, Future<T>> operation) {
         return traceAsync(vertxContext, tracer, spanName, SpanKind.INTERNAL, operation);
     }
+
+    // Simplified version for internal spans with an explicit parent context
+    public static <T> Future<T> trace(
+            Context parentContext,
+            Tracer tracer,
+            String spanName,
+            Function<Span, Future<T>> operation) {
+        return traceAsync(parentContext, tracer, spanName, SpanKind.INTERNAL, operation);
+    }
 }
 ```
 
-This utility handles the complexity of context storage and span lifecycle management.
+This utility handles the complexity of parent context lookup and span lifecycle management.
 
 ## Instrumenting HTTP Server
 
@@ -281,9 +300,9 @@ public class TracedHttpServerVerticle extends AbstractVerticle {
         span.setAttribute("http.target", request.path());
         span.setAttribute("http.scheme", request.scheme());
 
-        // Store context in Vert.x context
+        // Store context on the request routing context
         Context contextWithSpan = extractedContext.with(span);
-        TracingHelper.storeContext(context, contextWithSpan);
+        ctx.put(TracingHelper.OTEL_CONTEXT_KEY, contextWithSpan);
 
         // Handle response
         ctx.addEndHandler(v -> {
@@ -306,18 +325,15 @@ public class TracedHttpServerVerticle extends AbstractVerticle {
 
     private void handleGetUser(RoutingContext ctx) {
         String userId = ctx.pathParam("id");
+        Context parentContext = ctx.get(TracingHelper.OTEL_CONTEXT_KEY);
 
-        TracingHelper.trace(context, OpenTelemetryConfig.getTracer(), "fetchUser", span -> {
+        TracingHelper.trace(parentContext, OpenTelemetryConfig.getTracer(), "fetchUser", span -> {
             span.setAttribute("user.id", userId);
 
             // Simulate database fetch
-            return vertx.executeBlocking(promise -> {
-                try {
-                    Thread.sleep(50);
-                    promise.complete("{\"id\":\"" + userId + "\",\"name\":\"John Doe\"}");
-                } catch (InterruptedException e) {
-                    promise.fail(e);
-                }
+            return vertx.executeBlocking(() -> {
+                Thread.sleep(50);
+                return "{\"id\":\"" + userId + "\",\"name\":\"John Doe\"}";
             });
         })
         .onSuccess(user -> {
@@ -333,20 +349,18 @@ public class TracedHttpServerVerticle extends AbstractVerticle {
     }
 
     private void handleCreateUser(RoutingContext ctx) {
+        Context parentContext = ctx.get(TracingHelper.OTEL_CONTEXT_KEY);
+
         ctx.request().body()
             .compose(buffer -> {
-                return TracingHelper.trace(context, OpenTelemetryConfig.getTracer(),
+                return TracingHelper.trace(parentContext, OpenTelemetryConfig.getTracer(),
                     "createUser", span -> {
                     span.setAttribute("user.data.length", buffer.length());
 
                     // Simulate database insert
-                    return vertx.executeBlocking(promise -> {
-                        try {
-                            Thread.sleep(100);
-                            promise.complete("{\"id\":\"new-user-123\",\"status\":\"created\"}");
-                        } catch (InterruptedException e) {
-                            promise.fail(e);
-                        }
+                    return vertx.executeBlocking(() -> {
+                        Thread.sleep(100);
+                        return "{\"id\":\"new-user-123\",\"status\":\"created\"}";
                     });
                 });
             })
@@ -398,16 +412,14 @@ import io.vertx.core.buffer.Buffer;
 public class TracedHttpClient {
 
     private final WebClient client;
-    private final io.vertx.core.Context vertxContext;
 
     public TracedHttpClient(Vertx vertx) {
         this.client = WebClient.create(vertx);
-        this.vertxContext = vertx.getOrCreateContext();
     }
 
-    public Future<String> get(String host, int port, String uri) {
+    public Future<String> get(Context parentContext, String host, int port, String uri) {
         return TracingHelper.traceAsync(
-            vertxContext,
+            parentContext,
             OpenTelemetryConfig.getTracer(),
             "HTTP GET " + uri,
             SpanKind.CLIENT,
@@ -437,9 +449,9 @@ public class TracedHttpClient {
         );
     }
 
-    public Future<String> post(String host, int port, String uri, String body) {
+    public Future<String> post(Context parentContext, String host, int port, String uri, String body) {
         return TracingHelper.traceAsync(
-            vertxContext,
+            parentContext,
             OpenTelemetryConfig.getTracer(),
             "HTTP POST " + uri,
             SpanKind.CLIENT,
@@ -492,23 +504,21 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Context;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonObject;
 
 public class TracedEventBus {
 
-    private static final String TRACE_PARENT_HEADER = "traceparent";
-    private static final String TRACE_STATE_HEADER = "tracestate";
-
     // Send message with trace context
     public static <T> Future<Message<T>> sendWithTrace(
-            io.vertx.core.Context vertxContext,
+            Vertx vertx,
+            Context parentContext,
             String address,
             Object message) {
 
         return TracingHelper.traceAsync(
-            vertxContext,
+            parentContext,
             OpenTelemetryConfig.getTracer(),
             "eventbus.send " + address,
             SpanKind.PRODUCER,
@@ -528,8 +538,8 @@ public class TracedEventBus {
                         opts.addHeader(key, value);
                     });
 
-                return vertxContext.owner().eventBus()
-                    .request(address, message, options);
+                return vertx.eventBus()
+                    .<T>request(address, message, options);
             }
         );
     }
@@ -558,10 +568,9 @@ public class TracedEventBus {
                 span.setAttribute("messaging.destination", address);
 
                 Context contextWithSpan = extractedContext.with(span);
-                TracingHelper.storeContext(context, contextWithSpan);
 
                 try (io.opentelemetry.context.Scope scope = contextWithSpan.makeCurrent()) {
-                    handleMessage(message)
+                    handleMessage(message, contextWithSpan)
                         .onSuccess(result -> {
                             span.setStatus(io.opentelemetry.api.trace.StatusCode.OK);
                             span.end();
@@ -578,7 +587,7 @@ public class TracedEventBus {
             });
         }
 
-        protected abstract Future<Void> handleMessage(Message<?> message);
+        protected abstract Future<Void> handleMessage(Message<?> message, Context parentContext);
     }
 }
 ```
@@ -590,10 +599,11 @@ This implementation ensures trace context flows through event bus messages.
 Here's a complete example showing all components working together:
 
 ```java
+import io.opentelemetry.context.Context;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.json.JsonObject;
 
 public class MainVerticle extends AbstractVerticle {
 
@@ -618,8 +628,8 @@ class OrderProcessorVerticle extends TracedEventBus.TracedConsumer {
     }
 
     @Override
-    protected Future<Void> handleMessage(Message<?> message) {
-        return TracingHelper.trace(context, OpenTelemetryConfig.getTracer(),
+    protected Future<Void> handleMessage(Message<?> message, Context parentContext) {
+        return TracingHelper.trace(parentContext, OpenTelemetryConfig.getTracer(),
             "processOrder", span -> {
 
             JsonObject order = (JsonObject) message.body();
@@ -627,7 +637,7 @@ class OrderProcessorVerticle extends TracedEventBus.TracedConsumer {
             span.setAttribute("order.amount", order.getDouble("amount"));
 
             // Send to payment service
-            return TracedEventBus.sendWithTrace(context, "payment.process", order)
+            return TracedEventBus.sendWithTrace(vertx, Context.current(), "payment.process", order)
                 .compose(paymentResult -> {
                     message.reply(new JsonObject()
                         .put("status", "completed")
@@ -647,21 +657,17 @@ class PaymentVerticle extends TracedEventBus.TracedConsumer {
     }
 
     @Override
-    protected Future<Void> handleMessage(Message<?> message) {
-        return TracingHelper.trace(context, OpenTelemetryConfig.getTracer(),
+    protected Future<Void> handleMessage(Message<?> message, Context parentContext) {
+        return TracingHelper.trace(parentContext, OpenTelemetryConfig.getTracer(),
             "processPayment", span -> {
 
             JsonObject payment = (JsonObject) message.body();
             span.setAttribute("payment.amount", payment.getDouble("amount"));
 
             // Simulate payment processing
-            return vertx.executeBlocking(promise -> {
-                try {
-                    Thread.sleep(200);
-                    promise.complete();
-                } catch (InterruptedException e) {
-                    promise.fail(e);
-                }
+            return vertx.executeBlocking(() -> {
+                Thread.sleep(200);
+                return null;
             }).map(v -> {
                 message.reply(new JsonObject().put("status", "paid"));
                 return null;
@@ -709,4 +715,4 @@ This configuration balances throughput with resource usage.
 
 ## Conclusion
 
-Instrumenting Vert.x applications with OpenTelemetry requires bridging two different context mechanisms. By storing OpenTelemetry context in Vert.x context and using helper utilities for span management, you maintain trace continuity across HTTP requests, event bus messages, and reactive pipelines. The result is comprehensive observability for your event-driven applications without compromising Vert.x's performance characteristics.
+Instrumenting Vert.x applications with OpenTelemetry requires bridging two different context mechanisms. By carrying OpenTelemetry context explicitly through request and message handling, and using helper utilities for span management, you maintain trace continuity across HTTP requests, event bus messages, and reactive pipelines. The result is comprehensive observability for your event-driven applications without compromising Vert.x's performance characteristics.
