@@ -68,7 +68,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY server.js .
 
@@ -118,7 +118,7 @@ server {
     location /ws {
         proxy_pass http://websocket_backend;
 
-        # These three headers are required for the WebSocket upgrade handshake
+        # These directives make the WebSocket upgrade work reliably
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -136,7 +136,7 @@ server {
 }
 ```
 
-The critical parts are `proxy_http_version 1.1`, the `Upgrade` header, and the `Connection "upgrade"` header. Without all three, the WebSocket handshake fails with a 400 or 502 error.
+The critical parts are `proxy_http_version 1.1`, the `Upgrade` header, and the `Connection "upgrade"` header. Without this configuration, the WebSocket handshake can fail with a 400 or 502 error.
 
 ## Docker Compose for WebSocket Services
 
@@ -144,8 +144,6 @@ Here is a complete Compose file with the WebSocket server, Nginx reverse proxy, 
 
 ```yaml
 # docker-compose.yml - Full WebSocket stack with proxy and pub/sub
-version: "3.8"
-
 services:
   ws-server:
     build: ./ws-server
@@ -260,12 +258,14 @@ Here is how to scale the WebSocket server behind Nginx with sticky sessions:
 
 ```nginx
 # nginx-scaled.conf - Load balancing with sticky sessions for WebSocket
+resolver 127.0.0.11 valid=10s ipv6=off;
+
 upstream websocket_backend {
-    # ip_hash ensures the same client always reaches the same backend
+    zone websocket_backend 64k;
+
+    # ip_hash keeps the same client on the same resolved backend when possible
     ip_hash;
-    server ws-server-1:8080;
-    server ws-server-2:8080;
-    server ws-server-3:8080;
+    server ws-server:8080 resolve;
 }
 ```
 
@@ -316,14 +316,14 @@ Track active connections and connection metrics for observability:
 
 ```bash
 # Check how many WebSocket connections a container currently holds
-docker exec ws-server sh -c "ss -tn state established | grep ':8080' | wc -l"
+docker exec ws-server sh -c "netstat -tn | grep ':8080' | grep ESTABLISHED | wc -l"
 ```
 
 For deeper inspection, check the connection details:
 
 ```bash
 # View all established connections on the WebSocket port
-docker exec ws-server ss -tn state established '( dport = :8080 or sport = :8080 )'
+docker exec ws-server sh -c "netstat -tn | grep ':8080' | grep ESTABLISHED"
 ```
 
 ## Summary
