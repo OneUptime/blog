@@ -49,7 +49,7 @@ meter = metrics.get_meter("digital-twin-sync")
 
 # Core sync metrics
 sync_latency = meter.create_histogram(
-    "twin.sync.latency_ms",
+    "twin.sync.latency",
     description="Time between physical event and twin state update",
     unit="ms"
 )
@@ -62,7 +62,7 @@ sync_errors = meter.create_counter(
     description="Number of failed sync operations"
 )
 state_drift = meter.create_gauge(
-    "twin.state.drift_seconds",
+    "twin.state.drift",
     description="How far behind the twin is from the physical asset's latest known state",
     unit="s"
 )
@@ -91,6 +91,11 @@ class InstrumentedTwinSyncEngine:
     def __init__(self):
         self.twins = {}  # twin_id -> twin state
         self.property_timestamps = {}  # (twin_id, property) -> last_update_time
+        self.twin_asset_types = {}  # twin_id -> asset type
+
+    def get_asset_type(self, twin_id):
+        """Return the physical asset type associated with a twin."""
+        return self.twin_asset_types.get(twin_id, "unknown")
 
     def process_update(self, twin_id, property_name, value, event_timestamp):
         """
@@ -222,7 +227,8 @@ def batch_sync(self, twin_id, updates):
         span.set_attribute("twin.batch.success_count", success_count)
         span.set_attribute("twin.batch.error_count", error_count)
         span.set_attribute("twin.batch.duration_ms", duration_ms)
-        span.set_attribute("twin.batch.rate_per_sec", len(updates) / (duration_ms / 1000))
+        rate_per_sec = len(updates) / (duration_ms / 1000) if duration_ms > 0 else 0
+        span.set_attribute("twin.batch.rate_per_sec", rate_per_sec)
 ```
 
 ## Key Alerts
