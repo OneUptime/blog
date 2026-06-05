@@ -16,7 +16,7 @@ This guide shows you how to back up every component of a Docker Compose stack an
 
 A typical Compose stack consists of several layers that all need backing up:
 
-1. **docker-compose.yml** and override files - the service definitions
+1. **compose.yaml** or **docker-compose.yml** and override files - the service definitions
 2. **.env files** - environment variables and secrets
 3. **Named volumes** - persistent data for databases, uploads, caches
 4. **Mounted directories** - configuration files, custom scripts
@@ -34,11 +34,13 @@ List all resources associated with a Compose project:
 
 docker compose ps
 
+PROJECT_NAME=$(docker compose config --format json | jq -r '.name')
+
 # See volumes created by this project
-docker volume ls --filter label=com.docker.compose.project=$(basename $(pwd))
+docker volume ls --filter label=com.docker.compose.project="$PROJECT_NAME"
 
 # See networks created by this project
-docker network ls --filter label=com.docker.compose.project=$(basename $(pwd))
+docker network ls --filter label=com.docker.compose.project="$PROJECT_NAME"
 
 # See the resolved configuration
 docker compose config
@@ -64,7 +66,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Resolve project name and directory
 cd "$PROJECT_DIR"
-PROJECT_NAME=$(basename "$(pwd)")
+PROJECT_NAME=$(docker compose config --format json 2>/dev/null | jq -r '.name' || basename "$(pwd)")
 BACKUP_DIR="${BACKUP_ROOT}/${PROJECT_NAME}_${TIMESTAMP}"
 
 mkdir -p "$BACKUP_DIR"
@@ -79,12 +81,12 @@ echo "--- Phase 1: Project files ---"
 mkdir -p "${BACKUP_DIR}/project"
 
 # Copy all compose files and config
-for FILE in docker-compose*.yml docker-compose*.yaml .env .env.* Dockerfile* *.conf *.cfg; do
-  if ls $FILE 1>/dev/null 2>&1; then
-    cp $FILE "${BACKUP_DIR}/project/"
-    echo "  Copied: $FILE"
-  fi
+shopt -s nullglob
+for FILE in compose*.yml compose*.yaml docker-compose*.yml docker-compose*.yaml .env .env.* Dockerfile* *.conf *.cfg; do
+  cp -a "$FILE" "${BACKUP_DIR}/project/"
+  echo "  Copied: $FILE"
 done
+shopt -u nullglob
 
 # Copy any mounted config directories
 if [ -d "./config" ]; then
@@ -103,35 +105,38 @@ echo "--- Phase 2: Database dumps ---"
 mkdir -p "${BACKUP_DIR}/databases"
 
 # Detect and back up PostgreSQL
-PG_CONTAINERS=$(docker compose ps --format json | jq -r 'select(.Image | contains("postgres")) | .Name' 2>/dev/null || true)
+PG_CONTAINERS=$(docker compose ps --format json | jq -r '.[] | select(.Image | contains("postgres")) | .Name' 2>/dev/null || true)
 for CONTAINER in $PG_CONTAINERS; do
   echo "  Dumping PostgreSQL from $CONTAINER"
-  docker exec -t "$CONTAINER" pg_dumpall -U postgres 2>/dev/null | \
+  docker exec "$CONTAINER" pg_dumpall -U postgres 2>/dev/null | \
     gzip > "${BACKUP_DIR}/databases/${CONTAINER}_pgdump.sql.gz"
 done
 
 # Detect and back up MySQL/MariaDB
-MYSQL_CONTAINERS=$(docker compose ps --format json | jq -r 'select(.Image | contains("mysql") or contains("mariadb")) | .Name' 2>/dev/null || true)
+MYSQL_CONTAINERS=$(docker compose ps --format json | jq -r '.[] | select(.Image | contains("mysql") or contains("mariadb")) | .Name' 2>/dev/null || true)
 for CONTAINER in $MYSQL_CONTAINERS; do
   echo "  Dumping MySQL from $CONTAINER"
-  docker exec -t "$CONTAINER" mysqldump -u root --all-databases --single-transaction 2>/dev/null | \
+  docker exec "$CONTAINER" mysqldump -u root --all-databases --single-transaction 2>/dev/null | \
     gzip > "${BACKUP_DIR}/databases/${CONTAINER}_mysqldump.sql.gz"
 done
 
 # Detect and back up MongoDB
-MONGO_CONTAINERS=$(docker compose ps --format json | jq -r 'select(.Image | contains("mongo")) | .Name' 2>/dev/null || true)
+MONGO_CONTAINERS=$(docker compose ps --format json | jq -r '.[] | select(.Image | contains("mongo")) | .Name' 2>/dev/null || true)
 for CONTAINER in $MONGO_CONTAINERS; do
   echo "  Dumping MongoDB from $CONTAINER"
-  docker exec -t "$CONTAINER" mongodump --archive --gzip 2>/dev/null > \
+  docker exec "$CONTAINER" mongodump --archive --gzip 2>/dev/null > \
     "${BACKUP_DIR}/databases/${CONTAINER}_mongodump.archive.gz"
 done
 
 # Detect and back up Redis
-REDIS_CONTAINERS=$(docker compose ps --format json | jq -r 'select(.Image | contains("redis")) | .Name' 2>/dev/null || true)
+REDIS_CONTAINERS=$(docker compose ps --format json | jq -r '.[] | select(.Image | contains("redis")) | .Name' 2>/dev/null || true)
 for CONTAINER in $REDIS_CONTAINERS; do
   echo "  Backing up Redis from $CONTAINER"
-  docker exec -t "$CONTAINER" redis-cli BGSAVE 2>/dev/null
-  sleep 3
+  LASTSAVE=$(docker exec "$CONTAINER" redis-cli LASTSAVE 2>/dev/null | tr -d '\r')
+  docker exec "$CONTAINER" redis-cli BGSAVE 2>/dev/null
+  until [ "$(docker exec "$CONTAINER" redis-cli LASTSAVE 2>/dev/null | tr -d '\r')" != "$LASTSAVE" ]; do
+    sleep 1
+  done
   docker cp "${CONTAINER}:/data/dump.rdb" "${BACKUP_DIR}/databases/${CONTAINER}_redis.rdb" 2>/dev/null || true
 done
 
@@ -140,12 +145,7 @@ echo ""
 echo "--- Phase 3: Volume backups ---"
 mkdir -p "${BACKUP_DIR}/volumes"
 
-VOLUMES=$(docker compose config --volumes 2>/dev/null || true)
-COMPOSE_PROJECT=$(docker compose config --format json 2>/dev/null | jq -r '.name' || echo "$PROJECT_NAME")
-
-for VOLUME_NAME in $VOLUMES; do
-  FULL_VOLUME="${COMPOSE_PROJECT}_${VOLUME_NAME}"
-
+while IFS=$'\t' read -r VOLUME_NAME FULL_VOLUME; do
   # Check if the volume exists
   if docker volume inspect "$FULL_VOLUME" > /dev/null 2>&1; then
     echo "  Backing up volume: $FULL_VOLUME"
@@ -157,7 +157,7 @@ for VOLUME_NAME in $VOLUMES; do
   else
     echo "  Volume not found: $FULL_VOLUME (skipping)"
   fi
-done
+done < <(docker compose config --format json 2>/dev/null | jq -r '.volumes // {} | to_entries[] | "\(.key)\t\(.value.name)"' || true)
 
 # Phase 4: Service state snapshot
 echo ""
@@ -203,7 +203,7 @@ Complete restoration script for a Compose stack backup:
 
 set -euo pipefail
 
-ARCHIVE="$1"
+ARCHIVE="${1:-}"
 RESTORE_DIR="${2:-/opt/docker/restored}"
 
 if [ -z "$ARCHIVE" ]; then
@@ -223,7 +223,7 @@ BACKUP_PATH="${TEMP_DIR}/${BACKUP_DIR}"
 echo ""
 echo "--- Phase 1: Restoring project files ---"
 mkdir -p "$RESTORE_DIR"
-cp -r "${BACKUP_PATH}/project/"* "$RESTORE_DIR/"
+cp -a "${BACKUP_PATH}/project/." "$RESTORE_DIR/"
 echo "  Project files restored to $RESTORE_DIR"
 
 cd "$RESTORE_DIR"
@@ -245,19 +245,17 @@ if [ -d "${BACKUP_PATH}/volumes" ]; then
   # Start the stack briefly to create volumes
   docker compose up --no-start 2>/dev/null || true
 
-  COMPOSE_PROJECT=$(docker compose config --format json 2>/dev/null | jq -r '.name' || basename "$(pwd)")
-
-  for VOLUME_BACKUP in "${BACKUP_PATH}/volumes/"*.tar.gz; do
-    VOLUME_NAME=$(basename "$VOLUME_BACKUP" .tar.gz)
-    FULL_VOLUME="${COMPOSE_PROJECT}_${VOLUME_NAME}"
+  while IFS=$'\t' read -r VOLUME_NAME FULL_VOLUME; do
+    VOLUME_BACKUP="${BACKUP_PATH}/volumes/${VOLUME_NAME}.tar.gz"
+    [ -f "$VOLUME_BACKUP" ] || continue
 
     echo "  Restoring volume: $FULL_VOLUME"
     docker run --rm \
       -v "${FULL_VOLUME}":/target \
       -v "$(dirname "$VOLUME_BACKUP")":/backup:ro \
       alpine:latest \
-      sh -c "rm -rf /target/* && tar xzf /backup/$(basename "$VOLUME_BACKUP") -C /target"
-  done
+      sh -c 'rm -rf /target/* /target/.[!.]* /target/..?* && tar xzf "/backup/$1" -C /target' sh "$(basename "$VOLUME_BACKUP")"
+  done < <(docker compose config --format json 2>/dev/null | jq -r '.volumes // {} | to_entries[] | "\(.key)\t\(.value.name)"' || true)
 fi
 
 # Phase 4: Start services
@@ -276,6 +274,24 @@ for DUMP in "${BACKUP_PATH}/databases/"*_pgdump.sql.gz; do
     CONTAINER=$(basename "$DUMP" _pgdump.sql.gz)
     echo "  Restoring PostgreSQL to $CONTAINER"
     gunzip -c "$DUMP" | docker exec -i "$CONTAINER" psql -U postgres 2>/dev/null || true
+  fi
+done
+
+# Restore MySQL/MariaDB
+for DUMP in "${BACKUP_PATH}/databases/"*_mysqldump.sql.gz; do
+  if [ -f "$DUMP" ]; then
+    CONTAINER=$(basename "$DUMP" _mysqldump.sql.gz)
+    echo "  Restoring MySQL to $CONTAINER"
+    gunzip -c "$DUMP" | docker exec -i "$CONTAINER" mysql -u root 2>/dev/null || true
+  fi
+done
+
+# Restore MongoDB
+for DUMP in "${BACKUP_PATH}/databases/"*_mongodump.archive.gz; do
+  if [ -f "$DUMP" ]; then
+    CONTAINER=$(basename "$DUMP" _mongodump.archive.gz)
+    echo "  Restoring MongoDB to $CONTAINER"
+    docker exec -i "$CONTAINER" mongorestore --archive --gzip --drop 2>/dev/null < "$DUMP" || true
   fi
 done
 
@@ -305,7 +321,6 @@ Use a dedicated backup container that runs on a schedule:
 
 ```yaml
 # docker-compose.backup.yml
-version: "3.8"
 
 services:
   backup:
@@ -317,7 +332,7 @@ services:
       - /opt/docker/myproject:/project:ro
     entrypoint: /bin/sh
     command: >
-      -c "apk add --no-cache docker-cli bash jq &&
+      -c "apk add --no-cache docker-cli docker-cli-compose bash jq &&
           while true; do
             /scripts/backup.sh /project /backups
             sleep 86400
@@ -350,9 +365,9 @@ mkdir -p "$VERIFY_DIR"
 tar tzf "$LATEST_BACKUP" > "${VERIFY_DIR}/contents.txt"
 
 # Check for required components
-REQUIRED=("project/docker-compose" "volumes/" "databases/")
+REQUIRED=("project/.*compose.*ya?ml" "volumes/" "databases/")
 for ITEM in "${REQUIRED[@]}"; do
-  if grep -q "$ITEM" "${VERIFY_DIR}/contents.txt"; then
+  if grep -Eq "$ITEM" "${VERIFY_DIR}/contents.txt"; then
     echo "  PASS: Found $ITEM"
   else
     echo "  FAIL: Missing $ITEM"
