@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Ad Tech, Real-Time Bidding, Latency
 
 Description: Trace the full lifecycle of programmatic ad auctions and real-time bidding using OpenTelemetry distributed tracing.
 
-Programmatic ad serving operates under brutal latency constraints. An RTB auction needs to complete in under 100 milliseconds. The ad request arrives, bid requests fan out to multiple demand-side platforms, bids come back, a winner is selected, and the creative is returned to the publisher page. If any step is slow, you lose revenue. OpenTelemetry tracing gives you the visibility to find and fix these bottlenecks.
+Programmatic ad serving operates under brutal latency constraints. Many RTB auctions need to complete in around 100 milliseconds, although the exact response deadline varies by exchange, format, and auction type. The ad request arrives, bid requests fan out to multiple demand-side platforms, bids come back, a winner is selected, and the creative is returned to the publisher page. If any step is slow, you lose revenue. OpenTelemetry tracing gives you the visibility to find and fix these bottlenecks.
 
 ## The RTB Auction Flow
 
@@ -52,14 +52,13 @@ var (
         metric.WithDescription("Time for a DSP to respond to a bid request"),
         metric.WithUnit("ms"),
     )
-    bidTimeouts, _ = meter.Int64Counter(
-        "rtb.bid.timeouts",
-        metric.WithDescription("Number of DSP bid requests that timed out"),
+    bidFailures, _ = meter.Int64Counter(
+        "rtb.bid.failures",
+        metric.WithDescription("Number of DSP bid requests that failed or timed out"),
     )
     auctionRevenue, _ = meter.Float64Histogram(
-        "rtb.auction.winning_bid",
+        "rtb.auction.winning_bid_cpm",
         metric.WithDescription("Winning bid amount in CPM"),
-        metric.WithUnit("USD"),
     )
 )
 
@@ -167,7 +166,7 @@ func fanOutBidRequests(ctx context.Context, req *BidRequest) []*BidResponse {
         bidResponseTime.Record(ctx, float64(r.duration.Milliseconds()), attrs)
 
         if r.err != nil {
-            bidTimeouts.Add(ctx, 1, attrs)
+            bidFailures.Add(ctx, 1, attrs)
             continue
         }
         if r.response != nil && r.response.BidCPM > 0 {
@@ -222,9 +221,9 @@ func selectWinner(ctx context.Context, bids []*BidResponse) *BidResponse {
 
 With this instrumentation, build dashboards covering:
 
-- **Auction duration distribution**: The p50, p95, and p99 of `rtb.auction.duration`. If p99 is above 100ms, you are losing auctions.
+- **Auction duration distribution**: The p50, p95, and p99 of `rtb.auction.duration`. If p99 is above 100ms, you may be losing auctions on exchanges with tight response deadlines.
 - **DSP response time per partner**: Compare how quickly each DSP responds. Slow DSPs may need tighter timeouts or exclusion from latency-sensitive auctions.
-- **Timeout rate by DSP**: High timeout rates indicate a DSP endpoint that is overloaded or has network issues.
+- **Failure and timeout rate by DSP**: High failure or timeout rates indicate a DSP endpoint that is overloaded or has network issues.
 - **Fill rate**: Percentage of auctions that produce a winner. Low fill rates might mean your floor prices are too high or you need more demand partners.
 - **Revenue per auction**: Track winning bid CPMs over time to spot revenue anomalies early.
 
