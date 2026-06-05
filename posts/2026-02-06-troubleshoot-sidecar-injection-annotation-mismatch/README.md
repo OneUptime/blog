@@ -26,8 +26,9 @@ instrumentation.opentelemetry.io/inject-nodejs: "true"
 # .NET
 instrumentation.opentelemetry.io/inject-dotnet: "true"
 
-# Go (requires a different approach since Go is compiled)
+# Go (requires the Go instrumentation feature gate and a target executable)
 instrumentation.opentelemetry.io/inject-go: "true"
+instrumentation.opentelemetry.io/otel-go-auto-target-exe: "/path/to/container/executable"
 
 # Apache HTTPD
 instrumentation.opentelemetry.io/inject-apache-httpd: "true"
@@ -35,7 +36,7 @@ instrumentation.opentelemetry.io/inject-apache-httpd: "true"
 # Nginx
 instrumentation.opentelemetry.io/inject-nginx: "true"
 
-# SDK (generic, for already-instrumented apps that need the collector sidecar)
+# SDK (generic, for apps that need only OpenTelemetry SDK environment variables)
 instrumentation.opentelemetry.io/inject-sdk: "true"
 ```
 
@@ -111,6 +112,8 @@ instrumentation.opentelemetry.io/inject-java: true  # Boolean, not string in som
 instrumentation.opentelemetry.io/inject-java: "true"
 # Or reference a specific Instrumentation CR
 instrumentation.opentelemetry.io/inject-java: "my-instrumentation"
+# Or reference an Instrumentation CR in another namespace
+instrumentation.opentelemetry.io/inject-java: "observability/my-instrumentation"
 ```
 
 ## Debugging Steps
@@ -137,7 +140,7 @@ When injection works correctly, you should see:
 ```bash
 # The pod should have an init container
 kubectl get pod my-app-pod -o jsonpath='{.spec.initContainers[*].name}'
-# Output: opentelemetry-auto-instrumentation-python (or similar)
+# Output: opentelemetry-auto-instrumentation
 
 # The main container should have OTel environment variables
 kubectl get pod my-app-pod -o jsonpath='{.spec.containers[0].env[*].name}' | tr ' ' '\n' | grep OTEL
