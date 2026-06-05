@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Custom Exporter, Batching, Compression, SDK
 
 Description: Create a custom OpenTelemetry exporter that batches telemetry data and compresses it before sending to a non-standard backend with a proprietary protocol.
 
-When your backend does not speak OTLP and needs a specific wire format with custom batching and compression requirements, the standard exporters will not work. You need a custom exporter that converts OTLP data, batches it according to your backend's expectations, compresses it, and handles the network protocol. This post covers building one in Python and Go.
+When your backend does not speak OTLP and needs a specific wire format with custom batching and compression requirements, the standard exporters will not work. You need a custom exporter that converts OpenTelemetry span data, batches it according to your backend's expectations, compresses it, and handles the network protocol. This post covers building one in Python and Go.
 
 ## When You Need a Custom Exporter
 
@@ -27,9 +27,7 @@ import gzip
 import json
 import time
 import logging
-import threading
 from typing import Sequence
-from queue import Queue, Empty
 
 import requests
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
@@ -355,6 +353,8 @@ For telemetry data (highly repetitive JSON), zstd at default level typically ach
 ```python
 # test_exporter.py
 from unittest.mock import patch, MagicMock
+import requests
+
 from custom_exporter import CompressedBatchExporter
 from opentelemetry.sdk.trace.export import SpanExportResult
 
@@ -376,8 +376,8 @@ def test_successful_export(mock_spans):
         call_args = mock_post.call_args
         assert call_args.kwargs.get("data") is not None
 
-def test_handles_timeout():
-    with patch("requests.Session.post", side_effect=requests.Timeout):
+def test_handles_timeout(mock_spans):
+    with patch("requests.Session.post", side_effect=requests.exceptions.Timeout):
         exporter = CompressedBatchExporter(
             endpoint="http://localhost:8080",
             api_key="test-key",
