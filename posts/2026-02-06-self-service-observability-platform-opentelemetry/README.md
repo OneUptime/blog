@@ -75,7 +75,10 @@ The platform exposes an API that developers use to configure their observability
 ```python
 # config_api.py - Self-service observability configuration API
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
+
+class QuotaExceededError(Exception):
+    pass
 
 @dataclass
 class ObservabilityConfig:
@@ -85,9 +88,9 @@ class ObservabilityConfig:
     metrics_enabled: bool = True
     traces_enabled: bool = True
     logs_enabled: bool = True
-    custom_metrics: List[str] = None
+    custom_metrics: Optional[List[str]] = None
     # Sampling rate derived from tier
-    trace_sampling_rate: float = None
+    trace_sampling_rate: Optional[float] = None
 
     def __post_init__(self):
         # Tier determines default sampling rates and retention
@@ -181,7 +184,7 @@ processors:
     send_batch_size: 512
     timeout: 5s
 
-  # Enforce metric cardinality limits
+  # Allow only approved metric name patterns; quotas handle cardinality limits
   filter/cardinality:
     metrics:
       include:
@@ -293,7 +296,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Rate limiting per team based on headers
+  # Batch outgoing telemetry before export
   batch:
     send_batch_size: 2048
     timeout: 10s
