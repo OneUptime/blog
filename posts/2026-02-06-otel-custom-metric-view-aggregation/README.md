@@ -20,7 +20,7 @@ Views are rules that match specific metrics and override their aggregation setti
 
 ## Python: Custom Histogram Buckets
 
-The default histogram buckets are designed for HTTP latency in seconds: `[0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]`. These make no sense for a metric tracking order values in dollars.
+The default histogram buckets are designed for millisecond-scale latency: `[0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]`. These make no sense for a metric tracking order values in dollars.
 
 ```python
 # views.py
@@ -39,12 +39,12 @@ payment_amount_view = View(
     ),
 )
 
-# View 2: Custom buckets for API latency in milliseconds
+# View 2: Custom buckets for HTTP latency in seconds
 api_latency_view = View(
-    instrument_name="http.server.duration",
+    instrument_name="http.server.request.duration",
     aggregation=ExplicitBucketHistogramAggregation(
         # Focused on the range that matters for our SLO
-        boundaries=[5, 10, 25, 50, 100, 200, 500, 1000, 2000, 5000]
+        boundaries=[0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2, 5]
     ),
 )
 
@@ -85,13 +85,13 @@ from opentelemetry.sdk.metrics.view import View
 request_counter_view = View(
     instrument_name="http.server.request.count",
     # Only keep these attributes, drop everything else
-    attribute_keys=["http.method", "http.route", "http.status_code"],
+    attribute_keys={"http.request.method", "http.route", "http.response.status_code"},
 )
 
 # Drop all attributes from a simple uptime gauge
 uptime_view = View(
     instrument_name="process.uptime",
-    attribute_keys=[],  # No attributes, just the value
+    attribute_keys=set(),  # No attributes, just the value
 )
 ```
 
@@ -112,7 +112,7 @@ all_duration_view = View(
 drop_user_id_view = View(
     instrument_name="*",
     attribute_keys={
-        "http.method", "http.route", "http.status_code",
+        "http.request.method", "http.route", "http.response.status_code",
         "service.name", "deployment.environment",
     },
 )
@@ -125,9 +125,9 @@ Sometimes instrumentation libraries produce metrics you do not need. Use a view 
 ```python
 from opentelemetry.sdk.metrics.view import View, DropAggregation
 
-# Drop the runtime GC metrics we don't care about
+# Drop the CPython runtime GC metrics we don't care about
 drop_gc_view = View(
-    instrument_name="process.runtime.gc.*",
+    instrument_name="cpython.gc.*",
     aggregation=DropAggregation(),
 )
 
@@ -146,6 +146,8 @@ import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.InstrumentSelector;
 import io.opentelemetry.sdk.metrics.View;
 import io.opentelemetry.sdk.metrics.Aggregation;
+import java.util.List;
+import java.util.Set;
 
 SdkMeterProvider meterProvider = SdkMeterProvider.builder()
     // Custom buckets for payment amounts
@@ -165,15 +167,15 @@ SdkMeterProvider meterProvider = SdkMeterProvider.builder()
             .setName("http.server.request.count")
             .build(),
         View.builder()
-            .setAttributeFilter(key ->
-                Set.of("http.method", "http.route", "http.status_code").contains(key)
-            )
+            .setAttributeFilter(Set.of(
+                "http.request.method", "http.route", "http.response.status_code"
+            ))
             .build()
     )
     // Drop metrics we don't need
     .registerView(
         InstrumentSelector.builder()
-            .setName("process.runtime.jvm.gc.*")
+            .setName("jvm.gc.*")
             .build(),
         View.builder()
             .setAggregation(Aggregation.drop())
@@ -202,7 +204,7 @@ views = [
             boundaries=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
         ),
         # Only keep these attributes for this metric
-        attribute_keys=["payment.method", "order.type", "customer.tier"],
+        attribute_keys={"payment.method", "order.type", "customer.tier"},
     ),
 
     # API response time with SLO-focused buckets
@@ -211,7 +213,7 @@ views = [
         aggregation=ExplicitBucketHistogramAggregation(
             boundaries=[50, 100, 200, 300, 500, 1000, 2000]
         ),
-        attribute_keys=["api.endpoint", "api.method", "api.status"],
+        attribute_keys={"api.endpoint", "api.method", "api.status"},
     ),
 ]
 
