@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Kubernetes, Operator, Deployment, K8s, Automation
 
-Description: Master deploying OpenTelemetry Collectors using the Kubernetes Operator for automated management, configuration updates, and scaling with custom resources.
+Description: Master deploying OpenTelemetry Collectors using the Kubernetes Operator for automated management, configuration updates, and scaling configuration with custom resources.
 
-The OpenTelemetry Operator for Kubernetes simplifies collector deployment by providing native Kubernetes resources and automation. Instead of manually managing Deployments, DaemonSets, and ConfigMaps, the operator handles lifecycle management, auto-scaling, and configuration updates through custom resource definitions (CRDs).
+The OpenTelemetry Operator for Kubernetes simplifies collector deployment by providing native Kubernetes resources and automation. Instead of manually managing Deployments, DaemonSets, and ConfigMaps, the operator handles lifecycle management, scaling configuration, and configuration updates through custom resource definitions (CRDs).
 
 ## Why Use the OpenTelemetry Operator
 
@@ -27,7 +27,7 @@ First, install cert-manager, which the operator requires for webhook certificate
 ```bash
 # Install cert-manager for managing TLS certificates
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available --timeout=300s \
@@ -58,6 +58,7 @@ The operator creates several CRDs:
 - `OpenTelemetryCollector`: Define collector instances
 - `Instrumentation`: Configure auto-instrumentation for applications
 - `OpAMPBridge`: Connect collectors to OpAMP control planes
+- `TargetAllocator`: Distribute Prometheus scrape targets when target allocation is enabled
 
 ## Deploying a Collector as a Deployment
 
@@ -66,7 +67,7 @@ The simplest deployment mode runs collectors as a Kubernetes Deployment, suitabl
 ```yaml
 # collector-deployment.yaml
 # Deploy a gateway collector using the operator
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: gateway-collector
@@ -79,7 +80,7 @@ spec:
   replicas: 3
 
   # Use the contrib distribution with additional components
-  image: otel/opentelemetry-collector-contrib:0.93.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
 
   # Resource limits for each collector pod
   resources:
@@ -91,7 +92,7 @@ spec:
       cpu: 1000m
 
   # Define the collector configuration inline
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -134,7 +135,7 @@ spec:
           insecure: false
 
       # Debug exporter for troubleshooting
-      logging:
+      debug:
         verbosity: normal
 
     service:
@@ -142,12 +143,12 @@ spec:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [prometheusremotewrite, logging]
+          exporters: [prometheusremotewrite, debug]
 
   # Environment variables for the collector pods
   env:
@@ -200,7 +201,7 @@ For agent collectors that run on every node, use DaemonSet mode:
 ```yaml
 # collector-daemonset.yaml
 # Deploy an agent collector on every node using DaemonSet mode
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: agent-collector
@@ -209,7 +210,7 @@ spec:
   # DaemonSet mode deploys one collector per node
   mode: daemonset
 
-  image: otel/opentelemetry-collector-contrib:0.93.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
 
   # Configure host networking for receiving telemetry on node IP
   hostNetwork: true
@@ -222,7 +223,7 @@ spec:
       memory: 512Mi
       cpu: 500m
 
-  config: |
+  config:
     receivers:
       # Receive OTLP telemetry from applications
       otlp:
@@ -291,7 +292,7 @@ spec:
       otlp:
         endpoint: gateway-collector-collector.observability.svc.cluster.local:4317
         tls:
-          insecure: false
+          insecure: true
         retry_on_failure:
           enabled: true
           initial_interval: 5s
@@ -398,7 +399,7 @@ The operator can automatically inject collectors as sidecars into application po
 ```yaml
 # collector-sidecar.yaml
 # Define a sidecar collector configuration
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: sidecar
@@ -407,7 +408,7 @@ spec:
   # Sidecar mode for automatic injection
   mode: sidecar
 
-  image: otel/opentelemetry-collector-contrib:0.93.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
 
   resources:
     requests:
@@ -417,7 +418,7 @@ spec:
       memory: 256Mi
       cpu: 200m
 
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -437,6 +438,8 @@ spec:
     exporters:
       otlp:
         endpoint: gateway-collector-collector.observability.svc.cluster.local:4317
+        tls:
+          insecure: true
 
     service:
       pipelines:
@@ -490,7 +493,7 @@ The Target Allocator enables efficient Prometheus scraping across multiple colle
 ```yaml
 # collector-with-target-allocator.yaml
 # Deploy collector with Target Allocator for distributed scraping
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: prometheus-collector
@@ -499,7 +502,7 @@ spec:
   mode: statefulset
   replicas: 3
 
-  image: otel/opentelemetry-collector-contrib:0.93.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
 
   # Enable the Target Allocator
   targetAllocator:
@@ -510,22 +513,11 @@ spec:
       serviceMonitorSelector: {}
       podMonitorSelector: {}
 
-  config: |
+  config:
     receivers:
-      # Prometheus receiver gets targets from Target Allocator
+      # Prometheus receiver config is handed to the Target Allocator
       prometheus:
-        config:
-          scrape_configs:
-            - job_name: 'otel-collector'
-              scrape_interval: 30s
-              static_configs:
-                - targets: ['0.0.0.0:8888']
-
-        # Use Target Allocator for distributed scraping
-        target_allocator:
-          endpoint: http://prometheus-collector-targetallocator:80
-          interval: 30s
-          collector_id: "${POD_NAME}"
+        config: {}
 
     processors:
       batch:
@@ -541,15 +533,9 @@ spec:
           receivers: [prometheus]
           processors: [batch]
           exporters: [prometheusremotewrite]
-
-  env:
-    - name: POD_NAME
-      valueFrom:
-        fieldRef:
-          fieldPath: metadata.name
 ```
 
-The Target Allocator watches ServiceMonitor and PodMonitor resources, then distributes scrape targets evenly across collector instances. This prevents duplicate scraping and enables horizontal scaling.
+The Target Allocator watches ServiceMonitor and PodMonitor resources, then distributes scrape targets across collector instances. The operator rewrites the collector's Prometheus receiver configuration to use the Target Allocator endpoint, which prevents duplicate scraping and enables horizontal scaling. Because this example enables `prometheusCR`, make sure `otel-targetallocator-sa` has RBAC permissions to read ServiceMonitor and PodMonitor resources.
 
 ## Auto-Instrumentation for Applications
 
@@ -595,7 +581,7 @@ spec:
   dotnet:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-dotnet:1.2.0
 
-  # Go auto-instrumentation (requires code changes for Go)
+  # Go auto-instrumentation (requires the Go feature gate and target executable configuration)
   go:
     image: ghcr.io/open-telemetry/opentelemetry-go-instrumentation/autoinstrumentation-go:v0.9.0-alpha
 ```
@@ -626,9 +612,11 @@ Supported annotations:
 - `instrumentation.opentelemetry.io/inject-dotnet`: .NET apps
 - `instrumentation.opentelemetry.io/inject-go`: Go apps
 
-## Managing Collector Configuration with ConfigMaps
+For Go auto-instrumentation, also set `instrumentation.opentelemetry.io/otel-go-auto-target-exe` to the executable path in the target container, and enable Go instrumentation in the operator.
 
-For complex configurations, reference external ConfigMaps:
+## Mounting Additional Configuration with ConfigMaps
+
+For complex configurations, mount external ConfigMaps into collector pods for supporting files such as certificates or rule files. The operator still requires the collector configuration in `spec.config`:
 
 ```yaml
 apiVersion: v1
@@ -637,25 +625,36 @@ metadata:
   name: advanced-collector-config
   namespace: observability
 data:
-  collector.yaml: |
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-    # ... rest of configuration
+  README: |
+    Files in this ConfigMap are mounted into the collector pod.
 ---
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: advanced-collector
   namespace: observability
 spec:
   mode: deployment
-  # Reference the ConfigMap instead of inline config
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    exporters:
+      debug: {}
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [debug]
+
+  # Mount a ConfigMap into the collector pod for extra files
   configmaps:
     - name: advanced-collector-config
-      key: collector.yaml
+      mountpath: /etc/otel-extra
 ```
 
 ## Monitoring and Troubleshooting
@@ -697,13 +696,13 @@ The operator supports zero-downtime upgrades through rolling updates:
 ```bash
 # Update the collector image
 kubectl patch opentelemetrycollector gateway-collector -n observability \
-  --type merge -p '{"spec":{"image":"otel/opentelemetry-collector-contrib:0.94.0"}}'
+  --type merge -p '{"spec":{"image":"otel/opentelemetry-collector-contrib:0.153.0"}}'
 
 # Watch the rollout
 kubectl rollout status deployment/gateway-collector-collector -n observability
 
 # Update the operator itself
-kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.94.0/opentelemetry-operator.yaml
+kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.152.0/opentelemetry-operator.yaml
 ```
 
 ## Complete Architecture Example
