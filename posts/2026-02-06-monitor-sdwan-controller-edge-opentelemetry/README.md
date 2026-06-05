@@ -208,6 +208,7 @@ def collect_edge_telemetry(edge_device):
             "sdwan.transport.type": transport.type,
             "sdwan.transport.interface": transport.interface_name,
             "sdwan.transport.provider": transport.provider,
+            "sdwan.transport.threshold_bps": int(transport.max_bps * 0.8),
         }
 
         transport_bandwidth_used.set(transport.current_bps, transport_attrs)
@@ -229,6 +230,8 @@ def collect_edge_telemetry(edge_device):
 
 ```yaml
 # otel-collector-sdwan.yaml
+# Requires a Collector distribution that includes the transform processor,
+# such as the OpenTelemetry Collector Contrib distribution.
 receivers:
   otlp:
     protocols:
@@ -245,9 +248,9 @@ processors:
       - context: datapoint
         statements:
           # Flag transports over 80% utilization
-          - set(attributes["sdwan.transport.congested"], "true")
+          - set(datapoint.attributes["sdwan.transport.congested"], true)
             where metric.name == "sdwan.edge.transport.bandwidth_used"
-            and Double() > attributes["threshold_bps"]
+            and datapoint.value_int > datapoint.attributes["sdwan.transport.threshold_bps"]
 
 exporters:
   otlp:
