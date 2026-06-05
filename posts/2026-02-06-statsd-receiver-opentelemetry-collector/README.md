@@ -10,7 +10,7 @@ StatsD is a widely adopted protocol for sending metrics from applications to mon
 
 ## Understanding the StatsD Receiver
 
-The StatsD receiver implements the StatsD protocol, accepting metrics over UDP or TCP. It supports all standard StatsD metric types including counters, gauges, timers, histograms, and sets. The receiver aggregates incoming metrics according to configurable rules and converts them to OpenTelemetry's metric format.
+The StatsD receiver implements the StatsD protocol, accepting metrics over UDP or TCP. It supports counters, gauges, timers, histograms, and DogStatsD distribution metrics. The receiver aggregates incoming metrics according to configurable rules and converts them to OpenTelemetry's metric format.
 
 StatsD's simple text-based protocol makes it easy to instrument applications without heavy dependencies. Applications send metrics as UDP datagrams, which provides fire-and-forget semantics with minimal performance impact.
 
@@ -32,7 +32,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -40,14 +40,14 @@ service:
     metrics:
       receivers: [statsd]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration sets up the StatsD receiver on the standard port 8125, aggregates metrics every 60 seconds, and forwards them through a batch processor to a logging exporter.
+This configuration sets up the StatsD receiver on the standard port 8125, aggregates metrics every 60 seconds, and forwards them through a batch processor to a debug exporter.
 
 ## StatsD Metric Types
 
-The receiver supports all standard StatsD metric types:
+The receiver supports the following StatsD metric types:
 
 ### Counters
 
@@ -104,15 +104,16 @@ request.size:1024|h
 payload.bytes:512|h
 ```
 
-### Sets
+### Distributions
 
-Sets count unique occurrences:
+DogStatsD distributions accept numeric values:
 
 ```text
-users.unique:user123|s
-ip.addresses:192.168.1.1|s
-sessions:session456|s
+request.duration:42|d
+payload.size:512|d
 ```
+
+The original StatsD protocol also defines sets (`|s`), but the current OpenTelemetry Collector StatsD receiver does not document set support.
 
 ## Protocol Configuration
 
@@ -159,7 +160,7 @@ receivers:
     aggregation_interval: 60s
 ```
 
-TCP provides guaranteed delivery but adds overhead. Use it when metrics are critical and loss is unacceptable.
+TCP provides a more reliable transport than UDP but adds overhead. Use it when avoiding UDP packet loss is important.
 
 ## Aggregation Configuration
 
@@ -173,7 +174,7 @@ receivers:
     # How often to aggregate and forward metrics
     aggregation_interval: 60s
 
-    # Enable metric type in the metric name
+    # Add the original StatsD metric type as an attribute
     enable_metric_type: false
 
     # Treat counters as monotonic
@@ -202,18 +203,15 @@ receivers:
     endpoint: 0.0.0.0:8125
     aggregation_interval: 60s
 
-    # Parse DogStatsD tags
+    # DogStatsD key:value tags are parsed by default
     # Format: metric.name:value|type|@sample_rate|#tag1:value1,tag2:value2
-    enable_dogstatsd_extensions: true
-
-    # Parse metric name patterns
-    # Example: api.requests.GET.200
-    enable_metric_name_prefix: false
+    # Enable simple DogStatsD tags without values, such as #canary
+    enable_simple_tags: true
 ```
 
 ### DogStatsD Extensions
 
-Enable Datadog's StatsD extensions for tags and additional features:
+Use Datadog's StatsD tag format for dimensions:
 
 ```yaml
 receivers:
@@ -221,11 +219,11 @@ receivers:
     endpoint: 0.0.0.0:8125
     aggregation_interval: 60s
 
-    # Enable DogStatsD tag format
-    enable_dogstatsd_extensions: true
+    # Enable simple DogStatsD tags without values, such as #canary
+    enable_simple_tags: true
 ```
 
-With DogStatsD extensions enabled, you can send tagged metrics:
+With DogStatsD tag format, you can send tagged metrics:
 
 ```text
 api.requests:1|c|#endpoint:/users,method:GET,status:200
@@ -254,13 +252,7 @@ receivers:
       - statsd_type: "timing"
         observer_type: "summary"
         summary:
-          quantiles:
-            - quantile: 0.5
-              error: 0.05
-            - quantile: 0.9
-              error: 0.01
-            - quantile: 0.99
-              error: 0.001
+          percentiles: [50, 90, 99]
 ```
 
 ## Data Flow Architecture
@@ -298,8 +290,8 @@ receivers:
     # Aggregate every 60 seconds
     aggregation_interval: 60s
 
-    # Enable DogStatsD tag support
-    enable_dogstatsd_extensions: true
+    # Enable simple DogStatsD tags without values, such as #canary
+    enable_simple_tags: true
 
     # Treat counters as monotonic
     is_monotonic_counter: true
@@ -343,10 +335,10 @@ processors:
   metricstransform:
     transforms:
       # Rename metrics
-      - include: "^api\\.(.*)$"
+      - include: "^api\\.(.*)$$"
         match_type: regexp
         action: update
-        new_name: "application.api.$1"
+        new_name: "application.api.$${1}"
 
       # Add dimensions
       - include: ".*"
@@ -391,7 +383,7 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      level: normal
 ```
 
 ## Client Configuration Examples
@@ -424,9 +416,6 @@ with client.timer('api.response_time'):
 
 # Manual timing
 client.timing('db.query', 125.5)
-
-# Unique values (set)
-client.set('users.unique', 'user123')
 ```
 
 ### Python with datadog (DogStatsD)
@@ -466,7 +455,6 @@ client.increment('page.views');
 client.gauge('cpu.usage', 45.2);
 client.timing('api.response_time', 250);
 client.histogram('request.size', 1024);
-client.set('users.unique', 'user123');
 
 // Close client when done
 client.close();
@@ -493,8 +481,7 @@ func main() {
     // Send metrics
     client.Inc("page.views", 1, 1.0)
     client.Gauge("cpu.usage", 45, 1.0)
-    client.Timing("api.response_time", 250*time.Millisecond, 1.0)
-    client.SetInt("users.unique", 12345, 1.0)
+    client.TimingDuration("api.response_time", 250*time.Millisecond, 1.0)
 }
 ```
 
@@ -502,6 +489,7 @@ func main() {
 
 ```java
 import com.timgroup.statsd.NonBlockingStatsDClient;
+import com.timgroup.statsd.NonBlockingStatsDClientBuilder;
 import com.timgroup.statsd.StatsDClient;
 
 public class MetricsExample {
@@ -573,14 +561,13 @@ Track receiver performance:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
 ```
 
 Key metrics:
 - `otelcol_receiver_accepted_metric_points`: Metrics accepted
 - `otelcol_receiver_refused_metric_points`: Metrics refused
-- `statsd_aggregation_operations`: Aggregation operations
+- `otelcol_receiver_received_statsd_metrics`: StatsD metrics received by the receiver
 
 ### Debug Logging
 
@@ -633,12 +620,7 @@ receivers:
     enable_metric_type: false
 
 exporters:
-  # Export to Graphite (if used previously)
-  carbon:
-    endpoint: graphite.example.com:2003
-    timeout: 5s
-
-  # Also export to modern backend
+  # Export to a modern backend
   otlp:
     endpoint: backend.example.com:4317
 
@@ -647,7 +629,7 @@ service:
     metrics:
       receivers: [statsd]
       processors: [batch]
-      exporters: [carbon, otlp]
+      exporters: [otlp]
 ```
 
 ### Metric Name Compatibility
@@ -655,20 +637,14 @@ service:
 Ensure metric names remain compatible:
 
 ```yaml
-processors:
-  metricstransform:
-    transforms:
-      # Preserve original metric names
-      - include: ".*"
-        match_type: regexp
-        action: update
-        operations:
-          - action: update_label
-            label: metric.name
-            value_actions:
-              - value: ".*"
-                new_value: "{{value}}"
+receivers:
+  statsd:
+    endpoint: 0.0.0.0:8125
+    aggregation_interval: 10s
+    enable_metric_type: false
 ```
+
+Metric names are preserved by default. Add `metricstransform` rules only when you intentionally want to rename metrics.
 
 ## Integration with OneUptime
 
@@ -676,8 +652,9 @@ Export StatsD metrics to OneUptime for monitoring and alerting:
 
 ```yaml
 exporters:
-  otlp:
-    endpoint: otlp.oneuptime.com:4317
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
       x-oneuptime-token: "your-token-here"
 
@@ -686,7 +663,7 @@ service:
     metrics:
       receivers: [statsd]
       processors: [batch, resource]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ## Best Practices
@@ -742,7 +719,7 @@ Learn about other OpenTelemetry Collector receivers:
 
 ## Conclusion
 
-The StatsD receiver provides seamless integration with the widely-used StatsD protocol, enabling you to collect application metrics without modifying existing instrumentation. Its support for all standard StatsD metric types, DogStatsD extensions, and flexible aggregation makes it suitable for various use cases.
+The StatsD receiver provides seamless integration with the widely-used StatsD protocol, enabling you to collect application metrics without modifying existing instrumentation. Its support for common StatsD metric types, DogStatsD tags, and flexible aggregation makes it suitable for various use cases.
 
 Start with basic UDP configuration and progressively add features like DogStatsD tags, custom aggregation intervals, and metric transformations. Monitor receiver performance and adjust buffer sizes for high-volume scenarios.
 
