@@ -16,27 +16,26 @@ Every piece of telemetry your application produces carries these resource attrib
 
 ```javascript
 // Example of setting resource attributes in Node.js
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   // Service identification
-  [SemanticResourceAttributes.SERVICE_NAME]: 'payment-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',
-  [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'production',
-  [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: 'payment-service-7d8f9c-xk2j9',
+  'service.name': 'payment-service',
+  'service.version': '2.1.0',
+  'service.namespace': 'payments',
+  'service.instance.id': 'payment-service-7d8f9c-xk2j9',
 
   // Deployment information
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+  'deployment.environment.name': 'production',
 
   // Infrastructure details
-  [SemanticResourceAttributes.CLOUD_PROVIDER]: 'aws',
-  [SemanticResourceAttributes.CLOUD_REGION]: 'us-east-1',
-  [SemanticResourceAttributes.CLOUD_AVAILABILITY_ZONE]: 'us-east-1a',
+  'cloud.provider': 'aws',
+  'cloud.region': 'us-east-1',
+  'cloud.availability_zone': 'us-east-1a',
 
   // Container information
-  [SemanticResourceAttributes.CONTAINER_NAME]: 'payment-api',
-  [SemanticResourceAttributes.CONTAINER_ID]: 'abc123def456',
+  'container.name': 'payment-api',
+  'container.id': 'abc123def456',
 
   // Custom attributes
   'team.name': 'payments',
@@ -52,7 +51,7 @@ Resource attributes serve multiple critical functions in your observability infr
 
 ### Service Identification and Filtering
 
-When you have dozens or hundreds of services generating telemetry, resource attributes let you filter and find relevant data quickly. Searching for all traces from `service.name = "payment-service"` and `deployment.environment = "production"` immediately narrows your investigation.
+When you have dozens or hundreds of services generating telemetry, resource attributes let you filter and find relevant data quickly. Searching for all traces from `service.name = "payment-service"` and `deployment.environment.name = "production"` immediately narrows your investigation.
 
 ### Aggregation and Analysis
 
@@ -70,7 +69,7 @@ from opentelemetry.semconv.resource import ResourceAttributes
 resource = Resource.create({
     ResourceAttributes.SERVICE_NAME: "api-gateway",
     ResourceAttributes.SERVICE_VERSION: "1.5.2",
-    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: "staging",
+    "deployment.environment.name": "staging",
     ResourceAttributes.HOST_NAME: "api-gateway-staging-01",
     "team": "platform",
     "region": "us-west-2"
@@ -87,11 +86,11 @@ request_counter = meter.create_counter(
     description="Number of HTTP requests received"
 )
 
-# This metric will be labeled with all resource attributes
+# This metric will carry the resource configured on the MeterProvider
 request_counter.add(1, {"http.method": "GET", "http.route": "/api/users"})
 ```
 
-When you query this metric in Prometheus, you can aggregate by any resource attribute: error rate by team, request count by region, or latency by service version.
+When you query this metric in an OpenTelemetry-aware backend, you can often aggregate by resource attributes: error rate by team, request count by region, or latency by service version. In Prometheus, resource attributes may need to be promoted to labels or joined from the `target_info` metric, depending on your ingestion path and configuration.
 
 ### Correlation Across Signals
 
@@ -101,7 +100,7 @@ Resource attributes enable correlation between traces, metrics, and logs. When y
 graph TD
     A[Alert: High Latency] -->|Filter by service.name| B[Metrics Dashboard]
     B -->|Same resource attributes| C[Distributed Traces]
-    C -->|Match instance.id| D[Application Logs]
+    C -->|Match service.instance.id| D[Application Logs]
     D -->|Correlation| E[Root Cause]
 ```
 
@@ -116,18 +115,18 @@ Cloud costs and infrastructure capacity decisions depend on understanding which 
 package main
 
 import (
-    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 func initResource() *resource.Resource {
     return resource.NewWithAttributes(
         semconv.SchemaURL,
         // Standard attributes
-        semconv.ServiceName("data-processor"),
-        semconv.ServiceVersion("3.2.1"),
-        semconv.DeploymentEnvironment("production"),
+        semconv.ServiceNameKey.String("data-processor"),
+        semconv.ServiceVersionKey.String("3.2.1"),
+        attribute.String("deployment.environment.name", "production"),
 
         // Cost attribution attributes
         attribute.String("team", "data-engineering"),
@@ -155,7 +154,7 @@ Every service should set these fundamental attributes:
 # Standard service attributes
 service.name: "checkout-service"      # Required: unique service identifier
 service.version: "1.2.3"              # Semantic version of the service
-service.namespace: "production"       # Logical namespace for grouping services
+service.namespace: "checkout"         # Logical namespace for grouping services
 service.instance.id: "checkout-abc123" # Unique instance identifier
 ```
 
@@ -203,23 +202,21 @@ Runtime information helps diagnose issues related to the application environment
 
 ```javascript
 // Process and runtime attributes
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-
 const runtimeAttributes = {
   // Process information
-  [SemanticResourceAttributes.PROCESS_PID]: process.pid,
-  [SemanticResourceAttributes.PROCESS_EXECUTABLE_NAME]: 'node',
-  [SemanticResourceAttributes.PROCESS_EXECUTABLE_PATH]: process.execPath,
-  [SemanticResourceAttributes.PROCESS_COMMAND_LINE]: process.argv.join(' '),
+  'process.pid': process.pid,
+  'process.command': process.argv[0],
+  'process.command_args': process.argv,
+  'process.command_line': process.argv.join(' '),
 
   // Runtime information
-  [SemanticResourceAttributes.PROCESS_RUNTIME_NAME]: 'nodejs',
-  [SemanticResourceAttributes.PROCESS_RUNTIME_VERSION]: process.version,
-  [SemanticResourceAttributes.PROCESS_RUNTIME_DESCRIPTION]: 'Node.js',
+  'process.runtime.name': 'nodejs',
+  'process.runtime.version': process.version,
+  'process.runtime.description': 'Node.js',
 
   // OS information
-  [SemanticResourceAttributes.OS_TYPE]: process.platform,
-  [SemanticResourceAttributes.OS_VERSION]: require('os').release(),
+  'os.type': process.platform,
+  'os.version': require('os').release(),
 };
 ```
 
@@ -262,7 +259,7 @@ def create_resource():
     # Environment-specific attributes
     env = os.getenv('ENVIRONMENT', 'development')
     env_attrs = {
-        ResourceAttributes.DEPLOYMENT_ENVIRONMENT: env,
+        "deployment.environment.name": env,
         ResourceAttributes.SERVICE_NAMESPACE: env,
     }
 
@@ -292,7 +289,7 @@ OpenTelemetry supports setting resource attributes via environment variables, wh
 
 ```bash
 # Set resource attributes via environment variables
-export OTEL_RESOURCE_ATTRIBUTES="service.name=payment-service,service.version=1.0.0,deployment.environment=production,team=payments"
+export OTEL_RESOURCE_ATTRIBUTES="service.name=payment-service,service.version=1.0.0,deployment.environment.name=production,team=payments"
 
 # Or set individual attributes
 export OTEL_SERVICE_NAME="payment-service"
@@ -319,9 +316,6 @@ spec:
         # Static attributes
         - name: OTEL_SERVICE_NAME
           value: "payment-service"
-        - name: OTEL_SERVICE_VERSION
-          value: "1.0.0"
-
         # Dynamic attributes from Kubernetes
         - name: K8S_POD_NAME
           valueFrom:
@@ -338,7 +332,7 @@ spec:
 
         # Construct resource attributes string
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "service.namespace=production,k8s.pod.name=$(K8S_POD_NAME),k8s.namespace.name=$(K8S_NAMESPACE),k8s.node.name=$(K8S_NODE_NAME)"
+          value: "service.version=1.0.0,service.namespace=payments,deployment.environment.name=production,k8s.pod.name=$(K8S_POD_NAME),k8s.namespace.name=$(K8S_NAMESPACE),k8s.node.name=$(K8S_NODE_NAME)"
 ```
 
 Resource Detectors
@@ -347,7 +341,7 @@ OpenTelemetry provides resource detectors that automatically discover attributes
 
 ```javascript
 // Using resource detectors in Node.js
-const { detectResources } = require('@opentelemetry/resources');
+const { detectResources, resourceFromAttributes } = require('@opentelemetry/resources');
 const { envDetector, hostDetector, osDetector, processDetector } = require('@opentelemetry/resources');
 const { awsEc2Detector, awsEksDetector } = require('@opentelemetry/resource-detector-aws');
 const { gcpDetector } = require('@opentelemetry/resource-detector-gcp');
@@ -367,7 +361,7 @@ async function initializeWithDetectors() {
   });
 
   // Merge with manually specified attributes
-  const customResource = resource.merge(new Resource({
+  const customResource = resource.merge(resourceFromAttributes({
     'service.name': 'my-service',
     'service.version': '1.0.0',
     'team': 'platform',
@@ -403,7 +397,7 @@ def create_standard_resource(service_name, service_version, team):
         # Required attributes (every service must set these)
         ResourceAttributes.SERVICE_NAME: service_name,
         ResourceAttributes.SERVICE_VERSION: service_version,
-        ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv('ENV', 'development'),
+        "deployment.environment.name": os.getenv('ENV', 'development'),
 
         # Organizational attributes
         "team": team,
@@ -430,15 +424,17 @@ More attributes provide better context, but high-cardinality attributes (like re
 
 ```javascript
 // Good: Low-cardinality resource attributes
-const goodResource = new Resource({
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+
+const goodResource = resourceFromAttributes({
   'service.name': 'api-gateway',
-  'deployment.environment': 'production',  // Limited values: dev, staging, prod
+  'deployment.environment.name': 'production',  // Limited values: dev, staging, prod
   'service.version': '1.2.3',              // Changes occasionally
   'team': 'platform',                       // Limited number of teams
 });
 
 // Bad: High-cardinality values belong in span attributes, not resources
-const badResource = new Resource({
+const badResource = resourceFromAttributes({
   'service.name': 'api-gateway',
   'request.id': 'req-abc123',        // Unique per request - DON'T DO THIS
   'user.id': 'user-xyz789',           // Unique per user - DON'T DO THIS
@@ -456,8 +452,8 @@ Always include version information for services, dependencies, and configuration
 // Comprehensive versioning in resource attributes
 resource := resource.NewWithAttributes(
     semconv.SchemaURL,
-    semconv.ServiceName("inventory-service"),
-    semconv.ServiceVersion("3.1.2"),  // Application version
+    semconv.ServiceNameKey.String("inventory-service"),
+    semconv.ServiceVersionKey.String("3.1.2"),  // Application version
 
     // Additional version tracking
     attribute.String("config.version", "2023-11-15"),     // Configuration version
@@ -495,7 +491,7 @@ Resource Attributes in Practice
 
 Understanding resource attributes theoretically is one thing; using them effectively requires seeing them in action. Your observability platform leverages these attributes for filtering, grouping, and correlation. Well-configured resource attributes make the difference between quick troubleshooting and hours of frustration.
 
-When debugging a production incident, you'll filter traces by `service.name` and `deployment.environment`. When analyzing performance trends, you'll group metrics by `service.version` to identify regressions. When calculating costs, you'll aggregate by `team` or `cost.center`. Every one of these workflows depends on properly configured resource attributes.
+When debugging a production incident, you'll filter traces by `service.name` and `deployment.environment.name`. When analyzing performance trends, you'll group metrics by `service.version` to identify regressions. When calculating costs, you'll aggregate by `team` or `cost.center`. Every one of these workflows depends on properly configured resource attributes.
 
 Take time to design your resource attribute strategy before deploying instrumentation. Choose consistent naming conventions, document custom attributes, and ensure all services follow the same patterns. The investment pays dividends every time you need to understand what's happening in your system.
 
