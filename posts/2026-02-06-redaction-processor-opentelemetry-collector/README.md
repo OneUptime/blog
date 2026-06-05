@@ -10,11 +10,11 @@ Description: Learn how to configure the redaction processor in OpenTelemetry Col
 
 Telemetry data often contains sensitive information that should never reach your observability backend. Credit card numbers in HTTP request logs. Social security numbers in database queries. API keys in error messages. Passwords in debugging output. Email addresses and phone numbers throughout your logs and traces.
 
-The redaction processor in the OpenTelemetry Collector automatically detects and removes sensitive data patterns from telemetry before export. Unlike manual redaction that requires updating every service, this processor centralizes privacy controls at the collector level, providing a single enforcement point for compliance with GDPR, PCI-DSS, HIPAA, and other privacy regulations.
+The redaction processor in the OpenTelemetry Collector removes attributes that are not explicitly allowed and masks attribute or log body values that match configured regular expressions before export. Unlike manual redaction that requires updating every service, this processor centralizes privacy controls at the collector level, providing a single enforcement point for compliance with GDPR, PCI-DSS, HIPAA, and other privacy regulations.
 
 ## Understanding Automated Sensitive Data Detection
 
-The redaction processor uses pattern matching to identify sensitive data across all telemetry signals (logs, traces, metrics). It searches attribute values, span names, log messages, and metric labels for common patterns like credit card numbers, social security numbers, and API keys.
+The redaction processor uses allow lists and pattern matching to control sensitive data across telemetry signals (logs, traces, metrics). It removes attributes that are not in `allowed_keys` unless `allow_all_keys` is set, and it masks values that match configured regexes such as credit card numbers, social security numbers, and API keys.
 
 ```mermaid
 graph LR
@@ -28,7 +28,7 @@ graph LR
     H --> I[Safe for Storage]
 ```
 
-The processor scans every field in your telemetry, identifies sensitive patterns, and replaces them with configurable placeholder text. This happens before data leaves your infrastructure, ensuring sensitive information never reaches external systems.
+The processor checks span, log, and metric datapoint attributes, and it can also process log bodies and configured URL or database fields. This happens before data leaves your infrastructure, reducing the chance that sensitive information reaches external systems.
 
 ## Why You Need This Processor
 
@@ -46,9 +46,9 @@ The redaction processor solves critical compliance and security challenges:
 
 ## Basic Configuration
 
-The processor comes with built-in detection patterns for common sensitive data types. You can enable it with minimal configuration.
+The processor does not ship with a broad set of built-in PII regexes enabled by default. You configure the keys to keep or ignore, key patterns to mask, and value regexes to mask.
 
-Here is a basic configuration with default patterns:
+Here is a basic configuration that keeps all attributes but masks common sensitive keys and values:
 
 ```yaml
 # RECEIVERS: Accept telemetry via OTLP
@@ -63,26 +63,30 @@ receivers:
 processors:
   # Redact common sensitive patterns
   redaction:
-    # Allow list: attributes that will never be redacted (even if patterns match)
-    # Use this for known safe fields that might match patterns
-    allow_all_keys: false
+    # Keep all attributes, then apply key and value masking rules.
+    allow_all_keys: true
 
-    # Block list: attributes that are always completely removed
+    # Key patterns whose values should be masked.
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*passwd.*"
+      - "(?i).*pwd.*"
+      - "(?i).*secret.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+      - "(?i).*auth.*"
+      - "(?i).*authorization.*"
+      - "(?i).*credit[_-]?card.*"
+      - "(?i).*ssn.*"
+
+    # Value regexes that should be masked.
     blocked_values:
-      - "password"
-      - "passwd"
-      - "pwd"
-      - "secret"
-      - "api_key"
-      - "apikey"
-      - "token"
-      - "auth"
-      - "authorization"
-      - "credit_card"
-      - "ssn"
+      - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+      - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
 
-    # Summary: How to indicate redacted data
-    summary: "redacted"    # Could also be "SHA256" for hashing instead
+    # Summary controls redaction audit attributes: debug, info, or silent.
+    summary: silent
 
   # Batch for efficiency
   batch:
@@ -105,47 +109,36 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration redacts any attribute whose key matches the blocked values list. If a span has an attribute named "password" or "api_key", the entire attribute is removed. The processor works across all telemetry types - just add it to logs and metrics pipelines the same way.
+This configuration masks any attribute whose key matches `blocked_key_patterns`, and masks matching parts of values using `blocked_values`. The processor works across traces, logs, and metrics - just add it to the pipelines where you need it.
 
 ## Built-in Pattern Detection
 
-The redaction processor includes built-in regex patterns for detecting common sensitive data types. These patterns are enabled by default.
+The redaction processor uses the regex patterns you provide in `blocked_values`. You can define common sensitive data patterns yourself.
 
-Here is a configuration showing built-in pattern detection:
+Here is a configuration showing common pattern detection:
 
 ```yaml
 processors:
-  # Redact with built-in patterns
+  # Redact with common patterns
   redaction:
-    # Automatically detect and redact these patterns
-    # (These are enabled by default - shown here for documentation)
+    allow_all_keys: true
+    blocked_values:
+      # Credit card numbers
+      - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+      # Social Security Numbers
+      - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+      # Email addresses
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
+      # Phone numbers
+      - "\\b(?:\\+1[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
+      # IPv4 addresses
+      - "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"
+      # AWS Access Keys
+      - "AKIA[0-9A-Z]{16}"
+      # JWT tokens
+      - "eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"
 
-    # Credit card numbers (all major card types)
-    # Matches: 4111-1111-1111-1111, 4111111111111111, 4111 1111 1111 1111
-
-    # Social Security Numbers
-    # Matches: 123-45-6789, 123456789
-
-    # Email addresses
-    # Matches: user@example.com, john.doe@company.co.uk
-
-    # Phone numbers (various formats)
-    # Matches: (555) 123-4567, 555-123-4567, 5551234567, +1-555-123-4567
-
-    # IP addresses (IPv4 and IPv6)
-    # Matches: 192.168.1.1, 2001:0db8:85a3:0000:0000:8a2e:0370:7334
-
-    # AWS Access Keys
-    # Matches: AKIA followed by 16 alphanumeric characters
-
-    # JWT tokens
-    # Matches: eyJ pattern followed by base64 encoded data
-
-    # Generic API keys (common patterns)
-    # Matches: Bearer tokens, API keys with prefixes
-
-    # Replace detected patterns with this text
-    summary: "***REDACTED***"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -165,7 +158,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The processor scans attribute values and replaces any detected pattern with the summary text. For example, a log message "Payment processed for card 4111-1111-1111-1111" becomes "Payment processed for card ***REDACTED***".
+The processor scans attribute values and log bodies and masks any detected pattern. For example, a log message body "Payment processed for card 4111-1111-1111-1111" becomes "Payment processed for card ****".
 
 ## Custom Pattern Configuration
 
@@ -177,15 +170,16 @@ Here is a configuration with custom patterns:
 processors:
   # Redact with custom patterns
   redaction:
-    # Block any attribute with these keys
-    blocked_values:
-      - "password"
-      - "secret"
-      - "token"
+    allow_all_keys: true
+    # Mask values for attributes whose keys match these patterns
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*secret.*"
+      - "(?i).*token.*"
 
     # Custom regex patterns to detect in attribute values
     # Each pattern is applied to all attribute values
-    patterns:
+    blocked_values:
       # Internal employee IDs (format: EMP-12345)
       - "EMP-\\d{5}"
 
@@ -208,8 +202,7 @@ processors:
       # Session IDs (format: sess_xyz123...)
       - "sess_[a-zA-Z0-9_-]{32,}"
 
-    # Replacement text
-    summary: "[REDACTED]"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -241,7 +234,7 @@ Here is a configuration with allow lists:
 processors:
   # Redact with allow list exceptions
   redaction:
-    # These attribute keys are never redacted (even if values match patterns)
+    # Keep only these attribute keys, then apply value masking to them.
     allowed_keys:
       - "service.name"        # Service names might look like emails but aren't sensitive
       - "http.route"          # Route patterns might contain numbers that look like SSNs
@@ -249,24 +242,18 @@ processors:
       - "log.file.name"       # File paths should not be redacted
       - "process.command"     # Command names are not sensitive
 
-    # These specific values are never redacted (even if they match patterns)
+    # These specific value patterns are never masked (even if they match blocked values)
     allowed_values:
       - "test@example.com"    # Test email addresses used in examples
       - "000-00-0000"         # Placeholder SSN
       - "1234-5678-9012-3456" # Test credit card number
 
-    # Block sensitive keys
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
-
     # Detect patterns in other attributes
-    patterns:
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"  # Email addresses
+    blocked_values:
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"  # Email addresses
       - "\\b\\d{3}-\\d{2}-\\d{4}\\b"                              # SSNs
 
-    summary: "***REDACTED***"
+    summary: debug
 
   batch:
     send_batch_max_size: 1024
@@ -286,7 +273,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The processor checks allow lists before redacting. If an attribute key is in `allowed_keys` or a value is in `allowed_values`, it skips redaction even if patterns match.
+The processor removes attributes that are not in `allowed_keys`, unless `allow_all_keys: true` is set. `allowed_values` takes precedence over `blocked_values`, so matching values are not masked even if they also match a blocked regex. If you want specific safe keys to bypass redaction entirely, use `ignored_keys` or `ignored_key_patterns`.
 
 ## Hashing Instead of Redacting
 
@@ -298,16 +285,19 @@ Here is a configuration using hashing:
 processors:
   # Hash instead of redact for referential integrity
   redaction:
+    allow_all_keys: true
+
+    blocked_key_patterns:
+      - "(?i).*user_id.*"
+      - "(?i).*customer_id.*"
+      - "(?i).*session_id.*"
+
     blocked_values:
-      - "user_id"
-      - "customer_id"
-      - "session_id"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"  # Emails
 
-    patterns:
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"  # Emails
-
-    # Use SHA256 hashing instead of simple redaction
-    summary: "SHA256"
+    # Use SHA3 (SHA-256) hashing instead of simple masking
+    hash_function: sha3
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -327,7 +317,7 @@ service:
       exporters: [otlphttp]
 ```
 
-With `summary: "SHA256"`, the processor replaces sensitive values with their SHA256 hash. The email "user@example.com" becomes something like "SHA256:a1b2c3d4e5f6...". This preserves the ability to correlate logs from the same user (same email = same hash) while removing the actual sensitive data.
+With `hash_function: sha3`, the processor hashes matching values instead of masking them with a fixed string. This preserves the ability to correlate logs from the same user (same email = same hash) while removing the actual sensitive data. For low-entropy values like IP addresses, prefer `hmac-sha256` or `hmac-sha512` with a strong `hmac_key`.
 
 ## Redacting Across All Telemetry Types
 
@@ -345,25 +335,26 @@ receivers:
 processors:
   # Single redaction configuration used by all pipelines
   redaction:
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
-      - "secret"
-      - "authorization"
-      - "credit_card"
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+      - "(?i).*secret.*"
+      - "(?i).*authorization.*"
+      - "(?i).*credit[_-]?card.*"
 
-    patterns:
+    blocked_values:
       # Credit cards
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
       # SSNs
       - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
       # Emails
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
       # Phone numbers
       - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
 
-    summary: "***REDACTED***"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -416,18 +407,19 @@ Here is a configuration for targeted attribute redaction:
 processors:
   # Redact only specific attributes
   redaction:
-    # ONLY redact these attributes (ignore all others)
-    blocked_values:
-      - "http.request.header.authorization"
-      - "http.request.header.cookie"
-      - "http.request.body"
-      - "db.statement"         # SQL queries might contain sensitive data
-      - "error.stack_trace"    # Stack traces might leak internal paths
+    allow_all_keys: true
+    # ONLY mask values for attributes whose keys match these patterns
+    blocked_key_patterns:
+      - "^http\\.request\\.header\\.authorization$"
+      - "^http\\.request\\.header\\.cookie$"
+      - "^http\\.request\\.body$"
+      - "^db\\.statement$"         # SQL queries might contain sensitive data
+      - "^error\\.stack_trace$"    # Stack traces might leak internal paths
 
-    # No pattern matching - only block explicit attributes
+    # No value pattern matching - only match explicit attribute keys
     # This is faster and more predictable than pattern matching
 
-    summary: "[REDACTED]"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -447,7 +439,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration only redacts specific known-sensitive attributes like authorization headers and request bodies. It doesn't scan all attribute values for patterns, making it faster and more predictable.
+This configuration only masks specific known-sensitive attributes like authorization headers and request bodies. It doesn't scan all attribute values for patterns, making it faster and more predictable.
 
 ## Multi-Level Redaction Strategy
 
@@ -465,45 +457,46 @@ receivers:
 processors:
   # Aggressive redaction for production
   redaction/production:
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
-      - "user_id"
-      - "customer_id"
-      - "email"
-      - "phone"
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+      - "(?i).*user_id.*"
+      - "(?i).*customer_id.*"
+      - "(?i).*email.*"
+      - "(?i).*phone.*"
 
-    patterns:
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    blocked_values:
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
       - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
 
-    summary: "***REDACTED***"
+    summary: silent
 
   # Minimal redaction for development
   redaction/development:
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
 
     # No pattern matching in development for easier debugging
 
-    summary: "[REDACTED]"
+    summary: silent
 
-  # Route based on environment
+  # Keep only production telemetry in this pipeline.
   filter/production:
-    traces:
-      resource:
-        - key: deployment.environment
-          value: "production"
+    error_mode: ignore
+    trace_conditions:
+      - resource.attributes["deployment.environment"] != "production"
 
+  # Keep only development telemetry in this pipeline.
   filter/development:
-    traces:
-      resource:
-        - key: deployment.environment
-          value: "development"
+    error_mode: ignore
+    trace_conditions:
+      - resource.attributes["deployment.environment"] != "development"
 
   batch:
     send_batch_max_size: 1024
@@ -530,7 +523,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration routes telemetry to different pipelines based on environment, applying more aggressive redaction to production data while allowing more detailed data in development.
+This configuration uses filter processors to keep only one environment in each pipeline, applying more aggressive redaction to production data while allowing more detailed data in development.
 
 ## Performance Optimization
 
@@ -547,30 +540,31 @@ processors:
 
   # Optimize redaction performance
   redaction:
-    # Use explicit blocked values (fast) instead of patterns (slow) when possible
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
-      - "authorization"
-      - "credit_card"
-      - "ssn"
+    allow_all_keys: true
+    # Use explicit key patterns when possible
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+      - "(?i).*authorization.*"
+      - "(?i).*credit[_-]?card.*"
+      - "(?i).*ssn.*"
 
     # Minimize regex patterns - only essential ones
-    patterns:
+    blocked_values:
       # Credit cards (most critical)
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
       # SSNs (most critical)
       - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
 
-    # Skip pattern matching for known safe attributes (performance optimization)
-    allowed_keys:
+    # Skip redaction entirely for known safe attributes (performance optimization)
+    ignored_keys:
       - "service.name"
       - "http.method"
       - "http.status_code"
       - "db.system"
 
-    summary: "***REDACTED***"
+    summary: silent
 
   batch:
     send_batch_max_size: 2048   # Larger batches reduce processing overhead
@@ -587,7 +581,7 @@ service:
       exporters: [otlphttp]
 ```
 
-Minimize regex patterns, use explicit blocked values when possible, and skip pattern matching for known safe attributes using allowed_keys.
+Minimize regex patterns, use explicit key patterns when possible, and skip redaction for known safe attributes using `ignored_keys`.
 
 ## Compliance Auditing and Verification
 
@@ -598,16 +592,17 @@ Here is a configuration with audit logging:
 ```yaml
 processors:
   redaction:
+    allow_all_keys: true
     blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
-
-    patterns:
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
 
-    summary: "***REDACTED***"
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+
+    summary: debug
 
   batch:
     send_batch_max_size: 1024
@@ -619,9 +614,9 @@ exporters:
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
-  # Add logging exporter to audit redaction
-  logging:
-    loglevel: debug
+  # Add debug exporter to audit redaction
+  debug:
+    verbosity: detailed
     sampling_initial: 100    # Log first 100 items for verification
     sampling_thereafter: 0
 
@@ -634,10 +629,10 @@ service:
     logs:
       receivers: [otlp]
       processors: [redaction, batch]
-      exporters: [otlphttp, logging]  # Export to both backend and local logs
+      exporters: [otlphttp, debug]  # Export to both backend and local logs
 ```
 
-The logging exporter prints redacted logs to stdout, allowing you to verify that sensitive data is properly removed. Review these logs during compliance audits to prove redaction is working.
+The debug exporter prints redacted logs to stdout, allowing you to verify that sensitive data is properly removed. With `summary: debug`, the processor also adds diagnostic attributes showing what it redacted or masked. Review these logs during compliance audits to prove redaction is working.
 
 ## Combining with Transform Processor
 
@@ -653,21 +648,22 @@ processors:
       - context: log
         statements:
           # Custom pattern for internal IDs not handled by redaction processor
-          - replace_pattern(body, "INTERNAL-ID-\\d{10}", "INTERNAL-ID-REDACTED")
+          - replace_pattern(log.body, "INTERNAL-ID-\\d{10}", "INTERNAL-ID-REDACTED")
           # Redact specific parts of URLs while keeping structure
-          - replace_pattern(attributes["http.url"], "apikey=[^&]+", "apikey=REDACTED")
+          - replace_pattern(log.attributes["http.url"], "apikey=[^&]+", "apikey=REDACTED")
 
   # Second: Use redaction processor for standard patterns
   redaction:
-    blocked_values:
-      - "password"
-      - "api_key"
-      - "token"
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
 
-    patterns:
+    blocked_values:
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
 
-    summary: "***REDACTED***"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -696,19 +692,19 @@ The transform processor handles custom complex redaction patterns, while the red
 
 **Problem**: Some sensitive data is still getting through.
 
-**Solution**: Review your patterns and blocked values. Sensitive data might not match your patterns. Use the logging exporter to see what's being sent and identify patterns you missed. Consider using broader patterns or additional blocked values.
+**Solution**: Review your blocked key patterns and blocked values. Sensitive data might not match your regexes. Use the debug exporter to see what's being sent and identify patterns you missed. Consider using broader patterns or additional blocked values.
 
 **Problem**: Redaction is too aggressive, removing non-sensitive data.
 
-**Solution**: Use `allowed_keys` and `allowed_values` to prevent false positives. Add known safe attribute keys and test values to the allow list.
+**Solution**: Use `ignored_keys`, `ignored_key_patterns`, and `allowed_values` to prevent false positives. Use `allowed_keys` only when you intentionally want a fail-closed list of attributes to retain.
 
 **Problem**: Collector CPU usage is very high after adding redaction.
 
-**Solution**: Regex pattern matching is CPU-intensive. Minimize the number of patterns, use simpler patterns when possible, and use explicit `blocked_values` instead of patterns when you know the exact attribute keys.
+**Solution**: Regex pattern matching is CPU-intensive. Minimize the number of patterns, use simpler patterns when possible, and use `blocked_key_patterns` when you know the exact attribute keys.
 
 **Problem**: Hashing doesn't provide enough protection for compliance.
 
-**Solution**: Use plain redaction (`summary: "***REDACTED***"`) instead of hashing. Hashing maintains referential integrity but hashed values could theoretically be reverse-engineered. For maximum security, use redaction placeholders.
+**Solution**: Use plain masking instead of setting `hash_function`. Hashing maintains referential integrity but hashed low-entropy values could theoretically be reverse-engineered. For maximum security, use masking or HMAC hashing with a strong secret key.
 
 ## Integration with OneUptime
 
@@ -732,27 +728,27 @@ processors:
 
   # Comprehensive redaction for compliance
   redaction:
-    blocked_values:
-      - "password"
-      - "passwd"
-      - "pwd"
-      - "api_key"
-      - "apikey"
-      - "token"
-      - "secret"
-      - "authorization"
-      - "auth"
-      - "credit_card"
-      - "ssn"
-      - "social_security"
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "(?i).*password.*"
+      - "(?i).*passwd.*"
+      - "(?i).*pwd.*"
+      - "(?i).*api[_-]?key.*"
+      - "(?i).*token.*"
+      - "(?i).*secret.*"
+      - "(?i).*authorization.*"
+      - "(?i).*auth.*"
+      - "(?i).*credit[_-]?card.*"
+      - "(?i).*ssn.*"
+      - "(?i).*social[_-]?security.*"
 
-    patterns:
+    blocked_values:
       # Credit cards
       - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
       # SSNs
       - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
       # Emails
-      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
       # Phone numbers
       - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
       # AWS keys
@@ -760,13 +756,13 @@ processors:
       # JWT tokens
       - "eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"
 
-    allowed_keys:
+    ignored_keys:
       - "service.name"
       - "service.version"
       - "http.method"
       - "http.status_code"
 
-    summary: "***REDACTED***"
+    summary: silent
 
   batch:
     send_batch_max_size: 1024
@@ -827,4 +823,4 @@ For more information on privacy and security in OpenTelemetry:
 
 The redaction processor is essential for maintaining privacy and security in modern observability. By automatically detecting and removing sensitive data patterns at the collector level, it provides a centralized enforcement point for compliance with privacy regulations without requiring changes to application code.
 
-Configure it with appropriate blocked values and patterns for your environment, use allow lists to prevent false positives, and consider hashing when you need referential integrity. Combine it with the transform processor for complex custom redaction needs. With OneUptime as your backend, you get the assurance that only redacted, privacy-compliant telemetry reaches your observability platform.
+Configure it with appropriate blocked values and key patterns for your environment, use ignored keys and allowed values to prevent false positives, and consider hashing when you need referential integrity. Combine it with the transform processor for complex custom redaction needs. With OneUptime as your backend, you get the assurance that only redacted, privacy-compliant telemetry reaches your observability platform.
