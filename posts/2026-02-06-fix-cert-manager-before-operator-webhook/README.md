@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Cert-Manager, Operator, Webhook
 
 Description: Fix webhook TLS errors caused by installing the OpenTelemetry Operator before cert-manager is properly configured.
 
-The OpenTelemetry Operator relies on cert-manager to provision TLS certificates for its webhook server. If you install the Operator before cert-manager is running, the webhook certificates never get created, and every pod creation in your cluster starts failing with webhook errors.
+The OpenTelemetry Operator relies on cert-manager to provision TLS certificates for its webhook server by default. If you install the Operator before cert-manager is running, the webhook certificates or CA bundles may not be created correctly, and pod creation in your cluster can start failing with webhook errors.
 
 ## The Error
 
@@ -15,7 +15,7 @@ When cert-manager is missing or not ready, you will see errors like this when tr
 ```text
 Error from server (InternalError): Internal error occurred: failed calling webhook
 "mpod.kb.io": failed to call webhook: Post
-"https://opentelemetry-operator-webhook-service.opentelemetry-operator-system.svc:443/mutate--v1-pod":
+"https://opentelemetry-operator-webhook.opentelemetry-operator-system.svc:443/mutate-v1-pod":
 x509: certificate signed by unknown authority
 ```
 
@@ -24,7 +24,7 @@ Or:
 ```text
 Error from server (InternalError): Internal error occurred: failed calling webhook
 "mpod.kb.io": failed to call webhook: Post
-"https://opentelemetry-operator-webhook-service.opentelemetry-operator-system.svc:443/mutate--v1-pod":
+"https://opentelemetry-operator-webhook.opentelemetry-operator-system.svc:443/mutate-v1-pod":
 dial tcp 10.96.x.x:443: connect: connection refused
 ```
 
@@ -57,7 +57,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --wait  # Wait until cert-manager is fully ready
 ```
 
@@ -93,15 +93,17 @@ If you already installed the Operator without cert-manager, follow these steps:
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --wait
 
-# 2. Delete the Operator's Certificate resource so cert-manager can recreate it
-kubectl delete certificate -n opentelemetry-operator-system \
-  opentelemetry-operator-serving-cert 2>/dev/null
+# 2. Re-apply the Operator release so its Certificate and webhook resources are present
+helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-operator \
+  --namespace opentelemetry-operator-system \
+  --create-namespace \
+  --wait
 
 # 3. Restart the Operator
-kubectl rollout restart deployment/opentelemetry-operator-controller-manager \
+kubectl rollout restart deployment/opentelemetry-operator \
   -n opentelemetry-operator-system
 
 # 4. Wait for the webhook certificate to be issued
@@ -109,7 +111,7 @@ kubectl wait --for=condition=Ready certificate/opentelemetry-operator-serving-ce
   -n opentelemetry-operator-system --timeout=120s
 
 # 5. Verify the webhook is working
-kubectl get mutatingwebhookconfiguration opentelemetry-operator-mutating-webhook-configuration -o yaml | \
+kubectl get mutatingwebhookconfiguration opentelemetry-operator-mutation -o yaml | \
   grep caBundle | head -1 | awk '{print length($2)}'
 # Should return a number > 0 (the CA bundle should be populated)
 ```
@@ -121,12 +123,12 @@ If the broken webhook is blocking all pod creation and you need to recover immed
 ```bash
 # Option 1: Change the webhook failure policy to Ignore
 kubectl patch mutatingwebhookconfiguration \
-  opentelemetry-operator-mutating-webhook-configuration \
-  --type='json' -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
+  opentelemetry-operator-mutation \
+  --type='json' -p='[{"op": "replace", "path": "/webhooks/2/failurePolicy", "value": "Ignore"}]'
 
 # Option 2: Delete the webhook configuration entirely (auto-instrumentation will stop working)
 kubectl delete mutatingwebhookconfiguration \
-  opentelemetry-operator-mutating-webhook-configuration
+  opentelemetry-operator-mutation
 ```
 
 After recovery, fix the root cause (install cert-manager) and then reinstall the Operator.
@@ -152,25 +154,23 @@ helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
   --wait
 ```
 
-## Automating the Dependency with Helm
+## Automating the Order with Helm
 
-If you manage your cluster with Helm, use dependencies to enforce installation order:
+If you manage your cluster with Helm, install cert-manager as its own release before installing the Operator:
 
-```yaml
-# Chart.yaml for your umbrella chart
-apiVersion: v2
-name: observability-stack
-dependencies:
-  - name: cert-manager
-    version: "1.14.x"
-    repository: "https://charts.jetstack.io"
-    condition: cert-manager.enabled
-  - name: opentelemetry-operator
-    version: "0.50.x"
-    repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
-    condition: opentelemetry-operator.enabled
+```bash
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --wait
+
+helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-operator \
+  --namespace opentelemetry-operator-system \
+  --create-namespace \
+  --wait
 ```
 
-Helm installs dependencies in order, so cert-manager will always be installed first. Combine this with `--wait` and you have a reliable deployment.
+Do not embed cert-manager as a subchart of your application chart. cert-manager installs cluster-scoped resources and should be installed exactly once in the cluster. Combining separate releases with `--wait` gives you a reliable deployment order.
 
 The key lesson: always check the prerequisites before installing the Operator. The cert-manager dependency is well-documented but easy to miss, especially when copying installation commands from blog posts or tutorials.
