@@ -14,8 +14,8 @@ This guide walks through the full Collector configuration, from receivers to the
 
 Before starting, you need:
 
-- An OpenTelemetry Collector binary (v0.90.0 or newer recommended)
-- An OpenTelemetry Collector Contrib binary if you use the optional `filelog` receiver
+- A current OpenTelemetry Collector binary
+- An OpenTelemetry Collector Contrib binary if you use the optional `file_log` receiver
 - A Better Stack account with a source token and ingesting host
 - Logs flowing into the Collector from your applications
 
@@ -40,7 +40,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
   # Optionally collect log files from disk
-  filelog:
+  file_log:
     include:
       - /var/log/myapp/*.log
     start_at: beginning
@@ -72,7 +72,7 @@ processors:
 
 exporters:
   # Better Stack uses the OTLP/HTTP exporter with bearer token auth
-  otlphttp/betterstack:
+  otlp_http/betterstack:
     endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
       Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
@@ -81,9 +81,9 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [otlp, filelog]
+      receivers: [otlp, file_log]
       processors: [resource, batch]
-      exporters: [otlphttp/betterstack]
+      exporters: [otlp_http/betterstack]
 ```
 
 ## Breaking Down the Key Sections
@@ -94,7 +94,7 @@ The exporter section is where the Better Stack integration happens:
 
 ```yaml
 exporters:
-  otlphttp/betterstack:
+  otlp_http/betterstack:
     endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
       Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
@@ -152,7 +152,7 @@ For production use, add retry logic and a sending queue to handle transient fail
 
 ```yaml
 exporters:
-  otlphttp/betterstack:
+  otlp_http/betterstack:
     endpoint: https://${env:BETTER_STACK_INGESTING_HOST}
     headers:
       Authorization: "Bearer ${env:BETTER_STACK_SOURCE_TOKEN}"
@@ -168,7 +168,7 @@ exporters:
       queue_size: 5000
 ```
 
-The retry configuration handles temporary network issues or Better Stack downtime. The sending queue buffers log data in memory if the export pipeline falls behind, preventing data loss during traffic spikes.
+The retry configuration handles temporary network issues or Better Stack downtime. The sending queue buffers log data in memory if the export pipeline falls behind, reducing data loss during traffic spikes while the queue has capacity.
 
 ## Verifying the Integration
 
