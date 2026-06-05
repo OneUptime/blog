@@ -38,7 +38,7 @@ go get -u go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 
 # Instrumentation libraries
 go get -u go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin
-go get -u go.opentelemetry.io/contrib/instrumentation/gorm.io/gorm/otelgorm
+go get -u gorm.io/plugin/opentelemetry/tracing
 ```
 
 ## Initializing OpenTelemetry
@@ -50,7 +50,6 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -102,13 +101,13 @@ func setupTracer() (*sdktrace.TracerProvider, error) {
 
 ## Instrumenting GORM Database Connection
 
-GORM provides a plugin system that makes instrumentation straightforward. The otelgorm plugin automatically creates spans for all database operations.
+GORM provides a plugin system that makes instrumentation straightforward. The OpenTelemetry tracing plugin creates spans for database operations.
 
 ```go
 import (
+    "gorm.io/plugin/opentelemetry/tracing"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
-    "go.opentelemetry.io/contrib/instrumentation/gorm.io/gorm/otelgorm"
 )
 
 // initDB creates a GORM database connection with OpenTelemetry instrumentation
@@ -128,7 +127,7 @@ func initDB() (*gorm.DB, error) {
 
     // Add OpenTelemetry plugin to GORM
     // This instruments all queries, including those made by associations
-    if err := db.Use(otelgorm.NewPlugin()); err != nil {
+    if err := db.Use(tracing.NewPlugin()); err != nil {
         return nil, err
     }
 
@@ -177,7 +176,7 @@ graph TD
     B --> C[Create HTTP Span]
     C --> D[Gin Handler]
     D --> E[GORM Query Method]
-    E --> F[otelgorm Plugin]
+    E --> F[GORM OpenTelemetry Plugin]
     F --> G[Create Database Span as Child]
     G --> H[Execute SQL Query]
     H --> I[Close Database Span]
@@ -192,8 +191,8 @@ The key to making this work is extracting the context from Gin and passing it to
 
 ```go
 import (
-    "context"
     "net/http"
+    "time"
 
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
@@ -405,12 +404,14 @@ func (s *UserService) GetUserPostsWithComments(c *gin.Context) {
     ctx := c.Request.Context()
     userID := c.Param("id")
 
+    type PostWithComments struct {
+        Post
+        Comments []Comment `json:"comments" gorm:"foreignKey:PostID"`
+    }
+
     type UserWithPostsAndComments struct {
         User
-        Posts []struct {
-            Post
-            Comments []Comment `json:"comments" gorm:"foreignKey:PostID"`
-        } `json:"posts" gorm:"foreignKey:UserID"`
+        Posts []PostWithComments `json:"posts" gorm:"foreignKey:UserID"`
     }
 
     var user UserWithPostsAndComments
@@ -438,6 +439,13 @@ func (s *UserService) GetUserPostsWithComments(c *gin.Context) {
 Database transactions are critical sections that should be traced to understand their performance impact.
 
 ```go
+type Profile struct {
+    ID       uint   `json:"id" gorm:"primaryKey"`
+    UserID   uint   `json:"user_id"`
+    Bio      string `json:"bio"`
+    Location string `json:"location"`
+}
+
 // CreateUserWithProfile creates a user and profile in a transaction
 func (s *UserService) CreateUserWithProfile(c *gin.Context) {
     ctx := c.Request.Context()
@@ -455,7 +463,7 @@ func (s *UserService) CreateUserWithProfile(c *gin.Context) {
     }
 
     // Begin transaction with context for tracing
-    // The entire transaction is traced as a single operation
+    // Queries inside the transaction are traced with the request context
     err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
         // Create user - traced as child span
         user := User{
@@ -501,6 +509,7 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // SearchUsers performs a complex search with custom span
@@ -525,7 +534,7 @@ func (s *UserService) SearchUsers(c *gin.Context) {
 
     var users []User
 
-    // Build complex query - each part is traced by otelgorm
+    // Build complex query - the resulting SQL operation is traced by the GORM plugin
     result := s.db.WithContext(ctx).
         Where("name LIKE ? OR email LIKE ?", "%"+query+"%", "%"+query+"%").
         Where("age BETWEEN ? AND ?", minAge, maxAge).
@@ -556,11 +565,15 @@ func (s *UserService) SearchUsers(c *gin.Context) {
 
 ## Handling Database Connection Pooling
 
-GORM's connection pool settings can impact performance. Monitor these through spans.
+GORM's connection pool settings can impact performance. Monitor these through DB stats metrics and query spans.
 
 ```go
 import (
     "time"
+
+    "gorm.io/driver/mysql"
+    "gorm.io/gorm"
+    "gorm.io/plugin/opentelemetry/tracing"
 )
 
 func initDBWithPooling() (*gorm.DB, error) {
@@ -590,7 +603,7 @@ func initDBWithPooling() (*gorm.DB, error) {
     sqlDB.SetConnMaxLifetime(time.Hour)
 
     // Add OpenTelemetry instrumentation
-    if err := db.Use(otelgorm.NewPlugin()); err != nil {
+    if err := db.Use(tracing.NewPlugin()); err != nil {
         return nil, err
     }
 
@@ -616,7 +629,6 @@ import (
 
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-    "go.opentelemetry.io/contrib/instrumentation/gorm.io/gorm/otelgorm"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -624,6 +636,7 @@ import (
     semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
     "gorm.io/driver/sqlite"
     "gorm.io/gorm"
+    "gorm.io/plugin/opentelemetry/tracing"
 )
 
 type User struct {
@@ -646,7 +659,9 @@ func main() {
     }
 
     // Auto-migrate models
-    db.AutoMigrate(&User{})
+    if err := db.AutoMigrate(&User{}); err != nil {
+        log.Fatalf("Failed to migrate database: %v", err)
+    }
 
     // Set up router
     router := setupRouter(db)
@@ -714,7 +729,7 @@ func initDB() (*gorm.DB, error) {
         return nil, err
     }
 
-    if err := db.Use(otelgorm.NewPlugin()); err != nil {
+    if err := db.Use(tracing.NewPlugin()); err != nil {
         return nil, err
     }
 
@@ -728,7 +743,10 @@ func setupRouter(db *gorm.DB) *gin.Engine {
     router.GET("/users", func(c *gin.Context) {
         ctx := c.Request.Context()
         var users []User
-        s.db.WithContext(ctx).Find(&users)
+        if err := db.WithContext(ctx).Find(&users).Error; err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+            return
+        }
         c.JSON(http.StatusOK, users)
     })
 
@@ -736,4 +754,4 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 }
 ```
 
-By combining otelgin and otelgorm, you gain complete visibility into your application's behavior. Every HTTP request and database query is traced, allowing you to identify performance bottlenecks, optimize slow queries, and debug issues with confidence.
+By combining otelgin and the GORM OpenTelemetry tracing plugin, you gain complete visibility into your application's behavior. Every HTTP request and database query is traced, allowing you to identify performance bottlenecks, optimize slow queries, and debug issues with confidence.
