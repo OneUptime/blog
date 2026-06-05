@@ -16,7 +16,7 @@ For more on structuring observability data, see our guide on [structured logging
 
 ## How the Processor Works
 
-The K8s attributes processor uses the Kubernetes API to look up metadata based on the pod IP address. When a span, metric, or log arrives with a source IP, the processor queries Kubernetes for the corresponding pod and adds attributes like pod name, namespace, labels, and annotations.
+The K8s attributes processor uses the Kubernetes API to discover pod metadata and keeps that metadata in an informer cache. When a span, metric, or log arrives with a source IP, the processor matches that IP to the cached pod information and adds attributes like pod name, namespace, labels, and annotations.
 
 ```mermaid
 graph LR
@@ -115,6 +115,18 @@ rules:
   - apiGroups: ["apps"]
     resources:
       - replicasets
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+
+  # Read jobs for job and cronjob metadata
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
     verbs:
       - get
       - list
@@ -303,11 +315,13 @@ processors:
     passthrough: false
 
     # Use pod name from resource attributes
-    # Requires applications to set k8s.pod.name
+    # Requires applications to set k8s.pod.name and k8s.namespace.name
     pod_association:
       - sources:
           - from: resource_attribute
             name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
 
     # Fallback to IP if pod name not found
       - sources:
@@ -322,7 +336,7 @@ processors:
 
 ### Environment Variable Association
 
-Associates using environment variables in application:
+Associates using resource attributes populated from environment variables in the application:
 
 ```yaml
 processors:
@@ -330,12 +344,14 @@ processors:
     auth_type: "serviceAccount"
     passthrough: false
 
-    # Application sets POD_NAME env var
-    # SDK reads it and adds to resource attributes
+    # Application maps POD_NAME and POD_NAMESPACE env vars
+    # to k8s.pod.name and k8s.namespace.name resource attributes
     pod_association:
       - sources:
           - from: resource_attribute
             name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
 
     extract:
       metadata:
@@ -343,7 +359,7 @@ processors:
         - k8s.deployment.name
 ```
 
-Configure the application pod to expose pod name:
+Configure the application pod to expose pod information, then configure your application or SDK resource detection to copy those values into OpenTelemetry resource attributes:
 
 ```yaml
 apiVersion: v1
@@ -381,11 +397,7 @@ processors:
     passthrough: false
 
     # Filter pods by namespace
-    # Only process specific namespaces
-    filter:
-      namespace: production
-
-    # Or filter by multiple criteria
+    # Only process pods that match all criteria
     filter:
       # Match specific namespace
       namespace: production
@@ -446,12 +458,11 @@ processors:
       # Pod labels (all or specific)
       labels:
         # Extract all pod labels
-        - tag_name: ""
-          key: "*"
+        - tag_name: $$1
+          key_regex: (.*)
           from: pod
 
-      # Namespace labels
-      labels:
+        # Namespace labels
         - tag_name: namespace.tier
           key: tier
           from: namespace
@@ -512,10 +523,6 @@ processors:
         - k8s.job.name
         - k8s.cronjob.name
 
-    # Enable owner lookup
-    # Queries API for owner references
-    owner_lookup_enabled: true
-
 exporters:
   otlp:
     endpoint: https://oneuptime.com/otlp
@@ -544,7 +551,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Batch before K8s attributes for efficiency
+  # Batch after K8s attributes so connection-based pod association can still work
   batch:
     timeout: 1s
     send_batch_size: 1024
@@ -558,10 +565,12 @@ processors:
 
     # How to associate telemetry with pods
     pod_association:
-      # Try resource attribute first (if app sets it)
+      # Try resource attributes first (if app sets them)
       - sources:
           - from: resource_attribute
             name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
       # Try pod IP from resource attributes
       - sources:
           - from: resource_attribute
@@ -615,9 +624,6 @@ processors:
           key: runbook.url
           from: pod
 
-    # Enable owner reference lookups
-    owner_lookup_enabled: true
-
   # Add resource detection after K8s attributes
   # Combines K8s metadata with cloud provider info
   resourcedetection:
@@ -626,9 +632,9 @@ processors:
 
 exporters:
   otlp:
-    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:https://oneuptime.com/otlp}
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://oneuptime.com/otlp}
     headers:
-      x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+      x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 
     timeout: 30s
     retry_on_failure:
@@ -643,17 +649,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, k8sattributes, resourcedetection]
+      processors: [k8sattributes, resourcedetection, batch]
       exporters: [otlp]
 
     metrics:
       receivers: [otlp]
-      processors: [batch, k8sattributes, resourcedetection]
+      processors: [k8sattributes, resourcedetection, batch]
       exporters: [otlp]
 
     logs:
       receivers: [otlp]
-      processors: [batch, k8sattributes, resourcedetection]
+      processors: [k8sattributes, resourcedetection, batch]
       exporters: [otlp]
 
   # Monitor K8s attributes processor performance
@@ -667,12 +673,12 @@ service:
                 protocol: http/protobuf
                 endpoint: https://oneuptime.com/otlp
                 headers:
-                  x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+                  x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 ```
 
 ## DaemonSet Deployment Pattern
 
-Deploy as DaemonSet for optimal performance (reduces API queries):
+Deploy as DaemonSet with node filtering for optimal performance:
 
 ```yaml
 apiVersion: apps/v1
@@ -731,7 +737,7 @@ spec:
 
 ## Caching Configuration
 
-Configure caching to reduce Kubernetes API load:
+Use node-based filtering to reduce the size of the processor's Kubernetes informer cache:
 
 ```yaml
 processors:
@@ -739,8 +745,10 @@ processors:
     auth_type: "serviceAccount"
     passthrough: false
 
-    # Cache pod metadata to reduce API calls
-    # TTL of 10 minutes balances freshness with API load
+    # Keep only pod metadata from the collector's node in the cache
+    filter:
+      node_from_env_var: KUBE_NODE_NAME
+
     extract:
       metadata:
         - k8s.pod.name
@@ -784,10 +792,9 @@ service:
 **Issue**: Collector generating too many API requests.
 
 **Solutions**:
-- Deploy as DaemonSet instead of Deployment
-- Increase cache TTL
+- Deploy as DaemonSet with `filter.node_from_env_var`
 - Use more specific filters to reduce pod count
-- Consider using passthrough mode for non-critical metadata
+- Use passthrough mode on agents when a gateway collector will perform enrichment
 
 ### Incorrect Pod Association
 
@@ -803,16 +810,16 @@ service:
 
 The K8s attributes processor adds overhead:
 
-- **API calls**: Each unique pod requires API query
-- **Caching**: Reduces API load but uses memory
-- **Processing time**: Adds 1-10ms per span depending on cache hits
+- **API watches**: The processor lists and watches Kubernetes resources to keep its metadata cache current
+- **Caching**: The informer cache reduces per-record API lookups but uses memory
+- **Processing time**: Adds per-record lookup and enrichment work
 - **Network**: Requires connectivity to Kubernetes API
 
 Optimize by:
-- Deploying as DaemonSet (one collector per node)
+- Deploying as DaemonSet with `filter.node_from_env_var` (one collector per node)
 - Using selective extraction (only needed fields)
 - Applying namespace filters
-- Enabling owner lookup only when needed
+- Extracting owner/workload metadata only when needed
 
 ## Summary
 
@@ -824,7 +831,6 @@ Optimize by:
 | **extract.labels** | Pod/namespace labels | tag_name, key, from |
 | **extract.annotations** | Pod annotations | tag_name, key, from |
 | **filter** | Limit processing | namespace, labels, node |
-| **owner_lookup_enabled** | Get controller info | true/false |
 
 The Kubernetes attributes processor automatically enriches telemetry with pod, namespace, deployment, and other Kubernetes metadata. This context is essential for filtering, grouping, and analyzing observability data in containerized environments, making it easier to understand and debug distributed systems running on Kubernetes.
 
