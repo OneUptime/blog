@@ -41,12 +41,12 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { context, trace, propagation } from '@opentelemetry/api';
 
 // Create a provider and exporter scoped to your tests
 const exporter = new InMemorySpanExporter();
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+});
 
 // Register as the global provider
 provider.register();
@@ -57,8 +57,6 @@ export { exporter, provider };
 // Helper to reset state between tests
 export function resetTracing() {
   exporter.reset();
-  // Clear any active context to prevent test pollution
-  context.disable();
 }
 ```
 
@@ -70,7 +68,7 @@ Here is how to test that your code creates spans with the correct parent-child r
 
 ```typescript
 // test/order-service.test.ts
-import { trace, context, SpanKind } from '@opentelemetry/api';
+import { trace, context } from '@opentelemetry/api';
 import { exporter, resetTracing } from './setup';
 import { OrderService } from '../src/order-service';
 
@@ -102,7 +100,7 @@ describe('OrderService', () => {
     expect(childSpan).toBeDefined();
 
     // Verify the parent-child relationship
-    expect(childSpan!.parentSpanId).toBe(
+    expect(childSpan!.parentSpanContext?.spanId).toBe(
       parentSpan.spanContext().spanId
     );
     expect(childSpan!.spanContext().traceId).toBe(
@@ -120,7 +118,8 @@ Sometimes you want a lighter approach where you mock the tracer itself to verify
 
 ```typescript
 // test/notification-service.test.ts
-import { trace, Span, Tracer, SpanOptions } from '@opentelemetry/api';
+import { trace, Span, Tracer } from '@opentelemetry/api';
+import { NotificationService } from '../src/notification-service';
 
 describe('NotificationService', () => {
   it('should start a span with the correct name and attributes', () => {
@@ -132,8 +131,8 @@ describe('NotificationService', () => {
       end: jest.fn(),
       recordException: jest.fn(),
       spanContext: jest.fn().mockReturnValue({
-        traceId: 'abc123',
-        spanId: 'def456',
+        traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+        spanId: '00f067aa0ba902b7',
         traceFlags: 1,
       }),
       isRecording: jest.fn().mockReturnValue(true),
@@ -182,10 +181,12 @@ Python's OpenTelemetry SDK provides a similar in-memory exporter pattern:
 # test_trace_context.py
 
 import unittest
-from opentelemetry import trace, context
-from opentelemetry.sdk.trace import TracerProvider
+from myapp.payment import process_payment
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.sdk.trace import TracerProvider
 
 
 class TestTraceContext(unittest.TestCase):
@@ -196,16 +197,14 @@ class TestTraceContext(unittest.TestCase):
         self.provider.add_span_processor(
             SimpleSpanProcessor(self.exporter)
         )
-        # Set as global provider
-        trace.set_tracer_provider(self.provider)
 
     def tearDown(self):
         """Clean up after each test."""
-        self.exporter.shutdown()
+        self.provider.shutdown()
 
     def test_child_span_inherits_trace_context(self):
         """Verify child spans share the parent trace ID."""
-        tracer = trace.get_tracer("test-tracer")
+        tracer = self.provider.get_tracer("test-tracer")
 
         # Create a parent span
         with tracer.start_as_current_span("parent") as parent_span:
@@ -238,24 +237,27 @@ When your code passes context across thread boundaries, message queues, or HTTP 
 
 ```python
 # test_context_propagation.py
-from unittest.mock import patch, MagicMock
-from opentelemetry import trace, context
+import unittest
 from opentelemetry.propagate import inject, extract
-from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.sdk.trace import TracerProvider
 
 
 class TestContextPropagation(unittest.TestCase):
     def setUp(self):
         self.exporter = InMemorySpanExporter()
-        provider = TracerProvider()
-        provider.add_span_processor(SimpleSpanProcessor(self.exporter))
-        trace.set_tracer_provider(provider)
+        self.provider = TracerProvider()
+        self.provider.add_span_processor(SimpleSpanProcessor(self.exporter))
+
+    def tearDown(self):
+        self.provider.shutdown()
 
     def test_context_injected_into_outgoing_headers(self):
         """Verify trace context is injected into HTTP headers."""
-        tracer = trace.get_tracer("test")
+        tracer = self.provider.get_tracer("test")
 
         with tracer.start_as_current_span("outgoing-call") as span:
             headers = {}
@@ -280,7 +282,7 @@ class TestContextPropagation(unittest.TestCase):
 
     def test_context_extracted_from_incoming_headers(self):
         """Verify trace context is correctly extracted from incoming headers."""
-        tracer = trace.get_tracer("test")
+        tracer = self.provider.get_tracer("test")
 
         # Simulate incoming headers with a known trace context
         incoming_headers = {
@@ -317,7 +319,7 @@ Async code is notoriously tricky for context propagation. Here is how to test th
 
 ```typescript
 // test/async-context.test.ts
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import { exporter, resetTracing } from './setup';
 
 describe('Async context propagation', () => {
@@ -342,7 +344,9 @@ describe('Async context propagation', () => {
 
     // The db span should be a child of root
     // even though it crossed an async boundary
-    expect(dbSpan!.parentSpanId).toBe(root!.spanContext().spanId);
+    expect(dbSpan!.parentSpanContext?.spanId).toBe(
+      root!.spanContext().spanId
+    );
   });
 });
 ```
@@ -355,7 +359,7 @@ Keep your mock setup minimal. Only mock what you need for the specific test. A t
 
 Use the `InMemorySpanExporter` approach as your default. It is the closest to real behavior while still being fast and deterministic. Reserve full mocking for cases where you need to verify exact API call sequences.
 
-Always clean up between tests. Leaked context from one test can cause mysterious failures in the next. Reset both the exporter and the active context in your `beforeEach` or `setUp` methods.
+Always clean up between tests. Leaked spans or providers from one test can cause mysterious failures in the next. Reset the exporter in JavaScript tests and shut down per-test tracer providers in Python tests.
 
 Test context propagation at integration boundaries. The most valuable context tests verify that your code correctly passes trace context across HTTP calls, message queues, and thread boundaries. These are the points where context is most likely to be lost.
 
