@@ -32,6 +32,7 @@ For CI/CD integration, you need:
 - A Docker Hub account with Scout access
 - A Docker Hub access token (for authentication in CI)
 - The Docker Scout CLI plugin available in your CI runner
+- `jq`, if you use the generic script's severity counts
 
 ## GitHub Actions Integration
 
@@ -55,10 +56,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -90,11 +91,14 @@ on:
 jobs:
   scout-compare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -141,16 +145,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub (for Scout)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -173,7 +177,7 @@ jobs:
           sarif-file: scout-results.sarif
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: scout-results.sarif
@@ -217,6 +221,7 @@ scout-scan:
   services:
     - docker:24-dind
   before_script:
+    - apk add --no-cache curl
     # Install Docker Scout CLI
     - curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh
     # Login to Docker Hub for Scout access
@@ -224,16 +229,16 @@ scout-scan:
   script:
     # Load the image built in the previous stage
     - docker load -i image.tar
+    # Generate a detailed report
+    - docker scout cves $IMAGE_TAG --format gitlab --output gl-container-scanning-report.json
     # Run vulnerability scan
     - docker scout cves $IMAGE_TAG --only-severity critical,high --exit-code
-    # Generate a detailed report
-    - docker scout cves $IMAGE_TAG --format json > scout-report.json
   artifacts:
     paths:
-      - scout-report.json
+      - gl-container-scanning-report.json
     reports:
       # GitLab can display container scanning results natively
-      container_scanning: scout-report.json
+      container_scanning: gl-container-scanning-report.json
     expire_in: 30 days
 
 push:
@@ -271,20 +276,24 @@ pipeline {
         stage('Scout Scan') {
             steps {
                 // Login to Docker Hub for Scout access
-                sh "echo ${DOCKERHUB_CREDS_PSW} | docker login -u ${DOCKERHUB_CREDS_USR} --password-stdin"
+                sh 'echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin'
 
-                // Run vulnerability scan with exit code
+                // Generate a report, then run vulnerability scan with exit code
                 sh """
                     docker scout cves ${IMAGE_TAG} \
                         --only-severity critical,high \
-                        --exit-code \
-                        --format json > scout-results.json
+                        --format sarif \
+                        --output scout-results.sarif
+
+                    docker scout cves ${IMAGE_TAG} \
+                        --only-severity critical,high \
+                        --exit-code
                 """
             }
             post {
                 always {
                     // Archive scan results
-                    archiveArtifacts artifacts: 'scout-results.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'scout-results.sarif', allowEmptyArchive: true
                 }
                 failure {
                     echo "Vulnerability scan failed! Critical or high severity CVEs detected."
@@ -343,12 +352,12 @@ docker scout sbom "$IMAGE" --format json > "$REPORT_DIR/sbom.json"
 
 # Run vulnerability scan and save report
 echo "Scanning for vulnerabilities..."
-docker scout cves "$IMAGE" --format json > "$REPORT_DIR/cves.json" || true
+docker scout cves "$IMAGE" --format gitlab --output "$REPORT_DIR/cves.json" || true
 
 # Count vulnerabilities by severity
 echo "=== Results ==="
 for sev in critical high medium low; do
-    count=$(jq "[.vulnerabilities[] | select(.severity == \"$sev\")] | length" "$REPORT_DIR/cves.json" 2>/dev/null || echo "0")
+    count=$(jq --arg sev "$sev" '[.vulnerabilities[]? | select((.severity // "" | ascii_downcase) == $sev)] | length' "$REPORT_DIR/cves.json" 2>/dev/null || echo "0")
     echo "  $sev: $count"
 done
 
@@ -391,13 +400,13 @@ jobs:
           - registry.example.com/worker:latest
     steps:
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to private registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USER }}
