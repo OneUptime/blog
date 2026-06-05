@@ -1,22 +1,18 @@
-# How to Fix Collector Failing to Start Because a Component Is Defined but Not
+# How to Fix a Collector Component That Is Defined but Not Used
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Configuration, Troubleshooting
 
-Description: Fix the OpenTelemetry Collector startup failure caused by components defined in config but not referenced in the service section.
+Description: Fix OpenTelemetry Collector configurations where components are defined in config but not referenced in the service section.
 
-You write your Collector configuration, start the Collector, and immediately get an error like:
+You write your Collector configuration, start the Collector, and a processor, receiver, or exporter appears to have no effect. In current Collector versions, defining a component in the configuration file does not enable it by itself. The component must be referenced in a pipeline under the `service` section.
 
-```text
-Error: failed to get config: component "processor/attributes" is not used in any pipeline
-```
-
-The Collector refuses to start. This error means you defined a component in the configuration file but did not reference it in any pipeline under the `service` section.
+The startup error you are more likely to see is the opposite case: a pipeline references a component name that is not defined. For example, `service::pipelines::traces: references processor "memorylimiter" which is not configured`.
 
 ## Why This Happens
 
-The OpenTelemetry Collector validates its configuration at startup. One of the validation rules is that every defined component must be referenced in at least one pipeline. This prevents accidentally defining components that do nothing (which could be confusing) and catches typos in pipeline wiring.
+The OpenTelemetry Collector enables pipeline components through the `service.pipelines` section. A component can be configured under `receivers`, `processors`, or `exporters`, but it will not process telemetry unless a pipeline references it. This catches typos in one direction: if a pipeline references a component name that is not configured, startup validation fails.
 
 ## The Problem Configuration
 
@@ -50,7 +46,7 @@ service:
       exporters: [otlp]
 ```
 
-The `attributes` processor is defined under `processors` but is not listed in any pipeline. The Collector treats this as a configuration error.
+The `attributes` processor is defined under `processors` but is not listed in any pipeline. The Collector will not use that processor.
 
 ## The Fix
 
@@ -76,7 +72,7 @@ processors:
   # Removed the 'attributes' processor definition entirely
 ```
 
-## Common Scenarios That Cause This Error
+## Common Scenarios That Cause This Issue
 
 ### Scenario 1: Copy-Paste from Examples
 
@@ -94,17 +90,17 @@ receivers:
 exporters:
   otlp:
     endpoint: backend:4317
-  logging:         # copied but not needed
+  debug:           # copied but not needed
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]    # jaeger not referenced
-      exporters: [otlp]    # logging not referenced
+      exporters: [otlp]    # debug not referenced
 ```
 
-Fix: remove `jaeger` receiver and `logging` exporter definitions.
+Fix: remove `jaeger` receiver and `debug` exporter definitions.
 
 ### Scenario 2: Commenting Out a Pipeline but Not the Component
 
@@ -141,11 +137,11 @@ service:
       exporters: [otlp]
 ```
 
-This causes TWO errors: `memory_limiter` is defined but not referenced, and `memorylimiter` is referenced but not defined.
+This causes a startup error because `memorylimiter` is referenced but not defined. The configured `memory_limiter` processor is still not used by the pipeline.
 
 ## Validating Configuration Before Deployment
 
-Use the Collector's `validate` command to catch these errors before deploying:
+Use the Collector's `validate` command to catch invalid component references, invalid component names, and configuration decoding errors before deploying:
 
 ```bash
 # Validate the configuration file
@@ -165,12 +161,12 @@ When using environment variables, make sure the resolved config is valid:
 ```yaml
 exporters:
   otlp:
-    endpoint: ${OTEL_BACKEND_ENDPOINT}
+    endpoint: ${env:OTEL_BACKEND_ENDPOINT}
   debug:
-    verbosity: ${DEBUG_VERBOSITY:-normal}
+    verbosity: ${env:DEBUG_VERBOSITY:-normal}
 ```
 
-If `DEBUG_VERBOSITY` is not set and there is no default, the component might not resolve correctly. Always test with:
+If an environment variable is not set and there is no default, the component might not resolve correctly. Always test with:
 
 ```bash
 # Export the variables and validate
@@ -197,4 +193,4 @@ jobs:
           validate --config /config.yaml
 ```
 
-This catches configuration errors before they reach production. The error about unreferenced components is one of the most common configuration mistakes, and it is completely preventable with upfront validation.
+This catches configuration errors before they reach production. Unused component definitions are one of the most common Collector configuration mistakes, and they are preventable by checking that every intended component is wired into the appropriate pipeline.
