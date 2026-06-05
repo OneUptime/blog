@@ -135,6 +135,7 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
             # Add connection attributes
             span.set_attribute("websocket.url", self.scope.get("path", ""))
             span.set_attribute("websocket.consumer", self.__class__.__name__)
+            self.add_connect_span_attributes(span)
 
             # Extract user information if available
             user = self.scope.get("user")
@@ -162,13 +163,17 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
                 raise
 
+    def add_connect_span_attributes(self, span):
+        """Override this method to add connection span attributes."""
+        pass
+
     async def disconnect(self, close_code):
         """Trace WebSocket disconnection."""
         # Restore connection context
         if hasattr(self, 'connection_context'):
-            ctx = context.attach(self.connection_context)
+            connection_token = context.attach(self.connection_context)
         else:
-            ctx = None
+            connection_token = None
 
         try:
             with self.tracer.start_as_current_span(
@@ -182,16 +187,33 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
 
                 span.set_status(Status(StatusCode.OK))
         finally:
-            if ctx is not None:
-                context.detach(ctx)
+            if connection_token is not None:
+                context.detach(connection_token)
 
     async def receive(self, text_data=None, bytes_data=None):
         """Trace incoming WebSocket messages."""
         # Restore connection context
         if hasattr(self, 'connection_context'):
-            ctx = context.attach(self.connection_context)
+            connection_token = context.attach(self.connection_context)
         else:
-            ctx = None
+            connection_token = None
+
+        message_data = None
+        json_error = False
+        parent_token = None
+
+        if text_data:
+            try:
+                message_data = json.loads(text_data)
+
+                # Extract propagated trace context before creating the receive span
+                carrier = message_data.get("trace_context")
+                if isinstance(carrier, dict):
+                    parent_context = self.propagator.extract(carrier=carrier)
+                    parent_token = context.attach(parent_context)
+
+            except json.JSONDecodeError:
+                json_error = True
 
         try:
             with self.tracer.start_as_current_span(
@@ -205,21 +227,12 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
                     span.set_attribute("websocket.message.type", "text")
                     span.set_attribute("websocket.message.size", len(text_data))
 
-                    # Try to parse JSON and extract trace context
-                    try:
-                        message_data = json.loads(text_data)
-
+                    if message_data is not None:
                         # Extract message type/action
                         message_type = message_data.get("type", "unknown")
                         span.set_attribute("websocket.message.action", message_type)
 
-                        # Extract propagated trace context from message
-                        if "trace_context" in message_data:
-                            carrier = message_data["trace_context"]
-                            parent_context = self.propagator.extract(carrier=carrier)
-
-                            # Attach parent context
-                            token = context.attach(parent_context)
+                        if parent_token is not None:
                             span.set_attribute("trace.propagated", True)
 
                         # Handle the message
@@ -229,7 +242,7 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
 
                         span.set_attribute("websocket.handle_duration_ms", duration)
 
-                    except json.JSONDecodeError:
+                    elif json_error:
                         span.set_attribute("websocket.message.format", "invalid_json")
                         span.add_event("Invalid JSON received")
 
@@ -246,8 +259,10 @@ class TracedAsyncWebsocketConsumer(AsyncWebsocketConsumer):
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise
         finally:
-            if ctx is not None:
-                context.detach(ctx)
+            if parent_token is not None:
+                context.detach(parent_token)
+            if connection_token is not None:
+                context.detach(connection_token)
 
     async def send_json_with_trace(self, data):
         """Send JSON message with trace context propagation."""
@@ -292,9 +307,10 @@ Here's a practical example of a chat consumer that maintains trace context:
 # myapp/consumers/chat.py
 
 from myapp.consumers.base import TracedAsyncWebsocketConsumer
-from opentelemetry import trace
+from opentelemetry import trace, context
+from opentelemetry.trace import SpanKind
 from channels.db import database_sync_to_async
-import json
+import time
 
 class ChatConsumer(TracedAsyncWebsocketConsumer):
     """Chat consumer with comprehensive tracing."""
@@ -303,9 +319,6 @@ class ChatConsumer(TracedAsyncWebsocketConsumer):
         """Join chat room on connection."""
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f'chat_{self.room_name}'
-
-        span = trace.get_current_span()
-        span.set_attribute("chat.room", self.room_name)
 
         # Join room group
         with self.tracer.start_as_current_span("chat.join_group") as join_span:
@@ -317,6 +330,10 @@ class ChatConsumer(TracedAsyncWebsocketConsumer):
             join_span.set_attribute("chat.channel", self.channel_name)
 
         await super().connect()
+
+    def add_connect_span_attributes(self, span):
+        """Add chat room attributes to the WebSocket connection span."""
+        span.set_attribute("chat.room", self.room_name)
 
     async def handle_disconnect(self, close_code):
         """Leave chat room on disconnect."""
@@ -420,17 +437,23 @@ class ChatConsumer(TracedAsyncWebsocketConsumer):
         # Propagate context
         if "trace_context" in event:
             parent_context = self.propagator.extract(carrier=event["trace_context"])
-            context.attach(parent_context)
+            ctx = context.attach(parent_context)
+        else:
+            ctx = None
 
-        await self.send_json_with_trace({
-            "type": "typing",
-            "user": event["user"],
-            "is_typing": event["is_typing"],
-        })
+        try:
+            await self.send_json_with_trace({
+                "type": "typing",
+                "user": event["user"],
+                "is_typing": event["is_typing"],
+            })
+        finally:
+            if ctx is not None:
+                context.detach(ctx)
 
     @database_sync_to_async
     def save_message(self, user, room, message):
-        """Save message to database (traced by Django ORM instrumentation)."""
+        """Save message to database (traced if database instrumentation is configured)."""
         from myapp.models import ChatMessage
         return ChatMessage.objects.create(
             user=user,
@@ -542,7 +565,8 @@ Trace background tasks triggered by WebSocket messages:
 # myapp/tasks.py
 
 from celery import shared_task
-from opentelemetry import trace
+from opentelemetry import trace, context
+from opentelemetry.trace import SpanKind
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 import time
 
@@ -562,7 +586,7 @@ def process_message_async(message_id, trace_context=None):
     try:
         with tracer.start_as_current_span(
             "chat.process_message_background",
-            kind=trace.SpanKind.CONSUMER
+            kind=SpanKind.CONSUMER
         ) as span:
             span.set_attribute("message.id", str(message_id))
             span.set_attribute("task.name", "process_message_async")
@@ -735,7 +759,6 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-import json
 
 class WebSocketTracingTestCase(TestCase):
     def setUp(self):
@@ -747,10 +770,17 @@ class WebSocketTracingTestCase(TestCase):
 
     async def test_websocket_trace_propagation(self):
         """Test that trace context propagates through WebSocket messages."""
-        from myapp.consumers.chat import ChatConsumer
+        from myapp.consumers.base import TracedAsyncWebsocketConsumer
+
+        class TestConsumer(TracedAsyncWebsocketConsumer):
+            async def handle_message(self, data):
+                await self.send_json_with_trace({
+                    "type": "echo",
+                    "message": data["message"],
+                })
 
         communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
+            TestConsumer.as_asgi(),
             "/ws/chat/test/"
         )
 
