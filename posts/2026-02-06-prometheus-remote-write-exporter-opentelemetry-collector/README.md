@@ -49,7 +49,7 @@ receivers:
 
 # exporters configuration (push metrics via remote write)
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
 # service pipelines (wire receivers to exporters)
@@ -57,7 +57,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 The `endpoint` must point to a Prometheus remote write endpoint. Common endpoint patterns:
@@ -67,6 +67,8 @@ The `endpoint` must point to a Prometheus remote write endpoint. Common endpoint
 - Thanos: `https://thanos-receive.example.com/api/v1/receive`
 - VictoriaMetrics: `https://victoria.example.com/api/v1/write`
 - Grafana Cloud: `https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push`
+
+For Prometheus itself, the remote write receiver must be enabled with `--web.enable-remote-write-receiver`.
 
 ---
 
@@ -109,7 +111,7 @@ Use HTTP Basic Auth with username and password:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     auth:
@@ -126,7 +128,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 Set credentials via environment variables:
@@ -143,7 +145,7 @@ Many managed services use bearer tokens:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     headers:
@@ -156,11 +158,10 @@ For services using custom authentication headers:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     headers:
-      x-prometheus-remote-write-version: "0.1.0"
       x-api-key: "${API_KEY}"
       x-scope-orgid: "tenant-123"  # Multi-tenant ID (Cortex/Mimir)
 ```
@@ -171,23 +172,31 @@ Grafana Cloud requires specific authentication:
 
 ```yaml
 exporters:
-  prometheusremotewrite_grafana:
+  prometheus_remote_write/grafana:
     endpoint: "https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push"
 
-    headers:
-      authorization: "Bearer ${GRAFANA_CLOUD_API_KEY}"
+    auth:
+      authenticator: basicauth/grafana
 
-    # Optional: Add Grafana-specific headers
     external_labels:
       cluster: "production"
       region: "us-west-2"
+
+extensions:
+  basicauth/grafana:
+    client_auth:
+      username: "${GRAFANA_CLOUD_PROMETHEUS_USERNAME}"
+      password: "${GRAFANA_CLOUD_API_KEY}"
+
+service:
+  extensions: [basicauth/grafana]
 ```
 
 ---
 
 ## Metric Translation and Labels
 
-The exporter automatically translates OpenTelemetry metrics to Prometheus format and handles label mapping:
+The exporter automatically translates supported OpenTelemetry metrics to Prometheus format and handles label mapping. Non-cumulative monotonic, histogram, and summary OTLP metrics are dropped by this exporter.
 
 Resource Attributes to Labels
 
@@ -195,7 +204,7 @@ OpenTelemetry resource attributes become Prometheus labels:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     # Control resource attribute conversion
@@ -230,7 +239,7 @@ Add static labels to all metrics for identification:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     # Labels added to every metric
@@ -254,20 +263,20 @@ The remote write protocol uses Snappy compression by default to reduce bandwidth
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
-    # Compression is enabled by default (Snappy)
-    compression: snappy  # Options: snappy, none
+    # The remote write protocol uses Snappy compression
+    compression: snappy
 
     # Request timeout
     timeout: 30s
 
-    # Maximum number of concurrent remote write requests
-    max_concurrent_requests: 10
+    # Maximum parallel requests when a batch is split by max_batch_size_bytes
+    max_batch_request_parallelism: 1
 ```
 
-Snappy provides fast compression with low CPU overhead (typically 70-80% size reduction). Only disable compression if you have extremely fast networks and CPU-constrained collectors.
+Snappy provides fast compression with low CPU overhead. The exporter only supports Snappy compression because it is required by the Prometheus Remote Write protocol.
 
 ---
 
@@ -277,7 +286,7 @@ The exporter includes sophisticated retry logic and queuing for handling transie
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     # Request timeout
@@ -290,38 +299,32 @@ exporters:
       max_interval: 30s          # Cap backoff at 30s
       max_elapsed_time: 300s     # Give up after 5 minutes
 
-    # Queue configuration for buffering during outages
-    sending_queue:
+    # Queue configuration for buffering before remote write sends
+    remote_write_queue:
       enabled: true
-      num_consumers: 10          # Parallel export workers
-      queue_size: 5000           # Buffer up to 5000 batches
+      num_consumers: 1           # Use more only if the backend accepts out-of-order samples
+      queue_size: 5000           # Buffer up to 5000 OTLP metrics
 
-      # Persistent queue (survive collector restarts)
-      storage: file_storage
-
-# File storage extension for persistent queuing
-extensions:
-  file_storage:
-    directory: /var/lib/otelcol/queue
-    timeout: 10s
+    # Write-ahead log for recovery after Collector restarts
+    wal:
+      directory: /var/lib/otelcol/prom_rw
+      buffer_size: 300
+      truncate_frequency: 1m
 
 service:
-  extensions: [file_storage]
   pipelines:
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
-The persistent queue ensures metrics are not lost if the Collector crashes or restarts during an outage. Size the queue based on:
+The write-ahead log helps the exporter recover pending remote write data after Collector restarts. Size the queue and WAL storage based on:
 
 - Typical metric volume (metrics per second)
 - Expected outage duration tolerance
 - Available disk space
 
-Example calculation: If you send 10,000 metrics/sec and want to survive a 5-minute outage:
-- 10,000 metrics/sec × 300 seconds = 3,000,000 metrics
-- Set `queue_size` to at least 3,000,000
+Example calculation: If you send 10,000 metrics/sec and want to tolerate a 5-minute outage, plan disk space for roughly 3,000,000 samples plus protocol overhead, then validate the queue and WAL settings under load.
 
 ---
 
@@ -374,7 +377,7 @@ processors:
 
 exporters:
   # Primary Prometheus remote write endpoint
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     # Authentication
@@ -393,7 +396,7 @@ exporters:
 
     # Performance settings
     timeout: 30s
-    max_concurrent_requests: 10
+    max_batch_request_parallelism: 1
     compression: snappy
 
     # Retry configuration
@@ -403,15 +406,18 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-    # Persistent queue for reliability
-    sending_queue:
+    # Queue and WAL for reliability
+    remote_write_queue:
       enabled: true
-      num_consumers: 10
+      num_consumers: 1
       queue_size: 5000
-      storage: file_storage
+    wal:
+      directory: /var/lib/otelcol/prom_rw
+      buffer_size: 300
+      truncate_frequency: 1m
 
   # Backup endpoint for redundancy (optional)
-  prometheusremotewrite/backup:
+  prometheus_remote_write/backup:
     endpoint: "https://backup-prometheus.example.com/api/v1/write"
     headers:
       authorization: "Bearer ${BACKUP_TOKEN}"
@@ -419,20 +425,14 @@ exporters:
       cluster: "us-west-2-prod"
       environment: "production"
 
-# Extensions
 extensions:
-  # Persistent storage for queues
-  file_storage:
-    directory: /var/lib/otelcol/queue
-    timeout: 10s
-
   # Health check endpoint
   health_check:
     endpoint: "0.0.0.0:13133"
 
 # Service configuration
 service:
-  extensions: [file_storage, health_check]
+  extensions: [health_check]
 
   pipelines:
     metrics:
@@ -443,8 +443,8 @@ service:
         - resource
         - batch
       exporters:
-        - prometheusremotewrite
-        # - prometheusremotewrite/backup  # Uncomment for dual shipping
+        - prometheus_remote_write
+        # - prometheus_remote_write/backup  # Uncomment for dual shipping
 ```
 
 This configuration provides:
@@ -453,7 +453,7 @@ This configuration provides:
 - High-cardinality metric filtering
 - Environment tagging with resource attributes
 - Efficient batching to reduce network calls
-- Persistent queuing to survive outages
+- A remote write queue and WAL for reliability
 - Retry logic with exponential backoff
 - Optional backup endpoint for redundancy
 
@@ -461,12 +461,12 @@ This configuration provides:
 
 ## Multi-Tenant Configuration
 
-Route metrics to different Prometheus tenants based on labels:
+Route metrics to different Prometheus tenants based on resource attributes:
 
 ```yaml
 exporters:
   # Tenant A endpoint
-  prometheusremotewrite/tenant_a:
+  prometheus_remote_write/tenant_a:
     endpoint: "https://prometheus.example.com/api/v1/write"
     headers:
       x-scope-orgid: "tenant-a"  # Cortex/Mimir tenant ID
@@ -474,32 +474,36 @@ exporters:
       tenant: "tenant-a"
 
   # Tenant B endpoint
-  prometheusremotewrite/tenant_b:
+  prometheus_remote_write/tenant_b:
     endpoint: "https://prometheus.example.com/api/v1/write"
     headers:
       x-scope-orgid: "tenant-b"
     external_labels:
       tenant: "tenant-b"
 
-processors:
-  # Route metrics to appropriate tenant based on labels
+connectors:
+  # Route metrics to appropriate tenant based on resource attributes
   routing:
-    default_exporters: [prometheusremotewrite/tenant_a]
-    from_attribute: "tenant.id"  # Route based on this attribute
+    default_pipelines: [metrics/tenant_a]
     table:
-      - value: "tenant-a"
-        exporters: [prometheusremotewrite/tenant_a]
-      - value: "tenant-b"
-        exporters: [prometheusremotewrite/tenant_b]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-a"
+        pipelines: [metrics/tenant_a]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-b"
+        pipelines: [metrics/tenant_b]
 
 service:
   pipelines:
-    metrics:
+    metrics/in:
       receivers: [otlp]
-      processors: [routing]
-      exporters:
-        - prometheusremotewrite/tenant_a
-        - prometheusremotewrite/tenant_b
+      exporters: [routing]
+    metrics/tenant_a:
+      receivers: [routing]
+      exporters: [prometheus_remote_write/tenant_a]
+    metrics/tenant_b:
+      receivers: [routing]
+      exporters: [prometheus_remote_write/tenant_b]
 ```
 
 ---
@@ -510,7 +514,7 @@ AWS Managed Prometheus (AMP) requires SigV4 signing:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-abc123/api/v1/remote_write"
 
     # AWS SigV4 authentication
@@ -532,7 +536,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 When running on EKS, use IAM Roles for Service Accounts (IRSA):
@@ -566,7 +570,7 @@ spec:
 
 **Solution**:
 - Verify API token is correct and not expired
-- Check header name matches backend requirements (case-sensitive)
+- Check header names and values match backend requirements
 - Ensure environment variables are set before starting Collector
 - Test authentication with curl:
 
@@ -579,6 +583,8 @@ curl -X POST \
   https://prometheus.example.com/api/v1/write
 ```
 
+With an empty body, a `400 Bad Request` can still indicate that authentication succeeded and the backend moved on to payload validation.
+
 ### 400 Bad Request Errors
 
 **Problem**: Backend rejects metrics with validation errors.
@@ -586,7 +592,7 @@ curl -X POST \
 **Solution**:
 - Check for invalid metric names (must match `[a-zA-Z_:][a-zA-Z0-9_:]*`)
 - Verify label names are valid (must match `[a-zA-Z_][a-zA-Z0-9_]*`)
-- Look for empty label values (not allowed in Prometheus)
+- Look for duplicate labels or backend-specific validation failures
 - Enable debug logging to see rejected metrics:
 
 ```yaml
@@ -601,7 +607,7 @@ service:
 **Problem**: Collector consumes excessive memory.
 
 **Solution**:
-- Reduce `queue_size` in sending_queue configuration
+- Reduce `queue_size` in `remote_write_queue` configuration
 - Decrease batch size to send more frequently
 - Enable memory_limiter processor with appropriate limits
 - Check for metric explosion (too many unique time series)
@@ -629,10 +635,8 @@ rate(otelcol_exporter_sent_metric_points_total[5m])
 # Failed remote write requests
 rate(otelcol_exporter_send_failed_metric_points_total[5m])
 
-# Remote write request duration
-histogram_quantile(0.99,
-  rate(otelcol_exporter_send_latency_bucket[5m])
-)
+# In-flight export requests
+otelcol_exporter_in_flight_requests
 
 # Queue depth (should stay well below maximum)
 otelcol_exporter_queue_size
@@ -695,7 +699,7 @@ The Prometheus Remote Write exporter brings push-based metrics delivery to the P
 - Use remote write for cloud/managed Prometheus services
 - Authentication is critical (bearer tokens, Basic Auth, SigV4)
 - External labels help with multi-cluster and multi-tenant deployments
-- Persistent queues prevent data loss during outages
+- Remote write queues and WAL settings improve reliability during outages
 - Retry logic handles transient failures automatically
 - Filter high-cardinality metrics before export
 - Monitor queue depth and export failures
