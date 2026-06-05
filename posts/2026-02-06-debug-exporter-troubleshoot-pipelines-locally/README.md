@@ -10,11 +10,11 @@ Description: Learn how to use the OpenTelemetry Collector debug exporter to insp
 
 You have configured your OpenTelemetry Collector with receivers, processors, and exporters. You start the collector, send some traces or metrics, and nothing shows up in your backend. What went wrong? Is the receiver not accepting data? Is a processor dropping it? Is the exporter failing silently?
 
-The debug exporter answers all of these questions by printing telemetry data directly to the collector's standard output. It is the simplest and most effective tool for understanding what is happening inside your pipeline, and it requires almost no setup.
+The debug exporter answers all of these questions by printing telemetry data directly to the collector's console output. It is the simplest and most effective tool for understanding what is happening inside your pipeline, and it requires almost no setup.
 
 ## What the Debug Exporter Does
 
-The debug exporter (formerly known as the logging exporter) writes telemetry data to stdout in a human-readable format. Every span, metric data point, and log record that reaches the exporter gets printed with its full content, including resource attributes, scope information, and individual data fields.
+The debug exporter (formerly known as the logging exporter) writes telemetry data to the collector's logs or configured output paths in a human-readable format. With detailed verbosity, every span, metric data point, and log record that reaches the exporter gets printed with its full content, including resource attributes, scope information, and individual data fields.
 
 This serves two purposes. First, it confirms that data is actually flowing through your pipeline. If you see output, your receiver and processors are working. If you see nothing, the problem is upstream. Second, it shows you the exact shape of your data after processing, which is invaluable for verifying that processors are transforming data the way you intended.
 
@@ -24,13 +24,13 @@ flowchart LR
     B --> C[Processor 2]
     C --> D[Debug Exporter]
     C --> E[OTLP Exporter]
-    D --> F[stdout]
+    D --> F[Console output]
     E --> G[Backend]
     style D fill:#f9f,stroke:#333,stroke-width:2px
     style F fill:#bbf,stroke:#333,stroke-width:2px
 ```
 
-The diagram above shows a typical setup during development. The debug exporter runs alongside your production exporter. Data flows through the full pipeline and gets printed to stdout while also being sent to your backend. Once you have confirmed everything works, you remove the debug exporter from the pipeline.
+The diagram above shows a typical setup during development. The debug exporter runs alongside your production exporter. Data flows through the full pipeline and gets printed to the collector's output while also being sent to your backend. Once you have confirmed everything works, you remove the debug exporter from the pipeline.
 
 ## Basic Configuration
 
@@ -53,7 +53,7 @@ processors:
     send_batch_size: 100
 
 exporters:
-  # The debug exporter prints telemetry to stdout
+  # The debug exporter prints telemetry to the collector output
   debug:
     # verbosity controls how much detail is printed
     # "basic" shows a summary, "normal" shows more, "detailed" shows everything
@@ -101,9 +101,9 @@ exporters:
 Output looks like this:
 
 ```text
-2026-02-06T10:15:30.123Z    info    TracesExporter    {"#spans": 5}
-2026-02-06T10:15:35.456Z    info    MetricsExporter   {"#metrics": 12}
-2026-02-06T10:15:40.789Z    info    LogsExporter      {"#logs": 3}
+2026-02-06T10:15:30.123Z    info    Traces    {"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "traces", "resource spans": 1, "spans": 5}
+2026-02-06T10:15:35.456Z    info    Metrics   {"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "metrics", "resource metrics": 1, "metrics": 12, "data points": 12}
+2026-02-06T10:15:40.789Z    info    Logs      {"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "logs", "resource logs": 1, "log records": 3}
 ```
 
 This tells you that data is arriving and passing through the pipeline. It does not tell you what that data contains.
@@ -122,14 +122,11 @@ exporters:
 Output includes the resource attributes and span names:
 
 ```text
-2026-02-06T10:15:30.123Z    info    TracesExporter
-    Resource:
-        service.name: payment-service
-        service.version: 1.4.2
-    ScopeSpans:
-        Scope: payment-processor
-        Span: process_payment (trace_id: abc123, span_id: def456)
-        Span: validate_card (trace_id: abc123, span_id: ghi789)
+2026-02-06T10:15:30.123Z    info    Traces    {"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "traces", "resource spans": 1, "spans": 2}
+2026-02-06T10:15:30.123Z    info    ResourceTraces #0 service.name=payment-service service.version=1.4.2
+ScopeTraces #0 payment-processor
+process_payment abc123def456789 aabbccddee payment.amount=49.99 payment.currency=USD
+validate_card abc123def456789 ghi789 payment.method=credit_card
 ```
 
 ### Detailed Verbosity
@@ -146,31 +143,34 @@ exporters:
 The output for a single span looks something like this:
 
 ```text
-2026-02-06T10:15:30.123Z    info    TracesExporter
-    Resource:
-        service.name: Str(payment-service)
-        service.version: Str(1.4.2)
-        host.name: Str(dev-laptop)
-    ScopeSpans:
-        Scope: payment-processor (version: 1.0.0)
-        Span #0
-            Trace ID:       abc123def456789
-            Span ID:        aabbccddee
-            Parent Span ID: 1122334455
-            Name:           process_payment
-            Kind:           Server
-            Start time:     2026-02-06 10:15:29.100
-            End time:       2026-02-06 10:15:30.050
-            Status:         Ok
-            Attributes:
-                payment.amount: Double(49.99)
-                payment.currency: Str(USD)
-                payment.method: Str(credit_card)
-            Events:
-                Event #0: payment.authorized
-                    Timestamp: 2026-02-06 10:15:29.500
-                    Attributes:
-                        auth_code: Str(AUTH-12345)
+2026-02-06T10:15:30.123Z    info    Traces    {"otelcol.component.id": "debug", "otelcol.component.kind": "Exporter", "otelcol.signal": "traces", "resource spans": 1, "spans": 1}
+2026-02-06T10:15:30.123Z    info    ResourceSpans #0
+Resource attributes:
+     -> service.name: Str(payment-service)
+     -> service.version: Str(1.4.2)
+     -> host.name: Str(dev-laptop)
+ScopeSpans #0
+InstrumentationScope payment-processor 1.0.0
+Span #0
+    Trace ID       : abc123def456789
+    Parent ID      : 1122334455
+    ID             : aabbccddee
+    Name           : process_payment
+    Kind           : Server
+    Start time     : 2026-02-06 10:15:29.100 +0000 UTC
+    End time       : 2026-02-06 10:15:30.050 +0000 UTC
+    Status code    : Ok
+Attributes:
+     -> payment.amount: Double(49.99)
+     -> payment.currency: Str(USD)
+     -> payment.method: Str(credit_card)
+Events:
+SpanEvent #0
+     -> Name: payment.authorized
+     -> Timestamp: 2026-02-06 10:15:29.500 +0000 UTC
+     -> DroppedAttributesCount: 0
+     -> Attributes:
+          -> auth_code: Str(AUTH-12345)
 ```
 
 This level of detail is extremely helpful when debugging attribute processors, span name transforms, or any pipeline configuration that modifies data.
@@ -237,10 +237,10 @@ You configured a filter processor to drop health check spans, but you are not su
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        - 'name == "health_check"'
-        - 'name == "readiness_probe"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.name == "health_check"'
+      - 'span.name == "readiness_probe"'
 
 exporters:
   debug:
@@ -298,6 +298,12 @@ Reduce the verbosity level. Use `basic` for high-volume pipelines and only switc
 Add the debug exporter to a separate pipeline that only receives a subset of data:
 
 ```yaml
+processors:
+  filter/debug-only:
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] != "payment-service"'
+
 service:
   pipelines:
     # Production pipeline without debug output
@@ -332,4 +338,4 @@ This cycle is much faster than deploying to a staging environment and checking a
 
 ## Wrapping Up
 
-The debug exporter is the first tool you should reach for when troubleshooting OpenTelemetry Collector pipelines. It requires minimal configuration, produces immediate output, and works with traces, metrics, and logs. By printing telemetry data to stdout, it removes all the variables between your pipeline and a remote backend, letting you focus on whether your configuration actually does what you think it does. Keep it in your development configs and add it to production configs temporarily when investigating issues. It is the printf debugging of the observability world, and it works just as well.
+The debug exporter is the first tool you should reach for when troubleshooting OpenTelemetry Collector pipelines. It requires minimal configuration, produces immediate output, and works with traces, metrics, and logs. By printing telemetry data to the collector's output, it removes all the variables between your pipeline and a remote backend, letting you focus on whether your configuration actually does what you think it does. Keep it in your development configs and add it to production configs temporarily when investigating issues. It is the printf debugging of the observability world, and it works just as well.
