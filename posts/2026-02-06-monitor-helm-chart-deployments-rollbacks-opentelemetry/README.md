@@ -107,7 +107,7 @@ Here is a shell script that uses the `otel-cli` tool to create spans around Helm
 # helm-deploy-instrumented.sh
 # Wraps Helm upgrade with OpenTelemetry tracing using otel-cli
 
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://helm-deploy-collector.monitoring:4318"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://helm-deploy-collector-collector.monitoring:4318"
 export OTEL_SERVICE_NAME="helm-deployment-pipeline"
 
 RELEASE_NAME="my-app"
@@ -143,7 +143,7 @@ if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
 fi
 ```
 
-This gives you a trace for every deployment. If a rollback happens, it appears as a child or sibling span in the same trace, so you can see the full story.
+This gives you spans for every deployment operation. If a rollback happens, the matching Helm attributes let you correlate it with the failed upgrade by release, namespace, and timestamp. To keep the upgrade and rollback in the same trace, preserve an explicit `traceparent` between `otel-cli` calls or use `otel-cli`'s background span mode.
 
 ## Recording Deployment Metrics
 
@@ -163,7 +163,7 @@ import time
 import sys
 
 # Configure the OTLP exporter pointed at the collector
-exporter = OTLPMetricExporter(endpoint="helm-deploy-collector.monitoring:4317", insecure=True)
+exporter = OTLPMetricExporter(endpoint="helm-deploy-collector-collector.monitoring:4317", insecure=True)
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=5000)
 provider = MeterProvider(metric_readers=[reader])
 metrics.set_meter_provider(provider)
@@ -218,7 +218,7 @@ Call this from your CI pipeline right after the Helm commands complete.
 
 Helm deployments create a cascade of Kubernetes events: pods scheduling, containers pulling images, readiness probes passing or failing. The OpenTelemetry Collector can capture these events using the `k8s_events` receiver.
 
-Add this receiver to your collector configuration to automatically ingest Kubernetes events as logs.
+Add this receiver to your collector configuration to automatically ingest Kubernetes events as logs. Make sure your collector image includes this receiver; it is included in the OpenTelemetry Collector Kubernetes and contrib distributions.
 
 ```yaml
 # Additional receiver config for capturing K8s events
@@ -238,11 +238,17 @@ service:
       exporters: [otlp]
 ```
 
-The collector's service account needs RBAC permissions to watch events. Here is the ClusterRole you need.
+The collector's service account needs RBAC permissions to watch events. Set `spec.serviceAccount: helm-deploy-collector` on the `OpenTelemetryCollector` when enabling this receiver, then create the ServiceAccount, ClusterRole, and ClusterRoleBinding.
 
 ```yaml
-# clusterrole-events.yaml
+# rbac-events.yaml
 # Grants the collector permission to watch Kubernetes events
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: helm-deploy-collector
+  namespace: monitoring
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -254,6 +260,19 @@ rules:
   - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-events-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-events-reader
+subjects:
+  - kind: ServiceAccount
+    name: helm-deploy-collector
+    namespace: monitoring
 ```
 
 Now when a deployment fails and triggers a rollback, you will have the Kubernetes events captured alongside your deployment traces. You can correlate them using timestamps and resource attributes like the namespace and pod name.
