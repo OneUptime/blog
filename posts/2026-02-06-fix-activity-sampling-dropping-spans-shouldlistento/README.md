@@ -48,7 +48,7 @@ ActivitySource.AddActivityListener(new ActivityListener
     ShouldListenTo = source =>
     {
         Console.WriteLine($"ShouldListenTo: {source.Name} -> checking");
-        return false; // return false so it doesn't interfere with OTel
+        return true; // listen so Sample is called
     },
     Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
     {
@@ -58,7 +58,7 @@ ActivitySource.AddActivityListener(new ActivityListener
 });
 ```
 
-This will print every `ActivitySource` that tries to create activities, helping you identify which sources exist and whether they match your configuration.
+This will print every `ActivitySource` that is evaluated and every activity creation attempt seen by this listener, helping you identify which sources exist and whether they match your configuration.
 
 ## The Fix: Register All Required Sources
 
