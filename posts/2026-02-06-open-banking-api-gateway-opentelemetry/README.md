@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Open Banking, PSD2, API Gateway
 
-Description: Monitor PSD2 and Open Finance API gateway performance with OpenTelemetry to ensure compliance with regulatory latency requirements.
+Description: Monitor PSD2 and Open Finance API gateway performance with OpenTelemetry to support regulatory availability and performance reporting.
 
 Open Banking regulations like PSD2 in Europe and similar frameworks worldwide require banks to expose APIs that let third-party providers access account information and initiate payments on behalf of customers. These APIs have strict availability and performance requirements. If your gateway is slow or unreliable, you face regulatory penalties and lose third-party integrations. OpenTelemetry provides the observability foundation you need to keep these gateways performing well.
 
 ## Regulatory Performance Requirements
 
-PSD2 requires that API responses be at least as fast as the bank's own customer-facing channels. The European Banking Authority's technical standards specify uptime and response time targets. In practice, this means your Open Banking API needs to respond in under 500ms for most requests, with 99.5% availability. You need solid metrics to prove you are meeting these targets.
+PSD2's Regulatory Technical Standards require dedicated interfaces to offer the same level of availability and performance as the bank's own customer-facing channels, and EBA guidelines require ASPSPs to define transparent availability and performance KPIs. In the UK Open Banking Standard, the OBL recommended benchmark is 99.5% quarterly uptime and an average time-to-last-byte (TTLB) of 750ms for AIS and PIS endpoint responses, subject to the parity requirement with the customer-facing interface. You need solid metrics to prove you are meeting the targets that apply to your market.
 
 ## Instrumenting the API Gateway
 
@@ -20,14 +20,12 @@ Let's instrument an Open Banking API gateway that handles Account Information Se
 # open_banking_gateway.py
 
 from opentelemetry import trace, metrics
-from opentelemetry.sdk.resources import Resource
-from functools import wraps
 import time
 
 tracer = trace.get_tracer("open_banking.gateway")
 meter = metrics.get_meter("open_banking.gateway")
 
-# Metrics required for PSD2 compliance reporting
+# Metrics useful for PSD2/Open Banking performance reporting
 request_latency = meter.create_histogram(
     "openbanking.request.duration_ms",
     description="API request duration in milliseconds",
@@ -35,8 +33,8 @@ request_latency = meter.create_histogram(
 )
 
 request_count = meter.create_counter(
-    "openbanking.request.count",
-    description="Total API requests"
+    "openbanking.request.successes",
+    description="Successful API requests"
 )
 
 error_count = meter.create_counter(
@@ -120,7 +118,7 @@ def get_account_balances(request, tpp_context):
         request_count.add(1, {"service": "AIS", "endpoint": "balances"})
 
         span.set_attribute("openbanking.response_time_ms", duration_ms)
-        span.set_attribute("openbanking.within_sla", duration_ms < 500)
+        span.set_attribute("openbanking.within_benchmark", duration_ms < 750)
 
         return format_balance_response(balance)
 ```
@@ -237,9 +235,9 @@ def revoke_consent(consent_id, reason):
 
 Build a dashboard from these metrics that answers the questions regulators will ask:
 
-- **Availability**: Calculate uptime from `openbanking.request.count` and `openbanking.request.errors`. PSD2 requires your API to be at least as available as your direct customer channels.
+- **Availability**: Calculate uptime from synthetic availability checks and downtime windows, using rules that match your regulator's reporting requirements. PSD2 requires your API to be at least as available as your direct customer channels.
 - **Latency distribution**: Use `openbanking.request.duration_ms` to show p50, p95, and p99 response times broken down by service type (AIS vs PIS) and by TPP.
-- **Error breakdown**: Track error rates by reason code (certificate failures, consent issues, core banking timeouts) to identify systemic issues.
+- **Error breakdown**: Track error rates from `openbanking.request.successes` and `openbanking.request.errors`, broken down by reason code (certificate failures, consent issues, core banking timeouts), to identify systemic issues.
 - **TPP-level metrics**: Monitor per-TPP performance to identify third parties that are generating excessive load or unusual patterns.
 
 The trace data complements these metrics by letting you investigate specific slow or failed requests. When a TPP reports that your API is slow, you can pull up their traces and see whether the delay was in certificate validation, consent lookup, core banking, or somewhere else in the chain. That level of detail turns a back-and-forth blame game into a quick root cause identification.
