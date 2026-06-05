@@ -94,7 +94,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json /app/package-lock.json ./
 
 # Install production dependencies only
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 RUN chown -R appuser:appgroup /app
 USER appuser
@@ -121,7 +121,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy dependency files
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Install dependencies
 RUN bun install --frozen-lockfile --production
@@ -199,8 +199,6 @@ curl http://localhost:3000
 A Compose file for the Hono application with a PostgreSQL database:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -308,8 +306,6 @@ CMD ["npx", "tsx", "watch", "src/index.ts"]
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
