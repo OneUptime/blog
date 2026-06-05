@@ -23,13 +23,14 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { trace, context } from '@opentelemetry/api';
 
 const provider = new WebTracerProvider({
-  resource: {
+  resource: resourceFromAttributes({
     'service.name': 'storefront-web',
     'service.version': '3.1.0'
-  }
+  })
 });
 
 provider.register({
@@ -48,11 +49,13 @@ registerInstrumentations({
       // Hook into each request to record trace ID in session replay
       applyCustomAttributesOnSpan: (span, request, response) => {
         const spanContext = span.spanContext();
+        const url = request instanceof Request ? request.url : response?.url || '';
+        const method = request instanceof Request ? request.method : request.method || 'GET';
         // Record this trace in the session replay timeline
         recordTraceInReplay(spanContext.traceId, spanContext.spanId, {
-          url: request.url || request,
-          method: request.method || 'GET',
-          status: response ? response.status : 0
+          url,
+          method,
+          status: response?.status || 0
         });
       }
     })
@@ -127,6 +130,12 @@ class ReplayTraceBridge {
     // Construct a direct link to this session in your replay tool
     return `https://replay.yourstore.com/sessions/${this.sessionId}`;
   }
+
+  getCorrelationHeaders() {
+    return {
+      'X-Session-Replay-Id': this.sessionId
+    };
+  }
 }
 
 // Make it available globally
@@ -157,7 +166,10 @@ class InstrumentedCheckout {
 
       const response = await fetch('/api/cart/add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.bridge.getCorrelationHeaders()
+        },
         body: JSON.stringify({ productId, quantity })
       });
 
@@ -178,7 +190,10 @@ class InstrumentedCheckout {
 
       const response = await fetch('/api/checkout/place-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.bridge.getCorrelationHeaders()
+        },
         body: JSON.stringify(orderData)
       });
 
@@ -202,7 +217,10 @@ class InstrumentedCheckout {
 
       const response = await fetch('/api/cart/promo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.bridge.getCorrelationHeaders()
+        },
         body: JSON.stringify({ code })
       });
 
