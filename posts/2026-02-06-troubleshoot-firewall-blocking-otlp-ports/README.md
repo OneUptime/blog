@@ -23,7 +23,7 @@ connection refused
 dial tcp 10.0.5.20:4317: connect: connection refused
 ```
 
-The key difference between a firewall block and a service being down: if the service is down, you get an immediate "connection refused." If a firewall is silently dropping, you get a timeout after the configured deadline.
+The key difference between a silent firewall drop and a service being down: if the service is down, you usually get an immediate "connection refused." If a firewall is silently dropping, you get a timeout after the configured deadline. An actively rejecting firewall can also produce "connection refused," so confirm the listener and network policy state before assuming the service is down.
 
 ## Step 1: Test Connectivity
 
@@ -76,7 +76,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: default  # Only allows traffic from 'default' namespace
+              kubernetes.io/metadata.name: default  # Only allows traffic from 'default' namespace
       ports:
         - port: 4317
         - port: 4318
@@ -133,24 +133,24 @@ If your application sends telemetry to an external backend (not in-cluster), egr
 kubectl exec -it my-app-pod -- sh -c "curl -v --connect-timeout 5 https://otlp.example.com:4317"
 ```
 
-Many corporate networks use allowlists for egress traffic. You will need to request that ports 4317 and 4318 (or whatever port your backend uses) are opened for the Collector's egress.
+Many corporate networks use allowlists for egress traffic. You will need to request that ports 4317 and 4318 (or whatever port your backend uses) are opened for the sender's egress, whether that sender is the application or the Collector.
 
 ## Workaround: Use Standard Ports
 
 If getting firewall rules changed is a slow process, consider routing OTLP traffic through standard ports that are usually already allowed:
 
 ```yaml
-# Configure the Collector to listen on port 443 (HTTPS)
+# Configure one Collector protocol to listen on port 443
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: "0.0.0.0:443"
       http:
-        endpoint: "0.0.0.0:443"
+        endpoint: "0.0.0.0:4318"
 
 # Or use a reverse proxy/ingress controller on port 443
-# that forwards to the Collector internally
+# that forwards to the Collector's gRPC and HTTP receivers internally
 ```
 
 For the exporter side, many backends accept OTLP on port 443:
