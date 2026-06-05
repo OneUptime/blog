@@ -8,108 +8,76 @@ Description: Learn how to configure the Remote Tap Extension in OpenTelemetry Co
 
 ---
 
-The Remote Tap Extension in the OpenTelemetry Collector provides powerful real-time inspection capabilities for telemetry data flowing through the pipeline. This extension enables you to capture and examine traces, metrics, and logs as they traverse the Collector, making it an essential tool for debugging, troubleshooting, and understanding data transformation behavior in production environments.
+The Remote Tap components in the OpenTelemetry Collector provide real-time inspection capabilities for telemetry data flowing through the pipeline. In current Collector releases, the component that taps pipeline data is the Remote Tap processor. It can be placed in a pipeline like any other processor, passes telemetry through unchanged, and makes a rate-limited portion of that telemetry available to WebSocket clients.
+
+The Remote Tap extension is separate: it runs a web server for the remote tap viewer. The data capture itself is done by the `remotetap` processor.
 
 ## What is the Remote Tap Extension?
 
-The Remote Tap Extension is an OpenTelemetry Collector component that creates inspection points within the telemetry pipeline, allowing operators to observe data in real-time without modifying the pipeline configuration or disrupting data flow. It operates as a passive observer, capturing telemetry copies for examination while allowing the original data to continue through the pipeline unchanged.
+The Remote Tap Extension is an OpenTelemetry Collector extension that runs as a web server for visualizing remote tap data. To create inspection points inside telemetry pipelines, use the Remote Tap processor.
 
-The extension provides:
+The processor provides:
 
-- Real-time telemetry inspection at any pipeline stage (receivers, processors, exporters)
-- Non-intrusive data capture that doesn't affect production traffic
-- Filtering capabilities to focus on specific telemetry patterns
-- Multiple output formats for different debugging scenarios
-- Remote access for distributed troubleshooting
-- Sampling controls to limit inspection overhead
-- Session management for time-bounded debugging
+- Real-time telemetry inspection at the exact point where you place the processor in a pipeline
+- Pass-through behavior that allows the original telemetry to continue to the next component
+- WebSocket access to JSON-serialized traces, metrics, or logs
+- A configurable rate limit to reduce the volume sent to connected clients
+- Support for multiple tap points by defining multiple `remotetap` processor instances
 
-This extension is particularly valuable for understanding complex data transformations, debugging processor configurations, and verifying that telemetry reaches specific pipeline stages with expected attributes.
+This is particularly valuable for understanding complex data transformations, debugging processor configurations, and verifying that telemetry reaches specific pipeline stages with expected attributes.
 
 ## Why Use the Remote Tap Extension?
 
 Production telemetry pipelines are complex, involving multiple receivers, processors, and exporters. Understanding what happens to data as it flows through these components is critical for troubleshooting, but traditional debugging approaches have significant limitations:
 
-**Production Debugging Challenges**: Traditional debugging requires modifying configurations, adding logging exporters, or redeploying the Collector. These approaches disrupt service, require configuration changes, and generate excessive log volume that obscures the actual issue.
+**Production Debugging Challenges**: Traditional debugging often requires modifying configurations, adding debug exporters, or redeploying the Collector. These approaches can generate high log volume that obscures the actual issue.
 
-**Data Transformation Verification**: Processors transform telemetry data in sophisticated ways - sampling, filtering, attribute manipulation, aggregation. Verifying these transformations work correctly requires examining data before and after each processor, which is difficult without inspection capabilities.
+**Data Transformation Verification**: Processors transform telemetry data in sophisticated ways - sampling, filtering, attribute manipulation, aggregation. Verifying these transformations work correctly requires examining data before and after each processor, which is easier when you place `remotetap` processors around the component under test.
 
-**Intermittent Issues**: Transient problems like occasional data drops, unexpected attribute values, or sampling anomalies are nearly impossible to diagnose without real-time inspection. By the time logs are examined, the problematic data has already passed through the system.
+**Intermittent Issues**: Transient problems like occasional data drops, unexpected attribute values, or sampling anomalies are difficult to diagnose without real-time inspection. By the time logs are examined, the problematic data may already have passed through the system.
 
-**Performance Analysis**: Understanding which pipeline stages consume the most resources or introduce latency requires examining data flow characteristics. The Remote Tap Extension enables real-time performance analysis without deploying separate profiling infrastructure.
+**Performance Analysis**: Understanding which pipeline stages introduce latency often requires Collector internal telemetry, profiling, and backend analysis. Remote Tap can help inspect payloads at chosen pipeline points, but it does not calculate stage latency by itself.
 
-**Compliance Verification**: Regulatory requirements may mandate verifying that sensitive data is properly redacted before export. The extension allows spot-checking redaction processors to ensure compliance without compromising security.
+**Compliance Verification**: Regulatory requirements may mandate verifying that sensitive data is properly redacted before export. A tap point after a redaction processor can help spot-check redaction behavior, but access to tap endpoints must be tightly controlled because telemetry can contain sensitive data.
 
 ## Architecture and Pipeline Integration
 
-The Remote Tap Extension integrates at multiple pipeline stages to provide comprehensive visibility:
+Remote Tap is integrated by placing `remotetap` processors at the pipeline stages you want to inspect:
 
 ```mermaid
 graph TB
     subgraph OpenTelemetry Collector
         A[Application] -->|OTLP| R[Receiver]
 
-        R --> T1[Tap Point 1
-        After Receiver]
+        R --> T1[remotetap/received]
 
         T1 --> P1[Processor 1
         Batch]
 
-        P1 --> T2[Tap Point 2
-        After Batch]
+        P1 --> T2[remotetap/after_batch]
 
         T2 --> P2[Processor 2
         Filter]
 
-        P2 --> T3[Tap Point 3
-        After Filter]
+        P2 --> T3[remotetap/after_filter]
 
         T3 --> E[Exporter]
 
-        E --> T4[Tap Point 4
-        Before Export]
-
-        T1 -.->|Copy| RT[Remote Tap Extension]
-        T2 -.->|Copy| RT
-        T3 -.->|Copy| RT
-        T4 -.->|Copy| RT
-
-        RT -->|Inspect| CLI[Tap Client/UI]
+        T1 -.->|WebSocket JSON| C1[Tap Client]
+        T2 -.->|WebSocket JSON| C2[Tap Client]
+        T3 -.->|WebSocket JSON| C3[Tap Client]
     end
 
     E -->|Original Data| B[(Backend)]
 ```
 
-The extension creates zero or more tap points in the pipeline. Each tap point copies telemetry data and sends it to the tap extension for inspection, while the original data continues unmodified to the next pipeline stage. This passive observation ensures production traffic remains unaffected.
+Each `remotetap` processor passes telemetry to the next component and, subject to its configured rate limit, writes a JSON copy to connected WebSocket clients. To inspect multiple stages, define multiple named processor instances such as `remotetap/received` and `remotetap/after_batch`.
 
 ## Basic Configuration
 
 Here's a foundational configuration enabling basic telemetry inspection:
 
 ```yaml
-# extensions section configures remote tap
-
-extensions:
-  # Remote tap extension for pipeline inspection
-  remote_tap:
-    # Network endpoint for tap clients
-    endpoint: 0.0.0.0:7777
-
-    # Authentication for tap access
-    auth:
-      # Require authentication for tap sessions
-      enabled: true
-      # Bearer token authentication
-      type: bearer
-      # Token from environment variable
-      token: ${TAP_AUTH_TOKEN}
-
-    # Sampling to reduce overhead
-    sampling:
-      # Sample 10% of telemetry for inspection
-      rate: 0.1
-
-# receivers accept telemetry
 receivers:
   otlp:
     protocols:
@@ -118,20 +86,31 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-# processors transform data
 processors:
+  # Remote tap processor for pipeline inspection.
+  # WebSocket clients connect to this endpoint.
+  remotetap/traces:
+    endpoint: 0.0.0.0:12001
+    limit: 1
+
+  remotetap/metrics:
+    endpoint: 0.0.0.0:12002
+    limit: 1
+
+  remotetap/logs:
+    endpoint: 0.0.0.0:12003
+    limit: 1
+
   batch:
     timeout: 10s
     send_batch_size: 1024
 
-  # Attribute processor for demonstration
   attributes:
     actions:
       - key: environment
         value: production
         action: insert
 
-# exporters send data to backend
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
@@ -139,76 +118,30 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  # Enable remote tap extension
-  extensions: [remote_tap]
-
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, attributes]
+      processors: [remotetap/traces, batch, attributes]
       exporters: [otlphttp]
 
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [remotetap/metrics, batch]
       exporters: [otlphttp]
 
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [remotetap/logs, batch]
       exporters: [otlphttp]
 ```
 
-With this configuration, you can connect a tap client to port 7777 to inspect telemetry flowing through the pipeline. The extension samples 10% of data to minimize performance impact.
+With this configuration, a WebSocket client can connect to port 12001 for traces, 12002 for metrics, or 12003 for logs. The `limit` setting rate limits duplicated telemetry sent over open WebSocket connections, in messages per second.
 
 ## Advanced Tap Point Configuration
 
-Configure specific tap points at different pipeline stages:
+Configure specific tap points at different pipeline stages by creating multiple named `remotetap` processors:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Define explicit tap points
-    tap_points:
-      # Tap point after receiver
-      - name: after_receiver
-        location: receiver
-        # Which pipelines to tap
-        pipelines: [traces, metrics, logs]
-        # No filtering - capture everything
-        filter: {}
-
-      # Tap point after batch processor
-      - name: after_batch
-        location: processor
-        processor_name: batch
-        pipelines: [traces]
-        # Filter for specific conditions
-        filter:
-          # Only capture high-priority traces
-          resource_attributes:
-            priority: high
-
-      # Tap point after attribute processor
-      - name: after_attributes
-        location: processor
-        processor_name: attributes
-        pipelines: [traces]
-
-      # Tap point before exporter
-      - name: before_export
-        location: exporter
-        pipelines: [traces, metrics, logs]
-        # Sample at different rate for pre-export inspection
-        sampling_rate: 0.05
-
 receivers:
   otlp:
     protocols:
@@ -216,9 +149,19 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  # Tap point immediately after the receiver
+  remotetap/received:
+    endpoint: 0.0.0.0:12001
+    limit: 1
+
   batch:
     timeout: 10s
     send_batch_size: 1024
+
+  # Tap point after the batch processor
+  remotetap/after_batch:
+    endpoint: 0.0.0.0:12002
+    limit: 1
 
   attributes:
     actions:
@@ -229,6 +172,11 @@ processors:
         value: otel-collector
         action: insert
 
+  # Tap point after the attributes processor
+  remotetap/after_attributes:
+    endpoint: 0.0.0.0:12003
+    limit: 1
+
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
@@ -236,80 +184,22 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [remote_tap]
-
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, attributes]
+      processors: [remotetap/received, batch, remotetap/after_batch, attributes, remotetap/after_attributes]
       exporters: [otlphttp]
 ```
 
-This configuration creates four tap points at strategic pipeline locations, allowing you to observe how data changes as it progresses through processing stages.
+This configuration creates three tap points at strategic pipeline locations, allowing you to observe how data changes as it progresses through processing stages.
 
 ## Filtering and Selection
 
-Focus inspection on specific telemetry patterns:
+The Remote Tap processor does not provide its own filtering language. It duplicates telemetry at the point where it is placed in the pipeline and rate limits what it sends to WebSocket clients.
+
+To focus inspection on specific telemetry patterns, use normal Collector processors before the tap point in a dedicated debugging pipeline, or place the tap after a processor that already narrows the stream:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    tap_points:
-      # Tap for error traces only
-      - name: error_traces
-        location: receiver
-        pipelines: [traces]
-        filter:
-          # Only capture traces with errors
-          span_status:
-            code: ERROR
-
-      # Tap for slow requests
-      - name: slow_requests
-        location: processor
-        processor_name: batch
-        pipelines: [traces]
-        filter:
-          # Capture spans with duration > 1 second
-          span_duration:
-            min: 1000ms
-
-      # Tap for specific service
-      - name: api_service
-        location: receiver
-        pipelines: [traces, logs]
-        filter:
-          resource_attributes:
-            service.name: api-service
-
-      # Tap for high-cardinality metrics
-      - name: high_cardinality_metrics
-        location: receiver
-        pipelines: [metrics]
-        filter:
-          # Capture metrics with many labels
-          metric_attributes:
-            cardinality:
-              min: 10
-
-      # Tap for specific log levels
-      - name: warning_logs
-        location: receiver
-        pipelines: [logs]
-        filter:
-          log_record:
-            severity:
-              - WARN
-              - ERROR
-              - FATAL
-
 receivers:
   otlp:
     protocols:
@@ -317,6 +207,16 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  filter/api_service:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.name"] != "api-service"'
+
+  remotetap/api_service:
+    endpoint: 0.0.0.0:12001
+    limit: 1
+
   batch:
     timeout: 10s
 
@@ -327,352 +227,93 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [remote_tap]
-
   pipelines:
-    traces:
+    traces/debug_api_service:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
-
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
-
-    logs:
-      receivers: [otlp]
-      processors: [batch]
+      processors: [filter/api_service, remotetap/api_service, batch]
       exporters: [otlphttp]
 ```
 
-Filtering reduces inspection overhead by capturing only relevant telemetry, making debugging more efficient.
+Filtering reduces inspection volume by limiting what reaches the tap point. Be careful when adding filters to production pipelines: a filter processor drops data from that pipeline, so use a dedicated debugging pipeline when you need non-invasive inspection.
 
 ## Output Formats and Destinations
 
-Configure different output formats for various debugging scenarios:
+The Remote Tap processor writes JSON-serialized telemetry to connected WebSocket clients. It does not support Collector configuration fields for file output, stdout output, OTLP forwarding, output rotation, or per-output formatting.
+
+For offline analysis, capture the WebSocket stream with your preferred WebSocket client and redirect it to a file. For normal Collector file, stdout, or OTLP destinations, use dedicated exporters such as `debug`, `file`, or `otlphttp` in a separate pipeline.
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Output configuration
-    outputs:
-      # Real-time streaming to connected clients
-      - type: stream
-        format: json
-        # Pretty-print JSON for readability
-        pretty: true
-
-      # Write to local file for offline analysis
-      - type: file
-        path: /var/log/otel-tap/traces.jsonl
-        format: jsonl                    # JSON Lines format
-        # Rotate files to prevent disk exhaustion
-        rotation:
-          max_size_mb: 100
-          max_files: 10
-
-      # Send to debugging backend
-      - type: otlp
-        endpoint: http://debug.oneuptime.com:4317
-        headers:
-          x-debug-session: ${DEBUG_SESSION_ID}
-
-      # Write to stdout for container logs
-      - type: stdout
-        format: text
-        # Include detailed metadata
-        verbose: true
-
-    tap_points:
-      - name: all_data
-        location: receiver
-        pipelines: [traces, metrics, logs]
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
-  batch:
-    timeout: 10s
+  remotetap:
+    endpoint: 0.0.0.0:12001
+    limit: 1
 
 exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-service:
-  extensions: [remote_tap]
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
+  debug:
+    verbosity: detailed
 ```
 
-Multiple output destinations enable different debugging workflows - real-time inspection, offline analysis, or integration with debugging infrastructure.
+Remote Tap is best used for live inspection. Exporters are the supported mechanism for routing telemetry to files, logs, or backends.
 
 ## Session Management and Access Control
 
-Implement secure, time-bounded tap sessions:
+The Remote Tap processor exposes a WebSocket endpoint using the Collector HTTP server configuration. It does not implement built-in bearer-token sessions, token rotation, audit logs, IP allowlists, or per-session duration controls.
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    # Authentication configuration
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-      # Rotate token periodically
-      token_rotation:
-        enabled: true
-        interval: 1h
-
-      # IP allowlist for tap access
-      allowed_ips:
-        - 10.0.0.0/8              # Internal network
-        - 172.16.0.0/12           # VPC range
-
-    # Session management
-    sessions:
-      # Maximum concurrent tap sessions
-      max_concurrent: 5
-
-      # Automatic session timeout
-      timeout: 30m
-
-      # Maximum session duration
-      max_duration: 2h
-
-      # Session logging for audit
-      audit_log:
-        enabled: true
-        path: /var/log/otel-tap/audit.log
-
-    # Rate limiting per session
-    rate_limit:
-      # Max telemetry items per second per session
-      items_per_second: 1000
-      # Burst capacity
-      burst: 2000
-
-    tap_points:
-      - name: debug_traces
-        location: receiver
-        pipelines: [traces]
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-service:
-  extensions: [remote_tap]
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
+  remotetap:
+    # Bind to localhost unless remote access is required.
+    endpoint: 127.0.0.1:12001
+    limit: 1
 ```
 
-Session management prevents unauthorized access, limits resource consumption, and provides audit trails for compliance.
+For production access control, keep the endpoint bound to localhost or a restricted network interface, and put authentication, authorization, TLS termination, IP allowlisting, and audit logging in front of the endpoint with infrastructure you already operate, such as a reverse proxy or service mesh.
 
 ## Performance Optimization
 
-Minimize tap overhead in high-throughput environments:
+Minimize tap overhead in high-throughput environments by keeping the rate limit low and enabling tap points only where they are needed:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Performance configuration
-    performance:
-      # Asynchronous tap processing
-      async: true
-
-      # Buffer size for async processing
-      buffer_size: 10000
-
-      # Number of worker threads
-      workers: 4
-
-      # Drop telemetry if buffer is full
-      drop_on_full: true
-
-    # Aggressive sampling
-    sampling:
-      # Sample only 1% of telemetry
-      rate: 0.01
-
-      # Adaptive sampling based on load
-      adaptive:
-        enabled: true
-        # Target CPU usage for tap operations
-        target_cpu_percent: 5
-        # Adjust sampling rate dynamically
-        min_rate: 0.001
-        max_rate: 0.1
-
-    # Memory limits
-    memory:
-      # Maximum memory for tap buffers
-      max_memory_mb: 512
-      # Eviction policy when limit reached
-      eviction: oldest
-
-    tap_points:
-      - name: sampled_traces
-        location: receiver
-        pipelines: [traces]
-        # Additional per-tap-point sampling
-        sampling_rate: 0.1
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
+  remotetap/sampled_view:
+    endpoint: 127.0.0.1:12001
+    # Maximum duplicated messages per second sent to WebSocket clients
+    limit: 0.5
+
   batch:
     timeout: 10s
 
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
 service:
-  extensions: [remote_tap]
-
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [remotetap/sampled_view, batch]
       exporters: [otlphttp]
 ```
 
-Performance optimizations ensure tap operations don't impact production telemetry processing.
+The processor's supported performance control is `limit`, which rate limits duplicated messages over open WebSockets. It does not provide separate configuration for worker counts, adaptive sampling, memory limits, or buffer eviction.
 
 ## Using the Tap Client
 
-Connect to the remote tap for interactive debugging:
+Connect to the Remote Tap processor endpoint with a WebSocket client:
 
 ```bash
-# Connect to remote tap extension
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --format json
+# Connect to a remote tap processor listening on localhost:12001
+websocat ws://127.0.0.1:12001/
 
-# Filter output for specific service
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --filter 'resource.service.name == "api-service"'
-
-# Capture to file for offline analysis
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --output traces-$(date +%Y%m%d-%H%M%S).jsonl
-
-# Stream specific tap point
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --tap-point after_batch
-
-# Limit capture duration
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --duration 5m
-
-# Pretty-print output for human inspection
-otelcol-tap connect \
-  --endpoint collector.production.internal:7777 \
-  --token "${TAP_AUTH_TOKEN}" \
-  --format json \
-  --pretty
+# Capture streamed JSON telemetry to a file
+websocat ws://127.0.0.1:12001/ > traces.json
 ```
 
-The tap client provides flexible command-line access to telemetry inspection.
+There is no official `otelcol-tap` CLI in the OpenTelemetry Collector documentation. The processor exposes a WebSocket endpoint, so any compatible WebSocket client can read the stream. If you enable the `remotetap` extension, it runs a web server for a remote tap viewer, but the extension is separate from the pipeline processor.
 
 ## Debugging Common Issues
 
 ### Verifying Processor Behavior
 
-Confirm processors transform data correctly:
+Confirm processors transform data correctly by placing tap processors before and after the processor under test:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    tap_points:
-      # Before attribute processor
-      - name: before_redaction
-        location: processor
-        processor_name: batch
-        pipelines: [traces]
-
-      # After attribute processor
-      - name: after_redaction
-        location: processor
-        processor_name: attributes/redact
-        pipelines: [traces]
-
-    outputs:
-      - type: file
-        path: /var/log/otel-tap/before-redaction.jsonl
-        filter:
-          tap_point: before_redaction
-
-      - type: file
-        path: /var/log/otel-tap/after-redaction.jsonl
-        filter:
-          tap_point: after_redaction
-
 receivers:
   otlp:
     protocols:
@@ -680,10 +321,10 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  batch:
-    timeout: 10s
+  remotetap/before_redaction:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 
-  # Processor under test
   attributes/redact:
     actions:
       - key: user.email
@@ -693,6 +334,10 @@ processors:
       - key: ssn
         action: delete
 
+  remotetap/after_redaction:
+    endpoint: 127.0.0.1:12002
+    limit: 1
+
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
@@ -700,61 +345,20 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [remote_tap]
-
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, attributes/redact]
+      processors: [remotetap/before_redaction, attributes/redact, remotetap/after_redaction]
       exporters: [otlphttp]
 ```
 
-Compare before and after files to verify the redaction processor removes sensitive attributes correctly.
+Compare the WebSocket output from ports 12001 and 12002 to verify the redaction processor removes sensitive attributes correctly.
 
 ### Investigating Data Loss
 
-Determine where telemetry is dropped:
+Determine where telemetry is dropped by placing tap processors around potential drop points:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    tap_points:
-      # After receiver (data entering pipeline)
-      - name: received
-        location: receiver
-        pipelines: [traces]
-        filter:
-          resource_attributes:
-            service.name: problematic-service
-
-      # After filter processor (potential drop point)
-      - name: after_filter
-        location: processor
-        processor_name: filter
-        pipelines: [traces]
-        filter:
-          resource_attributes:
-            service.name: problematic-service
-
-      # Before export (data leaving pipeline)
-      - name: exported
-        location: exporter
-        pipelines: [traces]
-        filter:
-          resource_attributes:
-            service.name: problematic-service
-
-    outputs:
-      - type: stdout
-        format: text
-        verbose: true
-
 receivers:
   otlp:
     protocols:
@@ -762,14 +366,22 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  batch:
-    timeout: 10s
+  remotetap/received:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 
-  # Potential drop point
-  filter:
+  filter/drop_service1:
+    error_mode: ignore
     traces:
       span:
-        - attributes["http.status_code"] > 400
+        - 'resource.attributes["service.name"] == "service1"'
+
+  remotetap/after_filter:
+    endpoint: 127.0.0.1:12002
+    limit: 1
+
+  batch:
+    timeout: 10s
 
 exporters:
   otlphttp:
@@ -778,71 +390,29 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [remote_tap]
-
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, filter]
+      processors: [remotetap/received, filter/drop_service1, remotetap/after_filter, batch]
       exporters: [otlphttp]
 ```
 
-Count telemetry items at each tap point to identify where data is dropped.
+Compare telemetry at each tap point to identify whether data disappears after a filtering or sampling processor.
 
 ### Analyzing Performance Bottlenecks
 
-Identify slow pipeline stages:
+Remote Tap can show the telemetry payloads that pass through each chosen point, but it does not add timestamps to telemetry or calculate latency between tap points. For pipeline performance analysis, use Collector internal telemetry, the `pprof` extension, and backend metrics.
 
 ```yaml
 extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    tap_points:
-      - name: stage1
-        location: receiver
-        pipelines: [traces]
-        # Record timestamp for latency calculation
-        add_timestamp: true
-
-      - name: stage2
-        location: processor
-        processor_name: batch
-        pipelines: [traces]
-        add_timestamp: true
-
-      - name: stage3
-        location: processor
-        processor_name: tail_sampling
-        pipelines: [traces]
-        add_timestamp: true
-
-      - name: stage4
-        location: exporter
-        pipelines: [traces]
-        add_timestamp: true
-
-    # Enable performance metrics
-    metrics:
-      enabled: true
-      # Calculate latency between tap points
-      latency_calculation: true
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+  pprof:
+    endpoint: 127.0.0.1:1777
 
 processors:
-  batch:
-    timeout: 10s
+  remotetap/before_tail_sampling:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 
-  # Potentially slow processor
   tail_sampling:
     decision_wait: 10s
     num_traces: 10000
@@ -852,341 +422,116 @@ processors:
         status_code:
           status_codes: [ERROR]
 
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+  remotetap/after_tail_sampling:
+    endpoint: 127.0.0.1:12002
+    limit: 1
 
 service:
-  extensions: [remote_tap]
-
-  # Export tap metrics for analysis
-  telemetry:
-    metrics:
-      level: detailed
-      readers:
-        - periodic:
-            exporter:
-              otlp:
-                protocol: http/protobuf
-                endpoint: https://oneuptime.com/otlp
-                headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch, tail_sampling]
-      exporters: [otlphttp]
+  extensions: [pprof]
 ```
 
-Timestamp differences between tap points reveal processing latency for each pipeline stage.
+Use the tap points to inspect what enters and exits expensive processors, and use profiling and internal metrics to measure performance impact.
 
 ## Monitoring Tap Operations
 
-Track tap extension performance and usage:
+Track Collector performance and tap usage with Collector self-telemetry and operational monitoring around the WebSocket endpoint:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Enable detailed metrics
-    metrics:
-      enabled: true
-      detailed: true
-
-    tap_points:
-      - name: traces
-        location: receiver
-        pipelines: [traces]
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+  remotetap:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 
 service:
-  extensions: [remote_tap]
-
-  # Configure Collector self-monitoring
   telemetry:
+    logs:
+      level: info
     metrics:
       level: detailed
-      readers:
-        - periodic:
-            exporter:
-              otlp:
-                protocol: http/protobuf
-                endpoint: https://oneuptime.com/otlp
-                headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
 ```
 
-**Key Metrics**:
-
-- **otelcol_remote_tap_sessions_active**: Number of active tap sessions
-- **otelcol_remote_tap_items_captured**: Total telemetry items captured
-- **otelcol_remote_tap_items_dropped**: Items dropped due to buffer overflow
-- **otelcol_remote_tap_processing_duration_milliseconds**: Time spent processing tap operations
-- **otelcol_remote_tap_memory_usage_bytes**: Memory consumed by tap buffers
-
-These metrics help identify excessive tap overhead and resource consumption.
+The Remote Tap processor does not document dedicated metrics such as active sessions, captured items, dropped items, or tap buffer memory. Monitor Collector CPU, memory, process metrics, logs, and network access to the tap endpoint to understand operational impact.
 
 ## Security Considerations
 
 ### Sensitive Data Protection
 
-Prevent sensitive data exposure through tap operations:
+Prevent sensitive data exposure through tap operations by redacting before the tap point, binding tap endpoints to localhost, and restricting access:
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Redaction configuration
-    redaction:
-      enabled: true
-
-      # Redact sensitive attributes
-      attributes:
-        - user.email
-        - credit_card
-        - ssn
-        - password
-        - api_key
-
-      # Redact attribute patterns
-      attribute_patterns:
-        - ".*password.*"
-        - ".*secret.*"
-        - ".*token.*"
-        - ".*key.*"
-
-      # Replace with placeholder
-      replacement: "[REDACTED]"
-
-    # Audit logging
-    audit:
-      enabled: true
-      path: /var/log/otel-tap/audit.log
-      # Log all tap operations
-      log_captures: true
-      # Log session creation/termination
-      log_sessions: true
-
-    tap_points:
-      - name: traces
-        location: receiver
-        pipelines: [traces]
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
-  batch:
-    timeout: 10s
+  attributes/redact:
+    actions:
+      - key: user.email
+        action: delete
+      - key: credit_card
+        action: delete
+      - key: ssn
+        action: delete
+      - key: password
+        action: delete
+      - key: api_key
+        action: delete
 
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-service:
-  extensions: [remote_tap]
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
+  remotetap/after_redaction:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 ```
 
-Redaction ensures sensitive data isn't exposed through tap sessions, maintaining security and compliance.
+The Remote Tap processor does not provide its own redaction configuration. Use Collector processors to redact or transform sensitive fields before telemetry reaches the tap point.
 
 ## Production Best Practices
 
 ### Conditional Tap Activation
 
-Enable tap only when needed to minimize overhead:
+Enable tap processors only when needed to minimize overhead. In practice, this usually means using a separate Collector configuration for debugging or using your deployment system to include or exclude the tap processor.
 
 ```yaml
-extensions:
-  remote_tap:
-    endpoint: 0.0.0.0:7777
-
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-
-    # Activation configuration
-    activation:
-      # Default: disabled until activated
-      enabled: ${ENABLE_TAP:-false}
-
-      # Auto-disable after period of inactivity
-      auto_disable:
-        enabled: true
-        idle_timeout: 30m
-
-      # Activation via signal
-      signal:
-        # Enable tap by sending SIGUSR1 to Collector
-        enable_signal: SIGUSR1
-        # Disable tap by sending SIGUSR2
-        disable_signal: SIGUSR2
-
-    tap_points:
-      - name: traces
-        location: receiver
-        pipelines: [traces]
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
 processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-service:
-  extensions: [remote_tap]
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp]
+  remotetap/debug:
+    endpoint: 127.0.0.1:12001
+    limit: 1
 ```
 
-Conditional activation ensures tap operations only consume resources when actively debugging.
+The Remote Tap processor does not support built-in activation flags, auto-disable timers, or signal-based enable and disable controls.
 
 ### Complete Production Configuration
 
-Full configuration with all production considerations:
+Full configuration with production-oriented constraints:
 
 ```yaml
-extensions:
-  remote_tap:
-    # Bind to internal network only
-    endpoint: 10.0.0.100:7777
-
-    # Strong authentication
-    auth:
-      enabled: true
-      type: bearer
-      token: ${TAP_AUTH_TOKEN}
-      token_rotation:
-        enabled: true
-        interval: 1h
-      allowed_ips:
-        - 10.0.0.0/8
-
-    # Disabled by default
-    activation:
-      enabled: false
-      auto_disable:
-        enabled: true
-        idle_timeout: 30m
-
-    # Minimal sampling
-    sampling:
-      rate: 0.01
-      adaptive:
-        enabled: true
-        target_cpu_percent: 2
-
-    # Session limits
-    sessions:
-      max_concurrent: 2
-      timeout: 15m
-      max_duration: 1h
-      audit_log:
-        enabled: true
-        path: /var/log/otel-tap/audit.log
-
-    # Performance limits
-    performance:
-      async: true
-      buffer_size: 5000
-      workers: 2
-      drop_on_full: true
-
-    memory:
-      max_memory_mb: 256
-
-    # Security
-    redaction:
-      enabled: true
-      attributes:
-        - user.email
-        - password
-        - api_key
-      attribute_patterns:
-        - ".*secret.*"
-        - ".*token.*"
-
-    # Metrics
-    metrics:
-      enabled: true
-
-    tap_points:
-      - name: receiver_traces
-        location: receiver
-        pipelines: [traces]
-        sampling_rate: 0.1
-
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 2048
 
+  attributes/redact:
+    actions:
+      - key: user.email
+        action: delete
+      - key: password
+        action: delete
+      - key: api_key
+        action: delete
+
+  remotetap/after_redaction_traces:
+    # Keep tap access local by default and tunnel or proxy it securely when needed.
+    endpoint: 127.0.0.1:12001
+    limit: 1
+
+  remotetap/after_redaction_logs:
+    # Use a different endpoint for each tap processor instance.
+    endpoint: 127.0.0.1:12002
+    limit: 1
+
   batch:
     timeout: 10s
 
@@ -1197,8 +542,6 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [remote_tap]
-
   telemetry:
     logs:
       level: info
@@ -1208,11 +551,21 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, remotetap/after_redaction_traces, batch]
+      exporters: [otlphttp]
+
+    metrics:
+      receivers: [otlp]
       processors: [memory_limiter, batch]
+      exporters: [otlphttp]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, remotetap/after_redaction_logs, batch]
       exporters: [otlphttp]
 ```
 
-This production configuration balances debugging capability with security, performance, and resource constraints.
+This production configuration keeps the tap endpoint local, rate limits the duplicated WebSocket stream, and redacts sensitive attributes before the tap point.
 
 ## Related Resources
 
@@ -1224,12 +577,10 @@ For comprehensive OpenTelemetry Collector debugging and troubleshooting, explore
 
 ## Summary
 
-The Remote Tap Extension provides essential real-time inspection capabilities for debugging and troubleshooting OpenTelemetry Collector pipelines. By creating non-intrusive observation points throughout the pipeline, it enables operators to understand data transformations, verify processor behavior, and diagnose issues without disrupting production traffic.
+The Remote Tap processor provides real-time inspection capabilities for debugging and troubleshooting OpenTelemetry Collector pipelines. By placing `remotetap` processors at chosen points in a pipeline, operators can understand data transformations, verify processor behavior, and diagnose issues while telemetry continues through the pipeline.
 
-Start with basic tap configuration for occasional debugging needs. As requirements grow, implement filtering, multiple tap points, and specialized output formats for sophisticated debugging workflows. Always enable authentication and implement sampling to protect security and minimize performance impact.
+Start with a single tap processor for occasional debugging needs. As requirements grow, add multiple named `remotetap` processor instances before and after processors you want to inspect. Always keep tap endpoints restricted, redact sensitive data before it reaches a tap point, and use the `limit` setting to reduce the amount of duplicated telemetry sent to WebSocket clients.
 
-Monitor tap operations through internal metrics to ensure debugging activities don't consume excessive resources. Use conditional activation to enable tap only when needed, and implement automatic session timeouts to prevent resource leaks. Redaction ensures sensitive data isn't exposed during debugging, maintaining compliance with security policies.
-
-The extension's flexibility enables powerful debugging workflows - from quick spot-checks to comprehensive pipeline analysis - while maintaining the production stability and security required in enterprise environments.
+Monitor Collector CPU, memory, logs, and network exposure to ensure debugging activities don't consume excessive resources or expose sensitive telemetry. Use Collector processors for filtering and redaction, exporters for durable output, and Collector internal telemetry or profiling tools for performance analysis.
 
 Need a production-grade observability platform with built-in debugging tools? OneUptime provides native support for OpenTelemetry with integrated telemetry inspection, pipeline visualization, and comprehensive troubleshooting capabilities without vendor lock-in.
