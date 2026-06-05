@@ -69,7 +69,7 @@ The resulting trace shows a hierarchy: the HTTP request span contains the databa
 Here's a full application demonstrating tracing across multiple Blueprints:
 
 ```python
-from flask import Flask, jsonify
+from flask import Flask, Blueprint, jsonify
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -468,7 +468,7 @@ Flask Blueprints support before_request and after_request decorators. Use these 
 
 ```python
 from flask import Blueprint, jsonify, g
-from opentelemetry import trace
+from opentelemetry import context, trace
 import time
 
 tracer = trace.get_tracer(__name__)
@@ -481,6 +481,7 @@ def before_admin_request():
     span = tracer.start_span("admin.request")
     span.set_attribute("blueprint.name", "admin")
     g.admin_span = span
+    g.admin_span_token = context.attach(trace.set_span_in_context(span))
     g.request_start_time = time.time()
 
 @admin_bp.after_request
@@ -491,6 +492,7 @@ def after_admin_request(response):
         g.admin_span.set_attribute("request.duration_ms", duration * 1000)
         g.admin_span.set_attribute("response.status_code", response.status_code)
         g.admin_span.end()
+        context.detach(g.admin_span_token)
     return response
 
 @admin_bp.route('/users')
