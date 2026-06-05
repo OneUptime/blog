@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Node.js, Debugging, Module Loading
 
 Description: Diagnose and resolve the warning about modules being loaded before OpenTelemetry instrumentation can patch them in Node.js apps.
 
-The warning "Module X has been loaded before @opentelemetry/instrumentation-X" tells you that a library was imported into the Node.js module cache before OpenTelemetry had a chance to wrap it with tracing hooks. This means auto-instrumentation will not work for that library, and you will get no spans from it.
+The warning "Module X has been loaded before @opentelemetry/instrumentation-X" tells you that a library was imported into the Node.js module cache before OpenTelemetry had a chance to wrap it with tracing hooks. This means auto-instrumentation may not work for that library, and you may get no spans from it.
 
 ## Understanding the Warning
 
@@ -24,7 +24,7 @@ You might see:
 @opentelemetry/instrumentation-express can patch it. Instrumentation may not work.
 ```
 
-This is not just a warning. It means instrumentation WILL NOT work for that module.
+This is not just noise. It means instrumentation may not work, or may only work for code paths that load the module after the hooks are registered.
 
 ## Cause 1: SDK Initialized in the Wrong File
 
@@ -72,33 +72,39 @@ sdk.start();
 // app.js
 const myMiddleware = require('my-custom-middleware');
 // my-custom-middleware internally does: const http = require('http');
-// But http was already loaded by the SDK itself!
+// But http may already have been loaded by tracing/exporter setup!
 
 const express = require('express');
 ```
 
-**Fix:** Check what the SDK itself loads. The OpenTelemetry SDK packages import `http` and `https` internally. This is usually fine because the instrumentation is registered before those internal imports happen, but custom setups can break this order.
+**Fix:** Check what your tracing setup loads. Some SDK, exporter, or custom setup code can import `http` or `https`. This is usually fine when the instrumentation is registered before application code uses those modules, but custom setups can break this order.
 
-## Cause 3: TypeScript Import Hoisting
+## Cause 3: TypeScript and ESM Preloading
 
-TypeScript (and modern JavaScript) hoists `import` statements to the top of the file:
+Static `import` statements run before the body of the module that contains them. This means you cannot initialize tracing at the top of a file and then rely on later static imports in the same file to be patched:
 
 ```typescript
-// app.ts - BROKEN even though tracing setup appears first
-import './tracing';  // This import is hoisted...
-import express from 'express';  // ...but so is this one!
-// TypeScript resolves all imports before executing any code
+// app.ts - BROKEN
+import express from 'express';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+
+// This runs after static imports have already been loaded
+const sdk = new NodeSDK({ /* ... */ });
+sdk.start();
 ```
 
-Both imports are resolved at parse time. The execution order of the imported modules depends on their dependency graph, not the order you wrote them.
+If your TypeScript compiles to ESM, OpenTelemetry also needs its ESM loader hook so `import` statements can be patched.
 
 **Fix:** Use `--require` or `--import` flags instead of relying on import order:
 
 ```bash
-ts-node --require ./tracing.ts app.ts
+npx tsx --import ./tracing.ts app.ts
 # or
 
-node --require ./tracing.js -r ts-node/register app.ts
+node --require ts-node/register --require ./tracing.ts app.ts
+# or, for compiled ESM
+
+node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./tracing.mjs app.mjs
 ```
 
 ## Cause 4: Jest or Test Frameworks
@@ -113,20 +119,17 @@ module.exports = {
 };
 ```
 
-**Fix:** Use `globalSetup` or configure Jest's `--require` equivalent:
+**Fix:** Keep the tracing preload in `setupFiles` for modules loaded by test files, or start Jest with Node's preload flags so every Jest worker process gets the tracing setup before application modules load:
 
 ```javascript
 // jest.config.js
 module.exports = {
-  globalSetup: './jest.globalSetup.js',
+  setupFiles: ['./tracing.js'],
 };
 ```
 
-```javascript
-// jest.globalSetup.js
-module.exports = async function() {
-  require('./tracing');
-};
+```bash
+NODE_OPTIONS="--require ./tracing.js" npx jest
 ```
 
 ## Debugging the Load Order
@@ -158,8 +161,8 @@ This prints a stack trace every time a key module is loaded, showing you exactly
 After fixing the load order, you should see in the debug output:
 
 ```text
-@opentelemetry/instrumentation-http Applying instrumentation patch for module http on require hook
-@opentelemetry/instrumentation-express Applying instrumentation patch for module express on require hook
+@opentelemetry/instrumentation-http Applying instrumentation patch for nodejs core module on require hook
+@opentelemetry/instrumentation-express Applying instrumentation patch for module on require hook
 ```
 
 If you see "Applying instrumentation patch" instead of "Module has been loaded before", the fix is working.
