@@ -40,7 +40,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -48,7 +48,7 @@ service:
     logs:
       receivers: [syslog]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration sets up the Syslog receiver on the standard port 514, using RFC 5424 protocol over UDP. Note that port 514 requires root privileges on Unix-like systems. For non-privileged operation, use a higher port number like 5140.
@@ -76,9 +76,6 @@ receivers:
 
     # Location for timestamp parsing
     location: America/New_York
-
-    # Enable octet counting
-    enable_octet_counting: false
 ```
 
 ### RFC 5424 (Syslog Protocol)
@@ -99,9 +96,6 @@ receivers:
 
     # Modern Syslog format
     protocol: rfc5424
-
-    # Location for timestamp parsing (optional for RFC 5424)
-    location: UTC
 ```
 
 ## Transport Configuration
@@ -118,11 +112,11 @@ receivers:
       # Listen address and port
       listen_address: "0.0.0.0:5140"
 
-      # Maximum message size
-      max_message_size: 8192
-
-      # Number of worker goroutines
-      workers: 1
+      # Process UDP packets concurrently
+      async:
+        readers: 1
+        processors: 1
+        max_queue_length: 100
 
     protocol: rfc5424
 ```
@@ -149,11 +143,8 @@ receivers:
       # Listen address and port
       listen_address: "0.0.0.0:5140"
 
-      # Maximum message size
-      max_message_size: 8192
-
-      # Maximum number of concurrent connections
-      max_connections: 100
+      # Maximum log entry size
+      max_log_size: 1MiB
 
     protocol: rfc5424
 
@@ -162,7 +153,7 @@ receivers:
 ```
 
 TCP advantages:
-- Guaranteed delivery
+- Reliable, ordered transport
 - Connection tracking
 - Backpressure support
 
@@ -185,7 +176,7 @@ receivers:
   syslog/tcp:
     tcp:
       listen_address: "0.0.0.0:5140"
-      max_connections: 100
+      max_log_size: 1MiB
     protocol: rfc5424
     enable_octet_counting: true
 
@@ -194,7 +185,7 @@ service:
     logs:
       receivers: [syslog/udp, syslog/tcp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ## Parsing and Attribute Extraction
@@ -213,12 +204,8 @@ receivers:
     operators:
       # Extract JSON from message body
       - type: json_parser
-        parse_from: body
+        parse_from: attributes.message
         parse_to: attributes
-
-      # Parse severity from priority
-      - type: severity_parser
-        parse_from: attributes.priority
 
       # Add resource attributes
       - type: add
@@ -318,8 +305,9 @@ receivers:
     # Timezone for RFC 3164 timestamps (no timezone info)
     location: America/Los_Angeles
 
-    # Preserve raw timestamp
-    preserve_timestamp: true
+    # Add the parsed hostname as a resource attribute
+    resource:
+      host.name: EXPR(attributes.hostname)
 ```
 
 ## Complete Production Configuration
@@ -332,8 +320,10 @@ receivers:
   syslog/udp:
     udp:
       listen_address: "0.0.0.0:5140"
-      max_message_size: 16384
-      workers: 4
+      async:
+        readers: 4
+        processors: 4
+        max_queue_length: 1000
 
     protocol: rfc5424
     location: UTC
@@ -342,8 +332,7 @@ receivers:
   syslog/tcp:
     tcp:
       listen_address: "0.0.0.0:5140"
-      max_message_size: 16384
-      max_connections: 200
+      max_log_size: 16MiB
 
       # TLS for secure transmission
       tls:
@@ -359,14 +348,9 @@ receivers:
     operators:
       # Extract JSON from message
       - type: json_parser
-        parse_from: body
+        parse_from: attributes.message
         parse_to: attributes
-        if: 'body matches "^\\{"'
-
-      # Extract severity
-      - type: severity_parser
-        parse_from: attributes.priority
-        preset: syslog
+        if: 'attributes.message matches "^\\{"'
 
       # Add resource attributes
       - type: add
@@ -432,9 +416,9 @@ exporters:
   elasticsearch:
     endpoints:
       - https://elasticsearch.example.com:9200
-    index: logs-syslog
+    logs_index: logs-syslog
     auth:
-      authenticator: basicauth
+      authenticator: basicauth/elasticsearch
 
 extensions:
   # Basic authentication for Elasticsearch
@@ -461,7 +445,7 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      level: detailed
 ```
 
 ## Configuring Syslog Clients
@@ -541,6 +525,7 @@ Send logs to Syslog from Python applications:
 ```python
 import logging
 import logging.handlers
+import socket
 
 # Create logger
 logger = logging.getLogger('myapp')
@@ -593,30 +578,24 @@ Route logs based on facility or severity:
 processors:
   # Filter by severity
   filter/critical:
-    logs:
-      include:
-        match_type: regexp
-        record_attributes:
-          - key: severity
-            value: "(EMERG|ALERT|CRIT)"
+    error_mode: ignore
+    log_conditions:
+      - 'log.attributes["severity"] == nil or log.attributes["severity"] > 2'
 
   # Filter by facility
   filter/auth:
-    logs:
-      include:
-        match_type: strict
-        record_attributes:
-          - key: facility
-            value: "auth"
+    error_mode: ignore
+    log_conditions:
+      - 'log.attributes["facility_text"] != "auth"'
 
 exporters:
-  # Critical logs to PagerDuty
-  otlphttp/pagerduty:
-    endpoint: https://events.pagerduty.com/v2/enqueue
+  # Critical logs to an alerting backend that accepts OTLP/HTTP
+  otlphttp/alerts:
+    endpoint: https://alerts.example.com/otlp
 
-  # Auth logs to SIEM
+  # Auth logs to a SIEM that accepts OTLP/HTTP
   otlphttp/siem:
-    endpoint: https://siem.example.com/api/logs
+    endpoint: https://siem.example.com/otlp
 
   # All logs to storage
   otlp:
@@ -628,7 +607,7 @@ service:
     logs/critical:
       receivers: [syslog/tcp]
       processors: [filter/critical, batch]
-      exporters: [otlphttp/pagerduty]
+      exporters: [otlphttp/alerts]
 
     # Authentication logs
     logs/auth:
@@ -664,20 +643,23 @@ receivers:
   syslog:
     udp:
       listen_address: "0.0.0.0:5140"
-      workers: 8  # Increase for high volume
+      async:
+        readers: 4
+        processors: 8  # Increase for high volume
+        max_queue_length: 1000
     protocol: rfc5424
 ```
 
-### Connection Limits
+### Message Size Limits
 
-For TCP, configure connection limits:
+For TCP, configure the maximum accepted log entry size:
 
 ```yaml
 receivers:
   syslog:
     tcp:
       listen_address: "0.0.0.0:5140"
-      max_connections: 500  # Adjust based on sources
+      max_log_size: 16MiB  # Adjust based on expected message size
     protocol: rfc5424
 ```
 
@@ -710,14 +692,13 @@ Track receiver metrics:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
 ```
 
 Key metrics:
 - `otelcol_receiver_accepted_log_records`: Logs accepted
 - `otelcol_receiver_refused_log_records`: Logs refused
-- `syslog_parse_errors`: Parse errors
+- Collector error logs for syslog parse failures
 
 ### Debug Logging
 
