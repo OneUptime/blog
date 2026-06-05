@@ -108,27 +108,25 @@ exporters:
     # Connection timeout
     timeout: 30s
 
-    # HTTP client configuration
-    http:
-      # Maximum idle connections
-      max_idle_conns: 100
-      max_idle_conns_per_host: 10
+    # Maximum idle connections
+    max_idle_conns: 100
+    max_idle_conns_per_host: 10
 
-      # Keep-alive duration
-      idle_conn_timeout: 90s
+    # Keep-alive duration
+    idle_conn_timeout: 90s
 
-      # TLS configuration for secure connections
-      tls:
-        insecure: false
-        insecure_skip_verify: false
-        ca_file: /etc/ssl/certs/zipkin-ca.crt
-        cert_file: /etc/ssl/certs/client-cert.crt
-        key_file: /etc/ssl/certs/client-key.key
+    # TLS configuration for secure connections
+    tls:
+      insecure: false
+      insecure_skip_verify: false
+      ca_file: /etc/ssl/certs/zipkin-ca.crt
+      cert_file: /etc/ssl/certs/client-cert.crt
+      key_file: /etc/ssl/certs/client-key.key
 
-      # Custom headers for authentication or routing
-      headers:
-        Authorization: Bearer ${ZIPKIN_API_TOKEN}
-        X-Custom-Header: custom-value
+    # Custom headers for authentication or routing
+    headers:
+      Authorization: Bearer ${ZIPKIN_API_TOKEN}
+      X-Custom-Header: custom-value
 
     # Retry configuration for failed requests
     retry_on_failure:
@@ -173,7 +171,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -242,10 +247,6 @@ Not all traces need to be sent to Zipkin. You can use processors to filter and s
 
 ```yaml
 processors:
-  # Probabilistic sampling - keep 10% of traces
-  probabilistic_sampler:
-    sampling_percentage: 10.0
-
   # Tail sampling - make intelligent sampling decisions
   tail_sampling:
     policies:
@@ -282,13 +283,13 @@ processors:
         probabilistic:
           sampling_percentage: 5.0
 
-  # Filter out health check traces
+  # Filter out health check spans
   filter:
-    traces:
-      span:
-        - attributes["http.target"] == "/health"
-        - attributes["http.target"] == "/ready"
-        - attributes["http.target"] == "/live"
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["url.path"] == "/health"
+      - span.attributes["url.path"] == "/ready"
+      - span.attributes["url.path"] == "/live"
 
   batch:
     timeout: 10s
@@ -398,7 +399,7 @@ exporters:
       enabled: true
       num_consumers: 20
       queue_size: 10000
-      persistent_storage: file_storage
+      storage: file_storage
 
 # File storage for persistent queue
 extensions:
@@ -437,20 +438,19 @@ exporters:
   zipkin:
     endpoint: http://localhost:9411/api/v2/spans
 
-    # Use protobuf for 30-50% better performance
+    # Use protobuf for better performance
     format: proto
 
     # Aggressive timeout for faster failure detection
     timeout: 15s
 
-    http:
-      # Increase connection pool size
-      max_idle_conns: 200
-      max_idle_conns_per_host: 50
-      idle_conn_timeout: 90s
+    # Increase connection pool size
+    max_idle_conns: 200
+    max_idle_conns_per_host: 50
+    idle_conn_timeout: 90s
 
-      # Enable compression to reduce bandwidth
-      compression: gzip
+    # Enable compression to reduce bandwidth
+    compression: gzip
 
     # Large queue for burst traffic
     sending_queue:
@@ -496,7 +496,14 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
 exporters:
   zipkin:
