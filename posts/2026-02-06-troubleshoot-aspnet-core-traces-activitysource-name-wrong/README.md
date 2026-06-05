@@ -12,7 +12,7 @@ The most likely cause is a mismatch between the `ActivitySource` name in your co
 
 ## How ActivitySource Registration Works
 
-The OpenTelemetry .NET SDK uses `ActivityListener` under the hood. When you call `AddSource("name")`, it tells the listener to pay attention to activities created by an `ActivitySource` with that exact name. If the names do not match, the listener ignores those activities, and `StartActivity()` returns `null`.
+The OpenTelemetry .NET SDK uses `ActivityListener` under the hood. When you call `AddSource("name")`, it tells the listener to pay attention to activities created by an `ActivitySource` with that name. Source-name matching is case-insensitive, and wildcard patterns are supported. If the configured source names or patterns do not match, the listener ignores those activities, and `StartActivity()` returns `null`.
 
 ## The Bug
 
@@ -197,4 +197,4 @@ public void AllActivitySources_AreRegistered()
 }
 ```
 
-The fix is always the same: make sure `AddSource()` receives exactly the same string that was passed to `new ActivitySource()`. Using shared constants eliminates this class of bugs entirely.
+The fix is always the same: make sure `AddSource()` receives the same source name that was passed to `new ActivitySource()`, or a wildcard pattern that covers it. Using shared constants eliminates this class of bugs entirely.
