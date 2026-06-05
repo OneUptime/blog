@@ -23,7 +23,7 @@ graph LR
     A[Applications] -->|OTLP| B[OpenTelemetry Collector]
     B -->|Receivers| C[Processors]
     C -->|Transform| D[GMP Exporter]
-    D -->|Prometheus Remote Write| E[Google Managed Prometheus]
+    D -->|Cloud Monitoring API| E[Google Managed Prometheus]
     E -->|PromQL| F[Cloud Console]
     E -->|Queries| G[Grafana]
     E -->|Alerts| H[Alertmanager]
@@ -37,7 +37,7 @@ Before configuring the Google Managed Prometheus exporter, you need:
 - A Google Cloud project with billing enabled
 - Google Managed Prometheus enabled in your project
 - Service account with Monitoring Metric Writer role
-- OpenTelemetry Collector Contrib installed (version 0.80.0 or later)
+- OpenTelemetry Collector Contrib installed (version 0.146.0 or later)
 - GKE cluster (optional, for Kubernetes deployments)
 
 ## Setting Up Google Managed Prometheus
@@ -107,13 +107,8 @@ exporters:
     # Google Cloud project ID
     project: "my-project-id"
 
-    # Path to service account key file
-    # Leave empty to use Application Default Credentials
-    # credentials_file: "/path/to/gmp-key.json"
-
-    # Prometheus remote write endpoint
-    # This is automatically set by the exporter
-    # endpoint: "https://monitoring.googleapis.com/v1/projects/my-project-id/location/global/prometheus/api/v1/write"
+    # Credentials are read from Application Default Credentials.
+    # For service account keys, set GOOGLE_APPLICATION_CREDENTIALS.
 
 service:
   pipelines:
@@ -133,7 +128,7 @@ For applications running on Google Cloud, use Application Default Credentials:
 exporters:
   googlemanagedprometheus:
     project: "my-project-id"
-    # No credentials_file needed - uses Application Default Credentials
+    # No exporter credential field needed - uses Application Default Credentials
 ```
 
 For GKE workloads with Workload Identity:
@@ -162,54 +157,32 @@ exporters:
   googlemanagedprometheus:
     project: "my-project-id"
 
-    # Use environment variable for credentials
-    # credentials_file: "${GOOGLE_APPLICATION_CREDENTIALS}"
-
     # User agent string for tracking
     user_agent: "opentelemetry-collector/1.0"
 
-    # Add extra labels to all metrics
-    extra_metrics_labels:
-      cluster: "production"
-      region: "us-central1"
+    metric:
+      # Endpoint is optional; the default sends to Cloud Monitoring.
+      # endpoint: "monitoring.googleapis.com:443"
 
-    # Remote write configuration
-    remote_write:
-      # Endpoint URL (auto-configured if not specified)
-      # url: "https://monitoring.googleapis.com/v1/projects/my-project-id/location/global/prometheus/api/v1/write"
+      # Compression for metrics gRPC requests
+      compression: "gzip"
 
-      # Request timeout
-      timeout: 30s
+      # Include selected resource attributes as metric labels
+      resource_filters:
+        - prefix: "cloud"
+        - prefix: "k8s"
+        - regex: "host.name"
 
-      # Retry configuration
-      retry_on_failure:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 30s
-        max_elapsed_time: 300s
-
-      # Queue configuration
-      queue:
-        enabled: true
-        num_consumers: 10
-        queue_size: 10000
-
-      # Headers for authentication
-      headers:
-        X-Custom-Header: "value"
-
-      # TLS configuration
-      tls:
-        insecure: false
-        insecure_skip_verify: false
-
-      # Compression
-      compression: "snappy"
+    # Queue batches before sending
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
 ```
 
 Resource Detection and Labels
 
-Add resource attributes that become Prometheus labels:
+Add resource attributes used by the `prometheus_target` monitored resource, and include selected resource attributes as Prometheus labels:
 
 ```yaml
 processors:
@@ -235,19 +208,6 @@ processors:
         value: "${CLUSTER_NAME}"
         action: upsert
 
-  # Transform resource attributes to metric labels
-  resource/prometheus:
-    attributes:
-      - key: service_name
-        from_attribute: service.name
-        action: insert
-      - key: service_version
-        from_attribute: service.version
-        action: insert
-      - key: environment
-        from_attribute: deployment.environment
-        action: insert
-
   batch:
     timeout: 10s
     send_batch_size: 1024
@@ -255,14 +215,17 @@ processors:
 exporters:
   googlemanagedprometheus:
     project: "my-project-id"
-    extra_metrics_labels:
-      collector_version: "v0.93.0"
+    metric:
+      resource_filters:
+        - regex: "service.name"
+        - regex: "service.version"
+        - regex: "deployment.environment"
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, resource, resource/prometheus, batch]
+      processors: [resourcedetection, resource, batch]
       exporters: [googlemanagedprometheus]
 ```
 
@@ -274,11 +237,11 @@ Transform and filter metrics before export:
 processors:
   # Filter out unnecessary metrics
   filter/metrics:
-    metrics:
-      metric:
-        # Exclude metrics by name
-        - 'name == "up"'
-        - 'name == "scrape_duration_seconds"'
+    error_mode: ignore
+    metric_conditions:
+      # Exclude metrics by name
+      - 'metric.name == "up"'
+      - 'metric.name == "scrape_duration_seconds"'
 
   # Transform metric names and labels
   metricstransform:
@@ -304,14 +267,18 @@ processors:
       # Aggregate metric by labels
       - include: "request_count"
         action: update
-        aggregation_type: sum
-        submatch_case: lower
+        operations:
+          - action: aggregate_labels
+            label_set: [http_method, status_code]
+            aggregation_type: sum
 
-  # Delta to cumulative conversion
+  # Cumulative to delta conversion
   cumulativetodelta:
-    metrics:
-      - http_requests_total
-      - request_duration_sum
+    include:
+      metrics:
+        - http_requests_total
+        - request_duration_sum
+      match_type: strict
 
   batch:
     timeout: 10s
@@ -430,7 +397,7 @@ sum(rate(http_requests_total[5m]))
 
 **Using PromQL in Grafana:**
 
-Configure Grafana with Google Managed Prometheus datasource:
+Configure Grafana with a Prometheus datasource, then run the GMP data source syncer so Grafana has OAuth2 credentials and the Cloud Monitoring Prometheus API URL:
 
 ```yaml
 apiVersion: 1
@@ -438,10 +405,9 @@ datasources:
   - name: Google Managed Prometheus
     type: prometheus
     access: proxy
-    url: https://monitoring.googleapis.com/v1/projects/my-project-id/location/global/prometheus
+    url: http://localhost:9090
     jsonData:
-      httpMethod: POST
-      authenticationType: gce
+      httpMethod: GET
     editable: false
 ```
 
@@ -450,32 +416,33 @@ datasources:
 Define recording rules to pre-compute expensive queries:
 
 ```yaml
-# Recording rules for GMP (defined in Cloud Monitoring)
-groups:
-  - name: request_metrics
-    interval: 30s
-    rules:
-      # Pre-compute request rate
-      - record: job:http_requests:rate5m
-        expr: sum(rate(http_requests_total[5m])) by (job)
+apiVersion: monitoring.googleapis.com/v1
+kind: Rules
+metadata:
+  namespace: default
+  name: request-metrics
+spec:
+  groups:
+    - name: request_metrics
+      interval: 30s
+      rules:
+        # Pre-compute request rate
+        - record: job:http_requests:rate5m
+          expr: sum(rate(http_requests_total[5m])) by (job)
 
-      # Pre-compute error rate
-      - record: job:http_errors:rate5m
-        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (job)
+        # Pre-compute error rate
+        - record: job:http_errors:rate5m
+          expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (job)
 
-      # Pre-compute latency percentiles
-      - record: job:http_request_duration:p95
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le))
+        # Pre-compute latency percentiles
+        - record: job:http_request_duration:p95
+          expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le))
 ```
 
-Apply recording rules using the gcloud CLI:
+Apply recording rules using kubectl:
 
 ```bash
-gcloud alpha monitoring policies create \
-  --notification-channels=CHANNEL_ID \
-  --display-name="Recording Rules" \
-  --condition-display-name="request-rate" \
-  --policy-from-file=recording-rules.yaml
+kubectl apply -n default -f recording-rules.yaml
 ```
 
 ## Setting Up Alerts
@@ -483,45 +450,50 @@ gcloud alpha monitoring policies create \
 Configure alerting rules based on your metrics:
 
 ```yaml
-# Alerting rules for GMP
-groups:
-  - name: service_alerts
-    interval: 30s
-    rules:
-      # High error rate alert
-      - alert: HighErrorRate
-        expr: |
-          sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (service_name) /
-          sum(rate(http_requests_total[5m])) by (service_name) > 0.05
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "High error rate on {{ $labels.service_name }}"
-          description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.service_name }}"
+apiVersion: monitoring.googleapis.com/v1
+kind: Rules
+metadata:
+  namespace: default
+  name: service-alerts
+spec:
+  groups:
+    - name: service_alerts
+      interval: 30s
+      rules:
+        # High error rate alert
+        - alert: HighErrorRate
+          expr: |
+            sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (service_name) /
+            sum(rate(http_requests_total[5m])) by (service_name) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High error rate on {{ $labels.service_name }}"
+            description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.service_name }}"
 
-      # High latency alert
-      - alert: HighLatency
-        expr: |
-          histogram_quantile(0.95,
-            sum(rate(http_request_duration_seconds_bucket[5m])) by (service_name, le)
-          ) > 1.0
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High latency on {{ $labels.service_name }}"
-          description: "P95 latency is {{ $value }}s on {{ $labels.service_name }}"
+        # High latency alert
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket[5m])) by (service_name, le)
+            ) > 1.0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High latency on {{ $labels.service_name }}"
+            description: "P95 latency is {{ $value }}s on {{ $labels.service_name }}"
 
-      # Service down alert
-      - alert: ServiceDown
-        expr: up == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Service {{ $labels.job }} is down"
-          description: "{{ $labels.job }} has been down for more than 5 minutes"
+        # Service down alert
+        - alert: ServiceDown
+          expr: up == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Service {{ $labels.job }} is down"
+            description: "{{ $labels.job }} has been down for more than 5 minutes"
 ```
 
 ## Performance Optimization
@@ -545,20 +517,13 @@ exporters:
   googlemanagedprometheus:
     project: "my-project-id"
 
-    remote_write:
-      timeout: 60s
-      compression: "snappy"
+    metric:
+      compression: "gzip"
 
-      queue:
-        enabled: true
-        num_consumers: 20
-        queue_size: 20000
-
-      retry_on_failure:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 30s
-        max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 20
+      queue_size: 20000
 
 service:
   pipelines:
@@ -572,8 +537,13 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Cost Management
@@ -596,13 +566,11 @@ receivers:
 ```yaml
 processors:
   filter/metrics:
-    metrics:
-      metric:
-        - 'name == "high_cardinality_metric"'
-
-      datapoint:
-        # Filter by label values
-        - 'attributes["user_id"] != ""'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "high_cardinality_metric"'
+      # Filter by label values
+      - 'datapoint.attributes["user_id"] != nil'
 ```
 
 **3. Aggregate Metrics:**
@@ -615,9 +583,10 @@ processors:
         action: update
         aggregation_type: sum
         # Remove high-cardinality labels
-        label_operations:
-          - label: user_id
-            action: delete
+        operations:
+          - action: aggregate_labels
+            label_set: [http_method, status_code]
+            aggregation_type: sum
 ```
 
 **4. Use Recording Rules:**
@@ -635,16 +604,13 @@ processors:
       - key: cluster
         value: "${CLUSTER_NAME}"
         action: upsert
-      - key: region
+      - key: location
         value: "${REGION}"
         action: upsert
 
 exporters:
   googlemanagedprometheus:
     project: "my-project-id"
-    extra_metrics_labels:
-      cluster: "${CLUSTER_NAME}"
-      region: "${REGION}"
 
 service:
   pipelines:
@@ -722,11 +688,10 @@ data:
       - name: Google Managed Prometheus
         type: prometheus
         access: proxy
-        url: https://monitoring.googleapis.com/v1/projects/my-project-id/location/global/prometheus
+        url: http://localhost:9090
         isDefault: true
         jsonData:
-          httpMethod: POST
-          authenticationType: gce
+          httpMethod: GET
         editable: false
 ```
 
@@ -801,18 +766,17 @@ processors:
 
   # Filter high-cardinality metrics
   filter/metrics:
-    metrics:
-      metric:
-        - 'name == "up"'
-        - 'name == "scrape_.*"'
-
-      datapoint:
-        - 'attributes["user_id"] != ""'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "up"'
+      - 'IsMatch(metric.name, "^scrape_.*")'
+      - 'datapoint.attributes["user_id"] != nil'
 
   # Transform metrics
   metricstransform:
     transforms:
       - include: "^http_server_duration$"
+        match_type: regexp
         action: update
         new_name: "http_request_duration_seconds"
         operations:
@@ -828,24 +792,16 @@ exporters:
   googlemanagedprometheus:
     project: "${GCP_PROJECT_ID}"
 
-    extra_metrics_labels:
-      cluster: "${CLUSTER_NAME}"
-      environment: "${ENVIRONMENT}"
+    metric:
+      compression: "gzip"
+      resource_filters:
+        - regex: "cluster"
+        - regex: "environment"
 
-    remote_write:
-      timeout: 60s
-      compression: "snappy"
-
-      queue:
-        enabled: true
-        num_consumers: 20
-        queue_size: 20000
-
-      retry_on_failure:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 30s
-        max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 20
+      queue_size: 20000
 
 service:
   pipelines:
@@ -858,7 +814,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Troubleshooting Common Issues
@@ -867,7 +828,7 @@ service:
 
 Solutions:
 - Verify service account has `roles/monitoring.metricWriter` role
-- Check credentials file path is correct
+- Check that Application Default Credentials are configured correctly
 - Ensure Application Default Credentials are set up
 - Verify project ID is correct
 
