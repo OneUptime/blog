@@ -8,7 +8,7 @@ Description: Learn how to benchmark and compare Docker storage drivers to find t
 
 ---
 
-Docker supports several storage drivers, each with different performance characteristics. Overlay2 is the default, but btrfs, zfs, devicemapper, and others exist for specific use cases. Choosing the right one can make a measurable difference in container startup time, I/O throughput, and storage efficiency. This guide walks through benchmarking each driver so you can make an informed choice for your workload.
+Docker supports several storage drivers, each with different performance characteristics. For classic Docker Engine storage drivers, overlay2 is the default on most supported Linux distributions, while btrfs, zfs, devicemapper, and others exist for specific use cases. Docker Engine 29.0 and later uses the containerd image store by default for fresh installations, so these classic storage-driver benchmarks apply when you are using or explicitly configuring the classic image store. Choosing the right one can make a measurable difference in container startup time, I/O throughput, and storage efficiency. This guide walks through benchmarking each driver so you can make an informed choice for your workload.
 
 ## Available Storage Drivers
 
@@ -16,10 +16,10 @@ Here is a quick overview of the storage drivers Docker supports:
 
 | Driver | Backing Filesystem | Copy-on-Write | Best For |
 |--------|-------------------|---------------|----------|
-| overlay2 | ext4, xfs | File-level | General purpose, most workloads |
+| overlay2 | xfs with ftype=1, ext4, btrfs, and other OverlayFS-compatible filesystems | File-level | General purpose, most workloads |
 | btrfs | btrfs | Block-level | Snapshot-heavy workloads |
 | zfs | zfs | Block-level | Data integrity, compression |
-| devicemapper | direct-lvm | Block-level | Legacy RHEL/CentOS |
+| devicemapper | dedicated block devices (direct-lvm) | Block-level | Legacy RHEL/CentOS; deprecated |
 | vfs | Any | None (full copy) | Testing, debugging |
 
 Check your current storage driver:
@@ -30,8 +30,8 @@ Check your current storage driver:
 docker info | grep "Storage Driver"
 # Output: Storage Driver: overlay2
 
-# Show detailed storage information
-docker info --format '{{json .Driver}}'
+# Show detailed storage driver information
+docker info --format '{{json .DriverStatus}}'
 ```
 
 ## Setting Up the Benchmark Environment
@@ -123,7 +123,7 @@ IMAGES=(
 DRIVER=$(docker info --format '{{.Driver}}')
 RESULTS_FILE=~/docker-storage-benchmarks/pull-$DRIVER.csv
 
-echo "image,time_seconds,size_mb" > "$RESULTS_FILE"
+echo "image,time_ms,size_mb" > "$RESULTS_FILE"
 
 for image in "${IMAGES[@]}"; do
     # Remove the image if it exists
@@ -207,9 +207,10 @@ docker run --rm alpine sh -c "
 
 # Sequential read throughput
 echo "=== Sequential Read ==="
-docker run --rm alpine sh -c "
+docker run --rm --privileged alpine sh -c "
     dd if=/dev/zero of=/tmp/testfile bs=1M count=512 2>/dev/null
-    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    sync
+    echo 3 > /proc/sys/vm/drop_caches
     dd if=/tmp/testfile of=/dev/null bs=1M 2>&1 | tail -1
 " | tee "$RESULTS_DIR/seq-read.txt"
 
@@ -337,14 +338,14 @@ Based on common benchmarks, here is what you can generally expect:
 | Random I/O | Good | Moderate | Good |
 | Small file creation | Good | Moderate | Moderate |
 | CoW (large files) | Slow (file-level) | Fast (block-level) | Fast (block-level) |
-| Storage efficiency | Good | Excellent (compression) | Excellent (dedup + compression) |
+| Storage efficiency | Good | Excellent (with compression enabled) | Excellent (with compression or dedup enabled) |
 | Reliability | Good | Good | Excellent |
 
 ## Choosing a Driver
 
 - **overlay2**: Best for most workloads. Fastest container startup, good I/O performance, and wide compatibility. Choose this unless you have a specific reason not to.
-- **btrfs**: Good for environments that benefit from filesystem-level snapshots and compression. Higher CPU usage due to CoW at the block level.
-- **zfs**: Best for data integrity and storage efficiency. Built-in checksums, compression, and deduplication. Higher memory usage (ARC cache). Good for database workloads where data integrity matters.
+- **btrfs**: Good for environments that benefit from filesystem-level snapshots and optional compression. Requires more memory than overlay2 and more maintenance of the underlying filesystem.
+- **zfs**: Best for data integrity and storage efficiency when your team has ZFS experience. Built-in checksums, optional compression, and optional deduplication. Higher memory usage (ARC cache). Good for workloads where data integrity matters.
 - **devicemapper**: Legacy option. Only use if you cannot use overlay2 on older RHEL/CentOS systems.
 
 ## Wrapping Up
