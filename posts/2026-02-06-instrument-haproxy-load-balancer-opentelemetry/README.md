@@ -38,14 +38,18 @@ Add a dedicated frontend section to expose Prometheus metrics on a separate port
 ```haproxy
 # haproxy.cfg
 
+global
+    # Expose the HAProxy Runtime API for the OpenTelemetry HAProxy receiver
+    stats socket /var/run/haproxy.sock mode 660 level admin
+
 # Enable the Prometheus metrics endpoint on an internal-only port
 frontend prometheus
     # Bind to port 8405 - keep this behind your firewall
     bind *:8405
     mode http
+    http-request deny unless { path /metrics }
     http-request use-service prometheus-exporter if { path /metrics }
-    # Reject any request that isn't for the metrics path
-    default_backend empty
+    no log
 
 # Your existing frontend configuration
 frontend http_front
@@ -76,7 +80,7 @@ backend app_servers
 
 Now set up the OpenTelemetry Collector to scrape HAProxy's Prometheus endpoint. The collector also enriches the data with additional metadata before exporting it.
 
-This collector config uses the Prometheus receiver to pull metrics from HAProxy and the HAProxy receiver for additional stats.
+This collector config uses the Prometheus receiver to pull metrics from HAProxy and the HAProxy receiver to read the stats socket. In production, you will often choose one of these metric paths to avoid collecting the same HAProxy counters twice.
 
 ```yaml
 # otel-collector-config.yaml
@@ -100,9 +104,8 @@ receivers:
               action: keep
 
   # Use the dedicated HAProxy receiver for stats socket data
-  # This provides additional metrics not available through Prometheus
   haproxy:
-    endpoint: http://haproxy-server:8405/metrics
+    endpoint: file:///var/run/haproxy.sock
     collection_interval: 30s
 
 processors:
@@ -219,8 +222,8 @@ First, configure HAProxy to output structured logs. Then set up the collector's 
 ```haproxy
 # haproxy.cfg - Structured logging configuration
 global
-    # Send logs to a local file that the OTel Collector will tail
-    log /var/log/haproxy/haproxy.log local0 info
+    # Send logs to local syslog; configure syslog to write /var/log/haproxy/haproxy.log
+    log /dev/log local0 info
     log-tag haproxy
 
 defaults
@@ -231,7 +234,7 @@ defaults
 
     # Custom log format with all timing fields and trace ID
     # %ID is the unique-id we configured earlier
-    log-format '{"timestamp":"%t","client":"%ci:%cp","frontend":"%f","backend":"%b","server":"%s","timings":{"request":%TR,"queue":%Tw,"connect":%Tc,"response":%Tr,"total":%Ta},"status":%ST,"bytes":%B,"request_id":"%ID","method":"%HM","uri":"%HU","traceparent":"%[capture.req.hdr(0)]"}'
+    log-format '{"timestamp":"%tr","client":"%ci:%cp","frontend":"%f","backend":"%b","server":"%s","timings":{"request":%TR,"queue":%Tw,"connect":%Tc,"response":%Tr,"total":%Ta},"status":%ST,"bytes":%B,"request_id":"%{+E}ID","method":"%{+E}HM","uri":"%{+E}HU","traceparent":"%{+E}[capture.req.hdr(0)]"}'
 ```
 
 Now configure the OpenTelemetry Collector to read and parse these structured logs.
@@ -245,26 +248,32 @@ receivers:
     # Parse the JSON-structured HAProxy logs
     operators:
       - type: json_parser
+        parse_ints: true
         timestamp:
           parse_from: attributes.timestamp
           layout: '%d/%b/%Y:%H:%M:%S.%L'
       - type: move
         from: attributes.status
-        to: attributes.http.status_code
+        to: attributes["http.status_code"]
       - type: move
         from: attributes.method
-        to: attributes.http.method
+        to: attributes["http.request.method"]
       - type: move
         from: attributes.uri
-        to: attributes.http.url
+        to: attributes["url.path"]
       # Extract trace context from the captured traceparent header
+      - type: regex_parser
+        parse_from: attributes.traceparent
+        regex: '^00-(?P<trace_id>[a-f0-9]{32})-(?P<span_id>[a-f0-9]{16})-(?P<trace_flags>[a-f0-9]{2})$'
+        on_error: send
       - type: trace_parser
         trace_id:
-          parse_from: attributes.traceparent
-          regex: '^00-(?P<trace_id>[a-f0-9]{32})-'
+          parse_from: attributes.trace_id
         span_id:
-          parse_from: attributes.traceparent
-          regex: '^00-[a-f0-9]{32}-(?P<span_id>[a-f0-9]{16})-'
+          parse_from: attributes.span_id
+        trace_flags:
+          parse_from: attributes.trace_flags
+        on_error: send
 
 service:
   pipelines:
@@ -293,7 +302,7 @@ graph TD
     D --> D1[HTTP 4xx rate]
     D --> D2[HTTP 5xx rate]
     D --> D3[Connection timeouts]
-    E --> E1[Response time p50/p95/p99]
+    E --> E1[Average and max response time]
     E --> E2[Queue depth]
     E --> E3[Retry rate]
 ```
@@ -313,8 +322,8 @@ groups:
       # Alert when backend error rate exceeds 5%
       - alert: HAProxyHighBackendErrorRate
         expr: |
-          rate(haproxy_backend_http_responses_total{code="5xx"}[5m])
-          / rate(haproxy_backend_http_responses_total[5m]) > 0.05
+          sum by (proxy) (rate(haproxy_backend_http_responses_total{code="5xx"}[5m]))
+          / sum by (proxy) (rate(haproxy_backend_http_responses_total[5m])) > 0.05
         for: 2m
         labels:
           severity: critical
@@ -332,7 +341,7 @@ groups:
 
       # Alert when a backend server goes down
       - alert: HAProxyServerDown
-        expr: haproxy_server_status == 0
+        expr: haproxy_server_status{state="DOWN"} == 1
         for: 30s
         labels:
           severity: critical
