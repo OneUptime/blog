@@ -39,6 +39,7 @@ using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Exporter;
 
 public static class MauiProgram
 {
@@ -64,9 +65,14 @@ public static class MauiProgram
                     ["device.version"] = DeviceInfo.VersionString,
                     ["app.version"] = AppInfo.VersionString,
                     ["app.build"] = AppInfo.BuildString
-                }))
+            }))
             .WithTracing(tracing => tracing
-                .AddSource("MauiApp.*")
+                .AddSource(
+                    "MauiApp.Telemetry",
+                    "MauiApp.Pages",
+                    "MauiApp.ViewModels",
+                    "MauiApp.Http",
+                    "MauiApp.Lifecycle")
                 .AddHttpClientInstrumentation(options =>
                 {
                     options.RecordException = true;
@@ -82,11 +88,14 @@ public static class MauiProgram
                     options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
                 }))
             .WithMetrics(metrics => metrics
-                .AddMeter("MauiApp.*")
+                .AddMeter(
+                    "MauiApp.Telemetry",
+                    "MauiApp.ViewModels",
+                    "MauiApp.Http")
                 .AddOtlpExporter(options =>
                 {
                     options.Endpoint = new Uri("https://telemetry.yourcompany.com/v1/metrics");
-                    options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                    options.Protocol = OtlpExportProtocol.HttpProtobuf;
                 }));
 
         // Register telemetry services
@@ -106,6 +115,7 @@ Build a centralized telemetry service that handles the unique requirements of mo
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Collections.Concurrent;
+using OpenTelemetry.Trace;
 
 public interface ITelemetryService
 {
@@ -128,13 +138,13 @@ public class TelemetryService : ITelemetryService
     private readonly Counter<long> _eventCounter;
     private readonly Counter<long> _exceptionCounter;
     private readonly Histogram<double> _pageLoadDuration;
-    private readonly ConcurrentQueue<Activity> _offlineBuffer;
+    private readonly ConcurrentQueue<Action> _offlineBuffer;
     private readonly IConnectivityService _connectivityService;
 
     public TelemetryService(IConnectivityService connectivityService)
     {
         _connectivityService = connectivityService;
-        _offlineBuffer = new ConcurrentQueue<Activity>();
+        _offlineBuffer = new ConcurrentQueue<Action>();
 
         // Initialize metrics
         _pageViewCounter = Meter.CreateCounter<long>(
@@ -171,12 +181,6 @@ public class TelemetryService : ITelemetryService
             activity.SetTag("device.orientation", DeviceDisplay.MainDisplayInfo.Orientation.ToString());
             activity.SetTag("device.density", DeviceDisplay.MainDisplayInfo.Density);
             activity.SetTag("network.type", Connectivity.NetworkAccess.ToString());
-
-            // Buffer offline activities
-            if (!_connectivityService.IsConnected)
-            {
-                _offlineBuffer.Enqueue(activity);
-            }
         }
 
         return activity;
@@ -184,6 +188,12 @@ public class TelemetryService : ITelemetryService
 
     public void TrackPageView(string pageName)
     {
+        if (!_connectivityService.IsConnected)
+        {
+            _offlineBuffer.Enqueue(() => TrackPageView(pageName));
+            return;
+        }
+
         using var activity = StartActivity($"PageView.{pageName}", ActivityKind.Internal);
 
         activity?.SetTag("page.name", pageName);
@@ -197,6 +207,15 @@ public class TelemetryService : ITelemetryService
 
     public void TrackEvent(string eventName, Dictionary<string, object>? properties = null)
     {
+        if (!_connectivityService.IsConnected)
+        {
+            var bufferedProperties = properties is null
+                ? null
+                : new Dictionary<string, object>(properties);
+            _offlineBuffer.Enqueue(() => TrackEvent(eventName, bufferedProperties));
+            return;
+        }
+
         using var activity = StartActivity($"Event.{eventName}", ActivityKind.Internal);
 
         activity?.SetTag("event.name", eventName);
@@ -217,6 +236,12 @@ public class TelemetryService : ITelemetryService
 
     public void TrackException(Exception exception)
     {
+        if (!_connectivityService.IsConnected)
+        {
+            _offlineBuffer.Enqueue(() => TrackException(exception));
+            return;
+        }
+
         using var activity = StartActivity("Exception", ActivityKind.Internal);
 
         activity?.SetTag("exception.type", exception.GetType().Name);
@@ -232,10 +257,11 @@ public class TelemetryService : ITelemetryService
 
     public async Task FlushAsync()
     {
-        // Process offline buffer when connectivity is restored
-        while (_offlineBuffer.TryDequeue(out var activity))
+        // Process in-memory telemetry callbacks when connectivity is restored.
+        while (_connectivityService.IsConnected &&
+            _offlineBuffer.TryDequeue(out var bufferedTelemetry))
         {
-            // Re-export buffered activities
+            bufferedTelemetry();
             await Task.Delay(10); // Rate limiting
         }
     }
@@ -288,6 +314,7 @@ Create a base page class that automatically tracks navigation and lifecycle even
 
 ```csharp
 using System.Diagnostics;
+using OpenTelemetry.Trace;
 
 public class InstrumentedContentPage : ContentPage
 {
@@ -298,11 +325,10 @@ public class InstrumentedContentPage : ContentPage
     private readonly Stopwatch _pageLoadStopwatch;
     private readonly ITelemetryService _telemetry;
 
-    public InstrumentedContentPage()
+    public InstrumentedContentPage(ITelemetryService telemetry)
     {
         _pageLoadStopwatch = new Stopwatch();
-        _telemetry = Handler?.MauiContext?.Services.GetService<ITelemetryService>()
-            ?? throw new InvalidOperationException("TelemetryService not found");
+        _telemetry = telemetry;
     }
 
     protected override void OnAppearing()
@@ -338,7 +364,7 @@ public class InstrumentedContentPage : ContentPage
     protected override void OnNavigatedTo(NavigatedToEventArgs args)
     {
         _pageActivity?.AddEvent(new ActivityEvent("NavigatedTo"));
-        _pageActivity?.SetTag("navigation.mode", args.NavigationMode.ToString());
+        _pageActivity?.SetTag("navigation.type", args.NavigationType.ToString());
 
         base.OnNavigatedTo(args);
     }
@@ -376,7 +402,10 @@ Instrument a ViewModel with OpenTelemetry:
 
 ```csharp
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Collections.ObjectModel;
 using System.Windows.Input;
+using OpenTelemetry.Trace;
 
 public class ProductListViewModel : BaseViewModel
 {
@@ -517,6 +546,9 @@ Create an instrumented HTTP client service:
 
 ```csharp
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Text.Json;
+using OpenTelemetry.Trace;
 
 public class InstrumentedHttpService
 {
@@ -601,6 +633,8 @@ public class InstrumentedHttpService
 Monitor app lifecycle to understand usage patterns:
 
 ```csharp
+using System.Diagnostics;
+
 public partial class App : Application
 {
     private static readonly ActivitySource ActivitySource =
